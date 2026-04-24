@@ -1,0 +1,329 @@
+services:
+  # ============================================
+  # 권한 초기화
+  # ============================================
+  init-permissions:
+    image: busybox:1.36.1
+    container_name: init-permissions
+    restart: "no"
+    volumes:
+      - ./librechat/logs:/app/logs
+      - ./librechat/uploads:/app/uploads
+      - ./librechat/images:/app/images
+    command: chown -R 1000:1000 /app/logs /app/uploads /app/images
+
+  # ============================================
+  # LibreChat API
+  # ============================================
+  librechat:
+    container_name: LibreChat
+    image: registry.librechat.ai/danny-avila/librechat:v0.8.5
+    user: "1000:1000"
+    ports:
+      - "8080:8080"
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+      rag_api:
+        condition: service_started
+      litellm:
+        condition: service_healthy
+      code-interpreter:
+        condition: service_healthy
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - MONGO_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
+      - MEILI_HOST=http://meilisearch:7700
+      - RAG_PORT=${RAG_PORT:-8000}
+      - RAG_API_URL=http://rag_api:${RAG_PORT:-8000}
+      - SEARXNG_INSTANCE_URL=${SEARXNG_INSTANCE_URL}
+      - LIBRECHAT_CODE_API_KEY=${CODE_INTERPRETER_API_KEY}
+      - LIBRECHAT_CODE_BASEURL=${LIBRECHAT_CODE_BASEURL}
+    volumes:
+      - type: bind
+        source: ./.env
+        target: /app/.env
+      - type: bind
+        source: ./librechat.yaml
+        target: /app/librechat.yaml
+      - ./librechat/images:/app/client/public/images
+      - ./librechat/uploads:/app/uploads
+      - ./librechat/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - kloudchat
+
+  # ============================================
+  # MongoDB
+  # ============================================
+  mongodb:
+    container_name: chat-mongodb
+    image: mongo:8.0.20
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - ./mongodb/data:/data/db
+    command: mongod --auth
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - kloudchat
+
+  # ============================================
+  # MeiliSearch
+  # ============================================
+  meilisearch:
+    container_name: chat-meilisearch
+    image: getmeili/meilisearch:v1.35.1
+    restart: always
+    environment:
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+    volumes:
+      - ./meilisearch/data:/meili_data
+    networks:
+      - kloudchat
+
+  # ============================================
+  # PGVector (RAG 벡터 저장소)
+  # ============================================
+  vectordb:
+    container_name: vectordb
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mydatabase}
+      POSTGRES_USER: ${POSTGRES_USER:-myuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./rag/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myuser} -d ${POSTGRES_DB:-mydatabase}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kloudchat
+
+  # ============================================
+  # RAG API
+  # ============================================
+  rag_api:
+    container_name: rag_api
+    build:
+      context: .
+      dockerfile: Dockerfile.rag
+    restart: always
+    depends_on:
+      vectordb:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - DB_HOST=vectordb
+      - RAG_PORT=${RAG_PORT:-8000}
+      - HYBRID_SEARCH=true
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_API_BASE}
+    env_file:
+      - .env
+    networks:
+      - kloudchat
+
+  # ============================================
+  # PostgreSQL (LiteLLM)
+  # ============================================
+  litellm-db:
+    container_name: litellm-db
+    image: postgres:16.13
+    restart: always
+    environment:
+      POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_DB: litellm
+    volumes:
+      - ./litellm/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kloudchat
+
+  # ============================================
+  # LiteLLM Proxy
+  # ============================================
+  litellm:
+    container_name: litellm
+    image: ghcr.io/berriai/litellm:v1.83.7-stable
+    restart: always
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command:
+      [
+        "--config", "/app/config.yaml",
+        "--port", "8000",
+        "--num_workers", "8",
+      ]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE}
+      DATABASE_URL: "postgres://${LITELLM_DB_USER:-litellm}:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm"
+      # 클라우드 공급자 확장 시 주석 해제 (librechat.yaml allowedProviders도 함께 수정)
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # GEMINI_API_KEY: ${GEMINI_API_KEY}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/liveliness')"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kloudchat
+
+  # ============================================
+  # SearXNG
+  # ============================================
+  searxng:
+    container_name: searxng
+    image: searxng/searxng:2026.4.24-a7ac696b4
+    restart: always
+    volumes:
+      - ./searxng-settings.yml:/etc/searxng/settings.yml
+    networks:
+      - kloudchat
+
+  # ============================================
+  # LibreCodeInterpreter (코드 실행 샌드박스)
+  # ============================================
+  code-interpreter:
+    container_name: code-interpreter
+    image: ghcr.io/usnavy13/librecodeinterpreter:main
+    restart: always
+    init: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    environment:
+      - REDIS_HOST=code-interpreter-redis
+      - REDIS_PORT=6379
+      - MINIO_ENDPOINT=code-interpreter-minio:9000
+      - MINIO_ACCESS_KEY=${CODE_INTERPRETER_MINIO_USER}
+      - MINIO_SECRET_KEY=${CODE_INTERPRETER_MINIO_PASSWORD}
+      - MINIO_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
+      - API_KEY=${CODE_INTERPRETER_API_KEY}
+      - MAX_EXECUTION_TIME=30
+      - MAX_MEMORY_MB=512
+      - OPENBLAS_NUM_THREADS=1
+      - OMP_NUM_THREADS=1
+      - REPL_WARMUP_TIMEOUT_SECONDS=60
+      - SANDBOX_POOL_PARALLEL_BATCH=1
+    command: >
+      sh -c "mkdir -p /app/ssl && python3 -m src.main"
+    depends_on:
+      code-interpreter-redis:
+        condition: service_healthy
+      code-interpreter-minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    networks:
+      - kloudchat
+
+  code-interpreter-redis:
+    container_name: code-interpreter-redis
+    image: redis:7.4.8-alpine
+    restart: always
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - ./code-interpreter/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kloudchat
+
+  code-interpreter-minio:
+    container_name: code-interpreter-minio
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: always
+    environment:
+      MINIO_ROOT_USER: ${CODE_INTERPRETER_MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${CODE_INTERPRETER_MINIO_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./code-interpreter/minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kloudchat
+
+  code-interpreter-minio-init:
+    container_name: code-interpreter-minio-init
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    restart: "no"
+    depends_on:
+      code-interpreter-minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://code-interpreter-minio:9000 $${CODE_INTERPRETER_MINIO_USER} $${CODE_INTERPRETER_MINIO_PASSWORD};
+      mc mb --ignore-existing myminio/$${CODE_INTERPRETER_MINIO_BUCKET};
+      exit 0;
+      "
+    environment:
+      - CODE_INTERPRETER_MINIO_USER=${CODE_INTERPRETER_MINIO_USER}
+      - CODE_INTERPRETER_MINIO_PASSWORD=${CODE_INTERPRETER_MINIO_PASSWORD}
+      - CODE_INTERPRETER_MINIO_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
+    networks:
+      - kloudchat
+
+networks:
+  kloudchat:
+    driver: bridge

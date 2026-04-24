@@ -1,0 +1,62 @@
+# amd64 전용 서비스 (CUDA 필요: Whisper, Kokoro, SD.Next)
+# 사용법: docker compose -f docker-compose.yml -f docker-compose.amd64.yml up -d
+# 또는:   scripts/deploy.sh (아키텍처 자동 감지)
+
+services:
+  # ============================================
+  # Whisper (STT)
+  # ============================================
+  whisper:
+    container_name: whisper
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    restart: always
+    environment:
+      ASR_MODEL: large-v3
+      ASR_ENGINE: openai_whisper
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - kloudchat
+
+  # ============================================
+  # Kokoro (TTS)
+  # ============================================
+  kokoro:
+    container_name: kokoro
+    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - kloudchat
+
+  # ============================================
+  # SD.Next (이미지 생성 — A1111 API 호환)
+  # LibreChat SD_WEBUI_URL=http://sdnext:7860 으로 직접 연동 가능.
+  # ============================================
+  sdnext:
+    container_name: sdnext
+    image: vladmandic/sdnext-cuda:latest
+    restart: always
+    volumes:
+      - ./sdnext/models:/app/models
+      - ./sdnext/outputs:/app/outputs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - kloudchat

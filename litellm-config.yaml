@@ -1,0 +1,55 @@
+# ==================================================
+# LiteLLM Proxy 설정
+# ==================================================
+
+model_list:
+  # ---- Ollama: 설치된 모든 채팅 모델을 자동으로 노출 ----
+  - model_name: "ollama/*"
+    litellm_params:
+      model: "ollama_chat/*"
+      api_base: os.environ/OLLAMA_API_BASE
+
+  # ---- 클라우드 공급자 확장 시 주석 해제 (docker-compose.yml litellm environment에 API 키도 추가) ----
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     api_key: os.environ/OPENAI_API_KEY
+
+  # - model_name: claude-sonnet-4-5
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-5
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # - model_name: gemini-2.5-pro
+  #   litellm_params:
+  #     model: gemini/gemini-2.5-pro
+  #     api_key: os.environ/GEMINI_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  store_model_in_db: false
+  store_prompts_in_spend_logs: true
+
+litellm_settings:
+  drop_params: true
+  drop_unsupported_params: true
+  request_timeout: 600
+  num_retries: 2
+  check_provider_endpoint: true
+  # ---- 모든 내부 사용자 기본 예산 (개별 설정 없을 때 적용) ----
+  max_internal_user_budget: 25
+  internal_user_budget_duration: "1mo"
+  # ---- 키 생성 시 기본값 ----
+  default_key_generate_params:
+    max_budget: 10
+    budget_duration: "1mo"
+  # ---- 키 생성 시 상한선 ----
+  upperbound_key_generate_params:
+    max_budget: 9999
+    tpm_limit: 100000
+    rpm_limit: 500
+
+# ---- Claude Code용: Anthropic Messages API 호환 ----
+anthropic_proxy:
+  enabled: true
+  prefix: /
