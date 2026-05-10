@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # KloudChat 전체 배포 스크립트 — 새 호스트에서 한 번에 실행
 #
+# 사전 조건:
+#   - sudo ./scripts/install-ollama.sh 가 먼저 실행돼 있을 것 (호스트 Ollama 필요)
+#
 # 사용법:
-#   git clone -b deploy https://github.com/gyeonghyeons/KloudChat.git
-#   cd KloudChat
 #   ./scripts/full-setup.sh                    # 대화형 (기본)
 #   ./scripts/full-setup.sh --yes              # 모든 프롬프트 자동 yes
 #   ./scripts/full-setup.sh --models all       # 모든 모델 다운로드
