@@ -4,15 +4,18 @@
 
 services:
   # ============================================
-  # Whisper (STT)
+  # Whisper (STT) — fedirz/faster-whisper-server (CTranslate2 기반, OpenAI Audio API 호환)
+  # 기존 onerahmet 이미지는 /asr 만 노출하고 OpenAI 호환 안 됨 + 일부 신형 GPU 미지원.
+  # fedirz 는 CTranslate2 사용으로 PyTorch CUDA 커널 의존도 낮아 Blackwell 등 신형 GPU 호환성 좋음.
   # ============================================
   whisper:
     container_name: whisper
-    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    image: fedirz/faster-whisper-server:latest-cuda
     restart: always
     environment:
-      ASR_MODEL: large-v3
-      ASR_ENGINE: openai_whisper
+      WHISPER__MODEL: Systran/faster-whisper-large-v3
+      WHISPER__INFERENCE_DEVICE: auto
+      UVICORN_PORT: "8000"
     deploy:
       resources:
         reservations:
@@ -24,19 +27,14 @@ services:
       - kloudchat
 
   # ============================================
-  # Kokoro (TTS)
+  # Kokoro (TTS) — CPU 변형
+  # GPU 변형은 PyTorch sm_120 (Blackwell) 등 신형 GPU 미지원으로 시작 실패.
+  # CPU 모드는 모든 GPU 환경에서 동작 (영어 음성만, 한국어 음성 미지원은 모델 자체 한계).
   # ============================================
   kokoro:
     container_name: kokoro
-    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
     restart: always
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     networks:
       - kloudchat
 

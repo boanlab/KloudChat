@@ -76,6 +76,11 @@ fileConfig:
 # 음성 (TTS / STT)
 # ==============================================
 speech:
+  stt:
+    openai:
+      url: "http://whisper:8000/v1/audio/transcriptions"
+      apiKey: "dummy"
+      model: "Systran/faster-whisper-large-v3"
   tts:
     openai:
       url: "http://kokoro:8880/v1/audio/speech"
