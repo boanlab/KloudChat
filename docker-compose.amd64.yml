@@ -49,8 +49,8 @@ services:
     image: vladmandic/sdnext-cuda:latest
     restart: always
     volumes:
-      - ./sdnext/models:/app/models
-      - ./sdnext/outputs:/app/outputs
+      - ./sdnext/models:/mnt/models
+      - ./sdnext/outputs:/mnt/outputs
     deploy:
       resources:
         reservations:

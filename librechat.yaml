@@ -19,10 +19,10 @@ endpoints:
       userProvide: true
       baseURL: "http://litellm:8000/v1"
       models:
-        default: ["qwen3.5-9b"]
+        default: ["ollama/qwen3.5:9b"]
         fetch: true
       titleConvo: true
-      titleModel: "qwen3.5-9b"
+      titleModel: "ollama/qwen3.5:9b"
       summarize: false
       forcePrompt: false
       modelDisplayLabel: "KloudChat"
