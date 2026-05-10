@@ -1,6 +1,9 @@
 use_default_settings: true
 
 search:
+  default_lang: ko          # 검색 언어 한국어 강제 → Google/Bing 등이 한국 사이트 우선
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
   formats:
     - html
     - json
