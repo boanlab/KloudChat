@@ -21,6 +21,7 @@ team actions:
 
 user actions:
   create  --id <이메일> [--team <team_alias>] [--budget <금액>]   (팀 기본값: default)
+          [--name <이름> --username <username> --password <비번>]   ← LibreChat 사용자 + 자동 키 발급 동시
   list
   delete  --id <이메일>
 
@@ -33,6 +34,8 @@ key actions:
 예시:
   manage.sh team create --alias research --budget 100 --models "ollama/*"
   manage.sh user create --id alice@lab.ac.kr --team research --budget 20
+  manage.sh user create --id prof@dankook.ac.kr --name '김교수' --username kim --password 'pw12345' --budget 100
+                                                                        # LibreChat 사용자 + LiteLLM 사용자 + 키 한 번에
   manage.sh key issue --user alice@lab.ac.kr --team research --alias alice-key
   manage.sh key issue --service librechat --budget 9999
   manage.sh key list --user alice@lab.ac.kr
@@ -110,18 +113,51 @@ cmd_team_delete() {
 # ---- user ----
 cmd_user_create() {
   local user_id="" team_alias="default" budget=9999
+  local lc_name="" lc_username="" lc_password=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --id)     user_id="$2";    shift 2 ;;
-      --team)   team_alias="$2"; shift 2 ;;
-      --budget) budget="$2";     shift 2 ;;
+      --id)        user_id="$2";     shift 2 ;;
+      --team)      team_alias="$2";  shift 2 ;;
+      --budget)    budget="$2";      shift 2 ;;
+      --name)      lc_name="$2";     shift 2 ;;
+      --username)  lc_username="$2"; shift 2 ;;
+      --password)  lc_password="$2"; shift 2 ;;
       *) echo "알 수 없는 옵션: $1" >&2; exit 1 ;;
     esac
   done
   [[ -z "$user_id" ]] && { echo "--id 필수" >&2; exit 1; }
   [[ "$user_id" =~ ^[^@]+@[^@]+\.[^@]+$ ]] || { echo "오류: 이메일 형식이 아닙니다: $user_id" >&2; exit 1; }
 
-  # 유저 생성
+  # --name/--username/--password 셋이 일관되게 제공됐는지 확인 (full provisioning 모드)
+  local lc_count=0
+  for v in "$lc_name" "$lc_username" "$lc_password"; do
+    [[ -n "$v" ]] && lc_count=$((lc_count+1))
+  done
+  if [[ $lc_count -ne 0 && $lc_count -ne 3 ]]; then
+    echo "오류: --name, --username, --password 는 셋 다 함께 제공되어야 합니다 (LibreChat 사용자 생성용)" >&2
+    exit 1
+  fi
+  local full_provision=0
+  [[ $lc_count -eq 3 ]] && full_provision=1
+
+  # LibreChat 사용자 생성 (full provisioning 모드)
+  if [[ $full_provision -eq 1 ]]; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^LibreChat$'; then
+      echo "LibreChat 사용자 생성 중..."
+      local lc_output
+      lc_output=$(docker exec -i LibreChat npm run create-user -- "$user_id" "$lc_name" "$lc_username" "$lc_password" <<< 'y' 2>&1 | tail -10)
+      if echo "$lc_output" | grep -q "User created successfully"; then
+        echo "  ✓ LibreChat 사용자: $user_id ($lc_username)"
+      else
+        echo "  ⚠ LibreChat 사용자 생성 실패 (이미 존재 가능성). 마지막 출력:" >&2
+        echo "$lc_output" | tail -3 | sed 's/^/    /' >&2
+      fi
+    else
+      echo "  ⚠ LibreChat 컨테이너 미실행 — LibreChat 단계 건너뜀" >&2
+    fi
+  fi
+
+  # LiteLLM 유저 생성
   local payload result
   payload=$(jq -n --arg u "$user_id" '{user_id:$u, user_role:"internal_user"}')
   result=$(litellm_post "/user/new" "$payload")
@@ -141,6 +177,12 @@ cmd_user_create() {
       '{team_id:$tid, max_budget_in_team:$b, member:{role:"user", user_id:$uid}}')
     litellm_post "/team/member_add" "$payload" > /dev/null
     echo "팀 추가: $team_alias (팀 내 한도 \$${budget}/월)"
+  fi
+
+  # 자동 키 발급 (full provisioning 모드)
+  if [[ $full_provision -eq 1 ]]; then
+    local key_alias="${lc_username}-key"
+    cmd_key_issue --user "$user_id" --team "$team_alias" --alias "$key_alias"
   fi
 }
 
