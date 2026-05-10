@@ -184,6 +184,75 @@ cmd_user_create() {
     local key_alias="${lc_username}-key"
     cmd_key_issue --user "$user_id" --team "$team_alias" --alias "$key_alias"
   fi
+
+  # default agent 자동 생성 (full provisioning 모드 + LibreChat/Mongo 가용 시)
+  if [[ $full_provision -eq 1 ]]; then
+    create_default_agent_for_user "$user_id"
+  fi
+}
+
+# LibreChat default agent 생성 (모든 도구 활성화)
+# 새 사용자가 LibreChat 첫 로그인 시 바로 모든 기능 (이미지/검색/코드/RAG) 사용 가능하도록.
+create_default_agent_for_user() {
+  local user_email="$1"
+  local mongo_user mongo_pass
+  mongo_user=$(grep '^MONGO_ROOT_USER=' "${SCRIPT_DIR}/../.env" 2>/dev/null | cut -d= -f2)
+  mongo_pass=$(grep '^MONGO_ROOT_PASSWORD=' "${SCRIPT_DIR}/../.env" 2>/dev/null | cut -d= -f2)
+  if [[ -z "$mongo_user" || -z "$mongo_pass" ]]; then
+    echo "  ⚠ Agent 자동생성 건너뜀 (.env 의 MONGO_ROOT_USER/PASSWORD 없음)" >&2
+    return 0
+  fi
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$'; then
+    echo "  ⚠ Agent 자동생성 건너뜀 (chat-mongodb 컨테이너 미실행)" >&2
+    return 0
+  fi
+
+  local result
+  result=$(docker exec chat-mongodb mongosh --quiet \
+    -u "$mongo_user" -p "$mongo_pass" --authenticationDatabase admin \
+    LibreChat --eval "
+      var u = db.users.findOne({email: '$user_email'}, {_id:1});
+      if (!u) { print('NO_USER'); quit(); }
+      var existing = db.agents.findOne({author: u._id, name: 'KloudChat'}, {_id:1});
+      if (existing) { print('AGENT_EXISTS:' + existing._id); quit(); }
+      var now = new Date();
+      var agentId = 'agent_' + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12);
+      var versionEntry = {
+        name: 'KloudChat', description: '', instructions: '',
+        provider: 'LiteLLM', model: 'ollama/qwen3.5:35b',
+        tools: ['stable-diffusion','execute_code','file_search','web_search'],
+        artifacts: '', category: 'general',
+        support_contact: {name:'', email:''},
+        agent_ids: [], edges: [], conversation_starters: [],
+        is_promoted: false, mcpServerNames: [], tool_options: {},
+        createdAt: now, updatedAt: now
+      };
+      db.agents.insertOne({
+        id: agentId, name: 'KloudChat', description: '', instructions: '',
+        provider: 'LiteLLM', model: 'ollama/qwen3.5:35b', artifacts: '',
+        tools: ['stable-diffusion','execute_code','file_search','web_search'],
+        tool_kwargs: [], author: u._id,
+        agent_ids: [], edges: [], conversation_starters: [],
+        versions: [versionEntry], category: 'general',
+        support_contact: {name:'', email:''},
+        is_promoted: false, mcpServerNames: [], tool_options: {},
+        end_after_tools: false, hide_sequential_outputs: false,
+        createdAt: now, updatedAt: now, __v: 0
+      });
+      print('AGENT_CREATED:' + agentId);
+    " 2>&1 | tail -3)
+
+  if echo "$result" | grep -q 'AGENT_CREATED:'; then
+    local aid
+    aid=$(echo "$result" | grep -oE 'agent_[a-zA-Z0-9_-]+')
+    echo "Agent 자동생성: KloudChat (id=$aid, tools=stable-diffusion/execute_code/file_search/web_search, model=ollama/qwen3.5:35b)"
+  elif echo "$result" | grep -q 'AGENT_EXISTS:'; then
+    echo "Agent 이미 존재: KloudChat (재사용)"
+  elif echo "$result" | grep -q 'NO_USER'; then
+    echo "  ⚠ Agent 자동생성 실패: LibreChat 에 사용자 _id 없음" >&2
+  else
+    echo "  ⚠ Agent 자동생성 실패: $(echo "$result" | tail -1)" >&2
+  fi
 }
 
 cmd_user_list() {
