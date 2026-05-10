@@ -3,10 +3,30 @@
 # ==================================================
 
 model_list:
-  # ---- Ollama: 설치된 모든 채팅 모델을 자동으로 노출 ----
-  - model_name: "ollama/*"
+  # ---- Ollama: 설치된 모델을 명시적으로 등록 (와일드카드는 /v1/models 에 노출되어 잘못 선택되면 "invalid model name" 발생) ----
+  - model_name: ollama/qwen3.5:9b
     litellm_params:
-      model: "ollama_chat/*"
+      model: ollama_chat/qwen3.5:9b
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/qwen3.5:35b
+    litellm_params:
+      model: ollama_chat/qwen3.5:35b
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/gemma4:26b
+    litellm_params:
+      model: ollama_chat/gemma4:26b
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/qwen3-coder-next:q4_K_M
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q4_K_M
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/qwen3-coder-next:q8_0
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q8_0
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/nomic-embed-text
+    litellm_params:
+      model: ollama/nomic-embed-text:latest
       api_base: os.environ/OLLAMA_API_BASE
 
   # ---- 클라우드 공급자 확장 시 주석 해제 (docker-compose.yml litellm environment에 API 키도 추가) ----
