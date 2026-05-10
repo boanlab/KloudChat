@@ -8,7 +8,7 @@ usage() {
 사용법: $(basename "$0") [모델...]
 
 모델 선택:
-  gemma4          gemma4:26b              (~17GB)  — Google, 범용
+  gemma3          gemma3:27b              (~17GB)  — Google Gemma 3, 범용
   qwen3-35b       qwen3.5:35b             (~23GB)  — Alibaba, 범용 주력
   qwen3-9b        qwen3.5:9b              (~6GB)   — Alibaba, 경량 [기본]
   qwen3-coder-q4  qwen3-coder-next:q4_K_M (~51GB)  — 코딩 특화
@@ -19,7 +19,7 @@ usage() {
 예시:
   $(basename "$0")                 # 기본값: qwen3-9b + embed
   $(basename "$0") all
-  $(basename "$0") gemma4 embed
+  $(basename "$0") gemma3 embed
 EOF
   exit 0
 }
@@ -62,13 +62,13 @@ check_ollama
 
 for arg in "$@"; do
   case "$arg" in
-    gemma4)         pull_model "gemma4:26b" ;;
+    gemma3)         pull_model "gemma3:27b" ;;
     qwen3-35b)      pull_model "qwen3.5:35b" ;;
     qwen3-9b)       pull_model "qwen3.5:9b" ;;
     qwen3-coder-q4) pull_model "qwen3-coder-next:q4_K_M" ;;
     qwen3-coder-q8) pull_model "qwen3-coder-next:q8_0" ;;
     embed)          pull_model "nomic-embed-text" ;;
-    all)            "$0" gemma4 qwen3-35b qwen3-9b qwen3-coder-q4 qwen3-coder-q8 embed ;;
+    all)            "$0" gemma3 qwen3-35b qwen3-9b qwen3-coder-q4 qwen3-coder-q8 embed ;;
     -h|--help)      usage ;;
     *)              echo "알 수 없는 모델: $arg" >&2; usage ;;
   esac
