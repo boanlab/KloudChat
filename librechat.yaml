@@ -48,8 +48,8 @@ interface:
   fileSearch: true
   fileCitations: true
   agents:
-    USE: false
-    CREATE: false
+    USE: true
+    CREATE: true
     SHARE: false
     SHARE_PUBLIC: false
   mcpServers:
@@ -71,6 +71,21 @@ fileConfig:
     agents:
       fileLimit: 10
       fileSizeLimit: 25
+
+# ==============================================
+# 음성 (TTS / STT)
+# ==============================================
+speech:
+  tts:
+    openai:
+      url: "http://kokoro:8880/v1/audio/speech"
+      apiKey: "dummy"
+      model: "kokoro"
+      voices:
+        - "af_sky"
+        - "af_bella"
+        - "am_adam"
+        - "am_michael"
 
 # ==============================================
 # 속도 제한
