@@ -1,0 +1,37 @@
+# openedai-speech voice config — KloudChat
+# tts-1 = piper (빠름, 영어 위주). tts-1-hd = xtts (느리지만 다국어, 한국어 지원).
+# voice 이름이 LibreChat 의 speech.tts.voices 에 등록되어야 함.
+
+tts-1:
+  alloy:
+    model: voices/en_US-libritts_r-medium.onnx
+    speaker: 79
+  echo:
+    model: voices/en_US-libritts_r-medium.onnx
+    speaker: 134
+  fable:
+    model: voices/en_GB-northern_english_male-medium.onnx
+    speaker:
+  onyx:
+    model: voices/en_US-libritts_r-medium.onnx
+    speaker: 159
+  nova:
+    model: voices/en_US-libritts_r-medium.onnx
+    speaker: 107
+  shimmer:
+    model: voices/en_US-libritts_r-medium.onnx
+    speaker: 163
+
+tts-1-hd:
+  korean:
+    model: xtts_v2.0.2
+    speaker: voices/alloy.wav
+    language: ko
+  korean-female:
+    model: xtts_v2.0.2
+    speaker: voices/nova.wav
+    language: ko
+  english-hd:
+    model: xtts_v2.0.2
+    speaker: voices/alloy.wav
+    language: en

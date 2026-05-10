@@ -13,7 +13,7 @@ usage() {
   qwen3-9b        qwen3.5:9b              (~6GB)   — Alibaba, 경량 [기본]
   qwen3-coder-q4  qwen3-coder-next:q4_K_M (~51GB)  — 코딩 특화
   qwen3-coder-q8  qwen3-coder-next:q8_0   (~84GB)  — 코딩 특화 고품질
-  embed           nomic-embed-text        (~270MB) — RAG 임베딩 [기본]
+  embed           bge-m3                  (~1.2GB) — RAG 임베딩 (다국어, 한국어 우수) [기본]
   all             위 전체
 
 예시:
@@ -67,7 +67,7 @@ for arg in "$@"; do
     qwen3-9b)       pull_model "qwen3.5:9b" ;;
     qwen3-coder-q4) pull_model "qwen3-coder-next:q4_K_M" ;;
     qwen3-coder-q8) pull_model "qwen3-coder-next:q8_0" ;;
-    embed)          pull_model "nomic-embed-text" ;;
+    embed)          pull_model "bge-m3" ;;
     all)            "$0" gemma3 qwen3-35b qwen3-9b qwen3-coder-q4 qwen3-coder-q8 embed ;;
     -h|--help)      usage ;;
     *)              echo "알 수 없는 모델: $arg" >&2; usage ;;

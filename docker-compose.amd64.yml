@@ -27,14 +27,21 @@ services:
       - kloudchat
 
   # ============================================
-  # Kokoro (TTS) — CPU 변형
-  # GPU 변형은 PyTorch sm_120 (Blackwell) 등 신형 GPU 미지원으로 시작 실패.
-  # CPU 모드는 모든 GPU 환경에서 동작 (영어 음성만, 한국어 음성 미지원은 모델 자체 한계).
+  # TTS — matatonic/openedai-speech (다국어, OpenAI Audio API 호환)
+  # 기존 kokoro 는 영어 음성만 가능. openedai-speech 는 piper(영어 빠름) + xtts_v2(다국어, 한국어 지원).
+  # voice 매핑은 tts-config/voice_to_speaker.yaml 에서 정의.
+  # 첫 시작 시 ~2GB 모델 다운로드 (voices 볼륨에 캐시).
   # ============================================
   kokoro:
     container_name: kokoro
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    image: ghcr.io/matatonic/openedai-speech:latest
     restart: always
+    environment:
+      - TTS_HOME=/app/voices
+      - HF_HOME=/app/voices/hf
+    volumes:
+      - ./tts-config/voice_to_speaker.yaml:/app/config/voice_to_speaker.yaml
+      - ./tts-data/voices:/app/voices
     networks:
       - kloudchat
 
