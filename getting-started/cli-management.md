@@ -48,7 +48,7 @@ curl --version
 ```bash
 # 사용자 생성 + 팀 추가
 ./scripts/manage.sh user create \
-  --id alice@boanlab.com \
+  --id alice@example.com \
   --team research \
   --budget 25
 
@@ -56,7 +56,7 @@ curl --version
 ./scripts/manage.sh user list
 
 # 사용자 삭제
-./scripts/manage.sh user delete --id alice@boanlab.com
+./scripts/manage.sh user delete --id alice@example.com
 ```
 
 ### LibreChat 사용자 + LiteLLM 사용자 + 키 한 번에
@@ -69,8 +69,8 @@ curl --version
 
 ```bash
 ./scripts/manage.sh user create \
-  --id prof.kim@boanlab.com \
-  --name '김교수' --username kim --password 'pw12345678' \
+  --id alice@example.com \
+  --name 'Alice' --username alice --password 'pw12345678' \
   --team research \
   --budget 100
 ```
@@ -91,7 +91,7 @@ Claude Code, 직접 API 호출 등에 활용합니다.
 ```bash
 # 사용자 키 발급
 ./scripts/manage.sh key issue \
-  --user alice@boanlab.com \
+  --user alice@example.com \
   --team research \
   --alias alice-key
 
@@ -102,7 +102,7 @@ Claude Code, 직접 API 호출 등에 활용합니다.
 
 # 키 목록 조회
 ./scripts/manage.sh key list
-./scripts/manage.sh key list --user alice@boanlab.com
+./scripts/manage.sh key list --user alice@example.com
 
 # 키 폐기
 ./scripts/manage.sh key revoke --key sk-...
@@ -116,12 +116,12 @@ Claude Code, 직접 API 호출 등에 활용합니다.
 ./scripts/manage.sh team create --alias default  --budget  50 --models "ollama/*"
 
 # 사용자 등록
-./scripts/manage.sh user create --id alice@boanlab.com --team research --budget 20
-./scripts/manage.sh user create --id bob@boanlab.com   --team default  --budget 10
+./scripts/manage.sh user create --id alice@example.com --team research --budget 20
+./scripts/manage.sh user create --id bob@example.com   --team default  --budget 10
 
 # 키 발급
-./scripts/manage.sh key issue --user alice@boanlab.com --team research
-./scripts/manage.sh key issue --user bob@boanlab.com   --team default
+./scripts/manage.sh key issue --user alice@example.com --team research
+./scripts/manage.sh key issue --user bob@example.com   --team default
 ```
 
 ## Claude Code 로컬 연결

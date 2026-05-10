@@ -32,8 +32,11 @@ endpoints:
 # 인터페이스 설정
 # ==============================================
 registration:
-  allowedDomains:
-    - "dankook.ac.kr"
+  # 자체 회원가입(UI Sign Up) 을 특정 이메일 도메인으로 제한하려면 주석 해제 후 도메인 명시.
+  # 관리자가 manage.sh user create 로 만든 사용자는 이 제한을 우회하므로,
+  # CLI 만 쓸 거면 그대로 둬도 무방.
+  # allowedDomains:
+  #   - "your-domain.com"
 
 interface:
   modelSelect: true

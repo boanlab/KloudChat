@@ -96,14 +96,11 @@ fi
 echo
 echo "=== 다음 단계 ==="
 echo
-echo "1. 첫 admin 사용자 생성 (회원가입 비활성 우회):"
-echo "   docker exec -i LibreChat npm run create-user -- \\"
-echo "     admin@dankook.ac.kr '관리자' admin '<8자이상비밀번호>' <<< 'y'"
-echo
-echo "2. LiteLLM 사용자 + 키 발급 (사용자별 비용 추적용):"
-echo "   ./scripts/manage.sh user create --id admin@dankook.ac.kr --budget 9999"
-echo "   ./scripts/manage.sh key issue --user admin@dankook.ac.kr --alias admin-key"
-echo "   → 출력된 sk-... 를 LibreChat UI 에서 LiteLLM 엔드포인트의 API Key 칸에 입력"
+echo "1. 첫 admin 사용자 + LiteLLM 키 한 번에 (manage.sh 통합 흐름):"
+echo "   ./scripts/manage.sh user create \\"
+echo "     --id admin@example.com --name '관리자' --username admin --password '<8자이상비밀번호>' \\"
+echo "     --budget 9999"
+echo "   → 출력된 KEY: sk-... 를 LibreChat UI 의 API Key 칸에 입력"
 echo
 echo "3. 접속:"
 echo "   LibreChat: http://localhost:8080"

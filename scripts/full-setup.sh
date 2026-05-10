@@ -295,11 +295,11 @@ ${G}━━━ 설치 완료 ━━━${N}
 
   1. 첫 admin 사용자 (회원가입 비활성 우회):
      ${C}docker exec -i LibreChat npm run create-user -- \\
-       admin@dankook.ac.kr "관리자" admin <8자이상비밀번호> <<< 'y'${N}
+       admin@example.com "관리자" admin <8자이상비밀번호> <<< 'y'${N}
 
   2. LiteLLM 사용자 + 키 발급:
-     ${C}./scripts/manage.sh user create --id admin@dankook.ac.kr --budget 9999${N}
-     ${C}./scripts/manage.sh key issue --user admin@dankook.ac.kr --alias admin-key${N}
+     ${C}./scripts/manage.sh user create --id admin@example.com --budget 9999${N}
+     ${C}./scripts/manage.sh key issue --user admin@example.com --alias admin-key${N}
      → 출력된 sk-... 를 LibreChat UI 에서 LiteLLM 엔드포인트의 API Key 칸에 입력
 
   3. 접속:

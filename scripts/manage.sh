@@ -34,7 +34,7 @@ key actions:
 예시:
   manage.sh team create --alias research --budget 100 --models "ollama/*"
   manage.sh user create --id alice@lab.ac.kr --team research --budget 20
-  manage.sh user create --id prof@dankook.ac.kr --name '김교수' --username kim --password 'pw12345' --budget 100
+  manage.sh user create --id alice@example.com --name 'Alice' --username alice --password 'pw12345' --budget 100
                                                                         # LibreChat 사용자 + LiteLLM 사용자 + 키 한 번에
   manage.sh key issue --user alice@lab.ac.kr --team research --alias alice-key
   manage.sh key issue --service librechat --budget 9999
