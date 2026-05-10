@@ -43,6 +43,8 @@ curl --version
 
 ## 사용자 관리
 
+### LiteLLM 사용자만 (기존)
+
 ```bash
 # 사용자 생성 + 팀 추가
 ./scripts/manage.sh user create \
@@ -56,6 +58,30 @@ curl --version
 # 사용자 삭제
 ./scripts/manage.sh user delete --id alice@boanlab.com
 ```
+
+### LibreChat 사용자 + LiteLLM 사용자 + 키 한 번에
+
+`--name`, `--username`, `--password` 셋이 함께 제공되면 다음 작업이 자동으로 묶여 실행됩니다.
+
+1. `docker exec LibreChat npm run create-user` 로 LibreChat 로그인 계정 생성
+2. LiteLLM 사용자 생성 + 팀 추가 (위와 동일)
+3. LiteLLM 키 자동 발급 (alias = `<username>-key`)
+
+```bash
+./scripts/manage.sh user create \
+  --id prof.kim@boanlab.com \
+  --name '김교수' --username kim --password 'pw12345678' \
+  --team research \
+  --budget 100
+```
+
+출력에 `KEY: sk-...` 가 포함됩니다. 이 키를 사용자에게 전달하면, 본인이 LibreChat UI 첫 채팅 시 API Key 칸에 입력합니다.
+
+| 옵션 | 설명 | 비고 |
+|---|---|---|
+| `--name` | LibreChat 표시명 | 셋 다 함께 제공 시 활성화 |
+| `--username` | LibreChat 로그인 ID | 동일 |
+| `--password` | LibreChat 비밀번호 (8자+) | 동일 |
 
 ## 가상 키 발급
 
