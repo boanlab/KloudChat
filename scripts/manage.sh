@@ -221,11 +221,17 @@ register_litellm_key_for_librechat_user() {
     return 0
   fi
 
+  # LibreChat 의 getUserKeyValues 가 decrypt 후 JSON.parse 하므로
+  # value 는 JSON stringified 객체 ({"apiKey":"sk-..."}) 형식이어야 함.
+  # 단순 raw string 이면 "Unexpected token 's', is not valid JSON" 에러로 invalid_user_key.
+  local key_value_json
+  key_value_json=$(jq -n --arg k "$api_key" '{apiKey:$k}' | jq -c .)
+
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "${lc_url}/api/keys" \
     -H "Authorization: Bearer $jwt" \
     -H 'Content-Type: application/json' \
-    -d "$(jq -n --arg n 'LiteLLM' --arg v "$api_key" '{name:$n, value:$v}')")
+    -d "$(jq -n --arg n 'LiteLLM' --arg v "$key_value_json" '{name:$n, value:$v}')")
 
   if [[ "$code" == "201" ]]; then
     echo "LibreChat 에 LiteLLM 키 자동 등록 완료 (첫 채팅 시 키 입력 불필요)"
