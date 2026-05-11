@@ -199,17 +199,28 @@ if [[ "$ARCH_NAME" == "amd64" && ${GPU_VRAM:-0} -gt 0 && $SKIP_AMD64_DOWNLOAD -e
 fi
 
 # ----------------------------------------------------------
-# Step 4: rag_api 이미지 빌드
+# Step 4: 커스텀 이미지 3개 빌드 (rag_api / librechat / code-interpreter)
+# rag_api          : Dockerfile.rag (HWP 변환, 작은 patch)         — 1~3분
+# librechat        : Dockerfile.librechat (multi-stage 소스 빌드)  — 5~10분 (npm install + vite)
+# code-interpreter : Dockerfile.code-interpreter (NanumGothic 폰트) — 1분 미만
 # ----------------------------------------------------------
-hdr "4. rag_api 이미지 빌드"
+hdr "4. 커스텀 이미지 빌드 (rag_api / librechat / code-interpreter)"
 
-if docker image inspect kloudchat-rag_api:latest &>/dev/null; then
-  ok "rag_api 이미지 이미 빌드됨 (재빌드 원하면 docker rmi 후 재실행)"
-else
-  # buildx 호환성 이슈 회피용 레거시 빌더
-  DOCKER_BUILDKIT=0 docker compose build rag_api
-  ok "rag_api 빌드 완료"
-fi
+build_one() {
+  local svc="$1" img="$2" desc="$3"
+  if docker image inspect "$img" &>/dev/null; then
+    ok "$svc 이미지 이미 빌드됨 ($desc)"
+  else
+    echo "  → $svc 빌드 중 ($desc)..."
+    # buildx 호환성 이슈 회피용 레거시 빌더
+    DOCKER_BUILDKIT=0 docker compose build "$svc"
+    ok "$svc 빌드 완료"
+  fi
+}
+
+build_one rag_api          kloudchat-rag_api:latest          "1~3분"
+build_one librechat        kloudchat-librechat:latest        "5~10분, 첫 빌드 시 LibreChat 소스 clone + npm install + vite build"
+build_one code-interpreter kloudchat-code-interpreter:latest "1분 미만 (NanumGothic 폰트 추가)"
 
 # ----------------------------------------------------------
 # Step 5: 컨테이너 기동
