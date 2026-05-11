@@ -45,7 +45,11 @@ EOF
 
 # ---- team ----
 cmd_team_create() {
-  local alias="" budget=9999 duration="1mo" tpm=100000 rpm=500 models="ollama/*"
+  # 모델 default 는 와일드카드(`ollama/*`) 가 아니라 명시 5개로 함.
+  # LiteLLM 가 사용자 키 응답 시 와일드카드를 model_list 와 매핑 못 해서
+  # `ollama/llama2` 한 개만 fallback 노출하는 이슈가 있음.
+  local alias="" budget=9999 duration="1mo" tpm=100000 rpm=500
+  local models="ollama/qwen3.5:9b,ollama/qwen3.5:35b,ollama/gemma3:27b,ollama/qwen3-coder-next:q4_K_M,ollama/qwen3-coder-next:q8_0"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --alias)    alias="$2";    shift 2 ;;
@@ -227,7 +231,7 @@ create_default_agent_for_user() {
         is_promoted: false, mcpServerNames: [], tool_options: {},
         createdAt: now, updatedAt: now
       };
-      db.agents.insertOne({
+      var insertResult = db.agents.insertOne({
         id: agentId, name: 'KloudChat', description: '', instructions: '',
         provider: 'LiteLLM', model: 'ollama/qwen3.5:35b', artifacts: '',
         tools: ['stable-diffusion','execute_code','file_search','web_search'],
@@ -239,6 +243,34 @@ create_default_agent_for_user() {
         end_after_tools: false, hide_sequential_outputs: false,
         createdAt: now, updatedAt: now, __v: 0
       });
+      var agentObjectId = insertResult.insertedId;
+
+      // ACL entries — LibreChat 가 사용자에게 agent 권한 부여하는 컬렉션.
+      // UI 로 만들면 자동 생성되지만 DB 직접 insert 는 누락되어 'My Agents' 에서 안 보임.
+      // resourceType 2개(agent, remoteAgent) × principalType=user × permBits=15(owner) 필요.
+      var roleAgent       = db.accessroles.findOne({accessRoleId: 'agent_owner'});
+      var roleRemoteAgent = db.accessroles.findOne({accessRoleId: 'remoteAgent_owner'});
+      if (roleAgent && roleRemoteAgent) {
+        db.aclentries.insertMany([
+          {
+            principalModel: 'User', principalType: 'user', principalId: u._id,
+            resourceType: 'agent', resourceId: agentObjectId,
+            permBits: 15, roleId: roleAgent._id,
+            grantedAt: now, grantedBy: u._id,
+            createdAt: now, updatedAt: now, __v: 0
+          },
+          {
+            principalModel: 'User', principalType: 'user', principalId: u._id,
+            resourceType: 'remoteAgent', resourceId: agentObjectId,
+            permBits: 15, roleId: roleRemoteAgent._id,
+            grantedAt: now, grantedBy: u._id,
+            createdAt: now, updatedAt: now, __v: 0
+          }
+        ]);
+      } else {
+        print('WARN_NO_ACL_ROLES');
+      }
+
       print('AGENT_CREATED:' + agentId);
     " 2>&1 | tail -3)
 

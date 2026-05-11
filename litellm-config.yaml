@@ -53,7 +53,7 @@ litellm_settings:
   drop_unsupported_params: true
   request_timeout: 600
   num_retries: 2
-  check_provider_endpoint: true
+  check_provider_endpoint: false   # true 면 Ollama 의 모든 모델을 동적으로 /v1/models 에 노출 → 위 model_list 외 모델도 사용자 드롭다운에 뜸. 명시 등록 5개만 보이려면 false.
   # ---- 모든 내부 사용자 기본 예산 (개별 설정 없을 때 적용) ----
   max_internal_user_budget: 25
   internal_user_budget_duration: "1mo"
