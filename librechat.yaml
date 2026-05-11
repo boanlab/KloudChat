@@ -78,9 +78,19 @@ fileConfig:
     default:
       fileLimit: 10
       fileSizeLimit: 100
+      supportedMimeTypes:
+        - "^[\\w.-]+/[\\w.-]+$"   # default text/binary 모두 허용 (빈 MIME 제외)
+        - "^application/x-hwp$"
+        - "^application/vnd\\.hancom\\.hwp$"
+        - "^application/haansofthwp$"
     agents:
       fileLimit: 10
       fileSizeLimit: 100
+      supportedMimeTypes:
+        - "^[\\w.-]+/[\\w.-]+$"
+        - "^application/x-hwp$"
+        - "^application/vnd\\.hancom\\.hwp$"
+        - "^application/haansofthwp$"
 
 # ==============================================
 # 음성 (TTS / STT)

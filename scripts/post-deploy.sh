@@ -86,8 +86,32 @@ if docker ps --format '{{.Names}}' | grep -q '^LibreChat$'; then
     docker restart LibreChat >/dev/null
     ok "TTS thinking 필터 패치 적용 + LibreChat 재시작"
   fi
+
+  # ----------------------------------------------------------
+  # 4-1. LibreChat client bundle — .hwp 파일 업로드 검증 통과 patch
+  # 브라우저가 .hwp 의 MIME 을 모르면 file.type 이 "" 라 inferMimeType 가 ""
+  # 반환 → "Unable to determine file type" 에러로 업로드 차단됨.
+  # bundle 안에서 inferMimeType(e.name, e.type) 호출 직전에 e.type 자체를
+  # ".hwp/.hwpx" 면 application/x-hwp 로 강제 지정.
+  # rag_api 의 .hwp 분기 patch (Dockerfile.rag) 와 짝.
+  # ----------------------------------------------------------
+  HWP_BUNDLE=$(docker exec LibreChat sh -c 'ls /app/client/dist/assets/index.*.js 2>/dev/null | head -1')
+  if [[ -n "$HWP_BUNDLE" ]]; then
+    if docker exec LibreChat grep -q '/\\.hwpx?\$/i.test(e.name)' "$HWP_BUNDLE" 2>/dev/null; then
+      ok "LibreChat .hwp 업로드 patch 이미 적용됨"
+    else
+      docker exec LibreChat sed -i \
+        's|(e\.name,e\.type);if(!a)return n("Unable to determine|(e.name,/\\.hwpx?$/i.test(e.name)?"application/x-hwp":e.type);if(!a)return n("Unable to determine|g' \
+        "$HWP_BUNDLE" >/dev/null 2>&1 || true
+      if docker exec LibreChat grep -q '/\\.hwpx?\$/i.test(e.name)' "$HWP_BUNDLE" 2>/dev/null; then
+        ok "LibreChat .hwp 업로드 patch 적용됨 (브라우저 hard refresh 필요)"
+      else
+        warn "LibreChat .hwp patch 패턴 미일치 — base 이미지 변경 가능성 (수동 확인)"
+      fi
+    fi
+  fi
 else
-  warn "LibreChat 컨테이너 없음 — TTS 패치 건너뜀"
+  warn "LibreChat 컨테이너 없음 — TTS / HWP patch 건너뜀"
 fi
 
 # ----------------------------------------------------------
