@@ -1,0 +1,19 @@
+# 컨테이너 volume mount 디렉토리 (root 소유, 빌드 컨텍스트 stat 실패 방지)
+code-interpreter/
+sdnext/
+ollama/
+mongodb/
+meilisearch/
+litellm/
+librechat/
+rag/
+tts-data/
+
+# git
+.git/
+.gitignore
+
+# 큰 캐시·로그
+*.log
+__pycache__/
+.env
