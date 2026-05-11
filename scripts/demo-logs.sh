@@ -61,9 +61,10 @@ docker logs -f --tail 0 searxng 2>&1 | \
   stdbuf -oL grep -iE "GET /search|query" | \
   format "$Y" "🔍" "SearXNG  " &
 
-# Code Interpreter
+# Code Interpreter — 풀 보충 noise 제외 (업스트림 nsjail mount-ns 공유 이슈, 기능 영향 없음)
 docker logs -f --tail 0 code-interpreter 2>&1 | \
   stdbuf -oL grep -iE "exec|run|complete|sandbox|repl" | \
+  stdbuf -oL grep -ivE "REPL ready timeout|REPL not ready|Failed to start REPL" | \
   format "$R" "💻" "CodeIntp " &
 
 # Whisper
