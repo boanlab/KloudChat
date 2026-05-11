@@ -1,37 +1,14 @@
 FROM registry.librechat.ai/danny-avila/librechat:v0.8.5
 
-# 1. streamAudio.js TTS thinking 필터 patch
+# streamAudio.js TTS thinking 필터 patch
 # Qwen 등 reasoning 모델이 thinking 토큰을 발화하지 않도록 parseTextParts 의 두 번째 인자 true.
 RUN sed -i 's|parseTextParts(message.content)|parseTextParts(message.content, true)|g' \
     /app/api/server/services/Files/Audio/streamAudio.js && \
     grep -q 'parseTextParts(message.content, true)' /app/api/server/services/Files/Audio/streamAudio.js \
     || (echo "ERROR: streamAudio.js TTS thinking patch failed" && exit 1)
 
-# 2. Client bundle — .hwp 파일 업로드 검증 통과 patch
-# 브라우저가 .hwp MIME 모르면 file.type="" → inferMimeType()="" → "Unable to determine file type" 에러.
-# inferMimeType 호출 직전 e.type 을 .hwp/.hwpx 면 application/x-hwp 로 강제 지정.
-# rag_api 의 .hwp 분기 (Dockerfile.rag) 와 짝.
-RUN F=$(ls /app/client/dist/assets/index.*.js 2>/dev/null | head -1) && \
-    [ -n "$F" ] && \
-    sed -i 's|(e\.name,e\.type);if(!a)return n("Unable to determine|(e.name,/\\.hwpx?$/i.test(e.name)?"application/x-hwp":e.type);if(!a)return n("Unable to determine|g' "$F" && \
-    grep -q 'hwpx?\$/i.test(e.name)' "$F" \
-    || (echo "ERROR: client bundle .hwp patch failed (base image bundle pattern changed?)" && exit 1)
-
-# bundle rename 시도는 다른 vite chunk 가 같은 파일명을 동적 import 하는 경우 사이트가 먹통됨.
-# 대안: bundle 자체는 같은 이름 유지 + index.html 의 script src 에 cache-bust 쿼리 파라미터 추가.
-# (브라우저가 ?v=... 가 다르면 새로 fetch — 같은 파일명이라도 효과 동일, chunk import 는 영향 없음)
-RUN F=$(ls /app/client/dist/assets/index.*.js 2>/dev/null | head -1) && \
-    BUST=$(sha1sum "$F" | cut -c1-10) && \
-    OLD=$(basename "$F") && \
-    sed -i "s|$OLD\"|$OLD?v=$BUST\"|g" /app/client/dist/index.html && \
-    grep -q "?v=$BUST" /app/client/dist/index.html \
-    || (echo "ERROR: cache-bust query param insertion failed" && exit 1)
-
-# 3. PWA Service Worker 비활성화
-# vite-plugin-pwa 가 bundle 을 hash 기준 byte-level 캐시 → 우리가 in-place patch 한
-# bundle 을 service worker 가 옛 캐시본으로 덮어 사용자 브라우저에 patch 안 반영됨.
-# registerSW.js 를 빈 파일로 만들어 SW 등록 자체 차단. 데모/운영엔 PWA 불필요.
-# 부작용: 오프라인 사용 / "홈 화면에 추가" 기능 미동작 (LibreChat 핵심 기능과 무관)
-RUN echo '' > /app/client/dist/registerSW.js && \
-    grep -l 'Service-Worker\|serviceWorker' /app/client/dist/sw.js >/dev/null 2>&1 && \
-    echo '' > /app/client/dist/sw.js || true
+# NOTE: 한컴 HWP 파일 frontend 업로드 patch 는 시도했으나 LibreChat client bundle
+# 의 chunk import / Service Worker / immutable cache 조합으로 안정적인 영구
+# patch 가 어려워 제외. HWP 사용자는 PDF/DOCX 로 변환 후 업로드 필요.
+# rag_api 의 .hwp 변환 분기 (Dockerfile.rag) 는 유지 — 향후 frontend 우회 방법
+# 발견 시 즉시 활용 가능.
