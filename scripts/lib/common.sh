@@ -1,8 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-# config.env 로드
+# config.env 로드 (없으면 .example 에서 자동 생성)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ ! -f "${SCRIPT_DIR}/config.env" ]]; then
+  if [[ -f "${SCRIPT_DIR}/config.env.example" ]]; then
+    cp "${SCRIPT_DIR}/config.env.example" "${SCRIPT_DIR}/config.env"
+    echo "[common.sh] scripts/config.env 자동 생성됨 (config.env.example 에서 복사)" >&2
+  else
+    echo "[common.sh] ERROR: scripts/config.env 및 config.env.example 둘 다 없음" >&2
+    exit 1
+  fi
+fi
 # shellcheck source=scripts/config.env
 source "${SCRIPT_DIR}/config.env"
 

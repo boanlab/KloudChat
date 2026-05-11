@@ -79,17 +79,17 @@
 | `STT_API_KEY` | 더미 키 (인증 불필요) | `dummy` |
 | `STT_MODEL` | Whisper 모델명 | `whisper-1` |
 
-## TTS — Kokoro (amd64 전용)
+## TTS — openedai-speech (multi-arch, CPU 가능)
 
 | 변수 | 설명 | 값 |
 |---|---|---|
 | `TTS_PROVIDER` | TTS 공급자 | `openAI` |
-| `TTS_BASE_URL` | Kokoro 서버 URL | `http://kokoro:8880` |
+| `TTS_BASE_URL` | TTS 서버 URL | `http://tts:8000` |
 | `TTS_API_KEY` | 더미 키 | `dummy` |
-| `TTS_MODEL` | 모델명 | `kokoro` |
-| `TTS_VOICE` | 기본 음성 | `af_sky` |
+| `TTS_MODEL` | 모델명 (`tts-1` 영어/piper, `tts-1-hd` 다국어/xtts_v2) | `tts-1-hd` |
+| `TTS_VOICE` | 기본 음성 | `korean` |
 
-Kokoro 지원 음성 목록: `af_sky`, `af_bella`, `am_adam`, `bf_emma`, `bm_george`
+지원 voice 매핑은 `tts-config/voice_to_speaker.yaml` 에서 정의 — 한국어 (xtts_v2): `korean`, `korean-female` / 영어 (piper, 빠름): `alloy`, `echo`, `nova`, `shimmer` / 영어 HD (xtts_v2): `english-hd`
 
 ## 이미지 생성 — SD.Next (amd64 전용)
 

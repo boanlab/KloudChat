@@ -1,0 +1,38 @@
+# ============================================================
+# Stage 1: LibreChat client 소스 + HWP inferMimeType 패치 + vite 빌드
+# ============================================================
+FROM node:20-bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git python3 build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 --branch v0.8.5 https://github.com/danny-avila/LibreChat.git .
+
+# inferMimeType 에 .hwp / .hwpx 분기 추가
+# (data-provider/src/file-config.ts 의 inferMimeType 함수 내부)
+COPY rag-patches/patch_librechat_hwp.py /tmp/patch_librechat_hwp.py
+RUN python3 /tmp/patch_librechat_hwp.py && \
+    grep -q "extension === 'hwp'" packages/data-provider/src/file-config.ts && \
+    rm /tmp/patch_librechat_hwp.py
+
+# 빌드: workspaces 모두 설치 (root + 모든 packages/* + client)
+# --legacy-peer-deps 빼서 workspace dep hoisting 정상화 (framer-motion 등 resolve 보장)
+RUN npm install --no-audit
+# data-provider, client-package 등은 frontend script 가 chain 으로 빌드함
+RUN npm run frontend
+
+# ============================================================
+# Stage 2: base 이미지 + 우리가 빌드한 client/dist + streamAudio sed
+# ============================================================
+FROM registry.librechat.ai/danny-avila/librechat:v0.8.5
+
+# streamAudio.js TTS thinking 필터 patch
+RUN sed -i 's|parseTextParts(message.content)|parseTextParts(message.content, true)|g' \
+    /app/api/server/services/Files/Audio/streamAudio.js && \
+    grep -q 'parseTextParts(message.content, true)' /app/api/server/services/Files/Audio/streamAudio.js \
+    || (echo "ERROR: streamAudio.js TTS thinking patch failed" && exit 1)
+
+# HWP 지원 client/dist (Stage 1 에서 vite 가 새 hash 로 빌드한 깨끗한 bundle)
+COPY --from=builder --chown=1000:1000 /src/client/dist /app/client/dist

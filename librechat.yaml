@@ -18,8 +18,15 @@ endpoints:
       apiKey: "user_provided"
       userProvide: true
       baseURL: "http://litellm:8000/v1"
+      # 사용자별 키 입력 1회 후 fetch 가 정상 동작하지만, 입력 전에도 모델 드롭다운이 비지 않도록
+      # 5개 모델을 default 로 명시 (LibreChat 가 fetch 실패 시 이 목록을 사용).
       models:
-        default: ["ollama/qwen3.5:9b"]
+        default:
+          - "ollama/qwen3.5:9b"
+          - "ollama/qwen3.5:35b"
+          - "ollama/gemma3:27b"
+          - "ollama/qwen3-coder-next:q4_K_M"
+          - "ollama/qwen3-coder-next:q8_0"
         fetch: true
       titleConvo: true
       titleModel: "ollama/qwen3.5:9b"
@@ -31,9 +38,12 @@ endpoints:
 # ==============================================
 # 인터페이스 설정
 # ==============================================
-registration:
-  allowedDomains:
-    - "dankook.ac.kr"
+# 자체 회원가입(UI Sign Up) 을 특정 이메일 도메인으로 제한하려면 다음 섹션 주석 해제 후 도메인 명시.
+# 관리자가 manage.sh user create 로 만든 사용자는 이 제한을 우회하므로,
+# CLI 만 쓸 거면 섹션 자체를 두지 않아도 됨 (현재 상태).
+# registration:
+#   allowedDomains:
+#     - "your-domain.com"
 
 interface:
   modelSelect: true
@@ -62,30 +72,47 @@ interface:
 # 파일 설정
 # ==============================================
 fileConfig:
-  serverFileSizeLimit: 100
+  serverFileSizeLimit: 200
   avatarSizeLimit: 4
   endpoints:
     default:
       fileLimit: 10
-      fileSizeLimit: 25
+      fileSizeLimit: 100
+      supportedMimeTypes:
+        - "^[\\w.-]+/[\\w.-]+$"   # default text/binary 모두 허용 (빈 MIME 제외)
+        - "^application/x-hwp$"
+        - "^application/vnd\\.hancom\\.hwp$"
+        - "^application/haansofthwp$"
     agents:
       fileLimit: 10
-      fileSizeLimit: 25
+      fileSizeLimit: 100
+      supportedMimeTypes:
+        - "^[\\w.-]+/[\\w.-]+$"
+        - "^application/x-hwp$"
+        - "^application/vnd\\.hancom\\.hwp$"
+        - "^application/haansofthwp$"
 
 # ==============================================
 # 음성 (TTS / STT)
 # ==============================================
 speech:
+  stt:
+    openai:
+      url: "http://whisper:8000/v1/audio/transcriptions"
+      apiKey: "dummy"
+      model: "Systran/faster-whisper-large-v3"
   tts:
     openai:
-      url: "http://kokoro:8880/v1/audio/speech"
+      url: "http://tts:8000/v1/audio/speech"
       apiKey: "dummy"
-      model: "kokoro"
+      model: "tts-1-hd"
       voices:
-        - "af_sky"
-        - "af_bella"
-        - "am_adam"
-        - "am_michael"
+        - "korean"           # xtts_v2 한국어 (자연스러운 한국어 발화)
+        - "korean-female"    # xtts_v2 한국어 (다른 톤)
+        - "english-hd"       # xtts_v2 영어 (음질 우수)
+        - "alloy"            # piper 영어 (빠름)
+        - "nova"             # piper 영어 (빠름)
+        - "shimmer"          # piper 영어 (빠름)
 
 # ==============================================
 # 속도 제한

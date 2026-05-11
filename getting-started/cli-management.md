@@ -43,10 +43,12 @@ curl --version
 
 ## 사용자 관리
 
+### LiteLLM 사용자만 (기존)
+
 ```bash
 # 사용자 생성 + 팀 추가
 ./scripts/manage.sh user create \
-  --id alice@boanlab.com \
+  --id alice@example.com \
   --team research \
   --budget 25
 
@@ -54,8 +56,32 @@ curl --version
 ./scripts/manage.sh user list
 
 # 사용자 삭제
-./scripts/manage.sh user delete --id alice@boanlab.com
+./scripts/manage.sh user delete --id alice@example.com
 ```
+
+### LibreChat 사용자 + LiteLLM 사용자 + 키 한 번에
+
+`--name`, `--username`, `--password` 셋이 함께 제공되면 다음 작업이 자동으로 묶여 실행됩니다.
+
+1. `docker exec LibreChat npm run create-user` 로 LibreChat 로그인 계정 생성
+2. LiteLLM 사용자 생성 + 팀 추가 (위와 동일)
+3. LiteLLM 키 자동 발급 (alias = `<username>-key`)
+
+```bash
+./scripts/manage.sh user create \
+  --id alice@example.com \
+  --name 'Alice' --username alice --password 'pw12345678' \
+  --team research \
+  --budget 100
+```
+
+출력에 `KEY: sk-...` 가 포함됩니다. 이 키를 사용자에게 전달하면, 본인이 LibreChat UI 첫 채팅 시 API Key 칸에 입력합니다.
+
+| 옵션 | 설명 | 비고 |
+|---|---|---|
+| `--name` | LibreChat 표시명 | 셋 다 함께 제공 시 활성화 |
+| `--username` | LibreChat 로그인 ID | 동일 |
+| `--password` | LibreChat 비밀번호 (8자+) | 동일 |
 
 ## 가상 키 발급
 
@@ -65,7 +91,7 @@ Claude Code, 직접 API 호출 등에 활용합니다.
 ```bash
 # 사용자 키 발급
 ./scripts/manage.sh key issue \
-  --user alice@boanlab.com \
+  --user alice@example.com \
   --team research \
   --alias alice-key
 
@@ -76,7 +102,7 @@ Claude Code, 직접 API 호출 등에 활용합니다.
 
 # 키 목록 조회
 ./scripts/manage.sh key list
-./scripts/manage.sh key list --user alice@boanlab.com
+./scripts/manage.sh key list --user alice@example.com
 
 # 키 폐기
 ./scripts/manage.sh key revoke --key sk-...
@@ -90,12 +116,12 @@ Claude Code, 직접 API 호출 등에 활용합니다.
 ./scripts/manage.sh team create --alias default  --budget  50 --models "ollama/*"
 
 # 사용자 등록
-./scripts/manage.sh user create --id alice@boanlab.com --team research --budget 20
-./scripts/manage.sh user create --id bob@boanlab.com   --team default  --budget 10
+./scripts/manage.sh user create --id alice@example.com --team research --budget 20
+./scripts/manage.sh user create --id bob@example.com   --team default  --budget 10
 
 # 키 발급
-./scripts/manage.sh key issue --user alice@boanlab.com --team research
-./scripts/manage.sh key issue --user bob@boanlab.com   --team default
+./scripts/manage.sh key issue --user alice@example.com --team research
+./scripts/manage.sh key issue --user bob@example.com   --team default
 ```
 
 ## Claude Code 로컬 연결

@@ -3,11 +3,29 @@
 # ==================================================
 
 model_list:
-  # ---- Ollama: 설치된 모든 채팅 모델을 자동으로 노출 ----
-  - model_name: "ollama/*"
+  # ---- Ollama: 설치된 모델을 명시적으로 등록 (와일드카드는 /v1/models 에 노출되어 잘못 선택되면 "invalid model name" 발생) ----
+  - model_name: ollama/qwen3.5:9b
     litellm_params:
-      model: "ollama_chat/*"
+      model: ollama_chat/qwen3.5:9b
       api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/qwen3.5:35b
+    litellm_params:
+      model: ollama_chat/qwen3.5:35b
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/gemma3:27b
+    litellm_params:
+      model: ollama_chat/gemma3:27b
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/qwen3-coder-next:q4_K_M
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q4_K_M
+      api_base: os.environ/OLLAMA_API_BASE
+  - model_name: ollama/qwen3-coder-next:q8_0
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q8_0
+      api_base: os.environ/OLLAMA_API_BASE
+  # nomic-embed-text 는 RAG (rag_api) 가 Ollama 호스트로 직접 호출하므로 LiteLLM 에 등록 불필요.
+  # 등록하면 /v1/models 에 노출되어 LibreChat 모델 드롭다운에 임베딩 모델이 표시되는 UX 문제 발생.
 
   # ---- 클라우드 공급자 확장 시 주석 해제 (docker-compose.yml litellm environment에 API 키도 추가) ----
   # - model_name: gpt-4o
@@ -35,7 +53,7 @@ litellm_settings:
   drop_unsupported_params: true
   request_timeout: 600
   num_retries: 2
-  check_provider_endpoint: true
+  check_provider_endpoint: false   # true 면 Ollama 의 모든 모델을 동적으로 /v1/models 에 노출 → 위 model_list 외 모델도 사용자 드롭다운에 뜸. 명시 등록 5개만 보이려면 false.
   # ---- 모든 내부 사용자 기본 예산 (개별 설정 없을 때 적용) ----
   max_internal_user_budget: 25
   internal_user_budget_duration: "1mo"

@@ -17,7 +17,11 @@ services:
   # ============================================
   librechat:
     container_name: LibreChat
-    image: registry.librechat.ai/danny-avila/librechat:v0.8.5
+    # Custom build: streamAudio TTS thinking 필터 + client bundle .hwp 업로드 patch 영구 박음.
+    # base = registry.librechat.ai/danny-avila/librechat:v0.8.5
+    build:
+      context: .
+      dockerfile: Dockerfile.librechat
     user: "1000:1000"
     ports:
       - "8080:8080"
@@ -228,7 +232,11 @@ services:
   # ============================================
   code-interpreter:
     container_name: code-interpreter
-    image: ghcr.io/usnavy13/librecodeinterpreter:main
+    # Custom build: NanumGothic 한글 폰트 영구 박음 (한글 차트 렌더링).
+    # base = ghcr.io/usnavy13/librecodeinterpreter:main
+    build:
+      context: .
+      dockerfile: Dockerfile.code-interpreter
     restart: always
     init: true
     cap_add:
@@ -239,10 +247,12 @@ services:
     environment:
       - REDIS_HOST=code-interpreter-redis
       - REDIS_PORT=6379
-      - MINIO_ENDPOINT=code-interpreter-minio:9000
-      - MINIO_ACCESS_KEY=${CODE_INTERPRETER_MINIO_USER}
-      - MINIO_SECRET_KEY=${CODE_INTERPRETER_MINIO_PASSWORD}
-      - MINIO_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
+      - S3_ENDPOINT=code-interpreter-minio:9000
+      - S3_ACCESS_KEY=${CODE_INTERPRETER_MINIO_USER}
+      - S3_SECRET_KEY=${CODE_INTERPRETER_MINIO_PASSWORD}
+      - S3_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
+      - S3_REGION=us-east-1
+      - S3_SECURE=false
       - API_KEY=${CODE_INTERPRETER_API_KEY}
       - MAX_EXECUTION_TIME=30
       - MAX_MEMORY_MB=512
@@ -321,6 +331,26 @@ services:
       - CODE_INTERPRETER_MINIO_USER=${CODE_INTERPRETER_MINIO_USER}
       - CODE_INTERPRETER_MINIO_PASSWORD=${CODE_INTERPRETER_MINIO_PASSWORD}
       - CODE_INTERPRETER_MINIO_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
+    networks:
+      - kloudchat
+
+  # ============================================
+  # TTS — matatonic/openedai-speech (multi-arch + CPU 가능, OpenAI Audio API 호환)
+  # 백엔드: piper(영어 빠름) + xtts_v2(다국어, 한국어 자연스러움)
+  # voice 매핑: tts-config/voice_to_speaker.yaml 에서 정의
+  # 첫 시작 시 ~2GB 모델 다운로드 (tts-data/voices 볼륨에 캐시)
+  # GPU 없는 amd64 / arm64 에서도 CPU 모드로 정상 동작.
+  # ============================================
+  tts:
+    container_name: tts
+    image: ghcr.io/matatonic/openedai-speech:latest
+    restart: always
+    environment:
+      - TTS_HOME=/app/voices
+      - HF_HOME=/app/voices/hf
+    volumes:
+      - ./tts-config/voice_to_speaker.yaml:/app/config/voice_to_speaker.yaml
+      - ./tts-data/voices:/app/voices
     networks:
       - kloudchat
 

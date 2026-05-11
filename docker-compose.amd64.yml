@@ -1,35 +1,24 @@
-# amd64 전용 서비스 (CUDA 필요: Whisper, Kokoro, SD.Next)
+# amd64 + NVIDIA GPU 전용 서비스 (CUDA 필요: Whisper STT, SD.Next 이미지 생성)
 # 사용법: docker compose -f docker-compose.yml -f docker-compose.amd64.yml up -d
 # 또는:   scripts/deploy.sh (아키텍처 자동 감지)
+#
+# TTS 는 multi-arch + CPU 가능한 openedai-speech 사용으로 base 인 docker-compose.yml 로 이동했음.
 
 services:
   # ============================================
-  # Whisper (STT)
+  # Whisper (STT) — fedirz/faster-whisper-server (CTranslate2 기반, OpenAI Audio API 호환)
+  # 기존 onerahmet 이미지는 /asr 만 노출하고 OpenAI 호환 안 됨 + 일부 신형 GPU 미지원.
+  # fedirz 는 CTranslate2 사용으로 PyTorch CUDA 커널 의존도 낮아 Blackwell 등 신형 GPU 호환성 좋음.
+  # 단 latest-cuda 태그 자체가 amd64 + NVIDIA GPU 전용이라 이 파일에 위치.
   # ============================================
   whisper:
     container_name: whisper
-    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    image: fedirz/faster-whisper-server:latest-cuda
     restart: always
     environment:
-      ASR_MODEL: large-v3
-      ASR_ENGINE: openai_whisper
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    networks:
-      - kloudchat
-
-  # ============================================
-  # Kokoro (TTS)
-  # ============================================
-  kokoro:
-    container_name: kokoro
-    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
-    restart: always
+      WHISPER__MODEL: Systran/faster-whisper-large-v3
+      WHISPER__INFERENCE_DEVICE: auto
+      UVICORN_PORT: "8000"
     deploy:
       resources:
         reservations:

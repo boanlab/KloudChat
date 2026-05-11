@@ -11,11 +11,11 @@ ARCH="$(uname -m)"
 
 case "$ARCH" in
   x86_64)
-    echo "==> 아키텍처: amd64 — Whisper / Kokoro / SD.Next 포함하여 배포"
+    echo "==> 아키텍처: amd64 — STT(whisper) + 이미지 생성(SD.Next) 포함하여 배포"
     COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.amd64.yml)
     ;;
   aarch64 | arm64)
-    echo "==> 아키텍처: arm64 — 공통 서비스만 배포 (Whisper / Kokoro / SD.Next 제외)"
+    echo "==> 아키텍처: arm64 — STT(whisper) / 이미지 생성(SD.Next) 제외 (CUDA 전용). TTS 는 base 에 포함되어 동작."
     COMPOSE_FILES=(-f docker-compose.yml)
     ;;
   *)

@@ -1,5 +1,8 @@
 # 설치 가이드
 
+> **빠른 경로:** `git clone` 후 `sudo ./scripts/install-ollama.sh` → `./scripts/full-setup.sh --yes` 두 줄이면 아래 1~9단계가 자동으로 끝납니다.
+> 이 문서는 단계별 수동 진행이 필요한 경우 (스크립트가 실패한 경우, 일부 단계만 다시 돌릴 경우 등) 의 레퍼런스입니다.
+
 ## 1. 저장소 클론
 
 ```bash
@@ -78,8 +81,8 @@ docker compose build rag_api
 ./scripts/deploy.sh up -d
 ```
 
-- **amd64**: 공통 서비스 + Whisper / Kokoro / SD.Next
-- **arm64**: 공통 서비스만 (Whisper / Kokoro / SD.Next 제외)
+- **amd64 + NVIDIA GPU**: 공통 서비스 (TTS 포함) + Whisper / SD.Next
+- **arm64 또는 GPU 없는 amd64**: 공통 서비스 + TTS 만 (Whisper / SD.Next 자동 제외 — CUDA 전용)
 
 서비스 상태 확인 시에도 동일하게 사용합니다.
 
@@ -116,14 +119,25 @@ docker compose logs -f litellm   # LiteLLM 로그
 docker compose restart librechat
 ```
 
-## 10. 접속 확인
+## 10. 접속 확인 + 사용자 생성
 
 | 서비스 | URL |
 |---|---|
 | LibreChat | http://localhost:8080 |
 | LiteLLM | http://localhost:8000 |
 
-LibreChat에서 첫 회원가입 시 생성되는 계정이 관리자가 됩니다.
+회원가입이 막혀 있거나 (`librechat.yaml` 의 `registration.allowedDomains`)
+관리자가 직접 계정을 만드는 경우, 다음 한 줄로 LibreChat 사용자 + LiteLLM 사용자 + 키 발급을 동시에 처리합니다.
+
+```bash
+./scripts/manage.sh user create \
+  --id admin@example.com --name '관리자' --username admin --password '비번8자이상' \
+  --budget 9999
+# → 출력된 sk-... 를 사용자에게 전달 → 본인이 LibreChat UI 의 API Key 칸에 입력
+```
+
+LiteLLM 사용자만 생성하려면 `--name/--username/--password` 를 빼면 됩니다 (기존 동작).
+상세 옵션은 [CLI 관리](cli-management.md) 참고.
 
 ## 업그레이드
 
