@@ -1,0 +1,18 @@
+FROM registry.librechat.ai/danny-avila/librechat:v0.8.5
+
+# 1. streamAudio.js TTS thinking 필터 patch
+# Qwen 등 reasoning 모델이 thinking 토큰을 발화하지 않도록 parseTextParts 의 두 번째 인자 true.
+RUN sed -i 's|parseTextParts(message.content)|parseTextParts(message.content, true)|g' \
+    /app/api/server/services/Files/Audio/streamAudio.js && \
+    grep -q 'parseTextParts(message.content, true)' /app/api/server/services/Files/Audio/streamAudio.js \
+    || (echo "ERROR: streamAudio.js TTS thinking patch failed" && exit 1)
+
+# 2. Client bundle — .hwp 파일 업로드 검증 통과 patch
+# 브라우저가 .hwp MIME 모르면 file.type="" → inferMimeType()="" → "Unable to determine file type" 에러.
+# inferMimeType 호출 직전 e.type 을 .hwp/.hwpx 면 application/x-hwp 로 강제 지정.
+# rag_api 의 .hwp 분기 (Dockerfile.rag) 와 짝.
+RUN F=$(ls /app/client/dist/assets/index.*.js 2>/dev/null | head -1) && \
+    [ -n "$F" ] && \
+    sed -i 's|(e\.name,e\.type);if(!a)return n("Unable to determine|(e.name,/\\.hwpx?$/i.test(e.name)?"application/x-hwp":e.type);if(!a)return n("Unable to determine|g' "$F" && \
+    grep -q 'hwpx?\$/i.test(e.name)' "$F" \
+    || (echo "ERROR: client bundle .hwp patch failed (base image bundle pattern changed?)" && exit 1)

@@ -1,0 +1,10 @@
+FROM ghcr.io/usnavy13/librecodeinterpreter:main
+
+# NanumGothic 한글 폰트 — 한글 차트 렌더링 (matplotlib 등) 가능하게.
+# 사용자 코드에서 다음 두 줄로 활성:
+#   fm.fontManager.addfont('/usr/share/fonts/truetype/NanumGothic-Regular.ttf')
+#   plt.rcParams['font.family'] = 'NanumGothic'
+COPY fonts/NanumGothic-Regular.ttf /usr/share/fonts/truetype/NanumGothic-Regular.ttf
+
+# matplotlib 폰트 캐시 무효화 (이전 build/run 의 캐시가 새 폰트 인식하도록)
+RUN rm -rf /root/.cache/matplotlib /home/*/.cache/matplotlib 2>/dev/null || true

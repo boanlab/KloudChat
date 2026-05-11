@@ -17,7 +17,11 @@ services:
   # ============================================
   librechat:
     container_name: LibreChat
-    image: registry.librechat.ai/danny-avila/librechat:v0.8.5
+    # Custom build: streamAudio TTS thinking 필터 + client bundle .hwp 업로드 patch 영구 박음.
+    # base = registry.librechat.ai/danny-avila/librechat:v0.8.5
+    build:
+      context: .
+      dockerfile: Dockerfile.librechat
     user: "1000:1000"
     ports:
       - "8080:8080"
@@ -228,7 +232,11 @@ services:
   # ============================================
   code-interpreter:
     container_name: code-interpreter
-    image: ghcr.io/usnavy13/librecodeinterpreter:main
+    # Custom build: NanumGothic 한글 폰트 영구 박음 (한글 차트 렌더링).
+    # base = ghcr.io/usnavy13/librecodeinterpreter:main
+    build:
+      context: .
+      dockerfile: Dockerfile.code-interpreter
     restart: always
     init: true
     cap_add:
