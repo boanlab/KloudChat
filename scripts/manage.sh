@@ -316,6 +316,23 @@ create_default_agent_for_user() {
         print('WARN_NO_ACL_ROLES');
       }
 
+      // Default preset — 사용자가 새 채팅 시작 시 자동으로 KloudChat agent 가 선택되도록.
+      // user 필드는 String 타입 (LibreChat 가 toString 으로 저장).
+      // defaultPreset: true 인 entry 가 사용자별 1개여야 하므로 기존 default 는 unset.
+      var userIdStr = u._id.toString();
+      db.presets.updateMany({user: userIdStr, defaultPreset: true}, {\$unset: {defaultPreset: '', order: ''}});
+      var presetId = 'preset_' + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12);
+      db.presets.insertOne({
+        presetId: presetId,
+        title: 'KloudChat',
+        user: userIdStr,
+        defaultPreset: true,
+        order: 1,
+        endpoint: 'agents',
+        agent_id: agentId,
+        createdAt: now, updatedAt: now, __v: 0
+      });
+
       print('AGENT_CREATED:' + agentId);
     " 2>&1 | tail -3)
 
