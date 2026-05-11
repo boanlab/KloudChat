@@ -81,8 +81,8 @@ docker compose build rag_api
 ./scripts/deploy.sh up -d
 ```
 
-- **amd64**: 공통 서비스 + Whisper / Kokoro / SD.Next
-- **arm64**: 공통 서비스만 (Whisper / Kokoro / SD.Next 제외)
+- **amd64 + NVIDIA GPU**: 공통 서비스 (TTS 포함) + Whisper / SD.Next
+- **arm64 또는 GPU 없는 amd64**: 공통 서비스 + TTS 만 (Whisper / SD.Next 자동 제외 — CUDA 전용)
 
 서비스 상태 확인 시에도 동일하게 사용합니다.
 

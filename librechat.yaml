@@ -93,7 +93,7 @@ speech:
       model: "Systran/faster-whisper-large-v3"
   tts:
     openai:
-      url: "http://kokoro:8000/v1/audio/speech"
+      url: "http://tts:8000/v1/audio/speech"
       apiKey: "dummy"
       model: "tts-1-hd"
       voices:

@@ -326,6 +326,26 @@ services:
     networks:
       - kloudchat
 
+  # ============================================
+  # TTS — matatonic/openedai-speech (multi-arch + CPU 가능, OpenAI Audio API 호환)
+  # 백엔드: piper(영어 빠름) + xtts_v2(다국어, 한국어 자연스러움)
+  # voice 매핑: tts-config/voice_to_speaker.yaml 에서 정의
+  # 첫 시작 시 ~2GB 모델 다운로드 (tts-data/voices 볼륨에 캐시)
+  # GPU 없는 amd64 / arm64 에서도 CPU 모드로 정상 동작.
+  # ============================================
+  tts:
+    container_name: tts
+    image: ghcr.io/matatonic/openedai-speech:latest
+    restart: always
+    environment:
+      - TTS_HOME=/app/voices
+      - HF_HOME=/app/voices/hf
+    volumes:
+      - ./tts-config/voice_to_speaker.yaml:/app/config/voice_to_speaker.yaml
+      - ./tts-data/voices:/app/voices
+    networks:
+      - kloudchat
+
 networks:
   kloudchat:
     driver: bridge

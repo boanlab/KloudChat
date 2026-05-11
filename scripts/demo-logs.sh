@@ -29,7 +29,7 @@ echo
 echo "  🌐 LibreChat (오케스트레이션)    🧠 LiteLLM (게이트웨이)"
 echo "  ⚡ Ollama (LLM 엔진)             📚 RAG API (문서)"
 echo "  🔍 SearXNG (웹 검색)             🎨 SD.Next (이미지)"
-echo "  💻 Code Interpreter              🎤 Whisper (STT)  🔊 Kokoro (TTS)"
+echo "  💻 Code Interpreter              🎤 Whisper (STT)  🔊 TTS (openedai-speech)"
 echo
 echo "═══════════════════════════════════════════════════════════════════"
 
@@ -72,10 +72,10 @@ docker logs -f --tail 0 whisper 2>&1 | \
   stdbuf -oL grep -v "%|Application startup|Uvicorn" | \
   format "$C" "🎤" "Whisper  " &
 
-# Kokoro
-docker logs -f --tail 0 kokoro 2>&1 | \
+# TTS (openedai-speech: piper + xtts_v2)
+docker logs -f --tail 0 tts 2>&1 | \
   stdbuf -oL grep -iE "POST|speech|tts|generated|synthe|voice" | \
-  format "$M" "🔊" "Kokoro   " &
+  format "$M" "🔊" "TTS      " &
 
 # Ollama (host systemd)
 journalctl -u ollama -f -n 0 --no-pager 2>&1 | \

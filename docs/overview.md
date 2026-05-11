@@ -20,11 +20,11 @@
 │  │    ├→ rag_api                               │   │
 │  │    │    └→ vectordb (pgvector)              │   │
 │  │    ├→ searxng                               │   │
-│  │    └→ code-interpreter                      │   │
+│  │    ├→ code-interpreter                      │   │
+│  │    └→ tts      (openedai-speech, multi-arch)│   │
 │  │                                             │   │
-│  │  [amd64 전용]                               │   │
+│  │  [amd64 + NVIDIA GPU 전용]                  │   │
 │  │    ├→ whisper  (STT)                        │   │
-│  │    ├→ kokoro   (TTS)                        │   │
 │  │    └→ sdnext   (이미지 생성)                 │   │
 │  └─────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
@@ -72,16 +72,19 @@ CTranslate2 사용으로 PyTorch CUDA 커널 의존도가 낮아 신형 GPU(예:
 포트:   8000 (OpenAI Audio API)
 ```
 
-### Kokoro (TTS)
-경량 고품질 TTS 모델(82M 파라미터). OpenAI TTS API 호환 서버로 실행됩니다.
+### TTS (openedai-speech)
+다중 백엔드 TTS 서버. OpenAI Audio API 호환 (`/v1/audio/speech`).
 
-GPU 변형 이미지가 신형 GPU(sm_120 등)에서 PyTorch 커널 미지원으로 시작 실패하는 이슈가 있어,
-CPU 변형을 사용합니다. 영어 음성 4종(af_sky, af_bella, am_adam, am_michael) 만 제공.
-한국어 음성 출력이 필요하면 MeloTTS / XTTS-v2 같은 한국어 지원 OSS TTS 로 별도 교체 필요.
+- **piper** (`tts-1`): 영어 음성 빠름 (~1초). voice: alloy / echo / nova / shimmer 등.
+- **xtts_v2** (`tts-1-hd`): 다국어 + 한국어 자연스러움. voice: korean / korean-female / english-hd 등.
+  cold-start 시 ~36초, warm 호출 ~4초.
+
+multi-arch (amd64 + arm64) + CPU 가능 — base 서비스 (GPU 불필요).
+voice 매핑은 `tts-config/voice_to_speaker.yaml` 에서 정의.
 
 ```
-이미지: ghcr.io/remsky/kokoro-fastapi-cpu:latest
-포트:   8880
+이미지: ghcr.io/matatonic/openedai-speech:latest
+포트:   8000 (OpenAI Audio API)
 ```
 
 ### SD.Next
@@ -97,13 +100,13 @@ A1111(Stable Diffusion WebUI)의 활발히 유지보수되는 포크.
 
 모든 컨테이너는 `kloudchat` 브리지 네트워크에 속합니다.
 외부에 노출되는 포트는 LibreChat(8080), LiteLLM(8000) 두 개입니다.
-amd64 전용 서비스(Whisper·Kokoro·SD.Next)는 포트를 외부에 노출하지 않습니다.
+GPU 가속 amd64 전용 서비스(Whisper·SD.Next) 와 multi-arch TTS 모두 포트를 외부에 노출하지 않습니다.
 
 ```
 외부 노출: 8080 (LibreChat), 8000 (LiteLLM)
 내부 전용: mongodb:27017, meilisearch:7700, vectordb:5432,
           litellm-db:5432, rag_api:8000, searxng:8080,
-          code-interpreter:8000, whisper:9000, kokoro:8880, sdnext:7860
+          code-interpreter:8000, tts:8000, whisper:8000, sdnext:7860
 호스트:   ollama:11434 (host.docker.internal 경유)
 ```
 

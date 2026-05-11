@@ -12,9 +12,12 @@
 | Ollama | nomic-embed-text | ~500MB | RAG 요청 시 |
 | Whisper | large-v3 | ~6GB | 요청 시만 |
 | Whisper | medium | ~3GB | 요청 시만 |
-| Kokoro | 82M | ~2GB | 상시 |
+| TTS (xtts_v2) | ~1.8B | ~3GB (CPU 모드) | warm 5분 |
+| TTS (piper) | ~30M | <1GB (CPU 모드) | warm 5분 |
 | SD.Next | SDXL | ~10GB | 요청 시만 |
 | SD.Next | SDXL-Turbo | ~8GB | 요청 시만 |
+
+> TTS(`openedai-speech`)는 multi-arch + CPU 동작이라 GPU VRAM 소비 0. 표 위 항목은 모델 자체 메모리 footprint 참고용.
 
 모든 서비스는 동일한 물리 GPU VRAM을 공유합니다. 격리나 예약 없이 선착순으로 점유합니다.
 
@@ -22,12 +25,12 @@
 
 | 시나리오 | 구성 | 필요 VRAM | 맞는 GPU |
 |---|---|---|---|
-| 텍스트 채팅 + TTS (소형 모델) | qwen3.5:9b + Kokoro | ~7GB | RTX 3080 10GB |
-| 텍스트 채팅 + TTS (대형 모델) | qwen3.5:35b + Kokoro | ~22GB | RTX 3090 / 4090 24GB |
-| 텍스트 채팅 + STT + TTS | qwen3.5:35b + Whisper(medium) + Kokoro | ~25GB | A100 40GB |
-| 텍스트 채팅 + STT + TTS + 이미지 생성 | qwen3.5:35b + Whisper(large) + Kokoro + SD.Next(SDXL) | ~38GB | A100 80GB |
-| 코딩 특화 채팅 + TTS (Q4) | qwen3-coder-next(Q4) + Kokoro | ~53GB | A100 80GB |
-| 코딩 특화 채팅 + TTS (Q8, 고품질) | qwen3-coder-next(Q8) + Kokoro | ~86GB | H100 80GB×2 |
+| 텍스트 채팅 + TTS (소형 모델) | qwen3.5:9b + TTS | ~7GB | RTX 3080 10GB |
+| 텍스트 채팅 + TTS (대형 모델) | qwen3.5:35b + TTS | ~22GB | RTX 3090 / 4090 24GB |
+| 텍스트 채팅 + STT + TTS | qwen3.5:35b + Whisper(medium) + TTS | ~25GB | A100 40GB |
+| 텍스트 채팅 + STT + TTS + 이미지 생성 | qwen3.5:35b + Whisper(large) + TTS + SD.Next(SDXL) | ~38GB | A100 80GB |
+| 코딩 특화 채팅 + TTS (Q4) | qwen3-coder-next(Q4) + TTS | ~53GB | A100 80GB |
+| 코딩 특화 채팅 + TTS (Q8, 고품질) | qwen3-coder-next(Q8) + TTS | ~86GB | H100 80GB×2 |
 
 ## Ollama 메모리 관리
 

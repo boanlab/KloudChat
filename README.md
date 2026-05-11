@@ -13,7 +13,7 @@ LibreChat + LiteLLM + Ollama를 중심으로 RAG, 웹 검색, 음성, 이미지 
 | 코드 실행 샌드박스 | LibreCodeInterpreter |
 | HWP/PDF/DOCX 파일 업로드 | LibreChat RAG API |
 | 음성 입력 (STT) | Whisper (amd64 전용) |
-| 음성 출력 (TTS) | Kokoro (amd64 전용) |
+| 음성 출력 (TTS) | openedai-speech (piper + xtts_v2, 다국어/한국어 지원, multi-arch) |
 | 이미지 생성 | SD.Next — A1111 API 호환 (amd64 전용) |
 | 팀·사용자·예산 관리 | LiteLLM + CLI 스크립트 |
 | Claude Code 로컬 연결 | LiteLLM Anthropic proxy |
@@ -65,9 +65,11 @@ LiteLLM: http://localhost:8000
   ├─ SearXNG          — 웹 검색
   └─ code-interpreter — 코드 실행 샌드박스
 
-[미디어 서비스 — amd64 전용]
+[음성 — multi-arch]
+  └─ tts      — TTS (openedai-speech, piper + xtts_v2)
+
+[GPU 가속 서비스 — amd64 + NVIDIA GPU 전용]
   ├─ Whisper  — STT
-  ├─ Kokoro   — TTS
   └─ SD.Next  — 이미지 생성 (A1111 API 호환)
 ```
 

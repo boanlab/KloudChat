@@ -306,9 +306,9 @@ ${G}━━━ 설치 완료 ━━━${N}
      - LibreChat       : http://localhost:8080
      - LiteLLM admin UI: http://localhost:8000/ui  (Username: admin / Password: \$LITELLM_MASTER_KEY)
 
-알려진 한계 (별도 작업 필요):
-  - STT (Whisper)    : onerahmet 이미지가 OpenAI API 비호환 → 시연 시 STT 제외 또는 fedirz/faster-whisper-server 로 교체
-  - TTS 한국어        : Kokoro 가 한국어 음성 미지원 → 영어/일본어 음성으로 우회 또는 MeloTTS 등으로 교체
+알려진 한계:
+  - STT (Whisper)    : amd64 + NVIDIA GPU 전용. arm64 또는 GPU 없는 amd64 에서는 자동 제외
+  - 이미지 생성 (SD.Next): amd64 + NVIDIA GPU 전용. arm64 또는 GPU 없는 amd64 에서는 자동 제외
   - HWP 파일 RAG     : pyhwp 가 Python 3.10 호환성 문제 → PDF/DOCX 사용
 
 문제 발생 시 docker logs <container> 또는 ./scripts/post-deploy.sh 재실행.
