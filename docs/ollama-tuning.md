@@ -1,21 +1,56 @@
 # Ollama 튜닝 가이드
 
-Ollama는 호스트에서 직접 실행되므로 systemd 서비스 오버라이드로 설정합니다.
+Ollama 는 호스트에서 직접 실행되므로 OS 의 서비스/환경변수 메커니즘으로 설정합니다.
 
-## 설정 파일 위치
+## 설정 위치
+
+### Linux — systemd override
 
 ```
 /etc/systemd/system/ollama.service.d/override.conf
 ```
 
-직접 편집하거나 `sudo systemctl edit ollama`로 열 수 있습니다.
-변경 후에는 반드시 적용합니다:
+직접 편집하거나 `sudo systemctl edit ollama` 로 열 수 있습니다. 변경 후에는 반드시 적용합니다:
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 
-## 현재 설정
+### macOS — launchctl / LaunchAgent
+
+세션 동안만 적용 (재부팅 시 사라짐):
+
+```bash
+launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
+launchctl setenv OLLAMA_FLASH_ATTENTION 1
+launchctl setenv OLLAMA_CONTEXT_LENGTH 8192
+# Ollama.app 재시작
+osascript -e 'quit app "Ollama"'; open -a Ollama
+```
+
+재부팅 후에도 유지하려면 `~/Library/LaunchAgents/com.kloudchat.ollama-env.plist` 등에 환경변수를 등록한 뒤 `launchctl load` 합니다:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.kloudchat.ollama-env</string>
+  <key>RunAtLoad</key><true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>sh</string><string>-c</string>
+    <string>launchctl setenv OLLAMA_HOST 0.0.0.0:11434; launchctl setenv OLLAMA_FLASH_ATTENTION 1</string>
+  </array>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.kloudchat.ollama-env.plist
+```
+
+## 현재 설정 (Linux 예시)
 
 ```ini
 [Service]
@@ -55,8 +90,7 @@ Environment="OLLAMA_FLASH_ATTENTION=1"
 
 모델 로드 시 기본 컨텍스트 길이(토큰 수). 기본값은 VRAM 기반 자동 계산입니다.
 
-VRAM이 클수록 자동값이 수십만 토큰까지 설정되어 모델 로드가 느려지거나
-불필요하게 많은 KV 캐시를 점유할 수 있으므로 명시적으로 지정하는 것을 권장합니다.
+VRAM 이 클수록 자동값이 수십만 토큰까지 설정되어 모델 로드가 느려지거나 불필요하게 많은 KV 캐시를 점유할 수 있으므로 명시적으로 지정하는 것을 권장합니다.
 
 ```ini
 Environment="OLLAMA_CONTEXT_LENGTH=8192"   # 일반 채팅
@@ -83,8 +117,7 @@ Environment="OLLAMA_KEEP_ALIVE=-1"
 
 동시에 메모리에 유지할 최대 모델 수. 기본값은 GPU 있을 때 `3`.
 
-VRAM이 부족해지면 Ollama가 LRU(가장 오래 미사용) 모델을 자동으로 내립니다.
-보유 모델 수 이상으로 설정해도 무방합니다.
+VRAM 이 부족해지면 Ollama 가 LRU (가장 오래 미사용) 모델을 자동으로 내립니다. 보유 모델 수 이상으로 설정해도 무방합니다.
 
 ```ini
 Environment="OLLAMA_MAX_LOADED_MODELS=6"
@@ -92,13 +125,11 @@ Environment="OLLAMA_MAX_LOADED_MODELS=6"
 
 ### OLLAMA_MAX_QUEUE
 
-동시 처리 대기열 크기. 기본값 `512`.
-사용자가 많을 경우 증가를 고려합니다.
+동시 처리 대기열 크기. 기본값 `512`. 사용자가 많을 경우 증가를 고려합니다.
 
 ### OLLAMA_NUM_PARALLEL
 
-단일 모델의 동시 요청 처리 수. 기본값 `1`.
-멀티유저 환경에서 응답성을 높이려면 늘립니다 (VRAM과 트레이드오프).
+단일 모델의 동시 요청 처리 수. 기본값 `1`. 멀티유저 환경에서 응답성을 높이려면 늘립니다 (VRAM 과 트레이드오프).
 
 ```ini
 Environment="OLLAMA_NUM_PARALLEL=4"
@@ -108,8 +139,7 @@ Environment="OLLAMA_NUM_PARALLEL=4"
 
 ### GPU 추론 여부 확인
 
-`ollama ps`의 `size_vram` 값이 `0`이면 CPU로 추론 중입니다.
-이 경우 `CUDA_VISIBLE_DEVICES`가 비어 있거나 잘못 설정된 것이므로 확인합니다.
+`ollama ps` 의 `size_vram` 값이 `0` 이면 CPU 로 추론 중입니다. 이 경우 `CUDA_VISIBLE_DEVICES` 가 비어 있거나 잘못 설정된 것이므로 확인합니다.
 
 ```bash
 curl -s http://localhost:11434/api/ps | jq '.models[] | {name, size_vram}'
@@ -243,20 +273,20 @@ Environment="CUDA_VISIBLE_DEVICES=0"
 | 모델 | 크기 | 비고 |
 |---|---|---|
 | qwen3.5:9b (Q4_K_M) | ~6.6 GB | 경량 범용 |
-| gemma4:26b | ~17 GB | 창의·UI |
+| gemma3:27b | ~17 GB | 창의·UI |
 | qwen3.5:35b | ~23 GB | 주력 범용 |
 | qwen3-coder-next:q4_K_M | ~51 GB | 코딩 경량 |
 | qwen3-coder-next:q8_0 | ~84 GB | 코딩 고품질 |
-| nomic-embed-text | ~0.3 GB | RAG 임베딩 |
+| bge-m3 | ~1.2 GB | RAG 임베딩 (다국어) |
 
 GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 
 | 조합 | 합계 |
 |---|---|
-| 9b + 35b + gemma4 + embed | ~47 GB |
-| 9b + 35b + gemma4 + coder-q4 + embed | ~98 GB ✅ |
-| coder-q8 단독 + embed | ~84 GB ✅ |
-| coder-q8 + 9b + embed | ~91 GB ✅ |
+| 9b + 35b + gemma3 + embed | ~48 GB |
+| 9b + 35b + gemma3 + coder-q4 + embed | ~99 GB ✅ |
+| coder-q8 단독 + embed | ~85 GB ✅ |
+| coder-q8 + 9b + embed | ~92 GB ✅ |
 
 ## 모델 수동 언로드
 

@@ -1,6 +1,5 @@
 # ===== 시크릿 =====
 .env
-scripts/config.env
 scripts/.data/
 
 # ===== 서비스 데이터 볼륨 =====

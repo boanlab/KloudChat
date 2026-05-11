@@ -1,100 +1,117 @@
 #!/usr/bin/env bash
-# Ollama 로컬 설치 스크립트 (이 머신에서 직접 실행)
-#   - Ollama 바이너리 설치 (공식 설치 스크립트 사용)
-#   - systemd override: 0.0.0.0 바인딩으로 Docker 컨테이너 접근 허용
-#   - .env 의 OLLAMA_API_BASE 를 host.docker.internal 로 업데이트
-#   - GPU(CUDA) 감지 후 드라이버 경고 출력
+# Ollama host installer — run this directly on the host that will serve Ollama.
+#
+# Linux  : official install.sh → systemd override to bind OLLAMA_HOST=0.0.0.0 → enable service
+# macOS  : official install.sh (or brew) → launchctl env var OLLAMA_HOST=0.0.0.0
+#
+# Both branches force 0.0.0.0 binding so Docker containers can reach the host
+# through host.docker.internal:11434.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
 
-# ---- 색상 ----
+# shellcheck source=lib/platform.sh
+source "${SCRIPT_DIR}/lib/platform.sh"
+
+# ──────────────────────────────────────────────────────────
+# Colour / logging
+# ──────────────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
-# ---- 루트 확인 ----
-if [[ $EUID -ne 0 ]]; then
-  error "이 스크립트는 root 권한으로 실행해야 합니다."
+OS="$(detect_os)"
+ARCH="$(detect_arch)"
+
+if [[ "$OS" == unsupported || "$ARCH" == unsupported ]]; then
+  error "Unsupported environment: $(uname -s) $(uname -m)"
+  error "Supported: Linux (x86_64/aarch64), macOS (Intel/Apple Silicon)"
+  exit 1
+fi
+
+# Linux needs systemd edits → root required. macOS uses user-scoped tools.
+if [[ "$OS" == linux && $EUID -ne 0 ]]; then
+  error "Linux requires root privileges."
   echo "  sudo $0"
   exit 1
 fi
 
-# ---- 아키텍처 확인 ----
-ARCH="$(uname -m)"
-case "$ARCH" in
-  x86_64 | aarch64) ;;
-  *) error "지원하지 않는 아키텍처: $ARCH"; exit 1 ;;
-esac
+if [[ "$OS" == macos && $EUID -eq 0 ]]; then
+  warn "On macOS, run without sudo (homebrew / launchctl are user-scoped)."
+fi
 
-echo "=== Ollama 설치 스크립트 ==="
-echo "  아키텍처: $ARCH"
-echo "  OS: $(grep -oP '(?<=^PRETTY_NAME=").*(?=")' /etc/os-release 2>/dev/null || uname -s)"
+echo "=== Ollama installer ==="
+echo "  OS    : $(uname -sr)"
+echo "  ARCH  : $ARCH"
 echo
 
-# ---- GPU 감지 ----
+# ──────────────────────────────────────────────────────────
+# GPU detection (advisory only)
+# ──────────────────────────────────────────────────────────
 check_gpu() {
-  if command -v nvidia-smi &>/dev/null; then
-    info "NVIDIA GPU 감지됨:"
-    nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>/dev/null \
-      | while IFS=, read -r name drv mem; do
-          echo "    GPU: ${name} | 드라이버: ${drv} | VRAM: ${mem}"
-        done
+  if has_nvidia_gpu; then
+    info "NVIDIA GPU detected: $(get_gpu_name)"
+    if has_gb10; then
+      info "GB10 unified memory (DGX Spark) — VRAM is treated as system RAM"
+    fi
+  elif [[ "$OS" == macos ]]; then
+    info "macOS — Ollama uses Metal (Apple GPU) acceleration automatically."
   else
-    warn "NVIDIA GPU 를 찾을 수 없습니다. CPU 모드로 동작합니다."
-    warn "GPU 사용을 원하면 CUDA 드라이버를 먼저 설치하세요:"
+    warn "No NVIDIA GPU detected. Ollama will fall back to CPU (very slow)."
+    warn "If you need GPU support, install the CUDA driver first:"
     warn "  https://developer.nvidia.com/cuda-downloads"
   fi
   echo
 }
 
-# ---- Ollama 바이너리 설치 ----
+# ──────────────────────────────────────────────────────────
+# Install the Ollama binary
+# ──────────────────────────────────────────────────────────
 install_ollama() {
   if command -v ollama &>/dev/null; then
     local ver
-    ver="$(ollama --version 2>/dev/null | awk '{print $NF}' || echo '알 수 없음')"
-    info "Ollama 가 이미 설치되어 있습니다 (버전: ${ver})"
-    read -rp "재설치(업그레이드)하시겠습니까? [y/N] " ans
-    [[ "$ans" =~ ^[Yy]$ ]] || { info "설치를 건너뜁니다."; return 0; }
+    ver="$(ollama --version 2>/dev/null | awk '{print $NF}' || echo '?')"
+    info "Ollama is already installed (version: ${ver})"
+    read -rp "Reinstall / upgrade? [y/N] " ans
+    [[ "$ans" =~ ^[Yy]$ ]] || { info "Skipping install."; return 0; }
   fi
 
-  info "Ollama 공식 설치 스크립트 실행 중..."
-  curl -fsSL https://ollama.com/install.sh | sh
-  info "Ollama 설치 완료"
+  if [[ "$OS" == macos ]] && command -v brew &>/dev/null; then
+    info "Installing Ollama via Homebrew..."
+    brew install ollama
+  else
+    info "Running the official Ollama install script..."
+    curl -fsSL https://ollama.com/install.sh | sh
+  fi
+  info "Ollama installed"
 }
 
-# ---- ollama 홈 디렉토리 생성 ----
-# 공식 설치 스크립트가 ollama 유저는 만들지만 홈 디렉토리는 생성하지 않아
-# 서비스 기동 시 키 파일 저장에 실패하는 문제를 방지
-setup_ollama_home() {
+# ──────────────────────────────────────────────────────────
+# Linux: systemd override (binds 0.0.0.0)
+#
+# Any user customisations already in override.conf (e.g. OLLAMA_MODELS) are
+# preserved; only missing keys are appended.
+# ──────────────────────────────────────────────────────────
+configure_linux() {
+  # The official installer creates the ollama user but not always its home
+  # directory; without it the service fails to persist its keys.
   local home_dir="/usr/share/ollama"
   if [[ ! -d "$home_dir" ]]; then
     mkdir -p "$home_dir"
-    info "ollama 홈 디렉토리 생성: ${home_dir}"
+    info "Created Ollama home directory: ${home_dir}"
   fi
-  chown -R ollama:ollama "$home_dir"
-  info "ollama 홈 디렉토리 소유권 설정: ollama:ollama ${home_dir}"
-}
+  chown -R ollama:ollama "$home_dir" 2>/dev/null || true
 
-# ---- systemd override: 0.0.0.0 바인딩 ----
-# Docker 컨테이너가 host.docker.internal:11434 으로 접근하려면
-# Ollama 가 루프백(127.0.0.1)이 아닌 0.0.0.0 에서 리슨해야 합니다.
-#
-# 기존 override.conf 가 있으면 기존 값을 유지한 채 누락된 항목만 추가합니다.
-# (OLLAMA_MODELS 등 커스텀 설정이 날아가지 않도록 보호)
-configure_systemd() {
   local OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
   local OVERRIDE_FILE="${OVERRIDE_DIR}/override.conf"
-
   mkdir -p "$OVERRIDE_DIR"
 
   if [[ -f "$OVERRIDE_FILE" ]]; then
-    info "기존 systemd override 발견: ${OVERRIDE_FILE}"
-    cat "$OVERRIDE_FILE"
-    echo
+    info "Existing systemd override found: ${OVERRIDE_FILE}"
+    cat "$OVERRIDE_FILE"; echo
   fi
 
   declare -A DESIRED=(
@@ -106,108 +123,155 @@ configure_systemd() {
   local changed=0
   for key in "${!DESIRED[@]}"; do
     if grep -qE "^Environment=\"${key}=" "$OVERRIDE_FILE" 2>/dev/null; then
-      info "유지: ${key}=$(grep -oP "(?<=${key}=)[^\"]+" "$OVERRIDE_FILE" || echo '(기존값)')"
+      info "Keep: ${key}=$(grep -oP "(?<=${key}=)[^\"]+" "$OVERRIDE_FILE" || echo '(existing)')"
     else
-      if ! grep -q '^\[Service\]' "$OVERRIDE_FILE" 2>/dev/null; then
-        echo '[Service]' >> "$OVERRIDE_FILE"
-      fi
+      grep -q '^\[Service\]' "$OVERRIDE_FILE" 2>/dev/null || echo '[Service]' >> "$OVERRIDE_FILE"
       echo "Environment=\"${key}=${DESIRED[$key]}\"" >> "$OVERRIDE_FILE"
-      info "추가: ${key}=${DESIRED[$key]}"
+      info "Add: ${key}=${DESIRED[$key]}"
       changed=1
     fi
   done
 
-  if [[ $changed -eq 0 ]]; then
-    info "override.conf 변경 없음 (모든 항목 이미 존재)."
-  else
-    info "systemd override 업데이트 완료: ${OVERRIDE_FILE}"
-  fi
-}
+  (( changed == 0 )) && info "override.conf unchanged (all keys already present)." \
+                     || info "systemd override updated."
 
-# ---- 서비스 활성화 및 재시작 ----
-enable_service() {
-  info "systemd 데몬 재로드 중..."
+  info "Reloading systemd daemon..."
   systemctl daemon-reload
 
   if systemctl is-enabled ollama &>/dev/null; then
-    info "Ollama 서비스 재시작 중..."
+    info "Restarting Ollama service..."
     systemctl restart ollama
   else
-    info "Ollama 서비스 활성화 및 시작 중..."
+    info "Enabling and starting Ollama service..."
     systemctl enable --now ollama
   fi
+}
 
+# ──────────────────────────────────────────────────────────
+# macOS: launchctl env var + restart whichever Ollama is running.
+#
+# Ollama can run two ways on macOS:
+#   1) Ollama.app (brew install --cask ollama) — menu-bar GUI.
+#   2) `ollama serve` (brew install ollama) — CLI daemon.
+#
+# Both read OLLAMA_HOST. `launchctl setenv` makes the value visible to all
+# user-launched processes for the current session. To survive reboot a
+# LaunchAgent plist is required — see docs/ollama-tuning.md (macOS section).
+# ──────────────────────────────────────────────────────────
+configure_macos() {
+  info "macOS: setting launchctl env OLLAMA_HOST=0.0.0.0:11434"
+  launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
+
+  # If the GUI app is already running, it must restart to pick up the new env.
+  if pgrep -x "Ollama" &>/dev/null; then
+    info "Restarting Ollama.app to apply the new OLLAMA_HOST..."
+    osascript -e 'quit app "Ollama"' 2>/dev/null || true
+    sleep 1
+    open -a Ollama 2>/dev/null || true
+  elif ! pgrep -f "ollama serve" &>/dev/null; then
+    info "Starting the Ollama daemon in the background..."
+    nohup ollama serve >/tmp/ollama.log 2>&1 &
+    disown
+  fi
+
+  warn "To persist OLLAMA_HOST across reboots, register a LaunchAgent — see:"
+  warn "  docs/ollama-tuning.md (macOS section)"
+}
+
+# ──────────────────────────────────────────────────────────
+# Wait for Ollama to respond
+# ──────────────────────────────────────────────────────────
+wait_for_ollama() {
   local retries=15
-  info "Ollama 응답 대기 중..."
+  info "Waiting for Ollama to respond..."
   for ((i=1; i<=retries; i++)); do
     if curl -sf http://localhost:11434/api/tags &>/dev/null; then
-      info "Ollama 서비스 정상 기동 확인"
+      info "Ollama service is up"
       return 0
     fi
     sleep 2
   done
-  error "Ollama 서비스가 응답하지 않습니다."
-  echo "  journalctl -u ollama -n 30 --no-pager"
+  error "Ollama did not respond within the timeout."
+  if [[ "$OS" == linux ]]; then
+    echo "  journalctl -u ollama -n 30 --no-pager"
+  else
+    echo "  tail -n 50 /tmp/ollama.log         (CLI daemon)"
+    echo "  Console.app — search for 'ollama'  (GUI app)"
+  fi
   exit 1
 }
 
-# ---- 방화벽 안내 ----
+# ──────────────────────────────────────────────────────────
+# Firewall hint (Linux only)
+# ──────────────────────────────────────────────────────────
 firewall_hint() {
-  # Docker → host 접근은 host.docker.internal 로 처리하므로 11434 포트를 외부에 열 필요 없음
+  [[ "$OS" == linux ]] || return 0
   if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
-    warn "ufw 가 활성화되어 있습니다."
-    warn "11434 포트를 외부에 노출하지 마세요."
-    warn "  Docker → host 접근: host.docker.internal:11434 (ufw 규칙 불필요)"
+    warn "ufw is active."
+    warn "  Do not expose port 11434 externally. Docker → host traffic uses"
+    warn "  host.docker.internal:11434, which does not require a ufw rule."
   fi
 }
 
-# ---- .env 의 키=값 업데이트 (없으면 추가) ----
+# ──────────────────────────────────────────────────────────
+# Update OLLAMA_API_BASE in .env
+# ──────────────────────────────────────────────────────────
 update_env() {
   local key="$1" val="$2"
   if [[ ! -f "$ENV_FILE" ]]; then
-    warn ".env 파일이 없습니다. gen-env.sh 를 먼저 실행하세요."
-    warn "  수동 설정: echo '${key}=${val}' >> .env"
+    warn ".env not found. Run ./scripts/gen-env.sh first."
+    warn "  Manual workaround: echo '${key}=${val}' >> .env"
     return 0
   fi
   if grep -qE "^${key}=" "$ENV_FILE"; then
-    local old
-    old="$(grep -E "^${key}=" "$ENV_FILE" | cut -d= -f2-)"
+    local old; old="$(grep -E "^${key}=" "$ENV_FILE" | cut -d= -f2-)"
     if [[ "$old" == "$val" ]]; then
-      info ".env 유지: ${key}=${val}"
-      return 0
+      info ".env unchanged: ${key}=${val}"; return 0
     fi
-    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
-    info ".env 업데이트: ${key}  ${old} → ${val}"
+    # `sed -i.bak` works on both GNU sed and BSD sed (macOS).
+    sed -i.bak "s|^${key}=.*|${key}=${val}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
+    info ".env updated: ${key}  ${old} → ${val}"
   else
     echo "${key}=${val}" >> "$ENV_FILE"
-    info ".env 추가: ${key}=${val}"
+    info ".env appended: ${key}=${val}"
   fi
 }
 
-# ---- 완료 안내 ----
+# ──────────────────────────────────────────────────────────
+# Summary
+# ──────────────────────────────────────────────────────────
 print_summary() {
   echo
-  echo "=== 설치 완료 ==="
-  echo "  Ollama 버전 : $(ollama --version 2>/dev/null || echo '확인 불가')"
-  echo "  서비스 상태 : $(systemctl is-active ollama)"
-  echo "  바인딩 주소 : 0.0.0.0:11434"
-  echo "  Docker 접근 : host.docker.internal:11434"
+  echo "=== Install complete ==="
+  echo "  Ollama version : $(ollama --version 2>/dev/null || echo 'unknown')"
+  echo "  Bind address   : 0.0.0.0:11434"
+  echo "  Docker access  : host.docker.internal:11434"
+  if [[ "$OS" == linux ]]; then
+    echo "  Service state  : $(systemctl is-active ollama 2>/dev/null || echo unknown)"
+    echo "  Logs           : journalctl -u ollama -f"
+  else
+    echo "  Daemon         : $(pgrep -fl 'ollama (serve|app)' 2>/dev/null | head -1 || echo 'no ollama process running')"
+  fi
   echo
-  echo "다음 단계:"
-  echo "  1. 모델 다운로드:  sudo -u \${SUDO_USER:-\$USER} ./scripts/download-ollama-models.sh"
-  echo "  2. 서비스 기동:    ./scripts/deploy.sh up -d"
-  echo "  3. 초기화:         ./scripts/init.sh"
-  echo
-  echo "서비스 로그:  journalctl -u ollama -f"
-  echo "상태 확인:    systemctl status ollama"
+  echo "Next steps:"
+  echo "  1. Download models : ./scripts/download-ollama-models.sh"
+  echo "  2. Start services  : ./scripts/deploy.sh up -d"
+  echo "  3. Initialise      : ./scripts/init.sh"
 }
 
-# ---- 실행 ----
+# ──────────────────────────────────────────────────────────
+# Run
+# ──────────────────────────────────────────────────────────
 check_gpu
 install_ollama
-setup_ollama_home
-configure_systemd
-enable_service
-firewall_hint
+
+if [[ "$OS" == linux ]]; then
+  configure_linux
+  firewall_hint
+else
+  configure_macos
+fi
+
+wait_for_ollama
 update_env "OLLAMA_API_BASE" "http://host.docker.internal:11434"
 print_summary

@@ -1,9 +1,9 @@
 #!/bin/bash
-# KloudChat 통합 데모 로그 — 색상·이모지 분류 + 흐름 가시화
-# 사용법: ./demo-logs.sh
-# 종료: Ctrl+C
+# KloudChat live log monitor — colour-coded, emoji-tagged stream from every service.
+# Usage: ./scripts/monitor.sh
+# Stop:  Ctrl+C
 
-# ANSI colors
+# ANSI colours
 R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; B='\033[1;34m'
 M='\033[1;35m'; C='\033[1;36m'; W='\033[1;37m'; N='\033[0m'
 
@@ -17,35 +17,35 @@ format() {
   done
 }
 
-# 헤더 출력
+# Header
 clear
 cat <<'EOF'
 ╔════════════════════════════════════════════════════════════════╗
-║  KloudChat — 실시간 시스템 흐름 모니터                         ║
-║  온프레미스 AI 플랫폼                                          ║
+║  KloudChat — live system flow monitor                          ║
+║  Stop: Ctrl+C                                                  ║
 ╚════════════════════════════════════════════════════════════════╝
 EOF
 echo
-echo "  🌐 LibreChat (오케스트레이션)    🧠 LiteLLM (게이트웨이)"
-echo "  ⚡ Ollama (LLM 엔진)             📚 RAG API (문서)"
-echo "  🔍 SearXNG (웹 검색)             🎨 SD.Next (이미지)"
+echo "  🌐 LibreChat (orchestration)     🧠 LiteLLM (gateway)"
+echo "  ⚡ Ollama (LLM engine)           📚 RAG API (documents)"
+echo "  🔍 SearXNG (web search)          🎨 SD.Next (image gen)"
 echo "  💻 Code Interpreter              🎤 Whisper (STT)  🔊 TTS (openedai-speech)"
 echo
 echo "═══════════════════════════════════════════════════════════════════"
 
-# LibreChat — 핵심 이벤트만
+# LibreChat — high-level events only
 docker logs -f --tail 0 LibreChat 2>&1 | \
   stdbuf -oL grep -iE "Login|sendCompletion|onSearchResults|streamAudio|stable|tool|run_id|completion|message" | \
   stdbuf -oL grep -ivE "auth.json|getUserPluginAuth|Error scraping|Title generation|FIRECRAWL" | \
   format "$B" "🌐" "LibreChat" &
 
-# LiteLLM — API 호출 + 200 응답
+# LiteLLM — API calls and 200 responses
 docker logs -f --tail 0 litellm 2>&1 | \
   stdbuf -oL grep -E "POST|GET|spend|model" | \
   stdbuf -oL grep -ivE "liveliness|prisma|migration" | \
   format "$G" "🧠" "LiteLLM  " &
 
-# SD.Next — 이미지 생성 진행
+# SD.Next — image-generation progress
 docker logs -f --tail 0 sdnext 2>&1 | \
   stdbuf -oL grep -iE "Processing|Processed|model|VRAM|API|request" | \
   stdbuf -oL grep -ivE "GC:|TRACE|DEBUG" | \
@@ -61,7 +61,7 @@ docker logs -f --tail 0 searxng 2>&1 | \
   stdbuf -oL grep -iE "GET /search|query" | \
   format "$Y" "🔍" "SearXNG  " &
 
-# Code Interpreter — 풀 보충 noise 제외 (업스트림 nsjail mount-ns 공유 이슈, 기능 영향 없음)
+# Code Interpreter — drop pool-refill noise (upstream nsjail mount-ns issue, harmless)
 docker logs -f --tail 0 code-interpreter 2>&1 | \
   stdbuf -oL grep -iE "exec|run|complete|sandbox|repl" | \
   stdbuf -oL grep -ivE "REPL ready timeout|REPL not ready|Failed to start REPL" | \
@@ -78,11 +78,17 @@ docker logs -f --tail 0 tts 2>&1 | \
   stdbuf -oL grep -iE "POST|speech|tts|generated|synthe|voice" | \
   format "$M" "🔊" "TTS      " &
 
-# Ollama (host systemd)
-journalctl -u ollama -f -n 0 --no-pager 2>&1 | \
-  stdbuf -oL grep -iE "llm load|loaded|gpu memory|prompt|generate|embedding" | \
-  format "$G" "⚡" "Ollama   " &
+# Ollama — Linux uses systemd, macOS writes to /tmp/ollama.log (install-ollama.sh)
+if command -v journalctl &>/dev/null; then
+  journalctl -u ollama -f -n 0 --no-pager 2>&1 | \
+    stdbuf -oL grep -iE "llm load|loaded|gpu memory|prompt|generate|embedding" | \
+    format "$G" "⚡" "Ollama   " &
+elif [[ -f /tmp/ollama.log ]]; then
+  tail -F /tmp/ollama.log 2>/dev/null | \
+    stdbuf -oL grep -iE "llm load|loaded|gpu memory|prompt|generate|embedding" | \
+    format "$G" "⚡" "Ollama   " &
+fi
 
-trap 'echo; echo "─── 종료 ───"; kill $(jobs -p) 2>/dev/null; exit 0' INT TERM
+trap 'echo; echo "─── stop ───"; kill $(jobs -p) 2>/dev/null; exit 0' INT TERM
 
 wait

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 컨테이너 데이터 디렉토리를 삭제합니다 (ollama 제외).
+# Wipe container data directories (Ollama models excluded).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 TARGETS=(
   librechat
@@ -15,25 +15,25 @@ TARGETS=(
   scripts/.data
 )
 
-echo "==> 삭제 대상 디렉토리 (ollama 제외):"
+echo "==> Directories to delete (Ollama models are preserved):"
 for dir in "${TARGETS[@]}"; do
-  echo "    $PROJECT_ROOT/$dir"
+  echo "    $PROJECT_DIR/$dir"
 done
 
-read -r -p "계속하시겠습니까? [y/N] " confirm
+read -r -p "Continue? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-  echo "취소되었습니다."
+  echo "Cancelled."
   exit 0
 fi
 
 for dir in "${TARGETS[@]}"; do
-  target="$PROJECT_ROOT/$dir"
+  target="$PROJECT_DIR/$dir"
   if [ -e "$target" ]; then
     sudo rm -rf "$target"
-    echo "삭제됨: $target"
+    echo "removed: $target"
   else
-    echo "건너뜀 (없음): $target"
+    echo "skipped (missing): $target"
   fi
 done
 
-echo "==> 완료."
+echo "==> Done."

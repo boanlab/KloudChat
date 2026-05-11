@@ -1,61 +1,64 @@
 #!/bin/bash
-# Ollama 모델 사전 다운로드 스크립트 (호스트 Ollama 사용)
+# Pre-download Ollama models against the host Ollama instance.
 set -euo pipefail
 
-# ---- 사용법 ----
+# ---- Usage ----
 usage() {
   cat <<EOF
-사용법: $(basename "$0") [모델...]
+Usage: $(basename "$0") [models...]
 
-모델 선택:
-  gemma3          gemma3:27b              (~17GB)  — Google Gemma 3, 범용
-  qwen3-35b       qwen3.5:35b             (~23GB)  — Alibaba, 범용 주력
-  qwen3-9b        qwen3.5:9b              (~6GB)   — Alibaba, 경량 [기본]
-  qwen3-coder-q4  qwen3-coder-next:q4_K_M (~51GB)  — 코딩 특화
-  qwen3-coder-q8  qwen3-coder-next:q8_0   (~84GB)  — 코딩 특화 고품질
-  embed           bge-m3                  (~1.2GB) — RAG 임베딩 (다국어, 한국어 우수) [기본]
-  all             위 전체
+Model aliases:
+  gemma3          gemma3:27b              (~17GB)  — Google Gemma 3, general
+  qwen3-35b       qwen3.5:35b             (~23GB)  — Alibaba, flagship general
+  qwen3-9b        qwen3.5:9b              (~6GB)   — Alibaba, lightweight  [default]
+  qwen3-coder-q4  qwen3-coder-next:q4_K_M (~51GB)  — coding-tuned
+  qwen3-coder-q8  qwen3-coder-next:q8_0   (~84GB)  — coding-tuned, high quality
+  embed           bge-m3                  (~1.2GB) — RAG embeddings (multilingual)  [default]
+  all             everything above
 
-예시:
-  $(basename "$0")                 # 기본값: qwen3-9b + embed
+Examples:
+  $(basename "$0")                 # defaults: qwen3-9b + embed
   $(basename "$0") all
   $(basename "$0") gemma3 embed
 EOF
   exit 0
 }
 
-# ---- 모델 존재 여부 확인 (ollama list 기준) ----
+# ---- Check if a model is already pulled ----
 model_exists() {
   local model="$1"
   [[ "$model" != *:* ]] && model="${model}:latest"
   ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qxF "$model"
 }
 
-# ---- 호스트 Ollama 상태 확인 ----
+# ---- Verify the host Ollama is reachable ----
 check_ollama() {
   if ! command -v ollama &>/dev/null; then
-    echo "오류: ollama 명령어를 찾을 수 없습니다. https://ollama.com 에서 설치하세요." >&2
+    echo "error: 'ollama' command not found. Install Ollama from https://ollama.com." >&2
     exit 1
   fi
   if ! ollama list &>/dev/null; then
-    echo "오류: Ollama 서버가 응답하지 않습니다." >&2
-    echo "  sudo systemctl start ollama" >&2
+    echo "error: Ollama server is not responding." >&2
+    case "$(uname -s)" in
+      Linux)  echo "  sudo systemctl start ollama" >&2 ;;
+      Darwin) echo "  open -a Ollama    # or:  ollama serve &" >&2 ;;
+    esac
     exit 1
   fi
 }
 
-# ---- 다운로드 함수 ----
+# ---- Pull a single model ----
 pull_model() {
   local model="$1"
   if model_exists "$model"; then
-    echo "[건너뜀] ${model} (이미 존재)"
+    echo "[skip] ${model} (already present)"
     return 0
   fi
-  echo "[다운로드] ${model}"
+  echo "[pull] ${model}"
   ollama pull "$model"
 }
 
-# ---- 인자 없으면 기본값 ----
+# ---- Default args ----
 [[ $# -eq 0 ]] && set -- qwen3-9b embed
 
 check_ollama
@@ -70,9 +73,9 @@ for arg in "$@"; do
     embed)          pull_model "bge-m3" ;;
     all)            "$0" gemma3 qwen3-35b qwen3-9b qwen3-coder-q4 qwen3-coder-q8 embed ;;
     -h|--help)      usage ;;
-    *)              echo "알 수 없는 모델: $arg" >&2; usage ;;
+    *)              echo "Unknown model alias: $arg" >&2; usage ;;
   esac
 done
 
 echo
-echo "=== 다운로드 완료 ==="
+echo "=== Downloads complete ==="

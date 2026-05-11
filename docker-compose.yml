@@ -17,8 +17,8 @@ services:
   # ============================================
   librechat:
     container_name: LibreChat
-    # Custom build: streamAudio TTS thinking 필터 + client bundle .hwp 업로드 patch 영구 박음.
-    # base = registry.librechat.ai/danny-avila/librechat:v0.8.5
+    # base: registry.librechat.ai/danny-avila/librechat:v0.8.5
+    # 커스텀 빌드 내용은 Dockerfile.librechat 참고 (HWP 업로드 지원 + streamAudio thinking 필터).
     build:
       context: .
       dockerfile: Dockerfile.librechat
@@ -232,8 +232,8 @@ services:
   # ============================================
   code-interpreter:
     container_name: code-interpreter
-    # Custom build: NanumGothic 한글 폰트 영구 박음 (한글 차트 렌더링).
-    # base = ghcr.io/usnavy13/librecodeinterpreter:main
+    # base: ghcr.io/usnavy13/librecodeinterpreter:main
+    # 커스텀 빌드 내용은 Dockerfile.code-interpreter 참고 (NanumGothic 한글 폰트).
     build:
       context: .
       dockerfile: Dockerfile.code-interpreter
@@ -247,12 +247,12 @@ services:
     environment:
       - REDIS_HOST=code-interpreter-redis
       - REDIS_PORT=6379
-      - S3_ENDPOINT=code-interpreter-minio:9000
-      - S3_ACCESS_KEY=${CODE_INTERPRETER_MINIO_USER}
-      - S3_SECRET_KEY=${CODE_INTERPRETER_MINIO_PASSWORD}
-      - S3_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
-      - S3_REGION=us-east-1
-      - S3_SECURE=false
+      # 업스트림(librecodeinterpreter) 이 MINIO_* 별칭으로 env 를 읽음 (S3_* 는 무시되어 localhost:9000 fallback)
+      - MINIO_ENDPOINT=code-interpreter-minio:9000
+      - MINIO_ACCESS_KEY=${CODE_INTERPRETER_MINIO_USER}
+      - MINIO_SECRET_KEY=${CODE_INTERPRETER_MINIO_PASSWORD}
+      - MINIO_BUCKET=${CODE_INTERPRETER_MINIO_BUCKET}
+      - MINIO_SECURE=false
       - API_KEY=${CODE_INTERPRETER_API_KEY}
       - MAX_EXECUTION_TIME=30
       - MAX_MEMORY_MB=512

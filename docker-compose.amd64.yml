@@ -1,15 +1,12 @@
 # amd64 + NVIDIA GPU 전용 서비스 (CUDA 필요: Whisper STT, SD.Next 이미지 생성)
 # 사용법: docker compose -f docker-compose.yml -f docker-compose.amd64.yml up -d
 # 또는:   scripts/deploy.sh (아키텍처 자동 감지)
-#
-# TTS 는 multi-arch + CPU 가능한 openedai-speech 사용으로 base 인 docker-compose.yml 로 이동했음.
 
 services:
   # ============================================
   # Whisper (STT) — fedirz/faster-whisper-server (CTranslate2 기반, OpenAI Audio API 호환)
-  # 기존 onerahmet 이미지는 /asr 만 노출하고 OpenAI 호환 안 됨 + 일부 신형 GPU 미지원.
-  # fedirz 는 CTranslate2 사용으로 PyTorch CUDA 커널 의존도 낮아 Blackwell 등 신형 GPU 호환성 좋음.
-  # 단 latest-cuda 태그 자체가 amd64 + NVIDIA GPU 전용이라 이 파일에 위치.
+  # CTranslate2 사용으로 PyTorch CUDA 커널 의존도가 낮아 Blackwell 등 신형 GPU 호환성이 좋음.
+  # latest-cuda 태그가 amd64 + NVIDIA GPU 전용이라 이 파일에 위치.
   # ============================================
   whisper:
     container_name: whisper

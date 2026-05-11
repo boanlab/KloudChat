@@ -6,10 +6,10 @@
 |---|---|---|---|
 | Ollama | qwen3.5:9b (Q4) | ~5GB | 대화 후 2분 유지 |
 | Ollama | qwen3.5:35b (Q4) | ~20GB | 대화 후 2분 유지 |
-| Ollama | gemma4:26b (Q4) | ~16GB | 대화 후 2분 유지 |
+| Ollama | gemma3:27b (Q4) | ~17GB | 대화 후 2분 유지 |
 | Ollama | qwen3-coder-next (Q4_K_M) | ~51GB | 대화 후 2분 유지 |
 | Ollama | qwen3-coder-next (Q8_0) | ~84GB | 대화 후 2분 유지 |
-| Ollama | nomic-embed-text | ~500MB | RAG 요청 시 |
+| Ollama | bge-m3 (embed) | ~1.2GB | RAG 요청 시 |
 | Whisper | large-v3 | ~6GB | 요청 시만 |
 | Whisper | medium | ~3GB | 요청 시만 |
 | TTS (xtts_v2) | ~1.8B | ~3GB (CPU 모드) | warm 5분 |
@@ -17,9 +17,9 @@
 | SD.Next | SDXL | ~10GB | 요청 시만 |
 | SD.Next | SDXL-Turbo | ~8GB | 요청 시만 |
 
-> TTS(`openedai-speech`)는 multi-arch + CPU 동작이라 GPU VRAM 소비 0. 표 위 항목은 모델 자체 메모리 footprint 참고용.
+> TTS (`openedai-speech`) 는 multi-arch + CPU 동작이라 GPU VRAM 소비 0. 표 위 항목은 모델 자체 메모리 footprint 참고용.
 
-모든 서비스는 동일한 물리 GPU VRAM을 공유합니다. 격리나 예약 없이 선착순으로 점유합니다.
+모든 서비스는 동일한 물리 GPU VRAM 을 공유합니다. 격리나 예약 없이 선착순으로 점유합니다.
 
 ## 시나리오별 필요 VRAM
 
@@ -34,8 +34,7 @@
 
 ## Ollama 메모리 관리
 
-Ollama 환경변수 설정(`KEEP_ALIVE`, `MAX_LOADED_MODELS` 등)은
-[Ollama 튜닝 가이드](ollama-tuning.md)를 참고하세요.
+Ollama 환경변수 설정 (`KEEP_ALIVE`, `MAX_LOADED_MODELS` 등) 은 [Ollama 튜닝 가이드](ollama-tuning.md) 를 참고하세요.
 
 ## VRAM 부족 시 조치
 

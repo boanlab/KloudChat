@@ -1,19 +1,33 @@
 #!/bin/bash
+# Shared helpers for scripts that talk to LiteLLM after the stack is up.
 set -euo pipefail
 
-# config.env 로드 (없으면 .example 에서 자동 생성)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ ! -f "${SCRIPT_DIR}/config.env" ]]; then
-  if [[ -f "${SCRIPT_DIR}/config.env.example" ]]; then
-    cp "${SCRIPT_DIR}/config.env.example" "${SCRIPT_DIR}/config.env"
-    echo "[common.sh] scripts/config.env 자동 생성됨 (config.env.example 에서 복사)" >&2
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "${SCRIPTS_DIR}/.." && pwd)"
+ENV_FILE="${PROJECT_DIR}/.env"
+
+# Read KEY=value from .env (empty string when missing).
+env_get() {
+  local key="$1"
+  [[ -f "$ENV_FILE" ]] || return 0
+  grep -E "^${key}=" "$ENV_FILE" | head -1 | cut -d= -f2- || true
+}
+
+# Set KEY=value in .env (append when missing).
+env_set() {
+  local key="$1" val="$2"
+  [[ -f "$ENV_FILE" ]] || { echo "[env_set] error: ${ENV_FILE} not found" >&2; return 1; }
+  if grep -qE "^${key}=" "$ENV_FILE"; then
+    # `sed -i.bak` works on both GNU sed and BSD sed (macOS).
+    sed -i.bak "s|^${key}=.*|${key}=${val}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
   else
-    echo "[common.sh] ERROR: scripts/config.env 및 config.env.example 둘 다 없음" >&2
-    exit 1
+    echo "${key}=${val}" >> "$ENV_FILE"
   fi
-fi
-# shellcheck source=scripts/config.env
-source "${SCRIPT_DIR}/config.env"
+}
+
+export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-$(env_get LITELLM_MASTER_KEY)}"
+export LITELLM_URL="${LITELLM_URL:-http://localhost:8000}"
+export DATA_DIR="${SCRIPTS_DIR}/.data"
 
 mkdir -p "${DATA_DIR}"
 
@@ -59,17 +73,17 @@ litellm_get() {
 wait_for_litellm() {
   local max_wait="${1:-60}"
   local elapsed=0
-  echo -n "LiteLLM 준비 대기 중..."
+  echo -n "Waiting for LiteLLM..."
   until curl -sf "${LITELLM_URL}/health/liveliness" > /dev/null 2>&1; do
     if [[ $elapsed -ge $max_wait ]]; then
-      echo " 타임아웃 (${max_wait}s)" >&2
+      echo " timed out (${max_wait}s)" >&2
       return 1
     fi
     sleep 2
     elapsed=$((elapsed + 2))
     echo -n "."
   done
-  echo " 준비 완료"
+  echo " ready"
 }
 
 team_id_by_alias() {
@@ -83,7 +97,7 @@ team_id_by_alias() {
       return 0
     fi
   fi
-  # 캐시에 없으면 API 조회
+  # Fall back to a live API query when the cache misses.
   local result
   result=$(litellm_get "/team/list")
   echo "$result" | jq -r --arg a "$alias" '.[] | select(.team_alias == $a) | .team_id' 2>/dev/null || true

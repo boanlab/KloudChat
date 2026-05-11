@@ -1,28 +1,47 @@
 #!/usr/bin/env bash
-# 아키텍처를 자동 감지해 적절한 compose 파일을 선택하여 기동합니다.
-#   arm64  →  docker-compose.yml 단독
-#   amd64  →  docker-compose.yml + docker-compose.amd64.yml
+# Pick the compose-file combination that matches this host and exec docker compose.
+#
+#   docker-compose.yml         — base (LibreChat, LiteLLM, RAG, code-interpreter, TTS, …)
+#   docker-compose.amd64.yml   — Whisper STT + SD.Next (Linux + amd64 + NVIDIA GPU only)
+#
+# Branching:
+#   Linux + amd64 + NVIDIA GPU + nvidia runtime   → base + amd64.yml
+#   anything else (Linux arm64 / macOS / GPU-less amd64) → base only
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-ARCH="$(uname -m)"
+# shellcheck source=lib/platform.sh
+source "${SCRIPT_DIR}/lib/platform.sh"
 
-case "$ARCH" in
-  x86_64)
-    echo "==> 아키텍처: amd64 — STT(whisper) + 이미지 생성(SD.Next) 포함하여 배포"
-    COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.amd64.yml)
-    ;;
-  aarch64 | arm64)
-    echo "==> 아키텍처: arm64 — STT(whisper) / 이미지 생성(SD.Next) 제외 (CUDA 전용). TTS 는 base 에 포함되어 동작."
-    COMPOSE_FILES=(-f docker-compose.yml)
-    ;;
-  *)
-    echo "알 수 없는 아키텍처: $ARCH" >&2
-    exit 1
-    ;;
-esac
+OS="$(detect_os)"
+ARCH="$(detect_arch)"
 
-cd "$PROJECT_ROOT"
-docker compose "${COMPOSE_FILES[@]}" "$@"
+if [[ "$OS" == unsupported || "$ARCH" == unsupported ]]; then
+  echo "Unsupported environment: $(uname -s) $(uname -m)" >&2
+  exit 1
+fi
+
+COMPOSE_FILES=(-f docker-compose.yml)
+REASON=""
+
+if can_use_gpu_services; then
+  COMPOSE_FILES+=(-f docker-compose.amd64.yml)
+  REASON="${OS}/${ARCH} + NVIDIA GPU + Docker nvidia runtime — including Whisper (STT) + SD.Next (image gen)"
+else
+  if [[ "$OS" == macos ]]; then
+    REASON="macOS — Whisper / SD.Next skipped (no CUDA containers). TTS runs on CPU."
+  elif [[ "$ARCH" == arm64 ]]; then
+    REASON="${OS}/arm64 — Whisper / SD.Next skipped (CUDA images are amd64 only). TTS runs."
+  elif ! has_nvidia_gpu; then
+    REASON="${OS}/${ARCH} — no NVIDIA GPU detected. Whisper / SD.Next skipped. TTS runs on CPU."
+  else
+    REASON="${OS}/${ARCH} — Docker nvidia runtime is not registered. Whisper / SD.Next skipped."
+  fi
+fi
+
+echo "==> ${REASON}"
+
+cd "$PROJECT_DIR"
+exec docker compose "${COMPOSE_FILES[@]}" "$@"

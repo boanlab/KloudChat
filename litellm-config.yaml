@@ -24,8 +24,8 @@ model_list:
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q8_0
       api_base: os.environ/OLLAMA_API_BASE
-  # nomic-embed-text 는 RAG (rag_api) 가 Ollama 호스트로 직접 호출하므로 LiteLLM 에 등록 불필요.
-  # 등록하면 /v1/models 에 노출되어 LibreChat 모델 드롭다운에 임베딩 모델이 표시되는 UX 문제 발생.
+  # 임베딩 모델 (bge-m3) 은 RAG (rag_api) 가 Ollama 호스트로 직접 호출하므로 LiteLLM 에 등록하지 않습니다.
+  # 등록 시 /v1/models 에 노출되어 LibreChat 모델 드롭다운에 임베딩 모델이 섞입니다.
 
   # ---- 클라우드 공급자 확장 시 주석 해제 (docker-compose.yml litellm environment에 API 키도 추가) ----
   # - model_name: gpt-4o

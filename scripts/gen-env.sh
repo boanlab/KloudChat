@@ -1,5 +1,6 @@
 #!/bin/bash
-# .env 자동 생성 — .env.example의 change-me-* 값을 랜덤 시크릿으로 교체
+# Generate .env from .env.example, replacing every change-me-* placeholder
+# with a fresh random secret.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,22 +8,22 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${PROJECT_DIR}/.env"
 ENV_EXAMPLE="${PROJECT_DIR}/.env.example"
 
-# ---- 사용법 ----
+# ---- Usage ----
 usage() {
   cat <<EOF
-사용법: $(basename "$0") [옵션]
+Usage: $(basename "$0") [options]
 
-.env.example을 기반으로 .env를 생성합니다.
-change-me-* 값은 자동으로 랜덤 시크릿으로 교체됩니다.
+Generate .env from .env.example. Every change-me-* value is replaced with a
+random secret.
 
-옵션:
-  --force    기존 .env가 있어도 덮어쓰기
-  -h, --help 도움말
+Options:
+  --force     overwrite an existing .env
+  -h, --help  show this help
 EOF
   exit 0
 }
 
-# ---- 랜덤 시크릿 생성 ----
+# ---- Random-secret generator ----
 gen_secret() {
   local bytes="${1:-16}"
   if command -v openssl &>/dev/null; then
@@ -32,41 +33,41 @@ gen_secret() {
   fi
 }
 
-# ---- 인자 파싱 ----
+# ---- Argument parsing ----
 FORCE=0
 for arg in "$@"; do
   case "$arg" in
     --force)   FORCE=1 ;;
     -h|--help) usage ;;
-    *) echo "알 수 없는 옵션: $arg" >&2; usage ;;
+    *) echo "Unknown option: $arg" >&2; usage ;;
   esac
 done
 
-# ---- 사전 확인 ----
+# ---- Sanity checks ----
 if [[ ! -f "$ENV_EXAMPLE" ]]; then
-  echo "오류: .env.example 파일을 찾을 수 없습니다: ${ENV_EXAMPLE}" >&2
+  echo "error: .env.example not found at ${ENV_EXAMPLE}" >&2
   exit 1
 fi
 
 if [[ -f "$ENV_FILE" && $FORCE -eq 0 ]]; then
-  echo "[건너뜀] .env 이미 존재합니다. 덮어쓰려면 --force 옵션을 사용하세요."
+  echo "[skip] .env already exists. Pass --force to overwrite."
   exit 0
 fi
 
-# ---- .env.example 읽어서 .env 생성 ----
-echo "==> 시크릿 생성 중..."
+# ---- Walk .env.example and emit .env ----
+echo "==> Generating secrets..."
 
 declare -A GENERATED
 
 while IFS= read -r line; do
-  # change-me-* 값을 가진 KEY=... 라인 처리
+  # Replace KEY=change-me-... lines.
   if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=change-me- ]]; then
     key="${BASH_REMATCH[1]}"
     case "$key" in
-      CREDS_KEY)    secret="$(gen_secret 32)" ;;  # AES-256: 정확히 32바이트 필요
-      CREDS_IV)     secret="$(gen_secret 16)" ;;  # AES IV: 정확히 16바이트 필요
-      *MASTER_KEY*) secret="$(gen_secret 32)" ;;  # LiteLLM·MeiliSearch 마스터키
-      JWT_*)        secret="$(gen_secret 32)" ;;  # JWT 서명키: 32바이트 권장
+      CREDS_KEY)    secret="$(gen_secret 32)" ;;  # AES-256 key: exactly 32 bytes
+      CREDS_IV)     secret="$(gen_secret 16)" ;;  # AES IV: exactly 16 bytes
+      *MASTER_KEY*) secret="$(gen_secret 32)" ;;  # LiteLLM / MeiliSearch master keys
+      JWT_*)        secret="$(gen_secret 32)" ;;  # JWT signing keys: 32 bytes
       *)            secret="$(gen_secret 16)" ;;
     esac
     GENERATED["$key"]="$secret"
@@ -76,17 +77,17 @@ while IFS= read -r line; do
   fi
 done < "$ENV_EXAMPLE" > "$ENV_FILE"
 
-# ---- 결과 출력 ----
+# ---- Summary ----
 echo
-echo "=== .env 생성 완료 ==="
+echo "=== .env generated ==="
 for key in "${!GENERATED[@]}"; do
   printf "  %-24s %s\n" "${key}" "${GENERATED[$key]}"
 done | sort
 echo
-echo "저장 위치: ${ENV_FILE}"
+echo "Path: ${ENV_FILE}"
 echo
-echo "다음 단계:"
-echo "  1. ./scripts/download-ollama-models.sh   # LLM 모델 다운로드"
-echo "  2. ./scripts/download-sdnext-models.sh   # 이미지 생성 모델 다운로드 (amd64 전용)"
-echo "  3. ./scripts/deploy.sh up -d             # 서비스 시작"
-echo "  4. ./scripts/init.sh                     # 팀·키 초기화"
+echo "Next steps:"
+echo "  1. ./scripts/download-ollama-models.sh   # Pull LLM models"
+echo "  2. ./scripts/download-sdnext-models.sh   # Pull image-gen model (Linux + amd64 + NVIDIA only)"
+echo "  3. ./scripts/deploy.sh up -d             # Start services"
+echo "  4. ./scripts/init.sh                     # Initialise teams + service key"

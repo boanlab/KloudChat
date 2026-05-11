@@ -1,7 +1,6 @@
 # 환경변수 레퍼런스
 
-`./scripts/gen-env.sh`로 `.env`를 자동 생성합니다. `change-me-*` 값은 자동으로
-랜덤 시크릿으로 교체되며, 나머지는 `.env.example` 기본값을 그대로 사용합니다.
+`./scripts/gen-env.sh`로 `.env`를 자동 생성합니다. `change-me-*` 값은 자동으로 랜덤 시크릿으로 교체되며, 나머지는 `.env.example` 기본값을 그대로 사용합니다.
 
 ## LibreChat
 
@@ -42,7 +41,7 @@
 | 변수 | 설명 | 기본값 |
 |---|---|---|
 | `EMBEDDINGS_PROVIDER` | 임베딩 공급자 | `ollama` |
-| `EMBEDDINGS_MODEL` | 임베딩 모델명 | `nomic-embed-text` |
+| `EMBEDDINGS_MODEL` | 임베딩 모델명 | `bge-m3` |
 
 ## LiteLLM
 
@@ -70,7 +69,7 @@
 
 `CODE_INTERPRETER_API_KEY`는 LibreChat의 `LIBRECHAT_CODE_API_KEY`와 동일한 값을 사용합니다 (docker-compose.yml에서 단일 변수로 공유).
 
-## STT — Whisper (amd64 전용)
+## STT — Whisper (Linux + amd64 + NVIDIA GPU 전용)
 
 | 변수 | 설명 | 값 |
 |---|---|---|
@@ -91,7 +90,7 @@
 
 지원 voice 매핑은 `tts-config/voice_to_speaker.yaml` 에서 정의 — 한국어 (xtts_v2): `korean`, `korean-female` / 영어 (piper, 빠름): `alloy`, `echo`, `nova`, `shimmer` / 영어 HD (xtts_v2): `english-hd`
 
-## 이미지 생성 — SD.Next (amd64 전용)
+## 이미지 생성 — SD.Next (Linux + amd64 + NVIDIA GPU 전용)
 
 | 변수 | 설명 | 값 |
 |---|---|---|
