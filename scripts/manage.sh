@@ -183,15 +183,54 @@ cmd_user_create() {
     echo "팀 추가: $team_alias (팀 내 한도 \$${budget}/월)"
   fi
 
-  # 자동 키 발급 (full provisioning 모드)
+  # 자동 키 발급 + LibreChat 키 등록 (full provisioning 모드)
   if [[ $full_provision -eq 1 ]]; then
     local key_alias="${lc_username}-key"
-    cmd_key_issue --user "$user_id" --team "$team_alias" --alias "$key_alias"
+    local key_output issued_key
+    key_output=$(cmd_key_issue --user "$user_id" --team "$team_alias" --alias "$key_alias" 2>&1)
+    echo "$key_output"
+    issued_key=$(echo "$key_output" | grep -oE 'sk-[A-Za-z0-9_-]+' | head -1)
+
+    # LibreChat keys collection 에 자동 등록 → 사용자 첫 채팅 시 sk-... 입력 단계 불필요
+    if [[ -n "$issued_key" ]]; then
+      register_litellm_key_for_librechat_user "$user_id" "$lc_password" "$issued_key"
+    fi
   fi
 
   # default agent 자동 생성 (full provisioning 모드 + LibreChat/Mongo 가용 시)
   if [[ $full_provision -eq 1 ]]; then
     create_default_agent_for_user "$user_id"
+  fi
+}
+
+# LibreChat 의 keys 컬렉션에 사용자 endpoint 키를 미리 저장.
+# REST 'PUT /api/keys' 사용 (LibreChat 가 내부 encryptV2 로 암호화).
+# 결과: 사용자가 첫 채팅 시 "키를 찾을 수 없습니다" 입력 화면 안 뜸.
+register_litellm_key_for_librechat_user() {
+  local user_email="$1" user_password="$2" api_key="$3"
+  local lc_url="${LIBRECHAT_URL:-http://localhost:8080}"
+
+  local jwt
+  jwt=$(curl -s -X POST "${lc_url}/api/auth/login" \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -n --arg e "$user_email" --arg p "$user_password" '{email:$e, password:$p}')" \
+    2>/dev/null | jq -r '.token // ""')
+
+  if [[ -z "$jwt" ]]; then
+    echo "  ⚠ LibreChat 로그인 실패 — 키 자동 등록 건너뜀 (사용자가 UI 에서 직접 입력 필요)" >&2
+    return 0
+  fi
+
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "${lc_url}/api/keys" \
+    -H "Authorization: Bearer $jwt" \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -n --arg n 'LiteLLM' --arg v "$api_key" '{name:$n, value:$v}')")
+
+  if [[ "$code" == "201" ]]; then
+    echo "LibreChat 에 LiteLLM 키 자동 등록 완료 (첫 채팅 시 키 입력 불필요)"
+  else
+    echo "  ⚠ LibreChat 키 자동 등록 실패 (HTTP $code) — 사용자가 UI 에서 직접 입력 필요" >&2
   fi
 }
 
