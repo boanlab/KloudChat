@@ -321,7 +321,7 @@ create_default_agent_for_user() {
       }
 
       // Default preset — auto-select the KloudChat agent for new chats.
-      // LibreChat stores `user` as a String (toString of the ObjectId).
+      // LibreChat stores the user field as a String (toString of the ObjectId).
       // Only one defaultPreset is allowed per user, so unset any existing.
       var userIdStr = u._id.toString();
       db.presets.updateMany({user: userIdStr, defaultPreset: true}, {\$unset: {defaultPreset: '', order: ''}});
