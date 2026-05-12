@@ -23,6 +23,7 @@ endpoints:
       models:
         default:
           - "ollama/gemma4:26b"
+          - "ollama/gemma3:27b"
           - "ollama/qwen3.5:9b"
           - "ollama/qwen3.5:35b"
           - "ollama/qwen3-coder-next:q4_K_M"

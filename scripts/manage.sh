@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
+source "${SCRIPT_DIR}/lib/platform.sh"
 
 usage() {
   cat <<EOF
@@ -51,7 +52,7 @@ cmd_team_create() {
   # cannot map the wildcard back to model_list when responding with a user
   # key, so only ollama/llama2 ends up exposed.
   local alias="" budget=9999 duration="1mo" tpm=100000 rpm=500
-  local models="ollama/qwen3.5:9b,ollama/qwen3.5:35b,ollama/gemma4:26b,ollama/qwen3-coder-next:q4_K_M,ollama/qwen3-coder-next:q8_0"
+  local models="ollama/qwen3.5:9b,ollama/qwen3.5:35b,ollama/gemma4:26b,ollama/gemma3:27b,ollama/qwen3-coder-next:q4_K_M,ollama/qwen3-coder-next:q8_0"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --alias)    alias="$2";    shift 2 ;;
@@ -244,11 +245,15 @@ register_litellm_key_for_librechat_user() {
 }
 
 # Create default LibreChat agents for the new user. We ship two presets:
-#   * 'KloudChat (Gemma4:26b)' — general chat, no image gen (default preset)
-#   * 'KloudChat (Qwen3.5:35b)' — full toolset including stable-diffusion
-# gemma4:26b emits hyphenated tool names ('stable-diffusion') as ReAct text instead
-# of OpenAI tool_calls, which LibreChat can't execute, so we route image generation
-# through the qwen3.5:35b build and let users pick Gemma4 for everything else.
+#   * 'KloudChat (<chat-model>)'   — general chat, no image gen (default preset)
+#   * 'KloudChat (Qwen3.5:35b)'    — full toolset including stable-diffusion
+# The chat model differs by GPU class:
+#   * Desktop Blackwell (RTX 5090 / RTX PRO 6000) → gemma3:27b
+#     (gemma4 has Ollama load failures / kernel crashes on those GPUs)
+#   * Everything else (DGX Spark GB10 / RTX 4090 / other NVIDIA) → gemma4:26b
+# gemma4 also emits hyphenated tool names ('stable-diffusion') as ReAct text
+# instead of OpenAI tool_calls — LibreChat can't execute that — so we always
+# route image generation through the qwen3.5:35b build regardless of GPU.
 create_default_agent_for_user() {
   local user_email="$1"
   local mongo_user mongo_pass
@@ -262,6 +267,17 @@ create_default_agent_for_user() {
     echo "  ⚠ Skipping default agent (chat-mongodb container not running)" >&2
     return 0
   fi
+
+  # Pick the chat-side model based on the host GPU. Falls back to gemma4 when
+  # detection isn't possible (e.g. running this script from a host without
+  # nvidia-smi against a remote Mongo).
+  local chat_model chat_label
+  if gpu_supports_gemma4; then
+    chat_model="ollama/gemma4:26b"; chat_label="Gemma4:26b"
+  else
+    chat_model="ollama/gemma3:27b"; chat_label="Gemma3:27b"
+  fi
+  local chat_agent_name="KloudChat (${chat_label})"
 
   local result
   result=$(docker exec chat-mongodb mongosh --quiet \
@@ -324,15 +340,15 @@ create_default_agent_for_user() {
         return agentId;
       }
 
-      var gemmaId = createAgent('KloudChat (Gemma4:26b)', 'ollama/gemma4:26b',
+      var chatId = createAgent('${chat_agent_name}', '${chat_model}',
         ['execute_code','file_search','web_search']);
-      var qwenId  = createAgent('KloudChat (Qwen3.5:35b)', 'ollama/qwen3.5:35b',
+      var qwenId = createAgent('KloudChat (Qwen3.5:35b)', 'ollama/qwen3.5:35b',
         ['stable-diffusion','execute_code','file_search','web_search']);
 
-      // Default preset — prefer the Gemma4 build for new chats; fall back to
-      // Qwen3.5 if Gemma4 didn't get created for some reason.
-      var defaultAgentId = gemmaId || qwenId;
-      var defaultTitle = gemmaId ? 'KloudChat (Gemma4:26b)' : 'KloudChat (Qwen3.5:35b)';
+      // Default preset — prefer the chat-side build for new chats; fall back to
+      // Qwen3.5 if it didn't get created for some reason.
+      var defaultAgentId = chatId || qwenId;
+      var defaultTitle = chatId ? '${chat_agent_name}' : 'KloudChat (Qwen3.5:35b)';
       if (defaultAgentId) {
         var userIdStr = u._id.toString();
         db.presets.updateMany({user: userIdStr, defaultPreset: true}, {\$unset: {defaultPreset: '', order: ''}});

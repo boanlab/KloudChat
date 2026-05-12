@@ -99,14 +99,22 @@ fi
 
 # GPU
 GPU_VRAM=0
+GPU_CLASS="none"
 if has_nvidia_gpu; then
   ok "GPU: $(get_gpu_name)"
   GPU_VRAM=$(get_gpu_vram_mb)
+  GPU_CLASS=$(detect_gpu_class)
   if has_gb10; then
     ok "GB10 unified memory detected → using system RAM (${GPU_VRAM}MB) as VRAM"
   else
-    ok "VRAM: ${GPU_VRAM}MB"
+    ok "VRAM: ${GPU_VRAM}MB (class: ${GPU_CLASS})"
   fi
+  case "$GPU_CLASS" in
+    blackwell-pro|blackwell-5090)
+      warn "Desktop Blackwell detected — gemma4 has known Ollama crashes on this GPU"
+      warn "  (ollama#15238, ollama#15264, ollama#14374). Recommending gemma3:27b instead."
+      ;;
+  esac
   if ! docker_has_nvidia_runtime; then
     warn "Docker's NVIDIA runtime is not registered — GPU containers will not run."
     warn "  sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
@@ -188,17 +196,24 @@ if (( SKIP_MODELS )); then
   warn "--skip-models — skipping model downloads"
 else
   if [[ -z "$MODELS_ARG" ]]; then
-    # CPU-only hosts: recommend small models only.
-    if ! has_nvidia_gpu; then
-      SUGGESTED="qwen3-9b embed"
-    elif (( GPU_VRAM >= 90000 )); then
-      SUGGESTED="all"
-    elif (( GPU_VRAM >= 45000 )); then
-      SUGGESTED="qwen3-9b qwen3-35b embed"
-    else
-      SUGGESTED="qwen3-9b embed"
-    fi
-    echo "Recommended for this host: ${SUGGESTED}"
+    # Per-GPU-class recommendations. The general chat model differs by class
+    # because gemma4 is currently broken on desktop Blackwell — see the warning
+    # printed in step 0 above. Falling back to gemma3:27b (same size, same role)
+    # for those classes keeps the dropdown UX consistent.
+    case "$GPU_CLASS" in
+      gb10)           SUGGESTED="all" ;;
+      blackwell-pro)  SUGGESTED="qwen3-9b qwen3-35b gemma3 qwen3-coder-q4 qwen3-coder-q8 embed" ;;
+      blackwell-5090) SUGGESTED="qwen3-9b qwen3-35b gemma3 embed" ;;
+      ada-4090)       SUGGESTED="qwen3-9b qwen3-35b gemma4 embed" ;;
+      nvidia-other)
+        if   (( GPU_VRAM >= 90000 )); then SUGGESTED="all"
+        elif (( GPU_VRAM >= 45000 )); then SUGGESTED="qwen3-9b qwen3-35b gemma4 embed"
+        elif (( GPU_VRAM >= 20000 )); then SUGGESTED="qwen3-9b qwen3-35b embed"
+        else                               SUGGESTED="qwen3-9b embed"
+        fi ;;
+      *)              SUGGESTED="qwen3-9b embed" ;;
+    esac
+    echo "Recommended for this host (class: ${GPU_CLASS}): ${SUGGESTED}"
     if ask "Download this set?"; then MODELS_ARG="$SUGGESTED"
     else
       read -rp "Custom (e.g. qwen3-9b embed): " MODELS_ARG

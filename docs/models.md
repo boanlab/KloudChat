@@ -22,10 +22,13 @@ LiteLLM 에서 모델명은 `ollama/<Ollama태그>` 형태가 됩니다 (예: `o
 |---|---|---|
 | `qwen3.5:9b` | `ollama/qwen3.5:9b` | 경량·타이틀 생성 |
 | `qwen3.5:35b` | `ollama/qwen3.5:35b` | 범용 주력 |
-| `gemma4:26b` | `ollama/gemma4:26b` | 창의·UI |
+| `gemma4:26b` | `ollama/gemma4:26b` | 창의·UI — DGX Spark / RTX 4090 / 기타 NVIDIA |
+| `gemma3:27b` | `ollama/gemma3:27b` | 창의·UI — RTX 5090 / RTX PRO 6000 Blackwell 폴백 (gemma4 Ollama 이슈 우회) |
 | `qwen3-coder-next:q4_K_M` | `ollama/qwen3-coder-next:q4_K_M` | 코딩 (경량) |
 | `qwen3-coder-next:q8_0` | `ollama/qwen3-coder-next:q8_0` | 코딩 (고품질) |
 | `bge-m3` | — (rag_api 직접 호출) | RAG 임베딩 (다국어, 한국어 우수) |
+
+`setup.sh` 가 `nvidia-smi --query-gpu=name` 결과로 GPU 클래스를 분류하고 적절한 모델 셋을 추천합니다 (`scripts/lib/platform.sh` 의 `detect_gpu_class`). 데스크톱 Blackwell (RTX 5090 / RTX PRO 6000 Blackwell) 에서는 Ollama 가 gemma4 를 안정적으로 로드하지 못해 (ollama#15238, #15264, #14374) `gemma3:27b` 를 일반 채팅 default 로 사용합니다.
 
 ### 모델 다운로드
 

@@ -71,6 +71,41 @@ get_gpu_name() {
   nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1
 }
 
+# detect_gpu_class — classify the primary NVIDIA GPU into a KloudChat-tuned
+# bucket. Used by setup.sh (model recommendations) and manage.sh (default
+# agent model). Returns one of:
+#   gb10           — DGX Spark unified memory (gemma4 works here)
+#   blackwell-pro  — RTX PRO 6000 Blackwell desktop card (96 GB)
+#   blackwell-5090 — RTX 5090 (32 GB)
+#   ada-4090       — RTX 4090 (24 GB, Ada Lovelace)
+#   nvidia-other   — any other NVIDIA GPU
+#   none           — no NVIDIA GPU detected
+# gemma4 on desktop Blackwell (5090 / RTX PRO 6000) hits MMQ kernel crashes and
+# load-time 500 errors in Ollama as of 2026-05; gemma3:27b is the safe fallback
+# for those classes. See ollama#15238, ollama#15264, ollama#14374.
+detect_gpu_class() {
+  has_nvidia_gpu || { echo "none"; return; }
+  has_gb10 && { echo "gb10"; return; }
+  local name; name="$(get_gpu_name)"
+  case "$name" in
+    *"RTX PRO 6000 Blackwell"*|*"RTX 6000 Pro Blackwell"*|*"RTX 6000 PRO Blackwell"*)
+                            echo "blackwell-pro" ;;
+    *"RTX 5090"*)           echo "blackwell-5090" ;;
+    *"RTX 4090"*)           echo "ada-4090" ;;
+    *)                      echo "nvidia-other" ;;
+  esac
+}
+
+# gpu_supports_gemma4 — true when the detected GPU runs gemma4 reliably.
+# DGX Spark / Ada Lovelace / other-NVIDIA OK; desktop Blackwell (5090, RTX PRO
+# 6000) currently broken — fall back to gemma3:27b.
+gpu_supports_gemma4() {
+  case "$(detect_gpu_class)" in
+    blackwell-pro|blackwell-5090|none) return 1 ;;
+    *)                                 return 0 ;;
+  esac
+}
+
 # ──────────────────────────────────────────────────────────
 # Memory / disk / ports
 # ──────────────────────────────────────────────────────────
@@ -140,6 +175,7 @@ platform_summary() {
   if has_nvidia_gpu; then
     echo "  GPU   : $(get_gpu_name)"
     echo "  VRAM  : $(get_gpu_vram_mb) MB"
+    echo "  CLASS : $(detect_gpu_class)"
     has_gb10 && echo "  NOTE  : GB10 unified memory (VRAM = system RAM)"
   else
     echo "  GPU   : (none — CPU only)"

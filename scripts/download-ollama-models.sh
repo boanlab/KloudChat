@@ -9,12 +9,17 @@ Usage: $(basename "$0") [models...]
 
 Model aliases:
   gemma4          gemma4:26b              (~17GB)  — Google Gemma 4, general
+                                                    NOTE: Ollama on desktop Blackwell
+                                                    (RTX 5090 / RTX PRO 6000) is broken
+                                                    as of 2026-05; use gemma3 there.
+  gemma3          gemma3:27b              (~17GB)  — Google Gemma 3, general
+                                                    Blackwell-safe fallback for gemma4.
   qwen3-35b       qwen3.5:35b             (~23GB)  — Alibaba, flagship general
   qwen3-9b        qwen3.5:9b              (~6GB)   — Alibaba, lightweight  [default]
   qwen3-coder-q4  qwen3-coder-next:q4_K_M (~51GB)  — coding-tuned
   qwen3-coder-q8  qwen3-coder-next:q8_0   (~84GB)  — coding-tuned, high quality
   embed           bge-m3                  (~1.2GB) — RAG embeddings (multilingual)  [default]
-  all             everything above
+  all             everything above (gemma4 + gemma3 + all qwen + embed)
 
 Examples:
   $(basename "$0")                 # defaults: qwen3-9b + embed
@@ -63,12 +68,13 @@ check_ollama
 for arg in "$@"; do
   case "$arg" in
     gemma4)         pull_model "gemma4:26b" ;;
+    gemma3)         pull_model "gemma3:27b" ;;
     qwen3-35b)      pull_model "qwen3.5:35b" ;;
     qwen3-9b)       pull_model "qwen3.5:9b" ;;
     qwen3-coder-q4) pull_model "qwen3-coder-next:q4_K_M" ;;
     qwen3-coder-q8) pull_model "qwen3-coder-next:q8_0" ;;
     embed)          pull_model "bge-m3" ;;
-    all)            "$0" gemma4 qwen3-35b qwen3-9b qwen3-coder-q4 qwen3-coder-q8 embed ;;
+    all)            "$0" gemma4 gemma3 qwen3-35b qwen3-9b qwen3-coder-q4 qwen3-coder-q8 embed ;;
     -h|--help)      usage ;;
     *)              echo "Unknown model alias: $arg" >&2; usage ;;
   esac
