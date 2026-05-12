@@ -1,8 +1,8 @@
 # 설치 가이드
 
-> **빠른 경로:** `git clone` 후 `./scripts/install-ollama.sh` (Linux 는 `sudo`) → `./scripts/setup.sh --yes` 두 줄이면 1~9 단계가 자동으로 끝납니다. 이 문서는 단계별 수동 진행이 필요한 경우 (스크립트가 실패한 경우, 일부 단계만 다시 돌릴 경우 등) 의 레퍼런스입니다.
+> **빠른 경로:** `git clone` 후 `sudo ./scripts/install-ollama.sh` → `./scripts/setup.sh --yes` 두 줄이면 1~9 단계가 자동으로 끝납니다. 이 문서는 단계별 수동 진행이 필요한 경우 (스크립트가 실패한 경우, 일부 단계만 다시 돌릴 경우 등) 의 레퍼런스입니다.
 
-`scripts/setup.sh` 와 `scripts/deploy.sh` 는 OS·아키텍처·GPU 를 자동 감지해서 분기합니다. 별도로 환경을 명시할 필요가 없습니다.
+`scripts/setup.sh` 와 `scripts/deploy.sh` 는 아키텍처·GPU 를 자동 감지해서 분기합니다. 별도로 환경을 명시할 필요가 없습니다.
 
 ## 1. 저장소 클론
 
@@ -16,11 +16,8 @@ cd KloudChat
 KloudChat 은 Ollama 를 호스트에서 직접 실행합니다. Docker 컨테이너는 `host.docker.internal:11434` 으로 접근하므로 `OLLAMA_HOST=0.0.0.0` 바인딩이 필요합니다.
 
 ```bash
-# Linux (systemd override + 0.0.0.0 바인딩)
+# systemd override + 0.0.0.0 바인딩
 sudo ./scripts/install-ollama.sh
-
-# macOS (launchctl 환경변수 + Ollama 재시작)
-./scripts/install-ollama.sh
 ```
 
 이미 Ollama 가 설치돼 있으면 기존 설정을 유지하면서 누락된 항목만 추가합니다.
@@ -52,7 +49,7 @@ docker compose 실행 전에 모델을 미리 내려받습니다.
 
 ## 5. 이미지 생성 모델 다운로드 (Linux + NVIDIA GPU, amd64/arm64)
 
-ComfyUI 컨테이너가 활성화되는 환경 (Linux + NVIDIA GPU + nvidia container runtime) 에서만 의미가 있습니다. macOS · GPU 없는 호스트는 이 단계를 건너뛰세요.
+ComfyUI 컨테이너가 활성화되는 환경 (Linux + NVIDIA GPU + nvidia container runtime) 에서만 의미가 있습니다. GPU 없는 호스트는 이 단계를 건너뛰세요.
 
 ```bash
 ./scripts/download-image-models.sh            # SDXL + Qwen-Image + Qwen-Image-Edit (~50GB)
@@ -89,7 +86,7 @@ ComfyUI 컨테이너가 활성화되는 환경 (Linux + NVIDIA GPU + nvidia cont
 |---|---|---|
 | Linux + amd64 + NVIDIA + nvidia runtime | base + `gpu.yml` + `amd64.yml` | ComfyUI + Whisper 포함 |
 | Linux + arm64 + NVIDIA + nvidia runtime (DGX Spark) | base + `gpu.yml` | ComfyUI 포함, Whisper 제외 (이미지가 amd64-only) |
-| 그 외 (macOS, GPU 없는 호스트) | base 만 | ComfyUI / Whisper 자동 제외, TTS 는 동작 |
+| 그 외 (GPU 없는 호스트) | base 만 | ComfyUI / Whisper 자동 제외, TTS 는 동작 |
 
 ## 8. 초기화
 
@@ -118,7 +115,7 @@ ComfyUI 컨테이너가 활성화되는 환경 (Linux + NVIDIA GPU + nvidia cont
 | LibreChat | http://localhost:8080 |
 | LiteLLM | http://localhost:8000 |
 
-회원가입이 막혀 있거나 (`librechat.yaml` 의 `registration.allowedDomains`) 관리자가 직접 계정을 만드는 경우, 다음 한 줄로 LibreChat 사용자 + LiteLLM 사용자 + 키 발급 + LibreChat keys 자동 등록 + default agent/preset 생성을 동시에 처리합니다.
+회원가입이 막혀 있거나 (`librechat.yaml` 의 `registration.allowedDomains`) 관리자가 직접 계정을 만드는 경우, 다음 한 줄로 LibreChat 사용자 + LiteLLM 사용자 + 키 발급 + LibreChat keys 자동 등록 + 두 개의 기본 agent (Gemma4 / Qwen3.5) + default preset 생성을 동시에 처리합니다.
 
 ```bash
 ./scripts/manage.sh user create \

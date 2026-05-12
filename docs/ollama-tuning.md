@@ -1,10 +1,8 @@
 # Ollama 튜닝 가이드
 
-Ollama 는 호스트에서 직접 실행되므로 OS 의 서비스/환경변수 메커니즘으로 설정합니다.
+Ollama 는 호스트에서 직접 실행되므로 systemd 의 환경변수 메커니즘으로 설정합니다.
 
-## 설정 위치
-
-### Linux — systemd override
+## 설정 위치 — systemd override
 
 ```
 /etc/systemd/system/ollama.service.d/override.conf
@@ -16,41 +14,7 @@ Ollama 는 호스트에서 직접 실행되므로 OS 의 서비스/환경변수 
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 
-### macOS — launchctl / LaunchAgent
-
-세션 동안만 적용 (재부팅 시 사라짐):
-
-```bash
-launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
-launchctl setenv OLLAMA_FLASH_ATTENTION 1
-launchctl setenv OLLAMA_CONTEXT_LENGTH 8192
-# Ollama.app 재시작
-osascript -e 'quit app "Ollama"'; open -a Ollama
-```
-
-재부팅 후에도 유지하려면 `~/Library/LaunchAgents/com.kloudchat.ollama-env.plist` 등에 환경변수를 등록한 뒤 `launchctl load` 합니다:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.kloudchat.ollama-env</string>
-  <key>RunAtLoad</key><true/>
-  <key>ProgramArguments</key>
-  <array>
-    <string>sh</string><string>-c</string>
-    <string>launchctl setenv OLLAMA_HOST 0.0.0.0:11434; launchctl setenv OLLAMA_FLASH_ATTENTION 1</string>
-  </array>
-</dict>
-</plist>
-```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.kloudchat.ollama-env.plist
-```
-
-## 현재 설정 (Linux 예시)
+## 현재 설정 예시
 
 ```ini
 [Service]
@@ -273,7 +237,7 @@ Environment="CUDA_VISIBLE_DEVICES=0"
 | 모델 | 크기 | 비고 |
 |---|---|---|
 | qwen3.5:9b (Q4_K_M) | ~6.6 GB | 경량 범용 |
-| gemma3:27b | ~17 GB | 창의·UI |
+| gemma4:26b | ~17 GB | 창의·UI |
 | qwen3.5:35b | ~23 GB | 주력 범용 |
 | qwen3-coder-next:q4_K_M | ~51 GB | 코딩 경량 |
 | qwen3-coder-next:q8_0 | ~84 GB | 코딩 고품질 |
@@ -283,8 +247,8 @@ GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 
 | 조합 | 합계 |
 |---|---|
-| 9b + 35b + gemma3 + embed | ~48 GB |
-| 9b + 35b + gemma3 + coder-q4 + embed | ~99 GB ✅ |
+| 9b + 35b + gemma4 + embed | ~48 GB |
+| 9b + 35b + gemma4 + coder-q4 + embed | ~99 GB ✅ |
 | coder-q8 단독 + embed | ~85 GB ✅ |
 | coder-q8 + 9b + embed | ~92 GB ✅ |
 

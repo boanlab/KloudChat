@@ -3,12 +3,10 @@
 #
 # Supported environments:
 #   - Linux      (x86_64 / aarch64, optional NVIDIA GPU)
-#   - macOS      (Intel / Apple Silicon, CPU only — ComfyUI / Whisper skipped)
 #   - DGX Spark  (Linux aarch64 + GB10 unified memory, amd64-only containers skipped)
 #
 # Prerequisites:
-#   - Linux : sudo ./scripts/install-ollama.sh   (must be run first)
-#   - macOS : ./scripts/install-ollama.sh        (must be run first; no sudo)
+#   - sudo ./scripts/install-ollama.sh   (must be run first)
 #
 # Usage:
 #   ./scripts/setup.sh                    # interactive (default)
@@ -72,7 +70,7 @@ ARCH="$(detect_arch)"
 
 if [[ "$OS" == unsupported || "$ARCH" == unsupported ]]; then
   err "Unsupported environment: $(uname -s) $(uname -m)"
-  err "Supported: Linux (x86_64/aarch64), macOS (Intel/Apple Silicon)"
+  err "Supported: Linux (x86_64/aarch64)"
   exit 1
 fi
 ok "OS / ARCH: ${OS} / ${ARCH}"
@@ -80,11 +78,7 @@ ok "OS / ARCH: ${OS} / ${ARCH}"
 # Docker
 if ! command -v docker &>/dev/null; then
   err "Docker is not installed."
-  if [[ "$OS" == macos ]]; then
-    err "  Install Docker Desktop: https://docs.docker.com/desktop/install/mac-install/"
-  else
-    err "  curl -fsSL https://get.docker.com | sh"
-  fi
+  err "  curl -fsSL https://get.docker.com | sh"
   exit 1
 fi
 ok "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
@@ -96,35 +90,37 @@ if ! docker compose version &>/dev/null; then
 fi
 ok "Docker Compose $(docker compose version --short)"
 
-# Docker access (Linux: usually a group issue; macOS: Docker Desktop is per-user)
+# Docker access (usually a group issue)
 if ! docker ps &>/dev/null; then
-  if [[ "$OS" == linux ]]; then
-    warn "Current user is not in the docker group. Run:"
-    warn "  sudo usermod -aG docker \$USER  &&  newgrp docker"
-  else
-    warn "Cannot reach the Docker daemon. Make sure Docker Desktop is running."
-  fi
+  warn "Current user is not in the docker group. Run:"
+  warn "  sudo usermod -aG docker \$USER  &&  newgrp docker"
   exit 1
 fi
 
 # GPU
 GPU_VRAM=0
+GPU_CLASS="none"
 if has_nvidia_gpu; then
   ok "GPU: $(get_gpu_name)"
   GPU_VRAM=$(get_gpu_vram_mb)
+  GPU_CLASS=$(detect_gpu_class)
   if has_gb10; then
     ok "GB10 unified memory detected → using system RAM (${GPU_VRAM}MB) as VRAM"
   else
-    ok "VRAM: ${GPU_VRAM}MB"
+    ok "VRAM: ${GPU_VRAM}MB (class: ${GPU_CLASS})"
   fi
+  case "$GPU_CLASS" in
+    blackwell-pro|blackwell-5090)
+      warn "Desktop Blackwell detected — gemma4 has known Ollama crashes on this GPU"
+      warn "  (ollama#15238, ollama#15264, ollama#14374). Recommending gemma3:27b instead."
+      ;;
+  esac
   if ! docker_has_nvidia_runtime; then
     warn "Docker's NVIDIA runtime is not registered — GPU containers will not run."
     warn "  sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
   else
     ok "Docker NVIDIA runtime registered"
   fi
-elif [[ "$OS" == macos ]]; then
-  ok "macOS — Ollama will use Metal GPU acceleration (Docker containers stay on CPU)"
 else
   warn "No NVIDIA GPU detected → inference will run on CPU (very slow)"
 fi
@@ -140,12 +136,8 @@ for tool in jq curl wget; do
 done
 if (( ${#MISSING[@]} > 0 )); then
   err "Missing required tools: ${MISSING[*]}"
-  if [[ "$OS" == macos ]]; then
-    err "  brew install ${MISSING[*]}"
-  else
-    err "  sudo apt install -y ${MISSING[*]}    (Debian / Ubuntu)"
-    err "  sudo dnf install -y ${MISSING[*]}    (Fedora / RHEL)"
-  fi
+  err "  sudo apt install -y ${MISSING[*]}    (Debian / Ubuntu)"
+  err "  sudo dnf install -y ${MISSING[*]}    (Fedora / RHEL)"
   exit 1
 fi
 
@@ -175,20 +167,11 @@ ollama_running() {
 if command -v ollama &>/dev/null && ollama_running; then
   ok "Ollama is already installed and responsive (version: $(ollama --version 2>/dev/null | awk '{print $NF}'))"
 else
-  if [[ "$OS" == linux ]]; then
-    if ask "Run ./scripts/install-ollama.sh with sudo?"; then
-      sudo ./scripts/install-ollama.sh
-    else
-      err "Ollama is not installed or not running — aborting. Install it and rerun."
-      exit 1
-    fi
+  if ask "Run ./scripts/install-ollama.sh with sudo?"; then
+    sudo ./scripts/install-ollama.sh
   else
-    if ask "Run ./scripts/install-ollama.sh? (macOS — no sudo)"; then
-      ./scripts/install-ollama.sh
-    else
-      err "Ollama is not installed or not running — aborting."
-      exit 1
-    fi
+    err "Ollama is not installed or not running — aborting. Install it and rerun."
+    exit 1
   fi
 fi
 
@@ -213,17 +196,24 @@ if (( SKIP_MODELS )); then
   warn "--skip-models — skipping model downloads"
 else
   if [[ -z "$MODELS_ARG" ]]; then
-    # macOS / CPU-only hosts: recommend small models only.
-    if [[ "$OS" == macos ]] || ! has_nvidia_gpu; then
-      SUGGESTED="qwen3-9b embed"
-    elif (( GPU_VRAM >= 90000 )); then
-      SUGGESTED="all"
-    elif (( GPU_VRAM >= 45000 )); then
-      SUGGESTED="qwen3-9b qwen3-35b embed"
-    else
-      SUGGESTED="qwen3-9b embed"
-    fi
-    echo "Recommended for this host: ${SUGGESTED}"
+    # Per-GPU-class recommendations. The general chat model differs by class
+    # because gemma4 is currently broken on desktop Blackwell — see the warning
+    # printed in step 0 above. Falling back to gemma3:27b (same size, same role)
+    # for those classes keeps the dropdown UX consistent.
+    case "$GPU_CLASS" in
+      gb10)           SUGGESTED="all" ;;
+      blackwell-pro)  SUGGESTED="qwen3-9b qwen3-35b gemma3 qwen3-coder-q4 qwen3-coder-q8 embed" ;;
+      blackwell-5090) SUGGESTED="qwen3-9b qwen3-35b gemma3 embed" ;;
+      ada-4090)       SUGGESTED="qwen3-9b qwen3-35b gemma4 embed" ;;
+      nvidia-other)
+        if   (( GPU_VRAM >= 90000 )); then SUGGESTED="all"
+        elif (( GPU_VRAM >= 45000 )); then SUGGESTED="qwen3-9b qwen3-35b gemma4 embed"
+        elif (( GPU_VRAM >= 20000 )); then SUGGESTED="qwen3-9b qwen3-35b embed"
+        else                               SUGGESTED="qwen3-9b embed"
+        fi ;;
+      *)              SUGGESTED="qwen3-9b embed" ;;
+    esac
+    echo "Recommended for this host (class: ${GPU_CLASS}): ${SUGGESTED}"
     if ask "Download this set?"; then MODELS_ARG="$SUGGESTED"
     else
       read -rp "Custom (e.g. qwen3-9b embed): " MODELS_ARG
@@ -351,8 +341,8 @@ cat <<EOF
 Next steps:
 
   1. Create the first admin user in a single command (LibreChat account +
-     LiteLLM user + virtual key + auto-registered LibreChat keys + default
-     agent / preset):
+     LiteLLM user + virtual key + auto-registered LibreChat keys + two
+     KloudChat agents (Gemma4 / Qwen3.5) + default preset):
 
        ./scripts/manage.sh user create \\
          --id admin@example.com --name 'Admin' --username admin \\

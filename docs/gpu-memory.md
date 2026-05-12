@@ -6,7 +6,7 @@
 |---|---|---|---|
 | Ollama | qwen3.5:9b (Q4) | ~5GB | 대화 후 2분 유지 |
 | Ollama | qwen3.5:35b (Q4) | ~20GB | 대화 후 2분 유지 |
-| Ollama | gemma3:27b (Q4) | ~17GB | 대화 후 2분 유지 |
+| Ollama | gemma4:26b (Q4) | ~17GB | 대화 후 2분 유지 |
 | Ollama | qwen3-coder-next (Q4_K_M) | ~51GB | 대화 후 2분 유지 |
 | Ollama | qwen3-coder-next (Q8_0) | ~84GB | 대화 후 2분 유지 |
 | Ollama | bge-m3 (embed) | ~1.2GB | RAG 요청 시 |

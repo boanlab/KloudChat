@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Ollama host installer — run this directly on the host that will serve Ollama.
 #
-# Linux  : official install.sh → systemd override to bind OLLAMA_HOST=0.0.0.0 → enable service
-# macOS  : official install.sh (or brew) → launchctl env var OLLAMA_HOST=0.0.0.0
+# Linux : official install.sh → systemd override to bind OLLAMA_HOST=0.0.0.0 → enable service
 #
-# Both branches force 0.0.0.0 binding so Docker containers can reach the host
-# through host.docker.internal:11434.
+# The systemd override forces 0.0.0.0 binding so Docker containers can reach
+# the host through host.docker.internal:11434.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,19 +27,14 @@ ARCH="$(detect_arch)"
 
 if [[ "$OS" == unsupported || "$ARCH" == unsupported ]]; then
   error "Unsupported environment: $(uname -s) $(uname -m)"
-  error "Supported: Linux (x86_64/aarch64), macOS (Intel/Apple Silicon)"
+  error "Supported: Linux (x86_64/aarch64)"
   exit 1
 fi
 
-# Linux needs systemd edits → root required. macOS uses user-scoped tools.
-if [[ "$OS" == linux && $EUID -ne 0 ]]; then
+if [[ $EUID -ne 0 ]]; then
   error "Linux requires root privileges."
   echo "  sudo $0"
   exit 1
-fi
-
-if [[ "$OS" == macos && $EUID -eq 0 ]]; then
-  warn "On macOS, run without sudo (homebrew / launchctl are user-scoped)."
 fi
 
 echo "=== Ollama installer ==="
@@ -57,8 +51,6 @@ check_gpu() {
     if has_gb10; then
       info "GB10 unified memory (DGX Spark) — VRAM is treated as system RAM"
     fi
-  elif [[ "$OS" == macos ]]; then
-    info "macOS — Ollama uses Metal (Apple GPU) acceleration automatically."
   else
     warn "No NVIDIA GPU detected. Ollama will fall back to CPU (very slow)."
     warn "If you need GPU support, install the CUDA driver first:"
@@ -79,18 +71,13 @@ install_ollama() {
     [[ "$ans" =~ ^[Yy]$ ]] || { info "Skipping install."; return 0; }
   fi
 
-  if [[ "$OS" == macos ]] && command -v brew &>/dev/null; then
-    info "Installing Ollama via Homebrew..."
-    brew install ollama
-  else
-    info "Running the official Ollama install script..."
-    curl -fsSL https://ollama.com/install.sh | sh
-  fi
+  info "Running the official Ollama install script..."
+  curl -fsSL https://ollama.com/install.sh | sh
   info "Ollama installed"
 }
 
 # ──────────────────────────────────────────────────────────
-# Linux: systemd override (binds 0.0.0.0)
+# systemd override (binds 0.0.0.0)
 #
 # Any user customisations already in override.conf (e.g. OLLAMA_MODELS) are
 # preserved; only missing keys are appended.
@@ -148,37 +135,6 @@ configure_linux() {
 }
 
 # ──────────────────────────────────────────────────────────
-# macOS: launchctl env var + restart whichever Ollama is running.
-#
-# Ollama can run two ways on macOS:
-#   1) Ollama.app (brew install --cask ollama) — menu-bar GUI.
-#   2) `ollama serve` (brew install ollama) — CLI daemon.
-#
-# Both read OLLAMA_HOST. `launchctl setenv` makes the value visible to all
-# user-launched processes for the current session. To survive reboot a
-# LaunchAgent plist is required — see docs/ollama-tuning.md (macOS section).
-# ──────────────────────────────────────────────────────────
-configure_macos() {
-  info "macOS: setting launchctl env OLLAMA_HOST=0.0.0.0:11434"
-  launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
-
-  # If the GUI app is already running, it must restart to pick up the new env.
-  if pgrep -x "Ollama" &>/dev/null; then
-    info "Restarting Ollama.app to apply the new OLLAMA_HOST..."
-    osascript -e 'quit app "Ollama"' 2>/dev/null || true
-    sleep 1
-    open -a Ollama 2>/dev/null || true
-  elif ! pgrep -f "ollama serve" &>/dev/null; then
-    info "Starting the Ollama daemon in the background..."
-    nohup ollama serve >/tmp/ollama.log 2>&1 &
-    disown
-  fi
-
-  warn "To persist OLLAMA_HOST across reboots, register a LaunchAgent — see:"
-  warn "  docs/ollama-tuning.md (macOS section)"
-}
-
-# ──────────────────────────────────────────────────────────
 # Wait for Ollama to respond
 # ──────────────────────────────────────────────────────────
 wait_for_ollama() {
@@ -192,20 +148,14 @@ wait_for_ollama() {
     sleep 2
   done
   error "Ollama did not respond within the timeout."
-  if [[ "$OS" == linux ]]; then
-    echo "  journalctl -u ollama -n 30 --no-pager"
-  else
-    echo "  tail -n 50 /tmp/ollama.log         (CLI daemon)"
-    echo "  Console.app — search for 'ollama'  (GUI app)"
-  fi
+  echo "  journalctl -u ollama -n 30 --no-pager"
   exit 1
 }
 
 # ──────────────────────────────────────────────────────────
-# Firewall hint (Linux only)
+# Firewall hint
 # ──────────────────────────────────────────────────────────
 firewall_hint() {
-  [[ "$OS" == linux ]] || return 0
   if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
     warn "ufw is active."
     warn "  Do not expose port 11434 externally. Docker → host traffic uses"
@@ -228,8 +178,7 @@ update_env() {
     if [[ "$old" == "$val" ]]; then
       info ".env unchanged: ${key}=${val}"; return 0
     fi
-    # `sed -i.bak` works on both GNU sed and BSD sed (macOS).
-    sed -i.bak "s|^${key}=.*|${key}=${val}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
+    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
     info ".env updated: ${key}  ${old} → ${val}"
   else
     echo "${key}=${val}" >> "$ENV_FILE"
@@ -246,12 +195,8 @@ print_summary() {
   echo "  Ollama version : $(ollama --version 2>/dev/null || echo 'unknown')"
   echo "  Bind address   : 0.0.0.0:11434"
   echo "  Docker access  : host.docker.internal:11434"
-  if [[ "$OS" == linux ]]; then
-    echo "  Service state  : $(systemctl is-active ollama 2>/dev/null || echo unknown)"
-    echo "  Logs           : journalctl -u ollama -f"
-  else
-    echo "  Daemon         : $(pgrep -fl 'ollama (serve|app)' 2>/dev/null | head -1 || echo 'no ollama process running')"
-  fi
+  echo "  Service state  : $(systemctl is-active ollama 2>/dev/null || echo unknown)"
+  echo "  Logs           : journalctl -u ollama -f"
   echo
   echo "Next steps:"
   echo "  1. Download models : ./scripts/download-ollama-models.sh"
@@ -264,14 +209,8 @@ print_summary() {
 # ──────────────────────────────────────────────────────────
 check_gpu
 install_ollama
-
-if [[ "$OS" == linux ]]; then
-  configure_linux
-  firewall_hint
-else
-  configure_macos
-fi
-
+configure_linux
+firewall_hint
 wait_for_ollama
 update_env "OLLAMA_API_BASE" "http://host.docker.internal:11434"
 print_summary

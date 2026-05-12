@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
+source "${SCRIPT_DIR}/lib/platform.sh"
 
 usage() {
   cat <<EOF
@@ -51,7 +52,7 @@ cmd_team_create() {
   # cannot map the wildcard back to model_list when responding with a user
   # key, so only ollama/llama2 ends up exposed.
   local alias="" budget=9999 duration="1mo" tpm=100000 rpm=500
-  local models="ollama/qwen3.5:9b,ollama/qwen3.5:35b,ollama/gemma3:27b,ollama/qwen3-coder-next:q4_K_M,ollama/qwen3-coder-next:q8_0"
+  local models="ollama/qwen3.5:9b,ollama/qwen3.5:35b,ollama/gemma4:26b,ollama/gemma3:27b,ollama/qwen3-coder-next:q4_K_M,ollama/qwen3-coder-next:q8_0"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --alias)    alias="$2";    shift 2 ;;
@@ -243,8 +244,16 @@ register_litellm_key_for_librechat_user() {
   fi
 }
 
-# Create a default LibreChat agent for the new user with every tool enabled
-# so the very first login can already use image / web search / code / RAG.
+# Create default LibreChat agents for the new user. We ship two presets:
+#   * 'KloudChat (<chat-model>)'   — general chat, no image gen (default preset)
+#   * 'KloudChat (Qwen3.5:35b)'    — full toolset including stable-diffusion
+# The chat model differs by GPU class:
+#   * Desktop Blackwell (RTX 5090 / RTX PRO 6000) → gemma3:27b
+#     (gemma4 has Ollama load failures / kernel crashes on those GPUs)
+#   * Everything else (DGX Spark GB10 / RTX 4090 / other NVIDIA) → gemma4:26b
+# gemma4 also emits hyphenated tool names ('stable-diffusion') as ReAct text
+# instead of OpenAI tool_calls — LibreChat can't execute that — so we always
+# route image generation through the qwen3.5:35b build regardless of GPU.
 create_default_agent_for_user() {
   local user_email="$1"
   local mongo_user mongo_pass
@@ -259,98 +268,118 @@ create_default_agent_for_user() {
     return 0
   fi
 
+  # Pick the chat-side model based on the host GPU. Falls back to gemma4 when
+  # detection isn't possible (e.g. running this script from a host without
+  # nvidia-smi against a remote Mongo).
+  local chat_model chat_label
+  if gpu_supports_gemma4; then
+    chat_model="ollama/gemma4:26b"; chat_label="Gemma4:26b"
+  else
+    chat_model="ollama/gemma3:27b"; chat_label="Gemma3:27b"
+  fi
+  local chat_agent_name="KloudChat (${chat_label})"
+
   local result
   result=$(docker exec chat-mongodb mongosh --quiet \
     -u "$mongo_user" -p "$mongo_pass" --authenticationDatabase admin \
     LibreChat --eval "
       var u = db.users.findOne({email: '$user_email'}, {_id:1});
       if (!u) { print('NO_USER'); quit(); }
-      var existing = db.agents.findOne({author: u._id, name: 'KloudChat'}, {_id:1});
-      if (existing) { print('AGENT_EXISTS:' + existing._id); quit(); }
       var now = new Date();
-      var agentId = 'agent_' + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12);
-      var versionEntry = {
-        name: 'KloudChat', description: '', instructions: '',
-        provider: 'LiteLLM', model: 'ollama/qwen3.5:35b',
-        tools: ['stable-diffusion','execute_code','file_search','web_search'],
-        artifacts: '', category: 'general',
-        support_contact: {name:'', email:''},
-        agent_ids: [], edges: [], conversation_starters: [],
-        is_promoted: false, mcpServerNames: [], tool_options: {},
-        createdAt: now, updatedAt: now
-      };
-      var insertResult = db.agents.insertOne({
-        id: agentId, name: 'KloudChat', description: '', instructions: '',
-        provider: 'LiteLLM', model: 'ollama/qwen3.5:35b', artifacts: '',
-        tools: ['stable-diffusion','execute_code','file_search','web_search'],
-        tool_kwargs: [], author: u._id,
-        agent_ids: [], edges: [], conversation_starters: [],
-        versions: [versionEntry], category: 'general',
-        support_contact: {name:'', email:''},
-        is_promoted: false, mcpServerNames: [], tool_options: {},
-        end_after_tools: false, hide_sequential_outputs: false,
-        createdAt: now, updatedAt: now, __v: 0
-      });
-      var agentObjectId = insertResult.insertedId;
-
-      // ACL entries — LibreChat grants the user permission over this agent
-      // via two resourceType rows (agent + remoteAgent) with permBits=15
-      // (owner). Required when inserting agents directly into Mongo for
-      // them to show under 'My Agents'.
       var roleAgent       = db.accessroles.findOne({accessRoleId: 'agent_owner'});
       var roleRemoteAgent = db.accessroles.findOne({accessRoleId: 'remoteAgent_owner'});
-      if (roleAgent && roleRemoteAgent) {
-        db.aclentries.insertMany([
-          {
-            principalModel: 'User', principalType: 'user', principalId: u._id,
-            resourceType: 'agent', resourceId: agentObjectId,
-            permBits: 15, roleId: roleAgent._id,
-            grantedAt: now, grantedBy: u._id,
-            createdAt: now, updatedAt: now, __v: 0
-          },
-          {
-            principalModel: 'User', principalType: 'user', principalId: u._id,
-            resourceType: 'remoteAgent', resourceId: agentObjectId,
-            permBits: 15, roleId: roleRemoteAgent._id,
-            grantedAt: now, grantedBy: u._id,
-            createdAt: now, updatedAt: now, __v: 0
-          }
-        ]);
-      } else {
-        print('WARN_NO_ACL_ROLES');
+
+      function createAgent(displayName, model, tools) {
+        var existing = db.agents.findOne({author: u._id, name: displayName}, {_id:1, id:1});
+        if (existing) {
+          print('EXISTS:' + displayName + ':' + existing.id);
+          return existing.id;
+        }
+        var agentId = 'agent_' + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12);
+        var versionEntry = {
+          name: displayName, description: '', instructions: '',
+          provider: 'LiteLLM', model: model,
+          tools: tools,
+          artifacts: '', category: 'general',
+          support_contact: {name:'', email:''},
+          agent_ids: [], edges: [], conversation_starters: [],
+          is_promoted: false, mcpServerNames: [], tool_options: {},
+          createdAt: now, updatedAt: now
+        };
+        var ins = db.agents.insertOne({
+          id: agentId, name: displayName, description: '', instructions: '',
+          provider: 'LiteLLM', model: model, artifacts: '',
+          tools: tools,
+          tool_kwargs: [], author: u._id,
+          agent_ids: [], edges: [], conversation_starters: [],
+          versions: [versionEntry], category: 'general',
+          support_contact: {name:'', email:''},
+          is_promoted: false, mcpServerNames: [], tool_options: {},
+          end_after_tools: false, hide_sequential_outputs: false,
+          createdAt: now, updatedAt: now, __v: 0
+        });
+        // ACL — two resourceType rows (agent + remoteAgent) so the agent shows
+        // under 'My Agents' when inserted directly via Mongo.
+        if (roleAgent && roleRemoteAgent) {
+          db.aclentries.insertMany([
+            { principalModel: 'User', principalType: 'user', principalId: u._id,
+              resourceType: 'agent', resourceId: ins.insertedId,
+              permBits: 15, roleId: roleAgent._id,
+              grantedAt: now, grantedBy: u._id,
+              createdAt: now, updatedAt: now, __v: 0 },
+            { principalModel: 'User', principalType: 'user', principalId: u._id,
+              resourceType: 'remoteAgent', resourceId: ins.insertedId,
+              permBits: 15, roleId: roleRemoteAgent._id,
+              grantedAt: now, grantedBy: u._id,
+              createdAt: now, updatedAt: now, __v: 0 }
+          ]);
+        } else {
+          print('WARN_NO_ACL_ROLES');
+        }
+        print('CREATED:' + displayName + ':' + agentId);
+        return agentId;
       }
 
-      // Default preset — auto-select the KloudChat agent for new chats.
-      // LibreChat stores the user field as a String (toString of the ObjectId).
-      // Only one defaultPreset is allowed per user, so unset any existing.
-      var userIdStr = u._id.toString();
-      db.presets.updateMany({user: userIdStr, defaultPreset: true}, {\$unset: {defaultPreset: '', order: ''}});
-      var presetId = 'preset_' + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12);
-      db.presets.insertOne({
-        presetId: presetId,
-        title: 'KloudChat',
-        user: userIdStr,
-        defaultPreset: true,
-        order: 1,
-        endpoint: 'agents',
-        agent_id: agentId,
-        createdAt: now, updatedAt: now, __v: 0
-      });
+      var chatId = createAgent('${chat_agent_name}', '${chat_model}',
+        ['execute_code','file_search','web_search']);
+      var qwenId = createAgent('KloudChat (Qwen3.5:35b)', 'ollama/qwen3.5:35b',
+        ['stable-diffusion','execute_code','file_search','web_search']);
 
-      print('AGENT_CREATED:' + agentId);
-    " 2>&1 | tail -3)
+      // Default preset — prefer the chat-side build for new chats; fall back to
+      // Qwen3.5 if it didn't get created for some reason.
+      var defaultAgentId = chatId || qwenId;
+      var defaultTitle = chatId ? '${chat_agent_name}' : 'KloudChat (Qwen3.5:35b)';
+      if (defaultAgentId) {
+        var userIdStr = u._id.toString();
+        db.presets.updateMany({user: userIdStr, defaultPreset: true}, {\$unset: {defaultPreset: '', order: ''}});
+        var presetId = 'preset_' + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12);
+        db.presets.insertOne({
+          presetId: presetId,
+          title: defaultTitle,
+          user: userIdStr,
+          defaultPreset: true,
+          order: 1,
+          endpoint: 'agents',
+          agent_id: defaultAgentId,
+          createdAt: now, updatedAt: now, __v: 0
+        });
+        print('DEFAULT_PRESET:' + defaultTitle);
+      }
+    " 2>&1)
 
-  if echo "$result" | grep -q 'AGENT_CREATED:'; then
-    local aid
-    aid=$(echo "$result" | grep -oE 'agent_[a-zA-Z0-9_-]+')
-    echo "Default agent created: KloudChat (id=$aid, tools=stable-diffusion/execute_code/file_search/web_search, model=ollama/qwen3.5:35b)"
-  elif echo "$result" | grep -q 'AGENT_EXISTS:'; then
-    echo "Default agent already exists: KloudChat (reused)"
-  elif echo "$result" | grep -q 'NO_USER'; then
+  if echo "$result" | grep -q 'NO_USER'; then
     echo "  ⚠ Default agent creation failed: LibreChat user _id not found" >&2
-  else
-    echo "  ⚠ Default agent creation failed: $(echo "$result" | tail -1)" >&2
+    return 0
   fi
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      CREATED:*)        echo "Agent created: ${line#CREATED:}" ;;
+      EXISTS:*)         echo "Agent already exists: ${line#EXISTS:} (reused)" ;;
+      DEFAULT_PRESET:*) echo "Default preset → ${line#DEFAULT_PRESET:}" ;;
+      WARN_NO_ACL_ROLES) echo "  ⚠ ACL roles missing — agent may not appear under 'My Agents'" >&2 ;;
+    esac
+  done <<< "$result"
 }
 
 cmd_user_list() {

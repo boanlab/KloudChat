@@ -83,13 +83,9 @@ docker logs -f --tail 0 tts 2>&1 | \
   stdbuf -oL grep -iE "POST|speech|tts|generated|synthe|voice" | \
   format "$M" "🔊" "TTS      " &
 
-# Ollama — Linux uses systemd, macOS writes to /tmp/ollama.log (install-ollama.sh)
+# Ollama — host service via systemd (configured by install-ollama.sh).
 if command -v journalctl &>/dev/null; then
   journalctl -u ollama -f -n 0 --no-pager 2>&1 | \
-    stdbuf -oL grep -iE "llm load|loaded|gpu memory|prompt|generate|embedding" | \
-    format "$G" "⚡" "Ollama   " &
-elif [[ -f /tmp/ollama.log ]]; then
-  tail -F /tmp/ollama.log 2>/dev/null | \
     stdbuf -oL grep -iE "llm load|loaded|gpu memory|prompt|generate|embedding" | \
     format "$G" "⚡" "Ollama   " &
 fi

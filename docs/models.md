@@ -10,7 +10,7 @@
   litellm_params:
     model: ollama_chat/qwen3.5:9b
     api_base: os.environ/OLLAMA_API_BASE
-# ... qwen3.5:35b, gemma3:27b, qwen3-coder-next:q4_K_M, qwen3-coder-next:q8_0 동일 패턴
+# ... qwen3.5:35b, gemma4:26b, qwen3-coder-next:q4_K_M, qwen3-coder-next:q8_0 동일 패턴
 ```
 
 LiteLLM 에서 모델명은 `ollama/<Ollama태그>` 형태가 됩니다 (예: `ollama/qwen3.5:9b`).
@@ -22,10 +22,13 @@ LiteLLM 에서 모델명은 `ollama/<Ollama태그>` 형태가 됩니다 (예: `o
 |---|---|---|
 | `qwen3.5:9b` | `ollama/qwen3.5:9b` | 경량·타이틀 생성 |
 | `qwen3.5:35b` | `ollama/qwen3.5:35b` | 범용 주력 |
-| `gemma3:27b` | `ollama/gemma3:27b` | 창의·UI |
+| `gemma4:26b` | `ollama/gemma4:26b` | 창의·UI — DGX Spark / RTX 4090 / 기타 NVIDIA |
+| `gemma3:27b` | `ollama/gemma3:27b` | 창의·UI — RTX 5090 / RTX PRO 6000 Blackwell 폴백 (gemma4 Ollama 이슈 우회) |
 | `qwen3-coder-next:q4_K_M` | `ollama/qwen3-coder-next:q4_K_M` | 코딩 (경량) |
 | `qwen3-coder-next:q8_0` | `ollama/qwen3-coder-next:q8_0` | 코딩 (고품질) |
 | `bge-m3` | — (rag_api 직접 호출) | RAG 임베딩 (다국어, 한국어 우수) |
+
+`setup.sh` 가 `nvidia-smi --query-gpu=name` 결과로 GPU 클래스를 분류하고 적절한 모델 셋을 추천합니다 (`scripts/lib/platform.sh` 의 `detect_gpu_class`). 데스크톱 Blackwell (RTX 5090 / RTX PRO 6000 Blackwell) 에서는 Ollama 가 gemma4 를 안정적으로 로드하지 못해 (ollama#15238, #15264, #14374) `gemma3:27b` 를 일반 채팅 default 로 사용합니다.
 
 ### 모델 다운로드
 
@@ -93,7 +96,7 @@ GEMINI_API_KEY=AIza...
 
 KloudChat 은 이미지 생성을 ComfyUI 컨테이너로 일원화합니다. LibreChat 의 내장 stable-diffusion 툴은 A1111 형식만 알아듣기 때문에 앞에 얇은 어댑터 (`comfyui-shim`) 를 두고, shim 이 A1111 요청을 받아 모델별 워크플로 템플릿 (`comfyui-shim/workflows/*.json`) 으로 변환해 ComfyUI 큐에 넣고 결과 이미지를 base64 로 돌려줍니다.
 
-지원 환경: **Linux + NVIDIA GPU (amd64 / arm64 모두, DGX Spark 포함)**. macOS 는 Docker Desktop 이 GPU 를 컨테이너로 노출하지 않아 자동 제외됩니다.
+지원 환경: **Linux + NVIDIA GPU (amd64 / arm64 모두, DGX Spark 포함)**. GPU 가 없는 호스트에서는 ComfyUI 컨테이너가 자동 제외됩니다.
 
 ### 가중치 다운로드
 
@@ -118,7 +121,7 @@ KloudChat 은 이미지 생성을 ComfyUI 컨테이너로 일원화합니다. Li
 
 ### 모델 선택
 
-LibreChat 에이전트 / 채팅에서 이미지 생성을 호출할 때 `override_settings.sd_model_checkpoint` 값으로 alias 를 지정하면 shim 이 해당 워크플로로 라우팅합니다 (기본값 `sdxl`).
+LibreChat 에이전트 / 채팅에서 이미지 생성을 호출할 때 `override_settings.sd_model_checkpoint` 값으로 alias 를 지정하면 shim 이 해당 워크플로로 라우팅합니다 (기본값 `qwen-image`).
 
 ### 외부 포트 / 디버깅
 

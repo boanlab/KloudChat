@@ -3,9 +3,6 @@
 # runtime. DGX Spark (Linux aarch64 + GB10) is supported because NVIDIA ships
 # aarch64 CUDA base images and PyTorch publishes aarch64+CUDA wheels.
 #
-# macOS is intentionally not supported here: Docker Desktop on macOS cannot
-# expose the Apple GPU to containers, so ComfyUI would fall back to CPU and be
-# unusably slow. Run ComfyUI natively on the host for Mac use cases.
 # CUDA 12.8+ runtime is required for Blackwell (sm_120 / sm_121) GPUs such as
 # the GB10 in DGX Spark. PyTorch's cu124 wheels were compiled without sm_120
 # kernels and fail at runtime with "no kernel image is available".

@@ -1,6 +1,5 @@
 # NVIDIA GPU 가 있는 Linux 호스트에서 추가로 띄우는 서비스.
-# amd64 / arm64 (DGX Spark) 양쪽 모두 동작. macOS 는 Docker Desktop 이 GPU 를
-# 컨테이너로 노출하지 않으므로 자동 제외.
+# amd64 / arm64 (DGX Spark) 양쪽 모두 동작.
 #
 # 사용:  ./scripts/deploy.sh up -d   (deploy.sh 가 자동으로 -f 옵션 조합)
 # 직접:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
@@ -52,7 +51,7 @@ services:
     restart: always
     environment:
       - COMFYUI_URL=http://comfyui:8188
-      - DEFAULT_MODEL=sdxl
+      - DEFAULT_MODEL=qwen-image
       - LOG_LEVEL=INFO
     depends_on:
       comfyui:

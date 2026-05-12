@@ -4,9 +4,9 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  호스트 (Linux / macOS)                              │
+│  호스트 (Linux)                                      │
 │                                                     │
-│  Ollama (:11434) ─── GPU 직접 접근 (NVIDIA / Metal)  │
+│  Ollama (:11434) ─── GPU 직접 접근 (NVIDIA)          │
 │     ↑  host.docker.internal:11434                   │
 │  ┌─────────────────────────────────────────────┐   │
 │  │  Docker Network: kloudchat                  │   │
@@ -93,7 +93,7 @@ LibreChat 의 내장 stable-diffusion 툴은 A1111 형식 (`/sdapi/v1/txt2img`, 
 ```
 이미지: 자체 빌드 (Dockerfile.comfyui-shim — python:3.11-slim, FastAPI)
 포트:   7860 (A1111 호환, 내부 전용)
-환경변수: COMFYUI_URL=http://comfyui:8188, DEFAULT_MODEL=sdxl
+환경변수: COMFYUI_URL=http://comfyui:8188, DEFAULT_MODEL=qwen-image
 ```
 
 ## 네트워크

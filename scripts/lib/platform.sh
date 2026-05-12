@@ -4,7 +4,6 @@
 #
 # Supported environments:
 #   - Linux  (x86_64 / aarch64, optional NVIDIA GPU)
-#   - macOS  (Intel x86_64 / Apple Silicon arm64, CPU only)
 #   - DGX Spark (Linux aarch64 + GB10 unified memory)
 
 # Prevent double-sourcing
@@ -15,11 +14,10 @@ __KC_PLATFORM_SH=1
 # OS / architecture
 # ──────────────────────────────────────────────────────────
 
-# detect_os → linux | macos | unsupported
+# detect_os → linux | unsupported
 detect_os() {
   case "$(uname -s)" in
     Linux)  echo linux ;;
-    Darwin) echo macos ;;
     *)      echo unsupported ;;
   esac
 }
@@ -34,7 +32,6 @@ detect_arch() {
 }
 
 is_linux() { [[ "$(detect_os)" == linux ]]; }
-is_macos() { [[ "$(detect_os)" == macos ]]; }
 
 # ──────────────────────────────────────────────────────────
 # GPU
@@ -74,31 +71,54 @@ get_gpu_name() {
   nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1
 }
 
+# detect_gpu_class — classify the primary NVIDIA GPU into a KloudChat-tuned
+# bucket. Used by setup.sh (model recommendations) and manage.sh (default
+# agent model). Returns one of:
+#   gb10           — DGX Spark unified memory (gemma4 works here)
+#   blackwell-pro  — RTX PRO 6000 Blackwell desktop card (96 GB)
+#   blackwell-5090 — RTX 5090 (32 GB)
+#   ada-4090       — RTX 4090 (24 GB, Ada Lovelace)
+#   nvidia-other   — any other NVIDIA GPU
+#   none           — no NVIDIA GPU detected
+# gemma4 on desktop Blackwell (5090 / RTX PRO 6000) hits MMQ kernel crashes and
+# load-time 500 errors in Ollama as of 2026-05; gemma3:27b is the safe fallback
+# for those classes. See ollama#15238, ollama#15264, ollama#14374.
+detect_gpu_class() {
+  has_nvidia_gpu || { echo "none"; return; }
+  has_gb10 && { echo "gb10"; return; }
+  local name; name="$(get_gpu_name)"
+  case "$name" in
+    *"RTX PRO 6000 Blackwell"*|*"RTX 6000 Pro Blackwell"*|*"RTX 6000 PRO Blackwell"*)
+                            echo "blackwell-pro" ;;
+    *"RTX 5090"*)           echo "blackwell-5090" ;;
+    *"RTX 4090"*)           echo "ada-4090" ;;
+    *)                      echo "nvidia-other" ;;
+  esac
+}
+
+# gpu_supports_gemma4 — true when the detected GPU runs gemma4 reliably.
+# DGX Spark / Ada Lovelace / other-NVIDIA OK; desktop Blackwell (5090, RTX PRO
+# 6000) currently broken — fall back to gemma3:27b.
+gpu_supports_gemma4() {
+  case "$(detect_gpu_class)" in
+    blackwell-pro|blackwell-5090|none) return 1 ;;
+    *)                                 return 0 ;;
+  esac
+}
+
 # ──────────────────────────────────────────────────────────
 # Memory / disk / ports
 # ──────────────────────────────────────────────────────────
 
 # get_mem_mb — total system RAM in MB.
 get_mem_mb() {
-  if is_macos; then
-    # sysctl returns bytes.
-    local bytes
-    bytes="$(sysctl -n hw.memsize 2>/dev/null || echo 0)"
-    echo $(( bytes / 1024 / 1024 ))
-  else
-    awk '/^MemTotal:/ {print int($2/1024); exit}' /proc/meminfo 2>/dev/null || echo 0
-  fi
+  awk '/^MemTotal:/ {print int($2/1024); exit}' /proc/meminfo 2>/dev/null || echo 0
 }
 
 # get_free_disk_gb <path> — free space (GB) on the partition that holds <path>.
 get_free_disk_gb() {
   local target="${1:-.}"
-  if is_macos; then
-    # BSD df: -g reports GiB (similar to Linux -BG).
-    df -g "$target" 2>/dev/null | awk 'NR==2 {print $4; exit}'
-  else
-    df -BG "$target" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4; exit}'
-  fi
+  df -BG "$target" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4; exit}'
 }
 
 # port_in_use <port> — returns 0 when the TCP port is in LISTEN state.
@@ -155,6 +175,7 @@ platform_summary() {
   if has_nvidia_gpu; then
     echo "  GPU   : $(get_gpu_name)"
     echo "  VRAM  : $(get_gpu_vram_mb) MB"
+    echo "  CLASS : $(detect_gpu_class)"
     has_gb10 && echo "  NOTE  : GB10 unified memory (VRAM = system RAM)"
   else
     echo "  GPU   : (none — CPU only)"
