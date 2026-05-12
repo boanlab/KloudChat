@@ -13,9 +13,9 @@ LibreChat + LiteLLM + Ollama 를 중심으로 RAG, 웹 검색, 음성, 이미지
 | 웹 검색 | SearXNG |
 | 코드 실행 샌드박스 | LibreCodeInterpreter |
 | HWP/PDF/DOCX 파일 업로드 | LibreChat RAG API |
-| 음성 출력 (TTS) | openedai-speech (piper + xtts_v2, 다국어/한국어, multi-arch + CPU 가능) |
-| 음성 입력 (STT) | Whisper (Linux + amd64 + NVIDIA GPU 전용) |
-| 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image, Qwen-Image-Edit (Linux + NVIDIA GPU, amd64/arm64) |
+| 음성 출력 (TTS) | openedai-speech (piper + xtts_v2, 다국어/한국어) |
+| 음성 입력 (STT) | Whisper |
+| 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image, Qwen-Image-Edit |
 | 팀·사용자·예산 관리 | LiteLLM + CLI 스크립트 |
 
 ## 지원 환경
@@ -24,7 +24,7 @@ LibreChat + LiteLLM + Ollama 를 중심으로 RAG, 웹 검색, 음성, 이미지
 |---|:---:|:---:|:---:|
 | Linux x86_64 + NVIDIA GPU | ✅ | ✅ | ✅ |
 | Linux x86_64 (CPU only) | ✅ (느림) | ❌ | ❌ |
-| Linux aarch64 — **DGX Spark (GB10)** | ✅ | ✅ | ❌ (Whisper 이미지 amd64 전용) |
+| Linux aarch64 — **DGX Spark (GB10)** | ✅ | ✅ | ❌ (amd64 전용) |
 
 `./scripts/deploy.sh` 와 `./scripts/setup.sh` 가 아키텍처·GPU 를 자동 감지해서 사용 가능한 서비스만 띄웁니다.
 
