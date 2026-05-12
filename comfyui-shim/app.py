@@ -43,7 +43,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 COMFYUI_URL = os.getenv("COMFYUI_URL", "http://comfyui:8188").rstrip("/")
 WORKFLOWS_DIR = Path(__file__).parent / "workflows"
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "sdxl")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-image")
 POLL_INTERVAL_SEC = float(os.getenv("POLL_INTERVAL_SEC", "0.5"))
 POLL_TIMEOUT_SEC = float(os.getenv("POLL_TIMEOUT_SEC", "1800"))
 

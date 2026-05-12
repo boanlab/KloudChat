@@ -22,9 +22,9 @@ endpoints:
       # 5개 모델을 default 로 명시 (LibreChat 가 fetch 실패 시 이 목록을 사용).
       models:
         default:
+          - "ollama/gemma4:26b"
           - "ollama/qwen3.5:9b"
           - "ollama/qwen3.5:35b"
-          - "ollama/gemma3:27b"
           - "ollama/qwen3-coder-next:q4_K_M"
           - "ollama/qwen3-coder-next:q8_0"
         fetch: true

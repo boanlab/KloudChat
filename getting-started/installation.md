@@ -118,7 +118,7 @@ ComfyUI 컨테이너가 활성화되는 환경 (Linux + NVIDIA GPU + nvidia cont
 | LibreChat | http://localhost:8080 |
 | LiteLLM | http://localhost:8000 |
 
-회원가입이 막혀 있거나 (`librechat.yaml` 의 `registration.allowedDomains`) 관리자가 직접 계정을 만드는 경우, 다음 한 줄로 LibreChat 사용자 + LiteLLM 사용자 + 키 발급 + LibreChat keys 자동 등록 + default agent/preset 생성을 동시에 처리합니다.
+회원가입이 막혀 있거나 (`librechat.yaml` 의 `registration.allowedDomains`) 관리자가 직접 계정을 만드는 경우, 다음 한 줄로 LibreChat 사용자 + LiteLLM 사용자 + 키 발급 + LibreChat keys 자동 등록 + 두 개의 기본 agent (Gemma4 / Qwen3.5) + default preset 생성을 동시에 처리합니다.
 
 ```bash
 ./scripts/manage.sh user create \

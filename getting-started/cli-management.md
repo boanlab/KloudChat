@@ -65,7 +65,10 @@ curl --version
 2. LiteLLM 사용자 생성 + 팀 추가 (위와 동일)
 3. LiteLLM 키 자동 발급 (alias = `<username>-key`)
 4. 발급된 키를 LibreChat 의 `keys` 컬렉션에 자동 등록 → 사용자 첫 채팅 시 API Key 입력 단계 생략
-5. 기본 agent (`KloudChat`, 모든 도구 활성) + default preset 자동 생성 → 로그인 후 바로 채팅 가능
+5. 두 개의 기본 agent 자동 생성 + default preset 지정 → 로그인 후 바로 채팅 가능
+   - `KloudChat (Gemma4:26b)` (default) — 일반 대화, `execute_code` / `file_search` / `web_search`
+   - `KloudChat (Qwen3.5:35b)` — `stable-diffusion` 포함 풀 스택 (이미지 생성용)
+   - 분리 이유: gemma4 가 hyphen 함수명(`stable-diffusion`)을 OpenAI tool_calls 로 emit 못 해 도구 실행이 깨지므로, 이미지 생성은 qwen3.5 빌드로 라우팅
 
 ```bash
 ./scripts/manage.sh user create \
@@ -141,5 +144,5 @@ ANTHROPIC_AUTH_TOKEN=sk-... ./scripts/claude-local.sh
 |---|---|---|
 | `ANTHROPIC_MODEL` | `ollama/qwen3-coder-next:q8_0` | 기본 모델 |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `ollama/qwen3-coder-next:q4_K_M` | Sonnet 대체 |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `ollama/qwen3.5:35b` | Haiku 대체 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `ollama/gemma4:26b` | Haiku 대체 |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | `ollama/qwen3-coder-next:q8_0` | Opus 대체 |

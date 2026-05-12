@@ -47,7 +47,7 @@ sudo ./scripts/install-ollama.sh   # macOS 는 sudo 없이
 #    하드웨어 감지해서 적합한 모델 셋 추천 (모델 다운로드가 시간의 대부분, 30~60분 예상)
 ./scripts/setup.sh --yes
 
-# 4. (옵션) admin 사용자 생성 + LiteLLM 키 발급 + LibreChat keys 자동 등록 + default agent 생성
+# 4. (옵션) admin 사용자 생성 + LiteLLM 키 발급 + LibreChat keys 자동 등록 + 기본 agent 2개 (Gemma4/Qwen3.5) 생성
 ./scripts/manage.sh user create \
   --id admin@example.com --name '관리자' --username admin --password '비번8자이상' \
   --budget 9999

@@ -52,7 +52,7 @@ services:
     restart: always
     environment:
       - COMFYUI_URL=http://comfyui:8188
-      - DEFAULT_MODEL=sdxl
+      - DEFAULT_MODEL=qwen-image
       - LOG_LEVEL=INFO
     depends_on:
       comfyui:

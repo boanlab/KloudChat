@@ -56,7 +56,7 @@ type:
 
 ```
 feat: TTS 한국어 voice 추가 (xtts_v2 korean)
-fix: litellm-config.yaml gemma3:27b 들여쓰기 오류 수정
+fix: litellm-config.yaml gemma4:26b 들여쓰기 오류 수정
 docs: GPU 메모리 가이드 Whisper medium 항목 추가
 chore: install-ollama.sh macOS 분기 추가
 ```

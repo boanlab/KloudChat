@@ -273,7 +273,7 @@ Environment="CUDA_VISIBLE_DEVICES=0"
 | 모델 | 크기 | 비고 |
 |---|---|---|
 | qwen3.5:9b (Q4_K_M) | ~6.6 GB | 경량 범용 |
-| gemma3:27b | ~17 GB | 창의·UI |
+| gemma4:26b | ~17 GB | 창의·UI |
 | qwen3.5:35b | ~23 GB | 주력 범용 |
 | qwen3-coder-next:q4_K_M | ~51 GB | 코딩 경량 |
 | qwen3-coder-next:q8_0 | ~84 GB | 코딩 고품질 |
@@ -283,8 +283,8 @@ GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 
 | 조합 | 합계 |
 |---|---|
-| 9b + 35b + gemma3 + embed | ~48 GB |
-| 9b + 35b + gemma3 + coder-q4 + embed | ~99 GB ✅ |
+| 9b + 35b + gemma4 + embed | ~48 GB |
+| 9b + 35b + gemma4 + coder-q4 + embed | ~99 GB ✅ |
 | coder-q8 단독 + embed | ~85 GB ✅ |
 | coder-q8 + 9b + embed | ~92 GB ✅ |
 

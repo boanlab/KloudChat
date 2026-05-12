@@ -10,7 +10,7 @@
   litellm_params:
     model: ollama_chat/qwen3.5:9b
     api_base: os.environ/OLLAMA_API_BASE
-# ... qwen3.5:35b, gemma3:27b, qwen3-coder-next:q4_K_M, qwen3-coder-next:q8_0 동일 패턴
+# ... qwen3.5:35b, gemma4:26b, qwen3-coder-next:q4_K_M, qwen3-coder-next:q8_0 동일 패턴
 ```
 
 LiteLLM 에서 모델명은 `ollama/<Ollama태그>` 형태가 됩니다 (예: `ollama/qwen3.5:9b`).
@@ -22,7 +22,7 @@ LiteLLM 에서 모델명은 `ollama/<Ollama태그>` 형태가 됩니다 (예: `o
 |---|---|---|
 | `qwen3.5:9b` | `ollama/qwen3.5:9b` | 경량·타이틀 생성 |
 | `qwen3.5:35b` | `ollama/qwen3.5:35b` | 범용 주력 |
-| `gemma3:27b` | `ollama/gemma3:27b` | 창의·UI |
+| `gemma4:26b` | `ollama/gemma4:26b` | 창의·UI |
 | `qwen3-coder-next:q4_K_M` | `ollama/qwen3-coder-next:q4_K_M` | 코딩 (경량) |
 | `qwen3-coder-next:q8_0` | `ollama/qwen3-coder-next:q8_0` | 코딩 (고품질) |
 | `bge-m3` | — (rag_api 직접 호출) | RAG 임베딩 (다국어, 한국어 우수) |
@@ -118,7 +118,7 @@ KloudChat 은 이미지 생성을 ComfyUI 컨테이너로 일원화합니다. Li
 
 ### 모델 선택
 
-LibreChat 에이전트 / 채팅에서 이미지 생성을 호출할 때 `override_settings.sd_model_checkpoint` 값으로 alias 를 지정하면 shim 이 해당 워크플로로 라우팅합니다 (기본값 `sdxl`).
+LibreChat 에이전트 / 채팅에서 이미지 생성을 호출할 때 `override_settings.sd_model_checkpoint` 값으로 alias 를 지정하면 shim 이 해당 워크플로로 라우팅합니다 (기본값 `qwen-image`).
 
 ### 외부 포트 / 디버깅
 
