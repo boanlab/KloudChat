@@ -8,7 +8,7 @@
 # Branching:
 #   Linux + NVIDIA + nvidia runtime   → base + gpu.yml             (DGX Spark / arm64)
 #   …                          + amd64 → base + gpu.yml + amd64.yml (full GPU stack)
-#   anything else (macOS / GPU-less)   → base only
+#   anything else (GPU-less)          → base only
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,9 +35,7 @@ elif can_use_gpu_services; then
   COMPOSE_FILES+=(-f docker-compose.gpu.yml)
   REASON="${OS}/${ARCH} + NVIDIA GPU — including ComfyUI (image gen). Whisper skipped (CUDA image is amd64 only)."
 else
-  if [[ "$OS" == macos ]]; then
-    REASON="macOS — image gen / STT skipped (Docker Desktop does not expose the Apple GPU). TTS runs on CPU."
-  elif ! has_nvidia_gpu; then
+  if ! has_nvidia_gpu; then
     REASON="${OS}/${ARCH} — no NVIDIA GPU detected. ComfyUI / Whisper skipped. TTS runs on CPU."
   else
     REASON="${OS}/${ARCH} — Docker nvidia runtime is not registered. ComfyUI / Whisper skipped."

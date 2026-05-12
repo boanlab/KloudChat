@@ -14,9 +14,6 @@
 
 VRAM 요구사항은 [GPU 메모리 가이드](../docs/gpu-memory.md) 참고.
 
-> **macOS** 에서는 ComfyUI(이미지) 와 Whisper(STT) 컨테이너가 빠지므로 GPU 가 필요 없습니다.
-> Ollama 는 Metal GPU 가속을 자동 사용합니다.
-
 > **DGX Spark (GB10)** 는 ComfyUI 컨테이너가 정상 동작합니다 (arm64+CUDA 빌드). 통합 메모리 아키텍처라 `nvidia-smi memory.total` 가 `[N/A]` 로 표시되며 KloudChat 스크립트는 이 경우 시스템 RAM 을 VRAM 으로 간주합니다. Whisper 만 amd64-only 라 자동 제외됩니다.
 
 ---
@@ -77,42 +74,6 @@ sudo apt install -y jq curl wget
 # Fedora / RHEL
 sudo dnf install -y jq curl wget
 ```
-
----
-
-## macOS (Intel / Apple Silicon)
-
-> macOS 에서는 ComfyUI(이미지) 와 Whisper(STT) 가 자동 제외됩니다 (Docker Desktop 이 Apple GPU 를 컨테이너로 노출하지 않음).
-> 채팅 · RAG · 웹 검색 · 코드 인터프리터 · TTS 는 모두 동작합니다.
-
-### Docker Desktop
-
-[Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/) 을 설치하고 실행해 둡니다.
-
-```bash
-docker compose version   # v2 가 동봉되어 있는지 확인
-```
-
-### Homebrew (권장)
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew install jq curl wget
-```
-
-### Ollama (호스트 직접 실행)
-
-```bash
-./scripts/install-ollama.sh    # sudo 불필요
-```
-
-스크립트가 수행하는 작업:
-- Ollama 설치 (Homebrew 가 있으면 `brew install ollama`, 없으면 공식 `install.sh`)
-- `launchctl setenv OLLAMA_HOST 0.0.0.0:11434` 등록
-- 이미 떠 있는 Ollama.app 가 있으면 재시작 (환경변수 반영)
-- `.env` 의 `OLLAMA_API_BASE` 자동 갱신
-
-재부팅 후에도 환경변수를 유지하려면 [Ollama 튜닝 가이드](../docs/ollama-tuning.md) 의 macOS — launchctl / LaunchAgent 섹션을 참고하세요.
 
 ---
 

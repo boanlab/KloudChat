@@ -4,9 +4,9 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  호스트 (Linux / macOS)                              │
+│  호스트 (Linux)                                      │
 │                                                     │
-│  Ollama (:11434) ─── GPU 직접 접근 (NVIDIA / Metal)  │
+│  Ollama (:11434) ─── GPU 직접 접근 (NVIDIA)          │
 │     ↑  host.docker.internal:11434                   │
 │  ┌─────────────────────────────────────────────┐   │
 │  │  Docker Network: kloudchat                  │   │

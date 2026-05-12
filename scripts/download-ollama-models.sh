@@ -39,10 +39,7 @@ check_ollama() {
   fi
   if ! ollama list &>/dev/null; then
     echo "error: Ollama server is not responding." >&2
-    case "$(uname -s)" in
-      Linux)  echo "  sudo systemctl start ollama" >&2 ;;
-      Darwin) echo "  open -a Ollama    # or:  ollama serve &" >&2 ;;
-    esac
+    echo "  sudo systemctl start ollama" >&2
     exit 1
   fi
 }

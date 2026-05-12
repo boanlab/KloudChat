@@ -25,10 +25,8 @@ LibreChat + LiteLLM + Ollama 를 중심으로 RAG, 웹 검색, 음성, 이미지
 | Linux x86_64 + NVIDIA GPU | ✅ | ✅ | ✅ |
 | Linux x86_64 (CPU only) | ✅ (느림) | ❌ | ❌ |
 | Linux aarch64 — **DGX Spark (GB10)** | ✅ | ✅ | ❌ (Whisper 이미지 amd64 전용) |
-| macOS Apple Silicon | ✅ (Metal 가속, Docker는 CPU) | ❌ (Docker Desktop 이 GPU 미노출) | ❌ |
-| macOS Intel | ✅ (느림) | ❌ | ❌ |
 
-`./scripts/deploy.sh` 와 `./scripts/setup.sh` 가 OS·아키텍처·GPU 를 자동 감지해서 사용 가능한 서비스만 띄웁니다.
+`./scripts/deploy.sh` 와 `./scripts/setup.sh` 가 아키텍처·GPU 를 자동 감지해서 사용 가능한 서비스만 띄웁니다.
 
 ## 빠른 시작
 
@@ -37,10 +35,8 @@ LibreChat + LiteLLM + Ollama 를 중심으로 RAG, 웹 검색, 음성, 이미지
 git clone https://github.com/boanlab/KloudChat.git
 cd KloudChat
 
-# 2. Ollama 호스트 설치
-#    Linux  : sudo ./scripts/install-ollama.sh    (systemd 서비스 등록 + 0.0.0.0 바인딩)
-#    macOS  : ./scripts/install-ollama.sh         (launchctl 환경변수 + Ollama.app 또는 ollama serve)
-sudo ./scripts/install-ollama.sh   # macOS 는 sudo 없이
+# 2. Ollama 호스트 설치 (systemd 서비스 등록 + 0.0.0.0 바인딩)
+sudo ./scripts/install-ollama.sh
 
 # 3. 한 명령으로 전체 셋업
 #    .env 생성 → 모델 다운로드 → 커스텀 이미지 빌드 → 서비스 기동 → 초기화 → 재시작
@@ -97,7 +93,7 @@ LiteLLM: http://localhost:8000
 - [환경변수 레퍼런스](docs/env-reference.md)
 - [모델 설정](docs/models.md)
 - [GPU 메모리 가이드](docs/gpu-memory.md)
-- [Ollama 튜닝 가이드](docs/ollama-tuning.md) — Linux systemd / macOS launchctl
+- [Ollama 튜닝 가이드](docs/ollama-tuning.md) — Linux systemd 튜닝
 - [아키텍처 상세](docs/overview.md)
 - [기여 가이드](CONTRIBUTING.md)
 

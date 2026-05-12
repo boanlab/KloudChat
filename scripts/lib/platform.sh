@@ -4,7 +4,6 @@
 #
 # Supported environments:
 #   - Linux  (x86_64 / aarch64, optional NVIDIA GPU)
-#   - macOS  (Intel x86_64 / Apple Silicon arm64, CPU only)
 #   - DGX Spark (Linux aarch64 + GB10 unified memory)
 
 # Prevent double-sourcing
@@ -15,11 +14,10 @@ __KC_PLATFORM_SH=1
 # OS / architecture
 # ──────────────────────────────────────────────────────────
 
-# detect_os → linux | macos | unsupported
+# detect_os → linux | unsupported
 detect_os() {
   case "$(uname -s)" in
     Linux)  echo linux ;;
-    Darwin) echo macos ;;
     *)      echo unsupported ;;
   esac
 }
@@ -34,7 +32,6 @@ detect_arch() {
 }
 
 is_linux() { [[ "$(detect_os)" == linux ]]; }
-is_macos() { [[ "$(detect_os)" == macos ]]; }
 
 # ──────────────────────────────────────────────────────────
 # GPU
@@ -80,25 +77,13 @@ get_gpu_name() {
 
 # get_mem_mb — total system RAM in MB.
 get_mem_mb() {
-  if is_macos; then
-    # sysctl returns bytes.
-    local bytes
-    bytes="$(sysctl -n hw.memsize 2>/dev/null || echo 0)"
-    echo $(( bytes / 1024 / 1024 ))
-  else
-    awk '/^MemTotal:/ {print int($2/1024); exit}' /proc/meminfo 2>/dev/null || echo 0
-  fi
+  awk '/^MemTotal:/ {print int($2/1024); exit}' /proc/meminfo 2>/dev/null || echo 0
 }
 
 # get_free_disk_gb <path> — free space (GB) on the partition that holds <path>.
 get_free_disk_gb() {
   local target="${1:-.}"
-  if is_macos; then
-    # BSD df: -g reports GiB (similar to Linux -BG).
-    df -g "$target" 2>/dev/null | awk 'NR==2 {print $4; exit}'
-  else
-    df -BG "$target" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4; exit}'
-  fi
+  df -BG "$target" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4; exit}'
 }
 
 # port_in_use <port> — returns 0 when the TCP port is in LISTEN state.

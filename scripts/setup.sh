@@ -3,12 +3,10 @@
 #
 # Supported environments:
 #   - Linux      (x86_64 / aarch64, optional NVIDIA GPU)
-#   - macOS      (Intel / Apple Silicon, CPU only — ComfyUI / Whisper skipped)
 #   - DGX Spark  (Linux aarch64 + GB10 unified memory, amd64-only containers skipped)
 #
 # Prerequisites:
-#   - Linux : sudo ./scripts/install-ollama.sh   (must be run first)
-#   - macOS : ./scripts/install-ollama.sh        (must be run first; no sudo)
+#   - sudo ./scripts/install-ollama.sh   (must be run first)
 #
 # Usage:
 #   ./scripts/setup.sh                    # interactive (default)
@@ -72,7 +70,7 @@ ARCH="$(detect_arch)"
 
 if [[ "$OS" == unsupported || "$ARCH" == unsupported ]]; then
   err "Unsupported environment: $(uname -s) $(uname -m)"
-  err "Supported: Linux (x86_64/aarch64), macOS (Intel/Apple Silicon)"
+  err "Supported: Linux (x86_64/aarch64)"
   exit 1
 fi
 ok "OS / ARCH: ${OS} / ${ARCH}"
@@ -80,11 +78,7 @@ ok "OS / ARCH: ${OS} / ${ARCH}"
 # Docker
 if ! command -v docker &>/dev/null; then
   err "Docker is not installed."
-  if [[ "$OS" == macos ]]; then
-    err "  Install Docker Desktop: https://docs.docker.com/desktop/install/mac-install/"
-  else
-    err "  curl -fsSL https://get.docker.com | sh"
-  fi
+  err "  curl -fsSL https://get.docker.com | sh"
   exit 1
 fi
 ok "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
@@ -96,14 +90,10 @@ if ! docker compose version &>/dev/null; then
 fi
 ok "Docker Compose $(docker compose version --short)"
 
-# Docker access (Linux: usually a group issue; macOS: Docker Desktop is per-user)
+# Docker access (usually a group issue)
 if ! docker ps &>/dev/null; then
-  if [[ "$OS" == linux ]]; then
-    warn "Current user is not in the docker group. Run:"
-    warn "  sudo usermod -aG docker \$USER  &&  newgrp docker"
-  else
-    warn "Cannot reach the Docker daemon. Make sure Docker Desktop is running."
-  fi
+  warn "Current user is not in the docker group. Run:"
+  warn "  sudo usermod -aG docker \$USER  &&  newgrp docker"
   exit 1
 fi
 
@@ -123,8 +113,6 @@ if has_nvidia_gpu; then
   else
     ok "Docker NVIDIA runtime registered"
   fi
-elif [[ "$OS" == macos ]]; then
-  ok "macOS — Ollama will use Metal GPU acceleration (Docker containers stay on CPU)"
 else
   warn "No NVIDIA GPU detected → inference will run on CPU (very slow)"
 fi
@@ -140,12 +128,8 @@ for tool in jq curl wget; do
 done
 if (( ${#MISSING[@]} > 0 )); then
   err "Missing required tools: ${MISSING[*]}"
-  if [[ "$OS" == macos ]]; then
-    err "  brew install ${MISSING[*]}"
-  else
-    err "  sudo apt install -y ${MISSING[*]}    (Debian / Ubuntu)"
-    err "  sudo dnf install -y ${MISSING[*]}    (Fedora / RHEL)"
-  fi
+  err "  sudo apt install -y ${MISSING[*]}    (Debian / Ubuntu)"
+  err "  sudo dnf install -y ${MISSING[*]}    (Fedora / RHEL)"
   exit 1
 fi
 
@@ -175,20 +159,11 @@ ollama_running() {
 if command -v ollama &>/dev/null && ollama_running; then
   ok "Ollama is already installed and responsive (version: $(ollama --version 2>/dev/null | awk '{print $NF}'))"
 else
-  if [[ "$OS" == linux ]]; then
-    if ask "Run ./scripts/install-ollama.sh with sudo?"; then
-      sudo ./scripts/install-ollama.sh
-    else
-      err "Ollama is not installed or not running — aborting. Install it and rerun."
-      exit 1
-    fi
+  if ask "Run ./scripts/install-ollama.sh with sudo?"; then
+    sudo ./scripts/install-ollama.sh
   else
-    if ask "Run ./scripts/install-ollama.sh? (macOS — no sudo)"; then
-      ./scripts/install-ollama.sh
-    else
-      err "Ollama is not installed or not running — aborting."
-      exit 1
-    fi
+    err "Ollama is not installed or not running — aborting. Install it and rerun."
+    exit 1
   fi
 fi
 
@@ -213,8 +188,8 @@ if (( SKIP_MODELS )); then
   warn "--skip-models — skipping model downloads"
 else
   if [[ -z "$MODELS_ARG" ]]; then
-    # macOS / CPU-only hosts: recommend small models only.
-    if [[ "$OS" == macos ]] || ! has_nvidia_gpu; then
+    # CPU-only hosts: recommend small models only.
+    if ! has_nvidia_gpu; then
       SUGGESTED="qwen3-9b embed"
     elif (( GPU_VRAM >= 90000 )); then
       SUGGESTED="all"
@@ -351,8 +326,8 @@ cat <<EOF
 Next steps:
 
   1. Create the first admin user in a single command (LibreChat account +
-     LiteLLM user + virtual key + auto-registered LibreChat keys + default
-     agent / preset):
+     LiteLLM user + virtual key + auto-registered LibreChat keys + two
+     KloudChat agents (Gemma4 / Qwen3.5) + default preset):
 
        ./scripts/manage.sh user create \\
          --id admin@example.com --name 'Admin' --username admin \\

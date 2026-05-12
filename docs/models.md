@@ -93,7 +93,7 @@ GEMINI_API_KEY=AIza...
 
 KloudChat 은 이미지 생성을 ComfyUI 컨테이너로 일원화합니다. LibreChat 의 내장 stable-diffusion 툴은 A1111 형식만 알아듣기 때문에 앞에 얇은 어댑터 (`comfyui-shim`) 를 두고, shim 이 A1111 요청을 받아 모델별 워크플로 템플릿 (`comfyui-shim/workflows/*.json`) 으로 변환해 ComfyUI 큐에 넣고 결과 이미지를 base64 로 돌려줍니다.
 
-지원 환경: **Linux + NVIDIA GPU (amd64 / arm64 모두, DGX Spark 포함)**. macOS 는 Docker Desktop 이 GPU 를 컨테이너로 노출하지 않아 자동 제외됩니다.
+지원 환경: **Linux + NVIDIA GPU (amd64 / arm64 모두, DGX Spark 포함)**. GPU 가 없는 호스트에서는 ComfyUI 컨테이너가 자동 제외됩니다.
 
 ### 가중치 다운로드
 

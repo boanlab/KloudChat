@@ -18,8 +18,7 @@ env_set() {
   local key="$1" val="$2"
   [[ -f "$ENV_FILE" ]] || { echo "[env_set] error: ${ENV_FILE} not found" >&2; return 1; }
   if grep -qE "^${key}=" "$ENV_FILE"; then
-    # `sed -i.bak` works on both GNU sed and BSD sed (macOS).
-    sed -i.bak "s|^${key}=.*|${key}=${val}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
+    sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
   else
     echo "${key}=${val}" >> "$ENV_FILE"
   fi

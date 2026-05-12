@@ -37,7 +37,7 @@ git commit -m "feat: 기능 설명"
 git push origin feat/my-feature
 ```
 
-가능하면 두 환경 이상에서 테스트해 주세요 (예: Linux x86_64 + Mac, 또는 Linux x86_64 + DGX Spark).
+가능하면 두 환경 이상에서 테스트해 주세요 (예: Linux x86_64 + DGX Spark / aarch64).
 
 ## 커밋 메시지 규칙
 
@@ -58,7 +58,7 @@ type:
 feat: TTS 한국어 voice 추가 (xtts_v2 korean)
 fix: litellm-config.yaml gemma4:26b 들여쓰기 오류 수정
 docs: GPU 메모리 가이드 Whisper medium 항목 추가
-chore: install-ollama.sh macOS 분기 추가
+chore: install-ollama.sh systemd override 보강
 ```
 
 ## 기여 가능 영역
