@@ -90,13 +90,13 @@
 
 지원 voice 매핑은 `tts-config/voice_to_speaker.yaml` 에서 정의 — 한국어 (xtts_v2): `korean`, `korean-female` / 영어 (piper, 빠름): `alloy`, `echo`, `nova`, `shimmer` / 영어 HD (xtts_v2): `english-hd`
 
-## 이미지 생성 — SD.Next (Linux + amd64 + NVIDIA GPU 전용)
+## 이미지 생성 — ComfyUI + A1111 shim (Linux + NVIDIA GPU 전용, amd64/arm64)
 
 | 변수 | 설명 | 값 |
 |---|---|---|
-| `SD_WEBUI_URL` | SD.Next 서버 URL | `http://sdnext:7860` |
+| `SD_WEBUI_URL` | A1111 호환 shim URL (ComfyUI 앞단) | `http://comfyui-shim:7860` |
 
-SD.Next는 A1111 호환 API(`/sdapi/v1/txt2img`)를 제공하므로 LibreChat과 직접 연동됩니다.
+LibreChat 의 내장 stable-diffusion 툴은 A1111 형식 (`/sdapi/v1/txt2img`) 만 알아듣고 ComfyUI 는 워크플로 JSON 기반 자체 API 를 쓰기 때문에, 두 서비스 사이에 얇은 FastAPI 어댑터 (`comfyui-shim`) 를 둡니다. 사용 모델은 요청의 `override_settings.sd_model_checkpoint` 값으로 선택: `sdxl`, `qwen-image`, `qwen-image-edit`. 가중치 다운로드는 `./scripts/download-image-models.sh`.
 
 ## 클라우드 LLM (선택)
 

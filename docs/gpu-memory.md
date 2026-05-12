@@ -14,8 +14,9 @@
 | Whisper | medium | ~3GB | 요청 시만 |
 | TTS (xtts_v2) | ~1.8B | ~3GB (CPU 모드) | warm 5분 |
 | TTS (piper) | ~30M | <1GB (CPU 모드) | warm 5분 |
-| SD.Next | SDXL | ~10GB | 요청 시만 |
-| SD.Next | SDXL-Turbo | ~8GB | 요청 시만 |
+| ComfyUI | SDXL | ~10GB | 요청 시만 |
+| ComfyUI | Qwen-Image (Q8_0 GGUF) | ~22GB | 요청 시만 |
+| ComfyUI | Qwen-Image-Edit (Q8_0 GGUF) | ~22GB | 요청 시만 |
 
 > TTS (`openedai-speech`) 는 multi-arch + CPU 동작이라 GPU VRAM 소비 0. 표 위 항목은 모델 자체 메모리 footprint 참고용.
 
@@ -28,9 +29,22 @@
 | 텍스트 채팅 + TTS (소형 모델) | qwen3.5:9b + TTS | ~7GB | RTX 3080 10GB |
 | 텍스트 채팅 + TTS (대형 모델) | qwen3.5:35b + TTS | ~22GB | RTX 3090 / 4090 24GB |
 | 텍스트 채팅 + STT + TTS | qwen3.5:35b + Whisper(medium) + TTS | ~25GB | A100 40GB |
-| 텍스트 채팅 + STT + TTS + 이미지 생성 | qwen3.5:35b + Whisper(large) + TTS + SD.Next(SDXL) | ~38GB | A100 80GB |
+| 텍스트 채팅 + STT + TTS + 이미지 (SDXL) | qwen3.5:35b + Whisper(large) + TTS + ComfyUI(SDXL) | ~38GB | A100 80GB |
+| 텍스트 채팅 + 이미지 (Qwen-Image) | qwen3.5:35b + ComfyUI(Qwen-Image) | ~44GB | A100 80GB |
 | 코딩 특화 채팅 + TTS (Q4) | qwen3-coder-next(Q4) + TTS | ~53GB | A100 80GB |
 | 코딩 특화 채팅 + TTS (Q8, 고품질) | qwen3-coder-next(Q8) + TTS | ~86GB | H100 80GB×2 |
+
+## ComfyUI 성능 메모
+
+ComfyUI 컨테이너는 `--highvram` 으로 기동되어 모델을 GPU 메모리에 상주시킵니다 (DGX Spark 의 GB10 unified memory 124 GB 를 정상 활용). 측정 예시 (DGX Spark, 1024×1024):
+
+| 모델 | step | 1 step | 1장 |
+|---|---|---|---|
+| SDXL 1.0 base | 20 | ~2 s | ~70 s |
+| Qwen-Image Q8_0 GGUF | 25 | ~20 s | ~10 분 |
+| Qwen-Image-Edit Q8_0 GGUF | 25 | ~20 s | ~10 분 |
+
+Qwen-Image GGUF 가 SDXL 대비 10배 느린 것은 **GGUF Q8_0 의 dequantization 비용** 때문이며 메모리 부족이나 swap 문제가 아닙니다. Blackwell GB10 의 FP4/FP8 텐서코어를 Q8_0 GGUF 가 활용하지 못 해 매 step 마다 uint8 → bf16 dequant + matmul 을 소프트웨어로 처리합니다. 더 빠르게 하려면 BF16 safetensors (~40 GB) 또는 fp8 quant 를 받아 사용하세요 — `comfyui-shim/workflows/qwen-image-*.json` 의 `unet_name` / `class_type` 만 교체하면 됩니다.
 
 ## Ollama 메모리 관리
 
@@ -50,10 +64,10 @@ environment:
 
 ```bash
 # 평소에는 중지
-docker compose stop sdnext
+./scripts/deploy.sh stop comfyui comfyui-shim
 
 # 이미지 생성 필요할 때만 시작
-docker compose start sdnext
+./scripts/deploy.sh start comfyui comfyui-shim
 ```
 
 **Ollama 모델 즉시 언로드**

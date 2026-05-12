@@ -89,22 +89,40 @@ GEMINI_API_KEY=AIza...
 
 이후 LiteLLM을 재시작합니다: `docker compose restart litellm`
 
-## 이미지 생성 모델 (SD.Next)
+## 이미지 생성 모델 (ComfyUI + A1111 shim)
 
-SD.Next는 `.safetensors` 파일을 `./sdnext/models/Stable-diffusion/`에서 자동 감지합니다.
+KloudChat 은 이미지 생성을 ComfyUI 컨테이너로 일원화합니다. LibreChat 의 내장 stable-diffusion 툴은 A1111 형식만 알아듣기 때문에 앞에 얇은 어댑터 (`comfyui-shim`) 를 두고, shim 이 A1111 요청을 받아 모델별 워크플로 템플릿 (`comfyui-shim/workflows/*.json`) 으로 변환해 ComfyUI 큐에 넣고 결과 이미지를 base64 로 돌려줍니다.
+
+지원 환경: **Linux + NVIDIA GPU (amd64 / arm64 모두, DGX Spark 포함)**. macOS 는 Docker Desktop 이 GPU 를 컨테이너로 노출하지 않아 자동 제외됩니다.
+
+### 가중치 다운로드
+
+가중치는 `./comfyui/models/{checkpoints,unet,clip,vae}/` 하위로 떨어집니다 (ComfyUI 가 자동 감지).
 
 ```bash
-# 기본 (SDXL + VAE)
-./scripts/download-sdnext-models.sh
+# 기본 (전체 세트, ~50GB)
+./scripts/download-image-models.sh
 
-# 옵션별 크기
-# sdxl          ~6.9GB  범용
-# sdxl-turbo    ~6.9GB  고속 (1~4 step)
-# vae           ~160MB  색감 개선 (권장)
-# flux-schnell  ~24GB   고품질, Apache 2.0, HF 토큰 필요
+# alias 별
+./scripts/download-image-models.sh sdxl sdxl-vae       # SDXL 만
+./scripts/download-image-models.sh qwen-image          # Qwen-Image (텍스트→이미지)
+./scripts/download-image-models.sh qwen-image-edit     # Qwen-Image-Edit (편집)
 ```
 
-SD.Next 컨테이너는 외부 포트를 열지 않습니다 (LibreChat 가 내부 네트워크 `http://sdnext:7860` 로만 접근). 활성 체크포인트는 `./scripts/set-sdnext-model.sh` 로 설정합니다 (setup.sh 가 자동 호출). 웹 UI 에 접근해야 한다면 `docker-compose.amd64.yml` 의 `sdnext` 서비스에 `ports: ["7860:7860"]` 을 추가하세요.
+| alias | 모델 | 크기 | 용도 |
+|---|---|---|---|
+| `sdxl` | SDXL 1.0 base | ~6.9 GB | 범용, LoRA 풍부 |
+| `sdxl-vae` | SDXL VAE FP16 fix | ~160 MB | sdxl 색감 개선 |
+| `qwen-image` | Qwen-Image Q8 GGUF + text encoder + VAE | ~21 GB | 최신 텍스트→이미지, 한국어 프롬프트 강함 |
+| `qwen-image-edit` | Qwen-Image-Edit-2509 Q8 GGUF | ~21 GB | 이미지 + 프롬프트 편집 (text-encoder / VAE 공유) |
+
+### 모델 선택
+
+LibreChat 에이전트 / 채팅에서 이미지 생성을 호출할 때 `override_settings.sd_model_checkpoint` 값으로 alias 를 지정하면 shim 이 해당 워크플로로 라우팅합니다 (기본값 `sdxl`).
+
+### 외부 포트 / 디버깅
+
+`comfyui` · `comfyui-shim` 둘 다 외부 포트를 노출하지 않습니다 (LibreChat 가 `http://comfyui-shim:7860` 으로 내부 접근). ComfyUI 웹 UI 를 직접 보려면 `docker-compose.gpu.yml` 의 `comfyui` 서비스에 `ports: ["8188:8188"]` 을 임시로 추가하세요. 워크플로 템플릿 수정은 `comfyui-shim/workflows/*.json` 을 편집 후 shim 재시작 (`./scripts/deploy.sh restart comfyui-shim`).
 
 ## RAG 임베딩 모델
 

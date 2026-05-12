@@ -1,0 +1,87 @@
+{
+  "1": {
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "UnetLoader"},
+    "inputs": {
+      "unet_name": "qwen-image-edit-Q8_0.gguf"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "CLIPLoader"},
+    "inputs": {
+      "clip_name": "qwen-image-text-encoder.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "VAELoader"},
+    "inputs": {
+      "vae_name": "qwen-image-vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "LoadImage"},
+    "inputs": {
+      "image": "example.png"
+    }
+  },
+  "5": {
+    "class_type": "VAEEncode",
+    "_meta": {"title": "VAEEncode"},
+    "inputs": {
+      "pixels": ["4", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "PositivePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "NegativePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "8": {
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"},
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["5", 0],
+      "seed": 0,
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 0.75
+    }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAEDecode"},
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "_meta": {"title": "SaveImage"},
+    "inputs": {
+      "images": ["9", 0],
+      "filename_prefix": "kloudchat-qwen-image-edit"
+    }
+  }
+}

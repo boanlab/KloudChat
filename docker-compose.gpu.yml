@@ -1,0 +1,67 @@
+# NVIDIA GPU 가 있는 Linux 호스트에서 추가로 띄우는 서비스.
+# amd64 / arm64 (DGX Spark) 양쪽 모두 동작. macOS 는 Docker Desktop 이 GPU 를
+# 컨테이너로 노출하지 않으므로 자동 제외.
+#
+# 사용:  ./scripts/deploy.sh up -d   (deploy.sh 가 자동으로 -f 옵션 조합)
+# 직접:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+
+services:
+  # ============================================
+  # ComfyUI — 이미지 생성 (텍스트→이미지 / 이미지+프롬프트→편집)
+  # 모델: SDXL, Qwen-Image, Qwen-Image-Edit
+  # ./scripts/download-image-models.sh 로 가중치 다운로드.
+  # 외부 포트는 노출하지 않음 — LibreChat 는 comfyui-shim 을 통해 접근.
+  # ComfyUI 본 UI (8188) 를 브라우저로 보려면 아래 comfyui 서비스에 ports: ["8188:8188"] 임시 추가.
+  # ============================================
+  comfyui:
+    container_name: comfyui
+    build:
+      context: .
+      dockerfile: Dockerfile.comfyui
+    restart: always
+    volumes:
+      - ./comfyui/models:/app/ComfyUI/models
+      - ./comfyui/output:/app/ComfyUI/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8188/system_stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - kloudchat
+
+  # ============================================
+  # comfyui-shim — A1111(/sdapi/v1/*) ↔ ComfyUI(/prompt) 어댑터.
+  # LibreChat 의 내장 stable-diffusion 툴이 A1111 형식만 알아들으므로
+  # ComfyUI 앞에 얇은 FastAPI 한 장을 두어 번역. .env 의 SD_WEBUI_URL 이
+  # 이 컨테이너를 가리킴.
+  # ============================================
+  comfyui-shim:
+    container_name: comfyui-shim
+    build:
+      context: .
+      dockerfile: Dockerfile.comfyui-shim
+    restart: always
+    environment:
+      - COMFYUI_URL=http://comfyui:8188
+      - DEFAULT_MODEL=sdxl
+      - LOG_LEVEL=INFO
+    depends_on:
+      comfyui:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - kloudchat

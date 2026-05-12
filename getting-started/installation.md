@@ -50,23 +50,27 @@ docker compose 실행 전에 모델을 미리 내려받습니다.
 
 사용할 모델은 [모델 설정 가이드](../docs/models.md) 참고.
 
-## 5. 이미지 생성 모델 다운로드 (Linux + amd64 + NVIDIA GPU 만)
+## 5. 이미지 생성 모델 다운로드 (Linux + NVIDIA GPU, amd64/arm64)
 
-SD.Next 컨테이너가 활성화되는 환경 (Linux + amd64 + NVIDIA GPU + nvidia container runtime) 에서만 의미가 있습니다. macOS·arm64 환경은 이 단계를 건너뛰세요.
+ComfyUI 컨테이너가 활성화되는 환경 (Linux + NVIDIA GPU + nvidia container runtime) 에서만 의미가 있습니다. macOS · GPU 없는 호스트는 이 단계를 건너뛰세요.
 
 ```bash
-./scripts/download-sdnext-models.sh           # SDXL + VAE (~7GB)
-./scripts/download-sdnext-models.sh --help
+./scripts/download-image-models.sh            # SDXL + Qwen-Image + Qwen-Image-Edit (~50GB)
+./scripts/download-image-models.sh --help     # alias 별 선택
 ```
+
+상세 표·alias 는 [모델 설정 가이드 — 이미지 생성](../docs/models.md#이미지-생성-모델-comfyui--a1111-shim) 참고.
 
 ## 6. 커스텀 이미지 빌드
 
-세 가지 커스텀 이미지를 빌드합니다. `setup.sh` 는 이 단계를 자동으로 수행합니다.
+다섯 가지 커스텀 이미지를 빌드합니다 (마지막 두 개는 NVIDIA GPU 환경에서만). `setup.sh` 는 이 단계를 자동으로 수행합니다.
 
 ```bash
 ./scripts/deploy.sh build rag_api            # HWP 파일 변환 (~1~3분)
 ./scripts/deploy.sh build librechat          # 소스 빌드 (~5~10분)
 ./scripts/deploy.sh build code-interpreter   # NanumGothic 한글 폰트 (~1분)
+./scripts/deploy.sh build comfyui            # ComfyUI + PyTorch CUDA (~10~15분, GPU 환경만)
+./scripts/deploy.sh build comfyui-shim       # FastAPI A1111 어댑터 (~30초, GPU 환경만)
 ```
 
 ## 7. 서비스 시작
@@ -83,8 +87,9 @@ SD.Next 컨테이너가 활성화되는 환경 (Linux + amd64 + NVIDIA GPU + nvi
 
 | 환경 | 사용되는 compose 파일 | 비고 |
 |---|---|---|
-| Linux + amd64 + NVIDIA + nvidia runtime | base + `docker-compose.amd64.yml` | Whisper / SD.Next 포함 |
-| 그 외 (macOS, arm64, GPU 없는 amd64) | base 만 | Whisper / SD.Next 자동 제외, TTS 는 동작 |
+| Linux + amd64 + NVIDIA + nvidia runtime | base + `gpu.yml` + `amd64.yml` | ComfyUI + Whisper 포함 |
+| Linux + arm64 + NVIDIA + nvidia runtime (DGX Spark) | base + `gpu.yml` | ComfyUI 포함, Whisper 제외 (이미지가 amd64-only) |
+| 그 외 (macOS, GPU 없는 호스트) | base 만 | ComfyUI / Whisper 자동 제외, TTS 는 동작 |
 
 ## 8. 초기화
 

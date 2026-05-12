@@ -3,7 +3,7 @@
 #
 # Supported environments:
 #   - Linux      (x86_64 / aarch64, optional NVIDIA GPU)
-#   - macOS      (Intel / Apple Silicon, CPU only — Whisper / SD.Next skipped)
+#   - macOS      (Intel / Apple Silicon, CPU only — ComfyUI / Whisper skipped)
 #   - DGX Spark  (Linux aarch64 + GB10 unified memory, amd64-only containers skipped)
 #
 # Prerequisites:
@@ -15,7 +15,7 @@
 #   ./scripts/setup.sh --yes              # auto-yes for every prompt
 #   ./scripts/setup.sh --models all       # download every LLM model
 #   ./scripts/setup.sh --skip-models      # skip model downloads
-#   ./scripts/setup.sh --no-image-models  # skip SD.Next model download
+#   ./scripts/setup.sh --no-image-models  # skip image-gen model download (ComfyUI)
 #
 # Idempotent: previously completed steps are detected and skipped.
 set -euo pipefail
@@ -234,22 +234,30 @@ else
   ok "Ollama model downloads complete"
 fi
 
-# SD.Next models (only when Linux + amd64 + GPU containers are supported)
+# Image-generation models for ComfyUI (Linux + NVIDIA, any arch).
 if can_use_gpu_services && ! (( SKIP_IMAGE_DOWNLOAD )); then
-  if ls sdnext/models/Stable-diffusion/*.safetensors &>/dev/null; then
-    ok "SDXL model already present"
+  if compgen -G "comfyui/models/checkpoints/*.safetensors" >/dev/null \
+     || compgen -G "comfyui/models/unet/*.gguf" >/dev/null; then
+    ok "Image-gen models already present in comfyui/models/"
   else
-    if ask "Download SDXL model (~7GB)?"; then
-      # If sdnext/ is owned by root the download fails — fix ownership.
-      if [[ -d sdnext && ! -w sdnext/models ]]; then
-        warn "sdnext/ is owned by root → reclaiming ownership via sudo chown"
-        sudo chown -R "$(id -u):$(id -g)" sdnext
+    if ask "Download SDXL + Qwen-Image + Qwen-Image-Edit (~50GB)?"; then
+      # The comfyui container creates its bind-mounted volumes as root-owned,
+      # so host-side mkdir under comfyui/models/ fails. Reclaim from inside the
+      # container when it's running (no sudo needed); otherwise warn loudly.
+      if [[ -d comfyui/models && ! -w comfyui/models ]]; then
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'comfyui'; then
+          warn "comfyui/models is root-owned — reclaiming via docker exec"
+          docker exec comfyui chown -R "$(id -u):$(id -g)" /app/ComfyUI/models /app/ComfyUI/output
+        else
+          warn "comfyui/models is root-owned but the container isn't running."
+          warn "  Start it first (./scripts/deploy.sh up -d comfyui) and re-run setup.sh, or chown manually."
+        fi
       fi
-      ./scripts/download-sdnext-models.sh
+      ./scripts/download-image-models.sh
     fi
   fi
 elif (( SKIP_IMAGE_DOWNLOAD == 0 )); then
-  warn "Skipping image-model download — SD.Next is not enabled on this host."
+  warn "Skipping image-model download — ComfyUI is not enabled on this host."
 fi
 
 # ──────────────────────────────────────────────────────────
@@ -272,6 +280,11 @@ build_one() {
 build_one rag_api          kloudchat-rag_api:latest          "1-3 min"
 build_one librechat        kloudchat-librechat:latest        "5-10 min (LibreChat clone + npm install + vite build)"
 build_one code-interpreter kloudchat-code-interpreter:latest "<1 min (adds NanumGothic font)"
+
+if can_use_gpu_services; then
+  build_one comfyui      kloudchat-comfyui:latest      "10-15 min (PyTorch CUDA + ComfyUI + custom nodes)"
+  build_one comfyui-shim kloudchat-comfyui-shim:latest "<1 min (FastAPI A1111 adapter)"
+fi
 
 # ──────────────────────────────────────────────────────────
 # Step 5: start containers
@@ -299,17 +312,9 @@ hdr "6. Initialise LiteLLM teams + service key"
 ./scripts/init.sh
 
 # ──────────────────────────────────────────────────────────
-# Step 7: SD.Next active checkpoint (only when SD.Next is running)
+# Step 7: restart LibreChat (pick up service key)
 # ──────────────────────────────────────────────────────────
-if can_use_gpu_services; then
-  hdr "7. Set SD.Next active checkpoint"
-  ./scripts/set-sdnext-model.sh
-fi
-
-# ──────────────────────────────────────────────────────────
-# Step 8: restart LibreChat (pick up service key)
-# ──────────────────────────────────────────────────────────
-hdr "8. Restart LibreChat (apply service key)"
+hdr "7. Restart LibreChat (apply service key)"
 
 ./scripts/deploy.sh restart librechat
 echo "  Waiting for LibreChat health..."
@@ -321,9 +326,9 @@ for i in 1 2 3 4 5; do
 done
 
 # ──────────────────────────────────────────────────────────
-# Step 9: verification + next-steps
+# Step 8: verification + next-steps
 # ──────────────────────────────────────────────────────────
-hdr "9. Verify"
+hdr "8. Verify"
 
 echo
 ./scripts/deploy.sh ps --format 'table {{.Name}}\t{{.State}}\t{{.Status}}' 2>/dev/null \
@@ -361,11 +366,14 @@ Next steps:
 Known limitations on this host:
 EOF
 
-if can_use_gpu_services; then
-  echo "  - All features enabled (STT/Whisper + Image/SD.Next included)"
+if can_use_amd64_gpu_services; then
+  echo "  - All features enabled (Image/ComfyUI + STT/Whisper)"
+elif can_use_gpu_services; then
+  echo "  - Image gen (ComfyUI)  : enabled"
+  echo "  - STT (Whisper)        : disabled — Whisper image is amd64-only (DGX Spark unsupported)"
 else
+  echo "  - Image gen (ComfyUI)  : disabled — requires Linux + NVIDIA GPU"
   echo "  - STT (Whisper)        : disabled — requires Linux + amd64 + NVIDIA GPU"
-  echo "  - Image gen (SD.Next)  : disabled — requires Linux + amd64 + NVIDIA GPU"
 fi
 echo "  - HWP file RAG         : pyhwp has Python 3.10 issues — use PDF/DOCX instead"
 echo

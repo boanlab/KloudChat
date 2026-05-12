@@ -1,0 +1,20 @@
+# A1111-compatible REST shim in front of ComfyUI.
+# Multi-arch (linux/amd64, linux/arm64). CPU-only — no GPU needed.
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY comfyui-shim/requirements.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
+
+COPY comfyui-shim/app.py /app/app.py
+COPY comfyui-shim/workflows /app/workflows
+
+EXPOSE 7860
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]

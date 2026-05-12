@@ -28,7 +28,7 @@ EOF
 echo
 echo "  🌐 LibreChat (orchestration)     🧠 LiteLLM (gateway)"
 echo "  ⚡ Ollama (LLM engine)           📚 RAG API (documents)"
-echo "  🔍 SearXNG (web search)          🎨 SD.Next (image gen)"
+echo "  🔍 SearXNG (web search)          🎨 ComfyUI + shim (image gen)"
 echo "  💻 Code Interpreter              🎤 Whisper (STT)  🔊 TTS (openedai-speech)"
 echo
 echo "═══════════════════════════════════════════════════════════════════"
@@ -45,11 +45,16 @@ docker logs -f --tail 0 litellm 2>&1 | \
   stdbuf -oL grep -ivE "liveliness|prisma|migration" | \
   format "$G" "🧠" "LiteLLM  " &
 
-# SD.Next — image-generation progress
-docker logs -f --tail 0 sdnext 2>&1 | \
-  stdbuf -oL grep -iE "Processing|Processed|model|VRAM|API|request" | \
-  stdbuf -oL grep -ivE "GC:|TRACE|DEBUG" | \
-  format "$M" "🎨" "SD.Next  " &
+# ComfyUI — image-generation progress
+docker logs -f --tail 0 comfyui 2>&1 | \
+  stdbuf -oL grep -iE "Prompt executed|got prompt|sampling|VAE|model|loading|VRAM" | \
+  stdbuf -oL grep -ivE "TRACE|DEBUG" | \
+  format "$M" "🎨" "ComfyUI  " &
+
+# comfyui-shim — A1111 adapter calls
+docker logs -f --tail 0 comfyui-shim 2>&1 | \
+  stdbuf -oL grep -iE "txt2img|img2img|model=|template=" | \
+  format "$M" "🎨" "Shim     " &
 
 # RAG API
 docker logs -f --tail 0 rag_api 2>&1 | \

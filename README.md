@@ -15,17 +15,17 @@ LibreChat + LiteLLM + Ollama 를 중심으로 RAG, 웹 검색, 음성, 이미지
 | HWP/PDF/DOCX 파일 업로드 | LibreChat RAG API |
 | 음성 출력 (TTS) | openedai-speech (piper + xtts_v2, 다국어/한국어, multi-arch + CPU 가능) |
 | 음성 입력 (STT) | Whisper (Linux + amd64 + NVIDIA GPU 전용) |
-| 이미지 생성 | SD.Next — A1111 API 호환 (Linux + amd64 + NVIDIA GPU 전용) |
+| 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image, Qwen-Image-Edit (Linux + NVIDIA GPU, amd64/arm64) |
 | 팀·사용자·예산 관리 | LiteLLM + CLI 스크립트 |
 
 ## 지원 환경
 
-| 환경 | 채팅·RAG·검색·코드·TTS | STT (Whisper) | 이미지 (SD.Next) |
+| 환경 | 채팅·RAG·검색·코드·TTS | 이미지 (ComfyUI) | STT (Whisper) |
 |---|:---:|:---:|:---:|
 | Linux x86_64 + NVIDIA GPU | ✅ | ✅ | ✅ |
 | Linux x86_64 (CPU only) | ✅ (느림) | ❌ | ❌ |
-| Linux aarch64 — **DGX Spark (GB10)** | ✅ | ❌ (CUDA 이미지 amd64 전용) | ❌ |
-| macOS Apple Silicon | ✅ (Metal 가속, Docker는 CPU) | ❌ | ❌ |
+| Linux aarch64 — **DGX Spark (GB10)** | ✅ | ✅ | ❌ (Whisper 이미지 amd64 전용) |
+| macOS Apple Silicon | ✅ (Metal 가속, Docker는 CPU) | ❌ (Docker Desktop 이 GPU 미노출) | ❌ |
 | macOS Intel | ✅ (느림) | ❌ | ❌ |
 
 `./scripts/deploy.sh` 와 `./scripts/setup.sh` 가 OS·아키텍처·GPU 를 자동 감지해서 사용 가능한 서비스만 띄웁니다.
@@ -81,9 +81,12 @@ LiteLLM: http://localhost:8000
 [음성 — multi-arch + CPU]
   └─ tts      — TTS (openedai-speech, piper + xtts_v2)
 
+[Linux + NVIDIA GPU — amd64 / arm64 모두]
+  ├─ ComfyUI       — 이미지 생성 (SDXL, Qwen-Image, Qwen-Image-Edit)
+  └─ comfyui-shim  — A1111 호환 어댑터 (LibreChat 내장 stable-diffusion 툴 연동)
+
 [Linux + amd64 + NVIDIA GPU 전용]
-  ├─ Whisper  — STT
-  └─ SD.Next  — 이미지 생성 (A1111 API 호환)
+  └─ Whisper       — STT (이미지가 amd64-only)
 ```
 
 ## 문서

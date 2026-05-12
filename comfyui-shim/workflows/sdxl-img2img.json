@@ -1,0 +1,72 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {"title": "CheckpointLoader"},
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "PositivePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["1", 1]
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "NegativePrompt"},
+    "inputs": {
+      "text": "low quality, blurry, watermark",
+      "clip": ["1", 1]
+    }
+  },
+  "4": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "LoadImage"},
+    "inputs": {
+      "image": "example.png"
+    }
+  },
+  "5": {
+    "class_type": "VAEEncode",
+    "_meta": {"title": "VAEEncode"},
+    "inputs": {
+      "pixels": ["4", 0],
+      "vae": ["1", 2]
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"},
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "latent_image": ["5", 0],
+      "seed": 0,
+      "steps": 25,
+      "cfg": 7.0,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.75
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAEDecode"},
+    "inputs": {
+      "samples": ["6", 0],
+      "vae": ["1", 2]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "_meta": {"title": "SaveImage"},
+    "inputs": {
+      "images": ["7", 0],
+      "filename_prefix": "kloudchat-sdxl-img2img"
+    }
+  }
+}

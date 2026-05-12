@@ -14,11 +14,10 @@
 
 VRAM 요구사항은 [GPU 메모리 가이드](../docs/gpu-memory.md) 참고.
 
-> **macOS** 에서는 Whisper(STT) 와 SD.Next(이미지) 컨테이너가 빠지므로 GPU 가 필요 없습니다.
+> **macOS** 에서는 ComfyUI(이미지) 와 Whisper(STT) 컨테이너가 빠지므로 GPU 가 필요 없습니다.
 > Ollama 는 Metal GPU 가속을 자동 사용합니다.
 
-> **DGX Spark (GB10)** 는 통합 메모리 아키텍처라 `nvidia-smi memory.total` 가 `[N/A]` 로 표시됩니다.
-> KloudChat 스크립트는 이 경우 시스템 RAM 을 VRAM 으로 간주합니다.
+> **DGX Spark (GB10)** 는 ComfyUI 컨테이너가 정상 동작합니다 (arm64+CUDA 빌드). 통합 메모리 아키텍처라 `nvidia-smi memory.total` 가 `[N/A]` 로 표시되며 KloudChat 스크립트는 이 경우 시스템 RAM 을 VRAM 으로 간주합니다. Whisper 만 amd64-only 라 자동 제외됩니다.
 
 ---
 
@@ -37,8 +36,7 @@ docker compose version
 
 ### NVIDIA Container Toolkit (GPU 사용 시)
 
-x86_64 + NVIDIA GPU 에서 Whisper / SD.Next 컨테이너를 띄우려면 필요합니다.
-DGX Spark (aarch64) 의 경우 Ollama 만 GPU 를 직접 사용하므로 이 단계는 선택입니다.
+NVIDIA GPU 가 있는 Linux (amd64 또는 arm64) 에서 ComfyUI / Whisper 컨테이너를 띄우려면 필요합니다. DGX Spark (aarch64) 도 ComfyUI 컨테이너를 정상 사용하려면 이 단계가 필요합니다.
 
 ```bash
 nvidia-smi   # 드라이버 확인
@@ -84,7 +82,7 @@ sudo dnf install -y jq curl wget
 
 ## macOS (Intel / Apple Silicon)
 
-> macOS 에서는 Whisper(STT) 와 SD.Next(이미지) 가 자동 제외됩니다.
+> macOS 에서는 ComfyUI(이미지) 와 Whisper(STT) 가 자동 제외됩니다 (Docker Desktop 이 Apple GPU 를 컨테이너로 노출하지 않음).
 > 채팅 · RAG · 웹 검색 · 코드 인터프리터 · TTS 는 모두 동작합니다.
 
 ### Docker Desktop
@@ -122,7 +120,8 @@ brew install jq curl wget
 
 DGX Spark 는 Linux aarch64 + GB10 통합 메모리 환경입니다. 일반 Linux 설치와 동일하지만 몇 가지 특수성이 있습니다.
 
-- **CUDA 컨테이너 (Whisper / SD.Next) 미지원** — 두 이미지가 amd64-only 라 컨테이너로는 동작 불가. 텍스트 채팅·RAG·TTS 는 정상 동작합니다.
+- **이미지 생성 (ComfyUI) 지원** — KloudChat 의 ComfyUI 컨테이너는 직접 빌드 (Dockerfile.comfyui, nvidia/cuda arm64 베이스) 라 DGX Spark 에서 정상 동작합니다. SDXL · Qwen-Image · Qwen-Image-Edit 모두 사용 가능.
+- **Whisper (STT) 미지원** — 업스트림 이미지가 amd64-only 라 컨테이너로는 동작 불가.
 - **`nvidia-smi memory.total = [N/A]`** — `setup.sh` 는 자동으로 시스템 RAM (~120 GB) 을 VRAM 으로 간주해 모델을 추천합니다.
 - **`CUDA_VISIBLE_DEVICES`** 를 비우면 GPU 가 숨겨져 CPU 추론으로 폴백되므로 `0` 으로 명시 (`docs/ollama-tuning.md` GB10 섹션 참고).
 

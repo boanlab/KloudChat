@@ -23,9 +23,11 @@
 │  │    ├→ code-interpreter                      │   │
 │  │    └→ tts      (openedai-speech, multi-arch)│   │
 │  │                                             │   │
+│  │  [Linux + NVIDIA GPU — amd64/arm64]         │   │
+│  │    ├→ comfyui       (이미지 생성)           │   │
+│  │    └→ comfyui-shim  (A1111 어댑터)          │   │
 │  │  [Linux + amd64 + NVIDIA GPU 전용]          │   │
-│  │    ├→ whisper  (STT)                        │   │
-│  │    └→ sdnext   (이미지 생성)                 │   │
+│  │    └→ whisper       (STT)                   │   │
 │  └─────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────┘
 ```
@@ -76,23 +78,34 @@ voice 매핑은 `tts-config/voice_to_speaker.yaml` 에서 정의.
 포트:   8000 (OpenAI Audio API)
 ```
 
-### SD.Next
-A1111 (Stable Diffusion WebUI) 의 활발히 유지보수되는 포크. `/sdapi/v1/txt2img` 엔드포인트로 LibreChat 과 직접 연동됩니다.
+### ComfyUI (이미지 생성)
+노드 기반 디퓨전 런타임. KloudChat 은 SDXL · Qwen-Image (텍스트→이미지) · Qwen-Image-Edit (이미지+프롬프트→편집) 세 파이프라인을 워크플로 템플릿으로 미리 정의해 둡니다. ComfyUI 컨테이너는 Linux + NVIDIA GPU 에서 amd64/arm64 모두 동작 (DGX Spark 포함). 컨테이너는 외부 포트를 노출하지 않으며 LibreChat 은 항상 `comfyui-shim` 을 경유합니다.
 
 ```
-이미지: vladmandic/sdnext-cuda:latest
-포트:   7860 (A1111 호환)
+이미지: 자체 빌드 (Dockerfile.comfyui — nvidia/cuda 12.6 베이스, multi-arch)
+포트:   8188 (ComfyUI 본 API, 내부 전용)
+가중치: comfyui/models/{checkpoints,unet,clip,vae}
+```
+
+### comfyui-shim (A1111 어댑터)
+LibreChat 의 내장 stable-diffusion 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sdapi/v1/img2img`) 만 알아듣지만 ComfyUI 는 워크플로 JSON 기반이라 둘이 호환되지 않습니다. 이 shim 이 A1111 요청을 받아 워크플로 템플릿에 프롬프트·시드·CFG 를 끼워넣은 뒤 ComfyUI `/prompt` 큐에 넣고 결과 이미지를 base64 로 반환합니다. 모델은 요청의 `override_settings.sd_model_checkpoint` 값으로 `sdxl` / `qwen-image` / `qwen-image-edit` 중 선택.
+
+```
+이미지: 자체 빌드 (Dockerfile.comfyui-shim — python:3.11-slim, FastAPI)
+포트:   7860 (A1111 호환, 내부 전용)
+환경변수: COMFYUI_URL=http://comfyui:8188, DEFAULT_MODEL=sdxl
 ```
 
 ## 네트워크
 
-모든 컨테이너는 `kloudchat` 브리지 네트워크에 속합니다. 외부에 노출되는 포트는 LibreChat (8080), LiteLLM (8000) 두 개입니다. GPU 가속 서비스 (Whisper·SD.Next, Linux + amd64 + NVIDIA 전용) 와 multi-arch TTS 모두 포트를 외부에 노출하지 않습니다.
+모든 컨테이너는 `kloudchat` 브리지 네트워크에 속합니다. 외부에 노출되는 포트는 LibreChat (8080), LiteLLM (8000) 두 개입니다. GPU 가속 서비스 (ComfyUI · comfyui-shim · Whisper) 와 multi-arch TTS 모두 포트를 외부에 노출하지 않습니다.
 
 ```
 외부 노출: 8080 (LibreChat), 8000 (LiteLLM)
 내부 전용: mongodb:27017, meilisearch:7700, vectordb:5432,
           litellm-db:5432, rag_api:8000, searxng:8080,
-          code-interpreter:8000, tts:8000, whisper:8000, sdnext:7860
+          code-interpreter:8000, tts:8000, whisper:8000,
+          comfyui:8188, comfyui-shim:7860
 호스트:   ollama:11434 (host.docker.internal 경유)
 ```
 
@@ -123,10 +136,26 @@ A1111 (Stable Diffusion WebUI) 의 활발히 유지보수되는 포크. `/sdapi/
   → 결과 병합 → LiteLLM → Ollama (답변 생성)
 ```
 
+## 요청 흐름 — 이미지 생성 / 편집
+
+```
+브라우저 / 에이전트
+  → LibreChat (stable-diffusion 툴)
+  → comfyui-shim:7860 (/sdapi/v1/txt2img | /sdapi/v1/img2img)
+       │  ① override_settings.sd_model_checkpoint 로 워크플로 선택
+       │     sdxl / qwen-image / qwen-image-edit
+       │  ② 워크플로 JSON 에 프롬프트·시드·CFG·해상도 주입
+       │  ③ (img2img 만) /upload/image 로 입력 이미지 업로드
+  → comfyui:8188 (/prompt 큐)
+  → GPU (NVIDIA, amd64 또는 arm64)
+  → /history/<prompt_id> 폴링 + /view 로 결과 회수
+  ← base64 PNG 반환 → LibreChat 채팅에 인라인 표시
+```
+
 ## 스케일 고려사항
 
 단일 서버 온프레미스 배포를 기준으로 설계됐습니다. 동시 사용자가 많아지면 다음 병목이 발생합니다:
 
 1. **Ollama**: 단일 프로세스, 요청 큐잉 — LiteLLM `num_workers` 설정으로 완화
-2. **GPU VRAM**: LLM·Whisper·SD.Next 공유 — [GPU 메모리 가이드](gpu-memory.md) 참고
+2. **GPU VRAM**: LLM · Whisper · ComfyUI 공유 — [GPU 메모리 가이드](gpu-memory.md) 참고
 3. **MongoDB**: 기본 단일 노드 — 필요 시 replica set 전환

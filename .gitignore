@@ -9,6 +9,7 @@ rag/
 litellm/
 librechat/
 ollama/
-sdnext/
+comfyui/
 code-interpreter/
 tts-data/
+__pycache__/

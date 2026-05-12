@@ -88,6 +88,6 @@ echo "Path: ${ENV_FILE}"
 echo
 echo "Next steps:"
 echo "  1. ./scripts/download-ollama-models.sh   # Pull LLM models"
-echo "  2. ./scripts/download-sdnext-models.sh   # Pull image-gen model (Linux + amd64 + NVIDIA only)"
+echo "  2. ./scripts/download-image-models.sh    # Pull image-gen models (Linux + NVIDIA, any arch)"
 echo "  3. ./scripts/deploy.sh up -d             # Start services"
 echo "  4. ./scripts/init.sh                     # Initialise teams + service key"

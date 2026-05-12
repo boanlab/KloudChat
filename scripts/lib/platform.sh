@@ -130,14 +130,18 @@ docker_has_nvidia_runtime() {
   docker info 2>/dev/null | grep -qi 'Runtimes:.*nvidia'
 }
 
-# can_use_gpu_services — true when the host can safely run the amd64 + NVIDIA
-# only containers (Whisper, SD.Next). Requires Linux + x86_64 + nvidia-smi +
-# Docker's nvidia runtime.
+# can_use_gpu_services — true when this host can run any NVIDIA-only
+# container, regardless of arch. Used by ComfyUI + shim which we build
+# multi-arch (amd64 + arm64, incl. DGX Spark).
 can_use_gpu_services() {
-  is_linux \
-    && [[ "$(detect_arch)" == amd64 ]] \
-    && has_nvidia_gpu \
-    && docker_has_nvidia_runtime
+  is_linux && has_nvidia_gpu && docker_has_nvidia_runtime
+}
+
+# can_use_amd64_gpu_services — true when this host can run NVIDIA containers
+# whose published image is amd64-only (currently: Whisper STT). Stricter
+# than can_use_gpu_services.
+can_use_amd64_gpu_services() {
+  can_use_gpu_services && [[ "$(detect_arch)" == amd64 ]]
 }
 
 # ──────────────────────────────────────────────────────────

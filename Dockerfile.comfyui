@@ -1,0 +1,74 @@
+# ComfyUI image — multi-arch (linux/amd64, linux/arm64) on NVIDIA CUDA.
+# Runs accelerated on any Linux host with an NVIDIA GPU + the nvidia container
+# runtime. DGX Spark (Linux aarch64 + GB10) is supported because NVIDIA ships
+# aarch64 CUDA base images and PyTorch publishes aarch64+CUDA wheels.
+#
+# macOS is intentionally not supported here: Docker Desktop on macOS cannot
+# expose the Apple GPU to containers, so ComfyUI would fall back to CPU and be
+# unusably slow. Run ComfyUI natively on the host for Mac use cases.
+# CUDA 12.8+ runtime is required for Blackwell (sm_120 / sm_121) GPUs such as
+# the GB10 in DGX Spark. PyTorch's cu124 wheels were compiled without sm_120
+# kernels and fail at runtime with "no kernel image is available".
+FROM nvidia/cuda:12.8.2-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl ca-certificates \
+        python3 python3-pip python3-venv \
+        libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch cu128 builds ship Blackwell sm_120/sm_121 kernels (DGX Spark GB10).
+# cu128 aarch64 wheels are published for torch ≥ 2.7. Pin to 2.7.1 — the
+# earliest cu128 line that's reached stable status and is widely tested with
+# ComfyUI 0.21.x.
+RUN pip install --upgrade pip && \
+    pip install --index-url https://download.pytorch.org/whl/cu128 \
+        torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1
+
+# ComfyUI itself. Defaults to master for first-deploy convenience; once a
+# specific tag is validated in your environment, override with
+# `--build-arg COMFYUI_REF=v0.3.x` (or pin here) so rebuilds are reproducible.
+ARG COMFYUI_REF=master
+WORKDIR /app
+RUN git clone --depth 1 --branch "${COMFYUI_REF}" \
+        https://github.com/comfyanonymous/ComfyUI.git /app/ComfyUI \
+    && pip install -r /app/ComfyUI/requirements.txt
+
+# ComfyUI-Manager — handy for custom-node installs at runtime, including the
+# Qwen-Image and Qwen-Image-Edit nodes when needed.
+RUN git clone --depth 1 \
+        https://github.com/ltdrdata/ComfyUI-Manager.git \
+        /app/ComfyUI/custom_nodes/ComfyUI-Manager \
+    && pip install -r /app/ComfyUI/custom_nodes/ComfyUI-Manager/requirements.txt
+
+# GGUF loader — used to load the Q8/Q4 Qwen-Image weights distributed by city96.
+RUN git clone --depth 1 \
+        https://github.com/city96/ComfyUI-GGUF.git \
+        /app/ComfyUI/custom_nodes/ComfyUI-GGUF \
+    && pip install --upgrade gguf
+
+WORKDIR /app/ComfyUI
+
+# Models and outputs are bind-mounted from the host so weight downloads and
+# generated images survive container rebuilds.
+VOLUME ["/app/ComfyUI/models", "/app/ComfyUI/output"]
+
+EXPOSE 8188
+
+# Bind to 0.0.0.0 so the shim (different container, same Docker network) can
+# reach this on http://comfyui:8188.
+#
+# --highvram: skip ComfyUI's autocomputed VRAM heuristics and keep models on
+# GPU. On NVIDIA Grace Blackwell (GB10) and other unified-memory parts the
+# default heuristic reports only a few GB "usable" and triggers per-step
+# tensor swapping, which slows Qwen-Image (20B GGUF) to ~22s/step instead of
+# ~2s/step. Override at compose level if you're on a small dedicated-VRAM
+# card and prefer the offload behaviour.
+CMD ["python3", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--highvram"]
