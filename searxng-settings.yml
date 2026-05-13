@@ -1,7 +1,7 @@
 use_default_settings: true
 
 search:
-  default_lang: ko          # 검색 언어 한국어 강제 → Google/Bing 등이 한국 사이트 우선
+  default_lang: ko
   ban_time_on_fail: 5
   max_ban_time_on_fail: 120
   formats:
@@ -9,6 +9,6 @@ search:
     - json
 
 server:
-  secret_key: "rfCZz4FAjrTyAWR9Xd9f"  # SearXNG 내부 세션 키 — 외부 노출 없는 내부 전용 서비스
+  secret_key: "rfCZz4FAjrTyAWR9Xd9f"
   bind_address: "0.0.0.0"
   port: 8080

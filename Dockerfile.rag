@@ -1,9 +1,6 @@
 FROM registry.librechat.ai/danny-avila/librechat-rag-api-dev:latest
 
-# pyhwp = hwp5 라이브러리 + hwp5txt CLI entry_point (.hwp → .txt 변환).
 RUN pip install --no-cache-dir pyhwp
 
-# base 이미지의 get_loader() 에 .hwp 분기 in-place 추가.
-# (base 이미지가 hwp 미지원이라 fallback TextLoader 가 이진 OLE 데이터를 깨진 텍스트로 읽음)
 COPY rag-patches/patch_document_loader.py /tmp/patch_document_loader.py
 RUN python /tmp/patch_document_loader.py && rm /tmp/patch_document_loader.py

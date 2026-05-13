@@ -1,51 +1,73 @@
-# ==================================================
-# LiteLLM Proxy 설정
-# ==================================================
-
 model_list:
-  # ---- Ollama: 설치된 모델을 명시적으로 등록 (와일드카드는 /v1/models 에 노출되어 잘못 선택되면 "invalid model name" 발생) ----
+  # >>> KLOUDCHAT_AUTOGEN_START
   - model_name: ollama/qwen3.5:9b
     litellm_params:
       model: ollama_chat/qwen3.5:9b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000400
+      output_cost_per_token: 0.0000001000
   - model_name: ollama/qwen3.5:35b
     litellm_params:
       model: ollama_chat/qwen3.5:35b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000800
+      output_cost_per_token: 0.0000002800
   - model_name: ollama/gemma4:26b
     litellm_params:
       model: ollama_chat/gemma4:26b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000800
+      output_cost_per_token: 0.0000001600
   - model_name: ollama/gemma3:27b
     litellm_params:
       model: ollama_chat/gemma3:27b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000800
+      output_cost_per_token: 0.0000001600
+  - model_name: openrouter/gpt-oss:20b
+    litellm_params:
+      model: openrouter/openai/gpt-oss-20b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000000000
+      output_cost_per_token: 0.0000000000
+  - model_name: openrouter/gpt-oss:120b
+    litellm_params:
+      model: openrouter/openai/gpt-oss-120b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000000000
+      output_cost_per_token: 0.0000000000
   - model_name: ollama/qwen3-coder-next:q4_K_M
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q4_K_M
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000001500
+      output_cost_per_token: 0.0000012000
   - model_name: ollama/qwen3-coder-next:q8_0
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q8_0
-      api_base: os.environ/OLLAMA_API_BASE
-  # 임베딩 모델 (bge-m3) 은 RAG (rag_api) 가 Ollama 호스트로 직접 호출하므로 LiteLLM 에 등록하지 않습니다.
-  # 등록 시 /v1/models 에 노출되어 LibreChat 모델 드롭다운에 임베딩 모델이 섞입니다.
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000002200
+      output_cost_per_token: 0.0000018000
+  - model_name: bge-m3
+    model_info:
+      mode: embedding
+      input_cost_per_token: 0.0000000200
+    litellm_params:
+      model: ollama/bge-m3
+      api_base: http://ollama-lb:11434
+  # <<< KLOUDCHAT_AUTOGEN_END
 
-  # ---- 클라우드 공급자 확장 시 주석 해제 (docker-compose.yml litellm environment에 API 키도 추가) ----
-  # - model_name: gpt-4o
-  #   litellm_params:
-  #     model: openai/gpt-4o
-  #     api_key: os.environ/OPENAI_API_KEY
-
-  # - model_name: claude-sonnet-4-5
-  #   litellm_params:
-  #     model: anthropic/claude-sonnet-4-5
-  #     api_key: os.environ/ANTHROPIC_API_KEY
-
-  # - model_name: gemini-2.5-pro
-  #   litellm_params:
-  #     model: gemini/gemini-2.5-pro
-  #     api_key: os.environ/GEMINI_API_KEY
+router_settings:
+  num_retries: 2
+  timeout: 600
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
@@ -57,21 +79,17 @@ litellm_settings:
   drop_unsupported_params: true
   request_timeout: 600
   num_retries: 2
-  check_provider_endpoint: false   # true 면 Ollama 의 모든 모델을 동적으로 /v1/models 에 노출 → 위 model_list 외 모델도 사용자 드롭다운에 뜸. 명시 등록 5개만 보이려면 false.
-  # ---- 모든 내부 사용자 기본 예산 (개별 설정 없을 때 적용) ----
+  check_provider_endpoint: false
   max_internal_user_budget: 25
   internal_user_budget_duration: "1mo"
-  # ---- 키 생성 시 기본값 ----
   default_key_generate_params:
     max_budget: 10
     budget_duration: "1mo"
-  # ---- 키 생성 시 상한선 ----
   upperbound_key_generate_params:
     max_budget: 9999
     tpm_limit: 100000
     rpm_limit: 500
 
-# ---- Claude Code용: Anthropic Messages API 호환 ----
 anthropic_proxy:
   enabled: true
   prefix: /

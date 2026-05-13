@@ -1,15 +1,10 @@
-# ===== 시크릿 =====
 .env
 scripts/.data/
 
-# ===== 서비스 데이터 볼륨 =====
 mongodb/
 meilisearch/
 rag/
 litellm/
 librechat/
-ollama/
-comfyui/
 code-interpreter/
-tts-data/
 __pycache__/

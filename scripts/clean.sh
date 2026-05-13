@@ -1,39 +1,17 @@
 #!/usr/bin/env bash
-# Wipe container data directories (Ollama models excluded).
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-TARGETS=(
-  librechat
-  litellm
-  meilisearch
-  mongodb
-  rag
-  code-interpreter
-  scripts/.data
-)
+TARGETS=(librechat litellm meilisearch mongodb rag code-interpreter scripts/.data)
 
-echo "==> Directories to delete (Ollama models are preserved):"
-for dir in "${TARGETS[@]}"; do
-  echo "    $PROJECT_DIR/$dir"
+echo "==> 삭제할 디렉토리:"
+for d in "${TARGETS[@]}"; do echo "    $PROJECT_DIR/$d"; done
+read -rp "Continue? [y/N] " confirm
+[[ "$confirm" =~ ^[Yy]$ ]] || { echo "Cancelled."; exit 0; }
+
+for d in "${TARGETS[@]}"; do
+  t="$PROJECT_DIR/$d"
+  if [[ -e "$t" ]]; then sudo rm -rf "$t"; echo "removed: $t"
+  else echo "skipped: $t"; fi
 done
-
-read -r -p "Continue? [y/N] " confirm
-if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-  echo "Cancelled."
-  exit 0
-fi
-
-for dir in "${TARGETS[@]}"; do
-  target="$PROJECT_DIR/$dir"
-  if [ -e "$target" ]; then
-    sudo rm -rf "$target"
-    echo "removed: $target"
-  else
-    echo "skipped (missing): $target"
-  fi
-done
-
-echo "==> Done."

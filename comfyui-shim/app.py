@@ -1,4 +1,4 @@
-"""A1111-compatible shim in front of ComfyUI.
+"""A1111-compatible shim in front of one or more ComfyUI backends.
 
 LibreChat's built-in stable-diffusion tool speaks the A1111 / AUTOMATIC1111
 WebUI REST conventions (POST /sdapi/v1/txt2img, /sdapi/v1/img2img, …) and
@@ -16,6 +16,17 @@ This shim translates between the two. For each generation:
   4. Poll /history/<prompt_id> until the run finishes.
   5. Fetch each output image via /view, base64 it, return in A1111 shape.
 
+Multi-backend routing
+─────────────────────
+COMFYUI_URLS may list more than one ComfyUI backend (comma-separated). When
+multiple are configured the shim:
+
+  * probes each backend's /queue at request time and picks the one with the
+    fewest running+pending jobs (least-loaded), excluding unreachable nodes;
+  * remembers the prompt_id → backend mapping so the subsequent /history
+    polls and /view fetches land on the same node that ran the workflow —
+    ComfyUI's run state is per-node, so naive round-robin would break here.
+
 Templates ship with sensible defaults for sdxl / qwen-image / qwen-image-edit
 but real-world tuning (sampler choice, scheduler, resolution) almost always
 needs adjustment after the first end-to-end run — keep them in version
@@ -23,9 +34,9 @@ control and iterate.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import copy
-import io
 import json
 import logging
 import os
@@ -41,11 +52,46 @@ from pydantic import BaseModel, Field
 LOG = logging.getLogger("comfyui-shim")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
-COMFYUI_URL = os.getenv("COMFYUI_URL", "http://comfyui:8188").rstrip("/")
+
+def _parse_backends() -> list[str]:
+    """COMFYUI_URLS (preferred, comma-separated) → COMFYUI_URL (legacy single)
+    → default in-network container."""
+    raw = os.getenv("COMFYUI_URLS") or os.getenv("COMFYUI_URL") or "http://comfyui:8188"
+    urls = [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
+    if not urls:
+        raise RuntimeError("COMFYUI_URLS / COMFYUI_URL is empty")
+    return urls
+
+
+BACKENDS: list[str] = _parse_backends()
 WORKFLOWS_DIR = Path(__file__).parent / "workflows"
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-image")
 POLL_INTERVAL_SEC = float(os.getenv("POLL_INTERVAL_SEC", "0.5"))
 POLL_TIMEOUT_SEC = float(os.getenv("POLL_TIMEOUT_SEC", "1800"))
+QUEUE_PROBE_TIMEOUT_SEC = float(os.getenv("QUEUE_PROBE_TIMEOUT_SEC", "2.0"))
+
+LOG.info("ComfyUI backends: %s", ", ".join(BACKENDS))
+
+# prompt_id → backend URL. ComfyUI keeps run state in-process, so once we
+# submit a /prompt to a node every subsequent /history and /view for that
+# run MUST hit the same node. Entries are evicted when _comfy_run finishes
+# (success, error, or timeout); the size cap below is just a safety net for
+# any path that forgets to clean up.
+_PROMPT_BACKEND: dict[str, str] = {}
+_PROMPT_BACKEND_MAX = 1024
+
+
+def _remember(prompt_id: str, backend: str) -> None:
+    _PROMPT_BACKEND[prompt_id] = backend
+    if len(_PROMPT_BACKEND) > _PROMPT_BACKEND_MAX:
+        # Drop oldest insertion order — dict preserves it.
+        for k in list(_PROMPT_BACKEND.keys())[: len(_PROMPT_BACKEND) - _PROMPT_BACKEND_MAX]:
+            _PROMPT_BACKEND.pop(k, None)
+
+
+def _forget(prompt_id: str) -> None:
+    _PROMPT_BACKEND.pop(prompt_id, None)
+
 
 # Map model aliases the user sends in the A1111 request to workflow templates.
 # Aliases match what manage.sh / docs advertise.
@@ -68,7 +114,41 @@ MODEL_ALIASES_IMG2IMG = {
     "qwen-image-edit-2509": "qwen-image-edit.json",
 }
 
-app = FastAPI(title="ComfyUI A1111 Shim", version="0.1.0")
+app = FastAPI(title="ComfyUI A1111 Shim", version="0.2.0")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Backend selection
+# ──────────────────────────────────────────────────────────────────────
+
+async def _queue_depth(client: httpx.AsyncClient, backend: str) -> int | None:
+    """Running + pending jobs on a backend. None when unreachable."""
+    try:
+        r = await client.get(f"{backend}/queue", timeout=QUEUE_PROBE_TIMEOUT_SEC)
+        r.raise_for_status()
+        body = r.json()
+        return len(body.get("queue_running", [])) + len(body.get("queue_pending", []))
+    except (httpx.HTTPError, ValueError, KeyError):
+        return None
+
+
+async def _pick_backend(client: httpx.AsyncClient) -> str:
+    """Least-loaded reachable backend. Falls back to the first configured one
+    if every probe failed — gives the caller a meaningful error instead of
+    silently dropping the request."""
+    if len(BACKENDS) == 1:
+        return BACKENDS[0]
+    depths = await asyncio.gather(*(_queue_depth(client, b) for b in BACKENDS))
+    reachable = [(d, b) for d, b in zip(depths, BACKENDS) if d is not None]
+    if not reachable:
+        LOG.warning("All ComfyUI backends failed /queue probe; defaulting to %s", BACKENDS[0])
+        return BACKENDS[0]
+    reachable.sort(key=lambda pair: pair[0])
+    chosen = reachable[0][1]
+    LOG.info("Routing to %s (depths: %s)",
+             chosen,
+             ", ".join(f"{b}={d}" for d, b in zip(depths, BACKENDS)))
+    return chosen
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -146,20 +226,24 @@ def _populate_workflow(
     return wf
 
 
-async def _comfy_upload_image(client: httpx.AsyncClient, b64_image: str) -> str:
-    """Push a base64 image into ComfyUI's input folder. Returns the filename
-    the workflow's LoadImage node should reference."""
+async def _comfy_upload_image(client: httpx.AsyncClient, backend: str, b64_image: str) -> str:
+    """Push a base64 image into a specific ComfyUI's input folder. The
+    workflow's LoadImage node must reference the returned filename."""
     raw = base64.b64decode(b64_image)
     name = f"shim_input_{int(time.time() * 1000)}.png"
     files = {"image": (name, raw, "image/png"), "type": (None, "input")}
-    r = await client.post(f"{COMFYUI_URL}/upload/image", files=files, timeout=30)
+    r = await client.post(f"{backend}/upload/image", files=files, timeout=30)
     r.raise_for_status()
     return r.json().get("name", name)
 
 
-async def _comfy_run(client: httpx.AsyncClient, workflow: dict[str, Any]) -> list[str]:
-    """Queue a workflow, wait for completion, return the base64 PNGs."""
-    r = await client.post(f"{COMFYUI_URL}/prompt", json={"prompt": workflow}, timeout=30)
+async def _comfy_run(client: httpx.AsyncClient, backend: str, workflow: dict[str, Any]) -> list[str]:
+    """Queue a workflow on `backend`, wait for completion, return base64 PNGs.
+
+    The prompt_id → backend mapping is recorded immediately after the POST
+    so that any concurrent inspection (or future progress endpoint) can
+    route to the right node. Cleared in finally."""
+    r = await client.post(f"{backend}/prompt", json={"prompt": workflow}, timeout=30)
     if r.status_code >= 400:
         # Surface ComfyUI's structured error to the caller. The /prompt
         # endpoint returns a JSON body explaining missing checkpoints,
@@ -170,34 +254,38 @@ async def _comfy_run(client: httpx.AsyncClient, workflow: dict[str, Any]) -> lis
             detail = r.json()
         except Exception:
             detail = {"raw": r.text}
-        LOG.warning("ComfyUI /prompt rejected workflow: %s", detail)
+        LOG.warning("ComfyUI /prompt rejected workflow on %s: %s", backend, detail)
         raise HTTPException(status_code=r.status_code, detail=detail)
     prompt_id = r.json()["prompt_id"]
+    _remember(prompt_id, backend)
 
-    deadline = time.monotonic() + POLL_TIMEOUT_SEC
-    while True:
-        if time.monotonic() > deadline:
-            raise HTTPException(504, f"ComfyUI run timed out after {POLL_TIMEOUT_SEC}s")
-        h = await client.get(f"{COMFYUI_URL}/history/{prompt_id}", timeout=15)
-        h.raise_for_status()
-        body = h.json()
-        if prompt_id in body and body[prompt_id].get("status", {}).get("completed"):
-            run = body[prompt_id]
-            break
-        time.sleep(POLL_INTERVAL_SEC)
+    try:
+        deadline = time.monotonic() + POLL_TIMEOUT_SEC
+        while True:
+            if time.monotonic() > deadline:
+                raise HTTPException(504, f"ComfyUI run timed out after {POLL_TIMEOUT_SEC}s on {backend}")
+            h = await client.get(f"{backend}/history/{prompt_id}", timeout=15)
+            h.raise_for_status()
+            body = h.json()
+            if prompt_id in body and body[prompt_id].get("status", {}).get("completed"):
+                run = body[prompt_id]
+                break
+            await asyncio.sleep(POLL_INTERVAL_SEC)
 
-    images_b64: list[str] = []
-    for node_out in run.get("outputs", {}).values():
-        for img in node_out.get("images", []):
-            params = {
-                "filename": img["filename"],
-                "subfolder": img.get("subfolder", ""),
-                "type": img.get("type", "output"),
-            }
-            v = await client.get(f"{COMFYUI_URL}/view", params=params, timeout=30)
-            v.raise_for_status()
-            images_b64.append(base64.b64encode(v.content).decode())
-    return images_b64
+        images_b64: list[str] = []
+        for node_out in run.get("outputs", {}).values():
+            for img in node_out.get("images", []):
+                params = {
+                    "filename": img["filename"],
+                    "subfolder": img.get("subfolder", ""),
+                    "type": img.get("type", "output"),
+                }
+                v = await client.get(f"{backend}/view", params=params, timeout=30)
+                v.raise_for_status()
+                images_b64.append(base64.b64encode(v.content).decode())
+        return images_b64
+    finally:
+        _forget(prompt_id)
 
 
 def _resolve_model(model: str | None, *, img2img: bool) -> str:
@@ -236,8 +324,8 @@ class Img2ImgRequest(Txt2ImgRequest):
 # ──────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, Any]:
+    return {"status": "ok", "backends": BACKENDS}
 
 
 @app.get("/sdapi/v1/sd-models")
@@ -266,7 +354,6 @@ async def progress() -> dict[str, Any]:
 async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
     model = req.override_settings.get("sd_model_checkpoint") or req.override_settings.get("model")
     template_name = _resolve_model(model, img2img=False)
-    LOG.info("txt2img: model=%s template=%s", model or DEFAULT_MODEL, template_name)
 
     template = _load_workflow(template_name)
     workflow = _populate_workflow(
@@ -281,7 +368,10 @@ async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
     )
 
     async with httpx.AsyncClient() as client:
-        images = await _comfy_run(client, workflow)
+        backend = await _pick_backend(client)
+        LOG.info("txt2img: model=%s template=%s backend=%s",
+                 model or DEFAULT_MODEL, template_name, backend)
+        images = await _comfy_run(client, backend, workflow)
 
     return {
         "images": images,
@@ -297,12 +387,17 @@ async def img2img(req: Img2ImgRequest) -> dict[str, Any]:
 
     model = req.override_settings.get("sd_model_checkpoint") or req.override_settings.get("model")
     template_name = _resolve_model(model, img2img=True)
-    LOG.info("img2img: model=%s template=%s", model or DEFAULT_MODEL, template_name)
 
     template = _load_workflow(template_name)
 
     async with httpx.AsyncClient() as client:
-        uploaded = await _comfy_upload_image(client, req.init_images[0])
+        backend = await _pick_backend(client)
+        LOG.info("img2img: model=%s template=%s backend=%s",
+                 model or DEFAULT_MODEL, template_name, backend)
+        # Upload the init image to the same backend that will run the workflow —
+        # ComfyUI looks up LoadImage by filename in its local input folder, so
+        # mixing nodes here would yield "input image not found".
+        uploaded = await _comfy_upload_image(client, backend, req.init_images[0])
         workflow = _populate_workflow(
             template,
             prompt=req.prompt,
@@ -314,7 +409,7 @@ async def img2img(req: Img2ImgRequest) -> dict[str, Any]:
             height=req.height,
             input_image_name=uploaded,
         )
-        images = await _comfy_run(client, workflow)
+        images = await _comfy_run(client, backend, workflow)
 
     return {
         "images": images,
