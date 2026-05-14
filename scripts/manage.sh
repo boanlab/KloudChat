@@ -170,14 +170,26 @@ create_default_agent_for_user() {
   else                         gemma_model=ollama/gemma3:27b; fi
   qwen35b_model=ollama/qwen3.5:35b
   qwen9b_model=ollama/qwen3.5:9b
-  gptoss20b_model=openrouter/gpt-oss:20b
-  gptoss120b_model=openrouter/gpt-oss:120b
-  local gemma_name="KloudChat (${gemma_model#*/})"
-  local qwen35b_name="KloudChat (${qwen35b_model#*/})"
-  local qwen9b_name="KloudChat (${qwen9b_model#*/})"
-  local gptoss20b_name="KloudChat (${gptoss20b_model#*/})"
-  local gptoss120b_name="KloudChat (${gptoss120b_model#*/})"
+  gptoss20b_model=openai/gpt-oss:20b
+  gptoss120b_model=openai/gpt-oss:120b
+  local opus47_model=anthropic/claude-opus-4.7
+  local opus46_model=anthropic/claude-opus-4.6
+  local sonnet46_model=anthropic/claude-sonnet-4.6
+  local gpt55_model=openai/gpt-5.5
+  local gemma_name="채팅 (${gemma_model#*/})"
+  local qwen35b_name="채팅 (${qwen35b_model#*/})"
+  local qwen9b_name="채팅 (${qwen9b_model#*/})"
+  local gptoss20b_name="채팅 (${gptoss20b_model#*/})"
+  local gptoss120b_name="채팅 (${gptoss120b_model#*/})"
+  local opus47_name="채팅 (${opus47_model#*/})"
+  local opus46_name="채팅 (${opus46_model#*/})"
+  local sonnet46_name="채팅 (${sonnet46_model#*/})"
+  local gpt55_name="채팅 (${gpt55_model#*/})"
   local include_120b=0; gpu_supports_120b && include_120b=1
+
+  # 이미지 에이전트는 qwen3.5:35b 드라이버 — tool-calling 안정성 위해.
+  local img_llm="$qwen35b_model"
+  local img_tools="['image-generation','file_search']"
 
   local result
   result=$(docker exec chat-mongodb mongosh --quiet \
@@ -188,16 +200,17 @@ create_default_agent_for_user() {
       var roleA = db.accessroles.findOne({accessRoleId: 'agent_owner'});
       var roleR = db.accessroles.findOne({accessRoleId: 'remoteAgent_owner'});
       function rid(p) { return p + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12); }
-      function createAgent(name, model, tools) {
+      function createAgent(name, model, tools, instructions) {
+        instructions = instructions || '';
         var ex = db.agents.findOne({author: u._id, name: name}, {_id:1, id:1});
         if (ex) { print('EXISTS:' + name + ':' + ex.id); return ex.id; }
         var id = rid('agent_');
-        var ver = { name:name, description:'', instructions:'', provider:'LiteLLM', model:model, tools:tools,
+        var ver = { name:name, description:'', instructions:instructions, provider:'LiteLLM', model:model, tools:tools,
                     artifacts:'', category:'general', support_contact:{name:'',email:''},
                     agent_ids:[], edges:[], conversation_starters:[], is_promoted:false,
                     mcpServerNames:[], tool_options:{}, createdAt:now, updatedAt:now };
         var ins = db.agents.insertOne({
-          id:id, name:name, description:'', instructions:'', provider:'LiteLLM', model:model, artifacts:'',
+          id:id, name:name, description:'', instructions:instructions, provider:'LiteLLM', model:model, artifacts:'',
           tools:tools, tool_kwargs:[], author:u._id, agent_ids:[], edges:[], conversation_starters:[],
           versions:[ver], category:'general', support_contact:{name:'',email:''},
           is_promoted:false, mcpServerNames:[], tool_options:{},
@@ -217,12 +230,27 @@ create_default_agent_for_user() {
         return id;
       }
       var gemmaId   = createAgent('${gemma_name}',   '${gemma_model}',   ['execute_code','file_search','web_search']);
-      var qwen35bId = createAgent('${qwen35b_name}', '${qwen35b_model}', ['stable-diffusion','execute_code','file_search','web_search']);
-      var qwen9bId  = createAgent('${qwen9b_name}',  '${qwen9b_model}',  ['stable-diffusion','execute_code','file_search','web_search']);
+      var qwen35bId = createAgent('${qwen35b_name}', '${qwen35b_model}', ['execute_code','file_search','web_search']);
+      var qwen9bId  = createAgent('${qwen9b_name}',  '${qwen9b_model}',  ['execute_code','file_search','web_search']);
       createAgent('${gptoss20b_name}', '${gptoss20b_model}', ['execute_code','file_search','web_search']);
       if (${include_120b}) {
         createAgent('${gptoss120b_name}', '${gptoss120b_model}', ['execute_code','file_search','web_search']);
       }
+      createAgent('${opus47_name}',   '${opus47_model}',   ['execute_code','file_search','web_search']);
+      createAgent('${opus46_name}',   '${opus46_model}',   ['execute_code','file_search','web_search']);
+      createAgent('${sonnet46_name}', '${sonnet46_model}', ['execute_code','file_search','web_search']);
+      createAgent('${gpt55_name}',    '${gpt55_model}',    ['execute_code','file_search','web_search']);
+
+      // 이미지 에이전트별 system instructions — LibreChat SD 툴 패치된 model 인자 강제.
+      function imgInstr(alias, blurb) {
+        return 'You are an image generation specialist. When the user asks for an image, ALWAYS call the image-generation tool with model=\"' + alias + '\". '
+             + 'Do NOT use any other model. ' + blurb
+             + ' Generate detailed, descriptive prompts (>=7 keywords) and reasonable negative_prompts.';
+      }
+      createAgent('이미지 (sdxl)',         '${img_llm}', ${img_tools}, imgInstr('sdxl',         'SDXL is fast, photorealistic baseline.'));
+      createAgent('이미지 (qwen-image)',   '${img_llm}', ${img_tools}, imgInstr('qwen-image',   'Qwen-Image excels at Asian text/scenes.'));
+      createAgent('이미지 (flux-dev)',     '${img_llm}', ${img_tools}, imgInstr('flux-dev',     'Flux-dev is highest quality, slower.'));
+      createAgent('이미지 (flux-schnell)', '${img_llm}', ${img_tools}, imgInstr('flux-schnell', 'Flux-schnell is fast (4 steps), good for iteration.'));
       var defId = qwen35bId || gemmaId || qwen9bId;
       var defTitle = qwen35bId ? '${qwen35b_name}' : (gemmaId ? '${gemma_name}' : '${qwen9b_name}');
       if (defId) {

@@ -28,7 +28,7 @@ compose 호스트와 같은 머신이거나 별도 머신. 다음을 prerequisit
 ./scripts/download-ollama-models.sh     # GPU 자동 감지 추천 셋
 
 ./scripts/install-comfyui.sh            # systemd, 0.0.0.0:8188 (이미지 생성 시)
-./scripts/download-image-models.sh      # ~50GB
+./scripts/download-image-models.sh      # GPU 자동 감지 추천 셋
 ```
 
 여러 GPU 노드를 두면 compose 호스트 `.env` 에 csv 로 나열 (`OLLAMA_URLS`, `COMFYUI_URLS`). `setup.sh` 가 모든 백엔드의 응답 + 모델 존재를 검증.

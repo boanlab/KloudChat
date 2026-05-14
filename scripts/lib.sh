@@ -129,6 +129,10 @@ CHAT_MODELS=(
   gpt-oss:120b
   qwen3-coder-next:q4_K_M
   qwen3-coder-next:q8_0
+  claude-opus-4.7
+  claude-opus-4.6
+  claude-sonnet-4.6
+  gpt-5.5
 )
 LIBRECHAT_MODELS=(
   qwen3.5:9b
@@ -137,6 +141,10 @@ LIBRECHAT_MODELS=(
   gemma3:27b
   gpt-oss:20b
   gpt-oss:120b
+  claude-opus-4.7
+  claude-opus-4.6
+  claude-sonnet-4.6
+  gpt-5.5
 )
 EMBED_MODELS=(bge-m3)
 
@@ -150,6 +158,10 @@ declare -A MODEL_PRICE_IN_PM=(
   [gpt-oss:120b]=0
   [qwen3-coder-next:q4_K_M]=0.15
   [qwen3-coder-next:q8_0]=0.22
+  [claude-opus-4.7]=5
+  [claude-opus-4.6]=5
+  [claude-sonnet-4.6]=3
+  [gpt-5.5]=5
   [bge-m3]=0.02
 )
 declare -A MODEL_PRICE_OUT_PM=(
@@ -161,20 +173,29 @@ declare -A MODEL_PRICE_OUT_PM=(
   [gpt-oss:120b]=0
   [qwen3-coder-next:q4_K_M]=1.20
   [qwen3-coder-next:q8_0]=1.80
+  [claude-opus-4.7]=25
+  [claude-opus-4.6]=25
+  [claude-sonnet-4.6]=15
+  [gpt-5.5]=30
 )
 
-# OpenRouter free tier로 라우팅할 모델. key=로컬 표기, value=OR model id (:free 접미사 포함).
-# 이 매핑이 있으면 LiteLLM이 Ollama 대신 OR로 요청 보냄. 가격은 위에서 0으로 설정.
+# OpenRouter로 라우팅할 모델. key=로컬 표기, value=OR model id (free tier면 :free 접미사 포함).
 declare -A MODEL_OPENROUTER_FREE=(
   [gpt-oss:20b]=openai/gpt-oss-20b:free
   [gpt-oss:120b]=openai/gpt-oss-120b:free
+  [claude-opus-4.7]=anthropic/claude-opus-4.7
+  [claude-opus-4.6]=anthropic/claude-opus-4.6
+  [claude-sonnet-4.6]=anthropic/claude-sonnet-4.6
+  [gpt-5.5]=openai/gpt-5.5
 )
 
 per_token_cost() { awk -v v="$1" 'BEGIN { printf "%.10f", v/1000000 }'; }
 
-# 모델 식별자 prefix. OR free 라우팅 모델은 'openrouter', 그 외는 'ollama'.
+# 모델 식별자 prefix. OR 라우팅 모델은 OR id의 provider segment(anthropic/openai/google/...),
+# 그 외는 'ollama'.
 model_prefix() {
-  [[ -n "${MODEL_OPENROUTER_FREE[$1]:-}" ]] && { echo openrouter; return; }
+  local or="${MODEL_OPENROUTER_FREE[$1]:-}"
+  [[ -n "$or" ]] && { echo "${or%%/*}"; return; }
   echo ollama
 }
 

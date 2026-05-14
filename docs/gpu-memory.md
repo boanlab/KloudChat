@@ -10,10 +10,11 @@
 | Ollama | qwen3-coder-next (Q4_K_M) | ~51GB | 대화 후 2분 유지 |
 | Ollama | qwen3-coder-next (Q8_0) | ~84GB | 대화 후 2분 유지 |
 | Ollama | bge-m3 (embed) | ~1.2GB | RAG 요청 시 |
-| OpenRouter free | gpt-oss:20b / 120b | **0** | 외부 — `MODEL_OPENROUTER_FREE` 매핑된 모델은 로컬 GPU 사용 안 함 |
+| OpenRouter | gpt-oss / claude-* / gpt-5.5 | **0** | 외부 — `MODEL_OPENROUTER_FREE` 매핑된 모델은 로컬 GPU 사용 안 함 |
 | ComfyUI | SDXL | ~10GB | 요청 시만 |
 | ComfyUI | Qwen-Image (Q8_0 GGUF) | ~22GB | 요청 시만 |
 | ComfyUI | Qwen-Image-Edit (Q8_0 GGUF) | ~22GB | 요청 시만 |
+| ComfyUI | FLUX.1-dev / schnell (FP16) | ~24GB | 요청 시만, T5+CLIP 인코더 ~10GB 별도 로드 |
 
 모든 서비스는 동일한 물리 GPU VRAM 을 공유합니다. 격리나 예약 없이 선착순으로 점유합니다.
 
@@ -37,6 +38,8 @@ ComfyUI 컨테이너는 `--highvram` 으로 기동되어 모델을 GPU 메모리
 | SDXL 1.0 base | 20 | ~2 s | ~70 s |
 | Qwen-Image Q8_0 GGUF | 25 | ~20 s | ~10 분 |
 | Qwen-Image-Edit Q8_0 GGUF | 25 | ~20 s | ~10 분 |
+| FLUX.1-schnell FP16 | 4 | (측정 필요) | (측정 필요) |
+| FLUX.1-dev FP16 | 20 | (측정 필요) | (측정 필요) |
 
 Qwen-Image GGUF 가 SDXL 대비 10배 느린 것은 **GGUF Q8_0 의 dequantization 비용** 때문이며 메모리 부족이나 swap 문제가 아닙니다. Blackwell GB10 의 FP4/FP8 텐서코어를 Q8_0 GGUF 가 활용하지 못 해 매 step 마다 uint8 → bf16 dequant + matmul 을 소프트웨어로 처리합니다. 더 빠르게 하려면 BF16 safetensors (~40 GB) 또는 fp8 quant 를 받아 사용하세요 — `comfyui-shim/workflows/qwen-image-*.json` 의 `unet_name` / `class_type` 만 교체하면 됩니다.
 

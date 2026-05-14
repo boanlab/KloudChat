@@ -22,4 +22,8 @@ RUN sed -i 's|parseTextParts(message.content)|parseTextParts(message.content, tr
     grep -q 'parseTextParts(message.content, true)' /app/api/server/services/Files/Audio/streamAudio.js \
     || (echo "ERROR: streamAudio.js TTS thinking patch failed" && exit 1)
 
+COPY rag-patches/patch_librechat_sd_model.js /tmp/patch_librechat_sd_model.js
+RUN node /tmp/patch_librechat_sd_model.js && \
+    grep -q 'KLOUDCHAT_SD_MODEL_PATCH' /app/api/app/clients/tools/structured/StableDiffusion.js
+
 COPY --from=builder --chown=1000:1000 /src/client/dist /app/client/dist

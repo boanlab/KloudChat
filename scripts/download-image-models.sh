@@ -1,11 +1,30 @@
 #!/bin/bash
 set -euo pipefail
 
+__SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+__ENV_FILE="$(dirname "$__SCRIPT_DIR")/.env"
+# .env 의 HF_TOKEN 자동 로드. shell 에 export 안 돼있어도 gated repo 다운로드 가능.
+if [[ -z "${HF_TOKEN:-}" && -f "$__ENV_FILE" ]]; then
+  HF_TOKEN="$(grep -E '^HF_TOKEN=' "$__ENV_FILE" | head -1 | cut -d= -f2-)"
+  [[ -n "$HF_TOKEN" ]] && export HF_TOKEN
+fi
+source "$__SCRIPT_DIR/lib.sh"
+
 MODELS_DIR="${COMFYUI_MODELS_DIR:-/opt/comfyui/app/ComfyUI/models}"
 CKPT_DIR="${MODELS_DIR}/checkpoints"
 UNET_DIR="${MODELS_DIR}/unet"
 CLIP_DIR="${MODELS_DIR}/clip"
 VAE_DIR="${MODELS_DIR}/vae"
+
+# GPU class → 권장 다운로드 셋. 대상 호스트의 VRAM/메모리에 맞춰 LLM 동시 실행 여유 고려.
+recommended_aliases() {
+  case "$(detect_gpu_class)" in
+    gb10|blackwell-pro)      echo "sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-dev flux-schnell" ;;
+    blackwell-5090|ada-4090) echo "sdxl sdxl-vae flux-shared flux-schnell" ;;
+    nvidia-other)            echo "sdxl sdxl-vae" ;;
+    *)                       echo "" ;;
+  esac
+}
 
 if { [[ -d "$MODELS_DIR" && ! -w "$MODELS_DIR" ]] || \
      [[ ! -d "$MODELS_DIR" && ! -w "$(dirname "$MODELS_DIR")" ]]; } && [[ $EUID -ne 0 ]]; then
@@ -30,19 +49,28 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [models...]
 
-Aliases (default: all):
-  sdxl             SDXL 1.0 base                       ~6.9GB
-  sdxl-vae         SDXL VAE FP16 fix                   ~160MB
+Aliases (default: recommended):
+  sdxl             SDXL 1.0 base                        ~6.9GB
+  sdxl-vae         SDXL VAE FP16 fix                    ~160MB
   qwen-image       Qwen-Image Q8_0 GGUF + encoder + VAE ~21GB
-  qwen-image-edit  Qwen-Image-Edit-2509 Q8_0 GGUF      ~21GB
-  all              모두 (~50GB)
+  qwen-image-edit  Qwen-Image-Edit-2509 Q8_0 GGUF       ~21GB
+  flux-shared      Flux T5/CLIP/VAE encoders (공유)     ~10GB
+  flux-dev         FLUX.1-dev FP16 (gated, HF_TOKEN)    ~22GB
+  flux-schnell     FLUX.1-schnell FP16 (MIT)            ~22GB
+  recommended      GPU class 자동 감지 후 적합한 셋
+  all              모두 (~104GB)
 
-HF_TOKEN env 으로 gated repo 인증 가능.
+GPU class 별 recommended:
+  gb10/ blackwell-pro:      모두 (~104GB)
+  blackwell-5090 / ada-4090: sdxl + flux-shared + flux-schnell (~32GB)
+  nvidia-other:             sdxl + sdxl-vae (~7GB)
+
+HF_TOKEN env 으로 gated repo 인증 (flux-dev 필수). 스크립트가 .env 자동 로드.
 EOF
   exit 0
 }
 
-[[ $# -eq 0 ]] && set -- all
+[[ $# -eq 0 ]] && set -- recommended
 
 SDXL_URL=https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors
 SDXL_VAE_URL=https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors
@@ -50,11 +78,22 @@ QI_UNET_URL=https://huggingface.co/city96/Qwen-Image-gguf/resolve/main/qwen-imag
 QI_EDIT_UNET_URL=https://huggingface.co/QuantStack/Qwen-Image-Edit-2509-GGUF/resolve/main/Qwen-Image-Edit-2509-Q8_0.gguf
 QI_TEXT_URL=https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
 QI_VAE_URL=https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
+# Flux (FP16). dev 는 gated; schnell 은 MIT. T5/CLIP/VAE 는 두 변형이 공유.
+FLUX_DEV_URL=https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors
+FLUX_SCHNELL_URL=https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/flux1-schnell.safetensors
+FLUX_T5_URL=https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors
+FLUX_CLIPL_URL=https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors
+FLUX_VAE_URL=https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors
 
 QI_UNET="$UNET_DIR/qwen-image-Q8_0.gguf"
 QI_EDIT_UNET="$UNET_DIR/qwen-image-edit-Q8_0.gguf"
 QI_TEXT="$CLIP_DIR/qwen-image-text-encoder.safetensors"
 QI_VAE="$VAE_DIR/qwen-image-vae.safetensors"
+FLUX_DEV="$UNET_DIR/flux1-dev.safetensors"
+FLUX_SCHNELL="$UNET_DIR/flux1-schnell.safetensors"
+FLUX_T5="$CLIP_DIR/t5xxl_fp16.safetensors"
+FLUX_CLIPL="$CLIP_DIR/clip_l.safetensors"
+FLUX_VAE="$VAE_DIR/flux-ae.safetensors"
 
 for arg in "$@"; do
   case "$arg" in
@@ -66,7 +105,22 @@ for arg in "$@"; do
     qwen-image-edit) download "$QI_EDIT_UNET_URL" "$QI_EDIT_UNET"
                      download "$QI_TEXT_URL"      "$QI_TEXT"
                      download "$QI_VAE_URL"       "$QI_VAE" ;;
-    all)             "$0" sdxl sdxl-vae qwen-image qwen-image-edit ;;
+    flux-shared)     download "$FLUX_T5_URL"      "$FLUX_T5"
+                     download "$FLUX_CLIPL_URL"   "$FLUX_CLIPL"
+                     download "$FLUX_VAE_URL"     "$FLUX_VAE" ;;
+    flux-dev)        "$0" flux-shared
+                     download "$FLUX_DEV_URL"     "$FLUX_DEV" ;;
+    flux-schnell)    "$0" flux-shared
+                     download "$FLUX_SCHNELL_URL" "$FLUX_SCHNELL" ;;
+    all)             "$0" sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-dev flux-schnell ;;
+    recommended)
+      rec="$(recommended_aliases)"
+      if [[ -z "$rec" ]]; then
+        echo "GPU 미감지 — recommended 셋 없음. 명시적 alias 필요. (--help)" >&2
+        exit 1
+      fi
+      echo "GPU class: $(detect_gpu_class) → recommended: $rec"
+      "$0" $rec ;;
     -h|--help)       usage ;;
     *)               echo "Unknown alias: $arg" >&2; usage ;;
   esac

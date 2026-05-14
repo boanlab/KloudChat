@@ -227,6 +227,8 @@ services:
       - COMFYUI_URLS=${COMFYUI_URLS:-http://host.docker.internal:8188}
       - DEFAULT_MODEL=qwen-image
       - LOG_LEVEL=INFO
+      - LITELLM_URL=http://litellm:8000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/health')"]
       interval: 30s

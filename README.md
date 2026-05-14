@@ -11,7 +11,7 @@
 | 웹 검색 | SearXNG |
 | 코드 실행 샌드박스 | LibreCodeInterpreter |
 | HWP/PDF/DOCX 파일 업로드 | LibreChat RAG API |
-| 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image, Qwen-Image-Edit |
+| 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image(-Edit), FLUX.1 (dev/schnell) |
 | 팀·사용자·예산 관리 | LiteLLM + CLI 스크립트 |
 
 ## 지원 환경
@@ -19,7 +19,6 @@
 | 환경 | 채팅·RAG·검색·코드 | 이미지 (ComfyUI) |
 |---|:---:|:---:|
 | Linux x86_64 + NVIDIA GPU | ✅ | ✅ |
-| Linux x86_64 (CPU only) | ✅ (느림) | ✅ (원격 GPU 노드) |
 | Linux aarch64 — **DGX Spark (GB10)** | ✅ | ✅ |
 
 `./scripts/setup.sh` 가 아키텍처·GPU 를 자동 감지해서 사용 가능한 서비스만 띄웁니다.
@@ -44,9 +43,9 @@ git clone https://github.com/boanlab/KloudChat.git && cd KloudChat
 
 # 1. 모델 호스트 (Ollama + ComfyUI) 설치 + 가중치
 ./scripts/install-ollama.sh
-./scripts/download-ollama-models.sh        # GPU 자동 감지 추천 셋
+./scripts/download-ollama-models.sh        # GPU 자동 감지 → 추천 셋
 ./scripts/install-comfyui.sh
-./scripts/download-image-models.sh         # ~50GB
+./scripts/download-image-models.sh         # GPU 자동 감지 → 권장 셋
 
 # 2. compose stack 구성 + .env 의 백엔드 검증 + 기동 + init
 ./scripts/setup.sh --yes
@@ -82,8 +81,8 @@ LiteLLM: http://localhost:8000
   └─ code-interpreter — 코드 실행 샌드박스
 
 [Linux + NVIDIA GPU]
-  ├─ ComfyUI       — 이미지 생성 (SDXL, Qwen-Image, Qwen-Image-Edit)
-  └─ comfyui-shim  — A1111 호환 어댑터 (LibreChat 내장 stable-diffusion 툴 연동)
+  ├─ ComfyUI       — 이미지 생성 (SDXL, Qwen-Image, Qwen-Image-Edit, FLUX.1 dev/schnell)
+  └─ comfyui-shim  — A1111 호환 어댑터 (LibreChat 내장 image-generation 툴 연동)
 ```
 
 ## 문서

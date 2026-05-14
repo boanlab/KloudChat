@@ -1,6 +1,6 @@
 """A1111-compatible shim in front of one or more ComfyUI backends.
 
-LibreChat's built-in stable-diffusion tool speaks the A1111 / AUTOMATIC1111
+LibreChat's built-in image-generation tool speaks the A1111 / AUTOMATIC1111
 WebUI REST conventions (POST /sdapi/v1/txt2img, /sdapi/v1/img2img, …) and
 expects a base64-encoded PNG back. ComfyUI speaks a different protocol: you
 POST a workflow graph to /prompt, poll /history/{prompt_id} for status, and
@@ -70,7 +70,17 @@ POLL_INTERVAL_SEC = float(os.getenv("POLL_INTERVAL_SEC", "0.5"))
 POLL_TIMEOUT_SEC = float(os.getenv("POLL_TIMEOUT_SEC", "1800"))
 QUEUE_PROBE_TIMEOUT_SEC = float(os.getenv("QUEUE_PROBE_TIMEOUT_SEC", "2.0"))
 
+# Route OR image models through LiteLLM (not direct) so spend tracking,
+# team budgets, and request logging stay in one place. Empty by default —
+# add entries (alias → LiteLLM model_name) for chat models that emit images
+# in `message.images[]` when the request includes modalities=["image","text"].
+LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:8000").rstrip("/")
+LITELLM_API_KEY = os.getenv("LITELLM_MASTER_KEY") or os.getenv("OPENROUTER_API_KEY", "")
+OR_IMAGE_MODELS: dict[str, str] = {}
+
 LOG.info("ComfyUI backends: %s", ", ".join(BACKENDS))
+if OR_IMAGE_MODELS:
+    LOG.info("OR image models via %s: %s", LITELLM_URL, ", ".join(OR_IMAGE_MODELS))
 
 # prompt_id → backend URL. ComfyUI keeps run state in-process, so once we
 # submit a /prompt to a node every subsequent /history and /view for that
@@ -102,6 +112,8 @@ MODEL_ALIASES = {
     "qwen-image-2512": "qwen-image-txt2img.json",
     "qwen-image-edit": "qwen-image-edit.json",
     "qwen-image-edit-2509": "qwen-image-edit.json",
+    "flux-dev": "flux-dev-txt2img.json",
+    "flux-schnell": "flux-schnell-txt2img.json",
 }
 
 # Same map, but for img2img requests. SDXL has its own img2img workflow;
@@ -292,8 +304,45 @@ def _resolve_model(model: str | None, *, img2img: bool) -> str:
     table = MODEL_ALIASES_IMG2IMG if img2img else MODEL_ALIASES
     key = (model or DEFAULT_MODEL).lower()
     if key not in table:
-        raise HTTPException(400, f"unknown model alias: {model!r}. Known: {sorted(table)}")
+        known = sorted(set(table) | set(OR_IMAGE_MODELS))
+        raise HTTPException(400, f"unknown model alias: {model!r}. Known: {known}")
     return table[key]
+
+
+async def _openrouter_generate(prompt: str, model_alias: str) -> list[str]:
+    """Call an OR image-generating chat model via LiteLLM, return base64 PNGs."""
+    if not LITELLM_API_KEY:
+        raise HTTPException(500, "LITELLM_MASTER_KEY / OPENROUTER_API_KEY not set in shim env")
+    target = OR_IMAGE_MODELS[model_alias]
+    payload = {
+        "model": target,
+        "modalities": ["image", "text"],
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    url = f"{LITELLM_URL}/v1/chat/completions"
+    async with httpx.AsyncClient(timeout=POLL_TIMEOUT_SEC) as client:
+        r = await client.post(url, json=payload,
+                              headers={"Authorization": f"Bearer {LITELLM_API_KEY}"})
+    if r.status_code >= 300:
+        LOG.warning("OR generate failed: status=%s body=%s", r.status_code, r.text[:500])
+        raise HTTPException(502, f"OR backend error: HTTP {r.status_code}: {r.text[:200]}")
+    body = r.json()
+    msg = (body.get("choices") or [{}])[0].get("message", {}) or {}
+    raw = msg.get("images") or []
+    if not raw:
+        raise HTTPException(502, f"OR backend returned no images. content={msg.get('content')!r}")
+    out: list[str] = []
+    for item in raw:
+        u = (item.get("image_url") or {}).get("url", "")
+        if u.startswith("data:") and "," in u:
+            out.append(u.split(",", 1)[1])
+        elif u:
+            # Fallback: model returned a plain URL — fetch and base64-encode.
+            async with httpx.AsyncClient(timeout=60) as fetch_client:
+                f = await fetch_client.get(u)
+                f.raise_for_status()
+                out.append(base64.b64encode(f.content).decode())
+    return out
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -331,10 +380,13 @@ async def health() -> dict[str, Any]:
 @app.get("/sdapi/v1/sd-models")
 async def list_models() -> list[dict[str, str]]:
     """LibreChat fetches this to populate the model dropdown."""
-    return [
+    out = [
         {"title": alias, "model_name": alias, "filename": filename}
         for alias, filename in MODEL_ALIASES.items()
     ]
+    for alias, target in OR_IMAGE_MODELS.items():
+        out.append({"title": alias, "model_name": alias, "filename": f"openrouter:{target}"})
+    return out
 
 
 @app.post("/sdapi/v1/options")
@@ -353,8 +405,18 @@ async def progress() -> dict[str, Any]:
 @app.post("/sdapi/v1/txt2img")
 async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
     model = req.override_settings.get("sd_model_checkpoint") or req.override_settings.get("model")
-    template_name = _resolve_model(model, img2img=False)
+    key = (model or DEFAULT_MODEL).lower()
 
+    if key in OR_IMAGE_MODELS:
+        LOG.info("txt2img: model=%s backend=openrouter(%s)", key, OR_IMAGE_MODELS[key])
+        images = await _openrouter_generate(req.prompt, key)
+        return {
+            "images": images,
+            "parameters": req.model_dump(),
+            "info": json.dumps({"prompt": req.prompt, "model": key, "backend": "openrouter"}),
+        }
+
+    template_name = _resolve_model(model, img2img=False)
     template = _load_workflow(template_name)
     workflow = _populate_workflow(
         template,
@@ -386,6 +448,9 @@ async def img2img(req: Img2ImgRequest) -> dict[str, Any]:
         raise HTTPException(400, "img2img requires init_images")
 
     model = req.override_settings.get("sd_model_checkpoint") or req.override_settings.get("model")
+    key = (model or DEFAULT_MODEL).lower()
+    if key in OR_IMAGE_MODELS:
+        raise HTTPException(400, f"img2img not supported for OR backend model: {key}")
     template_name = _resolve_model(model, img2img=True)
 
     template = _load_workflow(template_name)
