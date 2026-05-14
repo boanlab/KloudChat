@@ -13,7 +13,6 @@ USR="${COMFYUI_USER:-comfyui}"
 GRP="${COMFYUI_GROUP:-comfyui}"
 VENV="${APP_ROOT}/venv"
 APP="${APP_ROOT}/app/ComfyUI"
-MODELS="${DATA_ROOT}/models"
 OUTPUT="${DATA_ROOT}/output"
 
 TORCH=2.7.1; TORCHVIS=0.22.1; TORCHAUD=2.7.1
@@ -45,10 +44,7 @@ for g in video render; do
   getent group "$g" &>/dev/null && usermod -a -G "$g" "$USR"
 done
 
-mkdir -p "$APP_ROOT" "$APP_ROOT/app" "$DATA_ROOT" "$MODELS" "$OUTPUT"
-for s in checkpoints unet clip vae loras controlnet upscale_models; do
-  mkdir -p "$MODELS/$s"
-done
+mkdir -p "$APP_ROOT" "$APP_ROOT/app" "$DATA_ROOT" "$OUTPUT"
 chown -R "$USR:$GRP" "$APP_ROOT" "$DATA_ROOT"
 
 run_as() { sudo -u "$USR" "$@"; }
@@ -89,12 +85,13 @@ fi
 link_into_app() {
   local link="$1" target="$2"
   [[ -L "$link" && "$(readlink "$link")" == "$target" ]] && return 0
-  if [[ -d "$link" && ! -L "$link" && -n "$(ls -A "$link")" ]]; then
+  # Treat dir as empty if it only contains ComfyUI's `put_*_here` placeholders.
+  if [[ -d "$link" && ! -L "$link" ]] && \
+     find "$link" -mindepth 1 -not -name 'put_*_here' -print -quit | grep -q .; then
     warn "${link} 비어 있지 않음 — 직접 옮겨야 함."; return 0
   fi
   rm -rf "$link"; ln -s "$target" "$link"
 }
-link_into_app "$APP/models" "$MODELS"
 link_into_app "$APP/output" "$OUTPUT"
 
 cat > /etc/systemd/system/comfyui.service <<UNIT
@@ -145,7 +142,7 @@ cat <<EOF
 
 === done ===
   systemd: $(systemctl is-active comfyui 2>/dev/null || echo unknown) — journalctl -u comfyui -f
-  models:  ${MODELS}
+  models:  ${APP}/models
   다음:    ./scripts/download-image-models.sh
   분산 사용 시 compose 호스트 .env: COMFYUI_URLS=http://${IP:-<this-host-ip>}:${PORT}
 EOF

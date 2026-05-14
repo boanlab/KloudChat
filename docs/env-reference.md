@@ -100,7 +100,7 @@ ComfyUI 자체는 항상 native (systemd) 로 실행 — `scripts/install-comfyu
 | `http://gpu-node-1:8188` | 원격 GPU 노드 1대, 모든 요청이 해당 노드로 |
 | `http://gpu-node-1:8188,http://gpu-node-2:8188` | 원격 GPU 노드 N대. shim 이 매 요청마다 `/queue` 깊이로 가장 한가한 노드 선택. `prompt_id → 노드` 매핑을 in-memory 로 유지해 polling/fetch 일관성 보장 |
 
-가중치 다운로드: `./scripts/download-image-models.sh` ( `/var/lib/comfyui/models` 로, 필요시 sudo 자동 prompt).
+가중치 다운로드: `./scripts/download-image-models.sh` ( `/opt/comfyui/app/ComfyUI/models` 로, 필요시 sudo 자동 prompt).
 
 ## 클라우드 LLM (선택)
 

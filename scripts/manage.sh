@@ -219,9 +219,9 @@ create_default_agent_for_user() {
       var gemmaId   = createAgent('${gemma_name}',   '${gemma_model}',   ['execute_code','file_search','web_search']);
       var qwen35bId = createAgent('${qwen35b_name}', '${qwen35b_model}', ['stable-diffusion','execute_code','file_search','web_search']);
       var qwen9bId  = createAgent('${qwen9b_name}',  '${qwen9b_model}',  ['stable-diffusion','execute_code','file_search','web_search']);
-      createAgent('${gptoss20b_name}', '${gptoss20b_model}', ['stable-diffusion','execute_code','file_search','web_search']);
+      createAgent('${gptoss20b_name}', '${gptoss20b_model}', ['execute_code','file_search','web_search']);
       if (${include_120b}) {
-        createAgent('${gptoss120b_name}', '${gptoss120b_model}', ['stable-diffusion','execute_code','file_search','web_search']);
+        createAgent('${gptoss120b_name}', '${gptoss120b_model}', ['execute_code','file_search','web_search']);
       }
       var defId = qwen35bId || gemmaId || qwen9bId;
       var defTitle = qwen35bId ? '${qwen35b_name}' : (gemmaId ? '${gemma_name}' : '${qwen9b_name}');

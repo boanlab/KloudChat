@@ -65,10 +65,10 @@ API 키는 `docker-compose.yml` 의 LiteLLM 환경에 자동 주입됨. 노출�
 
 ## 이미지 생성
 
-ComfyUI + A1111 shim. ComfyUI 는 항상 native (systemd) 로 실행 — `./scripts/install-comfyui.sh` 가 각 GPU 노드에 설치 (`/opt/comfyui/{venv,app}` + `/var/lib/comfyui/{models,output}`). 아키텍처는 [overview.md](overview.md#comfyui-이미지-생성), VRAM 점유 / 성능은 [gpu-memory.md](gpu-memory.md). 가중치:
+ComfyUI + A1111 shim. ComfyUI 는 항상 native (systemd) 로 실행 — `./scripts/install-comfyui.sh` 가 각 GPU 노드에 설치 (`/opt/comfyui/{venv,app}` + `/var/lib/comfyui/output`). 가중치는 `/opt/comfyui/app/ComfyUI/models/` (ComfyUI default 경로). 아키텍처는 [overview.md](overview.md#comfyui-이미지-생성), VRAM 점유 / 성능은 [gpu-memory.md](gpu-memory.md). 가중치 다운로드:
 
 ```bash
-./scripts/download-image-models.sh   # /var/lib/comfyui/models, ~50GB
+./scripts/download-image-models.sh   # /opt/comfyui/app/ComfyUI/models, ~50GB
 ```
 
 | alias | 모델 | 크기 | 용도 |

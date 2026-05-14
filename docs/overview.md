@@ -58,12 +58,13 @@ LiteLLM 은 `http://ollama-lb:11434` 단일 endpoint 만 호출하고, **nginx (
 ### ComfyUI (이미지 생성)
 노드 기반 디퓨전 런타임. KloudChat 은 SDXL · Qwen-Image (텍스트→이미지) · Qwen-Image-Edit (이미지+프롬프트→편집) 세 파이프라인을 워크플로 템플릿으로 미리 정의해 둡니다.
 
-ComfyUI 는 항상 **호스트 native** (venv + systemd) 로 실행 — `scripts/install-comfyui.sh` 가 `/opt/comfyui/{venv,app}` + `/var/lib/comfyui/{models,output}` 을 만들고 `:8188` 에 바인딩. compose 호스트와 같은 머신에 설치하든 (`COMFYUI_URLS=http://host.docker.internal:8188`), 원격 GPU 노드(들)에 설치하든 (`COMFYUI_URLS=http://gpu-node-1:8188,...`) 형태는 동일. LibreChat 은 `comfyui-shim` 을 통해서만 접근.
+ComfyUI 는 항상 **호스트 native** (venv + systemd) 로 실행 — `scripts/install-comfyui.sh` 가 `/opt/comfyui/{venv,app}` + `/var/lib/comfyui/output` 을 만들고 `:8188` 에 바인딩. 모델 가중치는 ComfyUI repo 안 default 경로 (`/opt/comfyui/app/ComfyUI/models`) 에 둡니다. compose 호스트와 같은 머신에 설치하든 (`COMFYUI_URLS=http://host.docker.internal:8188`), 원격 GPU 노드(들)에 설치하든 (`COMFYUI_URLS=http://gpu-node-1:8188,...`) 형태는 동일. LibreChat 은 `comfyui-shim` 을 통해서만 접근.
 
 ```
 설치:     scripts/install-comfyui.sh (PyTorch cu128, ComfyUI master)
 포트:     8188 (ComfyUI 본 API, 내부/LAN 전용)
-가중치:   /var/lib/comfyui/models/{checkpoints,unet,clip,vae}
+가중치:   /opt/comfyui/app/ComfyUI/models/{checkpoints,unet,clip,vae}
+출력:     /var/lib/comfyui/output (심링크로 app 안에 노출)
 ```
 
 ### comfyui-shim (A1111 어댑터 + 라우터)

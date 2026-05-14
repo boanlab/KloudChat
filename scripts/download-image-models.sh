@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-MODELS_DIR="${COMFYUI_MODELS_DIR:-/var/lib/comfyui/models}"
+MODELS_DIR="${COMFYUI_MODELS_DIR:-/opt/comfyui/app/ComfyUI/models}"
 CKPT_DIR="${MODELS_DIR}/checkpoints"
 UNET_DIR="${MODELS_DIR}/unet"
 CLIP_DIR="${MODELS_DIR}/clip"

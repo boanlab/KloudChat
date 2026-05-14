@@ -337,6 +337,26 @@ services:
     networks:
       - kloudchat
 
+  mcp-permission-guard:
+    container_name: mcp-permission-guard
+    image: mongo:8.0.20
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - MONGO_ROOT_USER=${MONGO_ROOT_USER}
+      - MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      while true; do
+        mongosh --host mongodb --quiet --authenticationDatabase admin -u \"$$MONGO_ROOT_USER\" -p \"$$MONGO_ROOT_PASSWORD\" --eval 'db = db.getSiblingDB(\"LibreChat\"); db.roles.updateMany({}, {$$set: {\"permissions.MCP_SERVERS\": {USE:false, CREATE:false, SHARE:false, SHARE_PUBLIC:false}}});' >/dev/null 2>&1;
+        sleep 15;
+      done
+      "
+    networks:
+      - kloudchat
+
 networks:
   kloudchat:
     driver: bridge
