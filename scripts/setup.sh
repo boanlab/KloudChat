@@ -54,12 +54,15 @@ OLLAMA_RAW="$(env_get OLLAMA_URLS)"
 [[ -n "$OLLAMA_RAW" ]] || { err "OLLAMA_URLS 비어 있음"; exit 1; }
 IFS=',' read -ra OLLAMA_BACKENDS <<< "$OLLAMA_RAW"
 
+# gemma4/gemma3는 GPU 환경에 따라 둘 중 하나만 지원 → 백엔드별 alts로 처리 (gemma4 우선, 없으면 gemma3).
 REQUIRED_MODELS=()
 for m in "${CHAT_MODELS[@]}" "${EMBED_MODELS[@]}"; do
   [[ -n "${MODEL_OPENROUTER_FREE[$m]:-}" ]] && continue  # OR free 라우팅이면 Ollama에 필요 없음
+  case "$m" in gemma4:*|gemma3:*) continue ;; esac       # 아래 GEMMA_ALTS로 별도 검증
   [[ "$m" != *:* ]] && m="${m}:latest"
   REQUIRED_MODELS+=("$m")
 done
+GEMMA_ALTS=(gemma4:26b gemma3:27b)
 
 ollama_fail=0
 for raw in "${OLLAMA_BACKENDS[@]}"; do
@@ -70,16 +73,26 @@ for raw in "${OLLAMA_BACKENDS[@]}"; do
     ollama_fail=1; continue
   fi
   pulled="$(echo "$tags" | jq -r '.models[]?.name' 2>/dev/null)"
+
   missing=()
   for m in "${REQUIRED_MODELS[@]}"; do
     grep -qxF "$m" <<< "$pulled" || missing+=("$m")
   done
-  if (( ${#missing[@]} > 0 )); then
-    err "$raw: 모델 누락 — ${missing[*]}"
-    err "  → 해당 노드에서 ./scripts/download-ollama-models.sh ${missing[*]}"
+  gemma_found=""
+  for g in "${GEMMA_ALTS[@]}"; do
+    if grep -qxF "$g" <<< "$pulled"; then gemma_found="$g"; break; fi
+  done
+
+  if (( ${#missing[@]} > 0 )) || [[ -z "$gemma_found" ]]; then
+    (( ${#missing[@]} > 0 )) && {
+      err "$raw: 모델 누락 — ${missing[*]}"
+      err "  → 해당 노드에서 ./scripts/download-ollama-models.sh ${missing[*]}"
+    }
+    [[ -z "$gemma_found" ]] && \
+      err "$raw: gemma 없음 — ${GEMMA_ALTS[0]} (Blackwell-PRO/5090은 ${GEMMA_ALTS[1]}) 중 하나 필요"
     ollama_fail=1
   else
-    ok "$raw: ${#REQUIRED_MODELS[@]} 모델 OK"
+    ok "$raw: ${#REQUIRED_MODELS[@]} 모델 + ${gemma_found} OK"
   fi
 done
 (( ollama_fail )) && exit 1
