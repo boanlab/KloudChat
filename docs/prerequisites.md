@@ -56,7 +56,7 @@ C 의 요건 + native API 키 (OpenAI/Anthropic/Google 중 가지고 있는 것)
 
 **Ollama**: `setup.sh` 는 union 디스커버리로 모델별 보유 노드를 매핑하고, 보유 노드 수만큼 deployment 를 등록합니다. 한 노드만 pull 한 모델은 그 노드로만, 여러 노드에 pull 한 모델은 router 가 `least-busy` 로 LB. 이기종 GPU (예: 큰 모델은 큰 노드에만, 작은 모델은 전 노드에) 그대로 활용 가능.
 
-**ComfyUI**: 노드 간 모델 **intersection** 만 등록 (이미지 모델 대용량 + 워크플로 stateful 특성). 한 노드에만 받은 이미지 모델은 메뉴에 안 나옴 → 노드 간 가중치 동기화 권장.
+**ComfyUI**: shim 이 union 디스커버리 (`/object_info` TTL 캐시) → 매 요청 alias 로 보유 노드 후보를 좁힌 뒤 `/queue` 깊이 LB. 노드별로 다른 가중치 셋을 받아도 OK (이기종 GPU OK), 같은 모델을 여러 노드에 받으면 자동 분산. 워크플로 run state 는 노드 stateful 이라 `prompt_id → 노드` 매핑 in-memory 유지.
 
 ## DGX Spark (GB10)
 

@@ -257,20 +257,28 @@ __comfyui_node_models() {
   grep -qxF 'flux1-dev.safetensors'             <<<"$unets" && echo flux-dev
 }
 
-comfyui_intersect_models() {
+# 노드별 alias 매핑. 각 줄: <원본 URL>\t<alias>. unreachable 노드는 stderr 경고만.
+comfyui_union_node_models() {
   local urls; urls="$(env_get COMFYUI_URLS)"
   [[ -n "$urls" ]] || return 0
-  local IFS=, count=0 tmp acc=""
+  local IFS=, u nu tmp
   for u in $urls; do
+    nu="$(echo "$u" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s|/$||')"
+    [[ -n "$nu" ]] || continue
     tmp="$(__comfyui_node_models "$u")"
-    [[ -n "$tmp" ]] || { echo "  [warn] comfyui unreachable: $u" >&2; continue; }
-    if (( count == 0 )); then acc="$tmp"
-    else acc="$(comm -12 <(echo "$acc" | sort -u) <(echo "$tmp" | sort -u))"
+    if [[ -z "$tmp" ]]; then
+      echo "  [warn] comfyui unreachable: $nu" >&2
+      continue
     fi
-    count=$((count+1))
+    while IFS= read -r a; do
+      [[ -n "$a" ]] && printf '%s\t%s\n' "$nu" "$a"
+    done <<<"$tmp"
   done
-  (( count > 0 )) || return 0
-  echo "$acc"
+}
+
+# 모든 reachable 노드의 alias 합집합 (중복 제거).
+comfyui_union_models() {
+  comfyui_union_node_models | awk -F'\t' 'NF==2 {print $2}' | sort -u
 }
 
 # Ollama union 결과에서 모델 보유 확인. tag 누락 시 :latest 보정 (gen-litellm-config.sh ollama_has 와 동일).

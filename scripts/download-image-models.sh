@@ -17,7 +17,7 @@ CLIP_DIR="${MODELS_DIR}/clip"
 VAE_DIR="${MODELS_DIR}/vae"
 
 # 디폴트 셋. HF_TOKEN이 .env/env에 있으면 flux-dev 추가, 없으면 제외.
-# (실제 등록은 setup.sh의 intersection-discovery가 결정 — 여기선 다운로드만)
+# (실제 등록은 shim 의 union 디스커버리(/object_info)로 노드별 alias 활성화 — 여기선 다운로드만)
 recommended_aliases() {
   has_nvidia_gpu || return 0
   local base="sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-schnell"
@@ -62,7 +62,8 @@ Aliases (default: recommended):
 HF_TOKEN 있을 때만 flux-dev 추가 (gated repo).
 
 GPU VRAM이 부족한 노드에서 무거운 모델은 받지 마세요 — 명시적 alias 지정.
-setup.sh가 노드 간 intersection-discovery로 실제 등록 모델 결정.
+shim 의 union 디스커버리가 alias→보유 노드 매핑을 잡아 자동 라우팅하므로
+노드별로 다른 셋을 받아도 됩니다.
 EOF
   exit 0
 }

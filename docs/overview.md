@@ -72,7 +72,7 @@ ComfyUI 는 항상 **호스트 native** (venv + systemd) 로 실행 — `scripts
 ### comfyui-shim (A1111 어댑터 + 라우터)
 LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sdapi/v1/img2img`) 만 알아듣지만 ComfyUI 는 워크플로 JSON 기반이라 둘이 호환되지 않습니다. 이 shim 이 A1111 요청을 받아 워크플로 템플릿에 프롬프트·시드·CFG 를 끼워넣은 뒤 ComfyUI `/prompt` 큐에 넣고 결과 이미지를 base64 로 반환합니다. 모델은 요청의 `override_settings.sd_model_checkpoint` 값으로 `sdxl` / `qwen-image` / `qwen-image-edit` / `flux-dev` / `flux-schnell` 중 선택 — `image-generation` 툴 스키마의 `model` enum 필드 (`rag-patches/patch_librechat_sd_model.js`) 가 LLM 에 노출.
 
-`COMFYUI_URLS` 에 여러 백엔드를 넣으면 shim 이 라우터로 동작합니다: 매 요청마다 후보 노드들의 `/queue` 깊이를 병렬 probe → 가장 한가한 노드로 `/prompt` 전송 → `prompt_id → 노드` 매핑을 in-memory 로 들고 이후 `/history` polling 과 `/view` fetch 를 같은 노드로 고정. ComfyUI 의 run state 는 노드 stateful 하므로 단순 round-robin LB 는 polling 단계에서 깨지기 때문입니다.
+`COMFYUI_URLS` 에 여러 백엔드를 넣으면 shim 이 라우터로 동작합니다. 시작 시 (그리고 `MODEL_DISCOVERY_TTL_SEC` 마다) 각 노드의 `/object_info` 를 디스커버해 alias→보유 노드 매핑을 캐시합니다. 매 요청마다 ① alias 로 후보 노드를 좁히고 ② 후보들의 `/queue` 깊이를 병렬 probe → 가장 한가한 노드로 `/prompt` 전송 → ③ `prompt_id → 노드` 매핑을 in-memory 로 들고 이후 `/history` polling 과 `/view` fetch 를 같은 노드로 고정. ComfyUI 의 run state 는 노드 stateful 하므로 단순 round-robin LB 는 polling 단계에서 깨지기 때문입니다. 결과: 노드별로 다른 모델 가중치만 받아도 자동으로 그 노드로 라우팅되고, 같은 모델을 여러 노드에 받으면 큐 깊이 LB.
 
 ```
 이미지:   자체 빌드 (Dockerfile.comfyui-shim — python:3.11-slim, FastAPI + httpx)

@@ -68,12 +68,13 @@ echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_
 hdr "2. ComfyUI (선택)"
 COMFY_URLS="$(env_get COMFYUI_URLS)"
 if [[ -n "$COMFY_URLS" ]]; then
-  IMG_PULLED="$(comfyui_intersect_models || true)"
+  IMG_PULLED="$(comfyui_union_models || true)"
   IMG_N=$(echo "$IMG_PULLED" | grep -c . || true)
+  IMG_NODES=$(comfyui_union_node_models | awk -F'\t' 'NF==2 {print $1}' | sort -u | grep -c . || true)
   if (( IMG_N > 0 )); then
-    ok "ComfyUI 이미지 모델 intersection: ${IMG_N}개 ($(echo "$IMG_PULLED" | paste -sd, -))"
+    ok "ComfyUI 이미지 모델 union: ${IMG_N}개 / ${IMG_NODES} 노드 ($(echo "$IMG_PULLED" | paste -sd, -))"
   else
-    warn "ComfyUI 노드에 공통 이미지 모델 0개 — 이미지 생성 비활성. 노드별로 ./scripts/download-image-models.sh"
+    warn "ComfyUI 노드에 이미지 모델 0개 — 이미지 생성 비활성. 노드에서 ./scripts/download-image-models.sh"
   fi
 else
   warn "COMFYUI_URLS 미설정 — 이미지 생성 비활성"

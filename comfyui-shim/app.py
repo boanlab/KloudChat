@@ -21,8 +21,14 @@ Multi-backend routing
 COMFYUI_URLS may list more than one ComfyUI backend (comma-separated). When
 multiple are configured the shim:
 
-  * probes each backend's /queue at request time and picks the one with the
-    fewest running+pending jobs (least-loaded), excluding unreachable nodes;
+  * discovers each backend's loaded checkpoints / unets via /object_info
+    (cached, refreshed every MODEL_DISCOVERY_TTL_SEC) and maps them to the
+    aliases used in MODEL_ALIASES — heterogeneous GPU clusters can keep
+    different model files on different nodes;
+  * filters backend candidates by the alias being requested so a node that
+    doesn't carry the model is never chosen, then probes /queue on the
+    remaining candidates and picks the one with the fewest running+pending
+    jobs (least-loaded);
   * remembers the prompt_id → backend mapping so the subsequent /history
     polls and /view fetches land on the same node that ran the workflow —
     ComfyUI's run state is per-node, so naive round-robin would break here.
@@ -69,6 +75,8 @@ DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen-image")
 POLL_INTERVAL_SEC = float(os.getenv("POLL_INTERVAL_SEC", "0.5"))
 POLL_TIMEOUT_SEC = float(os.getenv("POLL_TIMEOUT_SEC", "1800"))
 QUEUE_PROBE_TIMEOUT_SEC = float(os.getenv("QUEUE_PROBE_TIMEOUT_SEC", "2.0"))
+MODEL_DISCOVERY_TTL_SEC = float(os.getenv("MODEL_DISCOVERY_TTL_SEC", "300"))
+OBJECT_INFO_TIMEOUT_SEC = float(os.getenv("OBJECT_INFO_TIMEOUT_SEC", "10"))
 
 # Route OR image models through LiteLLM (not direct) so spend tracking,
 # team budgets, and request logging stay in one place. Empty by default —
@@ -126,6 +134,31 @@ MODEL_ALIASES_IMG2IMG = {
     "qwen-image-edit-2509": "qwen-image-edit.json",
 }
 
+# Canonical alias → (loader-kind, weight filename on disk) used to match
+# /object_info contents on each backend. Mirrors __comfyui_node_models in
+# scripts/lib.sh — keep both in sync when adding a new image model.
+COMFYUI_ALIAS_FILES: dict[str, tuple[str, str]] = {
+    "sdxl":            ("ckpt", "sd_xl_base_1.0.safetensors"),
+    "qwen-image":      ("unet", "qwen-image-Q8_0.gguf"),
+    "qwen-image-edit": ("unet", "qwen-image-edit-Q8_0.gguf"),
+    "flux-schnell":    ("unet", "flux1-schnell.safetensors"),
+    "flux-dev":        ("unet", "flux1-dev.safetensors"),
+}
+
+# A1111 alias the caller sent → canonical alias used for discovery lookups.
+# Lets versioned identifiers (qwen-image-2512, qwen-image-edit-2509,
+# sd_xl_base_1.0) resolve to the same on-disk weight as their short alias.
+DISCOVERY_ALIAS: dict[str, str] = {
+    "sdxl": "sdxl",
+    "sd_xl_base_1.0": "sdxl",
+    "qwen-image": "qwen-image",
+    "qwen-image-2512": "qwen-image",
+    "qwen-image-edit": "qwen-image-edit",
+    "qwen-image-edit-2509": "qwen-image-edit",
+    "flux-dev": "flux-dev",
+    "flux-schnell": "flux-schnell",
+}
+
 app = FastAPI(title="ComfyUI A1111 Shim", version="0.2.0")
 
 
@@ -144,22 +177,102 @@ async def _queue_depth(client: httpx.AsyncClient, backend: str) -> int | None:
         return None
 
 
-async def _pick_backend(client: httpx.AsyncClient) -> str:
-    """Least-loaded reachable backend. Falls back to the first configured one
-    if every probe failed — gives the caller a meaningful error instead of
-    silently dropping the request."""
-    if len(BACKENDS) == 1:
-        return BACKENDS[0]
-    depths = await asyncio.gather(*(_queue_depth(client, b) for b in BACKENDS))
-    reachable = [(d, b) for d, b in zip(depths, BACKENDS) if d is not None]
+# backend URL → set of canonical aliases the node has loaded. Empty when the
+# node was unreachable on the last refresh.
+_NODE_ALIASES: dict[str, set[str]] = {}
+_NODE_ALIASES_AT: float = 0.0
+_NODE_ALIASES_LOCK = asyncio.Lock()
+
+
+def _files_from_object_info(info: dict[str, Any], node_class: str, key: str) -> set[str]:
+    """Extract the file-name pool from /object_info. ComfyUI returns
+    `<NodeClass>.input.required.<key>` as `[[<list of filenames>], {...}]`;
+    we want the inner list."""
+    node = info.get(node_class) if isinstance(info, dict) else None
+    if not isinstance(node, dict):
+        return set()
+    slot = (((node.get("input") or {}).get("required") or {}).get(key))
+    if isinstance(slot, list) and slot and isinstance(slot[0], list):
+        return {x for x in slot[0] if isinstance(x, str)}
+    return set()
+
+
+async def _discover_node_aliases(client: httpx.AsyncClient, backend: str) -> set[str]:
+    """Hit /object_info on one backend and return the aliases it can serve.
+    Empty set on failure — caller treats that as 'no aliases here right now'
+    rather than 'all aliases'."""
+    try:
+        r = await client.get(f"{backend}/object_info", timeout=OBJECT_INFO_TIMEOUT_SEC)
+        r.raise_for_status()
+        info = r.json()
+    except (httpx.HTTPError, ValueError):
+        return set()
+    ckpts = _files_from_object_info(info, "CheckpointLoaderSimple", "ckpt_name")
+    unets = (_files_from_object_info(info, "UNETLoader", "unet_name")
+             | _files_from_object_info(info, "UnetLoaderGGUF", "unet_name"))
+    aliases: set[str] = set()
+    for alias, (kind, fname) in COMFYUI_ALIAS_FILES.items():
+        pool = ckpts if kind == "ckpt" else unets
+        if fname in pool:
+            aliases.add(alias)
+    return aliases
+
+
+async def _refresh_node_aliases(client: httpx.AsyncClient) -> None:
+    """Re-probe every backend's /object_info if the cache is empty or stale.
+    Holds an asyncio lock so concurrent requests share a single refresh."""
+    global _NODE_ALIASES_AT
+    async with _NODE_ALIASES_LOCK:
+        fresh = _NODE_ALIASES and (time.monotonic() < _NODE_ALIASES_AT + MODEL_DISCOVERY_TTL_SEC)
+        if fresh:
+            return
+        results = await asyncio.gather(*(_discover_node_aliases(client, b) for b in BACKENDS))
+        _NODE_ALIASES.clear()
+        for b, aliases in zip(BACKENDS, results):
+            _NODE_ALIASES[b] = aliases
+        _NODE_ALIASES_AT = time.monotonic()
+        for b in BACKENDS:
+            LOG.info("ComfyUI %s aliases: %s", b, sorted(_NODE_ALIASES.get(b, set())) or "(none)")
+
+
+async def _backends_with_alias(client: httpx.AsyncClient, alias: str) -> list[str]:
+    """Backends whose last discovery turned up `alias`. Order preserves the
+    original BACKENDS order so the fallback in _pick_backend stays deterministic."""
+    await _refresh_node_aliases(client)
+    return [b for b in BACKENDS if alias in _NODE_ALIASES.get(b, set())]
+
+
+async def _pick_backend(client: httpx.AsyncClient, *, alias: str | None = None) -> str:
+    """Choose a backend: filter by alias availability, then least-loaded.
+    Falls back to the first configured backend if every probe failed —
+    gives the caller a meaningful error instead of silently dropping the request.
+
+    A 404 surfaces only when `alias` is given but no reachable node has it
+    loaded; that's a real configuration miss, not transient load."""
+    candidates = BACKENDS
+    canonical = DISCOVERY_ALIAS.get(alias) if alias else None
+    if canonical and len(BACKENDS) > 1:
+        narrowed = await _backends_with_alias(client, canonical)
+        if not narrowed:
+            raise HTTPException(
+                404,
+                f"alias {alias!r} not loaded on any reachable ComfyUI node "
+                f"(checked: {', '.join(BACKENDS)})",
+            )
+        candidates = narrowed
+
+    if len(candidates) == 1:
+        return candidates[0]
+    depths = await asyncio.gather(*(_queue_depth(client, b) for b in candidates))
+    reachable = [(d, b) for d, b in zip(depths, candidates) if d is not None]
     if not reachable:
-        LOG.warning("All ComfyUI backends failed /queue probe; defaulting to %s", BACKENDS[0])
-        return BACKENDS[0]
+        LOG.warning("All candidate ComfyUI backends failed /queue probe; defaulting to %s", candidates[0])
+        return candidates[0]
     reachable.sort(key=lambda pair: pair[0])
     chosen = reachable[0][1]
-    LOG.info("Routing to %s (depths: %s)",
-             chosen,
-             ", ".join(f"{b}={d}" for d, b in zip(depths, BACKENDS)))
+    LOG.info("Routing to %s (alias=%s, depths: %s)",
+             chosen, alias or "any",
+             ", ".join(f"{b}={d}" for d, b in zip(depths, candidates)))
     return chosen
 
 
@@ -430,7 +543,7 @@ async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
     )
 
     async with httpx.AsyncClient() as client:
-        backend = await _pick_backend(client)
+        backend = await _pick_backend(client, alias=key)
         LOG.info("txt2img: model=%s template=%s backend=%s",
                  model or DEFAULT_MODEL, template_name, backend)
         images = await _comfy_run(client, backend, workflow)
@@ -456,7 +569,7 @@ async def img2img(req: Img2ImgRequest) -> dict[str, Any]:
     template = _load_workflow(template_name)
 
     async with httpx.AsyncClient() as client:
-        backend = await _pick_backend(client)
+        backend = await _pick_backend(client, alias=key)
         LOG.info("img2img: model=%s template=%s backend=%s",
                  model or DEFAULT_MODEL, template_name, backend)
         # Upload the init image to the same backend that will run the workflow —

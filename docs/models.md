@@ -130,7 +130,7 @@ ComfyUI + A1111 shim. ComfyUI 는 항상 native (systemd) 로 실행 — `./scri
 | `flux-dev` | FLUX.1-dev FP16 (gated, **HF_TOKEN 필수**) | ~22 GB | 최고 품질, 느림 (~20 step) |
 | `flux-schnell` | FLUX.1-schnell FP16 (MIT) | ~22 GB | 빠른 iteration (4 step) |
 
-GPU VRAM 이 부족한 노드에서 무거운 모델은 받지 마세요 — 명시적 alias 지정. (이미지 모델은 ComfyUI 노드 **intersection** 기준으로 등록되므로, 한 노드만 받은 이미지 모델은 LibreChat 메뉴에 안 나옵니다 — Ollama 채팅 모델은 union 기준이라 한 노드만 받아도 등록됨.)
+GPU VRAM 이 부족한 노드에서 무거운 모델은 받지 마세요 — 명시적 alias 지정. ComfyUI/Ollama 모두 union 디스커버리라 한 노드만 받은 모델도 그대로 활성화되고 shim/router 가 보유 노드로 자동 라우팅합니다.
 
 ### 모델 선택 메커니즘
 
@@ -147,7 +147,7 @@ LibreChat 의 `image-generation` 툴 스키마에 `model` enum 필드가 있어 
 
 LLM 드라이버는 qwen3.5:35b (없으면 다른 채팅 모델). system instructions 로 해당 alias 강제 호출. 대화 시작점이 곧 base 모델 선택.
 
-이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `manage.sh` 의 createAgent 호출 + `lib.sh` 의 `__comfyui_node_models` 파일 매핑.
+이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` 와 `COMFYUI_ALIAS_FILES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `manage.sh` 의 createAgent 호출 + `lib.sh` 의 `__comfyui_node_models` 파일 매핑. shim 의 `COMFYUI_ALIAS_FILES` 와 lib.sh 의 파일 매핑은 동일한 (kind, filename) 셋을 유지해야 노드 디스커버리가 일치합니다.
 
 ## RAG 임베딩
 
