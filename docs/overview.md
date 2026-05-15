@@ -124,7 +124,7 @@ LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sda
 ## 요청 흐름 — 이미지 생성 / 편집
 
 ```
-브라우저 / 에이전트 (이미지 (sdxl) / 이미지 (flux-schnell) 등)
+브라우저 / 에이전트 (Image (sdxl) / Image (flux-schnell) 등)
   → LibreChat (image-generation 툴, model="<alias>")
   → comfyui-shim:7860 (/sdapi/v1/txt2img | /sdapi/v1/img2img)
        │  ① override_settings.sd_model_checkpoint 로 워크플로 선택

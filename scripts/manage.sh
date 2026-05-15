@@ -19,6 +19,8 @@ key    issue   --user <email> [--team] [--alias] [--budget]
        issue   --service <name> [--budget]                  ← service-account
        list   [--user <email>]
        revoke --key <sk-...>
+
+agent  sync                                                ← 모델 추가 후 모든 유저에 누락 에이전트 멱등 재생성
 EOF
   exit 1
 }
@@ -173,31 +175,31 @@ create_default_agent_for_user() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
-  local gemma_model qwen35b_model qwen9b_model gptoss20b_model gptoss120b_model
-  if gpu_supports_gemma4; then gemma_model=ollama/gemma4:26b
-  else                         gemma_model=ollama/gemma3:27b; fi
-  qwen35b_model=ollama/qwen3.5:35b
-  qwen9b_model=ollama/qwen3.5:9b
-  gptoss20b_model=openai/gpt-oss:20b
-  gptoss120b_model=openai/gpt-oss:120b
-  local opus47_model=anthropic/claude-opus-4.7
-  local opus46_model=anthropic/claude-opus-4.6
-  local sonnet46_model=anthropic/claude-sonnet-4.6
-  local gpt55_model=openai/gpt-5.5
-  local gemma_name="채팅 (${gemma_model#*/})"
-  local qwen35b_name="채팅 (${qwen35b_model#*/})"
-  local qwen9b_name="채팅 (${qwen9b_model#*/})"
-  local gptoss20b_name="채팅 (${gptoss20b_model#*/})"
-  local gptoss120b_name="채팅 (${gptoss120b_model#*/})"
-  local opus47_name="채팅 (${opus47_model#*/})"
-  local opus46_name="채팅 (${opus46_model#*/})"
-  local sonnet46_name="채팅 (${sonnet46_model#*/})"
-  local gpt55_name="채팅 (${gpt55_model#*/})"
-  local include_120b=0; gpu_supports_120b && include_120b=1
+  # 채팅 에이전트 spec — lib.sh:litellm_chat_models_csv() 가 결정한 model_name 만 사용.
+  # GPU 게이팅(gemma4/3 either-or, gpt-oss:120b 등) + OR fallback 은 거기서 일괄 처리됨.
+  local chat_csv; chat_csv=$(litellm_chat_models_csv 2>/dev/null || true)
+  local chat_specs='[]'
+  local _m _models=()
+  IFS=',' read -ra _models <<< "$chat_csv"
+  for _m in "${_models[@]}"; do
+    [[ -z "$_m" || "$_m" != */* ]] && continue   # 임베딩(provider prefix 없음) 제외
+    chat_specs=$(jq -c --arg n "Text (${_m#*/})" --arg mm "$_m" \
+      '. + [{name:$n, model:$mm}]' <<< "$chat_specs")
+  done
 
-  # 이미지 에이전트는 qwen3.5:35b 드라이버 — tool-calling 안정성 위해.
-  local img_llm="$qwen35b_model"
-  local img_tools="['image-generation','file_search']"
+  # 이미지 에이전트 — ComfyUI alias 별 instructions. qwen3.5:35b 드라이버(tool-calling 안정성).
+  local img_driver=ollama/qwen3.5:35b
+  local img_specs
+  img_specs=$(jq -cn '[
+    {alias:"sdxl",         blurb:"SDXL is fast, photorealistic baseline."},
+    {alias:"qwen-image",   blurb:"Qwen-Image excels at Asian text/scenes."},
+    {alias:"flux-dev",     blurb:"Flux-dev is highest quality, slower."},
+    {alias:"flux-schnell", blurb:"Flux-schnell is fast (4 steps), good for iteration."}
+  ]')
+
+  # 기본 preset — 후보 우선순위대로 첫 매치 사용.
+  local def_candidates
+  def_candidates=$(jq -cn '["Text (qwen3.5:35b)","Text (gemma4:26b)","Text (gemma3:27b)","Text (qwen3.5:9b)"]')
 
   local email_js; email_js=$(jq -Rn --arg e "$email" '$e')
   local result
@@ -208,6 +210,7 @@ create_default_agent_for_user() {
       var now = new Date();
       var roleA = db.accessroles.findOne({accessRoleId: 'agent_owner'});
       var roleR = db.accessroles.findOne({accessRoleId: 'remoteAgent_owner'});
+
       function rid(p) { return p + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12); }
       function createAgent(name, model, tools, instructions) {
         instructions = instructions || '';
@@ -238,17 +241,14 @@ create_default_agent_for_user() {
         print('CREATED:' + name + ':' + id);
         return id;
       }
-      var gemmaId   = createAgent('${gemma_name}',   '${gemma_model}',   ['execute_code','file_search','web_search']);
-      var qwen35bId = createAgent('${qwen35b_name}', '${qwen35b_model}', ['execute_code','file_search','web_search']);
-      var qwen9bId  = createAgent('${qwen9b_name}',  '${qwen9b_model}',  ['execute_code','file_search','web_search']);
-      createAgent('${gptoss20b_name}', '${gptoss20b_model}', ['execute_code','file_search','web_search']);
-      if (${include_120b}) {
-        createAgent('${gptoss120b_name}', '${gptoss120b_model}', ['execute_code','file_search','web_search']);
-      }
-      createAgent('${opus47_name}',   '${opus47_model}',   ['execute_code','file_search','web_search']);
-      createAgent('${opus46_name}',   '${opus46_model}',   ['execute_code','file_search','web_search']);
-      createAgent('${sonnet46_name}', '${sonnet46_model}', ['execute_code','file_search','web_search']);
-      createAgent('${gpt55_name}',    '${gpt55_model}',    ['execute_code','file_search','web_search']);
+      var chatSpecs = ${chat_specs};
+      var imgSpecs  = ${img_specs};
+      var defCands  = ${def_candidates};
+      var imgDriver = '${img_driver}';
+
+      chatSpecs.forEach(function(s){
+        createAgent(s.name, s.model, ['execute_code','file_search','web_search']);
+      });
 
       // 이미지 에이전트별 system instructions — LibreChat SD 툴 패치된 model 인자 강제.
       function imgInstr(alias, blurb) {
@@ -256,20 +256,29 @@ create_default_agent_for_user() {
              + 'Do NOT use any other model. ' + blurb
              + ' Generate detailed, descriptive prompts (>=7 keywords) and reasonable negative_prompts.';
       }
-      createAgent('이미지 (sdxl)',         '${img_llm}', ${img_tools}, imgInstr('sdxl',         'SDXL is fast, photorealistic baseline.'));
-      createAgent('이미지 (qwen-image)',   '${img_llm}', ${img_tools}, imgInstr('qwen-image',   'Qwen-Image excels at Asian text/scenes.'));
-      createAgent('이미지 (flux-dev)',     '${img_llm}', ${img_tools}, imgInstr('flux-dev',     'Flux-dev is highest quality, slower.'));
-      createAgent('이미지 (flux-schnell)', '${img_llm}', ${img_tools}, imgInstr('flux-schnell', 'Flux-schnell is fast (4 steps), good for iteration.'));
-      var defId = qwen35bId || gemmaId || qwen9bId;
-      var defTitle = qwen35bId ? '${qwen35b_name}' : (gemmaId ? '${gemma_name}' : '${qwen9b_name}');
+      imgSpecs.forEach(function(s){
+        createAgent('Image (' + s.alias + ')', imgDriver, ['image-generation','file_search'], imgInstr(s.alias, s.blurb));
+      });
+
+      // 기본 preset — 후보 우선순위대로 첫 매치.
+      var defId = null, defTitle = null;
+      for (var i = 0; i < defCands.length; i++) {
+        var a = db.agents.findOne({author:u._id, name:defCands[i]}, {id:1});
+        if (a) { defId = a.id; defTitle = defCands[i]; break; }
+      }
       if (defId) {
         var us = u._id.toString();
-        db.presets.updateMany({user:us, defaultPreset:true}, {\$unset:{defaultPreset:'', order:''}});
-        db.presets.insertOne({
-          presetId: rid('preset_'), title:defTitle, user:us, defaultPreset:true, order:1,
-          endpoint:'agents', agent_id:defId, createdAt:now, updatedAt:now, __v:0
-        });
-        print('DEFAULT_PRESET:' + defTitle);
+        // 멱등: 이미 default preset 있으면 건드리지 않음 (사용자가 바꾼 걸 보존).
+        var existingDefault = db.presets.findOne({user:us, defaultPreset:true});
+        if (!existingDefault) {
+          db.presets.insertOne({
+            presetId: rid('preset_'), title:defTitle, user:us, defaultPreset:true, order:1,
+            endpoint:'agents', agent_id:defId, createdAt:now, updatedAt:now, __v:0
+          });
+          print('DEFAULT_PRESET:' + defTitle);
+        } else {
+          print('DEFAULT_PRESET_EXISTS:' + (existingDefault.title || ''));
+        }
       }
     " 2>&1)
 
@@ -278,12 +287,32 @@ create_default_agent_for_user() {
   fi
   while IFS= read -r line; do
     case "$line" in
-      CREATED:*)        echo "agent: ${line#CREATED:}" ;;
-      EXISTS:*)         echo "agent (exists): ${line#EXISTS:}" ;;
-      DEFAULT_PRESET:*) echo "default preset: ${line#DEFAULT_PRESET:}" ;;
-      WARN_NO_ACL_ROLES) echo "  ⚠ ACL roles 없음 — 'My Agents' 미노출 가능" >&2 ;;
+      CREATED:*)               echo "agent: ${line#CREATED:}" ;;
+      EXISTS:*)                echo "agent (exists): ${line#EXISTS:}" ;;
+      DEFAULT_PRESET:*)        echo "default preset: ${line#DEFAULT_PRESET:}" ;;
+      DEFAULT_PRESET_EXISTS:*) ;;  # 멱등 — 조용히 무시
+      WARN_NO_ACL_ROLES)       echo "  ⚠ ACL roles 없음 — 'My Agents' 미노출 가능" >&2 ;;
     esac
   done <<< "$result"
+}
+
+cmd_agent_sync() {
+  local mu mp; mu=$(env_get MONGO_ROOT_USER); mp=$(env_get MONGO_ROOT_PASSWORD)
+  [[ -z "$mu" || -z "$mp" ]] && { echo "MONGO_ROOT_USER/PASSWORD 누락" >&2; exit 1; }
+  docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
+    || { echo "chat-mongodb 미실행" >&2; exit 1; }
+
+  local emails
+  emails=$(docker exec chat-mongodb mongosh --quiet \
+    -u "$mu" -p "$mp" --authenticationDatabase admin LibreChat --eval \
+    'db.users.find({}, {email:1, _id:0}).forEach(function(u){ if(u.email) print(u.email); })' 2>/dev/null)
+  [[ -z "$emails" ]] && { echo "대상 유저 없음" >&2; return 0; }
+
+  while IFS= read -r email; do
+    [[ -z "$email" ]] && continue
+    echo "== $email"
+    create_default_agent_for_user "$email"
+  done <<< "$emails"
 }
 
 cmd_user_list() {
@@ -369,5 +398,6 @@ case "${resource}/${action}" in
   key/issue)    cmd_key_issue "$@" ;;
   key/list)     cmd_key_list "$@" ;;
   key/revoke)   cmd_key_revoke "$@" ;;
+  agent/sync)   cmd_agent_sync "$@" ;;
   *)            echo "Unknown: ${resource} ${action}" >&2; usage ;;
 esac

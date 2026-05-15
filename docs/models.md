@@ -136,18 +136,22 @@ GPU VRAM 이 부족한 노드에서 무거운 모델은 받지 마세요 — 명
 
 LibreChat 의 `image-generation` 툴 스키마에 `model` enum 필드가 있어 LLM 이 alias 를 직접 지정 (`rag-patches/patch_librechat_sd_model.js` 가 빌드 시 적용). 호출 시 `model="<alias>"` 인자가 페이로드의 `override_settings.sd_model_checkpoint` 로 변환되어 shim 이 워크플로 분기. 미지정 시 shim 의 `DEFAULT_MODEL` (=`qwen-image`).
 
-`./scripts/manage.sh user create --name ... --username ... --password ...` 가 사용자별로 base 모델별 이미지 에이전트를 생성:
+사용자별 에이전트는 `./scripts/manage.sh` 가 자동 생성:
+- `user create --name ... --username ... --password ...` — 신규 유저 풀 프로비저닝 시
+- `agent sync` — 기존 유저 전체에 누락분 멱등 재생성 (모델 카탈로그 추가 후)
+
+채팅 에이전트는 `lib.sh:litellm_chat_models_csv()` 가 반환하는 모든 model_name 에 대해 `Text (<model>)` 로 생성. 이미지 에이전트는 alias 별 고정 매핑:
 
 | 에이전트 | 고정 model |
 |---|---|
-| `이미지 (sdxl)` | sdxl |
-| `이미지 (qwen-image)` | qwen-image |
-| `이미지 (flux-dev)` | flux-dev |
-| `이미지 (flux-schnell)` | flux-schnell |
+| `Image (sdxl)` | sdxl |
+| `Image (qwen-image)` | qwen-image |
+| `Image (flux-dev)` | flux-dev |
+| `Image (flux-schnell)` | flux-schnell |
 
 LLM 드라이버는 qwen3.5:35b (없으면 다른 채팅 모델). system instructions 로 해당 alias 강제 호출. 대화 시작점이 곧 base 모델 선택.
 
-이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` 와 `COMFYUI_ALIAS_FILES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `manage.sh` 의 createAgent 호출 + `lib.sh` 의 `__comfyui_node_models` 파일 매핑. shim 의 `COMFYUI_ALIAS_FILES` 와 lib.sh 의 파일 매핑은 동일한 (kind, filename) 셋을 유지해야 노드 디스커버리가 일치합니다.
+이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` 와 `COMFYUI_ALIAS_FILES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `manage.sh` 의 `img_specs` 항목 + `lib.sh` 의 `__comfyui_node_models` 파일 매핑. shim 의 `COMFYUI_ALIAS_FILES` 와 lib.sh 의 파일 매핑은 동일한 (kind, filename) 셋을 유지해야 노드 디스커버리가 일치합니다.
 
 ## RAG 임베딩
 
