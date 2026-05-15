@@ -84,14 +84,23 @@ emit_gpt_oss() {
 }
 
 emit_ollama_chat() {
-  local m="$1" in_pm out_pm
-  ollama_has "$m" || return 0
+  local m="$1" in_pm out_pm or_id
   in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
   out_pm="${MODEL_PRICE_OUT_PM[$m]:-}"
-  echo "  - model_name: ollama/${m}"
-  echo "    litellm_params:"
-  echo "      model: ollama_chat/${m}"
-  echo "      api_base: ${OLLAMA_BASE}"
+  or_id="${MODEL_OR_FREE[$m]:-}"
+  if ollama_has "$m"; then
+    echo "  - model_name: ollama/${m}"
+    echo "    litellm_params:"
+    echo "      model: ollama_chat/${m}"
+    echo "      api_base: ${OLLAMA_BASE}"
+  elif [[ -n "$or_id" ]] && has_openrouter; then
+    echo "  - model_name: ollama/${m}"
+    echo "    litellm_params:"
+    echo "      model: openrouter/${or_id}"
+    echo "      api_key: os.environ/OPENROUTER_API_KEY"
+  else
+    return 0
+  fi
   if [[ -n "$in_pm" && -n "$out_pm" ]]; then
     echo "    model_info:"
     echo "      input_cost_per_token: $(per_token_cost "$in_pm")"

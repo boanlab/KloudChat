@@ -14,6 +14,7 @@
 | `GPT_OSS_MODELS` | `gpt-oss:20b/120b`. Ollama intersection 우선, 없으면 OR fallback |
 | `OLLAMA_CHAT_CATALOG` | Ollama-only 채팅 모델 카탈로그. 노드 intersection 발견 시 등록 |
 | `OLLAMA_EMBED_CATALOG` | Ollama-only 임베딩 카탈로그 |
+| `MODEL_OR_FREE` | Ollama 카탈로그 모델 중 OR free tier 매핑이 있는 것. Ollama 노드에 없을 때 OR 키 있으면 fallback |
 | `MODEL_PRICE_IN_PM` / `MODEL_PRICE_OUT_PM` | 모델별 USD per 1M tokens (OpenRouter 환산). LiteLLM 이 spend/budget 추적에 사용 |
 
 `gen-litellm-config.sh` / `gen-librechat-config.sh` 가 위 정의 + 환경(API 키 + ollama discovery)을 합쳐서 `litellm-config.yaml` 의 `KLOUDCHAT_AUTOGEN` marker 사이, `librechat.yaml` 의 `KLOUDCHAT_MODELS` marker 사이를 자동 생성합니다.
@@ -35,19 +36,18 @@
 | `openai/gpt-oss:20b` | `ollama_chat/gpt-oss:20b` | `openrouter/openai/gpt-oss-20b:free` | 미등록 |
 | `openai/gpt-oss:120b` | `ollama_chat/gpt-oss:120b` | `openrouter/openai/gpt-oss-120b:free` | 미등록 |
 
-### Ollama-only 카탈로그
+### Ollama 카탈로그 (intersection discovery + 선택적 OR free fallback)
 
-각 노드의 `/api/tags` 응답들의 **교집합**만 등록. 노드 1개 unreachable 이면 warn 후 skip (남은 노드들로 intersection 재계산).
+각 노드의 `/api/tags` 응답들의 **교집합**만 등록. 노드 1개 unreachable 이면 warn 후 skip. 노드 어디에도 없는 모델은 `MODEL_OR_FREE` 매핑이 있고 OR 키 있을 때 OR free 로 fallback.
 
-| 모델 | model_name | 등록 조건 |
-|---|---|---|
-| `ollama/qwen3.5:9b` | 동일 | 모든 reachable 노드에 pulled |
-| `ollama/qwen3.5:35b` | 동일 | 동일 |
-| `ollama/gemma4:26b` | 동일 | intersection 에 있을 때 (둘 다면 gemma4 우선) |
-| `ollama/gemma3:27b` | 동일 | intersection 에 gemma4 없고 gemma3 있을 때 |
-| `ollama/qwen3-coder-next:q4_K_M` | 동일 | intersection 에 있을 때 |
-| `ollama/qwen3-coder-next:q8_0` | 동일 | 동일 |
-| `bge-m3` | 동일 (embedding mode) | 동일 |
+| 모델 | Ollama intersection 에 있음 | 없음 + `MODEL_OR_FREE` 매핑 + OR 키 | 없음 + 매핑 없거나 OR 없음 |
+|---|---|---|---|
+| `ollama/qwen3.5:9b` | `ollama_chat/qwen3.5:9b` | (매핑 주석 처리 — 사용자 검증 후 활성) | 미등록 |
+| `ollama/qwen3.5:35b` | 동일 | 동 | 미등록 |
+| `ollama/gemma4:26b` | 동일 (intersection 우선) | 매핑 없음 | 미등록 |
+| `ollama/gemma3:27b` | 동일 (둘 다면 gemma4 우선) | `openrouter/google/gemma-3-27b-it:free` | 미등록 |
+| `ollama/qwen3-coder-next:q4_K_M/q8_0` | 동일 | (주석 처리) | 미등록 |
+| `bge-m3` (embed) | 동일 | OR free 미지원 | 미등록 |
 
 ## native curated 디폴트
 
@@ -62,7 +62,7 @@ OLLAMA_CHAT_CATALOG=(qwen3.5:9b qwen3.5:35b gemma4:26b gemma3:27b qwen3-coder-ne
 OLLAMA_EMBED_CATALOG=(bge-m3)
 ```
 
-`qwen3-coder-next:*` 는 LibreChat dropdown 에서 자동 노출 (별도 제외 로직 없음). Claude Code (`./scripts/claude-local.sh`) 와 LibreChat 모두에서 접근 가능.
+`qwen3-coder-next:*` 는 LibreChat dropdown 에서 자동 노출. Claude Code / OpenAI Codex CLI 에서 LiteLLM 게이트웨이를 통해 로컬 코딩 에이전트로도 사용 가능 — [코딩 에이전트 연동](coding-agents.md) 참고.
 
 데스크톱 Blackwell (RTX 5090 / RTX PRO 6000) 은 Ollama 가 gemma4 를 안정 로드하지 못함 (ollama#15238, #15264, #14374) → 노드에 `gemma3:27b` 만 pull 하면 자동으로 그게 등록.
 

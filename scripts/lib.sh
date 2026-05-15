@@ -133,6 +133,17 @@ GPT_OSS_MODELS=(gpt-oss:20b gpt-oss:120b)
 OLLAMA_CHAT_CATALOG=(qwen3.5:9b qwen3.5:35b gemma4:26b gemma3:27b qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0)
 OLLAMA_EMBED_CATALOG=(bge-m3)
 
+# Ollama 카탈로그 모델 중 OR free tier로도 fallback 가능한 매핑.
+# Ollama 노드에 pulled이면 ollama_chat 우선, 없으면 이 매핑 + OR 키가 있을 때만 OR free로 fallback.
+# OR free 카탈로그는 https://openrouter.ai/models?supported_parameters=free 에서 확인 후 활성화.
+declare -A MODEL_OR_FREE=(
+  [gemma3:27b]=google/gemma-3-27b-it:free
+  # [qwen3.5:9b]=qwen/qwen3-8b:free                   # 사이즈 근사 — OR ID 검증 후 활성
+  # [qwen3.5:35b]=qwen/qwen3-32b:free                 # 동
+  # [qwen3-coder-next:q4_K_M]=qwen/qwen3-coder:free   # OR가 :free 제공 여부 미확인
+  # [qwen3-coder-next:q8_0]=qwen/qwen3-coder:free
+)
+
 # 가격 (USD per 1M tokens). 신규 모델 추가 시 같이 갱신.
 declare -A MODEL_PRICE_IN_PM=(
   [gpt-5.5]=5      [gpt-5]=2.5    [gpt-5-mini]=0.25    [gpt-5-nano]=0.05

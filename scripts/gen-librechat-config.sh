@@ -41,7 +41,8 @@ GEMMA_SKIP=""
 ollama_has gemma4:26b && ollama_has gemma3:27b && GEMMA_SKIP=gemma3:27b
 for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
   [[ "$m" == "$GEMMA_SKIP" ]] && continue
-  ollama_has "$m" && MODELS+=("ollama/${m}")
+  if ollama_has "$m"; then MODELS+=("ollama/${m}")
+  elif [[ -n "${MODEL_OR_FREE[$m]:-}" ]] && has_openrouter; then MODELS+=("ollama/${m}"); fi
 done
 
 SECTION=$(

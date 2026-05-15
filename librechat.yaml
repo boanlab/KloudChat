@@ -33,6 +33,7 @@ endpoints:
           - "ollama/qwen3.5:9b"
           - "ollama/qwen3.5:35b"
           - "ollama/gemma4:26b"
+          - "ollama/gemma3:27b"
           - "ollama/qwen3-coder-next:q4_K_M"
           - "ollama/qwen3-coder-next:q8_0"
           # <<< KLOUDCHAT_MODELS_END

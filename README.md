@@ -171,6 +171,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 - [사전 요구사항](getting-started/prerequisites.md) — 하드웨어/소프트웨어 체크리스트
 - [환경변수 레퍼런스](docs/env-reference.md) — `.env` 변수 전체
 - [모델 설정](docs/models.md) — 카탈로그 + 라우팅 매트릭스 + 모델 추가법
+- [코딩 에이전트 연동](docs/coding-agents.md) — Claude Code / Codex 를 로컬 `qwen3-coder-next` 로 구동
 - [아키텍처 상세](docs/overview.md) — 컴포넌트별 동작
 - [GPU 메모리 가이드](docs/gpu-memory.md) — 시나리오별 VRAM 점유
 - [Ollama 튜닝](docs/ollama-tuning.md)
