@@ -51,6 +51,14 @@ services:
       - ./librechat/images:/app/client/public/images
       - ./librechat/uploads:/app/uploads
       - ./librechat/logs:/app/logs
+      # 브랜딩 자산 — branding/ 파일 교체 후 컨테이너 재시작
+      - ./branding/logo.svg:/app/client/dist/assets/logo.svg:ro
+      - ./branding/favicon-16x16.png:/app/client/dist/assets/favicon-16x16.png:ro
+      - ./branding/favicon-32x32.png:/app/client/dist/assets/favicon-32x32.png:ro
+      - ./branding/apple-touch-icon-180x180.png:/app/client/dist/assets/apple-touch-icon-180x180.png:ro
+      - ./branding/icon-192x192.png:/app/client/dist/assets/icon-192x192.png:ro
+      - ./branding/maskable-icon.png:/app/client/dist/assets/maskable-icon.png:ro
+      - ./branding/endpoint-icon.png:/app/client/public/images/endpoint-icon.png:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 30s

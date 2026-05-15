@@ -43,7 +43,7 @@ endpoints:
       summarize: false
       forcePrompt: false
       modelDisplayLabel: "KloudChat"
-      iconURL: "https://ollama.com/public/ollama.png"
+      iconURL: "/images/endpoint-icon.png"
 
 interface:
   customWelcome: " "
