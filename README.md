@@ -6,12 +6,12 @@
 
 본인 환경에 맞는 시나리오 하나를 골라 따라가면 됩니다:
 
-- **A — OpenRouter 만**: GPU 없을 때. OpenRouter API 키 1개로 GPT/Claude/Gemini 다 쓸 수 있음. 5분 안에 띄움. 단, 사용량당 과금 + 데이터는 OpenRouter 경유.
-- **B — 로컬 Ollama 만**: 자체 GPU 가 있을 때. 무료 + 데이터 외부 안 나감. 단, 모델 다운로드 시간/디스크 100GB+ 필요.
-- **C — OR + 로컬 Ollama**: native API 계정 없이도 OR 키 하나로 frontier 모델 사용 + GPU 로 로컬 모델 동시 운영. 가장 흔한 셋업. 민감 대화는 로컬 모델로, 고난이도 작업만 OR 경유.
+- **A — 로컬 Ollama 만**: 자체 GPU 가 있을 때. 무료 + 데이터 외부 안 나감. 로컬이 기준선. 단, 모델 다운로드 시간/디스크 100GB+ 필요.
+- **B — OpenRouter 만**: GPU 없을 때. OpenRouter API 키 1개로 GPT/Claude/Gemini 다 쓸 수 있음. 5분 안에 띄움. 단, 사용량당 과금 + 데이터는 OpenRouter 경유.
+- **C — 로컬 Ollama + OR**: 가장 흔한 셋업. GPU 로 로컬 모델 + OR 키 하나로 frontier 모델 같이. 민감 대화는 로컬로, 고난이도 작업만 OR 경유.
 - **D — 풀 하이브리드**: native API 키(OpenAI/Anthropic/Google) + OR + 로컬 Ollama 셋이 공존. native 키 있는 provider 는 native 로, 없으면 OR fallback, 로컬 모델도 동시 노출. 이미 native 계정이 있고 per-provider 청구가 필요할 때.
 
-`setup.sh` 의 사전체크: **OPENROUTER_API_KEY 또는 reachable Ollama 노드 둘 중 하나는 있어야 합니다.** 둘 다 없으면 0단계에서 중단.
+`setup.sh` 의 사전체크: **reachable Ollama 노드 또는 OPENROUTER_API_KEY 둘 중 하나는 있어야 합니다.** 둘 다 없으면 0단계에서 중단.
 
 ### 공통 첫 단계
 
@@ -20,26 +20,7 @@ git clone https://github.com/boanlab/KloudChat.git && cd KloudChat
 ./scripts/gen-env.sh        # .env 생성 (시크릿 자동 채움)
 ```
 
-### A OpenRouter 만 — GPU 없음
-
-```bash
-# 1. .env 의 OPENROUTER_API_KEY 채우기 + 나머지는 그대로
-$EDITOR .env
-#   OPENROUTER_API_KEY=sk-or-v1-...
-
-# 2. setup (Ollama 노드는 unreachable warn 만 뜨고 진행됨)
-./scripts/setup.sh --yes
-
-# 3. admin 생성
-./scripts/manage.sh user create \
-  --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
-```
-
-→ LibreChat http://localhost:8080. gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등 OR 라우팅 모델이 메뉴에 나옴.
-
-> 이미지 생성·RAG 임베딩은 로컬 모델이 필요해 이 시나리오에선 비활성. 활성하려면 B 또는 C.
-
-### B 로컬 Ollama 만 — 자체 GPU
+### A 로컬 Ollama 만 — 자체 GPU
 
 GPU 가 compose 호스트와 같은 머신이면:
 
@@ -78,9 +59,28 @@ $EDITOR .env
 
 > 멀티 노드일 때 LibreChat 메뉴에 등장하는 모델 = **모든 노드에 공통으로 pull 된 모델**(intersection). 한 노드만 받은 모델은 안 나옴.
 
-### C OR + 로컬 Ollama — 가장 흔한 셋업
+### B OpenRouter 만 — GPU 없음
 
-A 의 OR 단일 키로 frontier 모델을 묶어 쓰면서 B 의 GPU 로 로컬 모델도 운영. native 계정 0개.
+```bash
+# 1. .env 의 OPENROUTER_API_KEY 채우기 + 나머지는 그대로
+$EDITOR .env
+#   OPENROUTER_API_KEY=sk-or-v1-...
+
+# 2. setup (Ollama 노드는 unreachable warn 만 뜨고 진행됨)
+./scripts/setup.sh --yes
+
+# 3. admin 생성
+./scripts/manage.sh user create \
+  --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
+```
+
+→ LibreChat http://localhost:8080. gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등 OR 라우팅 모델이 메뉴에 나옴.
+
+> 이미지 생성·RAG 임베딩은 로컬 모델이 필요해 이 시나리오에선 비활성. 활성하려면 A 또는 C.
+
+### C 로컬 Ollama + OR — 가장 흔한 셋업
+
+A 의 로컬 GPU 위에 B 의 OR 단일 키를 얹어 frontier 모델까지 함께 운영. native 계정 0개.
 
 ```bash
 # 1. (선택) FLUX.1-dev 받을 거면 .env 에 HF_TOKEN 먼저 채우기

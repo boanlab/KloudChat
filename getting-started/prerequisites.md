@@ -1,6 +1,6 @@
 # 사전 요구사항
 
-[README](../README.md#어떤-시나리오로-띄울까) 에서 시나리오 (A: OR-only / B: Ollama-only / C: 하이브리드) 를 골랐다면 그에 맞는 prerequisite 만 챙기면 됩니다.
+[README](../README.md#빠른-시작) 에서 시나리오 (A: 로컬 Ollama / B: OR-only / C: 로컬 + OR / D: 풀 하이브리드) 를 골랐다면 그에 맞는 prerequisite 만 챙기면 됩니다.
 
 ## 공통 — compose 호스트
 
@@ -17,12 +17,7 @@
 
 ## 시나리오별 추가 요건
 
-### A — OpenRouter 만 (GPU 불필요)
-
-- `OPENROUTER_API_KEY` (https://openrouter.ai/keys)
-- 추가 prerequisite **없음**. compose 호스트만 있으면 됨.
-
-### B — 로컬 Ollama (GPU 필요)
+### A — 로컬 Ollama (GPU 필요)
 
 | 요건 | 비고 |
 |---|---|
@@ -42,9 +37,18 @@ GPU 호스트에서 prerequisite:
 
 VRAM 점유는 [GPU 메모리 가이드](../docs/gpu-memory.md) 참고.
 
-### C — 하이브리드
+### B — OpenRouter 만 (GPU 불필요)
 
-A + B 의 요건을 모두 충족. native key (OpenAI/Anthropic/Google) 도 함께 사용.
+- `OPENROUTER_API_KEY` (https://openrouter.ai/keys)
+- 추가 prerequisite **없음**. compose 호스트만 있으면 됨.
+
+### C — 로컬 Ollama + OR
+
+A 의 GPU 요건 + B 의 OR 키. native API 계정은 없음.
+
+### D — 풀 하이브리드
+
+C 의 요건 + native API 키 (OpenAI/Anthropic/Google 중 가지고 있는 것). 키 있는 provider 만 native 로 등록되고 나머지는 OR fallback.
 
 ## 멀티 노드
 
