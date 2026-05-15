@@ -8,7 +8,8 @@
 
 - **A — OpenRouter 만**: GPU 없을 때. OpenRouter API 키 1개로 GPT/Claude/Gemini 다 쓸 수 있음. 5분 안에 띄움. 단, 사용량당 과금 + 데이터는 OpenRouter 경유.
 - **B — 로컬 Ollama 만**: 자체 GPU 가 있을 때. 무료 + 데이터 외부 안 나감. 단, 모델 다운로드 시간/디스크 100GB+ 필요.
-- **C — 하이브리드**: native API 키(OpenAI/Anthropic/Google) + 로컬 Ollama 같이. 둘 다 LibreChat 메뉴에 동시 노출.
+- **C — OR + 로컬 Ollama**: native API 계정 없이도 OR 키 하나로 frontier 모델 사용 + GPU 로 로컬 모델 동시 운영. 가장 흔한 셋업. 민감 대화는 로컬 모델로, 고난이도 작업만 OR 경유.
+- **D — 풀 하이브리드**: native API 키(OpenAI/Anthropic/Google) + OR + 로컬 Ollama 셋이 공존. native 키 있는 provider 는 native 로, 없으면 OR fallback, 로컬 모델도 동시 노출. 이미 native 계정이 있고 per-provider 청구가 필요할 때.
 
 `setup.sh` 의 사전체크: **OPENROUTER_API_KEY 또는 reachable Ollama 노드 둘 중 하나는 있어야 합니다.** 둘 다 없으면 0단계에서 중단.
 
@@ -77,15 +78,40 @@ $EDITOR .env
 
 > 멀티 노드일 때 LibreChat 메뉴에 등장하는 모델 = **모든 노드에 공통으로 pull 된 모델**(intersection). 한 노드만 받은 모델은 안 나옴.
 
-### C 하이브리드 — native API + 로컬 Ollama
+### C OR + 로컬 Ollama — 가장 흔한 셋업
 
-A 와 B 합치면 됨. `.env` 에서:
+A 의 OR 단일 키로 frontier 모델을 묶어 쓰면서 B 의 GPU 로 로컬 모델도 운영. native 계정 0개.
+
+```bash
+# 1. (선택) FLUX.1-dev 받을 거면 .env 에 HF_TOKEN 먼저 채우기
+$EDITOR .env
+#   OPENROUTER_API_KEY=sk-or-v1-...
+#   OLLAMA_URLS=http://host.docker.internal:11434       (또는 원격 노드 csv)
+#   COMFYUI_URLS=http://host.docker.internal:8188       (이미지 생성 쓸 거면)
+#   HF_TOKEN=hf_...
+
+# 2. GPU 호스트에서 Ollama + ComfyUI
+./scripts/install-ollama.sh
+./scripts/download-ollama-models.sh
+./scripts/install-comfyui.sh
+./scripts/download-image-models.sh
+
+# 3. setup + admin
+./scripts/setup.sh --yes
+./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
+```
+
+LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5, gemma4 등)이 함께 노출. `gpt-oss:20b/120b` 는 Ollama 에 pull 했으면 로컬, 안 했으면 OR.
+
+### D 풀 하이브리드 — native API + OR + 로컬 Ollama
+
+이미 OpenAI/Anthropic/Google 계정이 있어 per-provider 청구가 필요할 때. `.env` 에서:
 
 ```dotenv
 OPENAI_API_KEY=sk-...               # 있는 만큼만 채움
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
-OPENROUTER_API_KEY=sk-or-...        # 없으면 위 native 키 있는 provider 만 동작
+OPENROUTER_API_KEY=sk-or-...        # 없는 provider 의 fallback 으로
 OLLAMA_URLS=http://gpu-node-1:11434 # 로컬 Ollama 노드
 HF_TOKEN=hf_...                     # flux-dev 받을 거면
 ```
