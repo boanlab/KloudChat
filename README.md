@@ -34,30 +34,34 @@
 
 ## 빠른 시작
 
-`setup.sh` 는 stack 구성 + 백엔드 검증만 하고 모델 다운로드는 하지 않습니다. 모델은 GPU 노드(들)에서 prerequisite 으로 먼저 받아 둡니다.
+`setup.sh` 는 stack 구성 + 백엔드 discovery 만 하고 모델 다운로드는 하지 않습니다. **필수 전제**: `.env` 의 `OPENROUTER_API_KEY` 또는 `OLLAMA_URLS` reachable 노드(모델 보유) 중 하나는 있어야 합니다. 둘 다 없으면 0단계에서 중단.
 
 ### 단일 호스트 (compose + GPU 같은 머신)
 
 ```bash
 git clone https://github.com/boanlab/KloudChat.git && cd KloudChat
 
-# 1. 모델 호스트 (Ollama + ComfyUI) 설치 + 가중치
+# 1. .env 생성 후 키 채우기 (OPENAI/ANTHROPIC/GEMINI/OPENROUTER/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS 등)
+./scripts/gen-env.sh
+$EDITOR .env
+
+# 2. 모델 호스트 (Ollama + ComfyUI) 설치 + 가중치 (OR-only 로 갈 거면 생략 가능)
 ./scripts/install-ollama.sh
 ./scripts/download-ollama-models.sh        # GPU 자동 감지 → 추천 셋
 ./scripts/install-comfyui.sh
-./scripts/download-image-models.sh         # GPU 자동 감지 → 권장 셋
+./scripts/download-image-models.sh         # 기본 셋 + HF_TOKEN 있으면 flux-dev 추가
 
-# 2. compose stack 구성 + .env 의 백엔드 검증 + 기동 + init
+# 3. compose stack 구성 + 백엔드 discovery + 기동 + init
 ./scripts/setup.sh --yes
 
-# 3. admin 사용자 생성 (LibreChat + LiteLLM + 키 + agent 자동)
+# 4. admin 사용자 생성 (LibreChat + LiteLLM + 키 + agent 자동)
 ./scripts/manage.sh user create \
   --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
 ### 분산 (compose 호스트 ≠ GPU 노드)
 
-각 GPU 노드에서 위 1번 (`install-*` + `download-*`) 실행 → compose 호스트의 `.env` 에 `OLLAMA_URLS` / `COMFYUI_URLS` 를 csv 로 설정 → `setup.sh` 가 모든 백엔드를 검증한 뒤 시작.
+각 GPU 노드에서 위 2번 (`install-*` + `download-*`) 실행 → compose 호스트의 `.env` 에 `OLLAMA_URLS` / `COMFYUI_URLS` 를 csv 로 설정 → `setup.sh` 가 모든 백엔드의 모델 intersection 으로 discovery.
 
 LibreChat: http://localhost:8080  
 LiteLLM: http://localhost:8000

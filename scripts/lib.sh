@@ -120,89 +120,120 @@ port_in_use() {
   else return 1; fi
 }
 
-CHAT_MODELS=(
-  qwen3.5:9b
-  qwen3.5:35b
-  gemma4:26b
-  gemma3:27b
-  gpt-oss:20b
-  gpt-oss:120b
-  qwen3-coder-next:q4_K_M
-  qwen3-coder-next:q8_0
-  claude-opus-4.7
-  claude-opus-4.6
-  claude-sonnet-4.6
-  gpt-5.5
-)
-LIBRECHAT_MODELS=(
-  qwen3.5:9b
-  qwen3.5:35b
-  gemma4:26b
-  gemma3:27b
-  gpt-oss:20b
-  gpt-oss:120b
-  claude-opus-4.7
-  claude-opus-4.6
-  claude-sonnet-4.6
-  gpt-5.5
-)
-EMBED_MODELS=(bge-m3)
+# ==== v5 model catalog ====
+# 제공자별 native curated 리스트. native key 있으면 native, 없고 OR 있으면 OR로 라우팅. (상호배타)
+OPENAI_NATIVE_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
+ANTHROPIC_NATIVE_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
+GOOGLE_NATIVE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
 
-# OpenRouter 기준 가격 (USD per 1M tokens). 신규 모델 추가 시 여기도 갱신.
+# gpt-oss는 native 없음. ollama 디스커버리 우선, 없으면 OR로 fallback.
+GPT_OSS_MODELS=(gpt-oss:20b gpt-oss:120b)
+
+# Ollama-only 카탈로그 — intersection discovery로 노드 보유 시에만 등록.
+OLLAMA_CHAT_CATALOG=(qwen3.5:9b qwen3.5:35b gemma4:26b gemma3:27b qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0)
+OLLAMA_EMBED_CATALOG=(bge-m3)
+
+# 가격 (USD per 1M tokens). 신규 모델 추가 시 같이 갱신.
 declare -A MODEL_PRICE_IN_PM=(
-  [qwen3.5:9b]=0.04
-  [qwen3.5:35b]=0.08
-  [gemma4:26b]=0.08
-  [gemma3:27b]=0.08
-  [gpt-oss:20b]=0
-  [gpt-oss:120b]=0
-  [qwen3-coder-next:q4_K_M]=0.15
-  [qwen3-coder-next:q8_0]=0.22
-  [claude-opus-4.7]=5
-  [claude-opus-4.6]=5
-  [claude-sonnet-4.6]=3
-  [gpt-5.5]=5
+  [gpt-5.5]=5      [gpt-5]=2.5    [gpt-5-mini]=0.25    [gpt-5-nano]=0.05
+  [claude-opus-4.7]=5    [claude-opus-4.6]=5    [claude-sonnet-4.6]=3    [claude-haiku-4.5]=1
+  [gemini-3.1-pro-preview]=5    [gemini-2.5-pro]=2.5    [gemini-2.5-flash]=0.30
+  [gpt-oss:20b]=0    [gpt-oss:120b]=0
+  [qwen3.5:9b]=0.04    [qwen3.5:35b]=0.08
+  [gemma4:26b]=0.08    [gemma3:27b]=0.08
+  [qwen3-coder-next:q4_K_M]=0.15    [qwen3-coder-next:q8_0]=0.22
   [bge-m3]=0.02
 )
 declare -A MODEL_PRICE_OUT_PM=(
-  [qwen3.5:9b]=0.10
-  [qwen3.5:35b]=0.28
-  [gemma4:26b]=0.16
-  [gemma3:27b]=0.16
-  [gpt-oss:20b]=0
-  [gpt-oss:120b]=0
-  [qwen3-coder-next:q4_K_M]=1.20
-  [qwen3-coder-next:q8_0]=1.80
-  [claude-opus-4.7]=25
-  [claude-opus-4.6]=25
-  [claude-sonnet-4.6]=15
-  [gpt-5.5]=30
-)
-
-# OpenRouter로 라우팅할 모델. key=로컬 표기, value=OR model id (free tier면 :free 접미사 포함).
-declare -A MODEL_OPENROUTER_FREE=(
-  [gpt-oss:20b]=openai/gpt-oss-20b:free
-  [gpt-oss:120b]=openai/gpt-oss-120b:free
-  [claude-opus-4.7]=anthropic/claude-opus-4.7
-  [claude-opus-4.6]=anthropic/claude-opus-4.6
-  [claude-sonnet-4.6]=anthropic/claude-sonnet-4.6
-  [gpt-5.5]=openai/gpt-5.5
+  [gpt-5.5]=30    [gpt-5]=15    [gpt-5-mini]=2    [gpt-5-nano]=0.40
+  [claude-opus-4.7]=25    [claude-opus-4.6]=25    [claude-sonnet-4.6]=15    [claude-haiku-4.5]=5
+  [gemini-3.1-pro-preview]=15    [gemini-2.5-pro]=10    [gemini-2.5-flash]=2.5
+  [gpt-oss:20b]=0    [gpt-oss:120b]=0
+  [qwen3.5:9b]=0.10    [qwen3.5:35b]=0.28
+  [gemma4:26b]=0.16    [gemma3:27b]=0.16
+  [qwen3-coder-next:q4_K_M]=1.20    [qwen3-coder-next:q8_0]=1.80
 )
 
 per_token_cost() { awk -v v="$1" 'BEGIN { printf "%.10f", v/1000000 }'; }
 
-# 모델 식별자 prefix. OR 라우팅 모델은 OR id의 provider segment(anthropic/openai/google/...),
-# 그 외는 'ollama'.
-model_prefix() {
-  local or="${MODEL_OPENROUTER_FREE[$1]:-}"
-  [[ -n "$or" ]] && { echo "${or%%/*}"; return; }
-  echo ollama
+has_openai_native()    { [[ -n "$(env_get OPENAI_API_KEY)" ]]; }
+has_anthropic_native() { [[ -n "$(env_get ANTHROPIC_API_KEY)" ]]; }
+has_google_native()    { [[ -n "$(env_get GEMINI_API_KEY)" ]]; }
+has_openrouter()       { [[ -n "$(env_get OPENROUTER_API_KEY)" ]]; }
+
+# canonical LibreChat 메뉴용 model_name. native/OR 라우트 무관하게 동일.
+canonical_name() {
+  local m="$1"
+  case " ${OPENAI_NATIVE_MODELS[*]} ${GPT_OSS_MODELS[*]} " in
+    *" $m "*) echo "openai/$m"; return ;;
+  esac
+  case " ${ANTHROPIC_NATIVE_MODELS[*]} " in
+    *" $m "*) echo "anthropic/$m"; return ;;
+  esac
+  case " ${GOOGLE_NATIVE_MODELS[*]} " in
+    *" $m "*) echo "google/$m"; return ;;
+  esac
+  echo "ollama/$m"
 }
 
-litellm_chat_models_csv() {
-  local out="" m
-  for m in "${CHAT_MODELS[@]}"; do out+="${out:+,}$(model_prefix "$m")/${m}"; done
-  echo "$out"
+# Ollama 단일 노드 모델 목록 (실패 시 빈 출력).
+__ollama_node_models() {
+  local raw="$1" url
+  url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  url="${url//host.docker.internal/localhost}"
+  curl -sf --max-time 5 "${url}/api/tags" 2>/dev/null | jq -r '.models[]?.name' 2>/dev/null || true
+}
+
+# 모든 reachable ollama 노드의 모델 intersection. 한 줄에 모델 1개. URLS 비었거나 노드 0이면 빈 출력.
+ollama_intersect_models() {
+  local urls; urls="$(env_get OLLAMA_URLS)"
+  [[ -n "$urls" ]] || return 0
+  local IFS=, count=0 tmp acc
+  acc=""
+  for u in $urls; do
+    tmp="$(__ollama_node_models "$u")"
+    [[ -n "$tmp" ]] || { echo "  [warn] ollama unreachable: $u" >&2; continue; }
+    if (( count == 0 )); then acc="$tmp"
+    else acc="$(comm -12 <(echo "$acc" | sort -u) <(echo "$tmp" | sort -u))"
+    fi
+    count=$((count+1))
+  done
+  (( count > 0 )) || return 0
+  echo "$acc"
+}
+
+# 단일 ComfyUI 노드가 보유한 모델 별칭 출력 (sdxl, qwen-image, qwen-image-edit, flux-schnell, flux-dev).
+__comfyui_node_models() {
+  local raw="$1" url info
+  url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  url="${url//host.docker.internal/localhost}"
+  info="$(curl -sf --max-time 5 "${url}/object_info" 2>/dev/null)" || return 0
+  local ckpts unets
+  ckpts="$(echo "$info" | jq -r '
+    (.CheckpointLoaderSimple.input.required.ckpt_name[0] // []) | .[]?' 2>/dev/null)"
+  unets="$(echo "$info" | jq -r '
+    (.UNETLoader.input.required.unet_name[0] // []) + (.UnetLoaderGGUF.input.required.unet_name[0] // []) | .[]?' 2>/dev/null)"
+  grep -qxF 'sd_xl_base_1.0.safetensors'        <<<"$ckpts" && echo sdxl
+  grep -qxF 'qwen-image-Q8_0.gguf'              <<<"$unets" && echo qwen-image
+  grep -qxF 'qwen-image-edit-Q8_0.gguf'         <<<"$unets" && echo qwen-image-edit
+  grep -qxF 'flux1-schnell.safetensors'         <<<"$unets" && echo flux-schnell
+  grep -qxF 'flux1-dev.safetensors'             <<<"$unets" && echo flux-dev
+}
+
+comfyui_intersect_models() {
+  local urls; urls="$(env_get COMFYUI_URLS)"
+  [[ -n "$urls" ]] || return 0
+  local IFS=, count=0 tmp acc=""
+  for u in $urls; do
+    tmp="$(__comfyui_node_models "$u")"
+    [[ -n "$tmp" ]] || { echo "  [warn] comfyui unreachable: $u" >&2; continue; }
+    if (( count == 0 )); then acc="$tmp"
+    else acc="$(comm -12 <(echo "$acc" | sort -u) <(echo "$tmp" | sort -u))"
+    fi
+    count=$((count+1))
+  done
+  (( count > 0 )) || return 0
+  echo "$acc"
 }
 
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-$(env_get LITELLM_MASTER_KEY)}"

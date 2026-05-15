@@ -20,18 +20,33 @@ grep -qF '# >>> KLOUDCHAT_MODELS_START' "$CONFIG_FILE" \
   && grep -qF '# <<< KLOUDCHAT_MODELS_END' "$CONFIG_FILE" \
   || { echo "error: KLOUDCHAT_MODELS marker 누락: $CONFIG_FILE" >&2; exit 1; }
 
-EXCLUDE=()
-if gpu_supports_gemma4; then EXCLUDE+=(gemma3:27b); else EXCLUDE+=(gemma4:26b); fi
-gpu_supports_120b || EXCLUDE+=(gpt-oss:120b)
+OLLAMA_PULLED="$(ollama_intersect_models || true)"
+ollama_has() {
+  local needle="$1"
+  [[ "$needle" != *:* ]] && needle="${needle}:latest"
+  grep -qxF "$needle" <<<"$OLLAMA_PULLED"
+}
 
-excluded() { local m="$1" x; for x in "${EXCLUDE[@]}"; do [[ "$x" == "$m" ]] && return 0; done; return 1; }
+MODELS=()
+# Commercial: native key 있으면 등록, 없으면 OR 있을 때 등록 (canonical name 동일).
+for m in "${OPENAI_NATIVE_MODELS[@]}";    do has_openai_native    || has_openrouter || continue; MODELS+=("openai/${m}");    done
+for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do has_anthropic_native || has_openrouter || continue; MODELS+=("anthropic/${m}"); done
+for m in "${GOOGLE_NATIVE_MODELS[@]}";    do has_google_native    || has_openrouter || continue; MODELS+=("google/${m}");    done
+# gpt-oss: ollama 또는 OR 둘 중 하나 가능할 때만.
+for m in "${GPT_OSS_MODELS[@]}"; do
+  if ollama_has "$m" || has_openrouter; then MODELS+=("openai/${m}"); fi
+done
+# Ollama-only 카탈로그.
+GEMMA_SKIP=""
+ollama_has gemma4:26b && ollama_has gemma3:27b && GEMMA_SKIP=gemma3:27b
+for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
+  [[ "$m" == "$GEMMA_SKIP" ]] && continue
+  ollama_has "$m" && MODELS+=("ollama/${m}")
+done
 
 SECTION=$(
   echo "          # >>> KLOUDCHAT_MODELS_START"
-  for m in "${LIBRECHAT_MODELS[@]}"; do
-    excluded "$m" && continue
-    echo "          - \"$(model_prefix "$m")/${m}\""
-  done
+  for n in "${MODELS[@]}"; do echo "          - \"${n}\""; done
   echo "          # <<< KLOUDCHAT_MODELS_END"
 )
 
@@ -52,5 +67,4 @@ pathlib.Path(sys.argv[2]).write_text(src[:ls] + section + src[le:])
 PY
 mv "$tmp" "$CONFIG_FILE"; trap - EXIT
 
-class="$(detect_gpu_class)"
-echo "==> $CONFIG_FILE — GPU class: $class, excluded: ${EXCLUDE[*]}"
+echo "==> $CONFIG_FILE — ${#MODELS[@]} models"

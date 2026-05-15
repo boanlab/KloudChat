@@ -16,14 +16,11 @@ UNET_DIR="${MODELS_DIR}/unet"
 CLIP_DIR="${MODELS_DIR}/clip"
 VAE_DIR="${MODELS_DIR}/vae"
 
-# GPU class → 권장 다운로드 셋. 대상 호스트의 VRAM/메모리에 맞춰 LLM 동시 실행 여유 고려.
+# 디폴트 셋. HF_TOKEN이 .env/env에 있으면 flux-dev 추가, 없으면 제외.
+# (실제 등록은 setup.sh의 intersection-discovery가 결정 — 여기선 다운로드만)
 recommended_aliases() {
-  case "$(detect_gpu_class)" in
-    gb10|blackwell-pro)      echo "sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-dev flux-schnell" ;;
-    blackwell-5090|ada-4090) echo "sdxl sdxl-vae flux-shared flux-schnell" ;;
-    nvidia-other)            echo "sdxl sdxl-vae" ;;
-    *)                       echo "" ;;
-  esac
+  local base="sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-schnell"
+  [[ -n "${HF_TOKEN:-}" ]] && echo "$base flux-dev" || echo "$base"
 }
 
 if { [[ -d "$MODELS_DIR" && ! -w "$MODELS_DIR" ]] || \
@@ -57,15 +54,14 @@ Aliases (default: recommended):
   flux-shared      Flux T5/CLIP/VAE encoders (공유)     ~10GB
   flux-dev         FLUX.1-dev FP16 (gated, HF_TOKEN)    ~22GB
   flux-schnell     FLUX.1-schnell FP16 (MIT)            ~22GB
-  recommended      GPU class 자동 감지 후 적합한 셋
+  recommended      HF_TOKEN 유무로 분기 (있으면 +flux-dev)
   all              모두 (~104GB)
 
-GPU class 별 recommended:
-  gb10/ blackwell-pro:      모두 (~104GB)
-  blackwell-5090 / ada-4090: sdxl + flux-shared + flux-schnell (~32GB)
-  nvidia-other:             sdxl + sdxl-vae (~7GB)
+기본 셋 (HF_TOKEN 무관): sdxl + sdxl-vae + qwen-image + qwen-image-edit + flux-shared + flux-schnell
+HF_TOKEN 있을 때만 flux-dev 추가 (gated repo).
 
-HF_TOKEN env 으로 gated repo 인증 (flux-dev 필수). 스크립트가 .env 자동 로드.
+GPU VRAM이 부족한 노드에서 무거운 모델은 받지 마세요 — 명시적 alias 지정.
+setup.sh가 노드 간 intersection-discovery로 실제 등록 모델 결정.
 EOF
   exit 0
 }

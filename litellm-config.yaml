@@ -1,61 +1,33 @@
 model_list:
   # >>> KLOUDCHAT_AUTOGEN_START
-  - model_name: ollama/qwen3.5:9b
+  - model_name: openai/gpt-5.5
     litellm_params:
-      model: ollama_chat/qwen3.5:9b
-      api_base: http://ollama-lb:11434
-    model_info:
-      input_cost_per_token: 0.0000000400
-      output_cost_per_token: 0.0000001000
-  - model_name: ollama/qwen3.5:35b
-    litellm_params:
-      model: ollama_chat/qwen3.5:35b
-      api_base: http://ollama-lb:11434
-    model_info:
-      input_cost_per_token: 0.0000000800
-      output_cost_per_token: 0.0000002800
-  - model_name: ollama/gemma4:26b
-    litellm_params:
-      model: ollama_chat/gemma4:26b
-      api_base: http://ollama-lb:11434
-    model_info:
-      input_cost_per_token: 0.0000000800
-      output_cost_per_token: 0.0000001600
-  - model_name: ollama/gemma3:27b
-    litellm_params:
-      model: ollama_chat/gemma3:27b
-      api_base: http://ollama-lb:11434
-    model_info:
-      input_cost_per_token: 0.0000000800
-      output_cost_per_token: 0.0000001600
-  - model_name: openai/gpt-oss:20b
-    litellm_params:
-      model: openrouter/openai/gpt-oss-20b:free
+      model: openrouter/openai/gpt-5.5
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      input_cost_per_token: 0.0000000000
-      output_cost_per_token: 0.0000000000
-  - model_name: openai/gpt-oss:120b
+      input_cost_per_token: 0.0000050000
+      output_cost_per_token: 0.0000300000
+  - model_name: openai/gpt-5
     litellm_params:
-      model: openrouter/openai/gpt-oss-120b:free
+      model: openrouter/openai/gpt-5
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      input_cost_per_token: 0.0000000000
-      output_cost_per_token: 0.0000000000
-  - model_name: ollama/qwen3-coder-next:q4_K_M
+      input_cost_per_token: 0.0000025000
+      output_cost_per_token: 0.0000150000
+  - model_name: openai/gpt-5-mini
     litellm_params:
-      model: ollama_chat/qwen3-coder-next:q4_K_M
-      api_base: http://ollama-lb:11434
+      model: openrouter/openai/gpt-5-mini
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      input_cost_per_token: 0.0000001500
-      output_cost_per_token: 0.0000012000
-  - model_name: ollama/qwen3-coder-next:q8_0
+      input_cost_per_token: 0.0000002500
+      output_cost_per_token: 0.0000020000
+  - model_name: openai/gpt-5-nano
     litellm_params:
-      model: ollama_chat/qwen3-coder-next:q8_0
-      api_base: http://ollama-lb:11434
+      model: openrouter/openai/gpt-5-nano
+      api_key: os.environ/OPENROUTER_API_KEY
     model_info:
-      input_cost_per_token: 0.0000002200
-      output_cost_per_token: 0.0000018000
+      input_cost_per_token: 0.0000000500
+      output_cost_per_token: 0.0000004000
   - model_name: anthropic/claude-opus-4.7
     litellm_params:
       model: openrouter/anthropic/claude-opus-4.7
@@ -77,13 +49,83 @@ model_list:
     model_info:
       input_cost_per_token: 0.0000030000
       output_cost_per_token: 0.0000150000
-  - model_name: openai/gpt-5.5
+  - model_name: anthropic/claude-haiku-4.5
     litellm_params:
-      model: openrouter/openai/gpt-5.5
+      model: openrouter/anthropic/claude-haiku-4.5
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000010000
+      output_cost_per_token: 0.0000050000
+  - model_name: google/gemini-3.1-pro-preview
+    litellm_params:
+      model: openrouter/google/gemini-3.1-pro-preview
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       input_cost_per_token: 0.0000050000
-      output_cost_per_token: 0.0000300000
+      output_cost_per_token: 0.0000150000
+  - model_name: google/gemini-2.5-pro
+    litellm_params:
+      model: openrouter/google/gemini-2.5-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000025000
+      output_cost_per_token: 0.0000100000
+  - model_name: google/gemini-2.5-flash
+    litellm_params:
+      model: openrouter/google/gemini-2.5-flash
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000003000
+      output_cost_per_token: 0.0000025000
+  - model_name: openai/gpt-oss:20b
+    litellm_params:
+      model: openrouter/openai/gpt-oss-20b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000000000
+      output_cost_per_token: 0.0000000000
+  - model_name: openai/gpt-oss:120b
+    litellm_params:
+      model: openrouter/openai/gpt-oss-120b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000000000
+      output_cost_per_token: 0.0000000000
+  - model_name: ollama/qwen3.5:9b
+    litellm_params:
+      model: ollama_chat/qwen3.5:9b
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000400
+      output_cost_per_token: 0.0000001000
+  - model_name: ollama/qwen3.5:35b
+    litellm_params:
+      model: ollama_chat/qwen3.5:35b
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000800
+      output_cost_per_token: 0.0000002800
+  - model_name: ollama/gemma4:26b
+    litellm_params:
+      model: ollama_chat/gemma4:26b
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000000800
+      output_cost_per_token: 0.0000001600
+  - model_name: ollama/qwen3-coder-next:q4_K_M
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q4_K_M
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000001500
+      output_cost_per_token: 0.0000012000
+  - model_name: ollama/qwen3-coder-next:q8_0
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q8_0
+      api_base: http://ollama-lb:11434
+    model_info:
+      input_cost_per_token: 0.0000002200
+      output_cost_per_token: 0.0000018000
   - model_name: bge-m3
     model_info:
       mode: embedding

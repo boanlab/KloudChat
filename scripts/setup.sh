@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Usage: setup.sh [--yes]
+#
+# 사전 준비:
+#   ./scripts/gen-env.sh         # .env 생성 (없으면 setup 거부)
+#   $EDITOR .env                 # OPENAI/ANTHROPIC/GEMINI/OPENROUTER/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS 등 채우기
+#
+# 필수: OPENROUTER_API_KEY 또는 OLLAMA_URLS reachable 노드 ≥1 (둘 중 하나)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +17,7 @@ YES=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes|-y)  YES=1; shift ;;
-    -h|--help) grep -E '^# Usage' "$0" | sed 's/^# //'; exit 0 ;;
+    -h|--help) grep -E '^# ' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)         err "Unknown: $1"; exit 1 ;;
   esac
 done
@@ -35,79 +41,43 @@ DISK_FREE=$(get_free_disk_gb "$PROJECT_DIR")
 [[ -n "$DISK_FREE" && "$DISK_FREE" -lt 20 ]] && warn "여유 ${DISK_FREE}GB — 컨테이너 이미지 빌드에 부족할 수 있음"
 ok "Free disk: ${DISK_FREE:-?}GB"
 
-hdr "1. .env + configs"
-[[ -f .env ]] || ./scripts/gen-env.sh
+hdr "1. .env"
+[[ -f .env ]] || { err ".env 없음. 먼저 ./scripts/gen-env.sh 실행 후 키 채워주세요."; exit 1; }
 ok ".env"
+
+# Pre-check: OR 또는 Ollama reachable 노드 ≥1 필요.
+OLLAMA_PULLED="$(ollama_intersect_models || true)"
+OLLAMA_NMODELS=$(echo "$OLLAMA_PULLED" | grep -c . || true)
+if has_openrouter; then
+  ok "OPENROUTER_API_KEY 설정됨"
+elif (( OLLAMA_NMODELS > 0 )); then
+  ok "Ollama intersection: ${OLLAMA_NMODELS} 모델 (OR 없음 — Ollama만 사용)"
+else
+  err "OPENROUTER_API_KEY 미설정 + Ollama 노드 없음/모델 0개 — 둘 중 하나 필수."
+  err "  → OPENROUTER_API_KEY를 .env에 채우거나 OLLAMA_URLS 노드에서 모델 pull."
+  exit 1
+fi
+
+# native 키 상태 요약
+echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_anthropic_native && echo y || echo n) google=$(has_google_native && echo y || echo n) openrouter=$(has_openrouter && echo y || echo n) hf=$( [[ -n "$(env_get HF_TOKEN)" ]] && echo y || echo n )"
+
+# Config 재생성 (intersection 결과를 yaml에 반영).
 ./scripts/gen-nginx-config.sh
 ./scripts/gen-litellm-config.sh
 ./scripts/gen-librechat-config.sh
 
-hdr "2. 백엔드 모델 검증"
-
-normalize_url() {
-  local u="$1"
-  u="$(echo "$u" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  echo "${u//host.docker.internal/localhost}"
-}
-
-OLLAMA_RAW="$(env_get OLLAMA_URLS)"
-[[ -n "$OLLAMA_RAW" ]] || { err "OLLAMA_URLS 비어 있음"; exit 1; }
-IFS=',' read -ra OLLAMA_BACKENDS <<< "$OLLAMA_RAW"
-
-# gemma4/gemma3는 GPU 환경에 따라 둘 중 하나만 지원 → 백엔드별 alts로 처리 (gemma4 우선, 없으면 gemma3).
-REQUIRED_MODELS=()
-for m in "${CHAT_MODELS[@]}" "${EMBED_MODELS[@]}"; do
-  [[ -n "${MODEL_OPENROUTER_FREE[$m]:-}" ]] && continue  # OR free 라우팅이면 Ollama에 필요 없음
-  case "$m" in gemma4:*|gemma3:*) continue ;; esac       # 아래 GEMMA_ALTS로 별도 검증
-  [[ "$m" != *:* ]] && m="${m}:latest"
-  REQUIRED_MODELS+=("$m")
-done
-GEMMA_ALTS=(gemma4:26b gemma3:27b)
-
-ollama_fail=0
-for raw in "${OLLAMA_BACKENDS[@]}"; do
-  url="$(normalize_url "$raw")"
-  if ! tags=$(curl -sf "${url}/api/tags" 2>/dev/null); then
-    err "$raw: 접속 실패"
-    err "  → 해당 노드에서 ./scripts/install-ollama.sh"
-    ollama_fail=1; continue
-  fi
-  pulled="$(echo "$tags" | jq -r '.models[]?.name' 2>/dev/null)"
-
-  missing=()
-  for m in "${REQUIRED_MODELS[@]}"; do
-    grep -qxF "$m" <<< "$pulled" || missing+=("$m")
-  done
-  gemma_found=""
-  for g in "${GEMMA_ALTS[@]}"; do
-    if grep -qxF "$g" <<< "$pulled"; then gemma_found="$g"; break; fi
-  done
-
-  if (( ${#missing[@]} > 0 )) || [[ -z "$gemma_found" ]]; then
-    (( ${#missing[@]} > 0 )) && {
-      err "$raw: 모델 누락 — ${missing[*]}"
-      err "  → 해당 노드에서 ./scripts/download-ollama-models.sh ${missing[*]}"
-    }
-    [[ -z "$gemma_found" ]] && \
-      err "$raw: gemma 없음 — ${GEMMA_ALTS[0]} (Blackwell-PRO/5090은 ${GEMMA_ALTS[1]}) 중 하나 필요"
-    ollama_fail=1
+hdr "2. ComfyUI (선택)"
+COMFY_URLS="$(env_get COMFYUI_URLS)"
+if [[ -n "$COMFY_URLS" ]]; then
+  IMG_PULLED="$(comfyui_intersect_models || true)"
+  IMG_N=$(echo "$IMG_PULLED" | grep -c . || true)
+  if (( IMG_N > 0 )); then
+    ok "ComfyUI 이미지 모델 intersection: ${IMG_N}개 ($(echo "$IMG_PULLED" | paste -sd, -))"
   else
-    ok "$raw: ${#REQUIRED_MODELS[@]} 모델 + ${gemma_found} OK"
+    warn "ComfyUI 노드에 공통 이미지 모델 0개 — 이미지 생성 비활성. 노드별로 ./scripts/download-image-models.sh"
   fi
-done
-(( ollama_fail )) && exit 1
-
-COMFY_RAW="$(env_get COMFYUI_URLS)"
-if [[ -n "$COMFY_RAW" ]]; then
-  IFS=',' read -ra COMFY_BACKENDS <<< "$COMFY_RAW"
-  for raw in "${COMFY_BACKENDS[@]}"; do
-    url="$(normalize_url "$raw")"
-    if curl -sf "${url}/system_stats" >/dev/null 2>&1; then
-      ok "$raw: ComfyUI OK"
-    else
-      warn "$raw: 접속 실패 — 이미지 생성 비활성. 해당 GPU 노드에서 ./scripts/install-comfyui.sh"
-    fi
-  done
+else
+  warn "COMFYUI_URLS 미설정 — 이미지 생성 비활성"
 fi
 
 hdr "3. Build images"

@@ -19,19 +19,30 @@ VRAM 점유는 [GPU 메모리 가이드](../docs/gpu-memory.md) 참고.
 
 NVIDIA GPU 가 같은 머신에 있다면 NVIDIA Container Toolkit 도 필요 — [공식 가이드](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). `./scripts/setup.sh` 가 위 항목들을 검증.
 
+## 환경 파일
+
+`.env` 가 없으면 `setup.sh` 가 0단계에서 거부합니다. compose 호스트에서:
+
+```bash
+./scripts/gen-env.sh        # .env 생성 (시크릿 자동 채움)
+$EDITOR .env                # OPENROUTER_API_KEY / 외부 API 키 / OLLAMA_URLS / COMFYUI_URLS / HF_TOKEN
+```
+
+`OPENROUTER_API_KEY` 또는 reachable 한 `OLLAMA_URLS` 노드 둘 중 하나는 필수.
+
 ## 모델 호스트 (GPU 노드)
 
-compose 호스트와 같은 머신이거나 별도 머신. 다음을 prerequisite 으로 먼저 실행:
+compose 호스트와 같은 머신이거나 별도 머신. OpenRouter 만 쓸 거면 생략 가능:
 
 ```bash
 ./scripts/install-ollama.sh             # systemd, 0.0.0.0:11434
 ./scripts/download-ollama-models.sh     # GPU 자동 감지 추천 셋
 
 ./scripts/install-comfyui.sh            # systemd, 0.0.0.0:8188 (이미지 생성 시)
-./scripts/download-image-models.sh      # GPU 자동 감지 추천 셋
+./scripts/download-image-models.sh      # 기본 셋, HF_TOKEN 있으면 +flux-dev
 ```
 
-여러 GPU 노드를 두면 compose 호스트 `.env` 에 csv 로 나열 (`OLLAMA_URLS`, `COMFYUI_URLS`). `setup.sh` 가 모든 백엔드의 응답 + 모델 존재를 검증.
+여러 GPU 노드를 두면 compose 호스트 `.env` 에 csv 로 나열 (`OLLAMA_URLS`, `COMFYUI_URLS`). `setup.sh` 가 노드 간 모델 **intersection** 으로 discovery 해서 `litellm-config.yaml` / `librechat.yaml` 에 자동 등록.
 
 ## DGX Spark (GB10)
 

@@ -10,7 +10,7 @@
 | Ollama | qwen3-coder-next (Q4_K_M) | ~51GB | 대화 후 2분 유지 |
 | Ollama | qwen3-coder-next (Q8_0) | ~84GB | 대화 후 2분 유지 |
 | Ollama | bge-m3 (embed) | ~1.2GB | RAG 요청 시 |
-| OpenRouter | gpt-oss / claude-* / gpt-5.5 | **0** | 외부 — `MODEL_OPENROUTER_FREE` 매핑된 모델은 로컬 GPU 사용 안 함 |
+| OpenRouter / native API | gpt-oss / claude-* / gpt-5.5 / gemini-* | **0** | 외부 — native key 또는 OR 로 라우팅되는 모델은 로컬 GPU 사용 안 함 |
 | ComfyUI | SDXL | ~10GB | 요청 시만 |
 | ComfyUI | Qwen-Image (Q8_0 GGUF) | ~22GB | 요청 시만 |
 | ComfyUI | Qwen-Image-Edit (Q8_0 GGUF) | ~22GB | 요청 시만 |
