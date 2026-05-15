@@ -252,6 +252,46 @@ comfyui_intersect_models() {
   echo "$acc"
 }
 
+# Ollama intersection 에서 모델 보유 확인. tag 누락 시 :latest 보정 (gen-litellm-config.sh ollama_has 와 동일).
+ollama_pulled_has() {
+  local pulled="$1" needle="$2"
+  [[ "$needle" != *:* ]] && needle="${needle}:latest"
+  grep -qxF "$needle" <<<"$pulled"
+}
+
+# LiteLLM team allowlist 생성용 canonical 모델 CSV.
+# gen-litellm-config.sh 의 emit 로직과 일치해야 함 — 실제 등록될 model_name 만 반환.
+litellm_chat_models_csv() {
+  local pulled; pulled="$(ollama_intersect_models 2>/dev/null || true)"
+  local gemma_skip=""
+  if ollama_pulled_has "$pulled" gemma4:26b && ollama_pulled_has "$pulled" gemma3:27b; then
+    gemma_skip="gemma3:27b"
+  fi
+  local out=() m
+  for m in "${OPENAI_NATIVE_MODELS[@]}"; do
+    if has_openai_native || has_openrouter; then out+=("openai/$m"); fi
+  done
+  for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do
+    if has_anthropic_native || has_openrouter; then out+=("anthropic/$m"); fi
+  done
+  for m in "${GOOGLE_NATIVE_MODELS[@]}"; do
+    if has_google_native || has_openrouter; then out+=("google/$m"); fi
+  done
+  for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
+    [[ "$m" == "$gemma_skip" ]] && continue
+    if ollama_pulled_has "$pulled" "$m"; then
+      out+=("ollama/$m")
+    elif [[ -n "${MODEL_OR_FREE[$m]:-}" ]] && has_openrouter; then
+      out+=("ollama/$m")
+    fi
+  done
+  for m in "${OLLAMA_EMBED_CATALOG[@]}"; do
+    if ollama_pulled_has "$pulled" "$m"; then out+=("$m"); fi
+  done
+  local IFS=,
+  echo "${out[*]:-}"
+}
+
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-$(env_get LITELLM_MASTER_KEY)}"
 LITELLM_URL="${LITELLM_URL:-http://localhost:8000}"
 DATA_DIR="${__PROJECT_DIR}/scripts/.data"

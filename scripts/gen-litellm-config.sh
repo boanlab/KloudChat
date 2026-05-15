@@ -134,7 +134,7 @@ pathlib.Path(sys.argv[2]).write_text(src[:ls] + section + src[le:])
 PY
 mv "$tmp" "$CONFIG_FILE"; trap - EXIT
 
-n=$(echo "$SECTION" | grep -c '^  - model_name:')
+n=$(echo "$SECTION" | grep -c '^  - model_name:' || true)
 echo "==> $CONFIG_FILE — $n models"
 echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_anthropic_native && echo y || echo n) google=$(has_google_native && echo y || echo n) or=$(has_openrouter && echo y || echo n)"
 echo "    ollama intersection: $(echo "$OLLAMA_PULLED" | grep -c . || true) models"

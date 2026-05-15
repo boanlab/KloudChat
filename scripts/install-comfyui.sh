@@ -50,7 +50,12 @@ chown -R "$USR:$GRP" "$APP_ROOT" "$DATA_ROOT"
 run_as() { sudo -u "$USR" "$@"; }
 
 if [[ -d "$VENV" ]] && run_as "$VENV/bin/python" -c 'import torch' &>/dev/null; then
-  read -rp "venv 존재 (torch=$(run_as "$VENV/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '?')). Reinstall? [y/N] " ans
+  ans=""
+  if [[ -t 0 ]]; then
+    read -rp "venv 존재 (torch=$(run_as "$VENV/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '?')). Reinstall? [y/N] " ans || ans=""
+  else
+    echo "venv 존재 — non-interactive, 재설치 건너뜀 (재설치 강제하려면 venv 삭제 후 재실행)"
+  fi
   if [[ "$ans" =~ ^[Yy]$ ]]; then SKIP_PIP=0; else SKIP_PIP=1; fi
 else
   run_as python3 -m venv "$VENV"

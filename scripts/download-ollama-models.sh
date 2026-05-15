@@ -26,7 +26,8 @@ EOF
 }
 
 pull() {
-  local m="$1" tag="$m"
+  local m="$1"
+  local tag="$m"
   [[ "$tag" != *:* ]] && tag="${tag}:latest"
   if ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qxF "$tag"; then
     echo "[skip] $m"

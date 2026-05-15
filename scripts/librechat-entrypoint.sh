@@ -16,6 +16,10 @@ for f in "$LOCALES" "$INDEX"; do
   cp "${f}.orig" "$f"
 done
 
-[ -n "$LOCALES" ] && [ -n "$INDEX" ] && python3 "$PATCH_PY" "$LOCALES" "$INDEX" || true
+if [ -n "$LOCALES" ] && [ -n "$INDEX" ]; then
+  python3 "$PATCH_PY" "$LOCALES" "$INDEX" || echo "warn: librechat-patch.py 실패 — 브랜딩 미적용" >&2
+else
+  echo "warn: dist bundle 미발견 — 패치 건너뜀 (locales=$LOCALES index=$INDEX)" >&2
+fi
 
 exec "$@"

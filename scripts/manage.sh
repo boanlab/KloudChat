@@ -27,18 +27,21 @@ require_arg() { [[ -n "$2" ]] || { echo "$1 required" >&2; exit 1; }; }
 require_email() {
   [[ "$2" =~ ^[^@]+@[^@]+\.[^@]+$ ]] || { echo "$1 must be email: $2" >&2; exit 1; }
 }
+# while 옵션 파서에서 flag 뒤에 값이 없을 때 set -u/-e 안전하게 종료.
+# 호출 패턴: --foo) need_val "$@"; foo="$2"; shift 2 ;;
+need_val() { [[ -n "${2:-}" ]] || { echo "$1 requires a value" >&2; exit 1; }; }
 
 cmd_team_create() {
   local alias="" budget=9999 duration=1mo tpm=100000 rpm=500
   local models; models="$(litellm_chat_models_csv)"
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --alias)    alias="$2";    shift 2 ;;
-      --budget)   budget="$2";   shift 2 ;;
-      --duration) duration="$2"; shift 2 ;;
-      --tpm)      tpm="$2";      shift 2 ;;
-      --rpm)      rpm="$2";      shift 2 ;;
-      --models)   models="$2";   shift 2 ;;
+      --alias)    need_val "$@"; alias="$2";    shift 2 ;;
+      --budget)   need_val "$@"; budget="$2";   shift 2 ;;
+      --duration) need_val "$@"; duration="$2"; shift 2 ;;
+      --tpm)      need_val "$@"; tpm="$2";      shift 2 ;;
+      --rpm)      need_val "$@"; rpm="$2";      shift 2 ;;
+      --models)   need_val "$@"; models="$2";   shift 2 ;;
       *) echo "Unknown: $1" >&2; exit 1 ;;
     esac
   done
@@ -60,7 +63,12 @@ cmd_team_create() {
   mkdir -p "${DATA_DIR}"
   local cache="${DATA_DIR}/teams.json"
   if [[ -f "$cache" ]]; then
-    jq --argjson r "$result" '. += [$r]' "$cache" > "${cache}.tmp" && mv "${cache}.tmp" "$cache"
+    if jq --argjson r "$result" '. += [$r]' "$cache" > "${cache}.tmp"; then
+      mv "${cache}.tmp" "$cache"
+    else
+      rm -f "${cache}.tmp"
+      echo "  ⚠ teams.json 업데이트 실패 — jq 에러" >&2
+    fi
   else
     echo "[$result]" > "$cache"
   fi
@@ -74,7 +82,7 @@ cmd_team_list() {
 
 cmd_team_delete() {
   local id=""
-  while [[ $# -gt 0 ]]; do case "$1" in --id) id="$2"; shift 2 ;; *) shift ;; esac; done
+  while [[ $# -gt 0 ]]; do case "$1" in --id) need_val "$@"; id="$2"; shift 2 ;; *) shift ;; esac; done
   require_arg --id "$id"
   litellm_post "/team/delete" "{\"team_ids\":[\"$id\"]}" | jq .
 }
@@ -84,12 +92,12 @@ cmd_user_create() {
   local lc_name="" lc_username="" lc_password=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --id)       user_id="$2";     shift 2 ;;
-      --team)     team_alias="$2";  shift 2 ;;
-      --budget)   budget="$2";      shift 2 ;;
-      --name)     lc_name="$2";     shift 2 ;;
-      --username) lc_username="$2"; shift 2 ;;
-      --password) lc_password="$2"; shift 2 ;;
+      --id)       need_val "$@"; user_id="$2";     shift 2 ;;
+      --team)     need_val "$@"; team_alias="$2";  shift 2 ;;
+      --budget)   need_val "$@"; budget="$2";      shift 2 ;;
+      --name)     need_val "$@"; lc_name="$2";     shift 2 ;;
+      --username) need_val "$@"; lc_username="$2"; shift 2 ;;
+      --password) need_val "$@"; lc_password="$2"; shift 2 ;;
       *) echo "Unknown: $1" >&2; exit 1 ;;
     esac
   done
@@ -191,10 +199,11 @@ create_default_agent_for_user() {
   local img_llm="$qwen35b_model"
   local img_tools="['image-generation','file_search']"
 
+  local email_js; email_js=$(jq -Rn --arg e "$email" '$e')
   local result
   result=$(docker exec chat-mongodb mongosh --quiet \
     -u "$mu" -p "$mp" --authenticationDatabase admin LibreChat --eval "
-      var u = db.users.findOne({email: '$email'}, {_id:1});
+      var u = db.users.findOne({email: $email_js}, {_id:1});
       if (!u) { print('NO_USER'); quit(); }
       var now = new Date();
       var roleA = db.accessroles.findOne({accessRoleId: 'agent_owner'});
@@ -285,7 +294,7 @@ cmd_user_list() {
 
 cmd_user_delete() {
   local id=""
-  while [[ $# -gt 0 ]]; do case "$1" in --id) id="$2"; shift 2 ;; *) shift ;; esac; done
+  while [[ $# -gt 0 ]]; do case "$1" in --id) need_val "$@"; id="$2"; shift 2 ;; *) shift ;; esac; done
   require_arg --id "$id"
   litellm_post "/user/delete" "{\"user_ids\":[\"$id\"]}" | jq .
 }
@@ -294,11 +303,11 @@ cmd_key_issue() {
   local user_id="" team_alias="default" key_alias="" budget=9999 service=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --user)    user_id="$2";    shift 2 ;;
-      --team)    team_alias="$2"; shift 2 ;;
-      --alias)   key_alias="$2";  shift 2 ;;
-      --budget)  budget="$2";     shift 2 ;;
-      --service) service="$2";    shift 2 ;;
+      --user)    need_val "$@"; user_id="$2";    shift 2 ;;
+      --team)    need_val "$@"; team_alias="$2"; shift 2 ;;
+      --alias)   need_val "$@"; key_alias="$2";  shift 2 ;;
+      --budget)  need_val "$@"; budget="$2";     shift 2 ;;
+      --service) need_val "$@"; service="$2";    shift 2 ;;
       *) echo "Unknown: $1" >&2; exit 1 ;;
     esac
   done
@@ -336,14 +345,14 @@ cmd_key_issue() {
 
 cmd_key_list() {
   local user_id=""
-  while [[ $# -gt 0 ]]; do case "$1" in --user) user_id="$2"; shift 2 ;; *) shift ;; esac; done
+  while [[ $# -gt 0 ]]; do case "$1" in --user) need_val "$@"; user_id="$2"; shift 2 ;; *) shift ;; esac; done
   local ep="/key/list"; [[ -n "$user_id" ]] && ep+="?user_id=${user_id}"
   litellm_get "$ep" | jq -r '.keys[] | "\(.key_alias // "unnamed")\t\(.key[0:20])...\tbudget:\(.max_budget)$\tspend:\(.spend // 0)$"'
 }
 
 cmd_key_revoke() {
   local key=""
-  while [[ $# -gt 0 ]]; do case "$1" in --key) key="$2"; shift 2 ;; *) shift ;; esac; done
+  while [[ $# -gt 0 ]]; do case "$1" in --key) need_val "$@"; key="$2"; shift 2 ;; *) shift ;; esac; done
   require_arg --key "$key"
   litellm_post "/key/delete" "{\"keys\":[\"$key\"]}" | jq .
 }

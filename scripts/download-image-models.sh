@@ -19,6 +19,7 @@ VAE_DIR="${MODELS_DIR}/vae"
 # 디폴트 셋. HF_TOKEN이 .env/env에 있으면 flux-dev 추가, 없으면 제외.
 # (실제 등록은 setup.sh의 intersection-discovery가 결정 — 여기선 다운로드만)
 recommended_aliases() {
+  has_nvidia_gpu || return 0
   local base="sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-schnell"
   [[ -n "${HF_TOKEN:-}" ]] && echo "$base flux-dev" || echo "$base"
 }
