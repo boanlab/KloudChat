@@ -41,6 +41,12 @@ services:
       - SEARXNG_INSTANCE_URL=${SEARXNG_INSTANCE_URL}
       - LIBRECHAT_CODE_API_KEY=${CODE_INTERPRETER_API_KEY}
       - LIBRECHAT_CODE_BASEURL=${LIBRECHAT_CODE_BASEURL}
+      - HELP_AND_FAQ_URL=${HELP_AND_FAQ_URL:-/}
+      - CUSTOM_FOOTER=${CUSTOM_FOOTER:- }
+      - WELCOME_BACK_MESSAGE=${WELCOME_BACK_MESSAGE:-}
+      - SIGNUP_HEADER=${SIGNUP_HEADER:-}
+    entrypoint: ["/usr/local/bin/librechat-entrypoint.sh"]
+    command: ["npm", "run", "backend"]
     volumes:
       - type: bind
         source: ./.env
@@ -48,6 +54,8 @@ services:
       - type: bind
         source: ./librechat.yaml
         target: /app/librechat.yaml
+      - ./scripts/librechat-entrypoint.sh:/usr/local/bin/librechat-entrypoint.sh:ro
+      - ./scripts/librechat-patch.py:/usr/local/bin/librechat-patch.py:ro
       - ./librechat/images:/app/client/public/images
       - ./librechat/uploads:/app/uploads
       - ./librechat/logs:/app/logs
@@ -168,7 +176,7 @@ services:
 
   ollama-lb:
     container_name: ollama-lb
-    image: nginx:alpine
+    image: nginx:1.29.8-alpine
     restart: always
     extra_hosts:
       - "host.docker.internal:host-gateway"

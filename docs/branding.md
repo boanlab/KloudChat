@@ -46,9 +46,14 @@ docker compose restart librechat
 
 | 항목 | 위치 |
 |---|---|
-| 브라우저 탭 타이틀 | `.env` 의 `APP_TITLE` |
-| 환영 화면 타글라인 | `librechat.yaml` 의 `interface.customWelcome` (빈 문자열로 숨김 가능) |
+| 브라우저 탭 + 좌상단 타이틀 | `.env` 의 `APP_TITLE` |
+| 로그인 페이지 헤딩 | `.env` 의 `WELCOME_BACK_MESSAGE` (startup 시 LibreChat 번들 i18n 치환) |
+| 회원가입 페이지 헤딩 | `.env` 의 `SIGNUP_HEADER` (동일 메커니즘) |
+| 우상단 "Help & FAQ" 메뉴 숨김 | `.env` 의 `HELP_AND_FAQ_URL=/` (기본). URL 채우면 표시됨 |
+| 채팅 홈 타글라인 ("모두를 위한 AI...") | `librechat.yaml` 의 `interface.customWelcome` (빈 문자열로 숨김) |
+| 채팅창 하단 푸터 ("LibreChat v0.8.5 - ...") | `.env` 의 `CUSTOM_FOOTER` (공백 1개로 숨김. LibreChat 은 yaml 아닌 env 에서 읽음) |
 | 엔드포인트 표시 이름 | `librechat.yaml` 의 `endpoints.custom[].modelDisplayLabel` |
+| 언어 셀렉터 옵션 | `scripts/librechat-patch.py` 가 startup 시 ko-KR + en-US + auto 만 노출 — 다른 언어 추가/제거는 스크립트 수정 |
 
 ## 트러블슈팅
 

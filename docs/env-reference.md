@@ -16,6 +16,10 @@
 | 변수 | 설명 | 비고 |
 |---|---|---|
 | `APP_TITLE` | LibreChat 좌상단 + 브라우저 탭 타이틀 | 기본 `KloudChat` |
+| `WELCOME_BACK_MESSAGE` | 로그인 페이지 헤딩 ("다시 오신 것을 환영합니다" 자리). 모든 locale 같은 값 | 빈 값이면 LibreChat 기본 |
+| `SIGNUP_HEADER` | 회원가입 페이지 헤딩 ("Create your account" 자리). 모든 locale 같은 값 | 빈 값이면 LibreChat 기본 |
+| `HELP_AND_FAQ_URL` | 우상단 메뉴의 "Help & FAQ" 링크 URL. `/` 면 메뉴 자체 숨김 | `/` (숨김) |
+| `CUSTOM_FOOTER` | 채팅창 하단 푸터 ("LibreChat v0.8.5 - ..." 자리). 빈 값이면 LibreChat 기본 표시, 공백 1개면 사실상 숨김. LibreChat 은 yaml `interface.customFooter` 아닌 이 env 변수에서만 읽음 | (LibreChat 기본) |
 | `OLLAMA_URLS` | Ollama 백엔드(들) — csv. nginx (`ollama-lb`) 가 `least_conn` LB | `setup.sh` 가 노드 간 모델 intersection 으로 discovery |
 | `COMFYUI_URLS` | ComfyUI 백엔드(들) — csv. shim 이 `/queue` 깊이 기반 라우팅 | discovery 가 등록할 이미지 모델 결정 |
 | `OPENAI_API_KEY` | OpenAI API 키 (선택) | 있으면 OpenAI 큐레이션 리스트가 native 로 자동 등록 |
