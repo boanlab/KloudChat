@@ -101,7 +101,7 @@ $EDITOR .env
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
-LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5, gemma4 등)이 함께 노출. `gpt-oss:20b/120b` 와 `MODEL_OR_FREE` 매핑된 Ollama 카탈로그 모델(현재 `gemma3:27b`)은 Ollama 에 pull 됐으면 로컬, 안 됐으면 OR free 로 fallback.
+LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5, gemma4 등)이 함께 노출. `MODEL_OR_FREE` 매핑된 Ollama 카탈로그 모델(현재 `gpt-oss:20b/120b`, `gemma3:27b`)은 Ollama 에 pull 됐으면 로컬, 안 됐으면 OR free 로 fallback.
 
 ### D 풀 하이브리드 — native API + OR + 로컬 Ollama
 
@@ -116,7 +116,7 @@ OLLAMA_URLS=http://gpu-node-1:11434 # 로컬 Ollama 노드
 HF_TOKEN=hf_...                     # flux-dev 받을 거면
 ```
 
-라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.5:35b`). `gpt-oss:20b/120b` + `MODEL_OR_FREE` 매핑 모델(`gemma3:27b` 등) 은 Ollama 우선, 없으면 OR free 로 fallback.
+라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.5:35b`). `MODEL_OR_FREE` 매핑된 카탈로그 모델(`gpt-oss:*`, `gemma3:27b`)은 Ollama 우선, 없으면 OR free 로 fallback.
 
 자세한 매트릭스는 [docs/models.md](docs/models.md#라우팅-결정-매트릭스) 참고.
 
@@ -143,10 +143,11 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 
 ## 지원 환경
 
-| 환경 | 채팅·RAG·검색·코드 | 이미지 (ComfyUI) |
-|---|:---:|:---:|
-| Linux x86_64 + NVIDIA GPU | ✅ | ✅ |
-| Linux aarch64 — DGX Spark (GB10) | ✅ | ✅ |
+| 환경 | 가능한 시나리오 | 비고 |
+|---|---|---|
+| Linux x86_64, GPU 없음 | B (OR-only) | 채팅만 가능. 이미지 / RAG 임베딩은 로컬 모델 필요 → 비활성 |
+| Linux x86_64 + NVIDIA GPU | A / B / C / D | 전체 시나리오 |
+| Linux aarch64 — DGX Spark (GB10) | A / B / C / D | 전체 시나리오. arm64 + CUDA 12.8 자체 빌드된 ComfyUI |
 
 ## 아키텍처
 
@@ -168,7 +169,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 
 처음 띄울 때는 위 빠른 시작만 따라하면 됩니다. 막힐 때 / 더 깊이 보고 싶을 때:
 
-- [사전 요구사항](getting-started/prerequisites.md) — 하드웨어/소프트웨어 체크리스트
+- [사전 요구사항](docs/prerequisites.md) — 하드웨어/소프트웨어 체크리스트
 - [환경변수 레퍼런스](docs/env-reference.md) — `.env` 변수 전체
 - [모델 설정](docs/models.md) — 카탈로그 + 라우팅 매트릭스 + 모델 추가법
 - [코딩 에이전트 연동](docs/coding-agents.md) — Claude Code / Codex 를 로컬 `qwen3-coder-next` 로 구동

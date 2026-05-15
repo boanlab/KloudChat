@@ -126,17 +126,22 @@ OPENAI_NATIVE_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
 ANTHROPIC_NATIVE_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
 GOOGLE_NATIVE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
 
-# gpt-oss는 native 없음. ollama 디스커버리 우선, 없으면 OR로 fallback.
-GPT_OSS_MODELS=(gpt-oss:20b gpt-oss:120b)
-
 # Ollama-only 카탈로그 — intersection discovery로 노드 보유 시에만 등록.
-OLLAMA_CHAT_CATALOG=(qwen3.5:9b qwen3.5:35b gemma4:26b gemma3:27b qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0)
+# 노드에 없을 때 MODEL_OR_FREE 매핑이 있으면 OR free 로 fallback.
+OLLAMA_CHAT_CATALOG=(
+  gpt-oss:20b gpt-oss:120b
+  qwen3.5:9b qwen3.5:35b
+  gemma4:26b gemma3:27b
+  qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0
+)
 OLLAMA_EMBED_CATALOG=(bge-m3)
 
-# Ollama 카탈로그 모델 중 OR free tier로도 fallback 가능한 매핑.
+# Ollama 카탈로그 모델 → OR free model id 매핑.
 # Ollama 노드에 pulled이면 ollama_chat 우선, 없으면 이 매핑 + OR 키가 있을 때만 OR free로 fallback.
 # OR free 카탈로그는 https://openrouter.ai/models?supported_parameters=free 에서 확인 후 활성화.
 declare -A MODEL_OR_FREE=(
+  [gpt-oss:20b]=openai/gpt-oss-20b:free
+  [gpt-oss:120b]=openai/gpt-oss-120b:free
   [gemma3:27b]=google/gemma-3-27b-it:free
   # [qwen3.5:9b]=qwen/qwen3-8b:free                   # 사이즈 근사 — OR ID 검증 후 활성
   # [qwen3.5:35b]=qwen/qwen3-32b:free                 # 동
@@ -175,7 +180,7 @@ has_openrouter()       { [[ -n "$(env_get OPENROUTER_API_KEY)" ]]; }
 # canonical LibreChat 메뉴용 model_name. native/OR 라우트 무관하게 동일.
 canonical_name() {
   local m="$1"
-  case " ${OPENAI_NATIVE_MODELS[*]} ${GPT_OSS_MODELS[*]} " in
+  case " ${OPENAI_NATIVE_MODELS[*]} " in
     *" $m "*) echo "openai/$m"; return ;;
   esac
   case " ${ANTHROPIC_NATIVE_MODELS[*]} " in

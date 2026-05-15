@@ -59,30 +59,6 @@ emit_native_or() {
   echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
 }
 
-emit_gpt_oss() {
-  local m="$1" tag in_pm out_pm model_line
-  tag="${m#gpt-oss:}"
-  in_pm="${MODEL_PRICE_IN_PM[$m]}"
-  out_pm="${MODEL_PRICE_OUT_PM[$m]}"
-  if ollama_has "$m"; then
-    model_line="ollama_chat/${m}"
-    echo "  - model_name: openai/${m}"
-    echo "    litellm_params:"
-    echo "      model: ${model_line}"
-    echo "      api_base: ${OLLAMA_BASE}"
-  elif has_openrouter; then
-    echo "  - model_name: openai/${m}"
-    echo "    litellm_params:"
-    echo "      model: openrouter/openai/gpt-oss-${tag}:free"
-    echo "      api_key: os.environ/OPENROUTER_API_KEY"
-  else
-    return 0
-  fi
-  echo "    model_info:"
-  echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
-  echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
-}
-
 emit_ollama_chat() {
   local m="$1" in_pm out_pm or_id
   in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
@@ -131,14 +107,12 @@ SECTION=$(
   for m in "${OPENAI_NATIVE_MODELS[@]}";    do emit_native_or openai    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
   for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do emit_native_or anthropic "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
   for m in "${GOOGLE_NATIVE_MODELS[@]}";    do emit_native_or google    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
-  # 2. gpt-oss (ollama-first, OR-fallback)
-  for m in "${GPT_OSS_MODELS[@]}"; do emit_gpt_oss "$m"; done
-  # 3. Ollama chat discovery
+  # 2. Ollama chat discovery (gpt-oss / gemma3 등은 MODEL_OR_FREE 매핑 있으면 OR fallback)
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
     [[ "$m" == "$GEMMA_SKIP" ]] && continue
     emit_ollama_chat "$m"
   done
-  # 4. Ollama embed discovery
+  # 3. Ollama embed discovery
   for m in "${OLLAMA_EMBED_CATALOG[@]}"; do emit_ollama_embed "$m"; done
   echo "  ${MARKER_END}"
 )

@@ -11,10 +11,9 @@
 | `OPENAI_NATIVE_MODELS` | OpenAI provider curated 리스트. native key 있으면 native, 없고 OR 있으면 OR fallback |
 | `ANTHROPIC_NATIVE_MODELS` | Anthropic provider curated 리스트 |
 | `GOOGLE_NATIVE_MODELS` | Google Gemini provider curated 리스트 |
-| `GPT_OSS_MODELS` | `gpt-oss:20b/120b`. Ollama intersection 우선, 없으면 OR fallback |
-| `OLLAMA_CHAT_CATALOG` | Ollama-only 채팅 모델 카탈로그. 노드 intersection 발견 시 등록 |
-| `OLLAMA_EMBED_CATALOG` | Ollama-only 임베딩 카탈로그 |
-| `MODEL_OR_FREE` | Ollama 카탈로그 모델 중 OR free tier 매핑이 있는 것. Ollama 노드에 없을 때 OR 키 있으면 fallback |
+| `OLLAMA_CHAT_CATALOG` | Ollama 채팅 모델 카탈로그 (gpt-oss 포함). 노드 intersection 발견 시 등록 |
+| `OLLAMA_EMBED_CATALOG` | Ollama 임베딩 카탈로그 |
+| `MODEL_OR_FREE` | Ollama 카탈로그 모델 → OR free tier 매핑. Ollama 노드에 없을 때 OR 키 있으면 fallback |
 | `MODEL_PRICE_IN_PM` / `MODEL_PRICE_OUT_PM` | 모델별 USD per 1M tokens (OpenRouter 환산). LiteLLM 이 spend/budget 추적에 사용 |
 
 `gen-litellm-config.sh` / `gen-librechat-config.sh` 가 위 정의 + 환경(API 키 + ollama discovery)을 합쳐서 `litellm-config.yaml` 의 `KLOUDCHAT_AUTOGEN` marker 사이, `librechat.yaml` 의 `KLOUDCHAT_MODELS` marker 사이를 자동 생성합니다.
@@ -29,19 +28,14 @@
 
 → LibreChat 메뉴에는 모델당 1개 entry만 노출. 사용자는 라우트를 직접 고를 필요 없음.
 
-### gpt-oss (단일 경로)
-
-| 모델 | Ollama intersection 에 있음 | 없음 + OR 있음 | 없음 + OR 없음 |
-|---|---|---|---|
-| `openai/gpt-oss:20b` | `ollama_chat/gpt-oss:20b` | `openrouter/openai/gpt-oss-20b:free` | 미등록 |
-| `openai/gpt-oss:120b` | `ollama_chat/gpt-oss:120b` | `openrouter/openai/gpt-oss-120b:free` | 미등록 |
-
 ### Ollama 카탈로그 (intersection discovery + 선택적 OR free fallback)
 
 각 노드의 `/api/tags` 응답들의 **교집합**만 등록. 노드 1개 unreachable 이면 warn 후 skip. 노드 어디에도 없는 모델은 `MODEL_OR_FREE` 매핑이 있고 OR 키 있을 때 OR free 로 fallback.
 
 | 모델 | Ollama intersection 에 있음 | 없음 + `MODEL_OR_FREE` 매핑 + OR 키 | 없음 + 매핑 없거나 OR 없음 |
 |---|---|---|---|
+| `ollama/gpt-oss:20b` | `ollama_chat/gpt-oss:20b` | `openrouter/openai/gpt-oss-20b:free` | 미등록 |
+| `ollama/gpt-oss:120b` | `ollama_chat/gpt-oss:120b` | `openrouter/openai/gpt-oss-120b:free` | 미등록 |
 | `ollama/qwen3.5:9b` | `ollama_chat/qwen3.5:9b` | (매핑 주석 처리 — 사용자 검증 후 활성) | 미등록 |
 | `ollama/qwen3.5:35b` | 동일 | 동 | 미등록 |
 | `ollama/gemma4:26b` | 동일 (intersection 우선) | 매핑 없음 | 미등록 |
@@ -57,8 +51,7 @@
 OPENAI_NATIVE_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
 ANTHROPIC_NATIVE_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
 GOOGLE_NATIVE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
-GPT_OSS_MODELS=(gpt-oss:20b gpt-oss:120b)
-OLLAMA_CHAT_CATALOG=(qwen3.5:9b qwen3.5:35b gemma4:26b gemma3:27b qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0)
+OLLAMA_CHAT_CATALOG=(gpt-oss:20b gpt-oss:120b qwen3.5:9b qwen3.5:35b gemma4:26b gemma3:27b qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0)
 OLLAMA_EMBED_CATALOG=(bge-m3)
 ```
 

@@ -32,11 +32,7 @@ MODELS=()
 for m in "${OPENAI_NATIVE_MODELS[@]}";    do has_openai_native    || has_openrouter || continue; MODELS+=("openai/${m}");    done
 for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do has_anthropic_native || has_openrouter || continue; MODELS+=("anthropic/${m}"); done
 for m in "${GOOGLE_NATIVE_MODELS[@]}";    do has_google_native    || has_openrouter || continue; MODELS+=("google/${m}");    done
-# gpt-oss: ollama 또는 OR 둘 중 하나 가능할 때만.
-for m in "${GPT_OSS_MODELS[@]}"; do
-  if ollama_has "$m" || has_openrouter; then MODELS+=("openai/${m}"); fi
-done
-# Ollama-only 카탈로그.
+# Ollama 카탈로그 (gpt-oss 포함). 노드에 pulled이면 로컬, 없으면 MODEL_OR_FREE 매핑 + OR 키로 fallback.
 GEMMA_SKIP=""
 ollama_has gemma4:26b && ollama_has gemma3:27b && GEMMA_SKIP=gemma3:27b
 for m in "${OLLAMA_CHAT_CATALOG[@]}"; do

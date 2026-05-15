@@ -35,7 +35,7 @@ GPU 호스트에서 prerequisite:
 ./scripts/download-image-models.sh      # 기본 셋 + HF_TOKEN 있으면 +flux-dev
 ```
 
-VRAM 점유는 [GPU 메모리 가이드](../docs/gpu-memory.md) 참고.
+VRAM 점유는 [GPU 메모리 가이드](gpu-memory.md) 참고.
 
 ### B — OpenRouter 만 (GPU 불필요)
 
@@ -60,4 +60,4 @@ C 의 요건 + native API 키 (OpenAI/Anthropic/Google 중 가지고 있는 것)
 
 - ComfyUI 컨테이너 정상 동작 (arm64 + CUDA 12.8 자체 빌드)
 - `nvidia-smi memory.total` 이 `[N/A]` 라서 `lib.sh` 헬퍼가 시스템 RAM 을 VRAM 으로 간주 — `download-ollama-models.sh` 의 추천 셋 결정에 사용
-- `CUDA_VISIBLE_DEVICES` 가 빈 값이면 Ollama CPU 폴백 → `0` 으로 명시 ([Ollama 튜닝](../docs/ollama-tuning.md))
+- `CUDA_VISIBLE_DEVICES` 가 빈 값이면 Ollama CPU 폴백 → `0` 으로 명시 ([Ollama 튜닝](ollama-tuning.md))

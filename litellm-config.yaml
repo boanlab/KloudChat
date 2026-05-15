@@ -77,14 +77,14 @@ model_list:
     model_info:
       input_cost_per_token: 0.0000003000
       output_cost_per_token: 0.0000025000
-  - model_name: openai/gpt-oss:20b
+  - model_name: ollama/gpt-oss:20b
     litellm_params:
       model: openrouter/openai/gpt-oss-20b:free
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       input_cost_per_token: 0.0000000000
       output_cost_per_token: 0.0000000000
-  - model_name: openai/gpt-oss:120b
+  - model_name: ollama/gpt-oss:120b
     litellm_params:
       model: openrouter/openai/gpt-oss-120b:free
       api_key: os.environ/OPENROUTER_API_KEY
