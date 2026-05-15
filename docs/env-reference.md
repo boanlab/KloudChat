@@ -1,5 +1,7 @@
 # 환경변수 레퍼런스
 
+> 이 문서: `.env` 의 모든 변수가 무엇이고 누가 채우는지(사용자 vs `gen-env.sh` vs `setup.sh`). 처음 띄우는 거면 [README](../README.md) 만 보면 됩니다 — 시나리오별로 실제 채워야 하는 키만 안내합니다.
+
 `./scripts/gen-env.sh` 가 `.env.example` 을 복사하면서 `change-me-*` 패턴을 랜덤 시크릿으로 치환해 `.env` 를 생성합니다. 외부 키(OpenAI / Anthropic / Gemini / OpenRouter / HF_TOKEN)와 백엔드 토폴로지(`OLLAMA_URLS`, `COMFYUI_URLS`)는 직접 채워야 합니다.
 
 `.env` 는 4섹션으로 묶여 있습니다:

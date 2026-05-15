@@ -1,104 +1,155 @@
 # KloudChat
 
-온프레미스 환경에서 운영하는 오픈소스 기반 AI 플랫폼.
+온프레미스 환경에서 운영하는 오픈소스 기반 AI 플랫폼. LibreChat + LiteLLM 위에 Ollama / OpenRouter / native API (OpenAI, Anthropic, Google) 를 묶어 채팅·RAG·이미지 생성·코드 실행을 한 곳에서 제공합니다.
+
+## 어떤 시나리오로 띄울까?
+
+| 시나리오 | GPU | 외부 API | 강점 | 약점 |
+|---|---|---|---|---|
+| **A OpenRouter 만** | ✗ | OPENROUTER_API_KEY 1개 | GPU 불필요, 5분 setup | 사용량당 과금, 데이터 외부 송신 |
+| **B 로컬 Ollama 만** | ✓ (자체 또는 원격 노드) | ✗ | 데이터 외부 송신 없음, 사용량 무료 | GPU 필요, 모델 다운로드 시간/디스크 |
+| **C 하이브리드** | ✓ | native key + OR | frontier 모델 + 로컬 모델 동시 노출 | 양쪽 운영 필요 |
+
+`setup.sh` 의 사전체크는 단 하나: **OPENROUTER_API_KEY 또는 reachable Ollama 노드 둘 중 하나는 있어야 합니다**. 둘 다 없으면 0단계에서 중단.
+
+## 빠른 시작
+
+세 시나리오 모두 공통:
+
+```bash
+git clone https://github.com/boanlab/KloudChat.git && cd KloudChat
+./scripts/gen-env.sh        # .env 생성 (시크릿 자동 채움)
+```
+
+다음으로 시나리오별 단계:
+
+### A OpenRouter 만 — GPU 없음
+
+```bash
+# 1. .env 의 OPENROUTER_API_KEY 채우기 + 나머지는 그대로
+$EDITOR .env
+#   OPENROUTER_API_KEY=sk-or-v1-...
+
+# 2. setup (Ollama 노드는 unreachable warn 만 뜨고 진행됨)
+./scripts/setup.sh --yes
+
+# 3. admin 생성
+./scripts/manage.sh user create \
+  --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
+```
+
+→ LibreChat http://localhost:8080. gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등 OR 라우팅 모델이 메뉴에 나옴.
+
+> 이미지 생성·RAG 임베딩은 로컬 모델이 필요해 이 시나리오에선 비활성. 활성하려면 B 또는 C.
+
+### B 로컬 Ollama 만 — 자체 GPU
+
+GPU 가 compose 호스트와 같은 머신이면:
+
+```bash
+# 1. GPU 호스트에 Ollama + ComfyUI 설치 + 모델 다운로드
+./scripts/install-ollama.sh
+./scripts/download-ollama-models.sh             # GPU 자동 감지 추천 셋
+./scripts/install-comfyui.sh                    # 이미지 생성 쓸 거면
+./scripts/download-image-models.sh              # 기본 셋
+
+# 2. .env 그대로 (host.docker.internal 기본값) — 외부 API 키는 빈 칸으로 둠
+# 3. setup + admin
+./scripts/setup.sh --yes
+./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
+```
+
+GPU 가 별도 노드면:
+
+```bash
+# 1. 각 GPU 노드에서:
+./scripts/install-ollama.sh                     # + download-ollama-models.sh
+./scripts/install-comfyui.sh                    # + download-image-models.sh
+
+# 2. compose 호스트의 .env 에서 노드 가리키기
+$EDITOR .env
+#   OLLAMA_URLS=http://gpu-node-1:11434,http://gpu-node-2:11434
+#   COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
+
+# 3. setup
+./scripts/setup.sh --yes
+```
+
+> 멀티 노드일 때 LibreChat 메뉴에 등장하는 모델 = **모든 노드에 공통으로 pull 된 모델**(intersection). 한 노드만 받은 모델은 안 나옴.
+
+### C 하이브리드 — native API + 로컬 Ollama
+
+A 와 B 합치면 됨. `.env` 에서:
+
+```dotenv
+OPENAI_API_KEY=sk-...               # 있는 만큼만 채움
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...
+OPENROUTER_API_KEY=sk-or-...        # 없으면 위 native 키 있는 provider 만 동작
+OLLAMA_URLS=http://gpu-node-1:11434 # 로컬 Ollama 노드
+HF_TOKEN=hf_...                     # flux-dev 받을 거면
+```
+
+라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.5:35b`). `gpt-oss:20b/120b` 는 Ollama 우선, 없으면 OR.
+
+자세한 매트릭스는 [docs/models.md](docs/models.md#라우팅-결정-매트릭스) 참고.
+
+## 동작 방식 한 눈에
+
+```
+1. ./scripts/gen-env.sh        → .env 생성 (시크릿 자동, 외부 키는 사용자가 채움)
+2. (선택) GPU 노드에서 install-* + download-*
+3. ./scripts/setup.sh           → .env + 노드 discovery 로 모델 매트릭스 결정 → docker compose up
+4. ./scripts/manage.sh user create  → admin 생성, 끝
+```
 
 ## 기능
 
 | 기능 | 컴포넌트 |
 |---|---|
-| 멀티 LLM 채팅 | LibreChat + LiteLLM + Ollama |
-| RAG (문서 기반 답변) | pgvector + MeiliSearch (Hybrid Search) |
+| 멀티 LLM 채팅 | LibreChat + LiteLLM (native API + Ollama + OpenRouter 통합) |
+| RAG (문서 기반 답변) | pgvector + MeiliSearch (Hybrid Search), bge-m3 임베딩 |
 | 웹 검색 | SearXNG |
 | 코드 실행 샌드박스 | LibreCodeInterpreter |
-| HWP/PDF/DOCX 파일 업로드 | LibreChat RAG API |
+| HWP/PDF/DOCX 업로드 | LibreChat RAG API |
 | 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image(-Edit), FLUX.1 (dev/schnell) |
-| 팀·사용자·예산 관리 | LiteLLM + CLI 스크립트 |
+| 팀·사용자·예산 관리 | LiteLLM + `scripts/manage.sh` |
 
 ## 지원 환경
 
 | 환경 | 채팅·RAG·검색·코드 | 이미지 (ComfyUI) |
 |---|:---:|:---:|
 | Linux x86_64 + NVIDIA GPU | ✅ | ✅ |
-| Linux aarch64 — **DGX Spark (GB10)** | ✅ | ✅ |
-
-`./scripts/setup.sh` 가 아키텍처·GPU 를 자동 감지해서 사용 가능한 서비스만 띄웁니다.
-
-### 분산 배포 — compose 호스트와 GPU 노드 분리
-
-`.env` 의 csv 한 줄로 원격 GPU 노드들을 가리킬 수 있습니다.
-
-- **Ollama**: `OLLAMA_URLS=http://gpu-node-1:11434,http://gpu-node-2:11434` — nginx (`ollama-lb`) 가 `least_conn` 으로 분산. RAG 임베딩도 동일 경로.
-- **ComfyUI**: `COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188` — shim 이 매 요청 `/queue` 깊이로 가장 한가한 노드 선택, `prompt_id → 노드` 매핑 유지.
-
-각 GPU 노드에서 `./scripts/install-ollama.sh` 또는 `./scripts/install-comfyui.sh` 실행 후 compose 호스트 `.env` 갱신 → `setup.sh --yes`.
-
-## 빠른 시작
-
-`setup.sh` 는 stack 구성 + 백엔드 discovery 만 하고 모델 다운로드는 하지 않습니다. **필수 전제**: `.env` 의 `OPENROUTER_API_KEY` 또는 `OLLAMA_URLS` reachable 노드(모델 보유) 중 하나는 있어야 합니다. 둘 다 없으면 0단계에서 중단.
-
-### 단일 호스트 (compose + GPU 같은 머신)
-
-```bash
-git clone https://github.com/boanlab/KloudChat.git && cd KloudChat
-
-# 1. .env 생성 후 키 채우기 (OPENAI/ANTHROPIC/GEMINI/OPENROUTER/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS 등)
-./scripts/gen-env.sh
-$EDITOR .env
-
-# 2. 모델 호스트 (Ollama + ComfyUI) 설치 + 가중치 (OR-only 로 갈 거면 생략 가능)
-./scripts/install-ollama.sh
-./scripts/download-ollama-models.sh        # GPU 자동 감지 → 추천 셋
-./scripts/install-comfyui.sh
-./scripts/download-image-models.sh         # 기본 셋 + HF_TOKEN 있으면 flux-dev 추가
-
-# 3. compose stack 구성 + 백엔드 discovery + 기동 + init
-./scripts/setup.sh --yes
-
-# 4. admin 사용자 생성 (LibreChat + LiteLLM + 키 + agent 자동)
-./scripts/manage.sh user create \
-  --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
-```
-
-### 분산 (compose 호스트 ≠ GPU 노드)
-
-각 GPU 노드에서 위 2번 (`install-*` + `download-*`) 실행 → compose 호스트의 `.env` 에 `OLLAMA_URLS` / `COMFYUI_URLS` 를 csv 로 설정 → `setup.sh` 가 모든 백엔드의 모델 intersection 으로 discovery.
-
-LibreChat: http://localhost:8080  
-LiteLLM: http://localhost:8000
+| Linux aarch64 — DGX Spark (GB10) | ✅ | ✅ |
 
 ## 아키텍처
 
 ```
-[사용자]
-  └─ 채팅 / 에이전트 / 이미지 → LibreChat (:8080)
+[사용자] → LibreChat (:8080)
+            ↓
+         LiteLLM (:8000) ──→ ollama-lb (nginx) → Ollama (OLLAMA_URLS)
+            ├─ native API (OpenAI/Anthropic/Google)
+            └─ OpenRouter
 
-[LLM 게이트웨이]
-  └─ LiteLLM (:8000) ─→ ollama-lb (nginx, least_conn) ─→ Ollama (호스트, OLLAMA_URLS)
-
-[데이터 레이어]
-  ├─ pgvector      — 시맨틱 검색
-  ├─ MeiliSearch   — BM25 키워드 검색 (Hybrid RAG)
-  └─ MongoDB       — 대화 이력
-
-[검색 / 코드 실행]
-  ├─ SearXNG          — 웹 검색
-  └─ code-interpreter — 코드 실행 샌드박스
-
-[Linux + NVIDIA GPU]
-  ├─ ComfyUI       — 이미지 생성 (SDXL, Qwen-Image, Qwen-Image-Edit, FLUX.1 dev/schnell)
-  └─ comfyui-shim  — A1111 호환 어댑터 (LibreChat 내장 image-generation 툴 연동)
+         RAG API → LiteLLM → bge-m3 임베딩 → pgvector + MeiliSearch (Hybrid)
+         comfyui-shim → ComfyUI (COMFYUI_URLS)
+         SearXNG / code-interpreter
 ```
 
-## 문서
+더 자세한 다이어그램과 컴포넌트 설명은 [docs/overview.md](docs/overview.md).
 
-- [사전 요구사항](getting-started/prerequisites.md)
-- [환경변수 레퍼런스](docs/env-reference.md)
-- [모델 설정](docs/models.md)
-- [GPU 메모리 가이드](docs/gpu-memory.md)
-- [Ollama 튜닝 가이드](docs/ollama-tuning.md)
-- [아키텍처 상세](docs/overview.md)
+## 다음에 읽을 것
 
-CLI 사용법은 `./scripts/manage.sh` (인자 없이 실행 시 도움말 출력).
+처음 띄울 때는 위 빠른 시작만 따라하면 됩니다. 막힐 때 / 더 깊이 보고 싶을 때:
+
+- [사전 요구사항](getting-started/prerequisites.md) — 하드웨어/소프트웨어 체크리스트
+- [환경변수 레퍼런스](docs/env-reference.md) — `.env` 변수 전체
+- [모델 설정](docs/models.md) — 카탈로그 + 라우팅 매트릭스 + 모델 추가법
+- [아키텍처 상세](docs/overview.md) — 컴포넌트별 동작
+- [GPU 메모리 가이드](docs/gpu-memory.md) — 시나리오별 VRAM 점유
+- [Ollama 튜닝](docs/ollama-tuning.md)
+
+CLI 사용법은 `./scripts/manage.sh` (인자 없이 실행 시 도움말).
 
 ## 라이선스
 

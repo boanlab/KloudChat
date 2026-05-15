@@ -1,5 +1,7 @@
 # 아키텍처 상세
 
+> KloudChat 은 *LibreChat (UI) + LiteLLM (게이트웨이) + 백엔드 다중 소스* 패턴입니다. LibreChat 은 채팅 UI / 에이전트 / 파일·검색 통합만 담당하고, 모든 LLM 호출은 LiteLLM 한 곳을 거치게 만들어 native API · Ollama · OpenRouter 를 동일한 OpenAI 호환 endpoint 로 추상화합니다. 모델별 가격이 LiteLLM 에 박혀 있어 팀·사용자·가상키 기반의 실비 단위 예산 관리가 동작합니다. 이미지 생성은 ComfyUI 가 워크플로 JSON 기반이라 LibreChat 의 A1111 호환 툴과 직접 못 붙어 — 얇은 shim 으로 어댑팅 + 노드 라우팅까지 같이 처리합니다.
+
 ## 전체 구조
 
 ```
