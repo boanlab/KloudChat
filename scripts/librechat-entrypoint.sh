@@ -1,7 +1,7 @@
 #!/bin/sh
 # LibreChat 컨테이너 startup wrapper — 빌드 번들 in-place 패치.
 # - i18n 문자열 치환 (WELCOME_BACK_MESSAGE, SIGNUP_HEADER)
-# - 언어 셀렉터 축약 (auto/en-US/ko-KR)
+# - 언어 셀렉터 축약 (ko-KR/en-US) + 기본 ko-KR 강제
 # - "Upload to Provider" 메뉴 숨김
 # .orig 백업본에서 복원 후 다시 패치하므로 멱등.
 set -e

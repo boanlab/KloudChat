@@ -3,7 +3,8 @@
 
 대상 디렉토리(=dist/assets) 의 모든 locales/index 번들을 처리.
 - locales.*.js : i18n 키 치환 (WELCOME_BACK_MESSAGE, SIGNUP_HEADER)
-- index.*.js   : 언어 셀렉터 축약, "Upload to Provider" 메뉴 숨김
+- index.*.js   : 언어 셀렉터 축약(ko-KR/en-US), 기본 언어 ko-KR 고정,
+                  "Upload to Provider" 메뉴 숨김
 """
 import os, re, sys, pathlib
 
@@ -22,12 +23,12 @@ def replace_i18n_value(text: str, key: str, value: str) -> str:
 
 
 def patch_lang_selector(text: str) -> str:
-    """언어 셀렉터를 auto + en-US + ko-KR 만 노출하도록 축약."""
-    anchor = '{value:"auto",label:s("com_nav_lang_auto")}'
-    i = text.find(anchor)
-    if i < 0:
+    """언어 셀렉터를 ko-KR(첫번째) + en-US 만 노출하도록 축약."""
+    m = re.search(r'\{value:"auto",label:([a-zA-Z_$]+)\("com_nav_lang_auto"\)\}', text)
+    if not m:
         return text
-    start = text.rfind("[", 0, i)
+    t_fn = m.group(1)  # i18next t 함수 식별자 (빌드마다 minified name 변함)
+    start = text.rfind("[", 0, m.start())
     depth, end = 0, start
     while end < len(text):
         c = text[end]
@@ -39,11 +40,21 @@ def patch_lang_selector(text: str) -> str:
                 break
         end += 1
     new_array = (
-        '[{value:"auto",label:s("com_nav_lang_auto")},'
-        '{value:"en-US",label:s("com_nav_lang_english")},'
-        '{value:"ko-KR",label:s("com_nav_lang_korean")}]'
+        f'[{{value:"ko-KR",label:{t_fn}("com_nav_lang_korean")}},'
+        f'{{value:"en-US",label:{t_fn}("com_nav_lang_english")}}]'
     )
     return text[:start] + new_array + text[end + 1 :]
+
+
+def force_default_korean(text: str) -> str:
+    """저장된 lang 이 없거나 'auto' 면 ko-KR 로 강제 — 브라우저 자동감지 제거."""
+    return re.sub(
+        r'\("lang",\(\(\)=>\{const ([a-zA-Z_$]+)=navigator\.language\|\|navigator\.languages\[0\];'
+        r'return ([a-zA-Z_$]+)\.get\("lang"\)\|\|localStorage\.getItem\("lang"\)\|\|\1\}\)\(\)\)',
+        r'("lang",(()=>{const _v=\2.get("lang")||localStorage.getItem("lang");'
+        r'return _v&&_v!=="auto"?_v:"ko-KR"})())',
+        text,
+    )
 
 
 def hide_upload_to_provider(text: str) -> str:
@@ -83,5 +94,6 @@ for p in locales_files:
 for p in index_files:
     text = p.read_text()
     text = patch_lang_selector(text)
+    text = force_default_korean(text)
     text = hide_upload_to_provider(text)
     p.write_text(text)
