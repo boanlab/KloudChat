@@ -21,7 +21,7 @@
 | `OPENAI_API_KEY` | OpenAI API 키 (선택) | 있으면 OpenAI 큐레이션 리스트가 native 로 자동 등록 |
 | `ANTHROPIC_API_KEY` | Anthropic API 키 (선택) | 있으면 Anthropic 큐레이션 리스트가 native 로 |
 | `GEMINI_API_KEY` | Google Gemini AI Studio 키 (선택) | 있으면 Google 큐레이션 리스트가 native 로 |
-| `OPENROUTER_API_KEY` | OpenRouter 키 (선택) | native 없는 commercial 모델의 fallback + `gpt-oss` ollama 없을 때 fallback |
+| `OPENROUTER_API_KEY` | OpenRouter 키 (선택) | native 없는 commercial 모델의 fallback + `gpt-oss` / `MODEL_OR_FREE` 매핑된 Ollama 모델이 노드에 없을 때 OR free fallback |
 | `HF_TOKEN` | HuggingFace gated repo 토큰 | `flux-dev` 다운로드 전제 (다른 이미지 모델은 무관) |
 
 **필수**: `OPENROUTER_API_KEY` 또는 reachable `OLLAMA_URLS` 노드 ≥1 — 둘 다 없으면 `setup.sh` 가 거부.
@@ -119,7 +119,7 @@ COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
 | native key 없음 + OR 있음 | 동일 리스트가 OR fallback 으로 등록 (`openrouter/<provider>/<id>`) |
 | `gpt-oss:20b/120b` — Ollama 노드 intersection 에 있음 | `ollama_chat/gpt-oss:*` 로 등록 (OR 보다 우선) |
 | `gpt-oss` — 노드에 없음 + OR 있음 | OR `:free` 로 fallback |
-| Ollama 카탈로그 모델 (qwen3.5, gemma4/3, qwen3-coder-next, bge-m3) | 노드 intersection 에 있을 때만 등록. `gemma4`/`gemma3` 둘 다면 `gemma4` 만 |
+| Ollama 카탈로그 모델 (qwen3.5, gemma4/3, qwen3-coder-next, bge-m3) | 노드 intersection 에 있을 때 등록. `MODEL_OR_FREE` 매핑된 것은(현재 `gemma3:27b`) 노드에 없어도 OR 키 있으면 OR free 로 등록. `gemma4`/`gemma3` 둘 다 ollama 면 `gemma4` 우선 |
 | 이미지 모델 | ComfyUI 노드 intersection 에 파일이 있을 때만 등록. `flux-dev` 는 `HF_TOKEN` 으로 다운로드 게이팅 |
 
 자세한 매트릭스는 [모델 설정](models.md) 참고.

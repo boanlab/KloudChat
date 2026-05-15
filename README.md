@@ -101,7 +101,7 @@ $EDITOR .env
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
-LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5, gemma4 등)이 함께 노출. `gpt-oss:20b/120b` 는 Ollama 에 pull 했으면 로컬, 안 했으면 OR.
+LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5, gemma4 등)이 함께 노출. `gpt-oss:20b/120b` 와 `MODEL_OR_FREE` 매핑된 Ollama 카탈로그 모델(현재 `gemma3:27b`)은 Ollama 에 pull 됐으면 로컬, 안 됐으면 OR free 로 fallback.
 
 ### D 풀 하이브리드 — native API + OR + 로컬 Ollama
 
@@ -116,7 +116,7 @@ OLLAMA_URLS=http://gpu-node-1:11434 # 로컬 Ollama 노드
 HF_TOKEN=hf_...                     # flux-dev 받을 거면
 ```
 
-라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.5:35b`). `gpt-oss:20b/120b` 는 Ollama 우선, 없으면 OR.
+라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.5:35b`). `gpt-oss:20b/120b` + `MODEL_OR_FREE` 매핑 모델(`gemma3:27b` 등) 은 Ollama 우선, 없으면 OR free 로 fallback.
 
 자세한 매트릭스는 [docs/models.md](docs/models.md#라우팅-결정-매트릭스) 참고.
 
