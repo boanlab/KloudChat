@@ -2,26 +2,22 @@
 
 온프레미스 환경에서 운영하는 오픈소스 기반 AI 플랫폼. LibreChat + LiteLLM 위에 Ollama / OpenRouter / native API (OpenAI, Anthropic, Google) 를 묶어 채팅·RAG·이미지 생성·코드 실행을 한 곳에서 제공합니다.
 
-## 어떤 시나리오로 띄울까?
-
-| 시나리오 | GPU | 외부 API | 강점 | 약점 |
-|---|---|---|---|---|
-| **A OpenRouter 만** | ✗ | OPENROUTER_API_KEY 1개 | GPU 불필요, 5분 setup | 사용량당 과금, 데이터 외부 송신 |
-| **B 로컬 Ollama 만** | ✓ (자체 또는 원격 노드) | ✗ | 데이터 외부 송신 없음, 사용량 무료 | GPU 필요, 모델 다운로드 시간/디스크 |
-| **C 하이브리드** | ✓ | native key + OR | frontier 모델 + 로컬 모델 동시 노출 | 양쪽 운영 필요 |
-
-`setup.sh` 의 사전체크는 단 하나: **OPENROUTER_API_KEY 또는 reachable Ollama 노드 둘 중 하나는 있어야 합니다**. 둘 다 없으면 0단계에서 중단.
-
 ## 빠른 시작
 
-세 시나리오 모두 공통:
+본인 환경에 맞는 시나리오 하나를 골라 따라가면 됩니다:
+
+- **A — OpenRouter 만**: GPU 없을 때. OpenRouter API 키 1개로 GPT/Claude/Gemini 다 쓸 수 있음. 5분 안에 띄움. 단, 사용량당 과금 + 데이터는 OpenRouter 경유.
+- **B — 로컬 Ollama 만**: 자체 GPU 가 있을 때. 무료 + 데이터 외부 안 나감. 단, 모델 다운로드 시간/디스크 100GB+ 필요.
+- **C — 하이브리드**: native API 키(OpenAI/Anthropic/Google) + 로컬 Ollama 같이. 둘 다 LibreChat 메뉴에 동시 노출.
+
+`setup.sh` 의 사전체크: **OPENROUTER_API_KEY 또는 reachable Ollama 노드 둘 중 하나는 있어야 합니다.** 둘 다 없으면 0단계에서 중단.
+
+### 공통 첫 단계
 
 ```bash
 git clone https://github.com/boanlab/KloudChat.git && cd KloudChat
 ./scripts/gen-env.sh        # .env 생성 (시크릿 자동 채움)
 ```
-
-다음으로 시나리오별 단계:
 
 ### A OpenRouter 만 — GPU 없음
 
@@ -47,14 +43,16 @@ $EDITOR .env
 GPU 가 compose 호스트와 같은 머신이면:
 
 ```bash
-# 1. GPU 호스트에 Ollama + ComfyUI 설치 + 모델 다운로드
+# 1. (선택) FLUX.1-dev 받을 거면 .env 에 HF_TOKEN 먼저 채우기
+$EDITOR .env    # HF_TOKEN=hf_...   (없으면 flux-dev 만 빠지고 나머지 이미지 모델은 그대로)
+
+# 2. GPU 호스트에 Ollama + ComfyUI 설치 + 모델 다운로드
 ./scripts/install-ollama.sh
 ./scripts/download-ollama-models.sh             # GPU 자동 감지 추천 셋
 ./scripts/install-comfyui.sh                    # 이미지 생성 쓸 거면
-./scripts/download-image-models.sh              # 기본 셋
+./scripts/download-image-models.sh              # 기본 셋 + (HF_TOKEN 있으면) +flux-dev
 
-# 2. .env 그대로 (host.docker.internal 기본값) — 외부 API 키는 빈 칸으로 둠
-# 3. setup + admin
+# 3. setup + admin (외부 API 키는 빈 칸으로 둠, OLLAMA_URLS/COMFYUI_URLS 는 기본값 그대로)
 ./scripts/setup.sh --yes
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
@@ -62,9 +60,11 @@ GPU 가 compose 호스트와 같은 머신이면:
 GPU 가 별도 노드면:
 
 ```bash
-# 1. 각 GPU 노드에서:
-./scripts/install-ollama.sh                     # + download-ollama-models.sh
-./scripts/install-comfyui.sh                    # + download-image-models.sh
+# 1. 각 GPU 노드에서 — flux-dev 쓸 거면 HF_TOKEN 환경변수로 전달
+./scripts/install-ollama.sh
+./scripts/download-ollama-models.sh
+./scripts/install-comfyui.sh
+HF_TOKEN=hf_... ./scripts/download-image-models.sh      # HF_TOKEN 생략 시 flux-dev 만 빠짐
 
 # 2. compose 호스트의 .env 에서 노드 가리키기
 $EDITOR .env
