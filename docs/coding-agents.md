@@ -35,7 +35,7 @@ claude
 
 위 5줄을 `~/.bashrc` / `~/.zshrc` 에 박아두거나, 프로젝트별 `direnv` (`.envrc`) 로 관리 권장.
 
-라우팅: Claude Code 가 `POST /v1/messages` 를 `localhost:8000` 으로 → LiteLLM 의 `anthropic_proxy` (litellm-config.yaml 마지막 블록) 가 Anthropic Messages API 를 OpenAI chat API 로 변환 → `model_name=ollama/qwen3-coder-next:q8_0` 매칭 → ollama-lb → Ollama 노드.
+라우팅: Claude Code 가 `POST /v1/messages` 를 `localhost:8000` 으로 → LiteLLM 의 `anthropic_proxy` (litellm-config.yaml 마지막 블록) 가 Anthropic Messages API 를 OpenAI chat API 로 변환 → `model_name=ollama/qwen3-coder-next:q8_0` 매칭 → router 가 보유 Ollama 노드 중 한 곳으로 직접 호출.
 
 ### 모델 슬롯 매핑 커스터마이즈
 
@@ -91,7 +91,7 @@ VRAM 부족하면 q4_K_M 을 메인으로. q8_0 을 슬롯 매핑에 두면 Olla
 |---|---|
 | `401 unauthorized` | `ANTHROPIC_AUTH_TOKEN` / `OPENAI_API_KEY` 가 빈 값. `.env` 의 `LITELLM_MASTER_KEY` 확인 |
 | `404 model not found` | LiteLLM 에 모델 미등록. `./scripts/gen-litellm-config.sh && docker compose up -d litellm` |
-| `Ollama 노드 unreachable` | `setup.sh` 가 intersection discovery 시 warn 으로 끝남 — 모델 등록 안 됨. 노드에서 `ollama pull qwen3-coder-next:q8_0` |
+| `Ollama 노드 unreachable` | discovery 시 그 노드만 skip, 다른 노드에 모델 있으면 거기로 라우팅. 어느 노드에도 없으면 노드에서 `ollama pull qwen3-coder-next:q8_0` |
 | 응답이 매우 느림 | 처음 호출 시 모델 로딩 (`q8_0` 은 80GB+ 로드에 20-40s). 2분 idle 후 unload — `OLLAMA_KEEP_ALIVE` 로 유지 ([Ollama 튜닝](ollama-tuning.md)) |
 | 툴 콜이 깨짐 | `qwen3-coder-next` 는 hyphen 포함 함수명에 약함 — 이미지 같은 멀티모달 툴은 별도 모델 권장 ([에이전트 분리 패턴](models.md)) |
 | OOM | VRAM 부족. q8 → q4 다운그레이드, 또는 `comfyui-shim stop` |

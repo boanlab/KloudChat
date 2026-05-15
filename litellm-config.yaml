@@ -94,21 +94,21 @@ model_list:
   - model_name: ollama/qwen3.5:9b
     litellm_params:
       model: ollama_chat/qwen3.5:9b
-      api_base: http://ollama-lb:11434
+      api_base: http://host.docker.internal:11434
     model_info:
       input_cost_per_token: 0.0000000400
       output_cost_per_token: 0.0000001000
   - model_name: ollama/qwen3.5:35b
     litellm_params:
       model: ollama_chat/qwen3.5:35b
-      api_base: http://ollama-lb:11434
+      api_base: http://host.docker.internal:11434
     model_info:
       input_cost_per_token: 0.0000000800
       output_cost_per_token: 0.0000002800
   - model_name: ollama/gemma4:26b
     litellm_params:
       model: ollama_chat/gemma4:26b
-      api_base: http://ollama-lb:11434
+      api_base: http://host.docker.internal:11434
     model_info:
       input_cost_per_token: 0.0000000800
       output_cost_per_token: 0.0000001600
@@ -122,14 +122,14 @@ model_list:
   - model_name: ollama/qwen3-coder-next:q4_K_M
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q4_K_M
-      api_base: http://ollama-lb:11434
+      api_base: http://host.docker.internal:11434
     model_info:
       input_cost_per_token: 0.0000001500
       output_cost_per_token: 0.0000012000
   - model_name: ollama/qwen3-coder-next:q8_0
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q8_0
-      api_base: http://ollama-lb:11434
+      api_base: http://host.docker.internal:11434
     model_info:
       input_cost_per_token: 0.0000002200
       output_cost_per_token: 0.0000018000
@@ -139,12 +139,15 @@ model_list:
       input_cost_per_token: 0.0000000200
     litellm_params:
       model: ollama/bge-m3
-      api_base: http://ollama-lb:11434
+      api_base: http://host.docker.internal:11434
   # <<< KLOUDCHAT_AUTOGEN_END
 
 router_settings:
   num_retries: 2
   timeout: 600
+  # 같은 model_name 으로 등록된 deployment(=Ollama 노드 여러 대) 간 자동 LB.
+  # least-busy = 진행 중 요청 적은 노드 우선 (GPU 부하 분산에 자연).
+  routing_strategy: least-busy
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

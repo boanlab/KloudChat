@@ -54,7 +54,9 @@ C 의 요건 + native API 키 (OpenAI/Anthropic/Google 중 가지고 있는 것)
 
 `OLLAMA_URLS` / `COMFYUI_URLS` 에 csv 로 여러 노드를 적으면 LB 됩니다. 각 노드에 위 install + download 를 동일하게 적용.
 
-**주의**: `setup.sh` 는 노드 간 모델 **intersection** 만 등록합니다. 한 노드에만 pull 된 모델은 LibreChat 메뉴에 안 나옴 → 운영 시 모델 셋을 노드 간 동기화하세요.
+**Ollama**: `setup.sh` 는 union 디스커버리로 모델별 보유 노드를 매핑하고, 보유 노드 수만큼 deployment 를 등록합니다. 한 노드만 pull 한 모델은 그 노드로만, 여러 노드에 pull 한 모델은 router 가 `least-busy` 로 LB. 이기종 GPU (예: 큰 모델은 큰 노드에만, 작은 모델은 전 노드에) 그대로 활용 가능.
+
+**ComfyUI**: 노드 간 모델 **intersection** 만 등록 (이미지 모델 대용량 + 워크플로 stateful 특성). 한 노드에만 받은 이미지 모델은 메뉴에 안 나옴 → 노드 간 가중치 동기화 권장.
 
 ## DGX Spark (GB10)
 

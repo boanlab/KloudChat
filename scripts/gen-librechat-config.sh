@@ -20,7 +20,7 @@ grep -qF '# >>> KLOUDCHAT_MODELS_START' "$CONFIG_FILE" \
   && grep -qF '# <<< KLOUDCHAT_MODELS_END' "$CONFIG_FILE" \
   || { echo "error: KLOUDCHAT_MODELS marker 누락: $CONFIG_FILE" >&2; exit 1; }
 
-OLLAMA_PULLED="$(ollama_intersect_models || true)"
+OLLAMA_PULLED="$(ollama_union_models || true)"
 ollama_has() {
   local needle="$1"
   [[ "$needle" != *:* ]] && needle="${needle}:latest"

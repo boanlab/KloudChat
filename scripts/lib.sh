@@ -126,8 +126,8 @@ OPENAI_NATIVE_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
 ANTHROPIC_NATIVE_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
 GOOGLE_NATIVE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
 
-# Ollama-only 카탈로그 — intersection discovery로 노드 보유 시에만 등록.
-# 노드에 없을 때 MODEL_OR_FREE 매핑이 있으면 OR free 로 fallback.
+# Ollama-only 카탈로그 — union discovery로 어느 노드든 보유 시 그 노드(들)에 deployment 등록.
+# 어느 노드도 보유 안 할 때 MODEL_OR_FREE 매핑이 있으면 OR free 로 fallback.
 OLLAMA_CHAT_CATALOG=(
   gpt-oss:20b gpt-oss:120b
   qwen3.5:9b qwen3.5:35b
@@ -192,30 +192,51 @@ canonical_name() {
   echo "ollama/$m"
 }
 
-# Ollama 단일 노드 모델 목록 (실패 시 빈 출력).
-__ollama_node_models() {
-  local raw="$1" url
-  url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  url="${url//host.docker.internal/localhost}"
-  curl -sf --max-time 5 "${url}/api/tags" 2>/dev/null | jq -r '.models[]?.name' 2>/dev/null || true
+# Ollama 노드 URL 정규화 (앞뒤 공백/슬래시 trim, host.docker.internal 보존).
+__ollama_normalize_url() {
+  local u="$1"
+  u="$(echo "$u" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s|/$||')"
+  echo "$u"
 }
 
-# 모든 reachable ollama 노드의 모델 intersection. 한 줄에 모델 1개. URLS 비었거나 노드 0이면 빈 출력.
-ollama_intersect_models() {
+# 단일 노드의 모델 조회 시 host.docker.internal → localhost (호스트에서 호출용).
+__ollama_node_models() {
+  local raw="$1" url probe
+  url="$(__ollama_normalize_url "$raw")"
+  probe="${url//host.docker.internal/localhost}"
+  curl -sf --max-time 5 "${probe}/api/tags" 2>/dev/null | jq -r '.models[]?.name' 2>/dev/null || true
+}
+
+# 노드별 모델 매핑. 각 줄: <원본 URL>\t<model>. unreachable 노드는 stderr 경고만.
+# OLLAMA_URLS 비었으면 빈 출력.
+ollama_union_node_models() {
   local urls; urls="$(env_get OLLAMA_URLS)"
   [[ -n "$urls" ]] || return 0
-  local IFS=, count=0 tmp acc
-  acc=""
+  local IFS=, u nu tmp
   for u in $urls; do
+    nu="$(__ollama_normalize_url "$u")"
+    [[ -n "$nu" ]] || continue
     tmp="$(__ollama_node_models "$u")"
-    [[ -n "$tmp" ]] || { echo "  [warn] ollama unreachable: $u" >&2; continue; }
-    if (( count == 0 )); then acc="$tmp"
-    else acc="$(comm -12 <(echo "$acc" | sort -u) <(echo "$tmp" | sort -u))"
+    if [[ -z "$tmp" ]]; then
+      echo "  [warn] ollama unreachable: $nu" >&2
+      continue
     fi
-    count=$((count+1))
+    while IFS= read -r m; do
+      [[ -n "$m" ]] && printf '%s\t%s\n' "$nu" "$m"
+    done <<<"$tmp"
   done
-  (( count > 0 )) || return 0
-  echo "$acc"
+}
+
+# 모든 reachable 노드의 모델 합집합 (중복 제거, 정렬). 노드별 정보 없이 모델만 필요할 때.
+ollama_union_models() {
+  ollama_union_node_models | awk -F'\t' 'NF==2 {print $2}' | sort -u
+}
+
+# 특정 모델을 보유한 노드 URL 목록 (한 줄에 1개). tag 누락 시 :latest 보정.
+ollama_nodes_for_model() {
+  local needle="$1"
+  [[ "$needle" != *:* ]] && needle="${needle}:latest"
+  ollama_union_node_models | awk -F'\t' -v m="$needle" '$2==m {print $1}'
 }
 
 # 단일 ComfyUI 노드가 보유한 모델 별칭 출력 (sdxl, qwen-image, qwen-image-edit, flux-schnell, flux-dev).
@@ -252,7 +273,7 @@ comfyui_intersect_models() {
   echo "$acc"
 }
 
-# Ollama intersection 에서 모델 보유 확인. tag 누락 시 :latest 보정 (gen-litellm-config.sh ollama_has 와 동일).
+# Ollama union 결과에서 모델 보유 확인. tag 누락 시 :latest 보정 (gen-litellm-config.sh ollama_has 와 동일).
 ollama_pulled_has() {
   local pulled="$1" needle="$2"
   [[ "$needle" != *:* ]] && needle="${needle}:latest"
@@ -262,7 +283,7 @@ ollama_pulled_has() {
 # LiteLLM team allowlist 생성용 canonical 모델 CSV.
 # gen-litellm-config.sh 의 emit 로직과 일치해야 함 — 실제 등록될 model_name 만 반환.
 litellm_chat_models_csv() {
-  local pulled; pulled="$(ollama_intersect_models 2>/dev/null || true)"
+  local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local gemma_skip=""
   if ollama_pulled_has "$pulled" gemma4:26b && ollama_pulled_has "$pulled" gemma3:27b; then
     gemma_skip="gemma3:27b"

@@ -7,7 +7,6 @@ ENV_FILE="${PROJECT_DIR}/.env"
 CONFIG_FILE="${PROJECT_DIR}/litellm-config.yaml"
 source "${SCRIPT_DIR}/lib.sh"
 
-OLLAMA_BASE="${OLLAMA_LB_URL:-http://ollama-lb:11434}"
 MARKER_START='# >>> KLOUDCHAT_AUTOGEN_START'
 MARKER_END='# <<< KLOUDCHAT_AUTOGEN_END'
 
@@ -24,12 +23,18 @@ done
 grep -qF "$MARKER_START" "$CONFIG_FILE" && grep -qF "$MARKER_END" "$CONFIG_FILE" \
   || { echo "error: AUTOGEN markers 누락: $CONFIG_FILE" >&2; exit 1; }
 
-# Ollama intersection (pulled). gemma 정책: 둘 다면 gemma4 우선.
-OLLAMA_PULLED="$(ollama_intersect_models || true)"
+# Ollama union (per-node 매핑) 한 번 캐시. emit 시 노드별로 deployment 1개씩.
+OLLAMA_NODE_MAP="$(ollama_union_node_models || true)"
+OLLAMA_PULLED="$(awk -F'\t' 'NF==2 {print $2}' <<<"$OLLAMA_NODE_MAP" | sort -u)"
 ollama_has() {
   local needle="$1"
   [[ "$needle" != *:* ]] && needle="${needle}:latest"
   grep -qxF "$needle" <<<"$OLLAMA_PULLED"
+}
+nodes_for() {
+  local needle="$1"
+  [[ "$needle" != *:* ]] && needle="${needle}:latest"
+  awk -F'\t' -v m="$needle" '$2==m {print $1}' <<<"$OLLAMA_NODE_MAP"
 }
 
 emit_native_or() {
@@ -59,45 +64,58 @@ emit_native_or() {
   echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
 }
 
+# 보유 노드별로 deployment 한 줄씩 emit → LiteLLM router가 자동 LB.
+# 한 노드만 보유하면 그 노드로 직접 라우팅, 여러 노드면 routing_strategy 따라 분산.
 emit_ollama_chat() {
-  local m="$1" in_pm out_pm or_id
+  local m="$1" in_pm out_pm or_id urls
   in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
   out_pm="${MODEL_PRICE_OUT_PM[$m]:-}"
   or_id="${MODEL_OR_FREE[$m]:-}"
-  if ollama_has "$m"; then
-    echo "  - model_name: ollama/${m}"
-    echo "    litellm_params:"
-    echo "      model: ollama_chat/${m}"
-    echo "      api_base: ${OLLAMA_BASE}"
+  urls="$(nodes_for "$m")"
+  if [[ -n "$urls" ]]; then
+    while IFS= read -r url; do
+      [[ -n "$url" ]] || continue
+      echo "  - model_name: ollama/${m}"
+      echo "    litellm_params:"
+      echo "      model: ollama_chat/${m}"
+      echo "      api_base: ${url}"
+      if [[ -n "$in_pm" && -n "$out_pm" ]]; then
+        echo "    model_info:"
+        echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
+        echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
+      fi
+    done <<<"$urls"
   elif [[ -n "$or_id" ]] && has_openrouter; then
     echo "  - model_name: ollama/${m}"
     echo "    litellm_params:"
     echo "      model: openrouter/${or_id}"
     echo "      api_key: os.environ/OPENROUTER_API_KEY"
-  else
-    return 0
-  fi
-  if [[ -n "$in_pm" && -n "$out_pm" ]]; then
-    echo "    model_info:"
-    echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
-    echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
+    if [[ -n "$in_pm" && -n "$out_pm" ]]; then
+      echo "    model_info:"
+      echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
+      echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
+    fi
   fi
 }
 
 emit_ollama_embed() {
-  local m="$1" in_pm
-  ollama_has "$m" || return 0
+  local m="$1" in_pm urls
+  urls="$(nodes_for "$m")"
+  [[ -n "$urls" ]] || return 0
   in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
-  echo "  - model_name: ${m}"
-  echo "    model_info:"
-  echo "      mode: embedding"
-  [[ -n "$in_pm" ]] && echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
-  echo "    litellm_params:"
-  echo "      model: ollama/${m}"
-  echo "      api_base: ${OLLAMA_BASE}"
+  while IFS= read -r url; do
+    [[ -n "$url" ]] || continue
+    echo "  - model_name: ${m}"
+    echo "    model_info:"
+    echo "      mode: embedding"
+    [[ -n "$in_pm" ]] && echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
+    echo "    litellm_params:"
+    echo "      model: ollama/${m}"
+    echo "      api_base: ${url}"
+  done <<<"$urls"
 }
 
-# gemma 충돌: intersection이 둘 다 가지면 gemma3 제외.
+# gemma 충돌: union 어디든 둘 다 보유하면 gemma3 제외 (gemma4 우선).
 GEMMA_SKIP=""
 if ollama_has gemma4:26b && ollama_has gemma3:27b; then GEMMA_SKIP=gemma3:27b; fi
 
@@ -137,4 +155,4 @@ mv "$tmp" "$CONFIG_FILE"; trap - EXIT
 n=$(echo "$SECTION" | grep -c '^  - model_name:' || true)
 echo "==> $CONFIG_FILE — $n models"
 echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_anthropic_native && echo y || echo n) google=$(has_google_native && echo y || echo n) or=$(has_openrouter && echo y || echo n)"
-echo "    ollama intersection: $(echo "$OLLAMA_PULLED" | grep -c . || true) models"
+echo "    ollama union: $(echo "$OLLAMA_PULLED" | grep -c . || true) models / $(echo "$OLLAMA_NODE_MAP" | awk -F'\t' 'NF==2 {print $1}' | sort -u | grep -c . || true) nodes"

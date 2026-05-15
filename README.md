@@ -57,7 +57,7 @@ $EDITOR .env
 ./scripts/setup.sh --yes
 ```
 
-> 멀티 노드일 때 LibreChat 메뉴에 등장하는 모델 = **모든 노드에 공통으로 pull 된 모델**(intersection). 한 노드만 받은 모델은 안 나옴.
+> 멀티 노드일 때 LibreChat 메뉴에 등장하는 모델 = **어느 노드에라도 pull 된 모델**(union). 같은 모델을 여러 노드에 받으면 LiteLLM router 가 노드 간 LB.
 
 ### B OpenRouter 만 — GPU 없음
 
@@ -154,7 +154,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 ```
 [사용자] → LibreChat (:8080)
             ↓
-         LiteLLM (:8000) ──→ ollama-lb (nginx) → Ollama (OLLAMA_URLS)
+         LiteLLM (:8000) ──→ Ollama 노드들 (OLLAMA_URLS, model_name 별 least-busy LB)
             ├─ native API (OpenAI/Anthropic/Google)
             └─ OpenRouter
 

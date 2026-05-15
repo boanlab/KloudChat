@@ -46,12 +46,12 @@ hdr "1. .env"
 ok ".env"
 
 # Pre-check: OR 또는 Ollama reachable 노드 ≥1 필요.
-OLLAMA_PULLED="$(ollama_intersect_models || true)"
+OLLAMA_PULLED="$(ollama_union_models || true)"
 OLLAMA_NMODELS=$(echo "$OLLAMA_PULLED" | grep -c . || true)
 if has_openrouter; then
   ok "OPENROUTER_API_KEY 설정됨"
 elif (( OLLAMA_NMODELS > 0 )); then
-  ok "Ollama intersection: ${OLLAMA_NMODELS} 모델 (OR 없음 — Ollama만 사용)"
+  ok "Ollama union: ${OLLAMA_NMODELS} 모델 (OR 없음 — Ollama만 사용)"
 else
   err "OPENROUTER_API_KEY 미설정 + Ollama 노드 없음/모델 0개 — 둘 중 하나 필수."
   err "  → OPENROUTER_API_KEY를 .env에 채우거나 OLLAMA_URLS 노드에서 모델 pull."
@@ -61,8 +61,7 @@ fi
 # native 키 상태 요약
 echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_anthropic_native && echo y || echo n) google=$(has_google_native && echo y || echo n) openrouter=$(has_openrouter && echo y || echo n) hf=$( [[ -n "$(env_get HF_TOKEN)" ]] && echo y || echo n )"
 
-# Config 재생성 (intersection 결과를 yaml에 반영).
-./scripts/gen-nginx-config.sh
+# Config 재생성 (union 결과를 yaml에 반영 — 보유 노드별 deployment).
 ./scripts/gen-litellm-config.sh
 ./scripts/gen-librechat-config.sh
 

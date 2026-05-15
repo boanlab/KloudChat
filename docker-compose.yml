@@ -174,17 +174,6 @@ services:
     networks:
       - kloudchat
 
-  ollama-lb:
-    container_name: ollama-lb
-    image: nginx:1.29.8-alpine
-    restart: always
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./nginx/ollama.conf:/etc/nginx/conf.d/default.conf:ro
-    networks:
-      - kloudchat
-
   litellm:
     container_name: litellm
     image: ghcr.io/berriai/litellm:v1.83.7-stable
@@ -192,8 +181,6 @@ services:
     depends_on:
       litellm-db:
         condition: service_healthy
-      ollama-lb:
-        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
