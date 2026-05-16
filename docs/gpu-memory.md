@@ -63,3 +63,11 @@ docker compose start comfyui-shim
 # 특정 모델 강제 언로드 (호스트에서 직접 실행)
 ollama stop qwen3.6:35b        # 또는 llama3.3:70b, qwen3-coder-next:q8_0 등
 ```
+
+**노드별 분산 (멀티 노드 한정)**
+
+`COMFYUI_URLS` 에 2개 이상 노드가 있으면 `comfyui-shim` 이 VRAM-aware 라우팅으로 각 노드의 ollama VRAM 사용량을 보고 한가한 쪽 ComfyUI 로 보냄. 한 노드에 70B/q8_0 같은 큰 LLM 이 로드돼 있어도 다른 노드에서 image-gen 이 정상 진행. 임계값은 `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` (기본 30 GiB).
+
+**외부 image 모델 사용**
+
+외부 LLM 에이전트 (gpt-*, gemini-*) 의 `image-generation` 은 ComfyUI 가 아닌 OpenRouter 경유 commercial image API (`gpt-image-2` / `nano-banana`) 로 라우팅 → 로컬 GPU 비점유. 외부 키 + LiteLLM spend 추적 비용 발생.

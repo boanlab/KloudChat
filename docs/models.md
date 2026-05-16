@@ -137,30 +137,43 @@ LibreChat 의 `image-generation` 툴 스키마에 `model` enum 필드 (`flux-sch
 - `user create --name ... --username ... --password ...` — 신규 유저 풀 프로비저닝 시
 - `agent sync` — 기존 유저 전체에 카탈로그 모델로 upsert. 우리 관리 prefix (`ollama|openai|anthropic|google`) 인 agent 이름을 현 spec 으로 자동 rename (in-place, preset agent_id 보존). 사용자 수동 생성 agent 는 건드리지 않음.
 
-토폴로지 (모델당 에이전트 1개):
+토폴로지 — 모델 1개당 에이전트 1개, 이름 prefix 가 능력 요약:
 
-| 종류 | 이름 형식 | builtin tools | MCP tools |
-|---|---|---|---|
-| local (ollama union 보유) | `Text + Image (<tag>)` 예: `Text + Image (qwen3.6:35b)` | `execute_code, file_search, web_search, image-generation` | `fetch_url` + math/calculator (모델 크기별) |
-| external (commercial OR/native) | `Text (<id>)` 예: `Text (claude-opus-4.7)` | `execute_code, file_search, web_search` (image-generation 제외 — 로컬 GPU 정책) | 동 |
+| 이름 prefix | 의미 | 해당 모델 |
+|---|---|---|
+| `Text` | 코드 실행/이미지 없음. 기본 4 툴 (file_search, web_search, fetch_url, math/calc) | claude-haiku-4.5, qwen3.5:9b, llama3.1:8b |
+| `Text + Code` | + `execute_code` (이미지 없음) | claude-opus-4.7/4.6, claude-sonnet-4.6 |
+| `Text + Image` | + `execute_code` + `image-generation` (provider 매핑된 image 모델) | gpt-5.5/5/mini/nano, gemini-3.1-pro-preview/2.5-pro/flash, qwen3.6:35b, llama3.3:70b, nemotron3:33b |
+| `Text + Image + Code` | 동일 + 코드 전담 모델 | qwen3-coder-next:q8_0 |
 
-이미지 alias 는 LLM 이 사용자 의도 (`빠르게`/`고품질`/`텍스트 포함`) 따라 `model={flux-schnell|flux-dev|qwen-image}` inline 라우팅.
+`image-generation` 의 `model` arg 분기:
+- **ollama 로컬 에이전트** → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`)
+- **openai/* 에이전트** → `gpt-image-2` (OpenAI 자사 image)
+- **google/* 에이전트** → `nano-banana` (Google 자사 image, gemini-3 image preview)
+- **anthropic/* 에이전트** → image 모델 없음 (자사 image API 없음 → 툴 자체 제외)
+
+작은 ollama (9b/8b) 는 `TOOL_EXCLUDE` 로 `execute_code` + `image-generation` 제외 — 6툴 schema 동시 노출 시 호출 emit 실패가 end-to-end 매트릭스에서 확인됨.
 
 기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` (`lib.sh`) 의 첫 매치 — 현재 `[llama3.3:70b, qwen3.6:35b, qwen3.5:9b]`. `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
 
 ### MCP 도구
 
-`librechat.yaml` 의 `mcpServers` 에 stdio 서버 등록 (uvx 가 첫 호출 시 패키지 자동 다운로드). `agent.tools` 에 `sys__all__sys_mcp_<servername>` 추가 시 그 서버의 모든 tool 자동 노출.
+`librechat.yaml` 의 `mcpServers` 에 stdio 서버 등록 (uvx / uv run --script 가 첫 호출 시 의존성 자동 설치). `agent.tools` 에 `sys__all__sys_mcp_<servername>` 추가 시 그 서버의 모든 tool 자동 노출.
 
-| 서버 | 패키지 | tools | 적용 |
+| 서버 | 실행 | tools | 적용 |
 |---|---|---|---|
-| `fetch_url` | `mcp-server-fetch` | 1 (fetch) — URL → Markdown | 전 에이전트 |
-| `math` | `mcp-sympy` | 173 — sympy 심볼릭/수치 수학 | 큰 모델 (≥30B 활성) |
-| `calculator` | `mcp-server-math` | 16 — 사칙연산 + power/sqrt/sum/compare 등 | 작은 모델 (qwen3.5:9b, llama3.1:8b, gpt-5-mini/nano, claude-haiku-4.5, gemini-2.5-flash) |
+| `fetch_url` | `uvx mcp-server-fetch` | 1 (fetch) — URL → Markdown | 전 에이전트 |
+| `math` | `uvx mcp-sympy` | 173 — sympy 심볼릭/수치 수학 | 큰 모델 (≥30B 활성) |
+| `calculator` | `uvx mcp-server-math` | 16 — 사칙연산 + power/sqrt/sum/compare 등 | 작은 모델 (qwen3.5:9b, llama3.1:8b, gpt-5-mini/nano, claude-haiku-4.5, gemini-2.5-flash) |
+| `litellm_usage` | `uv run --script /app/mcp/litellm_usage.py` (PEP-723 inline deps) | 2 — `my_usage(days)`, `budget_status()` | 전 에이전트 (user-scoped) |
 
 작은 모델은 sympy 173 tools 의 schema/선택 부담을 피하기 위해 calculator 로 분리. `manage.sh` 의 `SMALL_MODELS` Set 에 명시된 모델만 calculator, 나머지는 math. 새 모델 추가 시 해당 Set 갱신.
 
-이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` 와 `COMFYUI_ALIAS_FILES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `lib.sh` 의 `__comfyui_node_models` 파일 매핑. shim 의 `COMFYUI_ALIAS_FILES` 와 lib.sh 의 파일 매핑은 동일한 (kind, filename) 셋을 유지해야 노드 디스커버리가 일치합니다.
+`litellm_usage` 는 `mcp/litellm_usage.py` — 사용자 본인의 LiteLLM virtual key 사용량/예산을 채팅으로 조회. `LIBRECHAT_USER_EMAIL` placeholder 가 호출자별로 치환되도록 yaml 에 `startup: false` 필수 (app-level init 단계엔 user 객체 없음).
+
+ComfyUI 이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` 와 `COMFYUI_ALIAS_FILES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `lib.sh` 의 `__comfyui_node_models` 파일 매핑. shim 의 `COMFYUI_ALIAS_FILES` 와 lib.sh 의 파일 매핑은 동일한 (kind, filename) 셋을 유지해야 노드 디스커버리가 일치합니다.
+
+외부 image 모델 추가: `litellm-config.yaml` 정적 섹션 (autogen 영역 밖) 에 `model_name: image-<alias>` 등록 + `comfyui-shim` 의 `OR_IMAGE_MODELS` env 매핑 (`<alias>=<litellm-model-name>`) + `manage.sh` 의 `EXT_IMAGE_FOR_PROVIDER` 에 provider→alias 매핑. shim 이 `model` arg 가 `OR_IMAGE_MODELS` 에 있으면 LiteLLM `/v1/chat/completions` (`modalities=["image","text"]`) 로, 없으면 ComfyUI 로 분기.
 
 ## RAG 임베딩
 

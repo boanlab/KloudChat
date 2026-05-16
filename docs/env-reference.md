@@ -114,6 +114,8 @@ COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
 | `SEARXNG_INSTANCE_URL` | LibreChat → SearXNG | `http://searxng:8080` |
 | `LIBRECHAT_CODE_BASEURL` | LibreChat → 코드 인터프리터 | `http://code-interpreter:8000` |
 | `SD_WEBUI_URL` | LibreChat → comfyui-shim (A1111 호환) | `http://comfyui-shim:7860` |
+| `OR_IMAGE_MODELS` | shim 이 LiteLLM 경유 OR/native image API 로 라우팅할 alias 매핑. `<alias>=<litellm-model-name>` 콤마 csv. 비었으면 모든 image 요청을 ComfyUI 로 | `nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2` |
+| `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` | shim 의 VRAM-aware 라우팅 임계. 노드의 ollama 가 이 값 초과로 VRAM 점유 중이면 다른 노드 우선 (대형 LLM 과 ComfyUI 공존 회피) | `32212254720` (30 GiB) |
 
 ## 모델 등록 동작 요약
 
