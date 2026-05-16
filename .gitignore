@@ -1,5 +1,6 @@
 .env
 scripts/.data/
+.claude/
 
 mongodb/
 meilisearch/

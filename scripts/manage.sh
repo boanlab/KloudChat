@@ -197,40 +197,65 @@ create_default_agent_for_user() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
-  # 토폴로지:
-  # - local (ollama 카탈로그 ∩ union 보유): 이름 'Text + Image (<tag>)', 4 tools (image-generation 포함).
-  #   이미지는 inline 라우팅 — driver LLM 이 의도 기반으로 model={flux-schnell|flux-dev|qwen-image} 선택.
-  # - external (commercial OR/native): 이름 'Text (<model-id>)', 3 tools (image-generation 제외).
-  #   외부 비용 / image-generation 은 로컬 GPU 에 한정하기 위함.
+  # 모델 1개당 에이전트 1개. 이름 prefix 가 능력 요약:
+  #   Text                  → claude-haiku + 작은 ollama (9b/8b). image/exec 없음.
+  #   Text + Code           → claude-opus / claude-sonnet (이미지 모델 없음).
+  #   Text + Image          → gpt-* / gemini-* / 중대형 ollama. image-generation 포함.
+  #   Text + Image + Code   → qwen3-coder-next:q8_0 (코드 전담 + 이미지).
+  # image-generation backend:
+  #   ollama  → ComfyUI (flux/qwen-image alias, model arg inline 라우팅)
+  #   openai  → gpt-image-2  (LiteLLM 경유)
+  #   google  → nano-banana  (LiteLLM 경유)
+  #   anthropic → 자사 image 모델 없어서 툴 자체 제외
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local agent_specs='[]'
   local m tag
 
-  # 1. external — native key 또는 OR 키 있을 때만
+  # 1. external — native key 또는 OR 키 있을 때만.
+  # Per-provider 이미지 매핑 (LLM 이 image-generation 시 어느 외부 image 모델로 갈지):
+  #   - openai/*    → gpt-image-2    (OpenAI 자사 image)
+  #   - google/*    → nano-banana    (Google 자사 image)
+  #   - anthropic/* → 없음, Text only (Anthropic 자사 image 모델 없음)
+  # 이름도 그에 맞게 'Text' (이미지 없음) / 'Text + Image' (있음).
   if has_openai_native || has_openrouter; then
     for m in "${OPENAI_NATIVE_MODELS[@]}"; do
-      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "openai/$m" \
+      agent_specs=$(jq -c --arg n "Text + Image ($m)" --arg mm "openai/$m" \
         '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
     done
   fi
   if has_anthropic_native || has_openrouter; then
+    # claude-opus / claude-sonnet 는 코딩 강자라 'Text + Code'.
+    # claude-haiku 등 작은 변종은 'Text' 유지.
     for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do
-      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "anthropic/$m" \
+      local prefix="Text"
+      case "$m" in
+        claude-opus-*|claude-sonnet-*) prefix="Text + Code" ;;
+      esac
+      agent_specs=$(jq -c --arg n "$prefix ($m)" --arg mm "anthropic/$m" \
         '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
     done
   fi
   if has_google_native || has_openrouter; then
     for m in "${GOOGLE_NATIVE_MODELS[@]}"; do
-      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "google/$m" \
+      agent_specs=$(jq -c --arg n "Text + Image ($m)" --arg mm "google/$m" \
         '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
     done
   fi
 
   # 2. local — ollama union 보유 모델만
+  # name prefix (TOOL_EXCLUDE / 모델 특성 반영):
+  #   - 'Text + Image + Code'  → qwen3-coder-next:q8_0 (코드 전담 + 이미지)
+  #   - 'Text + Image'          → 그 외 mid/large ollama (이미지 가능)
+  #   - 'Text'                  → 9b/8b (image-gen 제외된 작은 모델)
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
     tag="$m"; [[ "$tag" != *:* ]] && tag="${tag}:latest"
     grep -qxF "$tag" <<<"$pulled" || continue
-    agent_specs=$(jq -c --arg n "Text + Image ($m)" --arg mm "ollama/$m" \
+    local prefix="Text + Image"
+    case "$m" in
+      qwen3-coder-next:*)         prefix="Text + Image + Code" ;;
+      qwen3.5:9b|llama3.1:8b)     prefix="Text" ;;
+    esac
+    agent_specs=$(jq -c --arg n "$prefix ($m)" --arg mm "ollama/$m" \
       '. + [{name:$n, model:$mm, kind:"local"}]' <<< "$agent_specs")
   done
 
@@ -251,7 +276,9 @@ create_default_agent_for_user() {
 
       // 공통 MCP 도구 (모든 에이전트). sys__all__sys = LibreChat 의 mcp_all + _mcp_ delimiter.
       var MCP_COMMON = [
-        'sys__all__sys_mcp_fetch_url',  // URL fetch + Markdown 변환
+        'sys__all__sys_mcp_fetch_url',     // URL fetch + Markdown 변환
+        'sys__all__sys_mcp_time',          // 현재 시간 / 타임존 변환
+        'sys__all__sys_mcp_litellm_usage', // 본인 토큰 사용량/예산 (my_usage, budget_status)
       ];
       // 수학 도구 — 모델 크기별 분기. sympy 는 173 tools 라 작은 모델은 schema/선택 부담.
       var MCP_MATH_BIG   = ['sys__all__sys_mcp_math'];       // sympy 전체 (≥30B 모델)
@@ -268,21 +295,70 @@ create_default_agent_for_user() {
         return MCP_COMMON.concat(math);
       }
 
-      // local agent: 4 builtin + MCP (image-generation 포함, inline 라우팅)
-      var BUILTIN_LOCAL = ['execute_code','file_search','web_search','image-generation'];
-      var INSTR_LOCAL =
-        'You are a helpful assistant with file_search (RAG over user files), web_search, code execution, and image-generation tools.\n\n' +
-        'For image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
+      // 모든 에이전트의 base 빌트인. 분리는 TOOL_EXCLUDE / EXT_IMAGE_FOR_PROVIDER 가 처리.
+      var BUILTIN_BASE = ['execute_code','file_search','web_search','image-generation'];
+
+      // 모델별 빌트인 툴 제외 (작은 ollama 모델 정책).
+      var TOOL_EXCLUDE = {
+        'qwen3.5:9b':              ['execute_code', 'image-generation'],
+        'llama3.1:8b':             ['execute_code', 'image-generation'],
+      };
+
+      // 외부 provider 별 image 매핑 (native — 같은 provider 의 image 모델 사용).
+      // anthropic 은 자사 image 모델 없어서 제외 → BUILTIN 에서 image-generation drop.
+      var EXT_IMAGE_FOR_PROVIDER = {
+        'openai': 'gpt-image-2',
+        'google': 'nano-banana',
+        // 'anthropic': undefined → image-generation 제외됨
+      };
+
+      // local 에이전트는 ComfyUI 로 갈 모델만 안내 — shim 의 MODEL_ALIASES.
+      var IMAGE_INSTR_LOCAL =
+        '\n\nFor image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
         'Pick the model arg by intent:\n' +
         '  - model=\"flux-schnell\" — fast / draft / quick iteration (default)\n' +
         '  - model=\"flux-dev\" — when high quality is requested\n' +
         '  - model=\"qwen-image\" — text-in-image, Asian-language text, or complex multi-element composition\n' +
         'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
 
-      // external agent: 3 builtin + MCP (image-generation 제외 — 로컬 GPU 한정 정책)
-      var BUILTIN_EXT = ['execute_code','file_search','web_search'];
-      var INSTR_EXT =
-        'You are a helpful assistant with file_search (RAG over user files), web_search, and code execution tools.';
+      // external — provider 자사 image 모델 한 가지만 안내.
+      function imageInstrExt(imageModel) {
+        return '\n\nFor image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
+               'Use model=\"' + imageModel + '\" (the only image model wired for this agent). ' +
+               'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
+      }
+
+      function builtinFor(spec) {
+        var tag  = spec.model.replace(/^[^/]+\\//, '');
+        var skip = (TOOL_EXCLUDE[tag] || []).slice();
+        // external 중 image 매핑 없는 provider (anthropic) 는 image-generation drop.
+        if (spec.kind !== 'local') {
+          var provider = spec.model.split('/')[0];
+          if (!EXT_IMAGE_FOR_PROVIDER[provider]) {
+            skip.push('image-generation');
+          }
+        }
+        return BUILTIN_BASE.filter(function(t){ return skip.indexOf(t) === -1; });
+      }
+
+      function instructionsFor(spec, tools) {
+        var caps = [];
+        if (tools.indexOf('file_search')      !== -1) caps.push('file_search (RAG over user files)');
+        if (tools.indexOf('web_search')       !== -1) caps.push('web_search');
+        if (tools.indexOf('execute_code')     !== -1) caps.push('code execution');
+        if (tools.indexOf('image-generation') !== -1) caps.push('image-generation');
+        var instr = 'You are a helpful assistant with ' + caps.join(', ') + ' tools.';
+        if (tools.indexOf('image-generation') !== -1) {
+          if (spec.kind === 'local') {
+            instr += IMAGE_INSTR_LOCAL;
+          } else {
+            var provider = spec.model.split('/')[0];
+            var img = EXT_IMAGE_FOR_PROVIDER[provider];
+            if (img) instr += imageInstrExt(img);
+          }
+        }
+        return instr;
+      }
 
       function rid(p) { return p + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12); }
 
@@ -335,16 +411,17 @@ create_default_agent_for_user() {
 
       var specs = ${agent_specs};
       var canonNames = specs.map(function(s){ return s.name; });
-      var localTags = specs.filter(function(s){return s.kind==='local';})
-                           .map(function(s){return s.name.replace(/^Text \\+ Image \\(|\\)\$/g,'');});
 
       function targetNameFor(d) {
-        // 우리 관리 모델 (ollama/openai/anthropic/google) 만 대상.
+        // canonName prefix 가 가변 (Text / Text + Image / Text + Code / Text + Image + Code)
+        // 이므로 '(modelTag)' suffix 로 매칭.
         if (!d.model || !/^(ollama|openai|anthropic|google)\\//.test(d.model)) return null;
         var modelTag = d.model.replace(/^[^/]+\\//, '');
-        var prefix = (d.model.indexOf('ollama/') === 0) ? 'Text + Image (' : 'Text (';
-        var target = prefix + modelTag + ')';
-        return (canonNames.indexOf(target) !== -1) ? target : null;
+        var suffix = '(' + modelTag + ')';
+        for (var i = 0; i < canonNames.length; i++) {
+          if (canonNames[i].slice(-suffix.length) === suffix) return canonNames[i];
+        }
+        return null;
       }
 
       // ── 마이그레이션: 우리 관리 에이전트의 이름을 현 spec 형식으로 동기화.
@@ -378,11 +455,10 @@ create_default_agent_for_user() {
         }
       });
 
-      // ── upsert 신규 카탈로그 (kind 별 builtin + model-size 별 MCP)
+      // ── upsert 신규 카탈로그 (kind 별 builtin + model-size 별 MCP, TOOL_EXCLUDE 반영)
       specs.forEach(function(s){
-        var builtin = (s.kind === 'local') ? BUILTIN_LOCAL : BUILTIN_EXT;
-        var instr = (s.kind === 'local') ? INSTR_LOCAL : INSTR_EXT;
-        upsertAgent(s.name, s.model, builtin.concat(mcpToolsFor(s.model)), instr);
+        var builtin = builtinFor(s);
+        upsertAgent(s.name, s.model, builtin.concat(mcpToolsFor(s.model)), instructionsFor(s, builtin));
       });
 
       // ── default preset

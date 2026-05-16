@@ -84,7 +84,15 @@ OBJECT_INFO_TIMEOUT_SEC = float(os.getenv("OBJECT_INFO_TIMEOUT_SEC", "10"))
 # in `message.images[]` when the request includes modalities=["image","text"].
 LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:8000").rstrip("/")
 LITELLM_API_KEY = os.getenv("LITELLM_MASTER_KEY") or os.getenv("OPENROUTER_API_KEY", "")
+# alias → LiteLLM model_name. Populated from env: "alias1=model1,alias2=model2".
+# Aliases here are what the LLM emits as image-generation tool arg `model=...`.
 OR_IMAGE_MODELS: dict[str, str] = {}
+for _kv in os.getenv("OR_IMAGE_MODELS", "").split(","):
+    if "=" in _kv:
+        _a, _m = _kv.split("=", 1)
+        _a, _m = _a.strip(), _m.strip()
+        if _a and _m:
+            OR_IMAGE_MODELS[_a] = _m
 
 LOG.info("ComfyUI backends: %s", ", ".join(BACKENDS))
 if OR_IMAGE_MODELS:
@@ -166,6 +174,30 @@ async def _queue_depth(client: httpx.AsyncClient, backend: str) -> int | None:
         body = r.json()
         return len(body.get("queue_running", [])) + len(body.get("queue_pending", []))
     except (httpx.HTTPError, ValueError, KeyError):
+        return None
+
+
+# VRAM-aware routing: among reachable nodes, prefer the one with the LEAST
+# ollama-occupied VRAM (most room for image models). Above this threshold a
+# node is considered "loaded" — picked only if every other node is also loaded.
+# Default 30 GiB — covers 35B/33B chat models comfortably while pushing 70B/q8_0
+# nodes to the back of the queue when an idle alternative exists.
+OLLAMA_VRAM_LOADED_THRESHOLD_BYTES = int(
+    os.getenv("OLLAMA_VRAM_LOADED_THRESHOLD_BYTES", str(30 * 1024**3))
+)
+
+
+async def _ollama_vram_used(client: httpx.AsyncClient, backend: str) -> int | None:
+    """Sum of VRAM occupied by ollama-loaded models on the same host as the
+    given ComfyUI backend. None when the ollama probe is unreachable."""
+    # Pair ComfyUI 8188 with ollama 11434 on the same host.
+    try:
+        host = backend.split("://", 1)[1].split(":", 1)[0]
+        url = f"http://{host}:11434/api/ps"
+        r = await client.get(url, timeout=QUEUE_PROBE_TIMEOUT_SEC)
+        r.raise_for_status()
+        return sum(m.get("size_vram", 0) for m in r.json().get("models", []) if isinstance(m, dict))
+    except (httpx.HTTPError, ValueError, KeyError, IndexError):
         return None
 
 
@@ -255,16 +287,43 @@ async def _pick_backend(client: httpx.AsyncClient, *, alias: str | None = None) 
 
     if len(candidates) == 1:
         return candidates[0]
-    depths = await asyncio.gather(*(_queue_depth(client, b) for b in candidates))
-    reachable = [(d, b) for d, b in zip(depths, candidates) if d is not None]
+    # Probe VRAM (paired ollama on same host) + queue depth in parallel.
+    # Each GB10 node has ollama+ComfyUI sharing unified memory; routing image-gen
+    # to a node whose ollama isn't holding a 70B model avoids OOM stalls.
+    vrams, depths = await asyncio.gather(
+        asyncio.gather(*(_ollama_vram_used(client, b) for b in candidates)),
+        asyncio.gather(*(_queue_depth(client, b) for b in candidates)),
+    )
+    reachable = [
+        (d, v, b) for d, v, b in zip(depths, vrams, candidates) if d is not None
+    ]
     if not reachable:
         LOG.warning("All candidate ComfyUI backends failed /queue probe; defaulting to %s", candidates[0])
         return candidates[0]
-    reachable.sort(key=lambda pair: pair[0])
-    chosen = reachable[0][1]
-    LOG.info("Routing to %s (alias=%s, depths: %s)",
-             chosen, alias or "any",
-             ", ".join(f"{b}={d}" for d, b in zip(depths, candidates)))
+    # Score: (loaded_tier, vram_used, queue_depth). loaded_tier is 1 if VRAM
+    # used exceeds threshold (likely no room for ComfyUI), 0 otherwise — pushes
+    # loaded nodes to the bottom unless ALL nodes are loaded. Within a tier,
+    # prefer least VRAM used, then shortest queue. vram=None (probe failed) is
+    # treated as 0 so an unreachable ollama doesn't block image-gen on a
+    # healthy ComfyUI.
+    def _score(triple):
+        d, v, _ = triple
+        v_eff = v if v is not None else 0
+        loaded = 1 if v_eff > OLLAMA_VRAM_LOADED_THRESHOLD_BYTES else 0
+        return (loaded, v_eff, d)
+    reachable.sort(key=_score)
+    chosen = reachable[0][2]
+
+    def _fmt_vram(v):
+        return "?" if v is None else f"{v / 2**30:.1f}GiB"
+    LOG.info(
+        "Routing to %s (alias=%s) — backends: %s",
+        chosen, alias or "any",
+        ", ".join(
+            f"{b}[vram={_fmt_vram(v)}, q={d}]"
+            for d, v, b in zip(depths, vrams, candidates)
+        ),
+    )
     return chosen
 
 
@@ -378,11 +437,19 @@ async def _comfy_run(client: httpx.AsyncClient, backend: str, workflow: dict[str
 
     try:
         deadline = time.monotonic() + POLL_TIMEOUT_SEC
+        # ComfyUI 의 web server 는 워크플로 첫 실행 시 모델을 VRAM 로드 하느라
+        # 수십 초 응답 못 함 (특히 ollama 큰 모델과 GPU 공유 시). 그 동안의
+        # 개별 /history poll 실패는 transient — 외부 deadline 안 넘으면 재시도.
         while True:
             if time.monotonic() > deadline:
                 raise HTTPException(504, f"ComfyUI run timed out after {POLL_TIMEOUT_SEC}s on {backend}")
-            h = await client.get(f"{backend}/history/{prompt_id}", timeout=15)
-            h.raise_for_status()
+            try:
+                h = await client.get(f"{backend}/history/{prompt_id}", timeout=60)
+                h.raise_for_status()
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ReadError) as e:
+                # 모델 로드 / 일시적 네트워크 끊김 — 외부 deadline 안 넘으면 계속 폴.
+                await asyncio.sleep(POLL_INTERVAL_SEC)
+                continue
             body = h.json()
             if prompt_id in body and body[prompt_id].get("status", {}).get("completed"):
                 run = body[prompt_id]

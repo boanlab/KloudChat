@@ -15,6 +15,13 @@ mcpServers:
     command: uvx
     args:
       - mcp-server-fetch
+  time:
+    # 현재 시간 / 타임존 변환. 모델이 "오늘" 환각 방지용.
+    type: stdio
+    command: uvx
+    args:
+      - mcp-server-time
+      - --local-timezone=Asia/Seoul
   math:
     # sympy 기반 심볼릭/수치 수학 (미적분, 방정식, 행렬, 단위 변환 등). 173 tools.
     # 작은 모델 (≤10B 활성 param) 한테는 context 부담 → calculator 로 분리.
@@ -29,6 +36,22 @@ mcpServers:
     command: uvx
     args:
       - mcp-server-math
+  litellm_usage:
+    # 사용자 본인의 LiteLLM 사용량/예산 조회. tools: my_usage(days), budget_status().
+    # uv run --script 로 inline-deps 스크립트 실행 (mcp + httpx 자동 설치).
+    # startup: false — app-level init 건너뛰고 user-scoped 연결만 만듦.
+    # 그래야 {{LIBRECHAT_USER_EMAIL}} 가 호출자별로 치환됨 (app 단계엔 user 객체 없음).
+    type: stdio
+    startup: false
+    command: uv
+    args:
+      - run
+      - --script
+      - /app/mcp/litellm_usage.py
+    env:
+      LITELLM_URL: "http://litellm:8000"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+      LIBRECHAT_USER_EMAIL: "{{LIBRECHAT_USER_EMAIL}}"
 
 endpoints:
   agents:

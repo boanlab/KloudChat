@@ -41,6 +41,7 @@ services:
       - SEARXNG_INSTANCE_URL=${SEARXNG_INSTANCE_URL}
       - LIBRECHAT_CODE_API_KEY=${CODE_INTERPRETER_API_KEY}
       - LIBRECHAT_CODE_BASEURL=${LIBRECHAT_CODE_BASEURL}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - HELP_AND_FAQ_URL=${HELP_AND_FAQ_URL:-/}
       - CUSTOM_FOOTER=${CUSTOM_FOOTER:- }
       - WELCOME_BACK_MESSAGE=${WELCOME_BACK_MESSAGE:-}
@@ -56,6 +57,7 @@ services:
         target: /app/librechat.yaml
       - ./scripts/librechat-entrypoint.sh:/usr/local/bin/librechat-entrypoint.sh:ro
       - ./scripts/librechat-patch.py:/usr/local/bin/librechat-patch.py:ro
+      - ./mcp:/app/mcp:ro
       - ./librechat/images:/app/client/public/images
       - ./librechat/uploads:/app/uploads
       - ./librechat/logs:/app/logs
@@ -187,6 +189,7 @@ services:
       - "8000:8000"
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
+      - ./litellm-callbacks:/app/callbacks:ro
     command:
       [
         "--config", "/app/config.yaml",
@@ -233,6 +236,8 @@ services:
       - LOG_LEVEL=INFO
       - LITELLM_URL=http://litellm:8000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      # External image gen aliases (LLM 이 model arg 로 emit). LiteLLM model_name 으로 라우팅.
+      - OR_IMAGE_MODELS=nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/health')"]
       interval: 30s

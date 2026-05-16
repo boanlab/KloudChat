@@ -1,0 +1,350 @@
+"""Sanitize text-format tool-call leaks (Llama `<|python_tag|>` and Markdown
+JSON code blocks) into OpenAI `tool_calls`.
+
+Two observed leak shapes:
+    1. Llama 3.x special-token: `<|python_tag|>{"name": "...", "parameters": ...}`
+    2. Markdown code-block: ```json\\n{"name": "...", "parameters": ...}\\n``` (or no `json` lang tag)
+
+Both happen when LiteLLM/Ollama fails to coerce the upstream raw output into
+the OpenAI `tool_calls` field, so LibreChat ends up rendering the JSON/token
+as chat text.
+
+This callback runs as a LiteLLM CustomLogger and rewrites both non-streaming
+responses and streaming iterators in place: extracts the JSON payload(s),
+appends them to `message.tool_calls`, blanks the matching text, and forces
+`finish_reason="tool_calls"` so the client treats it as a function call.
+
+Conservative trigger for the markdown case — only convert if the parsed JSON
+has a top-level `name` (string) field, to avoid eating legitimate JSON examples.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import uuid
+from typing import Any, AsyncGenerator
+
+from litellm.integrations.custom_logger import CustomLogger
+
+log = logging.getLogger("litellm-python-tag-sanitizer")
+
+# Llama 3.x reserved-special-token range (Private Use Area U+E200-U+E2FF). The
+# tokenizer normally consumes these and never surfaces them. When they DO leak
+# (e.g. Ollama's chat-template strips wrong, or the model emits them mid-text),
+# they trail with structured-but-garbage text like `turn{1}search{0}.`.
+# The actual answer is always BEFORE the first PUA char — strip everything from
+# the first occurrence onward.
+PUA_TRAILING_RE = re.compile(r"[-].*", re.DOTALL)
+
+
+
+def _strip_pua_trailer(text: str) -> str:
+    """Strip Llama special-token leak (PUA char + trailing garbage like turn{1}search{0})."""
+    return PUA_TRAILING_RE.sub("", text)
+
+# Sentinel patterns. We scan for either marker, then brace-count the trailing
+# JSON object (handles nested braces, string literals with `}` inside).
+TAG = "<|python_tag|>"
+# Either of:
+#   <|python_tag|>
+#   ```json\n  / ```\n   (markdown code fence; the closing fence is found later)
+SENTINEL_RE = re.compile(
+    r"(?P<tag><\|python_tag\|>)|(?P<fence>```(?:json|JSON)?[ \t]*\r?\n?)"
+)
+
+
+def _scan_json_object(text: str, start: int) -> int | None:
+    """Brace-count a JSON object starting at the first `{` at or after `start`.
+    Returns the index AFTER the closing `}`, or None if not found / unbalanced."""
+    j = start
+    n = len(text)
+    while j < n and text[j].isspace():
+        j += 1
+    if j >= n or text[j] != "{":
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    k = j
+    while k < n:
+        c = text[k]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    return k + 1
+        k += 1
+    return None
+
+
+def _looks_like_tool_call(payload, *, strict: bool = False) -> bool:
+    """True if payload smells like a function-call JSON object.
+    `strict=True` additionally requires `parameters`/`arguments` — used for
+    fence/bare-JSON paths where the surrounding context is weaker than the
+    explicit `<|python_tag|>` sentinel."""
+    if not (isinstance(payload, dict) and isinstance(payload.get("name"), str) and payload["name"]):
+        return False
+    if strict and not ("parameters" in payload or "arguments" in payload):
+        return False
+    return True
+
+
+def _extract_blocks(text: str) -> tuple[list[dict], str]:
+    """Return (parsed_payloads, cleaned_text). Handles balanced braces.
+    For markdown code fences, requires payload to look like a tool call
+    (has a top-level `name` string) before consuming — keeps legit JSON examples intact."""
+    out: list[dict] = []
+    cleaned_parts: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        m = SENTINEL_RE.search(text, i)
+        if not m:
+            cleaned_parts.append(text[i:])
+            break
+        is_fence = m.group("fence") is not None
+        # text before sentinel — always kept
+        cleaned_parts.append(text[i:m.start()])
+        json_start = m.end()
+        json_end = _scan_json_object(text, json_start)
+        if json_end is None:
+            # malformed — keep literal sentinel and continue past it
+            cleaned_parts.append(text[m.start():m.end()])
+            i = m.end()
+            continue
+        chunk = text[json_start:json_end].lstrip()
+        try:
+            payload = json.loads(chunk)
+        except Exception:
+            cleaned_parts.append(text[m.start():json_end])
+            i = json_end
+            continue
+
+        if is_fence and not _looks_like_tool_call(payload, strict=True):
+            # Plain JSON code block — leave untouched.
+            cleaned_parts.append(text[m.start():json_end])
+            i = json_end
+            continue
+
+        # Consume the JSON. For fences, also consume the trailing ``` if present.
+        consume_end = json_end
+        if is_fence:
+            tail = text[json_end:]
+            close = re.match(r"\s*```", tail)
+            if close:
+                consume_end = json_end + close.end()
+        if _looks_like_tool_call(payload):
+            out.append(payload)
+        else:
+            # python_tag with payload missing `name` — keep raw text rather than drop silently
+            cleaned_parts.append(text[m.start():consume_end])
+        i = consume_end
+
+    text_out = "".join(cleaned_parts)
+
+    # Fallback: if no sentinel-tagged blocks were found, scan for "bare" JSON
+    # objects that look like tool calls. Required to catch leaks like:
+    #     **Call Function:** {"name": "web_search", "parameters": {...}}
+    #     Tool: {"name": "...", "arguments": {...}}
+    # Conservative trigger:
+    #   - JSON must parse and have a top-level `name` (string) field
+    #   - JSON must have `parameters` OR `arguments` (string or dict)
+    #   - The remaining text (after stripping known label prefixes + whitespace)
+    #     must be only the JSON itself — no substantive prose around it.
+    if not out:
+        scan = text_out.strip()
+        # Strip common labels seen in the wild
+        scan = re.sub(
+            r"^(?:\*+\s*)?(?:Call\s*Function|Function\s*Call|Tool\s*Call|Tool|Action|Function)\s*[:：]\s*(?:\*+\s*)?",
+            "", scan, flags=re.IGNORECASE,
+        ).strip()
+        if scan.startswith("{"):
+            end = _scan_json_object(scan, 0)
+            if end is not None and not scan[end:].strip():
+                try:
+                    payload = json.loads(scan[:end])
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict) and _looks_like_tool_call(payload, strict=True):
+                    out.append(payload)
+                    text_out = ""
+
+    if out:
+        # Collapse separator residue (",", ";", whitespace) left between/after extracted blocks.
+        text_out = re.sub(r"[\s,;]+", " ", text_out).strip(" ,;\t\n")
+    return out, text_out
+
+
+def _payload_to_tool_call(payload: dict, idx: int) -> dict | None:
+    name = payload.get("name")
+    if not name:
+        return None
+    args = payload.get("parameters", payload.get("arguments", {}))
+    if not isinstance(args, str):
+        args = json.dumps(args, ensure_ascii=False)
+    return {
+        "id": f"call_{uuid.uuid4().hex[:24]}",
+        "type": "function",
+        "index": idx,
+        "function": {"name": name, "arguments": args},
+    }
+
+
+class PythonTagSanitizer(CustomLogger):
+    async def async_post_call_success_hook(self, data, user_api_key_dict, response):
+        try:
+            choices = getattr(response, "choices", None) or []
+            for choice in choices:
+                msg = getattr(choice, "message", None)
+                content = getattr(msg, "content", None) if msg else None
+                if not msg or not isinstance(content, str) or not content:
+                    continue
+
+                # 1. PUA trailer (Llama special-token leak — turn{1}search{0} etc.)
+                stripped = _strip_pua_trailer(content)
+                if stripped != content:
+                    log.warning(
+                        "python-tag: stripped PUA trailing garbage (model=%s)",
+                        getattr(response, "model", "?"),
+                    )
+                content = stripped
+
+                # 2. Tool-call leak extraction (python_tag / md fence / bare-JSON)
+                payloads, cleaned = _extract_blocks(content)
+                if payloads:
+                    existing = list(getattr(msg, "tool_calls", None) or [])
+                    new_calls = []
+                    for i, p in enumerate(payloads):
+                        tc = _payload_to_tool_call(p, len(existing) + i)
+                        if tc:
+                            new_calls.append(tc)
+                    if new_calls:
+                        msg.tool_calls = existing + new_calls
+                        msg.content = cleaned.strip() or None
+                        if getattr(choice, "finish_reason", None) in (None, "stop"):
+                            choice.finish_reason = "tool_calls"
+                        log.warning(
+                            "python-tag: sanitized %d block(s) in non-stream response (model=%s)",
+                            len(new_calls), getattr(response, "model", "?"),
+                        )
+                        continue
+                # Only PUA stripped, no JSON extraction — still update content if changed
+                if stripped != msg.content:
+                    msg.content = stripped or None
+        except Exception:
+            log.exception("python-tag sanitizer (non-stream) error")
+        return response
+
+    async def async_post_call_streaming_iterator_hook(
+        self, user_api_key_dict, response, request_data
+    ) -> AsyncGenerator[Any, None]:
+        buffer = ""
+        held: list[Any] = []
+        passthrough = False
+        pua_seen = False
+        # Once we see <|python_tag|>, swallow content until stream ends, then emit
+        # one synthesized chunk with tool_calls. Until then, accumulate up to 64
+        # content chars before deciding pass-through (cheap streaming for normal
+        # responses; tool-call responses are inherently small so buffering is fine).
+        # PUA-trailer strip runs on EVERY chunk regardless — once a PUA char is
+        # seen, all subsequent content chunks have their content nulled.
+        try:
+            async for chunk in response:
+                # PUA strip — runs in both passthrough and buffer modes
+                if getattr(chunk, "choices", None):
+                    ch0 = chunk.choices[0]
+                    delta = getattr(ch0, "delta", None)
+                    text = getattr(delta, "content", None) if delta else None
+                    if isinstance(text, str) and text:
+                        if pua_seen:
+                            delta.content = None
+                        else:
+                            stripped = _strip_pua_trailer(text)
+                            if stripped != text:
+                                pua_seen = True
+                                delta.content = stripped or None
+                                log.warning(
+                                    "python-tag: stripped PUA trailing in stream chunk (model=%s)",
+                                    getattr(chunk, "model", "?"),
+                                )
+
+                if passthrough:
+                    yield chunk
+                    continue
+                delta_text = ""
+                finish = None
+                if getattr(chunk, "choices", None):
+                    ch0 = chunk.choices[0]
+                    delta = getattr(ch0, "delta", None)
+                    if delta is not None and getattr(delta, "content", None):
+                        delta_text = delta.content
+                    finish = getattr(ch0, "finish_reason", None)
+                buffer += delta_text
+                held.append(chunk)
+                if TAG not in buffer and (len(buffer) >= 64 or finish):
+                    # No tag in the buffered prefix and we have enough signal —
+                    # flush and switch to direct streaming.
+                    for hc in held:
+                        yield hc
+                    held = []
+                    passthrough = True
+
+            # Stream ended. If we held back, decide.
+            if held:
+                if TAG in buffer:
+                    payloads, cleaned = _extract_blocks(buffer)
+                    if payloads:
+                        new_calls = []
+                        for i, p in enumerate(payloads):
+                            tc = _payload_to_tool_call(p, i)
+                            if tc:
+                                new_calls.append(tc)
+                        if new_calls:
+                            last = held[-1]
+                            if getattr(last, "choices", None):
+                                ch0 = last.choices[0]
+                                delta = getattr(ch0, "delta", None)
+                                if delta is not None:
+                                    delta.content = cleaned.strip() or None
+                                    delta.tool_calls = [
+                                        {
+                                            "index": tc["index"],
+                                            "id": tc["id"],
+                                            "type": "function",
+                                            "function": tc["function"],
+                                        }
+                                        for tc in new_calls
+                                    ]
+                                ch0.finish_reason = "tool_calls"
+                            log.warning(
+                                "python-tag: sanitized %d block(s) in stream (model=%s)",
+                                len(new_calls), getattr(last, "model", "?"),
+                            )
+                            yield last
+                            return
+                # No conversion — flush held as-is
+                for hc in held:
+                    yield hc
+        except Exception:
+            log.exception("python-tag sanitizer (stream) error")
+            for hc in held:
+                try:
+                    yield hc
+                except Exception:
+                    pass
+
+
+sanitizer_instance = PythonTagSanitizer()

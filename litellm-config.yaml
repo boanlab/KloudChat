@@ -80,24 +80,17 @@ model_list:
   - model_name: ollama/qwen3.5:9b
     litellm_params:
       model: ollama_chat/qwen3.5:9b
-      api_base: http://host.docker.internal:11434
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000000400
       output_cost_per_token: 0.0000001000
   - model_name: ollama/qwen3.5:9b
     litellm_params:
       model: ollama_chat/qwen3.5:9b
-      api_base: http://10.40.0.253:11434
+      api_base: http://10.40.0.254:11434
     model_info:
       input_cost_per_token: 0.0000000400
       output_cost_per_token: 0.0000001000
-  - model_name: ollama/qwen3.6:35b
-    litellm_params:
-      model: ollama_chat/qwen3.6:35b
-      api_base: http://host.docker.internal:11434
-    model_info:
-      input_cost_per_token: 0.0000000800
-      output_cost_per_token: 0.0000002800
   - model_name: ollama/qwen3.6:35b
     litellm_params:
       model: ollama_chat/qwen3.6:35b
@@ -105,59 +98,66 @@ model_list:
     model_info:
       input_cost_per_token: 0.0000000800
       output_cost_per_token: 0.0000002800
+  - model_name: ollama/qwen3.6:35b
+    litellm_params:
+      model: ollama_chat/qwen3.6:35b
+      api_base: http://10.40.0.254:11434
+    model_info:
+      input_cost_per_token: 0.0000000800
+      output_cost_per_token: 0.0000002800
   - model_name: ollama/llama3.1:8b
     litellm_params:
       model: ollama_chat/llama3.1:8b
-      api_base: http://host.docker.internal:11434
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000000400
       output_cost_per_token: 0.0000001000
   - model_name: ollama/llama3.1:8b
     litellm_params:
       model: ollama_chat/llama3.1:8b
-      api_base: http://10.40.0.253:11434
+      api_base: http://10.40.0.254:11434
     model_info:
       input_cost_per_token: 0.0000000400
       output_cost_per_token: 0.0000001000
   - model_name: ollama/llama3.3:70b
     litellm_params:
       model: ollama_chat/llama3.3:70b
-      api_base: http://host.docker.internal:11434
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000002000
       output_cost_per_token: 0.0000006000
   - model_name: ollama/llama3.3:70b
     litellm_params:
       model: ollama_chat/llama3.3:70b
-      api_base: http://10.40.0.253:11434
+      api_base: http://10.40.0.254:11434
     model_info:
       input_cost_per_token: 0.0000002000
       output_cost_per_token: 0.0000006000
   - model_name: ollama/nemotron3:33b
     litellm_params:
       model: ollama_chat/nemotron3:33b
-      api_base: http://host.docker.internal:11434
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000001000
       output_cost_per_token: 0.0000003000
   - model_name: ollama/nemotron3:33b
     litellm_params:
       model: ollama_chat/nemotron3:33b
-      api_base: http://10.40.0.253:11434
+      api_base: http://10.40.0.254:11434
     model_info:
       input_cost_per_token: 0.0000001000
       output_cost_per_token: 0.0000003000
   - model_name: ollama/qwen3-coder-next:q8_0
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q8_0
-      api_base: http://host.docker.internal:11434
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000002200
       output_cost_per_token: 0.0000018000
   - model_name: ollama/qwen3-coder-next:q8_0
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q8_0
-      api_base: http://10.40.0.253:11434
+      api_base: http://10.40.0.254:11434
     model_info:
       input_cost_per_token: 0.0000002200
       output_cost_per_token: 0.0000018000
@@ -167,15 +167,37 @@ model_list:
       input_cost_per_token: 0.0000000200
     litellm_params:
       model: ollama/bge-m3
-      api_base: http://host.docker.internal:11434
+      api_base: http://10.40.0.253:11434
   - model_name: bge-m3
     model_info:
       mode: embedding
       input_cost_per_token: 0.0000000200
     litellm_params:
       model: ollama/bge-m3
-      api_base: http://10.40.0.253:11434
+      api_base: http://10.40.0.254:11434
   # <<< KLOUDCHAT_AUTOGEN_END
+
+  # ── External image-generation models (정적 등록 — autogen 영역 밖)
+  # 외부 LLM 에이전트의 image-generation tool 이 사용. shim 의 OR_IMAGE_MODELS
+  # env 매핑을 통해 chat/completions + modalities=["image","text"] 로 호출.
+  # 둘 다 OpenRouter 경유 (.env 의 native GEMINI/OPENAI 키 비어있음, OR 키만 사용).
+  # 실제 OR catalog 에 없으면 비슷한 ID 로 교체 (예: gpt-image-2 → gpt-image-1,
+  # gemini-3-pro-image-preview → gemini-2.5-flash-image-preview).
+  - model_name: image-nano-banana
+    litellm_params:
+      model: openrouter/google/gemini-3-pro-image-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      # OpenRouter 2026-05 기준 — 가격 변동 시 갱신 필요.
+      input_cost_per_token: 0.0000020000     # $2 / 1M
+      output_cost_per_token: 0.0000120000    # $12 / 1M
+  - model_name: image-gpt-image-2
+    litellm_params:
+      model: openrouter/openai/gpt-5.4-image-2
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      input_cost_per_token: 0.0000080000     # $8 / 1M
+      output_cost_per_token: 0.0000150000    # $15 / 1M
 
 router_settings:
   num_retries: 2
@@ -190,6 +212,9 @@ general_settings:
   store_prompts_in_spend_logs: true
 
 litellm_settings:
+  # Llama 3.x 가 OpenAI tool_calls 대신 `<|python_tag|>{...}` raw text 로 함수 호출을
+  # leak 하는 경우를 잡아 tool_calls 로 재구성. /app/callbacks/ 에 마운트된 모듈.
+  callbacks: ["callbacks.sanitize_python_tag.sanitizer_instance"]
   drop_params: true
   drop_unsupported_params: true
   request_timeout: 600
