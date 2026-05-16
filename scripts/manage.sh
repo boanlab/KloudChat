@@ -197,21 +197,47 @@ create_default_agent_for_user() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
-  # 새 토폴로지: ollama 카탈로그 ∩ union 보유 모델 만 에이전트화. 이름 = 모델 태그.
-  # 통합 toolset (file_search=RAG, web_search, execute_code, image-generation).
-  # 이미지는 inline 라우팅 — driver LLM 이 사용자 의도 기반으로 model={flux-schnell|flux-dev|qwen-image} 선택.
+  # 토폴로지:
+  # - local (ollama 카탈로그 ∩ union 보유): 이름 'Text + Image (<tag>)', 4 tools (image-generation 포함).
+  #   이미지는 inline 라우팅 — driver LLM 이 의도 기반으로 model={flux-schnell|flux-dev|qwen-image} 선택.
+  # - external (commercial OR/native): 이름 'Text (<model-id>)', 3 tools (image-generation 제외).
+  #   외부 비용 / image-generation 은 로컬 GPU 에 한정하기 위함.
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local agent_specs='[]'
   local m tag
+
+  # 1. external — native key 또는 OR 키 있을 때만
+  if has_openai_native || has_openrouter; then
+    for m in "${OPENAI_NATIVE_MODELS[@]}"; do
+      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "openai/$m" \
+        '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
+    done
+  fi
+  if has_anthropic_native || has_openrouter; then
+    for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do
+      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "anthropic/$m" \
+        '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
+    done
+  fi
+  if has_google_native || has_openrouter; then
+    for m in "${GOOGLE_NATIVE_MODELS[@]}"; do
+      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "google/$m" \
+        '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
+    done
+  fi
+
+  # 2. local — ollama union 보유 모델만
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
     tag="$m"; [[ "$tag" != *:* ]] && tag="${tag}:latest"
     grep -qxF "$tag" <<<"$pulled" || continue
-    agent_specs=$(jq -c --arg n "$m" --arg mm "ollama/$m" \
-      '. + [{name:$n, model:$mm}]' <<< "$agent_specs")
+    agent_specs=$(jq -c --arg n "Text + Image ($m)" --arg mm "ollama/$m" \
+      '. + [{name:$n, model:$mm, kind:"local"}]' <<< "$agent_specs")
   done
 
   # default 모델 (priority 첫 매치). union 비었으면 빈 문자열 — 그 경우 첫 spec 으로 fallback.
   local default_model; default_model="$(ollama_default_chat_model 2>/dev/null || true)"
+  local default_name=""
+  [[ -n "$default_model" ]] && default_name="Text + Image ($default_model)"
 
   local email_js; email_js=$(jq -Rn --arg e "$email" '$e')
   local result
@@ -223,8 +249,28 @@ create_default_agent_for_user() {
       var roleA = db.accessroles.findOne({accessRoleId: 'agent_owner'});
       var roleR = db.accessroles.findOne({accessRoleId: 'remoteAgent_owner'});
 
-      var TOOLS = ['execute_code','file_search','web_search','image-generation'];
-      var INSTR =
+      // 공통 MCP 도구 (모든 에이전트). sys__all__sys = LibreChat 의 mcp_all + _mcp_ delimiter.
+      var MCP_COMMON = [
+        'sys__all__sys_mcp_fetch_url',  // URL fetch + Markdown 변환
+      ];
+      // 수학 도구 — 모델 크기별 분기. sympy 는 173 tools 라 작은 모델은 schema/선택 부담.
+      var MCP_MATH_BIG   = ['sys__all__sys_mcp_math'];       // sympy 전체 (≥30B 모델)
+      var MCP_MATH_SMALL = ['sys__all__sys_mcp_calculator']; // 가벼운 사칙연산 (작은 모델)
+
+      // 작은 모델 명단 (canonical model id — 'ollama/' 등 prefix 제거된 형태).
+      var SMALL_MODELS = new Set([
+        'qwen3.5:9b', 'llama3.1:8b',
+        'gpt-5-mini', 'gpt-5-nano', 'claude-haiku-4.5', 'gemini-2.5-flash',
+      ]);
+      function mcpToolsFor(model) {
+        var tag = model.replace(/^[^/]+\//, '');
+        var math = SMALL_MODELS.has(tag) ? MCP_MATH_SMALL : MCP_MATH_BIG;
+        return MCP_COMMON.concat(math);
+      }
+
+      // local agent: 4 builtin + MCP (image-generation 포함, inline 라우팅)
+      var BUILTIN_LOCAL = ['execute_code','file_search','web_search','image-generation'];
+      var INSTR_LOCAL =
         'You are a helpful assistant with file_search (RAG over user files), web_search, code execution, and image-generation tools.\n\n' +
         'For image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
         'Pick the model arg by intent:\n' +
@@ -232,6 +278,11 @@ create_default_agent_for_user() {
         '  - model=\"flux-dev\" — when high quality is requested\n' +
         '  - model=\"qwen-image\" — text-in-image, Asian-language text, or complex multi-element composition\n' +
         'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
+
+      // external agent: 3 builtin + MCP (image-generation 제외 — 로컬 GPU 한정 정책)
+      var BUILTIN_EXT = ['execute_code','file_search','web_search'];
+      var INSTR_EXT =
+        'You are a helpful assistant with file_search (RAG over user files), web_search, and code execution tools.';
 
       function rid(p) { return p + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12); }
 
@@ -284,53 +335,59 @@ create_default_agent_for_user() {
 
       var specs = ${agent_specs};
       var canonNames = specs.map(function(s){ return s.name; });
+      var localTags = specs.filter(function(s){return s.kind==='local';})
+                           .map(function(s){return s.name.replace(/^Text \\+ Image \\(|\\)\$/g,'');});
 
-      // ── 마이그레이션: 레거시 'Text (X)' / 'Image (X)' 에이전트 처리.
-      // - 'Text (X)': X 가 새 카탈로그에 있으면 이름만 X 로 rename → 이후 upsert 가 toolset/instructions 갱신
-      // - 'Text (X)': 새 카탈로그에 없으면 삭제 (모델 단종)
-      // - 'Image (X)': inline 라우팅으로 대체 — 전부 삭제
-      var legacy = db.agents.find({author: u._id, name: /^(Text |Image )\\(/}).toArray();
-      legacy.forEach(function(d){
-        var mText = d.name.match(/^Text \\((.+)\\)\$/);
-        var mImg  = d.name.match(/^Image \\((.+)\\)\$/);
-        if (mText) {
-          var raw = mText[1];
-          if (canonNames.indexOf(raw) !== -1) {
-            // 동명 신규 spec 과 충돌하지 않게: 같은 이름의 다른 doc 있으면 이건 삭제
-            var clash = db.agents.findOne({author: u._id, name: raw});
-            if (clash) { deleteAgent(d); print('LEGACY_DEDUP:' + d.name); }
-            else {
-              db.agents.updateOne({_id: d._id}, {\$set: {name: raw, updatedAt: now}});
-              // versions[*].name 도 동기화
-              if (Array.isArray(d.versions)) {
-                var vs2 = d.versions.map(function(v){ v.name = raw; return v; });
-                db.agents.updateOne({_id: d._id}, {\$set: {versions: vs2}});
-              }
-              print('RENAMED:' + d.name + ' -> ' + raw);
-            }
-          } else {
-            deleteAgent(d);
+      function targetNameFor(d) {
+        // 우리 관리 모델 (ollama/openai/anthropic/google) 만 대상.
+        if (!d.model || !/^(ollama|openai|anthropic|google)\\//.test(d.model)) return null;
+        var modelTag = d.model.replace(/^[^/]+\\//, '');
+        var prefix = (d.model.indexOf('ollama/') === 0) ? 'Text + Image (' : 'Text (';
+        var target = prefix + modelTag + ')';
+        return (canonNames.indexOf(target) !== -1) ? target : null;
+      }
+
+      // ── 마이그레이션: 우리 관리 에이전트의 이름을 현 spec 형식으로 동기화.
+      // - target 이름 = canonical → in-place rename (preset agent_id 보존)
+      // - target 없음 (모델 단종 / 키 없음) → 삭제
+      // - 'Image (X)' 레거시 → 항상 삭제 (inline 라우팅으로 대체)
+      // - 사용자 수동 생성 에이전트 (우리 prefix 가 아닌 model) 는 안 건드림.
+      var managed = db.agents.find({author: u._id,
+        \$or: [
+          {model: /^(ollama|openai|anthropic|google)\\//},
+          {name: /^Image \\(/}
+        ]
+      }).toArray();
+      managed.forEach(function(d){
+        if (canonNames.indexOf(d.name) !== -1) return;  // 이미 맞는 이름
+
+        if (/^Image \\(/.test(d.name)) { deleteAgent(d); return; }
+
+        var target = targetNameFor(d);
+        if (target) {
+          var clash = db.agents.findOne({author: u._id, name: target, _id: {\$ne: d._id}});
+          if (clash) { deleteAgent(d); print('LEGACY_DEDUP:' + d.name); return; }
+          db.agents.updateOne({_id: d._id}, {\$set: {name: target, updatedAt: now}});
+          if (Array.isArray(d.versions)) {
+            var vs2 = d.versions.map(function(v){ v.name = target; return v; });
+            db.agents.updateOne({_id: d._id}, {\$set: {versions: vs2}});
           }
-        } else if (mImg) {
+          print('RENAMED:' + d.name + ' -> ' + target);
+        } else {
           deleteAgent(d);
         }
       });
 
-      // ── 카탈로그에서 빠진 ollama 에이전트 정리.
-      // model='ollama/<X>' 인데 X 가 새 카탈로그에 없으면 삭제 (예: 모델 단종 시).
-      // 사용자가 수동 생성한 에이전트는 이름이 카탈로그와 정확히 매치되지 않아 안전.
-      var stale = db.agents.find({author: u._id, model: /^ollama\\//}).toArray();
-      stale.forEach(function(d){
-        var modelTag = d.model.replace(/^ollama\\//, '');
-        if (canonNames.indexOf(modelTag) === -1) deleteAgent(d);
+      // ── upsert 신규 카탈로그 (kind 별 builtin + model-size 별 MCP)
+      specs.forEach(function(s){
+        var builtin = (s.kind === 'local') ? BUILTIN_LOCAL : BUILTIN_EXT;
+        var instr = (s.kind === 'local') ? INSTR_LOCAL : INSTR_EXT;
+        upsertAgent(s.name, s.model, builtin.concat(mcpToolsFor(s.model)), instr);
       });
 
-      // ── upsert 신규 카탈로그
-      specs.forEach(function(s){ upsertAgent(s.name, s.model, TOOLS, INSTR); });
-
       // ── default preset
-      // priority 첫 매치 우선, 없으면 첫 spec.
-      var defaultName = '${default_model}' || (specs[0] ? specs[0].name : null);
+      // priority 첫 매치 우선 ('Text + Image (<tag>)' 형식), 없으면 첫 spec.
+      var defaultName = '${default_name}' || (specs[0] ? specs[0].name : null);
       var defAgent = defaultName ? db.agents.findOne({author:u._id, name:defaultName}, {id:1}) : null;
       var us = u._id.toString();
       var existingDefault = db.presets.findOne({user:us, defaultPreset:true});

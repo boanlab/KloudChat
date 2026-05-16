@@ -6,6 +6,31 @@ webSearch:
   searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
   safeSearch: 1
 
+# MCP (Model Context Protocol) 서버. LibreChat 가 stdio 로 자식 프로세스 spawn,
+# 첫 호출 시 uvx 가 패키지 자동 다운로드 (~/.cache 캐시 후 재호출 빠름).
+# agent.tools 에 'sys__all__sys_mcp_<servername>' 추가하면 그 서버의 모든 tool 노출.
+mcpServers:
+  fetch_url:
+    type: stdio
+    command: uvx
+    args:
+      - mcp-server-fetch
+  math:
+    # sympy 기반 심볼릭/수치 수학 (미적분, 방정식, 행렬, 단위 변환 등). 173 tools.
+    # 작은 모델 (≤10B 활성 param) 한테는 context 부담 → calculator 로 분리.
+    type: stdio
+    command: uvx
+    args:
+      - mcp-sympy
+  calculator:
+    # 사칙연산 + power/sqrt/sum/product/compare 등 16 tools (mcp-server-math).
+    # 작은 모델용 — sympy 173 tools 의 schema/선택 부담을 피하기 위함.
+    # mcp-calculator 는 init handshake 실패 (Connection closed) 로 mcp-server-math 채택.
+    type: stdio
+    command: uvx
+    args:
+      - mcp-server-math
+
 endpoints:
   agents:
     disableBuilder: true
@@ -76,7 +101,7 @@ interface:
   marketplace:
     use: false
   mcpServers:
-    USE: false
+    USE: true
     CREATE: false
     SHARE: false
     SHARE_PUBLIC: false
