@@ -135,11 +135,30 @@ LibreChat 의 `image-generation` 툴 스키마에 `model` enum 필드 (`flux-sch
 
 사용자별 에이전트는 `./scripts/manage.sh` 가 자동 생성:
 - `user create --name ... --username ... --password ...` — 신규 유저 풀 프로비저닝 시
-- `agent sync` — 기존 유저 전체에 카탈로그 ∩ union 보유 모델로 upsert + 레거시 (`Text (...)`, `Image (...)`) 마이그레이션
+- `agent sync` — 기존 유저 전체에 카탈로그 모델로 upsert. 우리 관리 prefix (`ollama|openai|anthropic|google`) 인 agent 이름을 현 spec 으로 자동 rename (in-place, preset agent_id 보존). 사용자 수동 생성 agent 는 건드리지 않음.
 
-새 토폴로지: 모델당 에이전트 1개, 이름 = 모델 태그 (예: `qwen3.6:35b`), 통합 toolset = `[execute_code, file_search, web_search, image-generation]`. 사용자가 의도 (`빠르게`/`고품질`/`텍스트 포함`) 표현하면 LLM 드라이버가 시스템 프롬프트 기반 라우팅으로 `model={flux-schnell|flux-dev|qwen-image}` 직접 선택. 별도의 image-only 에이전트 없음.
+토폴로지 (모델당 에이전트 1개):
+
+| 종류 | 이름 형식 | builtin tools | MCP tools |
+|---|---|---|---|
+| local (ollama union 보유) | `Text + Image (<tag>)` 예: `Text + Image (qwen3.6:35b)` | `execute_code, file_search, web_search, image-generation` | `fetch_url` + math/calculator (모델 크기별) |
+| external (commercial OR/native) | `Text (<id>)` 예: `Text (claude-opus-4.7)` | `execute_code, file_search, web_search` (image-generation 제외 — 로컬 GPU 정책) | 동 |
+
+이미지 alias 는 LLM 이 사용자 의도 (`빠르게`/`고품질`/`텍스트 포함`) 따라 `model={flux-schnell|flux-dev|qwen-image}` inline 라우팅.
 
 기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` (`lib.sh`) 의 첫 매치 — 현재 `[llama3.3:70b, qwen3.6:35b, qwen3.5:9b]`. `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
+
+### MCP 도구
+
+`librechat.yaml` 의 `mcpServers` 에 stdio 서버 등록 (uvx 가 첫 호출 시 패키지 자동 다운로드). `agent.tools` 에 `sys__all__sys_mcp_<servername>` 추가 시 그 서버의 모든 tool 자동 노출.
+
+| 서버 | 패키지 | tools | 적용 |
+|---|---|---|---|
+| `fetch_url` | `mcp-server-fetch` | 1 (fetch) — URL → Markdown | 전 에이전트 |
+| `math` | `mcp-sympy` | 173 — sympy 심볼릭/수치 수학 | 큰 모델 (≥30B 활성) |
+| `calculator` | `mcp-server-math` | 16 — 사칙연산 + power/sqrt/sum/compare 등 | 작은 모델 (qwen3.5:9b, llama3.1:8b, gpt-5-mini/nano, claude-haiku-4.5, gemini-2.5-flash) |
+
+작은 모델은 sympy 173 tools 의 schema/선택 부담을 피하기 위해 calculator 로 분리. `manage.sh` 의 `SMALL_MODELS` Set 에 명시된 모델만 calculator, 나머지는 math. 새 모델 추가 시 해당 Set 갱신.
 
 이미지 backend 추가: 워크플로 템플릿 (`comfyui-shim/workflows/<alias>-txt2img.json`) + `MODEL_ALIASES` 와 `COMFYUI_ALIAS_FILES` (`comfyui-shim/app.py`) + `patch_librechat_sd_model.js` 의 enum + `lib.sh` 의 `__comfyui_node_models` 파일 매핑. shim 의 `COMFYUI_ALIAS_FILES` 와 lib.sh 의 파일 매핑은 동일한 (kind, filename) 셋을 유지해야 노드 디스커버리가 일치합니다.
 

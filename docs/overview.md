@@ -80,6 +80,9 @@ LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sda
 환경변수: COMFYUI_URLS=<csv>, DEFAULT_MODEL=qwen-image
 ```
 
+### MCP 서버 (stdio child processes)
+LibreChat 가 `librechat.yaml` 의 `mcpServers` 정의에 따라 자식 프로세스로 spawn 합니다 (uvx 가 첫 호출 시 PyPI 에서 자동 다운로드). 추가 컨테이너 없이 LibreChat 안에서 동작. 현재 3개: `fetch_url` (URL → Markdown), `math` (sympy 173 tools, 큰 모델용), `calculator` (mcp-server-math 16 tools, 작은 모델용). agent.tools 에 `sys__all__sys_mcp_<servername>` 추가하면 그 서버의 모든 tool 자동 노출. 자세한 매핑은 [모델 설정 > MCP 도구](models.md#mcp-도구).
+
 ## 네트워크
 
 모든 컨테이너는 `kloudchat` 브리지 네트워크에 속합니다. 외부에 노출되는 포트는 LibreChat (8080), LiteLLM (8000) 두 개입니다.
@@ -125,7 +128,7 @@ LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sda
 ## 요청 흐름 — 이미지 생성 / 편집
 
 ```
-브라우저 / 에이전트 (예: qwen3.6:35b)
+브라우저 / 에이전트 (예: Text + Image (qwen3.6:35b))
   → LibreChat (image-generation 툴, model="<alias>")
   → comfyui-shim:7860 (/sdapi/v1/txt2img | /sdapi/v1/img2img)
        │  ① override_settings.sd_model_checkpoint 로 워크플로 선택
@@ -136,9 +139,9 @@ LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sda
   → GPU (NVIDIA)
   → /history/<prompt_id> 폴링 + /view 로 결과 회수
   ← base64 PNG 반환 → LibreChat 채팅에 인라인 표시
-
-에이전트는 모델당 1개 (이름 = 모델 태그, 예: `qwen3.6:35b`). 통합 toolset 으로 image-generation 포함 — 사용자 의도 (`빠르게`/`고품질`/`텍스트 포함`) 에 따라 LLM 드라이버가 alias 직접 선택.
 ```
+
+에이전트 명명: local 은 `Text + Image (<tag>)` (image-generation 포함), external commercial 은 `Text (<id>)` (image-generation 제외 — 로컬 GPU 정책). LLM 이 사용자 의도 (`빠르게`/`고품질`/`텍스트 포함`) 에 따라 image alias inline 라우팅. 자세한 토폴로지 + MCP 도구는 [모델 설정](models.md#모델-선택-메커니즘).
 
 ## 스케일 고려사항
 

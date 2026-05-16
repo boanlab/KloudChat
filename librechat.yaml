@@ -25,7 +25,6 @@ mcpServers:
   calculator:
     # 사칙연산 + power/sqrt/sum/product/compare 등 16 tools (mcp-server-math).
     # 작은 모델용 — sympy 173 tools 의 schema/선택 부담을 피하기 위함.
-    # mcp-calculator 는 init handshake 실패 (Connection closed) 로 mcp-server-math 채택.
     type: stdio
     command: uvx
     args:

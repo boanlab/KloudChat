@@ -140,6 +140,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 | 코드 실행 샌드박스 | LibreCodeInterpreter |
 | HWP/PDF/DOCX 업로드 | LibreChat RAG API |
 | 이미지 생성 | ComfyUI + A1111 shim — Qwen-Image(-Edit), FLUX.1 (dev/schnell) |
+| URL fetch / 수학 | MCP 서버 (mcp-server-fetch · mcp-sympy · mcp-server-math) — uvx 로 stdio spawn |
 | 팀·사용자·예산 관리 | LiteLLM + `scripts/manage.sh` |
 
 ## 지원 환경
