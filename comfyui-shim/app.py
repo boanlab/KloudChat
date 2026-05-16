@@ -33,10 +33,10 @@ multiple are configured the shim:
     polls and /view fetches land on the same node that ran the workflow —
     ComfyUI's run state is per-node, so naive round-robin would break here.
 
-Templates ship with sensible defaults for sdxl / qwen-image / qwen-image-edit
-but real-world tuning (sampler choice, scheduler, resolution) almost always
-needs adjustment after the first end-to-end run — keep them in version
-control and iterate.
+Templates ship with sensible defaults for qwen-image / qwen-image-edit /
+flux-{dev,schnell} but real-world tuning (sampler choice, scheduler, resolution)
+almost always needs adjustment after the first end-to-end run — keep them in
+version control and iterate.
 """
 from __future__ import annotations
 
@@ -114,8 +114,6 @@ def _forget(prompt_id: str) -> None:
 # Map model aliases the user sends in the A1111 request to workflow templates.
 # Aliases match what manage.sh / docs advertise.
 MODEL_ALIASES = {
-    "sdxl": "sdxl-txt2img.json",
-    "sd_xl_base_1.0": "sdxl-txt2img.json",
     "qwen-image": "qwen-image-txt2img.json",
     "qwen-image-2512": "qwen-image-txt2img.json",
     "qwen-image-edit": "qwen-image-edit.json",
@@ -124,12 +122,9 @@ MODEL_ALIASES = {
     "flux-schnell": "flux-schnell-txt2img.json",
 }
 
-# Same map, but for img2img requests. SDXL has its own img2img workflow;
-# qwen-image-edit naturally accepts an input image and is the only edit path
-# we expose by default.
+# Same map, but for img2img requests. qwen-image-edit naturally accepts an
+# input image and is the only edit path we expose by default.
 MODEL_ALIASES_IMG2IMG = {
-    "sdxl": "sdxl-img2img.json",
-    "sd_xl_base_1.0": "sdxl-img2img.json",
     "qwen-image-edit": "qwen-image-edit.json",
     "qwen-image-edit-2509": "qwen-image-edit.json",
 }
@@ -138,7 +133,6 @@ MODEL_ALIASES_IMG2IMG = {
 # /object_info contents on each backend. Mirrors __comfyui_node_models in
 # scripts/lib.sh — keep both in sync when adding a new image model.
 COMFYUI_ALIAS_FILES: dict[str, tuple[str, str]] = {
-    "sdxl":            ("ckpt", "sd_xl_base_1.0.safetensors"),
     "qwen-image":      ("unet", "qwen-image-Q8_0.gguf"),
     "qwen-image-edit": ("unet", "qwen-image-edit-Q8_0.gguf"),
     "flux-schnell":    ("unet", "flux1-schnell.safetensors"),
@@ -146,11 +140,9 @@ COMFYUI_ALIAS_FILES: dict[str, tuple[str, str]] = {
 }
 
 # A1111 alias the caller sent → canonical alias used for discovery lookups.
-# Lets versioned identifiers (qwen-image-2512, qwen-image-edit-2509,
-# sd_xl_base_1.0) resolve to the same on-disk weight as their short alias.
+# Lets versioned identifiers (qwen-image-2512, qwen-image-edit-2509) resolve
+# to the same on-disk weight as their short alias.
 DISCOVERY_ALIAS: dict[str, str] = {
-    "sdxl": "sdxl",
-    "sd_xl_base_1.0": "sdxl",
     "qwen-image": "qwen-image",
     "qwen-image-2512": "qwen-image",
     "qwen-image-edit": "qwen-image-edit",

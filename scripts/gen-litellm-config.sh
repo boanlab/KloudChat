@@ -115,21 +115,14 @@ emit_ollama_embed() {
   done <<<"$urls"
 }
 
-# gemma 충돌: union 어디든 둘 다 보유하면 gemma3 제외 (gemma4 우선).
-GEMMA_SKIP=""
-if ollama_has gemma4:26b && ollama_has gemma3:27b; then GEMMA_SKIP=gemma3:27b; fi
-
 SECTION=$(
   echo "  ${MARKER_START}"
   # 1. Commercial native curated (provider별)
   for m in "${OPENAI_NATIVE_MODELS[@]}";    do emit_native_or openai    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
   for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do emit_native_or anthropic "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
   for m in "${GOOGLE_NATIVE_MODELS[@]}";    do emit_native_or google    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
-  # 2. Ollama chat discovery (gpt-oss / gemma3 등은 MODEL_OR_FREE 매핑 있으면 OR fallback)
-  for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
-    [[ "$m" == "$GEMMA_SKIP" ]] && continue
-    emit_ollama_chat "$m"
-  done
+  # 2. Ollama chat discovery (보유 모델은 노드별 deployment, 아니면 MODEL_OR_FREE 매핑 + OR 키 있을 때 fallback)
+  for m in "${OLLAMA_CHAT_CATALOG[@]}"; do emit_ollama_chat "$m"; done
   # 3. Ollama embed discovery
   for m in "${OLLAMA_EMBED_CATALOG[@]}"; do emit_ollama_embed "$m"; done
   echo "  ${MARKER_END}"

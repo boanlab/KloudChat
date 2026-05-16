@@ -58,7 +58,7 @@ LiteLLM 이 `OLLAMA_URLS` csv 의 각 노드를 직접 호출합니다. `gen-lit
 프라이버시 중심 메타 검색 엔진. LibreChat 웹 검색 기능의 백엔드입니다. 외부 포트를 열지 않고 내부 네트워크 (`http://searxng:8080`) 로만 접근합니다.
 
 ### ComfyUI (이미지 생성)
-노드 기반 디퓨전 런타임. KloudChat 은 SDXL · Qwen-Image · Qwen-Image-Edit · FLUX.1-dev · FLUX.1-schnell 다섯 파이프라인을 워크플로 템플릿으로 미리 정의해 둡니다.
+노드 기반 디퓨전 런타임. KloudChat 은 Qwen-Image · Qwen-Image-Edit · FLUX.1-dev · FLUX.1-schnell 네 파이프라인을 워크플로 템플릿으로 미리 정의해 둡니다.
 
 ComfyUI 는 항상 **호스트 native** (venv + systemd) 로 실행 — `scripts/install-comfyui.sh` 가 `/opt/comfyui/{venv,app}` + `/var/lib/comfyui/output` 을 만들고 `:8188` 에 바인딩. 모델 가중치는 ComfyUI repo 안 default 경로 (`/opt/comfyui/app/ComfyUI/models`) 에 둡니다. compose 호스트와 같은 머신에 설치하든 (`COMFYUI_URLS=http://host.docker.internal:8188`), 원격 GPU 노드(들)에 설치하든 (`COMFYUI_URLS=http://gpu-node-1:8188,...`) 형태는 동일. LibreChat 은 `comfyui-shim` 을 통해서만 접근.
 
@@ -70,7 +70,7 @@ ComfyUI 는 항상 **호스트 native** (venv + systemd) 로 실행 — `scripts
 ```
 
 ### comfyui-shim (A1111 어댑터 + 라우터)
-LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sdapi/v1/img2img`) 만 알아듣지만 ComfyUI 는 워크플로 JSON 기반이라 둘이 호환되지 않습니다. 이 shim 이 A1111 요청을 받아 워크플로 템플릿에 프롬프트·시드·CFG 를 끼워넣은 뒤 ComfyUI `/prompt` 큐에 넣고 결과 이미지를 base64 로 반환합니다. 모델은 요청의 `override_settings.sd_model_checkpoint` 값으로 `sdxl` / `qwen-image` / `qwen-image-edit` / `flux-dev` / `flux-schnell` 중 선택 — `image-generation` 툴 스키마의 `model` enum 필드 (`rag-patches/patch_librechat_sd_model.js`) 가 LLM 에 노출.
+LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sdapi/v1/img2img`) 만 알아듣지만 ComfyUI 는 워크플로 JSON 기반이라 둘이 호환되지 않습니다. 이 shim 이 A1111 요청을 받아 워크플로 템플릿에 프롬프트·시드·CFG 를 끼워넣은 뒤 ComfyUI `/prompt` 큐에 넣고 결과 이미지를 base64 로 반환합니다. 모델은 요청의 `override_settings.sd_model_checkpoint` 값으로 `flux-schnell` / `flux-dev` / `qwen-image` / `qwen-image-edit` 중 선택 — `image-generation` 툴 스키마의 `model` enum 필드 (`rag-patches/patch_librechat_sd_model.js`) 가 LLM 에 노출.
 
 `COMFYUI_URLS` 에 여러 백엔드를 넣으면 shim 이 라우터로 동작합니다. 시작 시 (그리고 `MODEL_DISCOVERY_TTL_SEC` 마다) 각 노드의 `/object_info` 를 디스커버해 alias→보유 노드 매핑을 캐시합니다. 매 요청마다 ① alias 로 후보 노드를 좁히고 ② 후보들의 `/queue` 깊이를 병렬 probe → 가장 한가한 노드로 `/prompt` 전송 → ③ `prompt_id → 노드` 매핑을 in-memory 로 들고 이후 `/history` polling 과 `/view` fetch 를 같은 노드로 고정. ComfyUI 의 run state 는 노드 stateful 하므로 단순 round-robin LB 는 polling 단계에서 깨지기 때문입니다. 결과: 노드별로 다른 모델 가중치만 받아도 자동으로 그 노드로 라우팅되고, 같은 모델을 여러 노드에 받으면 큐 깊이 LB.
 
@@ -100,8 +100,9 @@ LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sda
   → LibreChat (인증·세션 관리)
   → LiteLLM (/v1/chat/completions, LITELLM_SERVICE_KEY, model_name 기준 라우팅)
   ├─ ollama/*       → router (least-busy, 보유 노드만 후보) → Ollama (OLLAMA_URLS 노드) → GPU
-  ├─ openai/*       → OpenRouter (gpt-oss free, gpt-5.5 paid 등)
-  └─ anthropic/*    → OpenRouter (claude-opus-4.7/4.6, claude-sonnet-4.6)
+  ├─ openai/*       → native (OPENAI_API_KEY 있으면) 또는 OpenRouter
+  ├─ anthropic/*    → native 또는 OpenRouter (claude-opus-4.7/4.6, claude-sonnet-4.6, claude-haiku-4.5)
+  └─ google/*       → native 또는 OpenRouter (gemini-3.1-pro-preview, gemini-2.5-pro/flash)
 ```
 
 ## 요청 흐름 — RAG
@@ -124,17 +125,19 @@ LibreChat 의 `image-generation` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sda
 ## 요청 흐름 — 이미지 생성 / 편집
 
 ```
-브라우저 / 에이전트 (Image (sdxl) / Image (flux-schnell) 등)
+브라우저 / 에이전트 (예: qwen3.6:35b)
   → LibreChat (image-generation 툴, model="<alias>")
   → comfyui-shim:7860 (/sdapi/v1/txt2img | /sdapi/v1/img2img)
        │  ① override_settings.sd_model_checkpoint 로 워크플로 선택
-       │     sdxl / qwen-image / qwen-image-edit / flux-dev / flux-schnell
+       │     flux-schnell / flux-dev / qwen-image / qwen-image-edit
        │  ② 워크플로 JSON 에 프롬프트·시드·CFG·해상도 주입
        │  ③ (img2img 만) /upload/image 로 입력 이미지 업로드
   → ComfyUI native (host.docker.internal:8188 또는 원격 노드, /prompt 큐)
   → GPU (NVIDIA)
   → /history/<prompt_id> 폴링 + /view 로 결과 회수
   ← base64 PNG 반환 → LibreChat 채팅에 인라인 표시
+
+에이전트는 모델당 1개 (이름 = 모델 태그, 예: `qwen3.6:35b`). 통합 toolset 으로 image-generation 포함 — 사용자 의도 (`빠르게`/`고품질`/`텍스트 포함`) 에 따라 LLM 드라이버가 alias 직접 선택.
 ```
 
 ## 스케일 고려사항

@@ -77,20 +77,6 @@ model_list:
     model_info:
       input_cost_per_token: 0.0000003000
       output_cost_per_token: 0.0000025000
-  - model_name: ollama/gpt-oss:20b
-    litellm_params:
-      model: openrouter/openai/gpt-oss-20b:free
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      input_cost_per_token: 0.0000000000
-      output_cost_per_token: 0.0000000000
-  - model_name: ollama/gpt-oss:120b
-    litellm_params:
-      model: openrouter/openai/gpt-oss-120b:free
-      api_key: os.environ/OPENROUTER_API_KEY
-    model_info:
-      input_cost_per_token: 0.0000000000
-      output_cost_per_token: 0.0000000000
   - model_name: ollama/qwen3.5:9b
     litellm_params:
       model: ollama_chat/qwen3.5:9b
@@ -98,31 +84,80 @@ model_list:
     model_info:
       input_cost_per_token: 0.0000000400
       output_cost_per_token: 0.0000001000
-  - model_name: ollama/qwen3.5:35b
+  - model_name: ollama/qwen3.5:9b
     litellm_params:
-      model: ollama_chat/qwen3.5:35b
+      model: ollama_chat/qwen3.5:9b
+      api_base: http://10.40.0.253:11434
+    model_info:
+      input_cost_per_token: 0.0000000400
+      output_cost_per_token: 0.0000001000
+  - model_name: ollama/qwen3.6:35b
+    litellm_params:
+      model: ollama_chat/qwen3.6:35b
       api_base: http://host.docker.internal:11434
     model_info:
       input_cost_per_token: 0.0000000800
       output_cost_per_token: 0.0000002800
-  - model_name: ollama/gemma4:26b
+  - model_name: ollama/qwen3.6:35b
     litellm_params:
-      model: ollama_chat/gemma4:26b
-      api_base: http://host.docker.internal:11434
+      model: ollama_chat/qwen3.6:35b
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000000800
-      output_cost_per_token: 0.0000001600
-  - model_name: ollama/qwen3-coder-next:q4_K_M
+      output_cost_per_token: 0.0000002800
+  - model_name: ollama/llama3.1:8b
     litellm_params:
-      model: ollama_chat/qwen3-coder-next:q4_K_M
+      model: ollama_chat/llama3.1:8b
       api_base: http://host.docker.internal:11434
     model_info:
-      input_cost_per_token: 0.0000001500
-      output_cost_per_token: 0.0000012000
+      input_cost_per_token: 0.0000000400
+      output_cost_per_token: 0.0000001000
+  - model_name: ollama/llama3.1:8b
+    litellm_params:
+      model: ollama_chat/llama3.1:8b
+      api_base: http://10.40.0.253:11434
+    model_info:
+      input_cost_per_token: 0.0000000400
+      output_cost_per_token: 0.0000001000
+  - model_name: ollama/llama3.3:70b
+    litellm_params:
+      model: ollama_chat/llama3.3:70b
+      api_base: http://host.docker.internal:11434
+    model_info:
+      input_cost_per_token: 0.0000002000
+      output_cost_per_token: 0.0000006000
+  - model_name: ollama/llama3.3:70b
+    litellm_params:
+      model: ollama_chat/llama3.3:70b
+      api_base: http://10.40.0.253:11434
+    model_info:
+      input_cost_per_token: 0.0000002000
+      output_cost_per_token: 0.0000006000
+  - model_name: ollama/nemotron3:33b
+    litellm_params:
+      model: ollama_chat/nemotron3:33b
+      api_base: http://host.docker.internal:11434
+    model_info:
+      input_cost_per_token: 0.0000001000
+      output_cost_per_token: 0.0000003000
+  - model_name: ollama/nemotron3:33b
+    litellm_params:
+      model: ollama_chat/nemotron3:33b
+      api_base: http://10.40.0.253:11434
+    model_info:
+      input_cost_per_token: 0.0000001000
+      output_cost_per_token: 0.0000003000
   - model_name: ollama/qwen3-coder-next:q8_0
     litellm_params:
       model: ollama_chat/qwen3-coder-next:q8_0
       api_base: http://host.docker.internal:11434
+    model_info:
+      input_cost_per_token: 0.0000002200
+      output_cost_per_token: 0.0000018000
+  - model_name: ollama/qwen3-coder-next:q8_0
+    litellm_params:
+      model: ollama_chat/qwen3-coder-next:q8_0
+      api_base: http://10.40.0.253:11434
     model_info:
       input_cost_per_token: 0.0000002200
       output_cost_per_token: 0.0000018000
@@ -133,6 +168,13 @@ model_list:
     litellm_params:
       model: ollama/bge-m3
       api_base: http://host.docker.internal:11434
+  - model_name: bge-m3
+    model_info:
+      mode: embedding
+      input_cost_per_token: 0.0000000200
+    litellm_params:
+      model: ollama/bge-m3
+      api_base: http://10.40.0.253:11434
   # <<< KLOUDCHAT_AUTOGEN_END
 
 router_settings:

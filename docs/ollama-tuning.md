@@ -121,7 +121,7 @@ curl -s http://localhost:11434/api/ps | jq '.models[] | {name, size_vram}'
 | nvidia-smi 메모리 표시 | 정상 |
 
 - Flash Attention 지원 → `OLLAMA_FLASH_ATTENTION=1` 권장
-- 32 GB로 qwen3.5:35b(~23 GB) 단독 탑재 가능, 동시 탑재는 9b + embed 조합 정도로 제한
+- 32 GB로 qwen3.6:35b(~22 GB) 단독 탑재 가능, 동시 탑재는 9b + embed 조합 정도로 제한
 - VRAM 여유가 적으므로 `OLLAMA_KEEP_ALIVE=5m` 또는 `OLLAMA_MAX_LOADED_MODELS=2` 조합 고려
 
 ```ini
@@ -236,10 +236,11 @@ Environment="CUDA_VISIBLE_DEVICES=0"
 
 | 모델 | 크기 | 비고 |
 |---|---|---|
-| qwen3.5:9b (Q4_K_M) | ~6.6 GB | 경량 범용 |
-| gemma4:26b | ~17 GB | 창의·UI |
-| qwen3.5:35b | ~23 GB | 주력 범용 |
-| qwen3-coder-next:q4_K_M | ~51 GB | 코딩 경량 |
+| qwen3.5:9b (Q4_K_M) | ~6 GB | 경량 범용 |
+| llama3.1:8b (Q4) | ~5 GB | 경량 범용 (영문 강함) |
+| qwen3.6:35b (Q4) | ~22 GB | 주력 범용 |
+| nemotron3:33b (Q4) | ~20 GB | 추론 강조 |
+| llama3.3:70b (Q4) | ~40 GB | 대형 범용 |
 | qwen3-coder-next:q8_0 | ~84 GB | 코딩 고품질 |
 | bge-m3 | ~1.2 GB | RAG 임베딩 (다국어) |
 
@@ -247,8 +248,8 @@ GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 
 | 조합 | 합계 |
 |---|---|
-| 9b + 35b + gemma4 + embed | ~48 GB |
-| 9b + 35b + gemma4 + coder-q4 + embed | ~99 GB ✅ |
+| 9b + llama-8b + 35b + nemotron3 + embed | ~53 GB |
+| 9b + 35b + 70b + embed | ~68 GB ✅ |
 | coder-q8 단독 + embed | ~85 GB ✅ |
 | coder-q8 + 9b + embed | ~92 GB ✅ |
 
@@ -257,7 +258,7 @@ GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 특정 모델을 즉시 내리려면:
 
 ```bash
-ollama stop qwen3.5:35b
+ollama stop qwen3.6:35b
 ```
 
 현재 로드된 모델 확인:

@@ -76,6 +76,7 @@ $EDITOR .env
 
 → LibreChat http://localhost:8080. gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등 OR 라우팅 모델이 메뉴에 나옴.
 
+
 > 이미지 생성·RAG 임베딩은 로컬 모델이 필요해 이 시나리오에선 비활성. 활성하려면 A 또는 C.
 
 ### C 로컬 Ollama + OR — 가장 흔한 셋업
@@ -101,7 +102,7 @@ $EDITOR .env
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
-LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5, gemma4 등)이 함께 노출. `MODEL_OR_FREE` 매핑된 Ollama 카탈로그 모델(현재 `gpt-oss:20b/120b`, `gemma3:27b`)은 Ollama 에 pull 됐으면 로컬, 안 됐으면 OR free 로 fallback.
+LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5/3.6, llama3.x/4, nemotron3, qwen3-coder-next 등)이 함께 노출. `MODEL_OR_FREE` 매핑이 활성화된 Ollama 카탈로그 모델은 Ollama 에 pull 됐으면 로컬, 안 됐으면 OR free 로 fallback (기본 비활성, 필요 시 `lib.sh` 에서 활성화).
 
 ### D 풀 하이브리드 — native API + OR + 로컬 Ollama
 
@@ -116,7 +117,7 @@ OLLAMA_URLS=http://gpu-node-1:11434 # 로컬 Ollama 노드
 HF_TOKEN=hf_...                     # flux-dev 받을 거면
 ```
 
-라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.5:35b`). `MODEL_OR_FREE` 매핑된 카탈로그 모델(`gpt-oss:*`, `gemma3:27b`)은 Ollama 우선, 없으면 OR free 로 fallback.
+라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.6:35b`). `MODEL_OR_FREE` 매핑이 활성화된 카탈로그 모델은 Ollama 우선, 없으면 OR free 로 fallback.
 
 자세한 매트릭스는 [docs/models.md](docs/models.md#라우팅-결정-매트릭스) 참고.
 
@@ -138,7 +139,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 | 웹 검색 | SearXNG |
 | 코드 실행 샌드박스 | LibreCodeInterpreter |
 | HWP/PDF/DOCX 업로드 | LibreChat RAG API |
-| 이미지 생성 | ComfyUI + A1111 shim — SDXL, Qwen-Image(-Edit), FLUX.1 (dev/schnell) |
+| 이미지 생성 | ComfyUI + A1111 shim — Qwen-Image(-Edit), FLUX.1 (dev/schnell) |
 | 팀·사용자·예산 관리 | LiteLLM + `scripts/manage.sh` |
 
 ## 지원 환경

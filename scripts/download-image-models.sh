@@ -16,11 +16,12 @@ UNET_DIR="${MODELS_DIR}/unet"
 CLIP_DIR="${MODELS_DIR}/clip"
 VAE_DIR="${MODELS_DIR}/vae"
 
-# 디폴트 셋. HF_TOKEN이 .env/env에 있으면 flux-dev 추가, 없으면 제외.
+# 디폴트 셋 — LibreChat image-generation 툴이 노출하는 alias 기준.
+# HF_TOKEN이 있으면 flux-dev 추가, 없으면 제외.
 # (실제 등록은 shim 의 union 디스커버리(/object_info)로 노드별 alias 활성화 — 여기선 다운로드만)
 recommended_aliases() {
   has_nvidia_gpu || return 0
-  local base="sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-schnell"
+  local base="qwen-image qwen-image-edit flux-shared flux-schnell"
   [[ -n "${HF_TOKEN:-}" ]] && echo "$base flux-dev" || echo "$base"
 }
 
@@ -48,17 +49,15 @@ usage() {
 Usage: $(basename "$0") [models...]
 
 Aliases (default: recommended):
-  sdxl             SDXL 1.0 base                        ~6.9GB
-  sdxl-vae         SDXL VAE FP16 fix                    ~160MB
   qwen-image       Qwen-Image Q8_0 GGUF + encoder + VAE ~21GB
   qwen-image-edit  Qwen-Image-Edit-2509 Q8_0 GGUF       ~21GB
   flux-shared      Flux T5/CLIP/VAE encoders (공유)     ~10GB
   flux-dev         FLUX.1-dev FP16 (gated, HF_TOKEN)    ~22GB
   flux-schnell     FLUX.1-schnell FP16 (MIT)            ~22GB
   recommended      HF_TOKEN 유무로 분기 (있으면 +flux-dev)
-  all              모두 (~104GB)
+  all              모두
 
-기본 셋 (HF_TOKEN 무관): sdxl + sdxl-vae + qwen-image + qwen-image-edit + flux-shared + flux-schnell
+기본 셋 (HF_TOKEN 무관): qwen-image + qwen-image-edit + flux-shared + flux-schnell
 HF_TOKEN 있을 때만 flux-dev 추가 (gated repo).
 
 GPU VRAM이 부족한 노드에서 무거운 모델은 받지 마세요 — 명시적 alias 지정.
@@ -70,8 +69,6 @@ EOF
 
 [[ $# -eq 0 ]] && set -- recommended
 
-SDXL_URL=https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors
-SDXL_VAE_URL=https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors
 QI_UNET_URL=https://huggingface.co/city96/Qwen-Image-gguf/resolve/main/qwen-image-Q8_0.gguf
 QI_EDIT_UNET_URL=https://huggingface.co/QuantStack/Qwen-Image-Edit-2509-GGUF/resolve/main/Qwen-Image-Edit-2509-Q8_0.gguf
 QI_TEXT_URL=https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
@@ -95,8 +92,6 @@ FLUX_VAE="$VAE_DIR/flux-ae.safetensors"
 
 for arg in "$@"; do
   case "$arg" in
-    sdxl)            download "$SDXL_URL"         "$CKPT_DIR/sd_xl_base_1.0.safetensors" ;;
-    sdxl-vae)        download "$SDXL_VAE_URL"     "$VAE_DIR/sdxl_vae_fp16_fix.safetensors" ;;
     qwen-image)      download "$QI_UNET_URL"      "$QI_UNET"
                      download "$QI_TEXT_URL"      "$QI_TEXT"
                      download "$QI_VAE_URL"       "$QI_VAE" ;;
@@ -110,7 +105,7 @@ for arg in "$@"; do
                      download "$FLUX_DEV_URL"     "$FLUX_DEV" ;;
     flux-schnell)    "$0" flux-shared
                      download "$FLUX_SCHNELL_URL" "$FLUX_SCHNELL" ;;
-    all)             "$0" sdxl sdxl-vae qwen-image qwen-image-edit flux-shared flux-dev flux-schnell ;;
+    all)             "$0" qwen-image qwen-image-edit flux-shared flux-dev flux-schnell ;;
     recommended)
       rec="$(recommended_aliases)"
       if [[ -z "$rec" ]]; then

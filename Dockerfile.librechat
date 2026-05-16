@@ -26,4 +26,8 @@ COPY rag-patches/patch_librechat_sd_model.js /tmp/patch_librechat_sd_model.js
 RUN node /tmp/patch_librechat_sd_model.js && \
     grep -q 'KLOUDCHAT_SD_MODEL_PATCH' /app/api/app/clients/tools/structured/StableDiffusion.js
 
+COPY rag-patches/patch_librechat_agent_capabilities.js /tmp/patch_librechat_agent_capabilities.js
+RUN node /tmp/patch_librechat_agent_capabilities.js && \
+    grep -q 'KLOUDCHAT_AGENT_CAP_PATCH' /app/api/server/services/ToolService.js
+
 COPY --from=builder --chown=1000:1000 /src/client/dist /app/client/dist

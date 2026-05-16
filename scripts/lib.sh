@@ -93,22 +93,6 @@ detect_gpu_class() {
   esac
 }
 
-gpu_supports_gemma4() {
-  case "$(detect_gpu_class)" in
-    blackwell-pro|blackwell-5090|none) return 1 ;;
-    *)                                 return 0 ;;
-  esac
-}
-
-# gpt-oss:120b는 ~65-80GB. GB10 unified(128GB) / Blackwell PRO(96GB) 에서만 동작.
-gpu_supports_120b() {
-  case "$(detect_gpu_class)" in
-    gb10|blackwell-pro) return 0 ;;
-    nvidia-other) (( $(get_gpu_vram_mb) >= 80000 )) ;;
-    *) return 1 ;;
-  esac
-}
-
 get_free_disk_gb() {
   df -BG "${1:-.}" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4; exit}'
 }
@@ -120,7 +104,7 @@ port_in_use() {
   else return 1; fi
 }
 
-# ==== v5 model catalog ====
+# Model catalog
 # 제공자별 native curated 리스트. native key 있으면 native, 없고 OR 있으면 OR로 라우팅. (상호배타)
 OPENAI_NATIVE_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
 ANTHROPIC_NATIVE_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
@@ -129,23 +113,30 @@ GOOGLE_NATIVE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
 # Ollama-only 카탈로그 — union discovery로 어느 노드든 보유 시 그 노드(들)에 deployment 등록.
 # 어느 노드도 보유 안 할 때 MODEL_OR_FREE 매핑이 있으면 OR free 로 fallback.
 OLLAMA_CHAT_CATALOG=(
-  gpt-oss:20b gpt-oss:120b
-  qwen3.5:9b qwen3.5:35b
-  gemma4:26b gemma3:27b
-  qwen3-coder-next:q4_K_M qwen3-coder-next:q8_0
+  qwen3.5:9b qwen3.6:35b
+  llama3.1:8b llama3.3:70b
+  nemotron3:33b
+  qwen3-coder-next:q8_0
 )
 OLLAMA_EMBED_CATALOG=(bge-m3)
+
+# default 에이전트 우선순위 — 위 카탈로그 중 union 에 존재하는 첫 매치를 default 로.
+# `ollama_default_chat_model` 가 이 순서대로 lookup.
+OLLAMA_DEFAULT_PRIORITY=(
+  llama3.3:70b
+  qwen3.6:35b
+  qwen3.5:9b
+)
 
 # Ollama 카탈로그 모델 → OR free model id 매핑.
 # Ollama 노드에 pulled이면 ollama_chat 우선, 없으면 이 매핑 + OR 키가 있을 때만 OR free로 fallback.
 # OR free 카탈로그는 https://openrouter.ai/models?supported_parameters=free 에서 확인 후 활성화.
 declare -A MODEL_OR_FREE=(
-  [gpt-oss:20b]=openai/gpt-oss-20b:free
-  [gpt-oss:120b]=openai/gpt-oss-120b:free
-  [gemma3:27b]=google/gemma-3-27b-it:free
-  # [qwen3.5:9b]=qwen/qwen3-8b:free                   # 사이즈 근사 — OR ID 검증 후 활성
-  # [qwen3.5:35b]=qwen/qwen3-32b:free                 # 동
-  # [qwen3-coder-next:q4_K_M]=qwen/qwen3-coder:free   # OR가 :free 제공 여부 미확인
+  # [qwen3.5:9b]=qwen/qwen3-8b:free
+  # [qwen3.6:35b]=qwen/qwen3-32b:free
+  # [llama3.1:8b]=meta-llama/llama-3.1-8b-instruct:free
+  # [llama3.3:70b]=meta-llama/llama-3.3-70b-instruct:free
+  # [nemotron3:33b]=nvidia/nemotron-3-33b:free   # ID 검증 필요
   # [qwen3-coder-next:q8_0]=qwen/qwen3-coder:free
 )
 
@@ -154,20 +145,20 @@ declare -A MODEL_PRICE_IN_PM=(
   [gpt-5.5]=5      [gpt-5]=2.5    [gpt-5-mini]=0.25    [gpt-5-nano]=0.05
   [claude-opus-4.7]=5    [claude-opus-4.6]=5    [claude-sonnet-4.6]=3    [claude-haiku-4.5]=1
   [gemini-3.1-pro-preview]=5    [gemini-2.5-pro]=2.5    [gemini-2.5-flash]=0.30
-  [gpt-oss:20b]=0    [gpt-oss:120b]=0
-  [qwen3.5:9b]=0.04    [qwen3.5:35b]=0.08
-  [gemma4:26b]=0.08    [gemma3:27b]=0.08
-  [qwen3-coder-next:q4_K_M]=0.15    [qwen3-coder-next:q8_0]=0.22
+  [qwen3.5:9b]=0.04    [qwen3.6:35b]=0.08
+  [llama3.1:8b]=0.04    [llama3.3:70b]=0.20
+  [nemotron3:33b]=0.10
+  [qwen3-coder-next:q8_0]=0.22
   [bge-m3]=0.02
 )
 declare -A MODEL_PRICE_OUT_PM=(
   [gpt-5.5]=30    [gpt-5]=15    [gpt-5-mini]=2    [gpt-5-nano]=0.40
   [claude-opus-4.7]=25    [claude-opus-4.6]=25    [claude-sonnet-4.6]=15    [claude-haiku-4.5]=5
   [gemini-3.1-pro-preview]=15    [gemini-2.5-pro]=10    [gemini-2.5-flash]=2.5
-  [gpt-oss:20b]=0    [gpt-oss:120b]=0
-  [qwen3.5:9b]=0.10    [qwen3.5:35b]=0.28
-  [gemma4:26b]=0.16    [gemma3:27b]=0.16
-  [qwen3-coder-next:q4_K_M]=1.20    [qwen3-coder-next:q8_0]=1.80
+  [qwen3.5:9b]=0.10    [qwen3.6:35b]=0.28
+  [llama3.1:8b]=0.10    [llama3.3:70b]=0.60
+  [nemotron3:33b]=0.30
+  [qwen3-coder-next:q8_0]=1.80
 )
 
 per_token_cost() { awk -v v="$1" 'BEGIN { printf "%.10f", v/1000000 }'; }
@@ -239,18 +230,28 @@ ollama_nodes_for_model() {
   ollama_union_node_models | awk -F'\t' -v m="$needle" '$2==m {print $1}'
 }
 
-# 단일 ComfyUI 노드가 보유한 모델 별칭 출력 (sdxl, qwen-image, qwen-image-edit, flux-schnell, flux-dev).
+# OLLAMA_DEFAULT_PRIORITY 순서대로 lookup, union 어디든 보유한 첫 모델 echo.
+# 매치 0건이면 빈 출력 + exit 0 (호출 측이 fallback 결정).
+# 다중 노드 정책: 한 노드라도 보유하면 default 후보 — LiteLLM router 가 그 노드(들) 로 라우팅.
+ollama_default_chat_model() {
+  local union; union="$(ollama_union_models)"
+  local m tag
+  for m in "${OLLAMA_DEFAULT_PRIORITY[@]}"; do
+    tag="$m"; [[ "$tag" != *:* ]] && tag="${tag}:latest"
+    if grep -qxF "$tag" <<<"$union"; then echo "$m"; return 0; fi
+  done
+  return 0
+}
+
+# 단일 ComfyUI 노드가 보유한 모델 별칭 출력 (flux-schnell, flux-dev, qwen-image, qwen-image-edit).
 __comfyui_node_models() {
   local raw="$1" url info
   url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   url="${url//host.docker.internal/localhost}"
   info="$(curl -sf --max-time 5 "${url}/object_info" 2>/dev/null)" || return 0
-  local ckpts unets
-  ckpts="$(echo "$info" | jq -r '
-    (.CheckpointLoaderSimple.input.required.ckpt_name[0] // []) | .[]?' 2>/dev/null)"
+  local unets
   unets="$(echo "$info" | jq -r '
     (.UNETLoader.input.required.unet_name[0] // []) + (.UnetLoaderGGUF.input.required.unet_name[0] // []) | .[]?' 2>/dev/null)"
-  grep -qxF 'sd_xl_base_1.0.safetensors'        <<<"$ckpts" && echo sdxl
   grep -qxF 'qwen-image-Q8_0.gguf'              <<<"$unets" && echo qwen-image
   grep -qxF 'qwen-image-edit-Q8_0.gguf'         <<<"$unets" && echo qwen-image-edit
   grep -qxF 'flux1-schnell.safetensors'         <<<"$unets" && echo flux-schnell
@@ -292,10 +293,6 @@ ollama_pulled_has() {
 # gen-litellm-config.sh 의 emit 로직과 일치해야 함 — 실제 등록될 model_name 만 반환.
 litellm_chat_models_csv() {
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
-  local gemma_skip=""
-  if ollama_pulled_has "$pulled" gemma4:26b && ollama_pulled_has "$pulled" gemma3:27b; then
-    gemma_skip="gemma3:27b"
-  fi
   local out=() m
   for m in "${OPENAI_NATIVE_MODELS[@]}"; do
     if has_openai_native || has_openrouter; then out+=("openai/$m"); fi
@@ -307,7 +304,6 @@ litellm_chat_models_csv() {
     if has_google_native || has_openrouter; then out+=("google/$m"); fi
   done
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
-    [[ "$m" == "$gemma_skip" ]] && continue
     if ollama_pulled_has "$pulled" "$m"; then
       out+=("ollama/$m")
     elif [[ -n "${MODEL_OR_FREE[$m]:-}" ]] && has_openrouter; then

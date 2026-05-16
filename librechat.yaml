@@ -9,6 +9,18 @@ webSearch:
 endpoints:
   agents:
     disableBuilder: true
+    # 비 ephemeral agent (DB-backed) 의 경우 resolveAgentCapabilities 가 default 폴백을 안 함.
+    # 명시 안 하면 tools/file_search/execute_code/web_search 등 전부 차단됨.
+    capabilities:
+      - "execute_code"
+      - "file_search"
+      - "web_search"
+      - "actions"
+      - "tools"
+      - "artifacts"
+      - "context"
+      - "chain"
+      - "ocr"
   custom:
     - name: "LiteLLM"
       apiKey: "user_provided"
@@ -28,12 +40,11 @@ endpoints:
           - "google/gemini-3.1-pro-preview"
           - "google/gemini-2.5-pro"
           - "google/gemini-2.5-flash"
-          - "ollama/gpt-oss:20b"
-          - "ollama/gpt-oss:120b"
           - "ollama/qwen3.5:9b"
-          - "ollama/qwen3.5:35b"
-          - "ollama/gemma4:26b"
-          - "ollama/qwen3-coder-next:q4_K_M"
+          - "ollama/qwen3.6:35b"
+          - "ollama/llama3.1:8b"
+          - "ollama/llama3.3:70b"
+          - "ollama/nemotron3:33b"
           - "ollama/qwen3-coder-next:q8_0"
           # <<< KLOUDCHAT_MODELS_END
         fetch: false

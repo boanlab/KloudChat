@@ -10,6 +10,7 @@ Usage: manage.sh <resource> <action> [opts]
 
 team   create  --alias <n> [--budget --duration --tpm --rpm --models a,b,c]
        list / delete --id <team_id>
+       sync                                                ← 카탈로그 변경 후 모든 팀 model allowlist 재동기화
 
 user   create  --id <email> [--team <alias>] [--budget]
                [--name <n> --username <u> --password <p>]   ← LibreChat 풀 프로비저닝
@@ -20,7 +21,7 @@ key    issue   --user <email> [--team] [--alias] [--budget]
        list   [--user <email>]
        revoke --key <sk-...>
 
-agent  sync                                                ← 모델 추가 후 모든 유저에 누락 에이전트 멱등 재생성
+agent  sync                                                ← 카탈로그 변경 후 모든 유저 에이전트 upsert + 레거시 마이그레이션
 EOF
   exit 1
 }
@@ -87,6 +88,27 @@ cmd_team_delete() {
   while [[ $# -gt 0 ]]; do case "$1" in --id) need_val "$@"; id="$2"; shift 2 ;; *) shift ;; esac; done
   require_arg --id "$id"
   litellm_post "/team/delete" "{\"team_ids\":[\"$id\"]}" | jq .
+}
+
+# 모든 팀의 model allowlist 를 현재 canonical 카탈로그로 동기화.
+# lib.sh 모델 카탈로그 변경 후 호출 안 하면 기존 팀에서 신규 모델이 401 로 거부됨.
+cmd_team_sync() {
+  local models; models="$(litellm_chat_models_csv)"
+  [[ -z "$models" ]] && { echo "litellm chat 모델 0건 — gen-litellm-config + restart 먼저" >&2; exit 1; }
+  local models_json; models_json=$(echo "$models" | tr ',' '\n' | jq -R . | jq -s .)
+  local teams; teams=$(litellm_get "/team/list")
+  local n=0 ok=0 fail=0
+  while IFS=$'\t' read -r tid talias; do
+    [[ -z "$tid" ]] && continue
+    n=$((n+1))
+    local payload; payload=$(jq -n --arg id "$tid" --argjson m "$models_json" '{team_id:$id, models:$m}')
+    if litellm_post "/team/update" "$payload" >/dev/null 2>&1; then
+      ok=$((ok+1)); echo "  ✓ $talias ($tid)"
+    else
+      fail=$((fail+1)); echo "  ✗ $talias ($tid)" >&2
+    fi
+  done < <(echo "$teams" | jq -r '.[] | "\(.team_id)\t\(.team_alias)"')
+  echo "team/sync: $ok/$n updated, $fail failed (models: $(echo "$models" | tr ',' '\n' | wc -l))"
 }
 
 cmd_user_create() {
@@ -175,31 +197,21 @@ create_default_agent_for_user() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
-  # 채팅 에이전트 spec — lib.sh:litellm_chat_models_csv() 가 결정한 model_name 만 사용.
-  # GPU 게이팅(gemma4/3 either-or, gpt-oss:120b 등) + OR fallback 은 거기서 일괄 처리됨.
-  local chat_csv; chat_csv=$(litellm_chat_models_csv 2>/dev/null || true)
-  local chat_specs='[]'
-  local _m _models=()
-  IFS=',' read -ra _models <<< "$chat_csv"
-  for _m in "${_models[@]}"; do
-    [[ -z "$_m" || "$_m" != */* ]] && continue   # 임베딩(provider prefix 없음) 제외
-    chat_specs=$(jq -c --arg n "Text (${_m#*/})" --arg mm "$_m" \
-      '. + [{name:$n, model:$mm}]' <<< "$chat_specs")
+  # 새 토폴로지: ollama 카탈로그 ∩ union 보유 모델 만 에이전트화. 이름 = 모델 태그.
+  # 통합 toolset (file_search=RAG, web_search, execute_code, image-generation).
+  # 이미지는 inline 라우팅 — driver LLM 이 사용자 의도 기반으로 model={flux-schnell|flux-dev|qwen-image} 선택.
+  local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
+  local agent_specs='[]'
+  local m tag
+  for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
+    tag="$m"; [[ "$tag" != *:* ]] && tag="${tag}:latest"
+    grep -qxF "$tag" <<<"$pulled" || continue
+    agent_specs=$(jq -c --arg n "$m" --arg mm "ollama/$m" \
+      '. + [{name:$n, model:$mm}]' <<< "$agent_specs")
   done
 
-  # 이미지 에이전트 — ComfyUI alias 별 instructions. qwen3.5:35b 드라이버(tool-calling 안정성).
-  local img_driver=ollama/qwen3.5:35b
-  local img_specs
-  img_specs=$(jq -cn '[
-    {alias:"sdxl",         blurb:"SDXL is fast, photorealistic baseline."},
-    {alias:"qwen-image",   blurb:"Qwen-Image excels at Asian text/scenes."},
-    {alias:"flux-dev",     blurb:"Flux-dev is highest quality, slower."},
-    {alias:"flux-schnell", blurb:"Flux-schnell is fast (4 steps), good for iteration."}
-  ]')
-
-  # 기본 preset — 후보 우선순위대로 첫 매치 사용.
-  local def_candidates
-  def_candidates=$(jq -cn '["Text (qwen3.5:35b)","Text (gemma4:26b)","Text (gemma3:27b)","Text (qwen3.5:9b)"]')
+  # default 모델 (priority 첫 매치). union 비었으면 빈 문자열 — 그 경우 첫 spec 으로 fallback.
+  local default_model; default_model="$(ollama_default_chat_model 2>/dev/null || true)"
 
   local email_js; email_js=$(jq -Rn --arg e "$email" '$e')
   local result
@@ -211,11 +223,33 @@ create_default_agent_for_user() {
       var roleA = db.accessroles.findOne({accessRoleId: 'agent_owner'});
       var roleR = db.accessroles.findOne({accessRoleId: 'remoteAgent_owner'});
 
+      var TOOLS = ['execute_code','file_search','web_search','image-generation'];
+      var INSTR =
+        'You are a helpful assistant with file_search (RAG over user files), web_search, code execution, and image-generation tools.\n\n' +
+        'For image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
+        'Pick the model arg by intent:\n' +
+        '  - model=\"flux-schnell\" — fast / draft / quick iteration (default)\n' +
+        '  - model=\"flux-dev\" — when high quality is requested\n' +
+        '  - model=\"qwen-image\" — text-in-image, Asian-language text, or complex multi-element composition\n' +
+        'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
+
       function rid(p) { return p + Math.random().toString(36).slice(2,14) + Math.random().toString(36).slice(2,12); }
-      function createAgent(name, model, tools, instructions) {
-        instructions = instructions || '';
-        var ex = db.agents.findOne({author: u._id, name: name}, {_id:1, id:1});
-        if (ex) { print('EXISTS:' + name + ':' + ex.id); return ex.id; }
+
+      // 신규 또는 갱신. 기존 doc 의 tools/instructions/model 을 새 값으로 동기화 (root + versions 모두).
+      function upsertAgent(name, model, tools, instructions) {
+        var ex = db.agents.findOne({author: u._id, name: name});
+        if (ex) {
+          var versions = Array.isArray(ex.versions) ? ex.versions : [];
+          var vs = versions.map(function(v){
+            v.tools = tools; v.instructions = instructions; v.model = model; v.updatedAt = now; return v;
+          });
+          db.agents.updateOne({_id: ex._id}, {\$set: {
+            tools: tools, instructions: instructions, model: model,
+            versions: vs, updatedAt: now
+          }});
+          print('UPDATED:' + name + ':' + ex.id);
+          return ex.id;
+        }
         var id = rid('agent_');
         var ver = { name:name, description:'', instructions:instructions, provider:'LiteLLM', model:model, tools:tools,
                     artifacts:'', category:'general', support_contact:{name:'',email:''},
@@ -241,44 +275,81 @@ create_default_agent_for_user() {
         print('CREATED:' + name + ':' + id);
         return id;
       }
-      var chatSpecs = ${chat_specs};
-      var imgSpecs  = ${img_specs};
-      var defCands  = ${def_candidates};
-      var imgDriver = '${img_driver}';
 
-      chatSpecs.forEach(function(s){
-        createAgent(s.name, s.model, ['execute_code','file_search','web_search']);
+      function deleteAgent(doc) {
+        db.aclentries.deleteMany({resourceId: doc._id});
+        db.agents.deleteOne({_id: doc._id});
+        print('DELETED:' + doc.name + ':' + doc.id);
+      }
+
+      var specs = ${agent_specs};
+      var canonNames = specs.map(function(s){ return s.name; });
+
+      // ── 마이그레이션: 레거시 'Text (X)' / 'Image (X)' 에이전트 처리.
+      // - 'Text (X)': X 가 새 카탈로그에 있으면 이름만 X 로 rename → 이후 upsert 가 toolset/instructions 갱신
+      // - 'Text (X)': 새 카탈로그에 없으면 삭제 (모델 단종)
+      // - 'Image (X)': inline 라우팅으로 대체 — 전부 삭제
+      var legacy = db.agents.find({author: u._id, name: /^(Text |Image )\\(/}).toArray();
+      legacy.forEach(function(d){
+        var mText = d.name.match(/^Text \\((.+)\\)\$/);
+        var mImg  = d.name.match(/^Image \\((.+)\\)\$/);
+        if (mText) {
+          var raw = mText[1];
+          if (canonNames.indexOf(raw) !== -1) {
+            // 동명 신규 spec 과 충돌하지 않게: 같은 이름의 다른 doc 있으면 이건 삭제
+            var clash = db.agents.findOne({author: u._id, name: raw});
+            if (clash) { deleteAgent(d); print('LEGACY_DEDUP:' + d.name); }
+            else {
+              db.agents.updateOne({_id: d._id}, {\$set: {name: raw, updatedAt: now}});
+              // versions[*].name 도 동기화
+              if (Array.isArray(d.versions)) {
+                var vs2 = d.versions.map(function(v){ v.name = raw; return v; });
+                db.agents.updateOne({_id: d._id}, {\$set: {versions: vs2}});
+              }
+              print('RENAMED:' + d.name + ' -> ' + raw);
+            }
+          } else {
+            deleteAgent(d);
+          }
+        } else if (mImg) {
+          deleteAgent(d);
+        }
       });
 
-      // 이미지 에이전트별 system instructions — LibreChat SD 툴 패치된 model 인자 강제.
-      function imgInstr(alias, blurb) {
-        return 'You are an image generation specialist. When the user asks for an image, ALWAYS call the image-generation tool with model=\"' + alias + '\". '
-             + 'Do NOT use any other model. ' + blurb
-             + ' Generate detailed, descriptive prompts (>=7 keywords) and reasonable negative_prompts.';
-      }
-      imgSpecs.forEach(function(s){
-        createAgent('Image (' + s.alias + ')', imgDriver, ['image-generation','file_search'], imgInstr(s.alias, s.blurb));
+      // ── 카탈로그에서 빠진 ollama 에이전트 정리.
+      // model='ollama/<X>' 인데 X 가 새 카탈로그에 없으면 삭제 (예: 모델 단종 시).
+      // 사용자가 수동 생성한 에이전트는 이름이 카탈로그와 정확히 매치되지 않아 안전.
+      var stale = db.agents.find({author: u._id, model: /^ollama\\//}).toArray();
+      stale.forEach(function(d){
+        var modelTag = d.model.replace(/^ollama\\//, '');
+        if (canonNames.indexOf(modelTag) === -1) deleteAgent(d);
       });
 
-      // 기본 preset — 후보 우선순위대로 첫 매치.
-      var defId = null, defTitle = null;
-      for (var i = 0; i < defCands.length; i++) {
-        var a = db.agents.findOne({author:u._id, name:defCands[i]}, {id:1});
-        if (a) { defId = a.id; defTitle = defCands[i]; break; }
-      }
-      if (defId) {
-        var us = u._id.toString();
-        // 멱등: 이미 default preset 있으면 건드리지 않음 (사용자가 바꾼 걸 보존).
-        var existingDefault = db.presets.findOne({user:us, defaultPreset:true});
-        if (!existingDefault) {
-          db.presets.insertOne({
-            presetId: rid('preset_'), title:defTitle, user:us, defaultPreset:true, order:1,
-            endpoint:'agents', agent_id:defId, createdAt:now, updatedAt:now, __v:0
-          });
-          print('DEFAULT_PRESET:' + defTitle);
+      // ── upsert 신규 카탈로그
+      specs.forEach(function(s){ upsertAgent(s.name, s.model, TOOLS, INSTR); });
+
+      // ── default preset
+      // priority 첫 매치 우선, 없으면 첫 spec.
+      var defaultName = '${default_model}' || (specs[0] ? specs[0].name : null);
+      var defAgent = defaultName ? db.agents.findOne({author:u._id, name:defaultName}, {id:1}) : null;
+      var us = u._id.toString();
+      var existingDefault = db.presets.findOne({user:us, defaultPreset:true});
+      var liveAgentIds = db.agents.find({author:u._id}, {id:1}).toArray().map(function(a){return a.id;});
+      if (existingDefault) {
+        if (existingDefault.agent_id && liveAgentIds.indexOf(existingDefault.agent_id) === -1 && defAgent) {
+          // 기존 default 가 가리키던 agent 가 삭제됨 → 신규 default 로 갱신.
+          db.presets.updateOne({_id: existingDefault._id},
+            {\$set: {agent_id: defAgent.id, title: defaultName, updatedAt: now}});
+          print('DEFAULT_PRESET_REASSIGNED:' + defaultName);
         } else {
           print('DEFAULT_PRESET_EXISTS:' + (existingDefault.title || ''));
         }
+      } else if (defAgent) {
+        db.presets.insertOne({
+          presetId: rid('preset_'), title:defaultName, user:us, defaultPreset:true, order:1,
+          endpoint:'agents', agent_id:defAgent.id, createdAt:now, updatedAt:now, __v:0
+        });
+        print('DEFAULT_PRESET:' + defaultName);
       }
     " 2>&1)
 
@@ -287,11 +358,15 @@ create_default_agent_for_user() {
   fi
   while IFS= read -r line; do
     case "$line" in
-      CREATED:*)               echo "agent: ${line#CREATED:}" ;;
-      EXISTS:*)                echo "agent (exists): ${line#EXISTS:}" ;;
-      DEFAULT_PRESET:*)        echo "default preset: ${line#DEFAULT_PRESET:}" ;;
-      DEFAULT_PRESET_EXISTS:*) ;;  # 멱등 — 조용히 무시
-      WARN_NO_ACL_ROLES)       echo "  ⚠ ACL roles 없음 — 'My Agents' 미노출 가능" >&2 ;;
+      CREATED:*)                    echo "agent created: ${line#CREATED:}" ;;
+      UPDATED:*)                    echo "agent updated: ${line#UPDATED:}" ;;
+      RENAMED:*)                    echo "agent renamed: ${line#RENAMED:}" ;;
+      DELETED:*)                    echo "agent deleted: ${line#DELETED:}" ;;
+      LEGACY_DEDUP:*)               echo "legacy dedup: ${line#LEGACY_DEDUP:}" ;;
+      DEFAULT_PRESET:*)             echo "default preset: ${line#DEFAULT_PRESET:}" ;;
+      DEFAULT_PRESET_REASSIGNED:*)  echo "default preset reassigned: ${line#DEFAULT_PRESET_REASSIGNED:}" ;;
+      DEFAULT_PRESET_EXISTS:*)      ;;  # 멱등 — 조용히 무시
+      WARN_NO_ACL_ROLES)            echo "  ⚠ ACL roles 없음 — 'My Agents' 미노출 가능" >&2 ;;
     esac
   done <<< "$result"
 }
@@ -392,6 +467,7 @@ case "${resource}/${action}" in
   team/create)  cmd_team_create "$@" ;;
   team/list)    cmd_team_list ;;
   team/delete)  cmd_team_delete "$@" ;;
+  team/sync)    cmd_team_sync ;;
   user/create)  cmd_user_create "$@" ;;
   user/list)    cmd_user_list ;;
   user/delete)  cmd_user_delete "$@" ;;
