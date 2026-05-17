@@ -41,12 +41,14 @@ claude
 
 Claude Code 는 작업 난이도에 따라 4가지 슬롯을 사용합니다. 스크립트 편집해서 어떤 로컬 모델을 어디에 매핑할지 조정:
 
-| Claude Code 슬롯 | 용도 | 기본 매핑 | 대안 |
-|---|---|---|---|
-| `ANTHROPIC_MODEL` | 명시 호출 시 | `ollama/qwen3-coder-next:q8_0` | 동일 |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | 가장 어려운 작업 | `ollama/qwen3-coder-next:q8_0` | OR 키 있으면 `anthropic/claude-opus-4.7` |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | 균형형 | `ollama/qwen3-coder-next:q8_0` | `ollama/qwen3.6:35b` |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | 가벼운 작업 | `ollama/qwen3.5:9b` | `ollama/llama3.1:8b` |
+| 슬롯 | 기본 매핑 |
+|---|---|
+| `ANTHROPIC_MODEL` | `ollama/qwen3-coder-next:q8_0` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `ollama/qwen3-coder-next:q8_0` |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `ollama/qwen3-coder-next:q8_0` |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `ollama/qwen3.5:9b` |
+
+`ANTHROPIC_MODEL` 은 명시 호출 시. OPUS 슬롯은 가장 어려운 작업 — OR 키 있으면 `anthropic/claude-opus-4.7` 로 대체 가능. SONNET 은 균형형 — VRAM 빠듯하면 `ollama/qwen3.6:35b` 로 다운그레이드. HAIKU 는 가벼운 작업 — `ollama/llama3.1:8b` 도 OK.
 
 ## OpenAI Codex CLI
 
@@ -78,23 +80,35 @@ LITELLM_MASTER_KEY="$(grep -E '^LITELLM_MASTER_KEY=' .env | cut -d= -f2-)" \
 
 ## 모델 선택
 
-| 모델 | VRAM | 토큰/s (DGX Spark) | 용도 |
-|---|---|---|---|
-| `qwen3-coder-next:q8_0` | ~84 GB | ~25 t/s | 어려운 리팩터, deep reasoning |
-| `qwen3.6:35b` | ~22 GB | ~70 t/s | 가벼운 코딩 / 일반 작업 (코딩 특화 X) |
+| 모델 | VRAM |
+|---|---|
+| `qwen3-coder-next:q8_0` | ~84 GB |
+| `qwen3.6:35b` | ~22 GB |
 
-VRAM 80GB+ (GB10, H100 80GB×2 등) 필요. 그 미만은 `qwen3.6:35b` 같은 일반 모델로 대체. Ollama 가 모델 스왑할 때 컨텍스트 전환 latency 발생 — 한 작업에는 한 모델만 쓰는 게 유리.
+`qwen3-coder-next:q8_0` 은 어려운 리팩터·deep reasoning 용 — DGX Spark 기준 ~25 t/s, VRAM 80GB+ (GB10, H100 80GB×2 등) 필요. 그 미만 환경은 `qwen3.6:35b` (~70 t/s) 같은 일반 모델로 대체 — 단, 코딩 특화 모델은 아닙니다. Ollama 가 모델 스왑할 때 컨텍스트 전환 latency 가 크니 한 작업에는 한 모델만 쓰는 게 유리.
 
 ## 트러블슈팅
 
-| 증상 | 원인 / 해결 |
+| 증상 | 1차 확인 |
 |---|---|
-| `401 unauthorized` | `ANTHROPIC_AUTH_TOKEN` / `OPENAI_API_KEY` 가 빈 값. `.env` 의 `LITELLM_MASTER_KEY` 확인 |
-| `404 model not found` | LiteLLM 에 모델 미등록. `./scripts/gen-litellm-config.sh && docker compose up -d litellm` |
-| `Ollama 노드 unreachable` | discovery 시 그 노드만 skip, 다른 노드에 모델 있으면 거기로 라우팅. 어느 노드에도 없으면 노드에서 `ollama pull qwen3-coder-next:q8_0` |
-| 응답이 매우 느림 | 처음 호출 시 모델 로딩 (`q8_0` 은 80GB+ 로드에 20-40s). 2분 idle 후 unload — `OLLAMA_KEEP_ALIVE` 로 유지 ([Ollama 튜닝](ollama-tuning.md)) |
-| 툴 콜이 깨짐 | 텍스트 leak (`<\|python_tag\|>`, ` ```json``` `, `**Call Function:**`, bare JSON) 은 LiteLLM `sanitize_python_tag` 콜백이 자동 변환. 그래도 안 되면 모델별 emit 실패 — `manage.sh` 의 `TOOL_EXCLUDE` 로 해당 (모델, 툴) 조합 제외 |
-| OOM | VRAM 부족. q8 → q4 다운그레이드, 또는 `comfyui-shim stop` |
+| `401 unauthorized` | `LITELLM_MASTER_KEY` |
+| `404 model not found` | LiteLLM 모델 등록 |
+| Ollama 노드 unreachable | 다른 노드 pull 여부 |
+| 응답이 매우 느림 | 모델 로딩 latency |
+| 툴 콜이 깨짐 | sanitizer / TOOL_EXCLUDE |
+| OOM | VRAM 부족 |
+
+**401 unauthorized** — `ANTHROPIC_AUTH_TOKEN` / `OPENAI_API_KEY` 환경변수가 빈 값이거나 잘못된 값. `.env` 의 `LITELLM_MASTER_KEY` 와 일치하는지 확인.
+
+**404 model not found** — LiteLLM 에 모델 미등록. `./scripts/gen-litellm-config.sh && docker compose up -d litellm` 으로 재생성.
+
+**Ollama 노드 unreachable** — discovery 시 그 노드만 skip 되므로 다른 노드에 모델 있으면 자동 라우팅. 어느 노드에도 없으면 `ollama pull qwen3-coder-next:q8_0` 로 추가.
+
+**응답이 매우 느림** — 처음 호출 시 모델 로딩 (`q8_0` 은 80GB+ 로드에 20–40s). 2분 idle 후 unload — `OLLAMA_KEEP_ALIVE` 로 유지 ([Ollama 튜닝](ollama-tuning.md)).
+
+**툴 콜이 깨짐** — 텍스트 leak (`<|python_tag|>`, ` ```json``` `, `**Call Function:**`, bare JSON) 은 LiteLLM `sanitize_python_tag` 콜백이 자동 변환. 그래도 안 되면 모델별 emit 실패 — `manage.sh` 의 `TOOL_EXCLUDE` 로 해당 (모델, 툴) 조합 제외.
+
+**OOM** — VRAM 부족. q8 → q4 다운그레이드, 또는 `comfyui-shim stop` 으로 image-gen 비활성.
 
 ## 같이 보면 좋은 문서
 

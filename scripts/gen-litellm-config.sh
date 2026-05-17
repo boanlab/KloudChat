@@ -23,7 +23,7 @@ done
 grep -qF "$MARKER_START" "$CONFIG_FILE" && grep -qF "$MARKER_END" "$CONFIG_FILE" \
   || { echo "error: AUTOGEN markers 누락: $CONFIG_FILE" >&2; exit 1; }
 
-# Ollama union (per-node 매핑) 한 번 캐시. emit 시 노드별로 deployment 1개씩.
+# 노드별 모델 매핑을 한 번 캐시. emit 시 노드 1개당 deployment 1개씩.
 OLLAMA_NODE_MAP="$(ollama_union_node_models || true)"
 OLLAMA_PULLED="$(awk -F'\t' 'NF==2 {print $2}' <<<"$OLLAMA_NODE_MAP" | sort -u)"
 ollama_has() {
@@ -37,35 +37,21 @@ nodes_for() {
   awk -F'\t' -v m="$needle" '$2==m {print $1}' <<<"$OLLAMA_NODE_MAP"
 }
 
-emit_native_or() {
-  # prov native_id in_pm out_pm
+# commercial: OR 키 있을 때만 등록. canonical name 은 `<prov>/<id>`, 라우트는 `openrouter/<prov>/<id>`.
+emit_commercial_or() {
   local prov="$1" id="$2" in_pm="$3" out_pm="$4"
-  local can="${prov}/${id}"
-  local key_env native_route or_route="openrouter/${prov}/${id}"
-  local route="" model_line="" key_line=""
-  case "$prov" in
-    openai)    key_env=OPENAI_API_KEY    ; native_route="openai/${id}"    ; has_openai_native    && route=native ;;
-    anthropic) key_env=ANTHROPIC_API_KEY ; native_route="anthropic/${id}" ; has_anthropic_native && route=native ;;
-    google)    key_env=GEMINI_API_KEY    ; native_route="gemini/${id}"    ; has_google_native    && route=native ;;
-  esac
-  if [[ "$route" == native ]]; then
-    model_line="$native_route"; key_line="$key_env"
-  elif has_openrouter; then
-    model_line="$or_route";     key_line="OPENROUTER_API_KEY"
-  else
-    return 0
-  fi
-  echo "  - model_name: ${can}"
+  has_openrouter || return 0
+  echo "  - model_name: ${prov}/${id}"
   echo "    litellm_params:"
-  echo "      model: ${model_line}"
-  echo "      api_key: os.environ/${key_line}"
+  echo "      model: openrouter/${prov}/${id}"
+  echo "      api_key: os.environ/OPENROUTER_API_KEY"
   echo "    model_info:"
   echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
   echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
 }
 
-# 보유 노드별로 deployment 한 줄씩 emit → LiteLLM router가 자동 LB.
-# 한 노드만 보유하면 그 노드로 직접 라우팅, 여러 노드면 routing_strategy 따라 분산.
+# 보유 노드 1개당 deployment 1개씩 emit. 같은 model_name 의 여러 deployment 는
+# LiteLLM router 의 routing_strategy 가 LB. 보유 0 이면 MODEL_OR_FREE + OR 키 fallback.
 emit_ollama_chat() {
   local m="$1" in_pm out_pm or_id urls
   in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
@@ -117,13 +103,10 @@ emit_ollama_embed() {
 
 SECTION=$(
   echo "  ${MARKER_START}"
-  # 1. Commercial native curated (provider별)
-  for m in "${OPENAI_NATIVE_MODELS[@]}";    do emit_native_or openai    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
-  for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do emit_native_or anthropic "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
-  for m in "${GOOGLE_NATIVE_MODELS[@]}";    do emit_native_or google    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
-  # 2. Ollama chat discovery (보유 모델은 노드별 deployment, 아니면 MODEL_OR_FREE 매핑 + OR 키 있을 때 fallback)
-  for m in "${OLLAMA_CHAT_CATALOG[@]}"; do emit_ollama_chat "$m"; done
-  # 3. Ollama embed discovery
+  for m in "${OPENAI_MODELS[@]}";    do emit_commercial_or openai    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
+  for m in "${ANTHROPIC_MODELS[@]}"; do emit_commercial_or anthropic "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
+  for m in "${GOOGLE_MODELS[@]}";    do emit_commercial_or google    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
+  for m in "${OLLAMA_CHAT_CATALOG[@]}";  do emit_ollama_chat  "$m"; done
   for m in "${OLLAMA_EMBED_CATALOG[@]}"; do emit_ollama_embed "$m"; done
   echo "  ${MARKER_END}"
 )
@@ -147,5 +130,5 @@ mv "$tmp" "$CONFIG_FILE"; trap - EXIT
 
 n=$(echo "$SECTION" | grep -c '^  - model_name:' || true)
 echo "==> $CONFIG_FILE — $n models"
-echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_anthropic_native && echo y || echo n) google=$(has_google_native && echo y || echo n) or=$(has_openrouter && echo y || echo n)"
+echo "    keys: openrouter=$(has_openrouter && echo y || echo n)"
 echo "    ollama union: $(echo "$OLLAMA_PULLED" | grep -c . || true) models / $(echo "$OLLAMA_NODE_MAP" | awk -F'\t' 'NF==2 {print $1}' | sort -u | grep -c . || true) nodes"

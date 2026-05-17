@@ -1,15 +1,11 @@
-"""
-rag_api 의 document_loader.py 에 HWP(.hwp) 분기 in-place 추가.
+"""rag_api 의 document_loader.py 에 HWP 분기 추가.
 
-증상: rag_api base 이미지의 get_loader() 가 hwp 확장자를 처리 안 해서 마지막 else 의
-TextLoader 로 fallback → 이진 OLE 데이터를 텍스트로 읽어 임베딩이 깨진 garbage →
-한글(HWP) RAG 정확도 0.
+base 의 get_loader() 가 hwp 를 미처리 → TextLoader fallback → OLE 이진을 텍스트로
+읽어 임베딩이 깨짐. 이 패치가 hwp5txt CLI 로 .hwp → .txt 변환 후 TextLoader 사용.
+hwp5txt 는 base 이미지의 pyhwp 패키지 entry_point (/usr/local/bin/hwp5txt).
 
-해결: hwp5txt CLI 로 .hwp → .txt 변환 후 TextLoader 로 처리.
-hwp5txt 는 base 이미지의 pyhwp 패키지에 entry_point 로 포함됨 (/usr/local/bin/hwp5txt).
-
-Dockerfile.rag 의 빌드 단계에서 한 번만 실행. 멱등: 이미 patch 된 경우 skip.
-base 이미지가 업그레이드되어 get_loader 함수가 바뀌어 패턴이 안 맞으면 명시적 실패.
+Dockerfile.rag 빌드 단계에서 1회 실행. 멱등 (이미 patch 면 skip). base 가 업그레이드돼
+패턴이 안 맞으면 명시적 실패.
 """
 
 import re

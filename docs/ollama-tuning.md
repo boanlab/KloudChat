@@ -234,15 +234,17 @@ Environment="CUDA_VISIBLE_DEVICES=0"
 
 ## 모델별 메모리 점유
 
-| 모델 | 크기 | 비고 |
-|---|---|---|
-| qwen3.5:9b (Q4_K_M) | ~6 GB | 경량 범용 |
-| llama3.1:8b (Q4) | ~5 GB | 경량 범용 (영문 강함) |
-| qwen3.6:35b (Q4) | ~22 GB | 주력 범용 |
-| nemotron3:33b (Q4) | ~20 GB | 추론 강조 |
-| llama3.3:70b (Q4) | ~40 GB | 대형 범용 |
-| qwen3-coder-next:q8_0 | ~84 GB | 코딩 고품질 |
-| bge-m3 | ~1.2 GB | RAG 임베딩 (다국어) |
+| 모델 | 크기 |
+|---|---|
+| qwen3.5:9b (Q4_K_M) | ~6 GB |
+| llama3.1:8b (Q4) | ~5 GB |
+| qwen3.6:35b (Q4) | ~22 GB |
+| nemotron3:33b (Q4) | ~20 GB |
+| llama3.3:70b (Q4) | ~40 GB |
+| qwen3-coder-next:q8_0 | ~84 GB |
+| bge-m3 | ~1.2 GB |
+
+qwen3.5:9b / llama3.1:8b 는 경량 범용 (llama 는 영문 강함). qwen3.6:35b 는 주력 범용, nemotron3:33b 는 추론 강조. llama3.3:70b 는 대형 범용, qwen3-coder-next:q8_0 는 코딩 고품질. bge-m3 는 RAG 임베딩 (다국어).
 
 GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 

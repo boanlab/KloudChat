@@ -178,10 +178,9 @@ model_list:
   # <<< KLOUDCHAT_AUTOGEN_END
 
   # ── External image-generation models (정적 등록 — autogen 영역 밖)
-  # 외부 LLM 에이전트의 image-generation tool 이 사용. shim 의 OR_IMAGE_MODELS
-  # env 매핑을 통해 chat/completions + modalities=["image","text"] 로 호출.
-  # 둘 다 OpenRouter 경유 (.env 의 native GEMINI/OPENAI 키 비어있음, OR 키만 사용).
-  # 실제 OR catalog 에 없으면 비슷한 ID 로 교체 (예: gpt-image-2 → gpt-image-1,
+  # 외부 LLM 에이전트의 image-generation tool 이 사용. shim 의 OR_IMAGE_MODELS env
+  # 매핑을 통해 chat/completions + modalities=["image","text"] 로 호출. OpenRouter 경유.
+  # 모델 ID 가 OR catalog 에 없으면 가까운 ID 로 교체 (예: gpt-image-2 → gpt-image-1,
   # gemini-3-pro-image-preview → gemini-2.5-flash-image-preview).
   - model_name: image-nano-banana
     litellm_params:

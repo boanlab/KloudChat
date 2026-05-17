@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Usage: setup.sh [--yes]
+# Usage: setup.sh
 #
 # 사전 준비:
 #   ./scripts/gen-env.sh         # .env 생성 (없으면 setup 거부)
-#   $EDITOR .env                 # OPENAI/ANTHROPIC/GEMINI/OPENROUTER/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS 등 채우기
+#   $EDITOR .env                 # OPENROUTER_API_KEY/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS 등 채우기
 #
 # 필수: OPENROUTER_API_KEY 또는 OLLAMA_URLS reachable 노드 ≥1 (둘 중 하나)
 set -euo pipefail
@@ -13,10 +13,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 source "${SCRIPT_DIR}/lib.sh"
 
-YES=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --yes|-y)  YES=1; shift ;;
     -h|--help) grep -E '^# ' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)         err "Unknown: $1"; exit 1 ;;
   esac
@@ -58,8 +56,8 @@ else
   exit 1
 fi
 
-# native 키 상태 요약
-echo "    keys: openai=$(has_openai_native && echo y || echo n) anthropic=$(has_anthropic_native && echo y || echo n) google=$(has_google_native && echo y || echo n) openrouter=$(has_openrouter && echo y || echo n) hf=$( [[ -n "$(env_get HF_TOKEN)" ]] && echo y || echo n )"
+# 키 상태 요약
+echo "    keys: openrouter=$(has_openrouter && echo y || echo n) hf=$( [[ -n "$(env_get HF_TOKEN)" ]] && echo y || echo n )"
 
 # Config 재생성 (union 결과를 yaml에 반영 — 보유 노드별 deployment).
 ./scripts/gen-litellm-config.sh

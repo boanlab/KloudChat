@@ -1,29 +1,32 @@
 # 사전 요구사항
 
-[README](../README.md#빠른-시작) 에서 시나리오 (A: 로컬 Ollama / B: OR-only / C: 로컬 + OR / D: 풀 하이브리드) 를 골랐다면 그에 맞는 prerequisite 만 챙기면 됩니다.
+[README](../README.md#빠른-시작) 에서 시나리오 (A: 로컬 Ollama / B: OR-only / C: 로컬 + OR) 를 골랐다면 그에 맞는 prerequisite 만 챙기면 됩니다.
 
 ## 공통 — compose 호스트
 
-| 요건 | 비고 |
+| 요건 | 최소 |
 |---|---|
-| Linux x86_64 또는 aarch64 | macOS / Windows 미지원 |
-| Docker + Docker Compose v2 | `curl -fsSL https://get.docker.com \| sh && sudo usermod -aG docker $USER` |
+| OS | Linux x86_64 또는 aarch64 |
+| Docker | Compose v2 |
 | 유틸 | `jq curl wget` |
-| 디스크 | 50 GB 이상 (이미지 빌드 + 데이터) |
-| RAM | 16 GB 이상 권장 |
-| 포트 | 8000, 8080 미사용 |
+| 디스크 | 50 GB |
+| RAM | 16 GB |
+| 포트 | 8000, 8080 |
 
-`setup.sh` 0단계가 위 항목들을 자동 검증합니다.
+macOS / Windows 는 미지원. Docker 미설치 시 `curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER`. 디스크는 이미지 빌드 + 데이터 합산, RAM 은 권장치, 포트는 미사용 상태여야 함. `setup.sh` 0단계가 위 항목들을 자동 검증합니다.
 
 ## 시나리오별 추가 요건
 
 ### A — 로컬 Ollama (GPU 필요)
 
-| 요건 | 비고 |
+| 요건 | 최소 |
 |---|---|
-| NVIDIA GPU | 최소 10 GB VRAM (qwen3.5:9b 까지). 35b/gemma 까지 쓰려면 24 GB+ |
-| NVIDIA Container Toolkit | [공식 가이드](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) — compose 호스트가 GPU 머신과 같을 때만 |
-| 모델 디스크 | 100 GB+ (Ollama 모델 + ComfyUI 가중치) |
+| NVIDIA GPU | 10 GB VRAM |
+| 모델 디스크 | 100 GB |
+
+10 GB VRAM 은 qwen3.5:9b 까지 — 35b 까지 쓰려면 24 GB+, 70b 는 40 GB+, q8 코더는 80 GB+ 필요. 모델 디스크는 Ollama 모델 + ComfyUI 가중치 합산.
+
+Ollama / ComfyUI 는 호스트에 systemd 네이티브로 설치되어 GPU 에 직접 접근하므로 **NVIDIA Container Toolkit 은 필요 없습니다.** 컨테이너 (LibreChat / LiteLLM / RAG API / comfyui-shim) 는 네이티브 프로세스를 HTTP 로만 호출.
 
 GPU 호스트에서 prerequisite:
 
@@ -44,11 +47,7 @@ VRAM 점유는 [GPU 메모리 가이드](gpu-memory.md) 참고.
 
 ### C — 로컬 Ollama + OR
 
-A 의 GPU 요건 + B 의 OR 키. native API 계정은 없음.
-
-### D — 풀 하이브리드
-
-C 의 요건 + native API 키 (OpenAI/Anthropic/Google 중 가지고 있는 것). 키 있는 provider 만 native 로 등록되고 나머지는 OR fallback.
+A 의 GPU 요건 + B 의 OR 키. Commercial 모델 (OpenAI/Anthropic/Google) 은 전부 OpenRouter 경유 — native API 직결은 지원 안 함.
 
 ## 멀티 노드
 

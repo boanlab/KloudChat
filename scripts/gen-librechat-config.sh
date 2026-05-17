@@ -27,12 +27,13 @@ ollama_has() {
   grep -qxF "$needle" <<<"$OLLAMA_PULLED"
 }
 
+# gen-litellm-config.sh 의 등록 조건과 같은 셋을 LibreChat dropdown 에 노출.
 MODELS=()
-# Commercial: native key 있으면 등록, 없으면 OR 있을 때 등록 (canonical name 동일).
-for m in "${OPENAI_NATIVE_MODELS[@]}";    do has_openai_native    || has_openrouter || continue; MODELS+=("openai/${m}");    done
-for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do has_anthropic_native || has_openrouter || continue; MODELS+=("anthropic/${m}"); done
-for m in "${GOOGLE_NATIVE_MODELS[@]}";    do has_google_native    || has_openrouter || continue; MODELS+=("google/${m}");    done
-# Ollama 카탈로그. 노드에 pulled이면 로컬, 없으면 MODEL_OR_FREE 매핑 + OR 키로 fallback.
+if has_openrouter; then
+  for m in "${OPENAI_MODELS[@]}";    do MODELS+=("openai/${m}");    done
+  for m in "${ANTHROPIC_MODELS[@]}"; do MODELS+=("anthropic/${m}"); done
+  for m in "${GOOGLE_MODELS[@]}";    do MODELS+=("google/${m}");    done
+fi
 for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
   if ollama_has "$m"; then MODELS+=("ollama/${m}")
   elif [[ -n "${MODEL_OR_FREE[$m]:-}" ]] && has_openrouter; then MODELS+=("ollama/${m}"); fi

@@ -36,6 +36,25 @@ mcpServers:
     command: uvx
     args:
       - mcp-server-math
+  semantic_scholar:
+    # Semantic Scholar 학술 검색 (200M+ 논문, 인용 그래프, 저자). 33 tools.
+    # API 키 없으면 공용 IP rate limit (1 req/sec) — multi-user 환경에선 빠듯할 수 있음.
+    # 키 필요 시 https://www.semanticscholar.org/product/api 에서 발급 후
+    # env 에 SEMANTIC_SCHOLAR_API_KEY: "${SEMANTIC_SCHOLAR_API_KEY}" 추가.
+    type: stdio
+    command: uvx
+    args:
+      - semantic-scholar-mcp
+  arxiv:
+    # arxiv.org public API 직접 호출 — 키 불필요. 8 tools.
+    # search_papers / download_paper (PDF/HTML → markdown) / read_paper /
+    # list_papers / semantic_search (로컬 컬렉션) / citation_graph / watch_topic / check_alerts.
+    # 다운로드 캐시: 컨테이너 내부 ~/.arxiv-mcp-server/papers (재시작 시 휘발).
+    # 영구 보관 필요하면 host bind 추가 + --storage-path 인자.
+    type: stdio
+    command: uvx
+    args:
+      - arxiv-mcp-server
   litellm_usage:
     # 사용자 본인의 LiteLLM 사용량/예산 조회. tools: my_usage(days), budget_status().
     # uv run --script 로 inline-deps 스크립트 실행 (mcp + httpx 자동 설치).

@@ -4,19 +4,13 @@
 __KC_LIB_SH=1
 
 __R='\033[0;31m'; __G='\033[0;32m'; __Y='\033[1;33m'
-__B='\033[1;34m'; __C='\033[0;36m'; __N='\033[0m'
+__B='\033[1;34m'; __N='\033[0m'
 
 hdr()  { echo; echo -e "${__B}━━━ $* ━━━${__N}"; }
 ok()   { echo -e "${__G}✓${__N} $*"; }
 info() { echo -e "${__G}[INFO]${__N} $*"; }
 warn() { echo -e "${__Y}[WARN]${__N} $*"; }
 err()  { echo -e "${__R}✗${__N} $*" >&2; }
-
-ask() {
-  (( ${YES:-0} )) && return 0
-  local ans; read -rp "$(echo -e "${__C}?${__N} $1 [y/N] ")" ans
-  [[ "$ans" =~ ^[Yy]$ ]]
-}
 
 detect_os() {
   case "$(uname -s)" in Linux) echo linux ;; *) echo unsupported ;; esac
@@ -51,10 +45,6 @@ env_set() {
   [[ -f "$file" ]] || { echo "[env_set] error: ${file} not found" >&2; return 1; }
   if grep -qE "^${key}=" "$file"; then sed -i "s|^${key}=.*|${key}=${val}|" "$file"
   else echo "${key}=${val}" >> "$file"; fi
-}
-
-comfyui_urls() {
-  local v; v="$(env_get COMFYUI_URLS)"; echo "${v:-http://host.docker.internal:8188}"
 }
 
 has_nvidia_gpu() { command -v nvidia-smi &>/dev/null && nvidia-smi -L &>/dev/null; }
@@ -105,13 +95,12 @@ port_in_use() {
 }
 
 # Model catalog
-# 제공자별 native curated 리스트. native key 있으면 native, 없고 OR 있으면 OR로 라우팅. (상호배타)
-OPENAI_NATIVE_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
-ANTHROPIC_NATIVE_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
-GOOGLE_NATIVE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
+# Commercial 카탈로그 — OpenRouter 경유. OR 키 없으면 미등록.
+OPENAI_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
+ANTHROPIC_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
+GOOGLE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
 
-# Ollama-only 카탈로그 — union discovery로 어느 노드든 보유 시 그 노드(들)에 deployment 등록.
-# 어느 노드도 보유 안 할 때 MODEL_OR_FREE 매핑이 있으면 OR free 로 fallback.
+# Ollama 카탈로그 — union discovery 로 어느 노드든 보유 시 그 노드(들)에 deployment 등록.
 OLLAMA_CHAT_CATALOG=(
   qwen3.5:9b qwen3.6:35b
   llama3.1:8b llama3.3:70b
@@ -120,27 +109,25 @@ OLLAMA_CHAT_CATALOG=(
 )
 OLLAMA_EMBED_CATALOG=(bge-m3)
 
-# default 에이전트 우선순위 — 위 카탈로그 중 union 에 존재하는 첫 매치를 default 로.
-# `ollama_default_chat_model` 가 이 순서대로 lookup.
+# 기본 에이전트 우선순위 — 위 카탈로그 중 union 에 존재하는 첫 매치가 default preset.
 OLLAMA_DEFAULT_PRIORITY=(
   llama3.3:70b
   qwen3.6:35b
   qwen3.5:9b
 )
 
-# Ollama 카탈로그 모델 → OR free model id 매핑.
-# Ollama 노드에 pulled이면 ollama_chat 우선, 없으면 이 매핑 + OR 키가 있을 때만 OR free로 fallback.
-# OR free 카탈로그는 https://openrouter.ai/models?supported_parameters=free 에서 확인 후 활성화.
+# 어느 노드에도 모델이 없을 때 OR free 로 fallback 하는 매핑 (기본 비활성).
+# 활성 시 항목 주석 해제 — https://openrouter.ai/models?supported_parameters=free 참고.
 declare -A MODEL_OR_FREE=(
   # [qwen3.5:9b]=qwen/qwen3-8b:free
   # [qwen3.6:35b]=qwen/qwen3-32b:free
   # [llama3.1:8b]=meta-llama/llama-3.1-8b-instruct:free
   # [llama3.3:70b]=meta-llama/llama-3.3-70b-instruct:free
-  # [nemotron3:33b]=nvidia/nemotron-3-33b:free   # ID 검증 필요
+  # [nemotron3:33b]=nvidia/nemotron-3-33b:free
   # [qwen3-coder-next:q8_0]=qwen/qwen3-coder:free
 )
 
-# 가격 (USD per 1M tokens). 신규 모델 추가 시 같이 갱신.
+# 모델 단가 (USD per 1M tokens). LiteLLM spend 추적용.
 declare -A MODEL_PRICE_IN_PM=(
   [gpt-5.5]=5      [gpt-5]=2.5    [gpt-5-mini]=0.25    [gpt-5-nano]=0.05
   [claude-opus-4.7]=5    [claude-opus-4.6]=5    [claude-sonnet-4.6]=3    [claude-haiku-4.5]=1
@@ -163,34 +150,16 @@ declare -A MODEL_PRICE_OUT_PM=(
 
 per_token_cost() { awk -v v="$1" 'BEGIN { printf "%.10f", v/1000000 }'; }
 
-has_openai_native()    { [[ -n "$(env_get OPENAI_API_KEY)" ]]; }
-has_anthropic_native() { [[ -n "$(env_get ANTHROPIC_API_KEY)" ]]; }
-has_google_native()    { [[ -n "$(env_get GEMINI_API_KEY)" ]]; }
-has_openrouter()       { [[ -n "$(env_get OPENROUTER_API_KEY)" ]]; }
+has_openrouter() { [[ -n "$(env_get OPENROUTER_API_KEY)" ]]; }
 
-# canonical LibreChat 메뉴용 model_name. native/OR 라우트 무관하게 동일.
-canonical_name() {
-  local m="$1"
-  case " ${OPENAI_NATIVE_MODELS[*]} " in
-    *" $m "*) echo "openai/$m"; return ;;
-  esac
-  case " ${ANTHROPIC_NATIVE_MODELS[*]} " in
-    *" $m "*) echo "anthropic/$m"; return ;;
-  esac
-  case " ${GOOGLE_NATIVE_MODELS[*]} " in
-    *" $m "*) echo "google/$m"; return ;;
-  esac
-  echo "ollama/$m"
-}
-
-# Ollama 노드 URL 정규화 (앞뒤 공백/슬래시 trim, host.docker.internal 보존).
+# URL 양끝 공백 + trailing / trim.
 __ollama_normalize_url() {
   local u="$1"
   u="$(echo "$u" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s|/$||')"
   echo "$u"
 }
 
-# 단일 노드의 모델 조회 시 host.docker.internal → localhost (호스트에서 호출용).
+# 단일 노드의 모델 목록. host.docker.internal → localhost 치환 (compose 호스트에서 호출).
 __ollama_node_models() {
   local raw="$1" url probe
   url="$(__ollama_normalize_url "$raw")"
@@ -198,8 +167,7 @@ __ollama_node_models() {
   curl -sf --max-time 5 "${probe}/api/tags" 2>/dev/null | jq -r '.models[]?.name' 2>/dev/null || true
 }
 
-# 노드별 모델 매핑. 각 줄: <원본 URL>\t<model>. unreachable 노드는 stderr 경고만.
-# OLLAMA_URLS 비었으면 빈 출력.
+# 노드별 모델 매핑 — 각 줄 "<URL>\t<model>". unreachable 노드는 stderr 경고 후 skip.
 ollama_union_node_models() {
   local urls; urls="$(env_get OLLAMA_URLS)"
   [[ -n "$urls" ]] || return 0
@@ -218,21 +186,12 @@ ollama_union_node_models() {
   done
 }
 
-# 모든 reachable 노드의 모델 합집합 (중복 제거, 정렬). 노드별 정보 없이 모델만 필요할 때.
+# 전 노드 모델 합집합 (중복 제거, 정렬).
 ollama_union_models() {
   ollama_union_node_models | awk -F'\t' 'NF==2 {print $2}' | sort -u
 }
 
-# 특정 모델을 보유한 노드 URL 목록 (한 줄에 1개). tag 누락 시 :latest 보정.
-ollama_nodes_for_model() {
-  local needle="$1"
-  [[ "$needle" != *:* ]] && needle="${needle}:latest"
-  ollama_union_node_models | awk -F'\t' -v m="$needle" '$2==m {print $1}'
-}
-
-# OLLAMA_DEFAULT_PRIORITY 순서대로 lookup, union 어디든 보유한 첫 모델 echo.
-# 매치 0건이면 빈 출력 + exit 0 (호출 측이 fallback 결정).
-# 다중 노드 정책: 한 노드라도 보유하면 default 후보 — LiteLLM router 가 그 노드(들) 로 라우팅.
+# OLLAMA_DEFAULT_PRIORITY 순서대로 union 에서 lookup. 매치 0건이면 빈 출력.
 ollama_default_chat_model() {
   local union; union="$(ollama_union_models)"
   local m tag
@@ -243,7 +202,7 @@ ollama_default_chat_model() {
   return 0
 }
 
-# 단일 ComfyUI 노드가 보유한 모델 별칭 출력 (flux-schnell, flux-dev, qwen-image, qwen-image-edit).
+# 단일 ComfyUI 노드 보유 alias (flux-schnell / flux-dev / qwen-image / qwen-image-edit).
 __comfyui_node_models() {
   local raw="$1" url info
   url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -258,7 +217,7 @@ __comfyui_node_models() {
   grep -qxF 'flux1-dev.safetensors'             <<<"$unets" && echo flux-dev
 }
 
-# 노드별 alias 매핑. 각 줄: <원본 URL>\t<alias>. unreachable 노드는 stderr 경고만.
+# 노드별 alias 매핑 — 각 줄 "<URL>\t<alias>". unreachable 노드는 stderr 경고 후 skip.
 comfyui_union_node_models() {
   local urls; urls="$(env_get COMFYUI_URLS)"
   [[ -n "$urls" ]] || return 0
@@ -277,32 +236,28 @@ comfyui_union_node_models() {
   done
 }
 
-# 모든 reachable 노드의 alias 합집합 (중복 제거).
+# 전 노드 alias 합집합 (중복 제거).
 comfyui_union_models() {
   comfyui_union_node_models | awk -F'\t' 'NF==2 {print $2}' | sort -u
 }
 
-# Ollama union 결과에서 모델 보유 확인. tag 누락 시 :latest 보정 (gen-litellm-config.sh ollama_has 와 동일).
+# union 결과에서 모델 보유 확인. tag 누락 시 :latest 보정.
 ollama_pulled_has() {
   local pulled="$1" needle="$2"
   [[ "$needle" != *:* ]] && needle="${needle}:latest"
   grep -qxF "$needle" <<<"$pulled"
 }
 
-# LiteLLM team allowlist 생성용 canonical 모델 CSV.
-# gen-litellm-config.sh 의 emit 로직과 일치해야 함 — 실제 등록될 model_name 만 반환.
+# LiteLLM team allowlist 용 canonical model_name CSV.
+# gen-litellm-config.sh 의 emit 로직과 같은 조건을 따라야 함 — 실제 등록될 모델만 반환.
 litellm_chat_models_csv() {
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local out=() m
-  for m in "${OPENAI_NATIVE_MODELS[@]}"; do
-    if has_openai_native || has_openrouter; then out+=("openai/$m"); fi
-  done
-  for m in "${ANTHROPIC_NATIVE_MODELS[@]}"; do
-    if has_anthropic_native || has_openrouter; then out+=("anthropic/$m"); fi
-  done
-  for m in "${GOOGLE_NATIVE_MODELS[@]}"; do
-    if has_google_native || has_openrouter; then out+=("google/$m"); fi
-  done
+  if has_openrouter; then
+    for m in "${OPENAI_MODELS[@]}";    do out+=("openai/$m");    done
+    for m in "${ANTHROPIC_MODELS[@]}"; do out+=("anthropic/$m"); done
+    for m in "${GOOGLE_MODELS[@]}";    do out+=("google/$m");    done
+  fi
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
     if ollama_pulled_has "$pulled" "$m"; then
       out+=("ollama/$m")

@@ -1,6 +1,6 @@
 # KloudChat
 
-온프레미스 환경에서 운영하는 오픈소스 기반 AI 플랫폼. LibreChat + LiteLLM 위에 Ollama / OpenRouter / native API (OpenAI, Anthropic, Google) 를 묶어 채팅·RAG·이미지 생성·코드 실행을 한 곳에서 제공합니다.
+온프레미스 환경에서 운영하는 오픈소스 기반 AI 플랫폼. LibreChat + LiteLLM 위에 Ollama 와 OpenRouter 를 묶어 채팅·RAG·이미지 생성·코드 실행을 한 곳에서 제공합니다. Commercial 모델 (OpenAI/Anthropic/Google) 은 OpenRouter 단일 경로로만 라우팅 — native API 직결은 지원하지 않습니다 (운영 단순화 + 청구 단일화).
 
 ## 빠른 시작
 
@@ -9,7 +9,6 @@
 - **A — 로컬 Ollama 만**: 자체 GPU 가 있을 때. 무료 + 데이터 외부 안 나감. 로컬이 기준선. 단, 모델 다운로드 시간/디스크 100GB+ 필요.
 - **B — OpenRouter 만**: GPU 없을 때. OpenRouter API 키 1개로 GPT/Claude/Gemini 다 쓸 수 있음. 5분 안에 띄움. 단, 사용량당 과금 + 데이터는 OpenRouter 경유.
 - **C — 로컬 Ollama + OR**: 가장 흔한 셋업. GPU 로 로컬 모델 + OR 키 하나로 frontier 모델 같이. 민감 대화는 로컬로, 고난이도 작업만 OR 경유.
-- **D — 풀 하이브리드**: native API 키(OpenAI/Anthropic/Google) + OR + 로컬 Ollama 셋이 공존. native 키 있는 provider 는 native 로, 없으면 OR fallback, 로컬 모델도 동시 노출. 이미 native 계정이 있고 per-provider 청구가 필요할 때.
 
 `setup.sh` 의 사전체크: **reachable Ollama 노드 또는 OPENROUTER_API_KEY 둘 중 하나는 있어야 합니다.** 둘 다 없으면 0단계에서 중단.
 
@@ -34,8 +33,8 @@ $EDITOR .env    # HF_TOKEN=hf_...   (없으면 flux-dev 만 빠지고 나머지 
 ./scripts/install-comfyui.sh                    # 이미지 생성 쓸 거면
 ./scripts/download-image-models.sh              # 기본 셋 + (HF_TOKEN 있으면) +flux-dev
 
-# 3. setup + admin (외부 API 키는 빈 칸으로 둠, OLLAMA_URLS/COMFYUI_URLS 는 기본값 그대로)
-./scripts/setup.sh --yes
+# 3. setup + admin (OPENROUTER_API_KEY 빈 칸 두면 commercial 모델 미등록, OLLAMA_URLS/COMFYUI_URLS 는 기본값 그대로)
+./scripts/setup.sh
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
@@ -54,7 +53,7 @@ $EDITOR .env
 #   COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
 
 # 3. setup
-./scripts/setup.sh --yes
+./scripts/setup.sh
 ```
 
 > 멀티 노드일 때 LibreChat 메뉴에 등장하는 모델 = **어느 노드에라도 pull 된 모델**(union). 같은 모델을 여러 노드에 받으면 LiteLLM router 가 노드 간 LB.
@@ -67,7 +66,7 @@ $EDITOR .env
 #   OPENROUTER_API_KEY=sk-or-v1-...
 
 # 2. setup (Ollama 노드는 unreachable warn 만 뜨고 진행됨)
-./scripts/setup.sh --yes
+./scripts/setup.sh
 
 # 3. admin 생성
 ./scripts/manage.sh user create \
@@ -81,7 +80,7 @@ $EDITOR .env
 
 ### C 로컬 Ollama + OR — 가장 흔한 셋업
 
-A 의 로컬 GPU 위에 B 의 OR 단일 키를 얹어 frontier 모델까지 함께 운영. native 계정 0개.
+A 의 로컬 GPU 위에 B 의 OR 단일 키를 얹어 frontier 모델까지 함께 운영.
 
 ```bash
 # 1. (선택) FLUX.1-dev 받을 거면 .env 에 HF_TOKEN 먼저 채우기
@@ -98,26 +97,11 @@ $EDITOR .env
 ./scripts/download-image-models.sh
 
 # 3. setup + admin
-./scripts/setup.sh --yes
+./scripts/setup.sh
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
 LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5/3.6, llama3.x/4, nemotron3, qwen3-coder-next 등)이 함께 노출. `MODEL_OR_FREE` 매핑이 활성화된 Ollama 카탈로그 모델은 Ollama 에 pull 됐으면 로컬, 안 됐으면 OR free 로 fallback (기본 비활성, 필요 시 `lib.sh` 에서 활성화).
-
-### D 풀 하이브리드 — native API + OR + 로컬 Ollama
-
-이미 OpenAI/Anthropic/Google 계정이 있어 per-provider 청구가 필요할 때. `.env` 에서:
-
-```dotenv
-OPENAI_API_KEY=sk-...               # 있는 만큼만 채움
-ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=...
-OPENROUTER_API_KEY=sk-or-...        # 없는 provider 의 fallback 으로
-OLLAMA_URLS=http://gpu-node-1:11434 # 로컬 Ollama 노드
-HF_TOKEN=hf_...                     # flux-dev 받을 거면
-```
-
-라우팅 규칙: native 키가 있는 provider 는 native 로 (`openai/gpt-5.5`), 없는 provider 는 OR fallback (`openrouter/anthropic/claude-opus-4.7`), Ollama 노드에 pull 된 모델은 로컬로 (`ollama/qwen3.6:35b`). `MODEL_OR_FREE` 매핑이 활성화된 카탈로그 모델은 Ollama 우선, 없으면 OR free 로 fallback.
 
 자세한 매트릭스는 [docs/models.md](docs/models.md#라우팅-결정-매트릭스) 참고.
 
@@ -134,22 +118,26 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 
 | 기능 | 컴포넌트 |
 |---|---|
-| 멀티 LLM 채팅 | LibreChat + LiteLLM (native API + Ollama + OpenRouter 통합) |
-| RAG (문서 기반 답변) | pgvector + MeiliSearch (Hybrid Search), bge-m3 임베딩 |
+| 멀티 LLM 채팅 | LibreChat + LiteLLM |
+| RAG | pgvector + MeiliSearch + bge-m3 |
 | 웹 검색 | SearXNG |
-| 코드 실행 샌드박스 | LibreCodeInterpreter |
-| HWP/PDF/DOCX 업로드 | LibreChat RAG API |
-| 이미지 생성 | ComfyUI + A1111 shim — Qwen-Image(-Edit), FLUX.1 (dev/schnell) |
-| URL fetch / 수학 | MCP 서버 (mcp-server-fetch · mcp-sympy · mcp-server-math) — uvx 로 stdio spawn |
-| 팀·사용자·예산 관리 | LiteLLM + `scripts/manage.sh` |
+| 코드 실행 | LibreCodeInterpreter |
+| 파일 업로드 | LibreChat RAG API |
+| 이미지 생성 | ComfyUI + A1111 shim |
+| MCP 도구 | uvx stdio (fetch / time / math / scholar / arxiv / ...) |
+| 운영 관리 | LiteLLM + `scripts/manage.sh` |
+
+이미지 생성은 Qwen-Image / Qwen-Image-Edit / FLUX.1 (dev, schnell) — [tools.md#이미지-백엔드](docs/tools.md#이미지-백엔드). RAG API 는 HWP / PDF / DOCX 등 업로드 처리. MCP 서버 전체 목록은 [tools.md](docs/tools.md). 운영 관리는 팀·사용자·예산 (LiteLLM 가상 키).
 
 ## 지원 환경
 
-| 환경 | 가능한 시나리오 | 비고 |
-|---|---|---|
-| Linux x86_64, GPU 없음 | B (OR-only) | 채팅만 가능. 이미지 / RAG 임베딩은 로컬 모델 필요 → 비활성 |
-| Linux x86_64 + NVIDIA GPU | A / B / C / D | 전체 시나리오 |
-| Linux aarch64 — DGX Spark (GB10) | A / B / C / D | 전체 시나리오. arm64 + CUDA 12.8 자체 빌드된 ComfyUI |
+| 환경 | 시나리오 |
+|---|---|
+| Linux x86_64, GPU 없음 | B (OR-only) |
+| Linux x86_64 + NVIDIA GPU | A / B / C |
+| Linux aarch64 — DGX Spark (GB10) | A / B / C |
+
+GPU 없으면 채팅만 가능 — 이미지 / RAG 임베딩은 로컬 모델 필요해서 비활성. GB10 은 arm64 + CUDA 12.8 자체 빌드된 ComfyUI 사용.
 
 ## 아키텍처
 
@@ -157,8 +145,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 [사용자] → LibreChat (:8080)
             ↓
          LiteLLM (:8000) ──→ Ollama 노드들 (OLLAMA_URLS, model_name 별 least-busy LB)
-            ├─ native API (OpenAI/Anthropic/Google)
-            └─ OpenRouter
+                          └─→ OpenRouter (commercial: gpt-*/claude-*/gemini-*)
 
          RAG API → LiteLLM → bge-m3 임베딩 → pgvector + MeiliSearch (Hybrid)
          comfyui-shim → ComfyUI (COMFYUI_URLS)
@@ -174,6 +161,7 @@ HF_TOKEN=hf_...                     # flux-dev 받을 거면
 - [사전 요구사항](docs/prerequisites.md) — 하드웨어/소프트웨어 체크리스트
 - [환경변수 레퍼런스](docs/env-reference.md) — `.env` 변수 전체
 - [모델 설정](docs/models.md) — 카탈로그 + 라우팅 매트릭스 + 모델 추가법
+- [도구](docs/tools.md) — Built-in / MCP / image 백엔드 + 모델별 부착 매트릭스
 - [코딩 에이전트 연동](docs/coding-agents.md) — Claude Code / Codex 를 로컬 `qwen3-coder-next` 로 구동
 - [브랜딩 커스터마이징](docs/branding.md) — 로고 / 파비콘 / PWA / 엔드포인트 아이콘 교체
 - [아키텍처 상세](docs/overview.md) — 컴포넌트별 동작

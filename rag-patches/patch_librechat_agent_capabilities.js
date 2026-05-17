@@ -1,19 +1,12 @@
-// LibreChat 의 resolveAgentCapabilities() 폴백 조건 패치.
+// LibreChat ToolService.js 의 resolveAgentCapabilities() 폴백 조건 패치.
 //
-// 원본 (api/server/services/ToolService.js):
-//   if (capabilities.size === 0 && isEphemeralAgentId(agentId)) {
-//     capabilities = new Set(appConfig.endpoints?.agents?.capabilities ?? defaultAgentCapabilities);
-//   }
+// 원본: `if (capabilities.size === 0 && isEphemeralAgentId(agentId))` 로 ephemeral
+// 에이전트만 default capability 폴백을 받음. DB-backed agent (mongo 의 agents 컬렉션
+// 에 저장된 일반 에이전트) 는 endpointsConfig 의 capabilities 가 비어있으면 빈 Set
+// 그대로 → 'tools' false → plugin tool 전부 loadAgentTools 에서 silent skip.
 //
-// 문제: ephemeral 이 아닌 DB-backed agent (mongo 의 agents collection 에 저장된 모든 일반 agent)
-//       의 경우 endpointsConfig?.agents?.capabilities 가 비어있으면 폴백 안 함 → 빈 Set 반환 →
-//       'tools' capability false → image-generation / dalle / wolfram 등 모든 plugin tool 이
-//       loadAgentTools 의 areToolsEnabled 필터에서 silent skip → LLM 이 그 툴을 못 봄.
-//
-// 우리는 librechat.yaml 의 endpoints.agents.capabilities 에 명시적으로 9개를 박았지만,
-// req-level endpointsConfig 가 yaml 의 capabilities 를 안 잇는 듯하여 빈 Set 가 그대로 옴.
-// 폴백 조건에서 ephemeral 제한만 제거하면 appConfig.endpoints.agents.capabilities (yaml)
-// 또는 defaultAgentCapabilities 로 폴백 → 모든 agent 가 정상 capability 를 받음.
+// 패치: ephemeral 조건 제거 → 모든 에이전트가 appConfig.endpoints.agents.capabilities
+// (librechat.yaml) 또는 defaultAgentCapabilities 로 폴백.
 
 const fs = require('fs');
 
