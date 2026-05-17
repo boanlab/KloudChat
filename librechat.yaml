@@ -6,6 +6,13 @@ webSearch:
   searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
   safeSearch: 1
 
+# MCP HTTP/SSE 사이드카 컨테이너의 internal hostname allowlist.
+# 미설정 시 SSRF 보호로 internal hostname (예: ldr, container 이름) 자동 차단됨.
+# 매칭은 호스트명 기준이라 포트는 생략. stdio MCP 는 영향 없음 (항상 허용).
+mcpSettings:
+  allowedDomains:
+    - deep-research
+
 # MCP (Model Context Protocol) 서버. LibreChat 가 stdio 로 자식 프로세스 spawn,
 # 첫 호출 시 uvx 가 패키지 자동 다운로드 (~/.cache 캐시 후 재호출 빠름).
 # agent.tools 에 'sys__all__sys_mcp_<servername>' 추가하면 그 서버의 모든 tool 노출.
@@ -69,6 +76,15 @@ mcpServers:
       LITELLM_URL: "http://litellm:8000"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
       LIBRECHAT_USER_EMAIL: "{{LIBRECHAT_USER_EMAIL}}"
+  deep_research:
+    # Local Deep Research — ReAct strategy multi-source 검색 + iterative reasoning, 8 tools.
+    # LibreChat 컨테이너가 alpine/musl 이라 playwright wheel 호환 안 됨 → 사이드카(deep-research 서비스, debian)
+    # 에서 ldr-mcp 를 mcp-proxy 로 streamable-http wrap. LiteLLM 경유로 ollama/qwen3.6:35b 호출.
+    # 검색 엔진은 KloudChat 의 searxng (env SEARXNG_INSTANCE).
+    type: streamable-http
+    url: http://deep-research:8081/mcp
+    startup: false
+    timeout: 300000
 
 endpoints:
   agents:

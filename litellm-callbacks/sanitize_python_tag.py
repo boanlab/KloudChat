@@ -28,6 +28,40 @@ from typing import Any, AsyncGenerator
 
 from litellm.integrations.custom_logger import CustomLogger
 
+# 한자 → 한글 음 변환. qwen 등 중국계 모델이 한국어 응답 중간에 한자를 섞는 leak 을
+# 자연스러운 음독으로 대체 ("大韓民國" → "대한민국"). 단순 제거 시 문장 깨짐 회피.
+try:
+    import hanja as _hanja
+except Exception:  # pragma: no cover — 사전 install 안 된 환경 대비
+    _hanja = None
+
+# CJK Unified Ideographs (Basic, Extension A, Compatibility) 단일 매치.
+# 코드 fence 안은 보존하기 위해 fence-aware 헬퍼에서 segment 단위로 호출.
+CJK_HAS_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
+FENCE_SPLIT_RE = re.compile(r"(```[\s\S]*?```)")
+
+
+def _han_to_kor(text: str) -> str:
+    """code fence 밖의 한자만 한글 음독으로 변환. fence 안은 그대로 유지."""
+    if not text or _hanja is None or not CJK_HAS_RE.search(text):
+        return text
+    parts = FENCE_SPLIT_RE.split(text)
+    for i, p in enumerate(parts):
+        if i % 2 == 0 and CJK_HAS_RE.search(p):  # 짝수 인덱스 = fence 바깥
+            parts[i] = _hanja.translate(p, "substitution")
+    return "".join(parts)
+
+
+def _filter_cjk(chunk: Any) -> Any:
+    """streaming chunk in-place mutate: delta.content 의 한자만 한글로."""
+    if getattr(chunk, "choices", None):
+        d = getattr(chunk.choices[0], "delta", None)
+        if d is not None:
+            c = getattr(d, "content", None)
+            if isinstance(c, str) and CJK_HAS_RE.search(c):
+                d.content = _han_to_kor(c)
+    return chunk
+
 log = logging.getLogger("litellm-python-tag-sanitizer")
 
 # Llama 3.x reserved-special-token range (Private Use Area U+E200-U+E3FF). The
@@ -52,6 +86,13 @@ TURN_PARTIAL_RE = re.compile(
 )
 TURN_START_RE = re.compile(r"\s*turn(\{|$)", re.DOTALL)
 
+# 'turn' prefix 없이 `{search}{0}`, `{youtube}{0}` 같은 brace-pair 만 단독 leak 되는 변형.
+# tool 이름이 들어가는 첫 brace + 인덱스(또는 빈 brace) 페어가 1회 이상.
+NAKED_TOOL_GLOBAL_RE = re.compile(
+    r"\s*\{(?:search|youtube|tool|browse|fetch)\}(?:\{[^}]*\})+\.?",
+    re.DOTALL,
+)
+
 
 def _strip_pua_trailer(text: str) -> str:
     """Strip Llama special-token leak: PUA char + trailing garbage like
@@ -60,6 +101,7 @@ def _strip_pua_trailer(text: str) -> str:
     sometimes emits it mid-response then continues with real content."""
     text = PUA_TRAILING_RE.sub("", text)
     text = TURN_GLOBAL_RE.sub("", text)
+    text = NAKED_TOOL_GLOBAL_RE.sub("", text)
     return text
 
 # Sentinel patterns. We scan for either marker, then brace-count the trailing
@@ -238,6 +280,14 @@ class PythonTagSanitizer(CustomLogger):
                         "python-tag: stripped PUA trailing garbage (model=%s)",
                         getattr(response, "model", "?"),
                     )
+                # 1b. 한자 → 한글 음독 (code fence 보존).
+                hanged = _han_to_kor(stripped)
+                if hanged != stripped:
+                    log.info(
+                        "python-tag: han→kor substituted (model=%s)",
+                        getattr(response, "model", "?"),
+                    )
+                stripped = hanged
                 content = stripped
 
                 # 2. Tool-call leak extraction (python_tag / md fence / bare-JSON)
@@ -341,7 +391,7 @@ class PythonTagSanitizer(CustomLogger):
                             turn_held = []
                             for fc in flushed:
                                 if passthrough:
-                                    yield fc
+                                    yield _filter_cjk(fc)
                                 else:
                                     held.append(fc)
                             continue
@@ -361,7 +411,7 @@ class PythonTagSanitizer(CustomLogger):
                             turn_held = []
                             for fc in flushed:
                                 if passthrough:
-                                    yield fc
+                                    yield _filter_cjk(fc)
                                 else:
                                     held.append(fc)
                             # Fall through to handle CURRENT chunk normally
@@ -381,7 +431,7 @@ class PythonTagSanitizer(CustomLogger):
                             # post part (pre was already yielded).
                             delta.content = pre
                             if passthrough:
-                                yield chunk
+                                yield _filter_cjk(chunk)
                             else:
                                 held.append(chunk)
                                 buffer += pre
@@ -396,7 +446,7 @@ class PythonTagSanitizer(CustomLogger):
                         continue
 
                 if passthrough:
-                    yield chunk
+                    yield _filter_cjk(chunk)
                     continue
                 delta_text = ""
                 finish = None
@@ -412,7 +462,7 @@ class PythonTagSanitizer(CustomLogger):
                     # No tag in the buffered prefix and we have enough signal —
                     # flush and switch to direct streaming.
                     for hc in held:
-                        yield hc
+                        yield _filter_cjk(hc)
                     held = []
                     passthrough = True
 
@@ -447,16 +497,16 @@ class PythonTagSanitizer(CustomLogger):
                                 "python-tag: sanitized %d block(s) in stream (model=%s)",
                                 len(new_calls), getattr(last, "model", "?"),
                             )
-                            yield last
+                            yield _filter_cjk(last)
                             return
                 # No conversion — flush held as-is
                 for hc in held:
-                    yield hc
+                    yield _filter_cjk(hc)
         except Exception:
             log.exception("python-tag sanitizer (stream) error")
             for hc in held:
                 try:
-                    yield hc
+                    yield _filter_cjk(hc)
                 except Exception:
                     pass
 

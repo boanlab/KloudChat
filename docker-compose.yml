@@ -63,6 +63,8 @@ services:
       - ./librechat/images:/app/client/public/images
       - ./librechat/uploads:/app/uploads
       - ./librechat/logs:/app/logs
+      # MCP 의 uvx/uv 패키지 캐시 — sympy(173 tools) 등 무거운 의존성 재설치 회피.
+      - ./librechat/uv-cache:/home/node/.cache/uv
       # 브랜딩 자산 — branding/ 파일 교체 후 컨테이너 재시작
       - ./branding/logo.svg:/app/client/dist/assets/logo.svg:ro
       - ./branding/favicon-16x16.png:/app/client/dist/assets/favicon-16x16.png:ro
@@ -89,6 +91,8 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     volumes:
       - ./mongodb/data:/data/db
+    tmpfs:
+      - /data/configdb
     command: mongod --auth
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
@@ -180,7 +184,9 @@ services:
 
   litellm:
     container_name: litellm
-    image: ghcr.io/berriai/litellm:v1.83.7-stable
+    build:
+      context: .
+      dockerfile: Dockerfile.litellm
     restart: always
     depends_on:
       litellm-db:
@@ -217,7 +223,9 @@ services:
     image: searxng/searxng:2026.4.24-a7ac696b4
     restart: always
     volumes:
-      - ./searxng-settings.yml:/etc/searxng/settings.yml
+      - ./searxng:/etc/searxng
+    tmpfs:
+      - /var/cache/searxng
     networks:
       - kloudchat
 
@@ -348,6 +356,28 @@ services:
     networks:
       - kloudchat
 
+  deep-research:
+    container_name: deep-research
+    build:
+      context: .
+      dockerfile: Dockerfile.deep-research-mcp
+    restart: always
+    depends_on:
+      litellm:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    environment:
+      LDR_LLM_PROVIDER: openai
+      LDR_LLM_MODEL: ollama/qwen3.6:35b
+      LDR_LLM_OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      OPENAI_BASE_URL: http://litellm:8000/v1
+      OPENAI_API_BASE: http://litellm:8000/v1
+      # KloudChat 의 searxng 를 LDR 검색 엔진으로 — settings.yml 에 formats:[html,json] 이미 활성.
+      SEARXNG_INSTANCE: http://searxng:8080
+    networks:
+      - kloudchat
+
   mcp-permission-guard:
     container_name: mcp-permission-guard
     image: mongo:8.0.20
@@ -355,6 +385,9 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+    tmpfs:
+      - /data/db
+      - /data/configdb
     environment:
       - MONGO_ROOT_USER=${MONGO_ROOT_USER}
       - MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}

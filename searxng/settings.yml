@@ -1,0 +1,38 @@
+use_default_settings: true
+
+search:
+  default_lang: ko
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "rfCZz4FAjrTyAWR9Xd9f"
+  bind_address: "0.0.0.0"
+  port: 8080
+
+# 학술 엔진을 일반 검색 결과에 노출 — ACM/IEEE/USENIX 논문은 Scholar/OpenAlex가 indexing.
+# weight 0.5 으로 일반 web 결과에 비해 비중 낮춤.
+engines:
+  - name: google scholar
+    categories: [general, science, scholar]
+    disabled: false
+    weight: 0.5
+  - name: openalex
+    categories: [general, science, scholar]
+    disabled: false
+    weight: 0.5
+  - name: semantic scholar
+    categories: [general, science, scholar]
+    disabled: false
+    weight: 0.5
+  - name: crossref
+    categories: [general, science, scholar]
+    disabled: false
+    weight: 0.5
+  - name: arxiv
+    categories: [general, science, scholar]
+    disabled: false
+    weight: 0.5

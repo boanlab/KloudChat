@@ -132,8 +132,8 @@ OLLAMA_EMBED_CATALOG=(bge-m3)
 OPENAI_EMBED_CATALOG=(text-embedding-3-small)
 
 # 기본 에이전트 우선순위 — 위 카탈로그 중 union 에 존재하는 첫 매치가 default preset.
+# llama3.3:70b 는 모델 리스트엔 있지만 (사용자가 selector 에서 선택) default 후보에선 제외.
 OLLAMA_DEFAULT_PRIORITY=(
-  llama3.3:70b
   qwen3.6:35b
   qwen3.5:9b
 )
