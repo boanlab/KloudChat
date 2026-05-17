@@ -21,7 +21,7 @@ key    issue   --user <email> [--team] [--alias] [--budget]
        list   [--user <email>]
        revoke --key <sk-...>
 
-agent  sync                                                ← 카탈로그 변경 후 모든 유저 에이전트 upsert + 레거시 마이그레이션
+agent  sync                                                ← 카탈로그 변경 후 모든 유저 에이전트 upsert
 EOF
   exit 1
 }
@@ -227,23 +227,18 @@ create_default_agent_for_user() {
     done
   fi
 
-  # local — ollama union 보유 모델만. prefix 는 모델 특성 + TOOL_EXCLUDE 정책 반영.
+  # local — ollama union 보유 모델만. 모든 local 모델에 전 도구 부착 → 통일 prefix.
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
     tag="$m"; [[ "$tag" != *:* ]] && tag="${tag}:latest"
     grep -qxF "$tag" <<<"$pulled" || continue
-    local prefix="Text + Image"
-    case "$m" in
-      qwen3-coder-next:*)         prefix="Text + Image + Code" ;;
-      qwen3.5:9b|llama3.1:8b)     prefix="Text" ;;
-    esac
-    agent_specs=$(jq -c --arg n "$prefix ($m)" --arg mm "ollama/$m" \
+    agent_specs=$(jq -c --arg n "Text + Image + Code ($m)" --arg mm "ollama/$m" \
       '. + [{name:$n, model:$mm, kind:"local"}]' <<< "$agent_specs")
   done
 
   # default 모델 (priority 첫 매치). union 비었으면 빈 문자열 — 그 경우 첫 spec 으로 fallback.
   local default_model; default_model="$(ollama_default_chat_model 2>/dev/null || true)"
   local default_name=""
-  [[ -n "$default_model" ]] && default_name="Text + Image ($default_model)"
+  [[ -n "$default_model" ]] && default_name="Text + Image + Code ($default_model)"
 
   local email_js; email_js=$(jq -Rn --arg e "$email" '$e')
   local result
@@ -262,9 +257,10 @@ create_default_agent_for_user() {
         'sys__all__sys_mcp_usage',         // 본인 토큰 사용량/예산 (my_usage, budget_status)
         'sys__all__sys_mcp_youtube',       // YouTube 텍스트 추출 (자막 or whisper)
       ];
-      // 모델 크기별 분기. 작은 모델은 schema 부담을 피해 math_basic 만.
-      var MCP_MATH_BIG    = ['sys__all__sys_mcp_math'];              // sympy 173 tools
-      var MCP_MATH_SMALL  = ['sys__all__sys_mcp_math_basic'];        // 사칙연산 16 tools
+      // 모델 크기별 분기. 큰 모델은 math + math_basic 둘 다 (단순 산술은 math_basic
+      // 으로 빠지고 심볼릭은 sympy). 작은 모델은 schema 부담을 피해 math_basic 만.
+      var MCP_MATH_BIG    = ['sys__all__sys_mcp_math', 'sys__all__sys_mcp_math_basic'];
+      var MCP_MATH_SMALL  = ['sys__all__sys_mcp_math_basic'];
 
       // 작은 모델 명단 (canonical model id — provider prefix 제거된 형태).
       var SMALL_MODELS = new Set([
@@ -281,11 +277,9 @@ create_default_agent_for_user() {
       // 모든 에이전트의 base 빌트인. 분리는 TOOL_EXCLUDE / EXT_IMAGE_FOR_PROVIDER 가 처리.
       var BUILTIN_BASE = ['execute_code','file_search','web_search','generate_image'];
 
-      // 모델별 빌트인 툴 제외 (작은 ollama 모델 정책).
-      var TOOL_EXCLUDE = {
-        'qwen3.5:9b':              ['execute_code', 'generate_image'],
-        'llama3.1:8b':             ['execute_code', 'generate_image'],
-      };
+      // 모델별 빌트인 툴 제외. 기본 정책은 전 모델 전 도구 — 실증적으로 emit 실패하는
+      // (모델, 도구) 조합만 명시 등록. 현재 알려진 케이스 없음.
+      var TOOL_EXCLUDE = {};
 
       // 외부 provider → 자사 image 모델. anthropic 누락 = generate_image 자동 제외.
       var EXT_IMAGE_FOR_PROVIDER = {
@@ -330,6 +324,12 @@ create_default_agent_for_user() {
         if (tools.indexOf('generate_image') !== -1) caps.push('generate_image');
         var instr = 'You are a helpful assistant with ' + caps.join(', ') + ' tools.';
         instr += '\n\nAlways respond in Korean or English only. Never use Chinese characters (Hanzi) or Japanese kana (hiragana/katakana). If a CJK character comes to mind, paraphrase in Korean or English.';
+        instr += '\n\nTool-calling rules: ' +
+          'When a tool is needed, invoke it via the function-call mechanism on the first turn with concrete arguments — never describe the call in plain text, never wrap arguments in markdown JSON, never emit raw tag-like strings such as python_tag or Call Function as prefixes. ' +
+          'Pick the most appropriate tool with your best guess for arguments; if it errors, refine the arguments or choose a different tool, but do not repeat the exact same failed call. ' +
+          'Do not announce the call (\"I will use X...\"); just emit the tool call.';
+        instr += '\n\nFor any YouTube URL (youtube.com, youtu.be, shorts) — never answer from prior knowledge or by guessing from the title. Call the transcript tool from the youtube MCP server first to get the actual text, then summarize / answer based on that text.';
+        instr += '\n\nMath tool selection: for simple arithmetic — +, -, *, /, ^, sqrt, comparisons, min/max, percent, average — call the math_basic tools (compare, subtract, divide, sum, product, power, sqrt, etc.). Use the sympy-prefixed math tools only for symbolic algebra, calculus, equations, matrices, unit conversion, or anything that requires symbolic manipulation. Never call sympy_sympify or sympy_simplify just to compute a numeric expression.';
         if (tools.indexOf('generate_image') !== -1) {
           if (spec.kind === 'local') {
             instr += IMAGE_INSTR_LOCAL;
@@ -407,22 +407,17 @@ create_default_agent_for_user() {
 
       // 관리 에이전트만 동기화 — 사용자 수동 생성 에이전트는 건드리지 않음.
       // target 이름 매치 → in-place rename (preset agent_id 보존). 매치 없음 (모델
-      // 단종 / 키 없음) → 삭제. 'Image (X)' 레거시 이름 → 삭제 (inline 라우팅으로 대체됨).
+      // 단종 / 키 없음) → 삭제. 이름 충돌 시 한쪽 삭제로 dedup.
       var managed = db.agents.find({author: u._id,
-        \$or: [
-          {model: /^(ollama|openai|anthropic|google)\\//},
-          {name: /^Image \\(/}
-        ]
+        model: /^(ollama|openai|anthropic|google)\\//
       }).toArray();
       managed.forEach(function(d){
         if (canonNames.indexOf(d.name) !== -1) return;  // 이미 맞는 이름
 
-        if (/^Image \\(/.test(d.name)) { deleteAgent(d); return; }
-
         var target = targetNameFor(d);
         if (target) {
           var clash = db.agents.findOne({author: u._id, name: target, _id: {\$ne: d._id}});
-          if (clash) { deleteAgent(d); print('LEGACY_DEDUP:' + d.name); return; }
+          if (clash) { deleteAgent(d); print('DEDUP:' + d.name); return; }
           db.agents.updateOne({_id: d._id}, {\$set: {name: target, updatedAt: now}});
           if (Array.isArray(d.versions)) {
             var vs2 = d.versions.map(function(v){ v.name = target; return v; });
@@ -473,7 +468,7 @@ create_default_agent_for_user() {
       UPDATED:*)                    echo "agent updated: ${line#UPDATED:}" ;;
       RENAMED:*)                    echo "agent renamed: ${line#RENAMED:}" ;;
       DELETED:*)                    echo "agent deleted: ${line#DELETED:}" ;;
-      LEGACY_DEDUP:*)               echo "legacy dedup: ${line#LEGACY_DEDUP:}" ;;
+      DEDUP:*)                      echo "dedup: ${line#DEDUP:}" ;;
       DEFAULT_PRESET:*)             echo "default preset: ${line#DEFAULT_PRESET:}" ;;
       DEFAULT_PRESET_REASSIGNED:*)  echo "default preset reassigned: ${line#DEFAULT_PRESET_REASSIGNED:}" ;;
       DEFAULT_PRESET_EXISTS:*)      ;;  # 멱등 — 조용히 무시

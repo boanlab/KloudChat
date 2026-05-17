@@ -26,7 +26,9 @@ macOS / Windows 는 미지원. Docker 미설치 시 `curl -fsSL https://get.dock
 
 10 GB VRAM 은 qwen3.5:9b 까지 — 35b 까지 쓰려면 24 GB+, 70b 는 40 GB+, q8 코더는 80 GB+ 필요. 모델 디스크는 Ollama 모델 + ComfyUI 가중치 합산.
 
-Ollama / ComfyUI 는 호스트에 systemd 네이티브로 설치되어 GPU 에 직접 접근하므로 **NVIDIA Container Toolkit 은 필요 없습니다.** 컨테이너 (LibreChat / LiteLLM / RAG API / comfyui-shim) 는 네이티브 프로세스를 HTTP 로만 호출.
+Ollama / ComfyUI / Whisper 는 호스트에 systemd 네이티브로 설치되어 GPU 에 직접 접근하므로 **NVIDIA Container Toolkit 은 필요 없습니다.** 컨테이너 (LibreChat / LiteLLM / RAG API / comfyui-shim) 는 네이티브 프로세스를 HTTP 로만 호출.
+
+Whisper 는 자막 없는 YouTube 영상의 음성 인식 폴백 — 설치 안 하면 youtube MCP 가 OR `whisper-1` 로 자동 폴백 (OR 키 있을 때만).
 
 GPU 호스트에서 prerequisite:
 
@@ -36,6 +38,8 @@ GPU 호스트에서 prerequisite:
 
 ./scripts/install-comfyui.sh            # 이미지 생성 쓸 거면
 ./scripts/download-image-models.sh      # 기본 셋 + HF_TOKEN 있으면 +flux-dev
+
+./scripts/install-whisper.sh            # YouTube 자막 없는 영상 전사 쓸 거면
 ```
 
 VRAM 점유는 [GPU 메모리 가이드](gpu-memory.md) 참고.

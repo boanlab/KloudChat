@@ -13,12 +13,15 @@
 Single tool `transcript(url, language=None)`:
   1. youtube-transcript-api 로 자막 시도 (영상에 자막 있으면 OR/GPU 미사용 — 즉시 반환).
   2. 자막 없거나 비공개면 yt-dlp 로 audio (m4a/opus) 추출.
-  3. WHISPER_URL 우선 — 컴포즈 안의 /whisper 서비스 (faster-whisper + GPU).
+  3. WHISPER_URL 우선 — 호스트 systemd 의 whisper 서비스 (faster-whisper + GPU,
+     scripts/install-whisper.sh 로 설치).
   4. 실패하거나 미설정이면 LITELLM_URL 의 OpenAI-compat /v1/audio/transcriptions
      로 폴백 (OR 경유 whisper-1, OR 키 필요).
 
 환경변수:
-  WHISPER_URL          예: http://whisper:9000 (없으면 LiteLLM 직행)
+  WHISPER_URL          예: http://host.docker.internal:9000 (compose 호스트와 같은 머신)
+                         또는 http://gpu-node-1:9000 (원격 GPU 노드)
+                         미설정/미가용 시 LiteLLM 직행
   LITELLM_URL          기본 http://litellm:8000
   LITELLM_MASTER_KEY   LiteLLM 인증
   WHISPER_OR_MODEL     OR 폴백 모델 (기본 'whisper-1')
@@ -30,7 +33,6 @@ import logging
 import os
 import re
 import tempfile
-from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -62,14 +64,25 @@ def _video_id(url: str) -> str | None:
 
 def _try_captions(vid: str, language: str | None) -> str | None:
     """YouTube 공식 자막 시도. 우선순위: 명시된 언어 → ko → en → 첫 가능 항목.
-    None 반환 시 caller 가 whisper 폴백."""
+    None 반환 시 caller 가 whisper 폴백. youtube-transcript-api ≥1.0 의 신규 API
+    (instance method) 사용."""
     try:
-        listing = YouTubeTranscriptApi.list_transcripts(vid)
+        ytt = YouTubeTranscriptApi()
+        listing = ytt.list(vid)
     except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable):
         return None
     except Exception as e:
         LOG.info("transcript listing failed for %s: %s", vid, e)
         return None
+
+    def _join(fetched) -> str:
+        # ≥1.0: FetchedTranscriptSnippet 객체 (속성 .text). 구버전 dict 호환도 유지.
+        out = []
+        for s in fetched:
+            txt = getattr(s, "text", None) if not isinstance(s, dict) else s.get("text")
+            if txt:
+                out.append(txt)
+        return " ".join(out)
 
     candidates = []
     if language:
@@ -78,13 +91,13 @@ def _try_captions(vid: str, language: str | None) -> str | None:
     for langs in candidates:
         try:
             t = listing.find_transcript(langs)
-            return " ".join(s["text"] for s in t.fetch())
+            return _join(t.fetch())
         except NoTranscriptFound:
             continue
     # 마지막 시도: 가능한 아무거나 (자동 생성된 자막 포함)
     try:
         t = next(iter(listing))
-        return " ".join(s["text"] for s in t.fetch())
+        return _join(t.fetch())
     except Exception:
         return None
 

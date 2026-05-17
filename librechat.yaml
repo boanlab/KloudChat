@@ -38,21 +38,23 @@ mcpServers:
       - mcp-server-math
   youtube:
     # YouTube 영상 텍스트 추출. 자막 있으면 youtube-transcript-api 즉시 반환,
-    # 없으면 yt-dlp 로 audio 추출 + whisper (로컬 GPU 컨테이너 → OR 폴백).
-    # WHISPER_URL 미설정 또는 컨테이너 down 이면 LiteLLM 의 whisper-1 (OR 경유) 사용.
+    # 없으면 yt-dlp 로 audio 추출 + whisper (호스트 systemd → OR 폴백).
+    # WHISPER_URL 미설정/미가용이면 LiteLLM 의 whisper-1 (OR 경유) 사용.
+    # whisper 첫 호출 시 모델 로드 (large-v3 ~3 GB) 가 30-60초 걸리므로 timeout 넉넉히.
     type: stdio
+    timeout: 900000
     command: uv
     args:
       - run
       - --script
       - /app/mcp/youtube.py
     env:
-      WHISPER_URL: "${WHISPER_URL:-}"
+      WHISPER_URL: "${WHISPER_URL}"
       LITELLM_URL: "http://litellm:8000"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
-      WHISPER_OR_MODEL: "${WHISPER_OR_MODEL:-whisper-1}"
+      WHISPER_OR_MODEL: "${WHISPER_OR_MODEL}"
   usage:
-    # 사용자 본인의 LiteLLM 사용량/예산 조회. tools: my_usage(days), budget_status().
+    # 사용자 본인의 LiteLLM 사용량/예산 조회. tools: my_usage(months_back), budget_status().
     # uv run --script 로 inline-deps 스크립트 실행 (mcp + httpx 자동 설치).
     # startup: false — app-level init 건너뛰고 user-scoped 연결만 만듦.
     # 그래야 {{LIBRECHAT_USER_EMAIL}} 가 호출자별로 치환됨 (app 단계엔 user 객체 없음).

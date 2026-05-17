@@ -140,14 +140,14 @@ LibreChat 의 `generate_image` 툴 스키마에 `model` enum 필드 (`flux-schne
 `file_search` / `web_search` 는 모든 prefix 에 공통 부착. 모델별 도구 매트릭스 + MCP 부착은 [도구 문서](tools.md#모델별-도구-매트릭스) 참고.
 
 prefix 별 해당 모델:
-- `Text` — claude-haiku-4.5, qwen3.5:9b, llama3.1:8b
+- `Text` — claude-haiku-4.5
 - `Text + Code` — claude-opus-4.7/4.6, claude-sonnet-4.6
-- `Text + Image` — gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash, qwen3.6:35b, llama3.3:70b, nemotron3:33b
-- `Text + Image + Code` — gpt-5.5, gpt-5, qwen3-coder-next:q8_0
+- `Text + Image` — gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash
+- `Text + Image + Code` — gpt-5.5, gpt-5, 전 ollama 모델
 
 `generate_image` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음 (자사 image API 없어서 툴 자체 제외).
 
-작은 ollama (9b/8b) 는 `TOOL_EXCLUDE` 로 `execute_code` + `generate_image` 제외 — 6툴 schema 동시 노출 시 호출 emit 실패가 end-to-end 매트릭스에서 확인됨.
+`TOOL_EXCLUDE` 는 기본 비어 있음 — emit 실패가 실측된 (모델, 도구) 조합만 명시 등록.
 
 기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` 의 첫 매치 (현재 `llama3.3:70b → qwen3.6:35b → qwen3.5:9b`). `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
 

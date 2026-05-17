@@ -30,19 +30,37 @@ from litellm.integrations.custom_logger import CustomLogger
 
 log = logging.getLogger("litellm-python-tag-sanitizer")
 
-# Llama 3.x reserved-special-token range (Private Use Area U+E200-U+E2FF). The
+# Llama 3.x reserved-special-token range (Private Use Area U+E200-U+E3FF). The
 # tokenizer normally consumes these and never surfaces them. When they DO leak
 # (e.g. Ollama's chat-template strips wrong, or the model emits them mid-text),
 # they trail with structured-but-garbage text like `turn{1}search{0}.`.
 # The actual answer is always BEFORE the first PUA char — strip everything from
 # the first occurrence onward.
-PUA_TRAILING_RE = re.compile(r"[-].*", re.DOTALL)
+PUA_TRAILING_RE = re.compile(r"[-].*", re.DOTALL)
 
+# Naked Llama "turn{N}{<tool>}{M}" trailer — emitted as plain ASCII without
+# a PUA prefix on some Ollama builds. Variants seen in the wild:
+#   turn{0}{search}{0}
+#   turn{0}{youtube}{0}
+#   turn{0}{search}{}{}{0}    (empty braces, extra groups)
+# Pattern: literal "turn" followed by one-or-more `{...}` groups (each may
+# contain any non-`}` chars, including empty).
+TURN_GLOBAL_RE = re.compile(r"\s*turn(?:\{[^}]*\})+\.?", re.DOTALL)
+TURN_PARTIAL_RE = re.compile(
+    r"^\s*turn(?:\{[^}]*\})*(?:\{[^}]*)?$",
+    re.DOTALL,
+)
+TURN_START_RE = re.compile(r"\s*turn(\{|$)", re.DOTALL)
 
 
 def _strip_pua_trailer(text: str) -> str:
-    """Strip Llama special-token leak (PUA char + trailing garbage like turn{1}search{0})."""
-    return PUA_TRAILING_RE.sub("", text)
+    """Strip Llama special-token leak: PUA char + trailing garbage like
+    turn{1}search{0}, OR the naked ASCII variant of the same pattern.
+    Naked variant matches anywhere in text (not just trailing) since the model
+    sometimes emits it mid-response then continues with real content."""
+    text = PUA_TRAILING_RE.sub("", text)
+    text = TURN_GLOBAL_RE.sub("", text)
+    return text
 
 # Sentinel patterns. We scan for either marker, then brace-count the trailing
 # JSON object (handles nested braces, string literals with `}` inside).
@@ -255,31 +273,127 @@ class PythonTagSanitizer(CustomLogger):
         held: list[Any] = []
         passthrough = False
         pua_seen = False
-        # Once we see <|python_tag|>, swallow content until stream ends, then emit
-        # one synthesized chunk with tool_calls. Until then, accumulate up to 64
-        # content chars before deciding pass-through (cheap streaming for normal
-        # responses; tool-call responses are inherently small so buffering is fine).
-        # PUA-trailer strip runs on EVERY chunk regardless — once a PUA char is
-        # seen, all subsequent content chunks have their content nulled.
+
+        # Naked turn-trailer state machine. Llama 가 `turn{N}{<tool>}{M}` 를
+        # 평문 ASCII 로 leak 하는 경우, 패턴이 여러 chunk 에 걸쳐 split 돼서 들어옴
+        # (예: "turn" → "{0}" → "{search}" → "{0}"). 'turn' chunk 발견 시 hold 모드
+        # 진입 → 후속 chunk 누적해서 패턴 완성되면 모든 hold 된 chunk content 소거,
+        # 매치 안 되면 (다른 합법 텍스트로 이어지면) 그대로 release.
+        turn_hold = False
+        turn_buf = ""
+        turn_held: list[Any] = []
+
         try:
             async for chunk in response:
-                # PUA strip — runs in both passthrough and buffer modes
                 if getattr(chunk, "choices", None):
                     ch0 = chunk.choices[0]
                     delta = getattr(ch0, "delta", None)
                     text = getattr(delta, "content", None) if delta else None
-                    if isinstance(text, str) and text:
-                        if pua_seen:
-                            delta.content = None
+                else:
+                    delta = None
+                    text = None
+
+                # 1. PUA trailing strip — always (independent of turn state)
+                if isinstance(text, str) and text and delta is not None:
+                    if pua_seen:
+                        delta.content = None
+                        text = None
+                    else:
+                        stripped = PUA_TRAILING_RE.sub("", text)
+                        if stripped != text:
+                            pua_seen = True
+                            delta.content = stripped or None
+                            text = stripped or None
+                            log.warning(
+                                "python-tag: stripped PUA trailing (model=%s)",
+                                getattr(chunk, "model", "?"),
+                            )
+
+                # 2. Naked turn-trailer state machine
+                if isinstance(text, str) and text:
+                    if turn_hold:
+                        turn_buf += text
+                        turn_held.append(chunk)
+                        if TURN_GLOBAL_RE.match(turn_buf):
+                            # Pattern complete — strip the matched prefix.
+                            m = TURN_GLOBAL_RE.match(turn_buf)
+                            rest = turn_buf[m.end():]
+                            # All held chunks' content was part of turn-trailer +
+                            # possibly trailing rest. Wipe all held content; if
+                            # rest is non-empty, attach to last held chunk.
+                            for c in turn_held[:-1]:
+                                if getattr(c, "choices", None):
+                                    d = getattr(c.choices[0], "delta", None)
+                                    if d is not None:
+                                        d.content = None
+                            last = turn_held[-1]
+                            if getattr(last, "choices", None):
+                                d = getattr(last.choices[0], "delta", None)
+                                if d is not None:
+                                    d.content = rest if rest else None
+                            log.warning(
+                                "python-tag: stripped naked turn-trailer (model=%s, rest_len=%d)",
+                                getattr(chunk, "model", "?"), len(rest),
+                            )
+                            flushed = list(turn_held)
+                            turn_hold = False
+                            turn_buf = ""
+                            turn_held = []
+                            for fc in flushed:
+                                if passthrough:
+                                    yield fc
+                                else:
+                                    held.append(fc)
+                            continue
+                        elif TURN_PARTIAL_RE.match(turn_buf) and len(turn_held) < 12:
+                            # Still potential — keep holding (cap at 12 chunks
+                            # to bound memory + latency).
+                            continue
                         else:
-                            stripped = _strip_pua_trailer(text)
-                            if stripped != text:
-                                pua_seen = True
-                                delta.content = stripped or None
-                                log.warning(
-                                    "python-tag: stripped PUA trailing in stream chunk (model=%s)",
-                                    getattr(chunk, "model", "?"),
-                                )
+                            # False alarm — release as-is.
+                            log.warning(
+                                "python-tag: turn-trailer false alarm, releasing %d chunk(s) buf=%r",
+                                len(turn_held), turn_buf[:60],
+                            )
+                            flushed = list(turn_held)
+                            turn_hold = False
+                            turn_buf = ""
+                            turn_held = []
+                            for fc in flushed:
+                                if passthrough:
+                                    yield fc
+                                else:
+                                    held.append(fc)
+                            # Fall through to handle CURRENT chunk normally
+                    elif TURN_START_RE.search(text):
+                        # Found "turn" — split chunk at the "turn" position,
+                        # yield the pre-turn part immediately, start holding from
+                        # "turn" onward.
+                        idx = text.find("turn")
+                        pre = text[:idx]
+                        post = text[idx:]
+                        if pre:
+                            # Aliasing trade-off: the chunk object is yielded with
+                            # delta.content=pre, then mutated to delta.content=post
+                            # and re-used as the first turn_held entry. Consumer
+                            # captures pre-content at yield time; later mutation
+                            # only affects the held copy. False-alarm releases the
+                            # post part (pre was already yielded).
+                            delta.content = pre
+                            if passthrough:
+                                yield chunk
+                            else:
+                                held.append(chunk)
+                                buffer += pre
+                            delta.content = post
+                            turn_hold = True
+                            turn_buf = post
+                            turn_held = [chunk]
+                        else:
+                            turn_hold = True
+                            turn_buf = text
+                            turn_held = [chunk]
+                        continue
 
                 if passthrough:
                     yield chunk
@@ -348,3 +462,17 @@ class PythonTagSanitizer(CustomLogger):
 
 
 sanitizer_instance = PythonTagSanitizer()
+
+
+# Self-register on import. The proxy's `litellm_settings.callbacks` config entry
+# imports this module but doesn't reliably append the resolved instance to
+# `litellm.callbacks` (the list that hook dispatch walks). Appending here on
+# import side-steps that path.
+try:
+    import litellm as _litellm
+    if not isinstance(_litellm.callbacks, list):
+        _litellm.callbacks = []
+    if sanitizer_instance not in _litellm.callbacks:
+        _litellm.callbacks.append(sanitizer_instance)
+except Exception:
+    log.exception("python-tag: self-registration failed")

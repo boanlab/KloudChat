@@ -8,35 +8,35 @@ fetch each output image from /view.
 
 This shim translates between the two. For each generation:
 
-  1. Pick a workflow template (workflows/<model>.json) keyed on the model
-     name in the A1111 request.
+  1. Resolve the canonical alias (`qwen-image`, `flux-schnell`, …) from the
+     A1111 request, then look up which workflow template the chosen backend
+     can run (per-node variant — NVFP4 / FP8 / GGUF — picked at discovery).
   2. Substitute the prompt / negative / seed / steps / cfg parameters into
      the template's CLIP / KSampler / image-loader nodes.
   3. POST the workflow to ComfyUI's /prompt endpoint.
   4. Poll /history/<prompt_id> until the run finishes.
   5. Fetch each output image via /view, base64 it, return in A1111 shape.
 
-Multi-backend routing
-─────────────────────
+Multi-backend routing + per-node variants
+─────────────────────────────────────────
 COMFYUI_URLS may list more than one ComfyUI backend (comma-separated). When
 multiple are configured the shim:
 
-  * discovers each backend's loaded checkpoints / unets via /object_info
-    (cached, refreshed every MODEL_DISCOVERY_TTL_SEC) and maps them to the
-    aliases in COMFYUI_ALIAS_VARIANTS — heterogeneous GPU clusters can keep
-    different model files on different nodes;
-  * filters backend candidates by the alias being requested so a node that
-    doesn't carry the model is never chosen, then probes /queue on the
-    remaining candidates and picks the one with the fewest running+pending
-    jobs (least-loaded);
+  * discovers each backend's loaded UNet files via /object_info (cached,
+    refreshed every MODEL_DISCOVERY_TTL_SEC) and matches them against
+    COMFYUI_ALIAS_VARIANTS — each alias has an ordered variant list
+    (NVFP4 → FP8 → GGUF), and the first variant whose file is on a given
+    node is the workflow that node serves;
+  * filters backend candidates by alias availability so a node that doesn't
+    carry the model is never chosen, then probes /queue + paired-host ollama
+    VRAM on the remaining candidates and picks the least-loaded;
   * remembers the prompt_id → backend mapping so the subsequent /history
     polls and /view fetches land on the same node that ran the workflow —
     ComfyUI's run state is per-node, so naive round-robin would break here.
 
-Templates ship with sensible defaults for qwen-image / qwen-image-edit /
-flux-{dev,schnell} but real-world tuning (sampler choice, scheduler, resolution)
-almost always needs adjustment after the first end-to-end run — keep them in
-version control and iterate.
+Templates ship per (alias × quant) under workflows/. Real-world tuning
+(sampler, scheduler, resolution) almost always needs adjustment after the
+first end-to-end run — keep them in version control and iterate.
 """
 from __future__ import annotations
 

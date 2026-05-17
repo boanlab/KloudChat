@@ -80,6 +80,15 @@ LibreChat 의 `generate_image` 툴은 A1111 형식 (`/sdapi/v1/txt2img`, `/sdapi
 환경변수: COMFYUI_URLS=<csv>, DEFAULT_MODEL=qwen-image
 ```
 
+### Whisper (음성 인식 폴백)
+faster-whisper + FastAPI 의 OpenAI-compatible `/v1/audio/transcriptions` endpoint. 자막 없는 YouTube 영상이 들어오면 `mcp/youtube.py` 가 `yt-dlp` 로 audio 추출 → 이 서비스로 POST → 텍스트 반환. Ollama / ComfyUI 와 같은 패턴으로 **호스트 native** (venv + systemd) — `scripts/install-whisper.sh` 가 `/opt/whisper/{venv,app.py}` + `/var/lib/whisper` (HF 모델 캐시) 만들고 `:9000` 에 바인딩. `WHISPER_URL` 미설정 또는 미가용이면 youtube MCP 가 LiteLLM 의 `whisper-1` (OR 경유) 로 자동 폴백.
+
+```
+설치:     scripts/install-whisper.sh (faster-whisper + FastAPI, CUDA 자동 감지)
+포트:     9000 (OpenAI-compat, 내부/LAN 전용)
+모델:     WHISPER_MODEL (기본 large-v3, lazy-load 후 상주)
+```
+
 ### MCP 서버 (stdio child processes)
 LibreChat 가 `librechat.yaml` 의 `mcpServers` 정의에 따라 자식 프로세스로 spawn 합니다 (uvx / uv run 이 첫 호출 시 의존성 자동 설치). 추가 컨테이너 없이 LibreChat 안에서 동작. 현재 6개: `fetch_url`, `time`, `math` / `math_basic` (sympy / 사칙연산 — 모델 크기별 분기), `usage` (본인 토큰 사용량/예산), `youtube` (자막 추출 → 없으면 whisper 전사). agent.tools 에 `sys__all__sys_mcp_<servername>` 추가하면 그 서버의 모든 tool 자동 노출. 자세한 매핑은 [도구 문서](tools.md).
 

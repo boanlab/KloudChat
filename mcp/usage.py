@@ -10,12 +10,29 @@
 
 Exposes the current LibreChat user's spend / budget on KloudChat's LiteLLM
 proxy. Identifies the user by `LIBRECHAT_USER_EMAIL` env (substituted by
-LibreChat per-session from `{{LIBRECHAT_USER_EMAIL}}` placeholder) and queries
-LiteLLM admin endpoints with the master key.
+LibreChat per-session from `{{LIBRECHAT_USER_EMAIL}}` placeholder).
 
 Tools:
-- my_usage(days=30)    — spend / token totals + model breakdown over last N days
-- budget_status()       — per-key budget, remaining, reset date
+- my_usage(months_back=0) — spend / token totals + model breakdown per month
+- budget_status()         — per-key budget, remaining, reset date
+
+Trust / boundary
+----------------
+LiteLLM admin endpoints (/spend/logs, /user/info) require master_key auth —
+user-scoped virtual keys can't read these, so we have no choice but to call
+them with the master key. Two layers protect against cross-user leakage:
+
+  1. Every call passes `user_id=USER_EMAIL` so LiteLLM applies its own filter.
+  2. `_verify_self_only` post-walks the response and raises if any user_id
+     field differs from USER_EMAIL — belt-and-suspenders against LiteLLM filter
+     bugs or unexpected fields.
+
+The remaining trust point is `LIBRECHAT_USER_EMAIL` placeholder substitution
+itself: if LibreChat passes the wrong email to a child MCP process, both
+layers above will happily return *that* email's data. This is intrinsic to
+how MCP env substitution works in LibreChat — there is no MCP-side way to
+independently verify which user is calling. Mitigation lives at the LibreChat
+process boundary (per-session stdio spawn with `startup: false`).
 """
 from __future__ import annotations
 
@@ -34,7 +51,32 @@ USER_EMAIL = os.environ.get("LIBRECHAT_USER_EMAIL", "").strip()
 mcp = FastMCP("litellm-usage")
 
 
+class CrossUserDataError(Exception):
+    """Defensive: response contains a user_id != caller's USER_EMAIL."""
+
+
+def _verify_self_only(data: Any, expected_email: str, path: str = "$") -> None:
+    """Walk the response; raise CrossUserDataError if any user_id field differs
+    from expected_email. LiteLLM's /spend/logs and /user/info are admin endpoints
+    and we trust their `user_id=` filter — this is belt-and-suspenders against
+    accidental cross-user leakage (filter bugs, unexpected fields). Allows
+    `null`/missing user_id since some sub-records don't carry it."""
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k in ("user_id", "user_email") and isinstance(v, str) and v and v != expected_email:
+                raise CrossUserDataError(
+                    f"{path}.{k}={v!r} differs from caller {expected_email!r}"
+                )
+            _verify_self_only(v, expected_email, f"{path}.{k}")
+    elif isinstance(data, list):
+        for i, item in enumerate(data):
+            _verify_self_only(item, expected_email, f"{path}[{i}]")
+
+
 async def _get(path: str, **params: Any) -> Any:
+    """Admin-auth call into LiteLLM; admin endpoints (/spend/logs, /user/info)
+    are unavoidable here since user-scoped LiteLLM keys can't read these.
+    Boundary is enforced via `user_id=USER_EMAIL` filter + response post-check."""
     async with httpx.AsyncClient(timeout=20) as c:
         r = await c.get(
             f"{LITELLM_URL}{path}",
@@ -42,7 +84,9 @@ async def _get(path: str, **params: Any) -> Any:
             headers={"Authorization": f"Bearer {MASTER_KEY}"},
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+    _verify_self_only(data, USER_EMAIL)
+    return data
 
 
 def _fmt_money(v: float) -> str:
@@ -69,7 +113,7 @@ def _month_range(months_back: int) -> tuple[Any, Any, str]:
 
 
 @mcp.tool()
-async def my_usage(months_back: int = 0) -> str:
+async def my_usage(months_back: int | str = 0) -> str:
     """Show the current user's KloudChat / LiteLLM spend for a calendar month.
 
     LiteLLM key budgets reset monthly (`budget_duration: 1mo`) so usage is
@@ -78,6 +122,7 @@ async def my_usage(months_back: int = 0) -> str:
 
     Args:
         months_back: 0 = current month (default), 1 = last month, 2 = two months ago, ... (max 12).
+                     Accepts int or numeric string — some models pass JSON ints as strings.
     """
     if not MASTER_KEY:
         return "Error: LITELLM_MASTER_KEY not set on MCP server."
@@ -85,7 +130,11 @@ async def my_usage(months_back: int = 0) -> str:
         return ("Error: LIBRECHAT_USER_EMAIL not passed to MCP server — "
                 "check librechat.yaml mcpServers env mapping.")
 
-    months_back = max(0, min(int(months_back), 12))
+    try:
+        mb = int(months_back)
+    except (TypeError, ValueError):
+        mb = 0
+    months_back = max(0, min(mb, 12))
     start, end_excl, label = _month_range(months_back)
 
     try:

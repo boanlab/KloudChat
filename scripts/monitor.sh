@@ -24,21 +24,28 @@ follow() {
 
 clear
 echo "KloudChat live monitor — Ctrl+C 로 종료"
-echo "  🌐 LibreChat  🧠 LiteLLM  ⚡ Ollama  📚 RAG  🔍 SearXNG  🎨 ComfyUI/Shim  💻 Code"
+echo "  🌐 LibreChat  🧠 LiteLLM  ⚡ Ollama  📚 RAG  🔍 SearXNG  🎨 ComfyUI/Shim  💻 Code  🎙 Whisper"
 echo "─────────────────────────────────────────────"
 
-follow "$B" "🌐" "LibreChat" LibreChat        "Login|sendCompletion|onSearchResults|streamAudio|stable|tool|run_id|completion|message" "auth.json|getUserPluginAuth|Error scraping|Title generation|FIRECRAWL"
+follow "$B" "🌐" "LibreChat" LibreChat        "Login|sendCompletion|onSearchResults|streamAudio|generate_image|tool|run_id|completion|message" "auth.json|getUserPluginAuth|Error scraping|Title generation|FIRECRAWL"
 follow "$G" "🧠" "LiteLLM  " litellm          "POST|GET|spend|model" "liveliness|prisma|migration"
-follow "$M" "🎨" "ComfyUI  " comfyui          "Prompt executed|got prompt|sampling|VAE|model|loading|VRAM" "TRACE|DEBUG"
-follow "$M" "🎨" "Shim     " comfyui-shim     "txt2img|img2img|model=|template="
+follow "$M" "🎨" "Shim     " comfyui-shim     "txt2img|img2img|model=|template=|variants"
 follow "$C" "📚" "RAG API  " rag_api          "embed|chunk|query|retriev|upload|document|POST|GET"
 follow "$Y" "🔍" "SearXNG  " searxng          "GET /search|query"
 follow "$R" "💻" "CodeIntp " code-interpreter "exec|run|complete|sandbox|repl" "REPL ready timeout|REPL not ready|Failed to start REPL"
 
+# 호스트 systemd 서비스 (compose 호스트와 같은 머신일 때만 보임 — 원격 GPU 노드는 ssh 로).
 if command -v journalctl &>/dev/null; then
-  journalctl -u ollama -f -n 0 --no-pager 2>&1 \
-    | stdbuf -oL grep -iE "llm load|loaded|gpu memory|prompt|generate|embedding" \
-    | format "$G" "⚡" "Ollama   " &
+  follow_unit() {
+    local color="$1" emoji="$2" name="$3" unit="$4" inc="$5"
+    systemctl list-unit-files "${unit}.service" --no-legend 2>/dev/null | grep -q . || return 0
+    journalctl -u "$unit" -f -n 0 --no-pager 2>&1 \
+      | stdbuf -oL grep -iE "$inc" \
+      | format "$color" "$emoji" "$name" &
+  }
+  follow_unit "$G" "⚡" "Ollama   " ollama  "llm load|loaded|gpu memory|prompt|generate|embedding"
+  follow_unit "$M" "🎨" "ComfyUI  " comfyui "Prompt executed|got prompt|sampling|VAE|model|loading|VRAM"
+  follow_unit "$C" "🎙" "Whisper  " whisper "POST|transcriptions|Loading WhisperModel"
 fi
 
 trap 'echo; echo "─── stop ───"; kill $(jobs -p) 2>/dev/null; exit 0' INT TERM
