@@ -164,12 +164,11 @@ for arg in "$@"; do
   esac
 done
 
-if [[ $EUID -eq 0 && "$MODELS_DIR" == /var/lib/comfyui/* ]] && getent passwd comfyui &>/dev/null; then
-  chown -R comfyui:comfyui "$MODELS_DIR"
+# sudo 로 실행됐으면 모델 디렉토리 소유권을 comfyui 데몬에 맞춤 — install-comfyui.sh 가
+# /opt/comfyui 트리를 comfyui:comfyui 로 만들지만 sudo 가 wget 한 파일은 root 소유.
+if [[ $EUID -eq 0 ]] && getent passwd comfyui &>/dev/null; then
+  chown -R comfyui:comfyui "$MODELS_DIR" 2>/dev/null || true
 fi
 
 echo "=== done ==="
 echo "  unet (safetensors): $(ls "$UNET_DIR"/*.safetensors 2>/dev/null | wc -l)  unet (gguf): $(ls "$UNET_DIR"/*.gguf 2>/dev/null | wc -l)  clip: $(ls "$CLIP_DIR"/*.safetensors 2>/dev/null | wc -l)  vae: $(ls "$VAE_DIR"/*.safetensors 2>/dev/null | wc -l)"
-if [[ "$MODELS_DIR" == /var/lib/comfyui/* ]]; then
-  echo "  → sudo systemctl restart comfyui"
-fi

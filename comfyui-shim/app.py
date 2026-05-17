@@ -444,17 +444,15 @@ async def _comfy_run(client: httpx.AsyncClient, backend: str, workflow: dict[str
 
     try:
         deadline = time.monotonic() + POLL_TIMEOUT_SEC
-        # ComfyUI 의 web server 는 워크플로 첫 실행 시 모델을 VRAM 로드 하느라
-        # 수십 초 응답 못 함 (특히 ollama 큰 모델과 GPU 공유 시). 그 동안의
-        # 개별 /history poll 실패는 transient — 외부 deadline 안 넘으면 재시도.
+        # ComfyUI 가 첫 실행에서 모델 VRAM 로드 하느라 수십 초 응답 못 하는 동안의
+        # /history poll 실패는 transient — 외부 deadline 안 넘으면 재시도.
         while True:
             if time.monotonic() > deadline:
                 raise HTTPException(504, f"ComfyUI run timed out after {POLL_TIMEOUT_SEC}s on {backend}")
             try:
                 h = await client.get(f"{backend}/history/{prompt_id}", timeout=60)
                 h.raise_for_status()
-            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ReadError) as e:
-                # 모델 로드 / 일시적 네트워크 끊김 — 외부 deadline 안 넘으면 계속 폴.
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ReadError):
                 await asyncio.sleep(POLL_INTERVAL_SEC)
                 continue
             body = h.json()

@@ -108,7 +108,7 @@ fi
 for i in {1..60}; do
   curl -sf "http://localhost:${PORT}/health" &>/dev/null && break
   sleep 2
-  (( i == 60 )) && { error "Whisper 응답 없음. journalctl -u whisper -n 50"; exit 1; }
+  (( i == 60 )) && { err "Whisper 응답 없음. journalctl -u whisper -n 50"; exit 1; }
 done
 
 if [[ -f "$ENV_FILE" ]]; then

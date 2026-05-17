@@ -16,7 +16,7 @@
 | FLUX.1-dev / schnell (FP16) | ~24 GB |
 | Whisper large-v3 (faster-whisper) | ~3 GB |
 
-Ollama 채팅·임베딩 모델은 대화 후 2분 유지 (`OLLAMA_KEEP_ALIVE` 로 변경). ComfyUI 모델은 요청 시만 로드, FLUX 계열은 T5+CLIP 인코더 ~10 GB 가 별도로 잡힘. Whisper 모델은 첫 호출 시 lazy-load 후 systemd 서비스 lifetime 상주 (재시작 전까지).
+Ollama 채팅·임베딩 모델은 대화 후 `OLLAMA_KEEP_ALIVE` 만큼 유지 (`install-ollama.sh` 기본 5m, [Ollama 튜닝](ollama-tuning.md) 참고). ComfyUI 모델은 요청 시만 로드, FLUX 계열은 T5+CLIP 인코더 ~10 GB 가 별도로 잡힘. Whisper 모델은 첫 호출 시 lazy-load 후 systemd 서비스 lifetime 상주 (재시작 전까지).
 
 OpenRouter 경유 commercial 모델 (`claude-*`, `gpt-*`, `gemini-*`) 은 외부 API 라 로컬 GPU 0. native API 직결은 미지원 (전부 OR 경유).
 

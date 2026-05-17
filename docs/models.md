@@ -71,7 +71,7 @@ ANTHROPIC_MODELS=(claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku
 GOOGLE_MODELS=(gemini-3.1-pro-preview gemini-2.5-pro gemini-2.5-flash)
 OLLAMA_CHAT_CATALOG=(qwen3.5:9b qwen3.6:35b llama3.1:8b llama3.3:70b nemotron3:33b qwen3-coder-next:q8_0)
 OLLAMA_EMBED_CATALOG=(bge-m3)
-OLLAMA_DEFAULT_PRIORITY=(llama3.3:70b qwen3.6:35b qwen3.5:9b)
+OLLAMA_DEFAULT_PRIORITY=(qwen3.6:35b qwen3.5:9b)
 ```
 
 `qwen3-coder-next:q8_0` 는 LibreChat dropdown 에서 자동 노출. Claude Code / OpenAI Codex CLI 에서 LiteLLM 게이트웨이를 통해 로컬 코딩 에이전트로도 사용 가능 — [코딩 에이전트 연동](coding-agents.md) 참고.
@@ -128,16 +128,7 @@ LibreChat 의 `generate_image` 툴 스키마에 `model` enum 필드 (`flux-schne
 - `user create --name ... --username ... --password ...` — 신규 유저 풀 프로비저닝 시
 - `agent sync` — 기존 유저 전체에 카탈로그 모델로 upsert. 우리 관리 prefix (`ollama|openai|anthropic|google`) 인 agent 이름을 현 spec 으로 자동 rename (in-place, preset agent_id 보존). 사용자 수동 생성 agent 는 건드리지 않음.
 
-모델 1개당 에이전트 1개, 이름 prefix 가 능력 요약:
-
-| 이름 prefix | execute_code | generate_image |
-|---|---|---|
-| `Text` | ✗ | ✗ |
-| `Text + Code` | ✓ | ✗ |
-| `Text + Image` | ✓ | ✓ |
-| `Text + Image + Code` | ✓ | ✓ |
-
-`file_search` / `web_search` 는 모든 prefix 에 공통 부착. 모델별 도구 매트릭스 + MCP 부착은 [도구 문서](tools.md#모델별-도구-매트릭스) 참고.
+모델 1개당 에이전트 1개. 이름 prefix 는 능력 라벨일 뿐 — 실제 builtin 부착은 provider 가 결정합니다. anthropic 만 `generate_image` 가 빠지고 (자사 image API 없음), 나머지 provider 는 4종 builtin (execute_code / file_search / web_search / generate_image) 전부 부착. 자세한 매트릭스 + MCP 매핑은 [도구 문서](tools.md#모델별-도구-매트릭스).
 
 prefix 별 해당 모델:
 - `Text` — claude-haiku-4.5
@@ -145,11 +136,11 @@ prefix 별 해당 모델:
 - `Text + Image` — gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash
 - `Text + Image + Code` — gpt-5.5, gpt-5, 전 ollama 모델
 
-`generate_image` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음 (자사 image API 없어서 툴 자체 제외).
+`generate_image` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음.
 
 `TOOL_EXCLUDE` 는 기본 비어 있음 — emit 실패가 실측된 (모델, 도구) 조합만 명시 등록.
 
-기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` 의 첫 매치 (현재 `llama3.3:70b → qwen3.6:35b → qwen3.5:9b`). `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
+기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` 의 첫 매치 (현재 `qwen3.6:35b → qwen3.5:9b`). `llama3.3:70b` 는 카탈로그엔 있지만 priority 후보에선 제외 — selector 에서 명시 선택. `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
 
 ### MCP 도구 + Built-in
 

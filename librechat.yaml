@@ -13,8 +13,9 @@ mcpSettings:
   allowedDomains:
     - deep-research
 
-# MCP (Model Context Protocol) 서버. LibreChat 가 stdio 로 자식 프로세스 spawn,
-# 첫 호출 시 uvx 가 패키지 자동 다운로드 (~/.cache 캐시 후 재호출 빠름).
+# MCP (Model Context Protocol) 서버. 대부분 stdio (LibreChat 가 자식 프로세스로 spawn,
+# 첫 호출 시 uvx 가 패키지 자동 다운로드 후 ~/.cache 캐시). deep_research 만 별도
+# 사이드카 컨테이너의 streamable-http endpoint.
 # agent.tools 에 'sys__all__sys_mcp_<servername>' 추가하면 그 서버의 모든 tool 노출.
 mcpServers:
   fetch_url:
@@ -89,8 +90,8 @@ mcpServers:
 endpoints:
   agents:
     disableBuilder: true
-    # 비 ephemeral agent (DB-backed) 의 경우 resolveAgentCapabilities 가 default 폴백을 안 함.
-    # 명시 안 하면 tools/file_search/execute_code/web_search 등 전부 차단됨.
+    # DB-backed agent 의 도구 사용 허용 목록. patch_librechat_agent_capabilities.js
+    # 가 ephemeral 한정 폴백을 풀어서 이 목록이 모든 agent 에 적용됨.
     capabilities:
       - "execute_code"
       - "file_search"

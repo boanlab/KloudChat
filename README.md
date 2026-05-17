@@ -124,7 +124,7 @@ LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-
 | 코드 실행 | LibreCodeInterpreter |
 | 파일 업로드 | LibreChat RAG API |
 | 이미지 생성 | ComfyUI + A1111 shim |
-| MCP 도구 | uvx stdio (fetch / time / math / usage) |
+| MCP 도구 | stdio (fetch_url / time / math / math_basic / usage / youtube) + HTTP (deep_research) |
 | 운영 관리 | LiteLLM + `scripts/manage.sh` |
 
 이미지 생성은 Qwen-Image / Qwen-Image-Edit / FLUX.1 (dev, schnell) — [tools.md#이미지-백엔드](docs/tools.md#이미지-백엔드). RAG API 는 HWP / PDF / DOCX 등 업로드 처리. MCP 서버 전체 목록은 [tools.md](docs/tools.md). 운영 관리는 팀·사용자·예산 (LiteLLM 가상 키).

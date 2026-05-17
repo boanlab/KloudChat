@@ -45,7 +45,7 @@ else systemctl enable --now ollama; fi
 for i in {1..15}; do
   curl -sf http://localhost:11434/api/tags &>/dev/null && break
   sleep 2
-  (( i == 15 )) && { error "Ollama 응답 없음. journalctl -u ollama -n 30"; exit 1; }
+  (( i == 15 )) && { err "Ollama 응답 없음. journalctl -u ollama -n 30"; exit 1; }
 done
 
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then

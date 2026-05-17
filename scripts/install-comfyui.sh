@@ -132,7 +132,7 @@ fi
 for i in {1..60}; do
   curl -sf "http://localhost:${PORT}/system_stats" &>/dev/null && break
   sleep 2
-  (( i == 60 )) && { error "ComfyUI 응답 없음. journalctl -u comfyui -n 50"; exit 1; }
+  (( i == 60 )) && { err "ComfyUI 응답 없음. journalctl -u comfyui -n 50"; exit 1; }
 done
 
 if [[ -f "$ENV_FILE" ]]; then
