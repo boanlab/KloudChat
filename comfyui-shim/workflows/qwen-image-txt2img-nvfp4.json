@@ -1,0 +1,82 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "_meta": {"title": "UnetLoader"},
+    "inputs": {
+      "unet_name": "qwen-image-nvfp4.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "CLIPLoader"},
+    "inputs": {
+      "clip_name": "qwen-image-text-encoder.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "VAELoader"},
+    "inputs": {
+      "vae_name": "qwen-image-vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "PositivePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "NegativePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "6": {
+    "class_type": "EmptyLatentImage",
+    "_meta": {"title": "EmptyLatent"},
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"},
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["4", 0],
+      "negative": ["5", 0],
+      "latent_image": ["6", 0],
+      "seed": 0,
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAEDecode"},
+    "inputs": {
+      "samples": ["7", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": {"title": "SaveImage"},
+    "inputs": {
+      "images": ["8", 0],
+      "filename_prefix": "kloudchat-qwen-image"
+    }
+  }
+}

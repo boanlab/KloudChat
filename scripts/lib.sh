@@ -83,6 +83,24 @@ detect_gpu_class() {
   esac
 }
 
+# Image-model quant tier per (GPU class, alias). Echoes one of:
+#   nvfp4 — Blackwell FP4 tensor cores, txt2img only (edit-2509 lacks NVFP4)
+#   fp8   — FP8 tensor cores (Ada / Hopper / Blackwell)
+#   gguf  — software dequant fallback (older / unknown cards)
+# Pass the canonical alias as $1; defaults to txt2img variant when empty.
+recommended_image_quant() {
+  local alias="${1:-qwen-image}"
+  case "$(detect_gpu_class)" in
+    gb10|blackwell-pro|blackwell-5090)
+      case "$alias" in
+        *edit*) echo fp8 ;;
+        *)      echo nvfp4 ;;
+      esac ;;
+    ada-4090) echo fp8 ;;
+    *)        echo gguf ;;
+  esac
+}
+
 get_free_disk_gb() {
   df -BG "${1:-.}" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4; exit}'
 }
@@ -109,22 +127,15 @@ OLLAMA_CHAT_CATALOG=(
 )
 OLLAMA_EMBED_CATALOG=(bge-m3)
 
+# OpenAI/OR 임베딩 카탈로그 — OR 키 있으면 등록. Ollama bge-m3 가 없을 때 RAG
+# 가용성 보장용. setup.sh 가 bge-m3 미보유 시 .env 의 EMBEDDINGS_MODEL 을 자동 swap.
+OPENAI_EMBED_CATALOG=(text-embedding-3-small)
+
 # 기본 에이전트 우선순위 — 위 카탈로그 중 union 에 존재하는 첫 매치가 default preset.
 OLLAMA_DEFAULT_PRIORITY=(
   llama3.3:70b
   qwen3.6:35b
   qwen3.5:9b
-)
-
-# 어느 노드에도 모델이 없을 때 OR free 로 fallback 하는 매핑 (기본 비활성).
-# 활성 시 항목 주석 해제 — https://openrouter.ai/models?supported_parameters=free 참고.
-declare -A MODEL_OR_FREE=(
-  # [qwen3.5:9b]=qwen/qwen3-8b:free
-  # [qwen3.6:35b]=qwen/qwen3-32b:free
-  # [llama3.1:8b]=meta-llama/llama-3.1-8b-instruct:free
-  # [llama3.3:70b]=meta-llama/llama-3.3-70b-instruct:free
-  # [nemotron3:33b]=nvidia/nemotron-3-33b:free
-  # [qwen3-coder-next:q8_0]=qwen/qwen3-coder:free
 )
 
 # 모델 단가 (USD per 1M tokens). LiteLLM spend 추적용.
@@ -137,6 +148,7 @@ declare -A MODEL_PRICE_IN_PM=(
   [nemotron3:33b]=0.10
   [qwen3-coder-next:q8_0]=0.22
   [bge-m3]=0.02
+  [text-embedding-3-small]=0.02
 )
 declare -A MODEL_PRICE_OUT_PM=(
   [gpt-5.5]=30    [gpt-5]=15    [gpt-5-mini]=2    [gpt-5-nano]=0.40
@@ -203,6 +215,8 @@ ollama_default_chat_model() {
 }
 
 # 단일 ComfyUI 노드 보유 alias (flux-schnell / flux-dev / qwen-image / qwen-image-edit).
+# 같은 alias 의 quant 변형 (nvfp4 / fp8 / gguf) 중 하나라도 있으면 alias 1회만 emit —
+# 변형 선택은 shim 의 COMFYUI_ALIAS_VARIANTS preference order 가 담당.
 __comfyui_node_models() {
   local raw="$1" url info
   url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -211,10 +225,10 @@ __comfyui_node_models() {
   local unets
   unets="$(echo "$info" | jq -r '
     (.UNETLoader.input.required.unet_name[0] // []) + (.UnetLoaderGGUF.input.required.unet_name[0] // []) | .[]?' 2>/dev/null)"
-  grep -qxF 'qwen-image-Q8_0.gguf'              <<<"$unets" && echo qwen-image
-  grep -qxF 'qwen-image-edit-Q8_0.gguf'         <<<"$unets" && echo qwen-image-edit
-  grep -qxF 'flux1-schnell.safetensors'         <<<"$unets" && echo flux-schnell
-  grep -qxF 'flux1-dev.safetensors'             <<<"$unets" && echo flux-dev
+  grep -qxFf <(printf '%s\n' 'qwen-image-nvfp4.safetensors' 'qwen-image-fp8.safetensors' 'qwen-image-Q8_0.gguf') <<<"$unets" && echo qwen-image
+  grep -qxFf <(printf '%s\n' 'qwen-image-edit-fp8.safetensors' 'qwen-image-edit-Q8_0.gguf')                     <<<"$unets" && echo qwen-image-edit
+  grep -qxF  'flux1-schnell.safetensors' <<<"$unets" && echo flux-schnell
+  grep -qxF  'flux1-dev.safetensors'     <<<"$unets" && echo flux-dev
 }
 
 # 노드별 alias 매핑 — 각 줄 "<URL>\t<alias>". unreachable 노드는 stderr 경고 후 skip.
@@ -261,13 +275,14 @@ litellm_chat_models_csv() {
   for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
     if ollama_pulled_has "$pulled" "$m"; then
       out+=("ollama/$m")
-    elif [[ -n "${MODEL_OR_FREE[$m]:-}" ]] && has_openrouter; then
-      out+=("ollama/$m")
     fi
   done
   for m in "${OLLAMA_EMBED_CATALOG[@]}"; do
     if ollama_pulled_has "$pulled" "$m"; then out+=("$m"); fi
   done
+  if has_openrouter; then
+    for m in "${OPENAI_EMBED_CATALOG[@]}"; do out+=("$m"); done
+  fi
   local IFS=,
   echo "${out[*]:-}"
 }

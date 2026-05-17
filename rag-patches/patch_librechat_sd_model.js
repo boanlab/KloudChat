@@ -1,4 +1,4 @@
-// LibreChat 의 stable-diffusion 툴을 'image-generation' 으로 rename + 스키마에 'model' enum
+// LibreChat 의 stable-diffusion 툴을 'generate_image' 으로 rename + 스키마에 'model' enum
 // 필드와 override_settings 주입. 영향: StableDiffusion.js, handleTools.js, manifest.json,
 // 그리고 @librechat/api dist (definitionsOnly 경로의 builtin tool registry).
 
@@ -9,7 +9,7 @@ const HANDLE_PATH = '/app/api/app/clients/tools/util/handleTools.js';
 const MANIFEST_PATH = '/app/api/app/clients/tools/manifest.json';
 const DIST_PATH = '/app/packages/api/dist/index.js';
 const MARKER = 'KLOUDCHAT_SD_MODEL_PATCH';
-const NEW_TOOL_NAME = 'image-generation';
+const NEW_TOOL_NAME = 'generate_image';
 
 let src = fs.readFileSync(PATH, 'utf8');
 if (src.includes(MARKER)) {
@@ -66,7 +66,7 @@ if (!src.includes(PAYLOAD_NEEDLE)) {
 }
 src = src.replace(PAYLOAD_NEEDLE, PAYLOAD_REPLACEMENT);
 
-// ── 3. 툴 이름 rename: 'stable-diffusion' → 'image-generation'
+// ── 3. 툴 이름 rename: 'stable-diffusion' → 'generate_image'
 src = src.replace("this.name = 'stable-diffusion';", "this.name = '" + NEW_TOOL_NAME + "';");
 src = src.replace(
   "You can generate images using text with 'stable-diffusion'.",
@@ -98,14 +98,14 @@ fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
 // @librechat/api dist — builtin tool registry rename.
 // `loadToolDefinitions` (definitionsOnly 경로 — agents 가 LLM 한테 보낼 tool definitions 를
 // 만들 때 사용) 가 `getToolDefinition(toolName)` 으로 dist 의 toolDefinitions 객체에서
-// entry 를 찾는데, dist 는 'stable-diffusion' 키로만 등록돼 있어 'image-generation' 호출
-// 시 silent skip → LLM tool array 에서 누락. 이 패치가 dist 를 'image-generation' 키로
+// entry 를 찾는데, dist 는 'stable-diffusion' 키로만 등록돼 있어 'generate_image' 호출
+// 시 silent skip → LLM tool array 에서 누락. 이 패치가 dist 를 'generate_image' 키로
 // rename 해서 매칭되게 한다.
 const distSrc = fs.readFileSync(DIST_PATH, 'utf8');
 let distOut = distSrc;
 const distReplacements = [
-  ["'stable-diffusion':", "'image-generation':"],
-  ["name: 'stable-diffusion',", "name: 'image-generation',"],
+  ["'stable-diffusion':", "'generate_image':"],
+  ["name: 'stable-diffusion',", "name: 'generate_image',"],
   ["with 'stable-diffusion'", "with '" + NEW_TOOL_NAME + "'"],
 ];
 let distChanged = 0;
@@ -115,7 +115,7 @@ for (const [from, to] of distReplacements) {
     distChanged++;
   }
 }
-if (distChanged === 0 && !distSrc.includes("'image-generation':")) {
+if (distChanged === 0 && !distSrc.includes("'generate_image':")) {
   console.error('[patch_librechat_sd_model] dist NEEDLE not found — @librechat/api upstream changed?');
   process.exit(1);
 }

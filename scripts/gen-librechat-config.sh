@@ -35,8 +35,7 @@ if has_openrouter; then
   for m in "${GOOGLE_MODELS[@]}";    do MODELS+=("google/${m}");    done
 fi
 for m in "${OLLAMA_CHAT_CATALOG[@]}"; do
-  if ollama_has "$m"; then MODELS+=("ollama/${m}")
-  elif [[ -n "${MODEL_OR_FREE[$m]:-}" ]] && has_openrouter; then MODELS+=("ollama/${m}"); fi
+  if ollama_has "$m"; then MODELS+=("ollama/${m}"); fi
 done
 
 SECTION=$(

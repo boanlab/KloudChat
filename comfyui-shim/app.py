@@ -1,6 +1,6 @@
 """A1111-compatible shim in front of one or more ComfyUI backends.
 
-LibreChat's built-in image-generation tool speaks the A1111 / AUTOMATIC1111
+LibreChat's built-in generate_image tool speaks the A1111 / AUTOMATIC1111
 WebUI REST conventions (POST /sdapi/v1/txt2img, /sdapi/v1/img2img, …) and
 expects a base64-encoded PNG back. ComfyUI speaks a different protocol: you
 POST a workflow graph to /prompt, poll /history/{prompt_id} for status, and
@@ -23,7 +23,7 @@ multiple are configured the shim:
 
   * discovers each backend's loaded checkpoints / unets via /object_info
     (cached, refreshed every MODEL_DISCOVERY_TTL_SEC) and maps them to the
-    aliases used in MODEL_ALIASES — heterogeneous GPU clusters can keep
+    aliases in COMFYUI_ALIAS_VARIANTS — heterogeneous GPU clusters can keep
     different model files on different nodes;
   * filters backend candidates by the alias being requested so a node that
     doesn't carry the model is never chosen, then probes /queue on the
@@ -85,7 +85,7 @@ OBJECT_INFO_TIMEOUT_SEC = float(os.getenv("OBJECT_INFO_TIMEOUT_SEC", "10"))
 LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:8000").rstrip("/")
 LITELLM_API_KEY = os.getenv("LITELLM_MASTER_KEY") or os.getenv("OPENROUTER_API_KEY", "")
 # alias → LiteLLM model_name. Populated from env: "alias1=model1,alias2=model2".
-# Aliases here are what the LLM emits as image-generation tool arg `model=...`.
+# Aliases here are what the LLM emits as generate_image tool arg `model=...`.
 OR_IMAGE_MODELS: dict[str, str] = {}
 for _kv in os.getenv("OR_IMAGE_MODELS", "").split(","):
     if "=" in _kv:
@@ -119,38 +119,35 @@ def _forget(prompt_id: str) -> None:
     _PROMPT_BACKEND.pop(prompt_id, None)
 
 
-# Map model aliases the user sends in the A1111 request to workflow templates.
-# Aliases match what manage.sh / docs advertise.
-MODEL_ALIASES = {
-    "qwen-image": "qwen-image-txt2img.json",
-    "qwen-image-2512": "qwen-image-txt2img.json",
-    "qwen-image-edit": "qwen-image-edit.json",
-    "qwen-image-edit-2509": "qwen-image-edit.json",
-    "flux-dev": "flux-dev-txt2img.json",
-    "flux-schnell": "flux-schnell-txt2img.json",
+# Per-canonical-alias variant catalogue. Each variant is
+# (loader-kind, on-disk filename, workflow template) ordered from highest-perf
+# (Blackwell NVFP4) down to fallback (Q8 GGUF). The first variant whose file
+# is present on a given ComfyUI node is the one we route to that node, so
+# heterogeneous clusters (GB10 + Ada 4090 + older GPU) can each carry the
+# quant that suits their tensor cores without per-node config in the shim.
+# Mirrors __comfyui_node_models in scripts/lib.sh — keep both in sync.
+COMFYUI_ALIAS_VARIANTS: dict[str, list[tuple[str, str, str]]] = {
+    "qwen-image": [
+        ("unet", "qwen-image-nvfp4.safetensors", "qwen-image-txt2img-nvfp4.json"),
+        ("unet", "qwen-image-fp8.safetensors",   "qwen-image-txt2img-fp8.json"),
+        ("unet", "qwen-image-Q8_0.gguf",         "qwen-image-txt2img-gguf.json"),
+    ],
+    "qwen-image-edit": [
+        ("unet", "qwen-image-edit-fp8.safetensors", "qwen-image-edit-fp8.json"),
+        ("unet", "qwen-image-edit-Q8_0.gguf",       "qwen-image-edit-gguf.json"),
+    ],
+    "flux-schnell": [
+        ("unet", "flux1-schnell.safetensors", "flux-schnell-txt2img.json"),
+    ],
+    "flux-dev": [
+        ("unet", "flux1-dev.safetensors", "flux-dev-txt2img.json"),
+    ],
 }
 
-# Same map, but for img2img requests. qwen-image-edit naturally accepts an
-# input image and is the only edit path we expose by default.
-MODEL_ALIASES_IMG2IMG = {
-    "qwen-image-edit": "qwen-image-edit.json",
-    "qwen-image-edit-2509": "qwen-image-edit.json",
-}
-
-# Canonical alias → (loader-kind, weight filename on disk) used to match
-# /object_info contents on each backend. Mirrors __comfyui_node_models in
-# scripts/lib.sh — keep both in sync when adding a new image model.
-COMFYUI_ALIAS_FILES: dict[str, tuple[str, str]] = {
-    "qwen-image":      ("unet", "qwen-image-Q8_0.gguf"),
-    "qwen-image-edit": ("unet", "qwen-image-edit-Q8_0.gguf"),
-    "flux-schnell":    ("unet", "flux1-schnell.safetensors"),
-    "flux-dev":        ("unet", "flux1-dev.safetensors"),
-}
-
-# A1111 alias the caller sent → canonical alias used for discovery lookups.
-# Lets versioned identifiers (qwen-image-2512, qwen-image-edit-2509) resolve
-# to the same on-disk weight as their short alias.
-DISCOVERY_ALIAS: dict[str, str] = {
+# A1111 alias (sent by caller) → canonical alias used for variant lookup.
+# Versioned identifiers (qwen-image-2512, qwen-image-edit-2509) resolve to the
+# same canonical so they share variants/workflows with their short alias.
+ALIAS_TO_CANONICAL: dict[str, str] = {
     "qwen-image": "qwen-image",
     "qwen-image-2512": "qwen-image",
     "qwen-image-edit": "qwen-image-edit",
@@ -158,6 +155,9 @@ DISCOVERY_ALIAS: dict[str, str] = {
     "flux-dev": "flux-dev",
     "flux-schnell": "flux-schnell",
 }
+
+# Subset of aliases that accept init_images. Anything else 400s on /img2img.
+IMG2IMG_ALIASES: set[str] = {"qwen-image-edit", "qwen-image-edit-2509"}
 
 app = FastAPI(title="ComfyUI A1111 Shim", version="0.2.0")
 
@@ -201,11 +201,14 @@ async def _ollama_vram_used(client: httpx.AsyncClient, backend: str) -> int | No
         return None
 
 
-# backend URL → set of canonical aliases the node has loaded. Empty when the
-# node was unreachable on the last refresh.
-_NODE_ALIASES: dict[str, set[str]] = {}
-_NODE_ALIASES_AT: float = 0.0
-_NODE_ALIASES_LOCK = asyncio.Lock()
+# backend URL → {canonical alias: workflow template} mapping the node can serve.
+# Workflow template comes from the first matching variant in COMFYUI_ALIAS_VARIANTS,
+# so heterogeneous nodes (Blackwell NVFP4, Ada FP8, older GGUF) can share the same
+# logical alias but each route to the workflow that matches its on-disk file.
+# Empty dict for unreachable nodes.
+_NODE_VARIANTS: dict[str, dict[str, str]] = {}
+_NODE_VARIANTS_AT: float = 0.0
+_NODE_VARIANTS_LOCK = asyncio.Lock()
 
 
 def _files_from_object_info(info: dict[str, Any], node_class: str, key: str) -> set[str]:
@@ -221,66 +224,70 @@ def _files_from_object_info(info: dict[str, Any], node_class: str, key: str) -> 
     return set()
 
 
-async def _discover_node_aliases(client: httpx.AsyncClient, backend: str) -> set[str]:
-    """Hit /object_info on one backend and return the aliases it can serve.
-    Empty set on failure — caller treats that as 'no aliases here right now'
-    rather than 'all aliases'."""
+async def _discover_node_variants(client: httpx.AsyncClient, backend: str) -> dict[str, str]:
+    """Hit /object_info on one backend; return {canonical_alias: workflow_template}
+    for whichever variant (NVFP4 → FP8 → GGUF) the node has on disk. Empty dict
+    on failure — caller treats that as 'no aliases here right now' rather than
+    'all aliases'."""
     try:
         r = await client.get(f"{backend}/object_info", timeout=OBJECT_INFO_TIMEOUT_SEC)
         r.raise_for_status()
         info = r.json()
     except (httpx.HTTPError, ValueError):
-        return set()
+        return {}
     ckpts = _files_from_object_info(info, "CheckpointLoaderSimple", "ckpt_name")
     unets = (_files_from_object_info(info, "UNETLoader", "unet_name")
              | _files_from_object_info(info, "UnetLoaderGGUF", "unet_name"))
-    aliases: set[str] = set()
-    for alias, (kind, fname) in COMFYUI_ALIAS_FILES.items():
-        pool = ckpts if kind == "ckpt" else unets
-        if fname in pool:
-            aliases.add(alias)
-    return aliases
+    out: dict[str, str] = {}
+    for alias, variants in COMFYUI_ALIAS_VARIANTS.items():
+        for kind, fname, workflow in variants:
+            pool = ckpts if kind == "ckpt" else unets
+            if fname in pool:
+                out[alias] = workflow
+                break  # first match wins (preference order)
+    return out
 
 
-async def _refresh_node_aliases(client: httpx.AsyncClient) -> None:
+async def _refresh_node_variants(client: httpx.AsyncClient) -> None:
     """Re-probe every backend's /object_info if the cache is empty or stale.
     Holds an asyncio lock so concurrent requests share a single refresh."""
-    global _NODE_ALIASES_AT
-    async with _NODE_ALIASES_LOCK:
-        fresh = _NODE_ALIASES and (time.monotonic() < _NODE_ALIASES_AT + MODEL_DISCOVERY_TTL_SEC)
+    global _NODE_VARIANTS_AT
+    async with _NODE_VARIANTS_LOCK:
+        fresh = _NODE_VARIANTS and (time.monotonic() < _NODE_VARIANTS_AT + MODEL_DISCOVERY_TTL_SEC)
         if fresh:
             return
-        results = await asyncio.gather(*(_discover_node_aliases(client, b) for b in BACKENDS))
-        _NODE_ALIASES.clear()
-        for b, aliases in zip(BACKENDS, results):
-            _NODE_ALIASES[b] = aliases
-        _NODE_ALIASES_AT = time.monotonic()
+        results = await asyncio.gather(*(_discover_node_variants(client, b) for b in BACKENDS))
+        _NODE_VARIANTS.clear()
+        for b, variants in zip(BACKENDS, results):
+            _NODE_VARIANTS[b] = variants
+        _NODE_VARIANTS_AT = time.monotonic()
         for b in BACKENDS:
-            LOG.info("ComfyUI %s aliases: %s", b, sorted(_NODE_ALIASES.get(b, set())) or "(none)")
+            served = _NODE_VARIANTS.get(b, {})
+            summary = ", ".join(f"{a}:{w}" for a, w in sorted(served.items())) or "(none)"
+            LOG.info("ComfyUI %s variants: %s", b, summary)
 
 
 async def _backends_with_alias(client: httpx.AsyncClient, alias: str) -> list[str]:
-    """Backends whose last discovery turned up `alias`. Order preserves the
-    original BACKENDS order so the fallback in _pick_backend stays deterministic."""
-    await _refresh_node_aliases(client)
-    return [b for b in BACKENDS if alias in _NODE_ALIASES.get(b, set())]
+    """Backends whose last discovery turned up `alias` (any variant). Order
+    preserves BACKENDS order so the fallback in _pick_backend stays deterministic."""
+    await _refresh_node_variants(client)
+    return [b for b in BACKENDS if alias in _NODE_VARIANTS.get(b, {})]
 
 
-async def _pick_backend(client: httpx.AsyncClient, *, alias: str | None = None) -> str:
-    """Choose a backend: filter by alias availability, then least-loaded.
+async def _pick_backend(client: httpx.AsyncClient, *, canonical: str | None = None) -> str:
+    """Choose a backend: filter by canonical-alias availability, then least-loaded.
     Falls back to the first configured backend if every probe failed —
     gives the caller a meaningful error instead of silently dropping the request.
 
-    A 404 surfaces only when `alias` is given but no reachable node has it
-    loaded; that's a real configuration miss, not transient load."""
+    A 404 surfaces only when `canonical` is given but no reachable node has any
+    variant of it on disk; that's a real configuration miss, not transient load."""
     candidates = BACKENDS
-    canonical = DISCOVERY_ALIAS.get(alias) if alias else None
     if canonical and len(BACKENDS) > 1:
         narrowed = await _backends_with_alias(client, canonical)
         if not narrowed:
             raise HTTPException(
                 404,
-                f"alias {alias!r} not loaded on any reachable ComfyUI node "
+                f"alias {canonical!r} has no variant on any reachable ComfyUI node "
                 f"(checked: {', '.join(BACKENDS)})",
             )
         candidates = narrowed
@@ -318,7 +325,7 @@ async def _pick_backend(client: httpx.AsyncClient, *, alias: str | None = None) 
         return "?" if v is None else f"{v / 2**30:.1f}GiB"
     LOG.info(
         "Routing to %s (alias=%s) — backends: %s",
-        chosen, alias or "any",
+        chosen, canonical or "any",
         ", ".join(
             f"{b}[vram={_fmt_vram(v)}, q={d}]"
             for d, v, b in zip(depths, vrams, candidates)
@@ -472,13 +479,18 @@ async def _comfy_run(client: httpx.AsyncClient, backend: str, workflow: dict[str
         _forget(prompt_id)
 
 
-def _resolve_model(model: str | None, *, img2img: bool) -> str:
-    table = MODEL_ALIASES_IMG2IMG if img2img else MODEL_ALIASES
+def _resolve_alias(model: str | None, *, img2img: bool) -> tuple[str, str]:
+    """Validate the user-supplied alias and return `(alias_key, canonical)`.
+    Raises 400 on unknown alias, or on img2img with an alias that lacks an
+    image-input workflow."""
     key = (model or DEFAULT_MODEL).lower()
-    if key not in table:
-        known = sorted(set(table) | set(OR_IMAGE_MODELS))
+    canonical = ALIAS_TO_CANONICAL.get(key)
+    if not canonical:
+        known = sorted(set(ALIAS_TO_CANONICAL) | set(OR_IMAGE_MODELS))
         raise HTTPException(400, f"unknown model alias: {model!r}. Known: {known}")
-    return table[key]
+    if img2img and key not in IMG2IMG_ALIASES:
+        raise HTTPException(400, f"alias {model!r} does not support img2img")
+    return key, canonical
 
 
 async def _openrouter_generate(prompt: str, model_alias: str) -> list[str]:
@@ -551,11 +563,14 @@ async def health() -> dict[str, Any]:
 
 @app.get("/sdapi/v1/sd-models")
 async def list_models() -> list[dict[str, str]]:
-    """LibreChat fetches this to populate the model dropdown."""
-    out = [
-        {"title": alias, "model_name": alias, "filename": filename}
-        for alias, filename in MODEL_ALIASES.items()
-    ]
+    """LibreChat fetches this to populate the model dropdown.
+    Lists each user-facing alias once; `filename` reports the highest-priority
+    variant in the catalogue (actual served variant is per-node at queue time)."""
+    out: list[dict[str, str]] = []
+    for alias, canonical in ALIAS_TO_CANONICAL.items():
+        variants = COMFYUI_ALIAS_VARIANTS.get(canonical) or []
+        filename = variants[0][1] if variants else canonical
+        out.append({"title": alias, "model_name": alias, "filename": filename})
     for alias, target in OR_IMAGE_MODELS.items():
         out.append({"title": alias, "model_name": alias, "filename": f"openrouter:{target}"})
     return out
@@ -588,21 +603,24 @@ async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
             "info": json.dumps({"prompt": req.prompt, "model": key, "backend": "openrouter"}),
         }
 
-    template_name = _resolve_model(model, img2img=False)
-    template = _load_workflow(template_name)
-    workflow = _populate_workflow(
-        template,
-        prompt=req.prompt,
-        negative=req.negative_prompt,
-        seed=req.seed if req.seed >= 0 else None,
-        steps=req.steps,
-        cfg=req.cfg_scale,
-        width=req.width,
-        height=req.height,
-    )
+    _, canonical = _resolve_alias(model, img2img=False)
 
     async with httpx.AsyncClient() as client:
-        backend = await _pick_backend(client, alias=key)
+        backend = await _pick_backend(client, canonical=canonical)
+        template_name = _NODE_VARIANTS.get(backend, {}).get(canonical)
+        if not template_name:
+            raise HTTPException(500, f"no variant resolved for {canonical!r} on {backend}")
+        template = _load_workflow(template_name)
+        workflow = _populate_workflow(
+            template,
+            prompt=req.prompt,
+            negative=req.negative_prompt,
+            seed=req.seed if req.seed >= 0 else None,
+            steps=req.steps,
+            cfg=req.cfg_scale,
+            width=req.width,
+            height=req.height,
+        )
         LOG.info("txt2img: model=%s template=%s backend=%s",
                  model or DEFAULT_MODEL, template_name, backend)
         images = await _comfy_run(client, backend, workflow)
@@ -623,12 +641,14 @@ async def img2img(req: Img2ImgRequest) -> dict[str, Any]:
     key = (model or DEFAULT_MODEL).lower()
     if key in OR_IMAGE_MODELS:
         raise HTTPException(400, f"img2img not supported for OR backend model: {key}")
-    template_name = _resolve_model(model, img2img=True)
-
-    template = _load_workflow(template_name)
+    _, canonical = _resolve_alias(model, img2img=True)
 
     async with httpx.AsyncClient() as client:
-        backend = await _pick_backend(client, alias=key)
+        backend = await _pick_backend(client, canonical=canonical)
+        template_name = _NODE_VARIANTS.get(backend, {}).get(canonical)
+        if not template_name:
+            raise HTTPException(500, f"no variant resolved for {canonical!r} on {backend}")
+        template = _load_workflow(template_name)
         LOG.info("img2img: model=%s template=%s backend=%s",
                  model or DEFAULT_MODEL, template_name, backend)
         # Upload the init image to the same backend that will run the workflow —

@@ -52,28 +52,9 @@ docker compose restart librechat
 |---|---|
 | 브라우저 탭 + 좌상단 타이틀 | `.env` `APP_TITLE` |
 | 로그인 페이지 헤딩 | `.env` `WELCOME_BACK_MESSAGE` |
-| 회원가입 페이지 헤딩 | `.env` `SIGNUP_HEADER` |
 | Help & FAQ 메뉴 | `.env` `HELP_AND_FAQ_URL` |
-| 채팅 홈 타글라인 | `librechat.yaml` `interface.customWelcome` |
 | 채팅창 하단 푸터 | `.env` `CUSTOM_FOOTER` |
 | 엔드포인트 표시 이름 | `librechat.yaml` `endpoints.custom[].modelDisplayLabel` |
 | 언어 셀렉터 옵션 | `scripts/librechat-patch.py` |
 
-`WELCOME_BACK_MESSAGE` / `SIGNUP_HEADER` 는 startup 시 LibreChat 번들 i18n 을 치환하는 식. `HELP_AND_FAQ_URL=/` (기본) 이면 메뉴 자체가 숨겨지고, URL 을 채우면 표시됩니다. 타글라인은 빈 문자열로 숨김. `CUSTOM_FOOTER` 는 LibreChat 이 yaml 아닌 env 에서만 읽으며, 공백 1개로 사실상 숨김 가능. 언어 셀렉터는 patch 가 startup 시 ko-KR + en-US + auto 만 노출하도록 잘라냄 — 추가/제거는 스크립트 수정.
-
-## 트러블슈팅
-
-| 증상 | 원인 |
-|---|---|
-| 교체했는데 옛 이미지 | 브라우저 캐시 |
-| 컨테이너 시작 실패 | bind-mount 대상 누락 |
-| PWA 아이콘 그대로 | PWA 캐시 |
-| 업그레이드 후 깨짐 | LibreChat 자산 경로 변경 |
-
-**브라우저 캐시** — Ctrl+Shift+R 또는 시크릿 창.
-
-**bind-mount 누락** — `branding/<파일>` 이 없으면 mount 실패. `docker compose logs librechat` 으로 어떤 파일인지 확인 후 보충.
-
-**PWA 캐시** — 앱 삭제 후 재설치.
-
-**자산 경로 변경** — LibreChat 업그레이드 시 자산 경로/이름이 바뀔 수 있음. `docker exec LibreChat ls /app/client/dist/assets/` 로 새 이름 확인 → `docker-compose.yml` 의 bind-mount target 수정.
+`WELCOME_BACK_MESSAGE` 는 startup 시 LibreChat 번들 i18n 을 치환하는 식. `HELP_AND_FAQ_URL=/` (기본) 이면 메뉴 자체가 숨겨지고, URL 을 채우면 표시됩니다. `CUSTOM_FOOTER` 는 LibreChat 이 yaml 아닌 env 에서만 읽으며, 공백 1개로 사실상 숨김 가능. 언어 셀렉터는 patch 가 startup 시 ko-KR + en-US + auto 만 노출하도록 잘라냄 — 추가/제거는 스크립트 수정.

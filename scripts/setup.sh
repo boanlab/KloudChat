@@ -59,6 +59,16 @@ fi
 # 키 상태 요약
 echo "    keys: openrouter=$(has_openrouter && echo y || echo n) hf=$( [[ -n "$(env_get HF_TOKEN)" ]] && echo y || echo n )"
 
+# RAG embedding 모델 자동 선택: Ollama 에 bge-m3 0대 + OR 키 있으면
+# text-embedding-3-small (OR) 로 swap. .env 가 이미 다른 값이면 존중.
+CUR_EMBED="$(env_get EMBEDDINGS_MODEL)"
+if [[ "$CUR_EMBED" == "bge-m3" || -z "$CUR_EMBED" ]]; then
+  if ! ollama_pulled_has "$OLLAMA_PULLED" bge-m3 && has_openrouter; then
+    env_set EMBEDDINGS_MODEL text-embedding-3-small
+    warn "bge-m3 보유 노드 0 + OR 키 감지 — EMBEDDINGS_MODEL=text-embedding-3-small 로 swap"
+  fi
+fi
+
 # Config 재생성 (union 결과를 yaml에 반영 — 보유 노드별 deployment).
 ./scripts/gen-litellm-config.sh
 ./scripts/gen-librechat-config.sh

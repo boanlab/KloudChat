@@ -197,7 +197,7 @@ create_default_agent_for_user() {
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
   # 모델 1개당 에이전트 1개. 이름 prefix = 능력 요약 (Text / Text+Code / Text+Image / Text+Image+Code).
-  # image-generation backend: ollama→ComfyUI, openai→gpt-image-2 (OR), google→nano-banana (OR),
+  # generate_image backend: ollama→ComfyUI, openai→gpt-image-2 (OR), google→nano-banana (OR),
   # anthropic→자사 image API 없음 → 툴 자체 제외.
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local agent_specs='[]'
@@ -259,13 +259,12 @@ create_default_agent_for_user() {
       var MCP_COMMON = [
         'sys__all__sys_mcp_fetch_url',     // URL fetch + Markdown 변환
         'sys__all__sys_mcp_time',          // 현재 시간 / 타임존 변환
-        'sys__all__sys_mcp_litellm_usage', // 본인 토큰 사용량/예산 (my_usage, budget_status)
+        'sys__all__sys_mcp_usage',         // 본인 토큰 사용량/예산 (my_usage, budget_status)
+        'sys__all__sys_mcp_youtube',       // YouTube 텍스트 추출 (자막 or whisper)
       ];
-      // 모델 크기별 분기. 작은 모델은 schema 부담을 피해 calculator 만, scholar/arxiv 제외.
+      // 모델 크기별 분기. 작은 모델은 schema 부담을 피해 math_basic 만.
       var MCP_MATH_BIG    = ['sys__all__sys_mcp_math'];              // sympy 173 tools
-      var MCP_MATH_SMALL  = ['sys__all__sys_mcp_calculator'];        // 사칙연산 16 tools
-      var MCP_SCHOLAR_BIG = ['sys__all__sys_mcp_semantic_scholar'];  // 33 tools
-      var MCP_ARXIV_BIG   = ['sys__all__sys_mcp_arxiv'];             // 8 tools
+      var MCP_MATH_SMALL  = ['sys__all__sys_mcp_math_basic'];        // 사칙연산 16 tools
 
       // 작은 모델 명단 (canonical model id — provider prefix 제거된 형태).
       var SMALL_MODELS = new Set([
@@ -276,29 +275,27 @@ create_default_agent_for_user() {
         var tag = model.replace(/^[^/]+\\//, '');
         var isSmall = SMALL_MODELS.has(tag);
         var math    = isSmall ? MCP_MATH_SMALL : MCP_MATH_BIG;
-        var scholar = isSmall ? []             : MCP_SCHOLAR_BIG;
-        var arxiv   = isSmall ? []             : MCP_ARXIV_BIG;
-        return MCP_COMMON.concat(math).concat(scholar).concat(arxiv);
+        return MCP_COMMON.concat(math);
       }
 
       // 모든 에이전트의 base 빌트인. 분리는 TOOL_EXCLUDE / EXT_IMAGE_FOR_PROVIDER 가 처리.
-      var BUILTIN_BASE = ['execute_code','file_search','web_search','image-generation'];
+      var BUILTIN_BASE = ['execute_code','file_search','web_search','generate_image'];
 
       // 모델별 빌트인 툴 제외 (작은 ollama 모델 정책).
       var TOOL_EXCLUDE = {
-        'qwen3.5:9b':              ['execute_code', 'image-generation'],
-        'llama3.1:8b':             ['execute_code', 'image-generation'],
+        'qwen3.5:9b':              ['execute_code', 'generate_image'],
+        'llama3.1:8b':             ['execute_code', 'generate_image'],
       };
 
-      // 외부 provider → 자사 image 모델. anthropic 누락 = image-generation 자동 제외.
+      // 외부 provider → 자사 image 모델. anthropic 누락 = generate_image 자동 제외.
       var EXT_IMAGE_FOR_PROVIDER = {
         'openai': 'gpt-image-2',
         'google': 'nano-banana',
       };
 
-      // local 에이전트는 ComfyUI 로 갈 모델만 안내 — shim 의 MODEL_ALIASES.
+      // local 에이전트는 ComfyUI 로 갈 모델만 안내 — shim 의 ALIAS_TO_CANONICAL.
       var IMAGE_INSTR_LOCAL =
-        '\n\nFor image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
+        '\n\nFor image / picture / photo / diagram / illustration requests, call generate_image directly. ' +
         'Pick the model arg by intent:\n' +
         '  - model=\"flux-schnell\" — fast / draft / quick iteration (default)\n' +
         '  - model=\"flux-dev\" — when high quality is requested\n' +
@@ -307,7 +304,7 @@ create_default_agent_for_user() {
 
       // external — provider 자사 image 모델 한 가지만 안내.
       function imageInstrExt(imageModel) {
-        return '\n\nFor image / picture / photo / diagram / illustration requests, call image-generation directly. ' +
+        return '\n\nFor image / picture / photo / diagram / illustration requests, call generate_image directly. ' +
                'Use model=\"' + imageModel + '\" (the only image model wired for this agent). ' +
                'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
       }
@@ -315,11 +312,11 @@ create_default_agent_for_user() {
       function builtinFor(spec) {
         var tag  = spec.model.replace(/^[^/]+\\//, '');
         var skip = (TOOL_EXCLUDE[tag] || []).slice();
-        // external 중 image 매핑 없는 provider (anthropic) 는 image-generation drop.
+        // external 중 image 매핑 없는 provider (anthropic) 는 generate_image drop.
         if (spec.kind !== 'local') {
           var provider = spec.model.split('/')[0];
           if (!EXT_IMAGE_FOR_PROVIDER[provider]) {
-            skip.push('image-generation');
+            skip.push('generate_image');
           }
         }
         return BUILTIN_BASE.filter(function(t){ return skip.indexOf(t) === -1; });
@@ -330,9 +327,10 @@ create_default_agent_for_user() {
         if (tools.indexOf('file_search')      !== -1) caps.push('file_search (RAG over user files)');
         if (tools.indexOf('web_search')       !== -1) caps.push('web_search');
         if (tools.indexOf('execute_code')     !== -1) caps.push('code execution');
-        if (tools.indexOf('image-generation') !== -1) caps.push('image-generation');
+        if (tools.indexOf('generate_image') !== -1) caps.push('generate_image');
         var instr = 'You are a helpful assistant with ' + caps.join(', ') + ' tools.';
-        if (tools.indexOf('image-generation') !== -1) {
+        instr += '\n\nAlways respond in Korean or English only. Never use Chinese characters (Hanzi) or Japanese kana (hiragana/katakana). If a CJK character comes to mind, paraphrase in Korean or English.';
+        if (tools.indexOf('generate_image') !== -1) {
           if (spec.kind === 'local') {
             instr += IMAGE_INSTR_LOCAL;
           } else {

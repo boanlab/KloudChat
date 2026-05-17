@@ -175,10 +175,17 @@ model_list:
     litellm_params:
       model: ollama/bge-m3
       api_base: http://10.40.0.254:11434
+  - model_name: text-embedding-3-small
+    model_info:
+      mode: embedding
+      input_cost_per_token: 0.0000000200
+    litellm_params:
+      model: openrouter/openai/text-embedding-3-small
+      api_key: os.environ/OPENROUTER_API_KEY
   # <<< KLOUDCHAT_AUTOGEN_END
 
-  # ── External image-generation models (정적 등록 — autogen 영역 밖)
-  # 외부 LLM 에이전트의 image-generation tool 이 사용. shim 의 OR_IMAGE_MODELS env
+  # ── External generate_image models (정적 등록 — autogen 영역 밖)
+  # 외부 LLM 에이전트의 generate_image tool 이 사용. shim 의 OR_IMAGE_MODELS env
   # 매핑을 통해 chat/completions + modalities=["image","text"] 로 호출. OpenRouter 경유.
   # 모델 ID 가 OR catalog 에 없으면 가까운 ID 로 교체 (예: gpt-image-2 → gpt-image-1,
   # gemini-3-pro-image-preview → gemini-2.5-flash-image-preview).

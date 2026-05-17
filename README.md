@@ -98,7 +98,7 @@ $EDITOR .env
 ./scripts/manage.sh user create --id admin@example.com --name '관리자' --username admin --password '비번8자이상'
 ```
 
-LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5/3.6, llama3.1/3.3, nemotron3, qwen3-coder-next 등)이 함께 노출.
+LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-pro-preview 등) + 로컬 Ollama 모델(qwen3.5/3.6, llama3.1/3.3, nemotron3, qwen3-coder-next 등)이 함께 노출. Ollama 카탈로그 모델은 어느 노드든 pull 돼 있을 때만 메뉴에 등장.
 
 자세한 매트릭스는 [docs/models.md](docs/models.md#라우팅-결정-매트릭스) 참고.
 
@@ -121,7 +121,7 @@ LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-
 | 코드 실행 | LibreCodeInterpreter |
 | 파일 업로드 | LibreChat RAG API |
 | 이미지 생성 | ComfyUI + A1111 shim |
-| MCP 도구 | uvx stdio (fetch / time / math / scholar / arxiv / ...) |
+| MCP 도구 | uvx stdio (fetch / time / math / usage) |
 | 운영 관리 | LiteLLM + `scripts/manage.sh` |
 
 이미지 생성은 Qwen-Image / Qwen-Image-Edit / FLUX.1 (dev, schnell) — [tools.md#이미지-백엔드](docs/tools.md#이미지-백엔드). RAG API 는 HWP / PDF / DOCX 등 업로드 처리. MCP 서버 전체 목록은 [tools.md](docs/tools.md). 운영 관리는 팀·사용자·예산 (LiteLLM 가상 키).

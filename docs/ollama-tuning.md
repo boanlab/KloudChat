@@ -257,7 +257,7 @@ GB10 가용 메모리 ~104 GB 기준 동시 탑재 가능한 조합 예시:
 
 ## 모델 수동 언로드
 
-특정 모델을 즉시 내리려면:
+특정 모델을 즉시 내려 VRAM 회수하려면 (예: ComfyUI 이미지 생성 작업 직전에 큰 LLM 비우기 — 다만 ComfyUI 가 `--normalvram` 기본 모드로 도는 현재 셋업에선 image-gen VRAM 이 생성 중에만 점유되므로 수동 stop 이 필요한 경우는 드뭅니다. 자세한 공존 패턴은 [GPU 메모리 가이드](gpu-memory.md) 참고):
 
 ```bash
 ollama stop qwen3.6:35b

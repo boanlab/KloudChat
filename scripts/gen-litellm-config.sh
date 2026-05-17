@@ -51,37 +51,25 @@ emit_commercial_or() {
 }
 
 # 보유 노드 1개당 deployment 1개씩 emit. 같은 model_name 의 여러 deployment 는
-# LiteLLM router 의 routing_strategy 가 LB. 보유 0 이면 MODEL_OR_FREE + OR 키 fallback.
+# LiteLLM router 의 routing_strategy 가 LB. 보유 0 이면 미등록.
 emit_ollama_chat() {
-  local m="$1" in_pm out_pm or_id urls
+  local m="$1" in_pm out_pm urls
   in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
   out_pm="${MODEL_PRICE_OUT_PM[$m]:-}"
-  or_id="${MODEL_OR_FREE[$m]:-}"
   urls="$(nodes_for "$m")"
-  if [[ -n "$urls" ]]; then
-    while IFS= read -r url; do
-      [[ -n "$url" ]] || continue
-      echo "  - model_name: ollama/${m}"
-      echo "    litellm_params:"
-      echo "      model: ollama_chat/${m}"
-      echo "      api_base: ${url}"
-      if [[ -n "$in_pm" && -n "$out_pm" ]]; then
-        echo "    model_info:"
-        echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
-        echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
-      fi
-    done <<<"$urls"
-  elif [[ -n "$or_id" ]] && has_openrouter; then
+  [[ -n "$urls" ]] || return 0
+  while IFS= read -r url; do
+    [[ -n "$url" ]] || continue
     echo "  - model_name: ollama/${m}"
     echo "    litellm_params:"
-    echo "      model: openrouter/${or_id}"
-    echo "      api_key: os.environ/OPENROUTER_API_KEY"
+    echo "      model: ollama_chat/${m}"
+    echo "      api_base: ${url}"
     if [[ -n "$in_pm" && -n "$out_pm" ]]; then
       echo "    model_info:"
       echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
       echo "      output_cost_per_token: $(per_token_cost "$out_pm")"
     fi
-  fi
+  done <<<"$urls"
 }
 
 emit_ollama_embed() {
@@ -101,6 +89,21 @@ emit_ollama_embed() {
   done <<<"$urls"
 }
 
+# OR 키 있을 때 등록. canonical name 그대로 (`text-embedding-3-small`),
+# 라우트는 `openrouter/openai/<id>`. Ollama bge-m3 미보유 환경에서 RAG 폴백.
+emit_openai_embed() {
+  local m="$1" in_pm
+  has_openrouter || return 0
+  in_pm="${MODEL_PRICE_IN_PM[$m]:-}"
+  echo "  - model_name: ${m}"
+  echo "    model_info:"
+  echo "      mode: embedding"
+  [[ -n "$in_pm" ]] && echo "      input_cost_per_token: $(per_token_cost "$in_pm")"
+  echo "    litellm_params:"
+  echo "      model: openrouter/openai/${m}"
+  echo "      api_key: os.environ/OPENROUTER_API_KEY"
+}
+
 SECTION=$(
   echo "  ${MARKER_START}"
   for m in "${OPENAI_MODELS[@]}";    do emit_commercial_or openai    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
@@ -108,6 +111,7 @@ SECTION=$(
   for m in "${GOOGLE_MODELS[@]}";    do emit_commercial_or google    "$m" "${MODEL_PRICE_IN_PM[$m]}" "${MODEL_PRICE_OUT_PM[$m]}"; done
   for m in "${OLLAMA_CHAT_CATALOG[@]}";  do emit_ollama_chat  "$m"; done
   for m in "${OLLAMA_EMBED_CATALOG[@]}"; do emit_ollama_embed "$m"; done
+  for m in "${OPENAI_EMBED_CATALOG[@]}"; do emit_openai_embed "$m"; done
   echo "  ${MARKER_END}"
 )
 

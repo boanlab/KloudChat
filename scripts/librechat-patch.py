@@ -2,7 +2,7 @@
 """LibreChat 빌드 번들 in-place 패치.
 
 대상 디렉토리(=dist/assets) 의 모든 locales/index 번들을 처리.
-- locales.*.js : i18n 키 치환 (WELCOME_BACK_MESSAGE, SIGNUP_HEADER)
+- locales.*.js : i18n 키 치환 (WELCOME_BACK_MESSAGE)
 - index.*.js   : 언어 셀렉터 축약(ko-KR/en-US), 기본 언어 ko-KR 고정,
                   "Upload to Provider" 메뉴 숨김
 """
@@ -87,8 +87,6 @@ for p in locales_files:
     text = p.read_text()
     if (msg := os.environ.get("WELCOME_BACK_MESSAGE", "").strip()):
         text = replace_i18n_value(text, "com_auth_welcome_back", msg)
-    if (msg := os.environ.get("SIGNUP_HEADER", "").strip()):
-        text = replace_i18n_value(text, "com_auth_create_account", msg)
     p.write_text(text)
 
 for p in index_files:

@@ -24,38 +24,34 @@ mcpServers:
       - --local-timezone=Asia/Seoul
   math:
     # sympy 기반 심볼릭/수치 수학 (미적분, 방정식, 행렬, 단위 변환 등). 173 tools.
-    # 작은 모델 (≤10B 활성 param) 한테는 context 부담 → calculator 로 분리.
+    # 작은 모델 (≤10B 활성 param) 한테는 context 부담 → math_basic 으로 분리.
     type: stdio
     command: uvx
     args:
       - mcp-sympy
-  calculator:
+  math_basic:
     # 사칙연산 + power/sqrt/sum/product/compare 등 16 tools (mcp-server-math).
     # 작은 모델용 — sympy 173 tools 의 schema/선택 부담을 피하기 위함.
     type: stdio
     command: uvx
     args:
       - mcp-server-math
-  semantic_scholar:
-    # Semantic Scholar 학술 검색 (200M+ 논문, 인용 그래프, 저자). 33 tools.
-    # API 키 없으면 공용 IP rate limit (1 req/sec) — multi-user 환경에선 빠듯할 수 있음.
-    # 키 필요 시 https://www.semanticscholar.org/product/api 에서 발급 후
-    # env 에 SEMANTIC_SCHOLAR_API_KEY: "${SEMANTIC_SCHOLAR_API_KEY}" 추가.
+  youtube:
+    # YouTube 영상 텍스트 추출. 자막 있으면 youtube-transcript-api 즉시 반환,
+    # 없으면 yt-dlp 로 audio 추출 + whisper (로컬 GPU 컨테이너 → OR 폴백).
+    # WHISPER_URL 미설정 또는 컨테이너 down 이면 LiteLLM 의 whisper-1 (OR 경유) 사용.
     type: stdio
-    command: uvx
+    command: uv
     args:
-      - semantic-scholar-mcp
-  arxiv:
-    # arxiv.org public API 직접 호출 — 키 불필요. 8 tools.
-    # search_papers / download_paper (PDF/HTML → markdown) / read_paper /
-    # list_papers / semantic_search (로컬 컬렉션) / citation_graph / watch_topic / check_alerts.
-    # 다운로드 캐시: 컨테이너 내부 ~/.arxiv-mcp-server/papers (재시작 시 휘발).
-    # 영구 보관 필요하면 host bind 추가 + --storage-path 인자.
-    type: stdio
-    command: uvx
-    args:
-      - arxiv-mcp-server
-  litellm_usage:
+      - run
+      - --script
+      - /app/mcp/youtube.py
+    env:
+      WHISPER_URL: "${WHISPER_URL:-}"
+      LITELLM_URL: "http://litellm:8000"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+      WHISPER_OR_MODEL: "${WHISPER_OR_MODEL:-whisper-1}"
+  usage:
     # 사용자 본인의 LiteLLM 사용량/예산 조회. tools: my_usage(days), budget_status().
     # uv run --script 로 inline-deps 스크립트 실행 (mcp + httpx 자동 설치).
     # startup: false — app-level init 건너뛰고 user-scoped 연결만 만듦.
@@ -66,7 +62,7 @@ mcpServers:
     args:
       - run
       - --script
-      - /app/mcp/litellm_usage.py
+      - /app/mcp/usage.py
     env:
       LITELLM_URL: "http://litellm:8000"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
@@ -122,7 +118,6 @@ endpoints:
       iconURL: "/images/endpoint-icon.png"
 
 interface:
-  customWelcome: " "
   modelSelect: true
   parameters: true
   presets: true

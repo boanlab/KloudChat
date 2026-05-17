@@ -1,6 +1,6 @@
 # 모델 설정
 
-> 이 문서: 어떤 모델이 어디로 라우팅되는지(라우팅 매트릭스) · 모델 카탈로그를 어디서 수정하는지 · 새 모델을 추가하는 절차 · 이미지 모델 매핑. 처음 띄우는 거면 [README](../README.md) 만 보면 됩니다.
+> 이 문서: 어떤 모델이 어디로 라우팅되는지(라우팅 매트릭스) · 모델 카탈로그를 어디서 수정하는지 · 이미지 모델 매핑. 처음 띄우는 거면 [README](../README.md) 만 보면 됩니다.
 
 ## 모델 카탈로그 (lib.sh 단일 진실)
 
@@ -13,15 +13,15 @@
 | `GOOGLE_MODELS` | commercial 카탈로그 |
 | `OLLAMA_CHAT_CATALOG` | Ollama 채팅 |
 | `OLLAMA_EMBED_CATALOG` | Ollama 임베딩 |
+| `OPENAI_EMBED_CATALOG` | OR 임베딩 (RAG 폴백) |
 | `OLLAMA_DEFAULT_PRIORITY` | 기본 에이전트 우선순위 |
-| `MODEL_OR_FREE` | Ollama → OR free 매핑 |
 | `MODEL_PRICE_IN_PM` / `MODEL_PRICE_OUT_PM` | USD per 1M tokens |
 
 commercial 3개 (`OPENAI_MODELS` / `ANTHROPIC_MODELS` / `GOOGLE_MODELS`) 는 전부 OpenRouter 경유로 라우팅됩니다. native API 직결은 지원 안 함.
 
 `OLLAMA_CHAT_CATALOG` / `OLLAMA_EMBED_CATALOG` 는 union discovery — 어느 노드든 보유하면 그 노드(들)에 deployment 등록. `OLLAMA_DEFAULT_PRIORITY` 는 기본 에이전트가 어떤 모델로 만들어질지 결정 (이 순서대로 lookup, union 어디든 보유한 첫 모델).
 
-`MODEL_OR_FREE` 는 Ollama 카탈로그 모델이 어느 노드에도 없을 때 OR free 로 떨어지는 매핑 — 기본 비활성, 사용자가 OR catalog 검증 후 `lib.sh` 에서 활성화. `MODEL_PRICE_*` 는 LiteLLM 의 spend/budget 추적에 사용 (OpenRouter 가격 기준).
+`MODEL_PRICE_*` 는 LiteLLM 의 spend/budget 추적에 사용 (OpenRouter 가격 기준).
 
 `gen-litellm-config.sh` / `gen-librechat-config.sh` 가 위 정의 + 환경 (OR 키 + ollama discovery) 을 합쳐서 `litellm-config.yaml` 의 `KLOUDCHAT_AUTOGEN` marker, `librechat.yaml` 의 `KLOUDCHAT_MODELS` marker 사이를 자동 생성.
 
@@ -38,7 +38,7 @@ OpenRouter 단일 경로. native API 직결은 지원하지 않습니다 — 운
 
 `model_name` 은 canonical 이름 (`openai/gpt-5.5` 등) 으로 LibreChat 메뉴에 모델당 1개 entry. `litellm_params.model` 은 `openrouter/<provider>/<id>`, `api_key` 는 `os.environ/OPENROUTER_API_KEY`.
 
-### Ollama 카탈로그 (union discovery + 선택적 OR free fallback)
+### Ollama 카탈로그 (union discovery)
 
 각 노드의 `/api/tags` 응답을 합집합으로 합쳐 모델 → 보유 노드 매핑을 만들고, 모델 하나당 보유 노드 수만큼 같은 `model_name` deployment 를 emit. 노드 1개 unreachable 이면 warn 후 그 노드만 skip.
 
@@ -47,10 +47,19 @@ LiteLLM router 의 `routing_strategy: least-busy` 가 같은 `model_name` 후보
 | 조건 | 등록 결과 |
 |---|---|
 | 보유 노드 ≥1 | `ollama_chat/<id>` × 보유 노드 수 |
-| 보유 0 + `MODEL_OR_FREE` + OR 키 | OR free 1개로 fallback |
-| 보유 0, 매핑 없음 또는 OR 없음 | 미등록 |
+| 보유 0 | 미등록 (commercial 모델로 대체 사용) |
 
-채팅 카탈로그 (`OLLAMA_CHAT_CATALOG`): `qwen3.5:9b`, `qwen3.6:35b`, `llama3.1:8b`, `llama3.3:70b`, `nemotron3:33b`, `qwen3-coder-next:q8_0`. 임베딩 카탈로그 (`OLLAMA_EMBED_CATALOG`): `bge-m3` — embed 는 OR free fallback 없음.
+채팅 카탈로그 (`OLLAMA_CHAT_CATALOG`): `qwen3.5:9b`, `qwen3.6:35b`, `llama3.1:8b`, `llama3.3:70b`, `nemotron3:33b`, `qwen3-coder-next:q8_0`. 임베딩 카탈로그 (`OLLAMA_EMBED_CATALOG`): `bge-m3`.
+
+### OR 임베딩 (RAG 폴백)
+
+OR 키 있으면 `OPENAI_EMBED_CATALOG` (기본 `text-embedding-3-small`) 를 LiteLLM 에 등록 — 라우트 `openrouter/openai/<id>`. Ollama 노드에 `bge-m3` 가 0대이면 `setup.sh` 가 `.env` 의 `EMBEDDINGS_MODEL` 을 자동으로 `text-embedding-3-small` 로 swap (이미 다른 값이면 존중). 즉 OR 단독 환경에서도 RAG 동작.
+
+| 조건 | 결과 |
+|---|---|
+| Ollama bge-m3 ≥1 | bge-m3 사용 (로컬, 무료) |
+| Ollama bge-m3 0 + OR 키 | text-embedding-3-small 자동 swap (OR, ~$0.02/1M) |
+| Ollama bge-m3 0 + OR 키 없음 | RAG 비활성 |
 
 ## commercial curated 디폴트
 
@@ -81,35 +90,6 @@ OLLAMA_DEFAULT_PRIORITY=(llama3.3:70b qwen3.6:35b qwen3.5:9b)
 # 3. compose 호스트에서 config 생성 + 기동
 ./scripts/setup.sh
 ```
-
-## 모델 추가
-
-### 케이스 A — 새 commercial 모델 (OpenAI / Anthropic / Google)
-
-OpenAI 가 `gpt-6` 를 출시했다고 가정:
-
-1. `scripts/lib.sh` 의 `OPENAI_MODELS` 배열에 `gpt-6` 추가
-2. `MODEL_PRICE_IN_PM[gpt-6]=<USD/1M>` / `MODEL_PRICE_OUT_PM[gpt-6]=<USD/1M>` 추가
-3. `./scripts/gen-litellm-config.sh && ./scripts/gen-librechat-config.sh`
-4. `docker compose up -d litellm librechat` (`restart` 는 `.env` 재해석 안 함)
-5. 팀 allowlist 동기화 (`team create` 가 모델 리스트를 freeze 하므로):
-   ```bash
-   source scripts/lib.sh
-   models_json=$(./scripts/gen-litellm-config.sh --dry-run | grep '^  - model_name:' | awk '{print $4}' | jq -R . | jq -s .)
-   for tid in $(litellm_get /team/list | jq -r '.[].team_id'); do
-     litellm_post /team/update "$(jq -n --arg t "$tid" --argjson m "$models_json" '{team_id:$t, models:$m}')"
-   done
-   ```
-
-OpenRouter 경유로 자동 라우팅. `OPENROUTER_API_KEY` 가 .env 에 없으면 commercial 모델 전부 미등록.
-
-### 케이스 B — 새 Ollama 로컬 모델
-
-1. 모델을 돌릴 노드(들)에서 `ollama pull <태그>` — 한 노드만 받아도 됨 (router 가 그 노드로 라우팅), 여러 노드에 받으면 자동 LB
-2. `scripts/lib.sh` 의 `OLLAMA_CHAT_CATALOG` (또는 embed 면 `OLLAMA_EMBED_CATALOG`) 에 태그 추가
-3. (선택) `MODEL_PRICE_*` 에 단가 추가 — 안 적으면 spend = $0 으로 기록
-4. `./scripts/gen-litellm-config.sh && ./scripts/gen-librechat-config.sh && docker compose up -d litellm librechat`
-5. (필요 시) 팀 allowlist 동기화 — 위와 동일
 
 ## 이미지 생성
 
@@ -142,7 +122,7 @@ GPU VRAM 이 부족한 노드에서 무거운 모델은 받지 마세요 — 명
 
 ### 모델 선택 메커니즘
 
-LibreChat 의 `image-generation` 툴 스키마에 `model` enum 필드 (`flux-schnell`, `flux-dev`, `qwen-image`, `qwen-image-edit`) 가 있어 LLM 이 alias 를 직접 지정 (`rag-patches/patch_librechat_sd_model.js` 가 빌드 시 적용). 호출 시 `model="<alias>"` 인자가 페이로드의 `override_settings.sd_model_checkpoint` 로 변환되어 shim 이 워크플로 분기. 미지정 시 shim 의 `DEFAULT_MODEL` (=`qwen-image`).
+LibreChat 의 `generate_image` 툴 스키마에 `model` enum 필드 (`flux-schnell`, `flux-dev`, `qwen-image`, `qwen-image-edit`) 가 있어 LLM 이 alias 를 직접 지정 (`rag-patches/patch_librechat_sd_model.js` 가 빌드 시 적용). 호출 시 `model="<alias>"` 인자가 페이로드의 `override_settings.sd_model_checkpoint` 로 변환되어 shim 이 워크플로 분기. 미지정 시 shim 의 `DEFAULT_MODEL` (=`qwen-image`).
 
 사용자별 에이전트는 `./scripts/manage.sh` 가 자동 생성:
 - `user create --name ... --username ... --password ...` — 신규 유저 풀 프로비저닝 시
@@ -150,7 +130,7 @@ LibreChat 의 `image-generation` 툴 스키마에 `model` enum 필드 (`flux-sch
 
 모델 1개당 에이전트 1개, 이름 prefix 가 능력 요약:
 
-| 이름 prefix | execute_code | image-generation |
+| 이름 prefix | execute_code | generate_image |
 |---|---|---|
 | `Text` | ✗ | ✗ |
 | `Text + Code` | ✓ | ✗ |
@@ -165,15 +145,15 @@ prefix 별 해당 모델:
 - `Text + Image` — gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash, qwen3.6:35b, llama3.3:70b, nemotron3:33b
 - `Text + Image + Code` — gpt-5.5, gpt-5, qwen3-coder-next:q8_0
 
-`image-generation` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음 (자사 image API 없어서 툴 자체 제외).
+`generate_image` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음 (자사 image API 없어서 툴 자체 제외).
 
-작은 ollama (9b/8b) 는 `TOOL_EXCLUDE` 로 `execute_code` + `image-generation` 제외 — 6툴 schema 동시 노출 시 호출 emit 실패가 end-to-end 매트릭스에서 확인됨.
+작은 ollama (9b/8b) 는 `TOOL_EXCLUDE` 로 `execute_code` + `generate_image` 제외 — 6툴 schema 동시 노출 시 호출 emit 실패가 end-to-end 매트릭스에서 확인됨.
 
 기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` 의 첫 매치 (현재 `llama3.3:70b → qwen3.6:35b → qwen3.5:9b`). `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
 
 ### MCP 도구 + Built-in
 
-Built-in (`execute_code`, `file_search`, `web_search`, `image-generation`) 과 MCP 서버 카탈로그 + 모델별 부착 매트릭스 + 추가 절차는 [도구 문서](tools.md) 에 정리. 모델 카탈로그 변경 시 작은 모델 셋 (`SMALL_MODELS`) / 빌트인 제외 (`TOOL_EXCLUDE`) 도 같이 갱신해야 합니다.
+Built-in (`execute_code`, `file_search`, `web_search`, `generate_image`) 과 MCP 서버 카탈로그 + 모델별 부착 매트릭스 + 추가 절차는 [도구 문서](tools.md) 에 정리. 모델 카탈로그 변경 시 작은 모델 셋 (`SMALL_MODELS`) / 빌트인 제외 (`TOOL_EXCLUDE`) 도 같이 갱신해야 합니다.
 
 ## RAG 임베딩
 

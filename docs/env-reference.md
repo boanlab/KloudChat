@@ -17,7 +17,6 @@
 |---|---|
 | `APP_TITLE` | 브랜딩 |
 | `WELCOME_BACK_MESSAGE` | 브랜딩 |
-| `SIGNUP_HEADER` | 브랜딩 |
 | `HELP_AND_FAQ_URL` | 브랜딩 |
 | `CUSTOM_FOOTER` | 브랜딩 |
 | `OLLAMA_URLS` | 백엔드 토폴로지 |
@@ -36,7 +35,7 @@
 
 ### 브랜딩
 
-`APP_TITLE` 은 LibreChat 좌상단 + 브라우저 탭 타이틀, 기본 `KloudChat`. `WELCOME_BACK_MESSAGE` 는 로그인 페이지 헤딩, `SIGNUP_HEADER` 는 회원가입 페이지 헤딩 — 모든 locale 에 같은 값으로 들어가며, 빈 값이면 LibreChat 기본 문구.
+`APP_TITLE` 은 LibreChat 좌상단 + 브라우저 탭 타이틀, 기본 `KloudChat`. `WELCOME_BACK_MESSAGE` 는 로그인 페이지 헤딩 — 모든 locale 에 같은 값으로 들어가며, 빈 값이면 LibreChat 기본 문구.
 
 `HELP_AND_FAQ_URL` 은 우상단 메뉴의 "Help & FAQ" 링크 URL. `/` 면 메뉴 자체가 숨겨집니다 (기본).
 
@@ -65,7 +64,7 @@ COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
 
 ### 외부 키
 
-`OPENROUTER_API_KEY` 가 있으면 commercial 카탈로그 (gpt-*/claude-*/gemini-*) 가 OR 경유로 등록 + `MODEL_OR_FREE` 매핑된 Ollama 모델이 노드에 없을 때 OR free 로 fallback (기본 비활성, 사용자 검증 후 `lib.sh` 에서 활성화). 없으면 commercial 모델 전부 미등록.
+`OPENROUTER_API_KEY` 가 있으면 commercial 카탈로그 (gpt-*/claude-*/gemini-*) 가 OR 경유로 등록. 없으면 commercial 모델 전부 미등록.
 
 `HF_TOKEN` 은 HuggingFace gated repo 토큰 — `flux-dev` 다운로드 전제 (다른 이미지 모델은 무관).
 
@@ -147,7 +146,7 @@ LibreChat / RAG API → LiteLLM 호출용 가상 키. `./scripts/manage.sh key i
 | `OR_IMAGE_MODELS` | `nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2` |
 | `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` | `32212254720` (30 GiB) |
 
-`EMBEDDINGS_PROVIDER` 는 RAG 임베딩 공급자 — LiteLLM 경유라 항상 `openai`. `EMBEDDINGS_MODEL` 은 LiteLLM 의 model_name 과 일치해야 함.
+`EMBEDDINGS_PROVIDER` 는 RAG 임베딩 공급자 — LiteLLM 경유라 항상 `openai`. `EMBEDDINGS_MODEL` 은 LiteLLM 의 model_name 과 일치해야 함 (기본 `bge-m3`). Ollama 노드에 bge-m3 가 0대 + OR 키 있을 때 `setup.sh` 가 `text-embedding-3-small` 로 자동 swap (OR 경유 OpenAI 임베딩).
 
 `OR_IMAGE_MODELS` 는 shim 이 LiteLLM 경유 외부 image API 로 라우팅할 alias 매핑 (`<alias>=<litellm-model-name>` csv). 비었으면 모든 image 요청을 ComfyUI 로.
 
@@ -157,12 +156,13 @@ LibreChat / RAG API → LiteLLM 호출용 가상 키. `./scripts/manage.sh key i
 
 | 조건 | 결과 |
 |---|---|
-| OR 키 있음 | commercial 카탈로그 등록 (OR 경유) |
-| OR 키 없음 | commercial 전부 미등록 |
+| OR 키 있음 | commercial 카탈로그 + OR 임베딩 (`text-embedding-3-small`) 등록 |
+| OR 키 없음 | commercial + OR 임베딩 전부 미등록 |
 | Ollama 모델 보유 노드 ≥1 | `ollama_chat/<id>` × 노드 수 |
-| Ollama 보유 0 + `MODEL_OR_FREE` + OR 키 | OR free fallback |
+| Ollama 보유 0 | 미등록 |
+| Ollama bge-m3 0 + OR 키 | `setup.sh` 가 `EMBEDDINGS_MODEL=text-embedding-3-small` 자동 swap |
 | ComfyUI 노드에 가중치 있음 | alias 활성 |
 
-native API 직결은 미지원. Ollama 의 OR free fallback 은 기본 비활성, 사용자 검증 후 `lib.sh` 의 `MODEL_OR_FREE` 에서 활성화. `flux-dev` 는 `HF_TOKEN` 으로 다운로드 게이팅.
+native API 직결은 미지원. `flux-dev` 는 `HF_TOKEN` 으로 다운로드 게이팅.
 
 자세한 매트릭스는 [모델 설정](models.md) 참고.

@@ -111,7 +111,7 @@ User=${USR}
 Group=${GRP}
 WorkingDirectory=${APP}
 Environment=PATH=${VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=${VENV}/bin/python ${APP}/main.py --listen 0.0.0.0 --port ${PORT} --highvram
+ExecStart=${VENV}/bin/python ${APP}/main.py --listen 0.0.0.0 --port ${PORT}
 RestrictAddressFamilies=AF_UNIX AF_INET
 Restart=on-failure
 RestartSec=5
