@@ -15,4 +15,5 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8081
 
 # mcp-proxy 가 ldr-mcp 를 child 로 spawn, streamable-http 로 /mcp 에 expose.
-CMD ["mcp-proxy", "--port=8081", "--host=0.0.0.0", "--transport=streamablehttp", "ldr-mcp"]
+# --pass-environment 필수: 기본은 env strip 이라 LDR_* 가 ldr-mcp 까지 못 감.
+CMD ["mcp-proxy", "--pass-environment", "--port=8081", "--host=0.0.0.0", "--transport=streamablehttp", "ldr-mcp"]

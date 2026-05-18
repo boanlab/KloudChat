@@ -80,8 +80,8 @@ mcpServers:
   deep_research:
     # Local Deep Research — ReAct strategy multi-source 검색 + iterative reasoning, 8 tools.
     # LibreChat 컨테이너가 alpine/musl 이라 playwright wheel 호환 안 됨 → 사이드카(deep-research 서비스, debian)
-    # 에서 ldr-mcp 를 mcp-proxy 로 streamable-http wrap. LiteLLM 경유로 ollama/qwen3.6:35b 호출.
-    # 검색 엔진은 KloudChat 의 searxng (env SEARXNG_INSTANCE).
+    # 에서 ldr-mcp 를 mcp-proxy 로 streamable-http wrap. LiteLLM 경유로 ollama/nemotron3:33b 호출.
+    # LDR env (모델/provider/검색엔진) 는 docker-compose.yml 의 deep-research.environment 에 LDR_* 로 박혀있음.
     type: streamable-http
     url: http://deep-research:8081/mcp
     startup: false

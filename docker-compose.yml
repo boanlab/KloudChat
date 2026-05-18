@@ -7,7 +7,8 @@ services:
       - ./librechat/logs:/app/logs
       - ./librechat/uploads:/app/uploads
       - ./librechat/images:/app/images
-    command: chown -R 1000:1000 /app/logs /app/uploads /app/images
+      - ./librechat/uv-cache:/app/uv-cache
+    command: chown -R 1000:1000 /app/logs /app/uploads /app/images /app/uv-cache
 
   librechat:
     container_name: LibreChat
@@ -390,13 +391,14 @@ services:
       searxng:
         condition: service_started
     environment:
-      LDR_LLM_PROVIDER: openai
-      LDR_LLM_MODEL: ollama/qwen3.6:35b
-      LDR_LLM_OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
-      OPENAI_BASE_URL: http://litellm:8000/v1
-      OPENAI_API_BASE: http://litellm:8000/v1
+      # LDR env var 명명 규칙 = LDR_ + setting key (dot → underscore, UPPER). LiteLLM 은 OpenAI 가
+      # 아니라 OpenAI-compatible custom endpoint 라 provider 가 'openai_endpoint'.
+      LDR_LLM_PROVIDER: openai_endpoint
+      LDR_LLM_MODEL: ollama/nemotron3:33b
+      LDR_LLM_OPENAI_ENDPOINT_API_KEY: ${LITELLM_MASTER_KEY}
+      LDR_LLM_OPENAI_ENDPOINT_URL: http://litellm:8000/v1
       # KloudChat 의 searxng 를 LDR 검색 엔진으로 — settings.yml 에 formats:[html,json] 이미 활성.
-      SEARXNG_INSTANCE: http://searxng:8080
+      LDR_SEARCH_ENGINE_WEB_SEARXNG_DEFAULT_PARAMS_INSTANCE_URL: http://searxng:8080
     networks:
       - kloudchat
 
