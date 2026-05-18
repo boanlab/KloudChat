@@ -70,6 +70,19 @@ if (( SKIP_PIP == 0 )); then
     "faster-whisper>=1.0" "fastapi>=0.110" "uvicorn[standard]>=0.27" "python-multipart>=0.0.9"
 fi
 
+# HF_TOKEN 은 systemd unit 인라인 금지 — unit 파일은 0644 (world-readable). lazy-load
+# 다운로드용 rate-limit/xet CDN 가속 토큰을 0640 secret file 에 분리해서 EnvironmentFile 로 주입.
+# .env 에서 토큰 제거 후 재실행하면 stale 토큰 안 남도록 빈 값일 땐 secret 파일 삭제.
+HF_TOKEN_VAL="$(env_get HF_TOKEN)"
+if [[ -n "$HF_TOKEN_VAL" ]]; then
+  mkdir -p /etc/whisper
+  printf 'HF_TOKEN=%s\n' "$HF_TOKEN_VAL" > /etc/whisper/env
+  chown root:"$GRP" /etc/whisper/env
+  chmod 0640 /etc/whisper/env
+else
+  rm -f /etc/whisper/env
+fi
+
 cat > /etc/systemd/system/whisper.service <<UNIT
 [Unit]
 Description=Whisper (KloudChat audio transcription backend)
@@ -81,6 +94,7 @@ Type=simple
 User=${USR}
 Group=${GRP}
 WorkingDirectory=${APP_ROOT}
+EnvironmentFile=-/etc/whisper/env
 Environment=PATH=${VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=HF_HOME=${DATA_ROOT}
 Environment=WHISPER_MODEL=${MODEL}

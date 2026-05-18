@@ -39,9 +39,14 @@ getent passwd "$USR" &>/dev/null \
 "${VENV}/bin/python" -c 'import faster_whisper' &>/dev/null \
   || { err "venv 에 faster_whisper 없음 — install-whisper.sh 재실행 필요."; exit 1; }
 
+# HF Hub rate-limit / xet CDN 가속용. .env 는 compose 전용이라 호스트 셸엔 안 들어와서
+# 직접 로드 후 두 sudo hop (root 승격 → whisper 드롭) 모두 preserve 시켜야 전달됨.
+: "${HF_TOKEN:=$(env_get HF_TOKEN)}"
+export HF_TOKEN
+
 # DATA_ROOT 는 whisper:whisper 소유 → root 로 승격 후 whisper 로 드롭해야 씀.
 if [[ $EUID -ne 0 && "$(id -un)" != "$USR" ]]; then
-  exec sudo --preserve-env=WHISPER_APP_ROOT,WHISPER_DATA_ROOT,WHISPER_USER "$0" "$@"
+  exec sudo --preserve-env=WHISPER_APP_ROOT,WHISPER_DATA_ROOT,WHISPER_USER,HF_TOKEN "$0" "$@"
 fi
 
 # alias → huggingface_hub 캐시 디렉토리명 (skip 판정용)
@@ -62,7 +67,7 @@ pull() {
   echo "[pull] $name"
   # device=cpu / compute_type=int8 → GPU 없이 다운로드 + 무결성 검증만. WhisperModel 을
   # 쓰는 이유는 app.py 와 동일 download_root 경로 매핑을 보장하기 위해 (cache layout drift 방지).
-  sudo -u "$USR" "${VENV}/bin/python" - "$name" "$DATA_ROOT" <<'PY'
+  sudo -u "$USR" --preserve-env=HF_TOKEN "${VENV}/bin/python" - "$name" "$DATA_ROOT" <<'PY'
 import sys
 from faster_whisper import WhisperModel
 name, root = sys.argv[1], sys.argv[2]
