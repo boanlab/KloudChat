@@ -21,10 +21,14 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 Environment="OLLAMA_HOST=0.0.0.0:11434"
 Environment="OLLAMA_NUM_PARALLEL=4"
 Environment="OLLAMA_KEEP_ALIVE=5m"
+Environment="OLLAMA_CONTEXT_LENGTH=8192"
+Environment="OLLAMA_FLASH_ATTENTION=1"
 RestrictAddressFamilies=AF_UNIX AF_INET
 ```
 
-VRAM 여유 / 멀티 사용자 / 컨텍스트 길이 같은 튜닝은 아래 항목들을 보면서 직접 추가합니다.
+`OLLAMA_CONTEXT_LENGTH` 명시는 GB10 / 큰 VRAM 환경 대응 — 미설정 시 Ollama 가 VRAM 보고 자동 200K+ 토큰까지 잡아 KV 캐시가 모델 weight 보다 커지는 사태 발생. 8192 면 일반 채팅 충분. `OLLAMA_FLASH_ATTENTION=1` 은 Ampere+ (compute 8.0+) 에서만 활성화, 미지원 카드에선 자동 무시.
+
+긴 컨텍스트가 필요한 호스트는 아래 GPU 별 권장 예시 보고 `sudo systemctl edit ollama` 로 override 추가. VRAM 여유 / 멀티 사용자 같은 추가 튜닝도 동일하게.
 
 ## 권장 튜닝 예시 (큰 VRAM)
 

@@ -177,8 +177,8 @@ cat <<EOF
   model:    ${MODEL} (lazy-load 첫 호출 시 ~3 GB 다운로드 → ${DATA_ROOT})
             prewarm: ./scripts/download-whisper-models.sh   # 첫 호출 latency 회피
   device:   ${DEVICE} / compute: ${COMPUTE_TYPE}
-  shim:     LibreChat → whisper-shim → 이 systemd. 호스트 1대면 자동 매핑 완료.
-  멀티노드: 다른 GPU 호스트에서도 install 후 compose 호스트의 .env 에 추가:
+  shim:     LibreChat → whisper-shim → 이 systemd. 같은 호스트의 shim 자동 재기동됨.
+  멀티노드: 다른 GPU 호스트에서도 install 후 compose 호스트의 .env 에 추가 +
+            그쪽에서 'docker compose restart whisper-shim':
             WHISPER_URLS=http://host.docker.internal:${PORT},http://${IP:-<this-host-ip>}:${PORT}
-            (그리고 'docker compose up -d whisper-shim' 으로 shim 재시작)
 EOF
