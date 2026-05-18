@@ -294,10 +294,14 @@ create_default_agent_for_user() {
         '  - model=\"qwen-image\" — text-in-image, Asian-language text, or complex multi-element composition\n' +
         'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
 
-      // external — provider 자사 image 모델 한 가지만 안내.
+      // external — provider 자사 image 모델 한 가지만 안내. LLM 이 enum 의 다른
+      // alias (qwen-image 등) 를 픽하지 않도록 strict 금지 목록까지 명시. enum 에
+      // 보이는 다른 값들은 다른 provider 의 에이전트가 쓰는 것이고, 이 에이전트가
+      // 호출하면 잘못된 backend 로 라우팅되어 응답 시간/품질 모두 망가짐.
       function imageInstrExt(imageModel) {
         return '\n\nFor image / picture / photo / diagram / illustration requests, call generate_image directly. ' +
-               'Use model=\"' + imageModel + '\" (the only image model wired for this agent). ' +
+               'You MUST use model=\"' + imageModel + '\". This is the only image model wired for this agent. ' +
+               'DO NOT use \"qwen-image\", \"qwen-image-edit\", \"flux-schnell\", or \"flux-dev\" — those are reserved for ollama-based agents and routing to them from this agent yields a wrong-backend stall. ' +
                'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
       }
 

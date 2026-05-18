@@ -22,11 +22,14 @@ const SCHEMA_NEEDLE =
 // enum 에 들어가는 alias 들: 로컬 ComfyUI (flux/qwen) + 외부 OR 경유 (nano-banana, gpt-image-2).
 // shim 의 OR_IMAGE_MODELS 매핑이 nano-banana/gpt-image-2 를 LiteLLM 으로 분기. enum 에서 빠지면
 // 모델이 부르려 해도 schema validator 가 거부 → fallback 으로 로컬 alias 잘못 사용.
+// description 은 의도적으로 매력적인 변별 문구 (e.g. "Asian text 좋음") 를 빼고 중립화 — LLM 이
+// 에이전트 instructions 무시하고 enum description 보고 다른 alias 픽하는 사고 방지. 어떤 모델을
+// 써야 하는지는 agent instructions 에 strict 하게 박혀있음.
 const SCHEMA_REPLACEMENT =
   "    model: {\n" +
   "      type: 'string',\n" +
   "      enum: ['flux-schnell', 'flux-dev', 'qwen-image', 'qwen-image-edit', 'nano-banana', 'gpt-image-2'],\n" +
-  "      description: 'Image base model. flux-schnell=fast (4 steps, drafts), flux-dev=high quality (slower), qwen-image=text-in-image / Asian text / complex composition, qwen-image-edit=img2img edit. External (OpenRouter): nano-banana=Google Gemini image, gpt-image-2=OpenAI gpt image.',\n" +
+  "      description: 'Image model alias. Use ONLY the value specified in your agent instructions — other entries are reserved for other agents and routing to them yields wrong-backend errors.',\n" +
   "    },\n" +
   "  },\n" +
   "  required: ['prompt', 'negative_prompt'],\n" +
