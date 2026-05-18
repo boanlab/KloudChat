@@ -194,6 +194,11 @@ LITELLM_URL = "http://localhost:8000"
 # docker stats 캐시 — 'docker stats --no-stream' 은 두 번 샘플링하느라 1~2초 걸림.
 # 매 render 마다 호출 못 함. 백그라운드 태스크가 interval 마다 갱신.
 CONTAINER_STATS: list[dict[str, str]] = []
+# whisper-shim 라우터 상태 캐시. docker exec 로 컨테이너 안에서 /health 를 호출하니
+# 매 render 마다 부르면 shim 의 health endpoint 가 폭격당해 CPU 30%+ 로 뜸 (실측).
+# 백그라운드 태스크가 SHIM_REFRESH_SEC 마다 갱신.
+SHIM_CACHE: dict[str, Any] | None = None
+SHIM_REFRESH_SEC = 5.0
 # /proc/stat 델타용 — 직전 (total_jiffies, idle_jiffies). 첫 호출 시 (None, None) → 0%.
 _PREV_CPU: tuple[int, int] | None = None
 
@@ -498,32 +503,41 @@ def compose_panel(host: dict[str, Any], containers: list[dict[str, str]]) -> Pan
         body = Group(head, Text("(docker stats unreachable — 컨테이너 정보 없음)",
                                 style="dim yellow"))
     else:
-        tbl = Table.grid(padding=(0, 2))
-        tbl.add_column(no_wrap=True, style="white")     # name
-        tbl.add_column(no_wrap=True, justify="right")    # cpu%
-        tbl.add_column(no_wrap=True)                     # mem usage
-        tbl.add_column(no_wrap=True, justify="right",
-                        style="dim")                     # mem%
-        tbl.add_row("[bold]container[/]", "[bold]CPU[/]", "[bold]MEM[/]", "[bold]%[/]")
-        for c in containers:
-            # CPU% > 50% 빨강, > 10% 노랑, 그 외 dim
-            try:
-                pc = float(c["cpu"].rstrip("%"))
-            except Exception:
-                pc = 0.0
-            cpu_style = "red" if pc > 50 else ("yellow" if pc > 10 else "white")
-            # docker stats MemUsage 는 "used / limit" 형식 — limit 은 호스트 MEM 에서
-            # 이미 보이니 used 만 노출 (모든 컨테이너에 limit 반복은 노이즈).
-            mem_used = c["mem"].split(" / ", 1)[0]
-            tbl.add_row(
-                c["name"],
-                Text(c["cpu"], style=cpu_style),
-                mem_used,
-                c["mem_pct"],
-            )
-        body = Group(head, tbl)
+        # 컨테이너 많을 때 세로로 길어지지 않게 좌/우 2열로 나눔. CPU% 내림차순 정렬
+        # 이 이미 돼 있으므로 위쪽 절반 = 바쁜 것, 아래쪽 절반 = 한가한 것.
+        n = len(containers)
+        half = (n + 1) // 2
+        outer = Table.grid(padding=(0, 4))
+        outer.add_column()
+        outer.add_column()
+        outer.add_row(
+            _container_grid(containers[:half]),
+            _container_grid(containers[half:]),
+        )
+        body = Group(head, outer)
 
     return Panel(body, title="[bold]Compose host[/]", border_style="white")
+
+
+def _container_grid(rows: list[dict[str, str]]) -> Table:
+    """단일 컬럼 그룹 (name / CPU / MEM / %) — compose_panel 의 좌/우 한쪽씩."""
+    tbl = Table.grid(padding=(0, 2))
+    tbl.add_column(no_wrap=True, style="white")    # name
+    tbl.add_column(no_wrap=True, justify="right")  # cpu
+    tbl.add_column(no_wrap=True)                   # mem used
+    tbl.add_column(no_wrap=True, justify="right", style="dim")  # mem%
+    if not rows:
+        return tbl
+    tbl.add_row("[bold]container[/]", "[bold]CPU[/]", "[bold]MEM[/]", "[bold]%[/]")
+    for c in rows:
+        try:
+            pc = float(c["cpu"].rstrip("%"))
+        except Exception:
+            pc = 0.0
+        cpu_style = "red" if pc > 50 else ("yellow" if pc > 10 else "white")
+        mem_used = c["mem"].split(" / ", 1)[0]
+        tbl.add_row(c["name"], Text(c["cpu"], style=cpu_style), mem_used, c["mem_pct"])
+    return tbl
 
 
 def models_panel(groups: dict[str, list[str]] | None) -> Panel | None:
@@ -555,20 +569,28 @@ def models_panel(groups: dict[str, list[str]] | None) -> Panel | None:
     return Panel(tbl, title="[bold]Models (LiteLLM 등록 카탈로그)[/]", border_style="green")
 
 
-def whisper_shim_panel() -> Panel | None:
-    """compose 의 whisper-shim 컨테이너가 있으면 백엔드별 up/inflight."""
+async def probe_shim() -> dict[str, Any] | None:
+    """whisper-shim 컨테이너의 /health 조회. async subprocess — render 블락 안 시킴.
+    매 호출이 부담스러우니 main loop 가 SHIM_REFRESH_SEC 주기로만 호출."""
     try:
-        out = subprocess.run(
-            ["docker", "exec", "whisper-shim", "python3", "-c",
-             "import urllib.request, json;"
-             "r=urllib.request.urlopen('http://localhost:9000/health', timeout=2).read();"
-             "print(r.decode())"],
-            capture_output=True, text=True, timeout=3,
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "exec", "whisper-shim", "python3", "-c",
+            "import urllib.request;"
+            "print(urllib.request.urlopen('http://localhost:9000/health', timeout=2)"
+            ".read().decode())",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         )
-        if out.returncode != 0:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=4.0)
+        if proc.returncode != 0 or not out:
             return None
-        body = json.loads(out.stdout)
-    except Exception:
+        return json.loads(out.decode())
+    except (FileNotFoundError, asyncio.TimeoutError, json.JSONDecodeError, Exception):
+        return None
+
+
+def whisper_shim_panel(body: dict[str, Any] | None) -> Panel | None:
+    """SHIM_CACHE 의 /health 응답을 패널로 렌더. None 이면 패널 자체 생략."""
+    if not body:
         return None
     tbl = Table.grid(padding=(0, 2))
     tbl.add_column(no_wrap=True)
@@ -606,7 +628,7 @@ def dashboard_render(
         parts.extend(host_panel(d) for d in data)
     else:
         parts.append(render_table(data))
-    shim = whisper_shim_panel()
+    shim = whisper_shim_panel(SHIM_CACHE)
     if shim is not None:
         parts.append(shim)
     mods = models_panel(models)
@@ -784,8 +806,10 @@ def estimate_dashboard_height(n_hosts: int, panels: bool, has_shim_panel: bool,
         body = 4 + n_hosts  # 테이블 헤더 3 + N 데이터 행 + 닫는 줄
     shim = 6 if has_shim_panel else 0
     models = (n_model_rows + 3) if n_model_rows > 0 else 0
-    # compose 패널: 테두리 2 + host 한 줄 + container 헤더 1 + container 행 N
-    compose = 2 + 1 + (1 + n_containers if n_containers > 0 else 1)
+    # compose 패널: 테두리 2 + host 한 줄 + container 가 좌/우 2열이라
+    # ceil(N/2) + 헤더 1.
+    rows_per_col = (n_containers + 1) // 2 if n_containers > 0 else 0
+    compose = 2 + 1 + (1 + rows_per_col if rows_per_col > 0 else 1)
     return header + compose + body + shim + models + 2
 
 
@@ -812,14 +836,17 @@ async def main() -> int:
 
     # --once: 대시보드 한 프레임만. CPU% 는 델타라 첫 호출엔 0 — warm-up 한 번 더.
     if args.once or not console.is_terminal:
+        global SHIM_CACHE
         host_cpu_pct()  # baseline
         await asyncio.sleep(0.5)
         async with httpx.AsyncClient() as client:
-            data, mods, ctrs = await asyncio.gather(
+            data, mods, ctrs, shim = await asyncio.gather(
                 asyncio.gather(*(probe_host(client, h) for h in hosts)),
                 probe_models(client),
                 probe_container_stats(),
+                probe_shim(),
             )
+        SHIM_CACHE = shim
         console.print(dashboard_render(list(data), args.interval,
                                        panels=args.panels, models=mods, containers=ctrs))
         return 0
@@ -839,8 +866,11 @@ async def main() -> int:
             return 0
 
         # 대시보드 단독 OR 합본
+        global SHIM_CACHE
         async with httpx.AsyncClient() as client:
-            shim_present = whisper_shim_panel() is not None
+            # 초기 1회 probe — shim 존재 여부 + dash_h 계산에 필요
+            SHIM_CACHE = await probe_shim()
+            shim_present = SHIM_CACHE is not None
             host_cpu_pct()  # /proc/stat baseline
 
             last_probe_ts = 0.0
@@ -887,7 +917,19 @@ async def main() -> int:
                         pass
                     await asyncio.sleep(args.interval)
 
+            async def _shim_probe_loop() -> None:
+                """whisper-shim /health 백그라운드 폴 — 매 render 마다 부르면
+                shim CPU 가 폭증 (실측 30%+) 해서 별도 루프로 SHIM_REFRESH_SEC 마다만."""
+                global SHIM_CACHE
+                while True:
+                    await asyncio.sleep(SHIM_REFRESH_SEC)
+                    try:
+                        SHIM_CACHE = await probe_shim()
+                    except Exception:
+                        pass
+
             container_probe_task = asyncio.create_task(_container_probe_loop())
+            shim_probe_task = asyncio.create_task(_shim_probe_loop())
 
             try:
                 with Live(console=console, refresh_per_second=4, screen=True) as live:
@@ -903,12 +945,13 @@ async def main() -> int:
                         live.update(make_layout())
                         await asyncio.sleep(0.25)
             finally:
-                if container_probe_task:
-                    container_probe_task.cancel()
-                    try:
-                        await container_probe_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
+                for t in (container_probe_task, shim_probe_task):
+                    if t:
+                        t.cancel()
+                        try:
+                            await t
+                        except (asyncio.CancelledError, Exception):
+                            pass
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
