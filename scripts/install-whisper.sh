@@ -159,6 +159,16 @@ if [[ -f "$ENV_FILE" ]]; then
   fi
 fi
 
+# 같은 호스트에 compose 의 whisper-shim 이 있으면 재기동해서 /health 캐시 (10s TTL)
+# + inflight 카운터 클리어 + 새 backend 즉시 인지. 멀티노드 케이스면 자동 skip.
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+if command -v docker &>/dev/null \
+   && [[ -f "${PROJECT_DIR}/docker-compose.yml" ]] \
+   && docker compose --project-directory "$PROJECT_DIR" ps -q whisper-shim 2>/dev/null | grep -q .; then
+  info "whisper-shim 컨테이너 감지 — 재기동 (health 캐시 + inflight 리프레시)"
+  docker compose --project-directory "$PROJECT_DIR" restart whisper-shim || warn "whisper-shim 재기동 실패"
+fi
+
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat <<EOF
 

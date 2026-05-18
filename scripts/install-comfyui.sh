@@ -166,6 +166,17 @@ if [[ -f "$ENV_FILE" ]]; then
   else warn "COMFYUI_URLS=$old (custom). 필요시 ${new} 로 수동 변경."; fi
 fi
 
+# 같은 호스트에 compose 의 comfyui-shim 이 있으면 재기동해서 /object_info variant
+# 캐시 (MODEL_DISCOVERY_TTL_SEC=300s) 리프레시. 멀티노드 케이스 (compose 가 다른
+# 호스트) 면 자동 skip — 그쪽에선 사용자가 'docker compose restart comfyui-shim'.
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+if command -v docker &>/dev/null \
+   && [[ -f "${PROJECT_DIR}/docker-compose.yml" ]] \
+   && docker compose --project-directory "$PROJECT_DIR" ps -q comfyui-shim 2>/dev/null | grep -q .; then
+  info "comfyui-shim 컨테이너 감지 — 재기동 (variant 캐시 리프레시)"
+  docker compose --project-directory "$PROJECT_DIR" restart comfyui-shim || warn "comfyui-shim 재기동 실패"
+fi
+
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat <<EOF
 
