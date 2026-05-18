@@ -79,11 +79,65 @@ src = src.replace(
   "You can generate images using text with '" + NEW_TOOL_NAME + "'."
 );
 
+// ── 4. Server-side model override: agent.model 의 provider prefix 보고 data.model 강제 교체.
+// LLM 이 enum 의 잘못된 alias (qwen-image 등) 를 픽해도 _call 에서 정정. instructions/description
+// 만으로는 LLM 협조 의존이라 가끔 drift — 서버 측 enforce 가 신뢰성 있다.
+//
+// (a) constructor 에 this.agentModel 캡처:
+src = src.replace(
+  "this.isAgent = fields.isAgent;",
+  "this.isAgent = fields.isAgent;\n    /** @type {string|undefined} agent.model — provider 별 image alias 강제 override 용 (KLOUDCHAT) */\n    this.agentModel = fields.agentModel;"
+);
+
+// (b) _call 진입부에 override 블록 삽입:
+const CALL_NEEDLE = "  async _call(data) {\n    const url = this.url;\n    const { prompt, negative_prompt, model } = data;";
+const CALL_REPLACEMENT =
+  "  async _call(data) {\n" +
+  "    // KLOUDCHAT_SD_MODEL_PATCH — agent.model provider 보고 data.model 강제 교체.\n" +
+  "    // openai/* → gpt-image-2, google/* → nano-banana, anthropic/* → reject (자사 image 없음),\n" +
+  "    // ollama/* → LLM 픽 그대로 (로컬 ComfyUI alias). agentModel 없으면 (legacy) skip.\n" +
+  "    if (this.agentModel) {\n" +
+  "      const __prov = String(this.agentModel).split('/')[0];\n" +
+  "      const __force = { openai: 'gpt-image-2', google: 'nano-banana' };\n" +
+  "      if (__prov === 'anthropic') {\n" +
+  "        return this.returnValue('This agent has no image model wired (anthropic 자사 image API 없음). Switch to an openai / google / ollama agent.');\n" +
+  "      }\n" +
+  "      if (__force[__prov] && data.model !== __force[__prov]) {\n" +
+  "        logger.warn(`[generate_image] override model='${data.model}' → '${__force[__prov]}' (agent provider=${__prov})`);\n" +
+  "        data.model = __force[__prov];\n" +
+  "      }\n" +
+  "    }\n" +
+  "    const url = this.url;\n" +
+  "    const { prompt, negative_prompt, model } = data;";
+
+if (!src.includes(CALL_NEEDLE)) {
+  console.error('[patch_librechat_sd_model] _call NEEDLE not found — LibreChat upstream changed?');
+  process.exit(1);
+}
+src = src.replace(CALL_NEEDLE, CALL_REPLACEMENT);
+
 fs.writeFileSync(PATH, src);
 
-// handleTools.js — router + imageGenOptions 매핑 두 군데
+// handleTools.js — (1) tool name rename, (2) imageGenOptions 에 agent.model 주입.
 let h = fs.readFileSync(HANDLE_PATH, 'utf8');
 h = h.replace(/'stable-diffusion'/g, "'" + NEW_TOOL_NAME + "'");
+
+const IMG_OPT_NEEDLE = "const imageGenOptions = {\n    isAgent: !!agent,\n    req: options.req,\n    fileStrategy,\n    processFileURL: options.processFileURL,\n    returnMetadata: options.returnMetadata,\n    uploadImageBuffer: options.uploadImageBuffer,\n  };";
+const IMG_OPT_REPLACEMENT =
+  "const imageGenOptions = {\n" +
+  "    isAgent: !!agent,\n" +
+  "    req: options.req,\n" +
+  "    fileStrategy,\n" +
+  "    processFileURL: options.processFileURL,\n" +
+  "    returnMetadata: options.returnMetadata,\n" +
+  "    uploadImageBuffer: options.uploadImageBuffer,\n" +
+  "    agentModel: agent && agent.model,  // KLOUDCHAT_SD_MODEL_PATCH — server-side image alias override\n" +
+  "  };";
+if (!h.includes(IMG_OPT_NEEDLE)) {
+  console.error('[patch_librechat_sd_model] imageGenOptions NEEDLE not found in handleTools.js');
+  process.exit(1);
+}
+h = h.replace(IMG_OPT_NEEDLE, IMG_OPT_REPLACEMENT);
 fs.writeFileSync(HANDLE_PATH, h);
 
 // manifest.json — pluginKey + 사용자 표시 name + authConfig 비우기.
