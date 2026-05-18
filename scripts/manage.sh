@@ -520,9 +520,41 @@ cmd_key_issue() {
   done
 
   if [[ -n "$service" ]]; then
-    local payload; payload=$(jq -n --arg a "${service}-service-key" --argjson b "$budget" \
+    local alias="${service}-service-key"
+    # LiteLLM 은 평문 key 를 DB 에 안 남기므로 (해시만 저장), 한 번 발급된 key 는
+    # 발급 시점의 .env 에만 존재. 재발급 시 alias 충돌 (HTTP 400) → idempotent 하게
+    # 동작하려면 .env 의 기존 key 가 살아있는지 먼저 확인하고 살아있으면 skip.
+    local env_var=""
+    case "$service" in
+      librechat) env_var="LITELLM_SERVICE_KEY" ;;
+    esac
+    if [[ -n "$env_var" ]]; then
+      local cur; cur="$(env_get "$env_var")"
+      if [[ -n "$cur" ]]; then
+        local info cur_alias
+        info="$(litellm_get "/key/info?key=$cur" 2>/dev/null || true)"
+        cur_alias="$(echo "$info" | jq -r '.info.key_alias // empty' 2>/dev/null)"
+        if [[ "$cur_alias" == "$alias" ]]; then
+          echo "service key: $service (alive, alias=$alias) — skip"
+          return 0
+        fi
+      fi
+    fi
+
+    local payload; payload=$(jq -n --arg a "$alias" --argjson b "$budget" \
       '{key_alias:$a, max_budget:$b, budget_duration:"1mo", user_role:"internal_user"}')
-    local result; result=$(litellm_post "/key/generate" "$payload")
+    local result
+    if ! result=$(litellm_post "/key/generate" "$payload" 2>&1); then
+      if echo "$result" | grep -q 'already exists'; then
+        # alias 가 LiteLLM 에 있는데 .env 와 동기화 안 됨 — auto-recover 불가
+        # (DB 의 평문 key 를 못 가져옴). 사용자가 직접 회전 결정해야 함.
+        err "service key alias '$alias' 가 LiteLLM 에 이미 있는데 .env 의 ${env_var:-키} 와 동기화 안 됨."
+        err "  → ./scripts/manage.sh key list 로 확인 후 회전: key revoke --key <stale>"
+        err "    또는 alias 다른 걸로: key issue --service $service --alias <new>"
+        return 1
+      fi
+      err "$result"; return 1
+    fi
     local key; key=$(echo "$result" | jq -r '.key')
     echo "service key: $service"; echo "KEY: $key"
     if [[ "$service" == "librechat" ]]; then
