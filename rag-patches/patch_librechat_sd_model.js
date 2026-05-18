@@ -19,11 +19,14 @@ if (src.includes(MARKER)) {
 
 const SCHEMA_NEEDLE =
   "  required: ['prompt', 'negative_prompt'],\n};";
+// enum 에 들어가는 alias 들: 로컬 ComfyUI (flux/qwen) + 외부 OR 경유 (nano-banana, gpt-image-2).
+// shim 의 OR_IMAGE_MODELS 매핑이 nano-banana/gpt-image-2 를 LiteLLM 으로 분기. enum 에서 빠지면
+// 모델이 부르려 해도 schema validator 가 거부 → fallback 으로 로컬 alias 잘못 사용.
 const SCHEMA_REPLACEMENT =
   "    model: {\n" +
   "      type: 'string',\n" +
-  "      enum: ['flux-schnell', 'flux-dev', 'qwen-image', 'qwen-image-edit'],\n" +
-  "      description: 'Image base model. flux-schnell=fast (4 steps, default for drafts), flux-dev=high quality (slower), qwen-image=text-in-image / Asian text / complex composition, qwen-image-edit=img2img edit.',\n" +
+  "      enum: ['flux-schnell', 'flux-dev', 'qwen-image', 'qwen-image-edit', 'nano-banana', 'gpt-image-2'],\n" +
+  "      description: 'Image base model. flux-schnell=fast (4 steps, drafts), flux-dev=high quality (slower), qwen-image=text-in-image / Asian text / complex composition, qwen-image-edit=img2img edit. External (OpenRouter): nano-banana=Google Gemini image, gpt-image-2=OpenAI gpt image.',\n" +
   "    },\n" +
   "  },\n" +
   "  required: ['prompt', 'negative_prompt'],\n" +
