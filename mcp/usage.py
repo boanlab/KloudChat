@@ -93,10 +93,6 @@ def _fmt_money(v: float) -> str:
     return f"${v:.4f}" if v < 1 else f"${v:,.2f}"
 
 
-def _fmt_int(v: int) -> str:
-    return f"{v:,}"
-
-
 def _month_range(months_back: int) -> tuple[Any, Any, str]:
     """(start_date, end_exclusive_date, label) for a calendar month offset.
     months_back=0 → current month, 1 → last month, etc."""

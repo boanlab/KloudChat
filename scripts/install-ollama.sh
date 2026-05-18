@@ -5,6 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$(dirname "$SCRIPT_DIR")/.env"
 source "${SCRIPT_DIR}/lib.sh"
 
+REINSTALL=0
+for arg in "$@"; do
+  case "$arg" in
+    --reinstall) REINSTALL=1 ;;
+    -h|--help)   echo "Usage: $(basename "$0") [--reinstall]"; exit 0 ;;
+    *)           echo "Unknown: $arg" >&2; exit 2 ;;
+  esac
+done
+
 require_supported_platform
 [[ $EUID -ne 0 ]] && exec sudo "$0" "$@"
 
@@ -19,8 +28,15 @@ fi
 
 if command -v ollama &>/dev/null; then
   info "Ollama 설치됨 ($(ollama --version 2>/dev/null | awk '{print $NF}' || echo '?'))"
-  read -rp "Reinstall? [y/N] " ans
-  [[ "$ans" =~ ^[Yy]$ ]] && curl -fsSL https://ollama.com/install.sh | sh
+  if (( REINSTALL )); then
+    info "--reinstall — 재설치 진행"
+    curl -fsSL https://ollama.com/install.sh | sh
+  elif [[ -t 0 ]]; then
+    read -rp "Reinstall? [y/N] " ans
+    [[ "$ans" =~ ^[Yy]$ ]] && curl -fsSL https://ollama.com/install.sh | sh
+  else
+    info "non-interactive — 기존 설치 유지 (재설치 강제: --reinstall)"
+  fi
 else
   curl -fsSL https://ollama.com/install.sh | sh
 fi

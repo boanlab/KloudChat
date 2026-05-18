@@ -234,14 +234,12 @@ async def _discover_node_variants(client: httpx.AsyncClient, backend: str) -> di
         info = r.json()
     except (httpx.HTTPError, ValueError):
         return {}
-    ckpts = _files_from_object_info(info, "CheckpointLoaderSimple", "ckpt_name")
     unets = (_files_from_object_info(info, "UNETLoader", "unet_name")
              | _files_from_object_info(info, "UnetLoaderGGUF", "unet_name"))
     out: dict[str, str] = {}
     for alias, variants in COMFYUI_ALIAS_VARIANTS.items():
-        for kind, fname, workflow in variants:
-            pool = ckpts if kind == "ckpt" else unets
-            if fname in pool:
+        for _kind, fname, workflow in variants:
+            if fname in unets:
                 out[alias] = workflow
                 break  # first match wins (preference order)
     return out
@@ -455,9 +453,25 @@ async def _comfy_run(client: httpx.AsyncClient, backend: str, workflow: dict[str
                 await asyncio.sleep(POLL_INTERVAL_SEC)
                 continue
             body = h.json()
-            if prompt_id in body and body[prompt_id].get("status", {}).get("completed"):
-                run = body[prompt_id]
-                break
+            entry = body.get(prompt_id) if isinstance(body, dict) else None
+            if entry:
+                status = entry.get("status") or {}
+                # ComfyUI 가 KSampler 등에서 throw 하면 status_str='error', completed=False
+                # 로 들어와서 영원히 끝나지 않는 잡으로 남음 — 폴링 deadline 까지 안 가게
+                # execution_error 메시지 추려서 502 로 즉시 반환.
+                if status.get("status_str") == "error":
+                    msg = "ComfyUI execution error"
+                    for kind, payload in (status.get("messages") or []):
+                        if kind == "execution_error" and isinstance(payload, dict):
+                            etype = payload.get("exception_type", "?")
+                            emsg = str(payload.get("exception_message", "?")).strip()
+                            node = payload.get("node_type") or payload.get("node_id") or "?"
+                            msg = f"{etype} at {node}: {emsg}"
+                            break
+                    raise HTTPException(502, f"ComfyUI run failed on {backend}: {msg}")
+                if status.get("completed"):
+                    run = entry
+                    break
             await asyncio.sleep(POLL_INTERVAL_SEC)
 
         images_b64: list[str] = []

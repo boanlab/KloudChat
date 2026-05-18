@@ -50,10 +50,18 @@
 
 ### 백엔드 토폴로지
 
-`OLLAMA_URLS` / `COMFYUI_URLS` / `WHISPER_URLS` 는 csv 로 여러 노드를 적을 수 있습니다.
+기본은 compose 호스트와 같은 머신에 Ollama/ComfyUI/Whisper 가 native 로 설치된 단일 호스트 셋업 — `gen-env.sh` 가 만드는 `.env.example` 디폴트가 그 형태입니다:
 
 ```dotenv
-OLLAMA_URLS=http://host.docker.internal:11434,http://gpu-node-1:11434,http://gpu-node-2:11434
+OLLAMA_URLS=http://host.docker.internal:11434
+COMFYUI_URLS=http://host.docker.internal:8188
+WHISPER_URLS=http://host.docker.internal:9000
+```
+
+GPU 가 별도 노드(들)에 있거나 멀티 노드 분산이 필요하면 csv 로 확장 (각 노드에 install 스크립트 동일하게 적용):
+
+```dotenv
+OLLAMA_URLS=http://gpu-node-1:11434,http://gpu-node-2:11434
 COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
 WHISPER_URLS=http://gpu-node-1:9000,http://gpu-node-2:9000
 ```

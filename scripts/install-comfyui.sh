@@ -18,6 +18,15 @@ OUTPUT="${DATA_ROOT}/output"
 TORCH=2.7.1; TORCHVIS=0.22.1; TORCHAUD=2.7.1
 TORCH_INDEX=https://download.pytorch.org/whl/cu128
 
+REINSTALL=0
+for arg in "$@"; do
+  case "$arg" in
+    --reinstall) REINSTALL=1 ;;
+    -h|--help)   echo "Usage: $(basename "$0") [--reinstall]"; exit 0 ;;
+    *)           echo "Unknown: $arg" >&2; exit 2 ;;
+  esac
+done
+
 require_supported_platform
 [[ $EUID -ne 0 ]] && exec sudo --preserve-env=COMFYUI_APP_ROOT,COMFYUI_DATA_ROOT,COMFYUI_PORT,COMFYUI_REF,COMFYUI_USER,COMFYUI_GROUP "$0" "$@"
 
@@ -29,6 +38,17 @@ if has_nvidia_gpu; then
 else
   warn "NVIDIA GPU 없음 — CPU fallback. https://developer.nvidia.com/cuda-downloads"
 fi
+
+# Blackwell (GB10 / RTX PRO 6000 Blackwell / RTX 5090) 은 NVFP4 4-bit dtype
+# (`torch.float4_e2m1fn_x2`) 이 노출돼야 qwen-image-nvfp4 같은 워크플로의
+# KSampler 가 안 죽는다. 그 dtype 은 torch 2.9+ 부터 Python 바인딩으로 노출됨.
+# 비-Blackwell 호스트는 NVFP4 안 쓰니 2.7.1 그대로 유지.
+case "$(detect_gpu_class)" in
+  gb10|blackwell-pro|blackwell-5090)
+    TORCH=2.9.1; TORCHVIS=0.24.1; TORCHAUD=2.9.1
+    info "Blackwell class — torch=${TORCH} (NVFP4 dispatch)"
+    ;;
+esac
 
 if command -v apt-get &>/dev/null; then
   DEBIAN_FRONTEND=noninteractive apt-get update -qq
@@ -50,13 +70,17 @@ chown -R "$USR:$GRP" "$APP_ROOT" "$DATA_ROOT"
 run_as() { sudo -u "$USR" "$@"; }
 
 if [[ -d "$VENV" ]] && run_as "$VENV/bin/python" -c 'import torch' &>/dev/null; then
-  ans=""
-  if [[ -t 0 ]]; then
-    read -rp "venv 존재 (torch=$(run_as "$VENV/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '?')). Reinstall? [y/N] " ans || ans=""
+  cur_torch="$(run_as "$VENV/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '?')"
+  if (( REINSTALL )); then
+    info "--reinstall — venv 재설치 진행 (torch=$cur_torch)"
+    SKIP_PIP=0
+  elif [[ -t 0 ]]; then
+    read -rp "venv 존재 (torch=$cur_torch). Reinstall? [y/N] " ans || ans=""
+    [[ "$ans" =~ ^[Yy]$ ]] && SKIP_PIP=0 || SKIP_PIP=1
   else
-    echo "venv 존재 — non-interactive, 재설치 건너뜀 (재설치 강제하려면 venv 삭제 후 재실행)"
+    echo "venv 존재 — non-interactive, 재설치 건너뜀 (재설치 강제: --reinstall)"
+    SKIP_PIP=1
   fi
-  if [[ "$ans" =~ ^[Yy]$ ]]; then SKIP_PIP=0; else SKIP_PIP=1; fi
 else
   run_as python3 -m venv "$VENV"
   SKIP_PIP=0

@@ -141,7 +141,7 @@ LibreChat 메뉴에는 OR 라우팅 모델(gpt-5.5, claude-opus-4.7, gemini-3.1-
 | Linux x86_64 + NVIDIA GPU | A / B / C |
 | Linux aarch64 — DGX Spark (GB10) | A / B / C |
 
-GPU 없으면 채팅만 가능 — 이미지 / RAG 임베딩은 로컬 모델 필요해서 비활성. GB10은 arm64 + CUDA 12.8 자체 빌드된 ComfyUI 사용.
+GPU 없으면 채팅만 가능 — 이미지 / RAG 임베딩은 로컬 모델 필요해서 비활성. ComfyUI · Ollama · Whisper 는 모두 GPU 호스트에 systemd native 로 설치 (컨테이너 아님) — DGX Spark (GB10 arm64) 도 동일, `install-comfyui.sh` 가 GPU class 감지해 Blackwell 노드만 torch 2.9.1 (NVFP4 dtype 노출) 로 설치.
 
 ## 아키텍처
 

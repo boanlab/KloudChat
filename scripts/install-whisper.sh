@@ -16,6 +16,15 @@ MODEL="${WHISPER_MODEL:-large-v3}"
 DEVICE="${WHISPER_DEVICE:-auto}"
 COMPUTE_TYPE="${WHISPER_COMPUTE_TYPE:-float16}"
 
+REINSTALL=0
+for arg in "$@"; do
+  case "$arg" in
+    --reinstall) REINSTALL=1 ;;
+    -h|--help)   echo "Usage: $(basename "$0") [--reinstall]"; exit 0 ;;
+    *)           echo "Unknown: $arg" >&2; exit 2 ;;
+  esac
+done
+
 require_supported_platform
 [[ $EUID -ne 0 ]] && exec sudo --preserve-env=WHISPER_APP_ROOT,WHISPER_DATA_ROOT,WHISPER_PORT,WHISPER_USER,WHISPER_GROUP,WHISPER_MODEL,WHISPER_DEVICE,WHISPER_COMPUTE_TYPE "$0" "$@"
 
@@ -52,13 +61,17 @@ install -o "$USR" -g "$GRP" -m 0644 "${PROJECT_DIR}/whisper/app.py" "${APP_ROOT}
 run_as() { sudo -u "$USR" "$@"; }
 
 if [[ -d "$VENV" ]] && run_as "$VENV/bin/python" -c 'import faster_whisper' &>/dev/null; then
-  ans=""
-  if [[ -t 0 ]]; then
-    read -rp "venv 존재 (faster-whisper $(run_as "$VENV/bin/python" -c 'import faster_whisper; print(faster_whisper.__version__)' 2>/dev/null || echo '?')). Reinstall? [y/N] " ans || ans=""
+  cur_fw="$(run_as "$VENV/bin/python" -c 'import faster_whisper; print(faster_whisper.__version__)' 2>/dev/null || echo '?')"
+  if (( REINSTALL )); then
+    info "--reinstall — venv 재설치 진행 (faster-whisper=$cur_fw)"
+    SKIP_PIP=0
+  elif [[ -t 0 ]]; then
+    read -rp "venv 존재 (faster-whisper $cur_fw). Reinstall? [y/N] " ans || ans=""
+    [[ "$ans" =~ ^[Yy]$ ]] && SKIP_PIP=0 || SKIP_PIP=1
   else
-    echo "venv 존재 — non-interactive, 재설치 건너뜀 (재설치 강제하려면 venv 삭제 후 재실행)"
+    echo "venv 존재 — non-interactive, 재설치 건너뜀 (재설치 강제: --reinstall)"
+    SKIP_PIP=1
   fi
-  if [[ "$ans" =~ ^[Yy]$ ]]; then SKIP_PIP=0; else SKIP_PIP=1; fi
 else
   run_as python3 -m venv "$VENV"
   SKIP_PIP=0

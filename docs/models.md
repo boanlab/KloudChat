@@ -21,7 +21,7 @@ commercial 3개 (`OPENAI_MODELS` / `ANTHROPIC_MODELS` / `GOOGLE_MODELS`) 는 전
 
 `OLLAMA_CHAT_CATALOG` / `OLLAMA_EMBED_CATALOG` 는 union discovery — 어느 노드든 보유하면 그 노드(들)에 deployment 등록. `OLLAMA_DEFAULT_PRIORITY` 는 기본 에이전트가 어떤 모델로 만들어질지 결정 (이 순서대로 lookup, union 어디든 보유한 첫 모델).
 
-`MODEL_PRICE_*` 는 LiteLLM 의 spend/budget 추적에 사용 (OpenRouter 가격 기준).
+`MODEL_PRICE_*` 는 LiteLLM 의 spend/budget 추적에 사용. Commercial (gpt/claude/gemini) 은 OpenRouter catalog 가격 그대로, 로컬 (`ollama/*` + `bge-m3`) 은 OR 동급 모델 대비 **50% 할인** — 자체 GPU 운영이라 API 마진이 없는 비용 구조 반영. `text-embedding-3-small` 은 OR 경유라 할인 대상 아님.
 
 `gen-litellm-config.sh` / `gen-librechat-config.sh` 가 위 정의 + 환경 (OR 키 + ollama discovery) 을 합쳐서 `litellm-config.yaml` 의 `KLOUDCHAT_AUTOGEN` marker, `librechat.yaml` 의 `KLOUDCHAT_MODELS` marker 사이를 자동 생성.
 
@@ -114,7 +114,7 @@ ComfyUI + A1111 shim. ComfyUI 는 항상 native (systemd) 로 실행 — `./scri
 | `flux-dev` | ~22 GB |
 | `flux-schnell` | ~22 GB |
 
-`qwen-image` 는 Qwen-Image Q8 GGUF + 인코더 + VAE — 텍스트→이미지에 강하고 한글 텍스트 처리가 좋음. 느림. `qwen-image-edit` 는 Qwen-Image-Edit-2509 Q8 — 이미지 편집 용도, 인코더/VAE 는 `qwen-image` 와 공유.
+`qwen-image` 는 Qwen-Image UNet + 인코더 + VAE — 텍스트→이미지에 강하고 한글 텍스트 처리가 좋음. UNet quant 는 GPU class 자동 매핑 (`recommended_image_quant`): Blackwell(gb10/pro/5090) → NVFP4, Ada 4090 → FP8, 그 외 → Q8 GGUF. `qwen-image-edit` 는 Qwen-Image-Edit-2509 — 이미지 편집 용도, NVFP4 변형이 없어 FP8 또는 Q8 GGUF, 인코더/VAE 는 `qwen-image` 와 공유.
 
 `flux-shared` 는 Flux 공유 인코더 (T5-XXL FP16, CLIP-L, AE VAE) — `flux-dev` / `flux-schnell` 둘 다 사용. `flux-dev` 는 FLUX.1-dev FP16 (gated, **HF_TOKEN 필수**) — 최고 품질이지만 ~20 step 으로 느림. `flux-schnell` 은 FLUX.1-schnell FP16 (MIT) — 4 step 으로 빠른 iteration.
 

@@ -68,9 +68,14 @@ ComfyUI 는 항상 **호스트 native** (venv + systemd) 로 실행 — `scripts
 
 ```
 설치:     scripts/install-comfyui.sh (PyTorch cu128, ComfyUI master)
+          ├─ 기본: torch 2.7.1 / torchvision 0.22.1 / torchaudio 2.7.1
+          └─ Blackwell (gb10 / blackwell-pro / blackwell-5090):
+             torch 2.9.1 / torchvision 0.24.1 / torchaudio 2.9.1
+             (NVFP4 dtype `torch.float4_e2m1fn_x2` 노출 — qwen-image-nvfp4 워크플로 KSampler 가 필요)
 포트:     8188 (ComfyUI 본 API, 내부/LAN 전용)
 가중치:   /opt/comfyui/app/ComfyUI/models/{checkpoints,unet,clip,vae}
 출력:     /var/lib/comfyui/output (심링크로 app 안에 노출)
+재설치:   ./scripts/install-comfyui.sh --reinstall (venv + ComfyUI + custom_nodes 모두 다시 받음)
 ```
 
 ### comfyui-shim (A1111 어댑터 + 라우터)

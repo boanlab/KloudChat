@@ -139,25 +139,28 @@ OLLAMA_DEFAULT_PRIORITY=(
 )
 
 # 모델 단가 (USD per 1M tokens). LiteLLM spend 추적용.
+# Commercial (gpt/claude/gemini): OpenRouter catalog 가격 그대로.
+# Local (ollama/*, bge-m3): OR 동급 모델 가격 대비 50% — 자체 GPU 운영이라 API 마진이
+# 없어 사용자 입장에선 절반 가격으로 책정. text-embedding-3-small 은 OR 경유라 50% 안 함.
 declare -A MODEL_PRICE_IN_PM=(
   [gpt-5.5]=5      [gpt-5]=2.5    [gpt-5-mini]=0.25    [gpt-5-nano]=0.05
   [claude-opus-4.7]=5    [claude-opus-4.6]=5    [claude-sonnet-4.6]=3    [claude-haiku-4.5]=1
   [gemini-3.1-pro-preview]=5    [gemini-2.5-pro]=2.5    [gemini-2.5-flash]=0.30
-  [qwen3.5:9b]=0.04    [qwen3.6:35b]=0.08
-  [llama3.1:8b]=0.04    [llama3.3:70b]=0.20
-  [nemotron3:33b]=0.10
-  [qwen3-coder-next:q8_0]=0.22
-  [bge-m3]=0.02
+  [qwen3.5:9b]=0.02    [qwen3.6:35b]=0.04
+  [llama3.1:8b]=0.02    [llama3.3:70b]=0.10
+  [nemotron3:33b]=0.05
+  [qwen3-coder-next:q8_0]=0.11
+  [bge-m3]=0.01
   [text-embedding-3-small]=0.02
 )
 declare -A MODEL_PRICE_OUT_PM=(
   [gpt-5.5]=30    [gpt-5]=15    [gpt-5-mini]=2    [gpt-5-nano]=0.40
   [claude-opus-4.7]=25    [claude-opus-4.6]=25    [claude-sonnet-4.6]=15    [claude-haiku-4.5]=5
   [gemini-3.1-pro-preview]=15    [gemini-2.5-pro]=10    [gemini-2.5-flash]=2.5
-  [qwen3.5:9b]=0.10    [qwen3.6:35b]=0.28
-  [llama3.1:8b]=0.10    [llama3.3:70b]=0.60
-  [nemotron3:33b]=0.30
-  [qwen3-coder-next:q8_0]=1.80
+  [qwen3.5:9b]=0.05    [qwen3.6:35b]=0.14
+  [llama3.1:8b]=0.05    [llama3.3:70b]=0.30
+  [nemotron3:33b]=0.15
+  [qwen3-coder-next:q8_0]=0.90
 )
 
 per_token_cost() { awk -v v="$1" 'BEGIN { printf "%.10f", v/1000000 }'; }

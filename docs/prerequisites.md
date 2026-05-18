@@ -66,6 +66,6 @@ A 의 GPU 요건 + B 의 OR 키. Commercial 모델 (OpenAI/Anthropic/Google) 은
 
 ## DGX Spark (GB10)
 
-- ComfyUI 컨테이너 정상 동작 (arm64 + CUDA 12.8 자체 빌드)
+- ComfyUI / Ollama / Whisper 는 모두 호스트 native (venv + systemd) — 컨테이너 아님. `install-comfyui.sh` 가 GB10 감지해 `torch 2.9.1+cu128` (NVFP4 dtype 노출) 로 자동 분기, 비-Blackwell 노드는 `2.7.1` 그대로
 - `nvidia-smi memory.total` 이 `[N/A]` 라서 `lib.sh` 헬퍼가 시스템 RAM 을 VRAM 으로 간주 — `download-ollama-models.sh` 의 추천 셋 결정에 사용
 - `CUDA_VISIBLE_DEVICES` 가 빈 값이면 Ollama CPU 폴백 → `0` 으로 명시 ([Ollama 튜닝](ollama-tuning.md))
