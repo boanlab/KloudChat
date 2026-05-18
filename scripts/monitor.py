@@ -814,6 +814,8 @@ def estimate_dashboard_height(n_hosts: int, panels: bool, has_shim_panel: bool,
 
 
 async def main() -> int:
+    global SHIM_CACHE  # 둘 이상 분기에서 갱신 — Python 은 모든 global 선언이 함수 내 첫 assignment 보다 앞에 있어야 함.
+
     p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     p.add_argument("--once", action="store_true", help="대시보드 1회 출력 후 종료")
     p.add_argument("--interval", type=int, default=3, help="대시보드 refresh 주기 (초, 기본 3)")
@@ -836,7 +838,6 @@ async def main() -> int:
 
     # --once: 대시보드 한 프레임만. CPU% 는 델타라 첫 호출엔 0 — warm-up 한 번 더.
     if args.once or not console.is_terminal:
-        global SHIM_CACHE
         host_cpu_pct()  # baseline
         await asyncio.sleep(0.5)
         async with httpx.AsyncClient() as client:
@@ -866,7 +867,6 @@ async def main() -> int:
             return 0
 
         # 대시보드 단독 OR 합본
-        global SHIM_CACHE
         async with httpx.AsyncClient() as client:
             # 초기 1회 probe — shim 존재 여부 + dash_h 계산에 필요
             SHIM_CACHE = await probe_shim()
