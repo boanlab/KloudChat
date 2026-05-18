@@ -260,8 +260,15 @@ async def probe_container_stats() -> list[dict[str, str]]:
             "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         )
+    except FileNotFoundError:
+        return []
+    try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
-    except (FileNotFoundError, asyncio.TimeoutError):
+    except asyncio.CancelledError:
+        await _terminate(proc)
+        raise
+    except Exception:  # TimeoutError 포함 — orphan proc 정리 후 빈 결과
+        await _terminate(proc)
         return []
     rows: list[dict[str, str]] = []
     for line in out.decode(errors="replace").splitlines():
@@ -579,11 +586,21 @@ async def probe_shim() -> dict[str, Any] | None:
             ".read().decode())",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         )
+    except FileNotFoundError:
+        return None
+    try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=4.0)
-        if proc.returncode != 0 or not out:
-            return None
+    except asyncio.CancelledError:
+        await _terminate(proc)
+        raise
+    except Exception:  # TimeoutError 포함
+        await _terminate(proc)
+        return None
+    if proc.returncode != 0 or not out:
+        return None
+    try:
         return json.loads(out.decode())
-    except (FileNotFoundError, asyncio.TimeoutError, json.JSONDecodeError, Exception):
+    except (json.JSONDecodeError, ValueError):
         return None
 
 
@@ -701,9 +718,30 @@ LOG_BUFFER: deque[tuple[str, str, str]] = deque(maxlen=1000)
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 
+async def _terminate(proc: asyncio.subprocess.Process) -> None:
+    """subprocess 정리 — SIGTERM 후 2초 안 끝나면 SIGKILL. orphan 방지."""
+    if proc.returncode is not None:
+        return
+    try:
+        proc.terminate()
+    except (ProcessLookupError, OSError):
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2.0)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except (ProcessLookupError, OSError):
+            pass
+        try:
+            await proc.wait()
+        except Exception:
+            pass
+
+
 async def _follow_stream(label: str, cmd: list[str]) -> None:
     """주어진 명령어를 subprocess 로 띄우고 stdout 라인을 LOG_BUFFER 로 흘림.
-    include/exclude 필터 + ANSI 제거 + 길이 자르기."""
+    include/exclude 필터 + ANSI 제거 + 길이 자르기. cancel 시 subprocess SIGTERM."""
     emoji, color, inc_re_s, exc_re_s = LOG_FILTERS[label]
     inc_re = re.compile(inc_re_s, re.IGNORECASE)
     exc_re = re.compile(exc_re_s, re.IGNORECASE) if exc_re_s else None
@@ -714,21 +752,26 @@ async def _follow_stream(label: str, cmd: list[str]) -> None:
     except FileNotFoundError:
         return
     assert proc.stdout is not None
-    while True:
-        line = await proc.stdout.readline()
-        if not line:
-            break
-        text = _ANSI_RE.sub("", line.decode(errors="replace")).rstrip()
-        if not text:
-            continue
-        if not inc_re.search(text):
-            continue
-        if exc_re and exc_re.search(text):
-            continue
-        if len(text) > 240:
-            text = text[:237] + "..."
-        ts = datetime.now().strftime("%H:%M:%S")
-        LOG_BUFFER.append((ts, label, text))
+    try:
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            text = _ANSI_RE.sub("", line.decode(errors="replace")).rstrip()
+            if not text:
+                continue
+            if not inc_re.search(text):
+                continue
+            if exc_re and exc_re.search(text):
+                continue
+            if len(text) > 240:
+                text = text[:237] + "..."
+            ts = datetime.now().strftime("%H:%M:%S")
+            LOG_BUFFER.append((ts, label, text))
+    except asyncio.CancelledError:
+        raise
+    finally:
+        await _terminate(proc)
 
 
 async def _container_exists(name: str) -> bool:
@@ -944,7 +987,17 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
+    import warnings
+    # asyncio subprocess transport 가 GC 될 때 ResourceWarning, 또는 Ctrl+C 종료 시
+    # 나오는 코루틴 미await 워닝 노이즈 — 사용자가 봐도 의미 없음.
+    warnings.filterwarnings("ignore", category=ResourceWarning)
+    warnings.filterwarnings("ignore", category=RuntimeWarning, module="asyncio.*")
     try:
         sys.exit(asyncio.run(main()))
     except KeyboardInterrupt:
-        sys.exit(0)
+        sys.exit(130)  # 표준 SIGINT exit code
+    except RuntimeError as e:
+        # shutdown 단계 "Event loop is closed" 등 — 정리는 끝났으니 silent exit.
+        if "Event loop" in str(e) or "closed" in str(e):
+            sys.exit(0)
+        raise
