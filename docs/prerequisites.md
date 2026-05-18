@@ -40,6 +40,7 @@ GPU 호스트에서 prerequisite:
 ./scripts/download-image-models.sh      # 기본 셋 + HF_TOKEN 있으면 +flux-dev
 
 ./scripts/install-whisper.sh            # YouTube 자막 없는 영상 전사 쓸 거면
+./scripts/download-whisper-models.sh    # (선택) 모델 prewarm — 첫 호출 lazy-load 회피
 ```
 
 VRAM 점유는 [GPU 메모리 가이드](gpu-memory.md) 참고.

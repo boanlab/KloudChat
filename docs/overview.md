@@ -87,6 +87,7 @@ faster-whisper + FastAPI 의 OpenAI-compatible `/v1/audio/transcriptions` endpoi
 설치:     scripts/install-whisper.sh (faster-whisper + FastAPI, CUDA 자동 감지)
 포트:     9000 (OpenAI-compat, 내부/LAN 전용)
 모델:     WHISPER_MODEL (기본 large-v3, lazy-load 후 상주)
+prewarm:  scripts/download-whisper-models.sh (선택, 첫 호출 latency / 에어갭 대응)
 ```
 
 ### MCP 서버

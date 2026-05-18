@@ -124,6 +124,7 @@ cat <<EOF
 === done ===
   systemd:  $(systemctl is-active whisper 2>/dev/null || echo unknown) — journalctl -u whisper -f
   model:    ${MODEL} (lazy-load 첫 호출 시 ~3 GB 다운로드 → ${DATA_ROOT})
+            prewarm: ./scripts/download-whisper-models.sh   # 첫 호출 latency 회피
   device:   ${DEVICE} / compute: ${COMPUTE_TYPE}
   분산 사용 시 compose 호스트 .env: WHISPER_URL=http://${IP:-<this-host-ip>}:${PORT}
 EOF

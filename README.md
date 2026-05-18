@@ -31,6 +31,7 @@ $EDITOR .env    # HF_TOKEN=hf_...   (없으면 flux-dev 만 빠지고 나머지 
 ./scripts/install-comfyui.sh                    # 이미지 생성 쓸 거면
 ./scripts/download-image-models.sh              # 기본 셋 + (HF_TOKEN 있으면 flux-dev)
 ./scripts/install-whisper.sh                    # 자막 없는 YouTube 영상 전사 쓸 거면
+./scripts/download-whisper-models.sh            # (선택) prewarm — 첫 호출 lazy-load 회피
 
 # 3. setup + admin (OPENROUTER_API_KEY 빈 칸 두면 commercial 모델 미등록, OLLAMA_URLS/COMFYUI_URLS는 기본값 그대로)
 ./scripts/setup.sh
@@ -46,6 +47,7 @@ GPU 가 별도 노드면:
 ./scripts/install-comfyui.sh
 HF_TOKEN=hf_... ./scripts/download-image-models.sh      # HF_TOKEN 생략 시 flux-dev만 빠짐
 ./scripts/install-whisper.sh                            # YouTube 음성 인식 폴백 쓸 거면
+./scripts/download-whisper-models.sh                    # (선택) prewarm — 첫 호출 lazy-load 회피
 
 # 2. compose 호스트의 .env 에서 노드 가리키기
 $EDITOR .env
@@ -95,6 +97,7 @@ $EDITOR .env
 ./scripts/install-comfyui.sh
 ./scripts/download-image-models.sh
 ./scripts/install-whisper.sh
+./scripts/download-whisper-models.sh            # (선택) prewarm — 첫 호출 lazy-load 회피
 
 # 3. setup + admin
 ./scripts/setup.sh
