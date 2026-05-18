@@ -60,12 +60,11 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 
 def _parse_backends() -> list[str]:
-    """COMFYUI_URLS (preferred, comma-separated) → COMFYUI_URL (legacy single)
-    → default in-network container."""
-    raw = os.getenv("COMFYUI_URLS") or os.getenv("COMFYUI_URL") or "http://comfyui:8188"
+    """COMFYUI_URLS — comma-separated ComfyUI backend URLs."""
+    raw = os.getenv("COMFYUI_URLS", "")
     urls = [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
     if not urls:
-        raise RuntimeError("COMFYUI_URLS / COMFYUI_URL is empty")
+        raise RuntimeError("COMFYUI_URLS is empty")
     return urls
 
 

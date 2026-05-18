@@ -19,6 +19,8 @@
 | `WELCOME_BACK_MESSAGE` | 브랜딩 |
 | `HELP_AND_FAQ_URL` | 브랜딩 |
 | `CUSTOM_FOOTER` | 브랜딩 |
+| `DOMAIN_CLIENT` | 공개 URL |
+| `DOMAIN_SERVER` | 공개 URL |
 | `OLLAMA_URLS` | 백엔드 토폴로지 |
 | `COMFYUI_URLS` | 백엔드 토폴로지 |
 | `WHISPER_URLS` | 백엔드 토폴로지 (선택) |
@@ -41,6 +43,10 @@
 `HELP_AND_FAQ_URL` 은 우상단 메뉴의 "Help & FAQ" 링크 URL. `/` 면 메뉴 자체가 숨겨집니다 (기본).
 
 `CUSTOM_FOOTER` 는 채팅창 하단 푸터 ("LibreChat v0.8.5 - ..." 자리). 빈 값이면 LibreChat 기본 표시, 공백 1개면 사실상 숨김. LibreChat 은 yaml `interface.customFooter` 가 아닌 이 env 변수에서만 읽습니다.
+
+### 공개 URL
+
+`DOMAIN_CLIENT` / `DOMAIN_SERVER` 는 LibreChat 이 외부 노출용 base URL 로 쓰는 값 — 이메일 본문 링크 (비밀번호 reset / 이메일 인증), OAuth 콜백, 이미지 base path 에 사용됩니다. 비어 있으면 reset 메일이 `undefined/reset/...` 로 렌더링되니 실배포 도메인으로 채워야 합니다. 보통 둘 다 같은 값 (예: `https://chat.example.com`).
 
 ### 백엔드 토폴로지
 
@@ -149,14 +155,19 @@ LibreChat / RAG API → LiteLLM 호출용 가상 키. `./scripts/manage.sh key i
 | `SD_WEBUI_URL` | `http://comfyui-shim:7860` |
 | `WHISPER_URL` | `http://whisper-shim:9000` |
 | `WHISPER_OR_MODEL` | `whisper-1` (OR 폴백 시) |
-| `OR_IMAGE_MODELS` | `nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2` |
-| `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` | `32212254720` (30 GiB) |
 
 `EMBEDDINGS_PROVIDER` 는 RAG 임베딩 공급자 — LiteLLM 경유라 항상 `openai`. `EMBEDDINGS_MODEL` 은 LiteLLM 의 model_name 과 일치해야 함 (기본 `bge-m3`). Ollama 노드에 bge-m3 가 0대 + OR 키 있을 때 `setup.sh` 가 `text-embedding-3-small` 로 자동 swap (OR 경유 OpenAI 임베딩).
 
-`OR_IMAGE_MODELS` 는 shim 이 LiteLLM 경유 외부 image API 로 라우팅할 alias 매핑 (`<alias>=<litellm-model-name>` csv). 비었으면 모든 image 요청을 ComfyUI 로.
+`WHISPER_URL` 은 youtube MCP 가 호출하는 shim endpoint (compose 내부 라우터). shim 의 backend 멀티노드 목록은 `WHISPER_URLS` 로 별도 관리.
 
-`OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` 는 shim 의 VRAM-aware 라우팅 임계 — 노드의 ollama 가 이 값 초과로 VRAM 점유 중이면 다른 노드 우선 (대형 LLM 과 ComfyUI 공존 회피).
+### compose / shim 하드코딩 (`.env` 외 설정)
+
+다음 두 값은 `.env` 에 없고 각각 `docker-compose.yml` 의 service environment 와 shim 의 Python default 로 박혀 있음 — 변경하려면 해당 위치 수정 후 컨테이너 recreate:
+
+| 변수 | 위치 | 기본값 | 용도 |
+|---|---|---|---|
+| `OR_IMAGE_MODELS` | `docker-compose.yml` (`comfyui-shim`) | `nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2` | shim 이 LiteLLM 경유 외부 image API 로 라우팅할 alias 매핑 |
+| `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` | `comfyui-shim/app.py`, `whisper-shim/app.py` Python default | `32212254720` (30 GiB) | shim 의 VRAM-aware 라우팅 임계 — 노드의 ollama 가 이 값 초과로 VRAM 점유 중이면 다른 노드 우선 |
 
 ## 모델 등록 동작 요약
 

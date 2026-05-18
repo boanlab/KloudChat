@@ -43,12 +43,12 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 
 def _parse_backends() -> list[str]:
-    """WHISPER_URLS (preferred, comma-separated) → WHISPER_URL (legacy single)
-    → default in-network compose-host fallback."""
-    raw = os.getenv("WHISPER_URLS") or os.getenv("WHISPER_URL") or "http://host.docker.internal:9000"
+    """WHISPER_URLS — comma-separated whisper backend URLs (host systemd faster-whisper).
+    WHISPER_URL 은 consumer (youtube MCP) 가 shim 을 가리키는 별개 변수 — 여기서 안 읽음."""
+    raw = os.getenv("WHISPER_URLS", "")
     urls = [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
     if not urls:
-        raise RuntimeError("WHISPER_URLS / WHISPER_URL is empty")
+        raise RuntimeError("WHISPER_URLS is empty")
     return urls
 
 

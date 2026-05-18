@@ -138,13 +138,11 @@ prefix 별 해당 모델:
 
 `generate_image` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음.
 
-`TOOL_EXCLUDE` 는 기본 비어 있음 — emit 실패가 실측된 (모델, 도구) 조합만 명시 등록.
-
 기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` 의 첫 매치 (현재 `qwen3.6:35b → qwen3.5:9b`). `llama3.3:70b` 는 카탈로그엔 있지만 priority 후보에선 제외 — selector 에서 명시 선택. `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
 
 ### MCP 도구 + Built-in
 
-Built-in (`execute_code`, `file_search`, `web_search`, `generate_image`) 과 MCP 서버 카탈로그 + 모델별 부착 매트릭스 + 추가 절차는 [도구 문서](tools.md) 에 정리. 모델 카탈로그 변경 시 작은 모델 셋 (`SMALL_MODELS`) / 빌트인 제외 (`TOOL_EXCLUDE`) 도 같이 갱신해야 합니다.
+Built-in (`execute_code`, `file_search`, `web_search`, `generate_image`) 과 MCP 서버 카탈로그 + 모델별 부착 매트릭스 + 추가 절차는 [도구 문서](tools.md) 에 정리. 모델 카탈로그 변경 시 작은 모델 셋 (`SMALL_MODELS`) 도 같이 갱신해야 합니다.
 
 ## RAG 임베딩
 

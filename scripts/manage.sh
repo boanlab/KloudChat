@@ -256,6 +256,7 @@ create_default_agent_for_user() {
         'sys__all__sys_mcp_time',          // 현재 시간 / 타임존 변환
         'sys__all__sys_mcp_usage',         // 본인 토큰 사용량/예산 (my_usage, budget_status)
         'sys__all__sys_mcp_youtube',       // YouTube 텍스트 추출 (자막 or whisper)
+        'sys__all__sys_mcp_deep_research', // ReAct multi-source 검색 + iterative reasoning (사이드카)
       ];
       // 모델 크기별 분기. 큰 모델은 math + math_basic 둘 다 (단순 산술은 math_basic
       // 으로 빠지고 심볼릭은 sympy). 작은 모델은 schema 부담을 피해 math_basic 만.
@@ -274,12 +275,9 @@ create_default_agent_for_user() {
         return MCP_COMMON.concat(math);
       }
 
-      // 모든 에이전트의 base 빌트인. 분리는 TOOL_EXCLUDE / EXT_IMAGE_FOR_PROVIDER 가 처리.
+      // 모든 에이전트의 base 빌트인. 외부 provider 의 image 매핑 부재 시
+      // builtinFor 에서 generate_image 만 자동 제외.
       var BUILTIN_BASE = ['execute_code','file_search','web_search','generate_image'];
-
-      // 모델별 빌트인 툴 제외. 기본 정책은 전 모델 전 도구 — 실증적으로 emit 실패하는
-      // (모델, 도구) 조합만 명시 등록. 현재 알려진 케이스 없음.
-      var TOOL_EXCLUDE = {};
 
       // 외부 provider → 자사 image 모델. anthropic 누락 = generate_image 자동 제외.
       var EXT_IMAGE_FOR_PROVIDER = {
@@ -304,9 +302,8 @@ create_default_agent_for_user() {
       }
 
       function builtinFor(spec) {
-        var tag  = spec.model.replace(/^[^/]+\\//, '');
-        var skip = (TOOL_EXCLUDE[tag] || []).slice();
-        // external 중 image 매핑 없는 provider (anthropic) 는 generate_image drop.
+        // external 중 image 매핑 없는 provider (anthropic) 는 generate_image 만 drop.
+        var skip = [];
         if (spec.kind !== 'local') {
           var provider = spec.model.split('/')[0];
           if (!EXT_IMAGE_FOR_PROVIDER[provider]) {
