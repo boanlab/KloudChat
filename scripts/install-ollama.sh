@@ -46,11 +46,18 @@ chown -R ollama:ollama /usr/share/ollama 2>/dev/null || true
 
 OVERRIDE=/etc/systemd/system/ollama.service.d/override.conf
 mkdir -p "$(dirname "$OVERRIDE")"
+# CONTEXT_LENGTH 명시 안 하면 Ollama 가 VRAM 보고 auto-compute — GB10 의 122 GiB
+# unified memory 면 모델당 200K~256K 토큰 KV 캐시 할당, NUM_PARALLEL=4 와 곱해져
+# 9B 모델이 18+ GiB 점유하는 사태 발생. 8192 면 일반 채팅 충분, 긴 문서가 필요한
+# 호스트는 'sudo systemctl edit ollama' 로 키우면 됨 (docs/ollama-tuning.md 참조).
+# FLASH_ATTENTION=1 은 Ampere+ (compute 8.0+) 에서만 활성 — 미지원 카드에선 자동 무시.
 cat > "$OVERRIDE" <<'UNIT'
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11434"
 Environment="OLLAMA_NUM_PARALLEL=4"
 Environment="OLLAMA_KEEP_ALIVE=5m"
+Environment="OLLAMA_CONTEXT_LENGTH=8192"
+Environment="OLLAMA_FLASH_ATTENTION=1"
 RestrictAddressFamilies=AF_UNIX AF_INET
 UNIT
 
