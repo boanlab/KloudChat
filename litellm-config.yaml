@@ -135,14 +135,6 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
   # <<< KLOUDCHAT_AUTOGEN_END
 
-  # ── External generate_image models (정적 등록 — autogen 영역 밖)
-  # 현재 비어있음. OR 의 openai/gpt-5.4-image-2 가 응답 정상 안 줘서 (60s hang) gpt
-  # image 비활성, nano-banana (google/gemini-3-pro-image-preview) 도 같은 정책으로 함께 비활성.
-  # 외부 image 운영하려면 다음 entries 복원 + shim 의 OR_IMAGE_MODELS env 다시 채우기:
-  #   - model_name: image-nano-banana
-  #     litellm_params: { model: openrouter/google/gemini-3-pro-image-preview, api_key: os.environ/OPENROUTER_API_KEY }
-  #     model_info: { input_cost_per_token: 0.0000020000, output_cost_per_token: 0.0000120000 }
-
 router_settings:
   num_retries: 2
   timeout: 600

@@ -242,12 +242,6 @@ services:
       - COMFYUI_URLS=${COMFYUI_URLS:-http://host.docker.internal:8188}
       - DEFAULT_MODEL=qwen-image
       - LOG_LEVEL=INFO
-      - LITELLM_URL=http://litellm:8000
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
-      # External image gen aliases (alias=litellm_model_name csv). 현재 비어있음 — OR 의
-      # openai/google image 모델들 응답 불안정 (gpt-5.4-image-2 60s hang, nano-banana 비활성)
-      # 으로 외부 image gen 전부 disable. local ComfyUI (flux/qwen) 만 운영. 복원 시 다시 채울 것.
-      - OR_IMAGE_MODELS=
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/health')"]
       interval: 30s

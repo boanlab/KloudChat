@@ -196,10 +196,9 @@ create_default_agent_for_user() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
-  # 모델 1개당 에이전트 1개. 이름 prefix = 능력 요약 (Text / Text+Code / Text+Image+Code).
-  # generate_image backend: ollama→ComfyUI. 외부 provider (openai/anthropic/google) 는 자사
-  # image API 매핑 없음 — gpt-5.4-image-2 / nano-banana 둘 다 OR 안정성 문제로 비활성. 추후
-  # 안정화되거나 native API 키 직결 routing 추가하면 복원.
+  # 모델 1개당 에이전트 1개. 이름 prefix = 보유 builtin tool 요약 (Text / Text+Code /
+  # Text+Image+Code). generate_image (→ ComfyUI) 는 ollama 에이전트만 부착, 외부 provider
+  # (openai/anthropic/google) 에이전트는 image tool 비부착.
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local agent_specs='[]'
   local m tag
@@ -276,13 +275,9 @@ create_default_agent_for_user() {
         return MCP_COMMON.concat(math);
       }
 
-      // 모든 에이전트의 base 빌트인. 외부 provider 의 image 매핑 부재 시
-      // builtinFor 에서 generate_image 만 자동 제외.
+      // 모든 에이전트의 base 빌트인. generate_image 는 ollama (kind='local') 에이전트만
+      // 부착 — builtinFor 가 외부 provider 면 drop. ComfyUI 라우팅용.
       var BUILTIN_BASE = ['execute_code','file_search','web_search','generate_image'];
-
-      // 외부 provider → 자사 image 모델. 현재 비어있음 (모두 OR 라우팅 불안정으로 비활성).
-      // builtinFor 가 외부 provider 면 generate_image 자동 제외 → image tool 은 ollama 에이전트만.
-      var EXT_IMAGE_FOR_PROVIDER = {};
 
       // local 에이전트는 ComfyUI 로 갈 모델만 안내 — shim 의 ALIAS_TO_CANONICAL.
       var IMAGE_INSTR_LOCAL =
@@ -294,17 +289,9 @@ create_default_agent_for_user() {
         'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
 
       function builtinFor(spec) {
-        // 외부 provider (openai/anthropic/google) 는 EXT_IMAGE_FOR_PROVIDER 매핑 없으면
-        // generate_image 자동 제외. 현재 외부 image 전부 비활성이라 외부 에이전트엔 image
-        // tool 안 붙음 (anthropic 와 동일 정책).
-        var skip = [];
-        if (spec.kind !== 'local') {
-          var provider = spec.model.split('/')[0];
-          if (!EXT_IMAGE_FOR_PROVIDER[provider]) {
-            skip.push('generate_image');
-          }
-        }
-        return BUILTIN_BASE.filter(function(t){ return skip.indexOf(t) === -1; });
+        // local (ollama) = 전 builtin. external (openai/anthropic/google) = image 빼고.
+        if (spec.kind === 'local') return BUILTIN_BASE.slice();
+        return BUILTIN_BASE.filter(function(t){ return t !== 'generate_image'; });
       }
 
       function instructionsFor(spec, tools) {

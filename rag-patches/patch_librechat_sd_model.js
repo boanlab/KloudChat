@@ -19,9 +19,8 @@ if (src.includes(MARKER)) {
 
 const SCHEMA_NEEDLE =
   "  required: ['prompt', 'negative_prompt'],\n};";
-// enum: 로컬 ComfyUI alias 만. 외부 OR 경유 image (nano-banana / gpt-image-2) 는 응답 안정성
-// 문제로 비활성 — generate_image tool 은 ollama 기반 에이전트에서만 의미. 외부 provider
-// 에이전트는 builtinFor 가 자동으로 tool 제외 (manage.sh EXT_IMAGE_FOR_PROVIDER 비어있음).
+// enum: 로컬 ComfyUI alias 4종. generate_image 는 ollama 에이전트만 부착 (manage.sh
+// 의 builtinFor 가 외부 provider 에선 tool 자체 제외) — LLM 한테 보일 일 자체가 없음.
 const SCHEMA_REPLACEMENT =
   "    model: {\n" +
   "      type: 'string',\n" +
@@ -76,61 +75,12 @@ src = src.replace(
   "You can generate images using text with '" + NEW_TOOL_NAME + "'."
 );
 
-// ── 4. Server-side model override: agent.model 의 provider prefix 보고 data.model 강제 교체.
-// LLM 이 enum 의 잘못된 alias (qwen-image 등) 를 픽해도 _call 에서 정정. instructions/description
-// 만으로는 LLM 협조 의존이라 가끔 drift — 서버 측 enforce 가 신뢰성 있다.
-//
-// (a) constructor 에 this.agentModel 캡처:
-src = src.replace(
-  "this.isAgent = fields.isAgent;",
-  "this.isAgent = fields.isAgent;\n    /** @type {string|undefined} agent.model — provider 별 image alias 강제 override 용 (KLOUDCHAT) */\n    this.agentModel = fields.agentModel;"
-);
-
-// (b) _call 진입부에 override 블록 삽입:
-const CALL_NEEDLE = "  async _call(data) {\n    const url = this.url;\n    const { prompt, negative_prompt, model } = data;";
-const CALL_REPLACEMENT =
-  "  async _call(data) {\n" +
-  "    // KLOUDCHAT_SD_MODEL_PATCH — 외부 provider (openai/anthropic/google) 에이전트가\n" +
-  "    // generate_image 호출하면 즉시 거부. 외부 OR image 모델 (gpt-5.4-image-2 /\n" +
-  "    // gemini-3-pro-image-preview) 응답이 OR proxy 측에서 hang/깨짐 — local ComfyUI\n" +
-  "    // 라우팅은 의도와 안 맞음. ollama 에이전트만 이 tool 사용. agentModel 없으면 legacy skip.\n" +
-  "    if (this.agentModel) {\n" +
-  "      const __prov = String(this.agentModel).split('/')[0];\n" +
-  "      if (__prov !== 'ollama') {\n" +
-  "        return this.returnValue('Image generation is currently wired only for ollama-based agents. Switch to an ollama agent (qwen3.6:35b / qwen3-coder-next 등) for image generation.');\n" +
-  "      }\n" +
-  "    }\n" +
-  "    const url = this.url;\n" +
-  "    const { prompt, negative_prompt, model } = data;";
-
-if (!src.includes(CALL_NEEDLE)) {
-  console.error('[patch_librechat_sd_model] _call NEEDLE not found — LibreChat upstream changed?');
-  process.exit(1);
-}
-src = src.replace(CALL_NEEDLE, CALL_REPLACEMENT);
-
 fs.writeFileSync(PATH, src);
 
-// handleTools.js — (1) tool name rename, (2) imageGenOptions 에 agent.model 주입.
+// handleTools.js — tool name rename ('stable-diffusion' → 'generate_image') 두 곳:
+// (1) toolConstructors 의 key, (2) toolOptions 의 key.
 let h = fs.readFileSync(HANDLE_PATH, 'utf8');
 h = h.replace(/'stable-diffusion'/g, "'" + NEW_TOOL_NAME + "'");
-
-const IMG_OPT_NEEDLE = "const imageGenOptions = {\n    isAgent: !!agent,\n    req: options.req,\n    fileStrategy,\n    processFileURL: options.processFileURL,\n    returnMetadata: options.returnMetadata,\n    uploadImageBuffer: options.uploadImageBuffer,\n  };";
-const IMG_OPT_REPLACEMENT =
-  "const imageGenOptions = {\n" +
-  "    isAgent: !!agent,\n" +
-  "    req: options.req,\n" +
-  "    fileStrategy,\n" +
-  "    processFileURL: options.processFileURL,\n" +
-  "    returnMetadata: options.returnMetadata,\n" +
-  "    uploadImageBuffer: options.uploadImageBuffer,\n" +
-  "    agentModel: agent && agent.model,  // KLOUDCHAT_SD_MODEL_PATCH — server-side image alias override\n" +
-  "  };";
-if (!h.includes(IMG_OPT_NEEDLE)) {
-  console.error('[patch_librechat_sd_model] imageGenOptions NEEDLE not found in handleTools.js');
-  process.exit(1);
-}
-h = h.replace(IMG_OPT_NEEDLE, IMG_OPT_REPLACEMENT);
 fs.writeFileSync(HANDLE_PATH, h);
 
 // manifest.json — pluginKey + 사용자 표시 name + authConfig 비우기.

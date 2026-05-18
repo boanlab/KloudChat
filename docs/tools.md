@@ -89,7 +89,7 @@ usage:
 
 ## 이미지 백엔드
 
-`generate_image` 는 현재 **ollama 에이전트 전용** — ComfyUI 로만 라우팅. 외부 provider (openai/anthropic/google) 에이전트는 image tool 자체 제외.
+`generate_image` 는 **ollama 에이전트 전용** — ComfyUI 로만 라우팅. 외부 provider (openai/anthropic/google) 에이전트는 image tool 비부착 (`manage.sh` 의 `builtinFor` 가 외부 provider 에선 자동 drop).
 
 | `model` arg | 백엔드 |
 |---|---|
@@ -99,8 +99,6 @@ usage:
 | `qwen-image-edit` | ComfyUI |
 
 ComfyUI alias 는 가중치 파일이 다르고 용도가 갈립니다 — `flux-schnell` 은 빠른 iteration (4 step), `flux-dev` 는 최고 품질 (~20 step, gated), `qwen-image` 는 텍스트→이미지 (한글 강함), `qwen-image-edit` 는 이미지 편집. 미지정 시 `DEFAULT_MODEL=qwen-image`.
-
-OR image 모델 (`openai/gpt-5.4-image-2`, `google/gemini-3-pro-image-preview`) 응답이 안정적이지 않아 비활성. 복원 절차는 [디버깅](#디버깅) 참고.
 
 ## 모델별 도구 매트릭스
 
@@ -113,7 +111,7 @@ OR image 모델 (`openai/gpt-5.4-image-2`, `google/gemini-3-pro-image-preview`) 
 | google | ✓ | ✓ | ✓ | ✗ |
 | anthropic | ✓ | ✓ | ✓ | ✗ |
 
-기본 정책은 "전 모델 전 도구". 외부 provider 는 `EXT_IMAGE_FOR_PROVIDER` 가 비어있어 `generate_image` 자동 제외. 추후 외부 image 가 안정화되면 그 mapping 에 entry 추가 + LibreChat 재빌드 + `manage.sh agent sync` 로 복원.
+기본 정책은 "전 모델 전 도구 + ollama 에 이미지". 외부 provider 는 image API 자체 없거나 운영 안정성 문제로 image 비부착.
 
 MCP 측은 `MCP_COMMON` (= `fetch_url`, `time`, `usage`, `youtube`, `deep_research`) 이 전 에이전트 공통, 모델 크기별로 `math_basic` 또는 `math` 가 추가됩니다.
 
@@ -121,20 +119,6 @@ prefix 라벨 매핑 (manage.sh 의 spec 생성 로직):
 - `Text` — claude-haiku-4.5, gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash
 - `Text + Code` — claude-opus-4.7/4.6, claude-sonnet-4.6, gpt-5.5, gpt-5
 - `Text + Image + Code` — 전 ollama 모델 (qwen3.5:9b, qwen3.6:35b, llama3.1:8b, llama3.3:70b, nemotron3:33b, qwen3-coder-next:q8_0)
-
-### 외부 LLM provider 별 image 매핑
-
-현재 비어있음. 복원 시 추가:
-
-```javascript
-// scripts/manage.sh
-var EXT_IMAGE_FOR_PROVIDER = {
-  // 'google': 'nano-banana',   // ← OR 안정화 후 복원
-  // 'openai': 'gpt-image-2',   // ← OR catalog 의 안정된 image ID 로 복원
-};
-```
-
-연동된 파일 4곳 동시 갱신 필요: `manage.sh` (매핑 + 에이전트 prefix), `rag-patches/patch_librechat_sd_model.js` (enum + override 화이트리스트), `docker-compose.yml` (`OR_IMAGE_MODELS`), `litellm-config.yaml` (정적 image-* 모델 entry).
 
 ## 디버깅
 
@@ -144,14 +128,12 @@ var EXT_IMAGE_FOR_PROVIDER = {
 | MCP silent skip | `docker compose logs librechat -f` 에서 spawn 실패 / `getToolDefinition` undefined |
 | 도구 안 부르고 텍스트로 흘림 | Llama 3.x 의 `<\|python_tag\|>` 누수 — sanitizer callback |
 | `usage` 빈 이메일 | yaml `startup: false` 누락 |
-| generate_image 항상 ComfyUI | `OR_IMAGE_MODELS` 매핑 누락 |
+| 외부 agent 에서 image 요청 시 안 됨 | image tool 은 ollama 에이전트 전용. ollama agent 로 전환 |
 
 **도구 UI 미노출** — DB-backed agent 의 capabilities 폴백 버그. `librechat.yaml.endpoints.agents.capabilities` 에 항목 명시 안 하면 plugin tool 전부 차단됨.
 
-**MCP silent skip** — `uvx` 첫 호출 시 패키지 다운로드라 30–60s 지연이 정상. 그 이상 걸리면 패키지 이름 / 인자 / 네트워크 확인. `getToolDefinition` undefined 면 [LibreChat tool rename 4-layer 함정](https://librechat.ai) 류 — source + `@librechat/api` dist 같이 패치돼야 함.
+**MCP silent skip** — `uvx` 첫 호출 시 패키지 다운로드라 30–60s 지연이 정상. 그 이상 걸리면 패키지 이름 / 인자 / 네트워크 확인. `getToolDefinition` undefined 면 LibreChat tool rename 4-layer 함정 (source 3개 + `@librechat/api` dist) 류 — `rag-patches/patch_librechat_sd_model.js` 참고.
 
 **도구 안 부르고 텍스트로 흘림** — Llama 3.x 가 OpenAI tool_calls 대신 `<|python_tag|>{...}` raw text 로 함수 호출을 leak. LiteLLM `callbacks/sanitize_python_tag.py` 가 자동 재구성하지만 callback 등록이 빠지면 동작 안 함.
 
 **`usage` 빈 이메일** — yaml 에 `startup: false` 빠짐. app-level init 단계에 user 컨텍스트가 없어서 `{{LIBRECHAT_USER_EMAIL}}` placeholder 치환이 실패.
-
-**generate_image 항상 ComfyUI** — `comfyui-shim.environment.OR_IMAGE_MODELS` env 매핑이 비어있거나 `model` arg 가 매핑에 없는 값. shim 이 매핑 못 찾으면 ComfyUI 로 폴백.
