@@ -254,6 +254,28 @@ services:
     networks:
       - kloudchat
 
+  whisper-shim:
+    container_name: whisper-shim
+    build:
+      context: .
+      dockerfile: Dockerfile.whisper-shim
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # 호스트별 whisper systemd (install-whisper.sh) 들의 URL 목록. 콤마 구분.
+      # 1개면 단일 노드, 2+ 면 inflight + ollama VRAM 기준 라우팅.
+      - WHISPER_URLS=${WHISPER_URLS:-http://host.docker.internal:9000}
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - kloudchat
+
   code-interpreter:
     container_name: code-interpreter
     build:

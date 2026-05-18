@@ -126,10 +126,24 @@ for i in {1..60}; do
 done
 
 if [[ -f "$ENV_FILE" ]]; then
-  new="http://host.docker.internal:${PORT}"
-  old="$(env_get WHISPER_URL)"
-  if [[ -z "$old" || "$old" == "$new" ]]; then env_set WHISPER_URL "$new"
-  else warn "WHISPER_URL=$old (custom). 필요시 ${new} 로 수동 변경."; fi
+  # WHISPER_URL = MCP 가 호출하는 endpoint — 항상 shim 가리킴. 사용자 커스텀이면 보존.
+  shim_url="http://whisper-shim:${PORT}"
+  cur="$(env_get WHISPER_URL)"
+  if [[ -z "$cur" || "$cur" == "http://host.docker.internal:"* || "$cur" == "$shim_url" ]]; then
+    env_set WHISPER_URL "$shim_url"
+  else
+    warn "WHISPER_URL=$cur (custom). shim 경유하려면 ${shim_url} 로 변경."
+  fi
+
+  # WHISPER_URLS = shim 이 라우팅할 backend 목록. 이 호스트(compose 호스트와 같은 머신 가정)를
+  # idempotent 하게 추가. 다른 GPU 노드면 compose 호스트의 .env 에 수동으로 추가해야 함.
+  local_be="http://host.docker.internal:${PORT}"
+  urls="$(env_get WHISPER_URLS)"
+  if [[ -z "$urls" ]]; then
+    env_set WHISPER_URLS "$local_be"
+  elif ! grep -qF "$local_be" <<<"$urls"; then
+    env_set WHISPER_URLS "${urls},${local_be}"
+  fi
 fi
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -140,5 +154,8 @@ cat <<EOF
   model:    ${MODEL} (lazy-load 첫 호출 시 ~3 GB 다운로드 → ${DATA_ROOT})
             prewarm: ./scripts/download-whisper-models.sh   # 첫 호출 latency 회피
   device:   ${DEVICE} / compute: ${COMPUTE_TYPE}
-  분산 사용 시 compose 호스트 .env: WHISPER_URL=http://${IP:-<this-host-ip>}:${PORT}
+  shim:     LibreChat → whisper-shim → 이 systemd. 호스트 1대면 자동 매핑 완료.
+  멀티노드: 다른 GPU 호스트에서도 install 후 compose 호스트의 .env 에 추가:
+            WHISPER_URLS=http://host.docker.internal:${PORT},http://${IP:-<this-host-ip>}:${PORT}
+            (그리고 'docker compose up -d whisper-shim' 으로 shim 재시작)
 EOF

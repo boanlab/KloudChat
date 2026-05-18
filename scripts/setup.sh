@@ -3,7 +3,7 @@
 #
 # 사전 준비:
 #   ./scripts/gen-env.sh         # .env 생성 (없으면 setup 거부)
-#   $EDITOR .env                 # OPENROUTER_API_KEY/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS 등 채우기
+#   $EDITOR .env                 # OPENROUTER_API_KEY/HF_TOKEN, OLLAMA_URLS, COMFYUI_URLS, WHISPER_URLS 등 채우기
 #
 # 필수: OPENROUTER_API_KEY 또는 OLLAMA_URLS reachable 노드 ≥1 (둘 중 하나)
 set -euo pipefail
@@ -98,6 +98,8 @@ build_one rag_api          kloudchat-rag_api:latest          "1-3 min"
 build_one librechat        kloudchat-librechat:latest        "5-10 min"
 build_one code-interpreter kloudchat-code-interpreter:latest "<1 min"
 build_one comfyui-shim     kloudchat-comfyui-shim:latest     "<1 min"
+build_one whisper-shim     kloudchat-whisper-shim:latest     "<1 min"
+build_one deep-research    kloudchat-deep-research:latest    "2-4 min"
 
 hdr "4. Start"
 docker compose up -d

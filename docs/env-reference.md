@@ -21,6 +21,7 @@
 | `CUSTOM_FOOTER` | 브랜딩 |
 | `OLLAMA_URLS` | 백엔드 토폴로지 |
 | `COMFYUI_URLS` | 백엔드 토폴로지 |
+| `WHISPER_URLS` | 백엔드 토폴로지 (선택) |
 | `OPENROUTER_API_KEY` | 외부 키 (선택) |
 | `HF_TOKEN` | 외부 키 (선택) |
 | `ALLOW_REGISTRATION` | 인증 정책 |
@@ -43,16 +44,19 @@
 
 ### 백엔드 토폴로지
 
-`OLLAMA_URLS` 와 `COMFYUI_URLS` 는 csv 로 여러 노드를 적을 수 있습니다.
+`OLLAMA_URLS` / `COMFYUI_URLS` / `WHISPER_URLS` 는 csv 로 여러 노드를 적을 수 있습니다.
 
 ```dotenv
 OLLAMA_URLS=http://host.docker.internal:11434,http://gpu-node-1:11434,http://gpu-node-2:11434
 COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
+WHISPER_URLS=http://gpu-node-1:9000,http://gpu-node-2:9000
 ```
 
 **Ollama** — LiteLLM router 가 각 노드를 직접 호출. discovery 가 노드별 `/api/tags` 를 union 으로 합치고, 모델 하나당 보유 노드 수만큼 같은 `model_name` deployment 를 등록 → router 가 `least-busy` 로 LB. 모델은 노드별로 자유롭게 pull (이기종 GPU OK), 같은 모델을 여러 노드에 pull 하면 자동 분산.
 
 **ComfyUI** — shim 이 alias 별 보유 노드 매핑을 `/object_info` 디스커버리로 캐시 (TTL `MODEL_DISCOVERY_TTL_SEC`, 기본 300s). 매 요청 alias 로 후보 노드 좁힌 뒤 `/queue` 깊이로 LB, `prompt_id → 노드` 매핑 in-memory 유지. 노드별로 다른 가중치 셋 OK.
+
+**Whisper** — shim 이 `/health` 로 reachable 노드만 추리고 (10s 캐시), in-flight 카운터 + 같은 호스트 ollama VRAM 점유로 LB. 모든 노드가 동일 `WHISPER_MODEL` 을 서빙한다고 가정 — 노드별로 다른 모델은 지원 안 함. `WHISPER_URL` (단수) 은 항상 `http://whisper-shim:9000` 유지하고 backend 만 `WHISPER_URLS` 로 관리.
 
 `.env` 수정 후 `./scripts/gen-litellm-config.sh && docker compose restart litellm` (Ollama 토폴로지 변경 시) — `setup.sh` 가 자동 수행.
 
@@ -143,6 +147,8 @@ LibreChat / RAG API → LiteLLM 호출용 가상 키. `./scripts/manage.sh key i
 | `SEARXNG_INSTANCE_URL` | `http://searxng:8080` |
 | `LIBRECHAT_CODE_BASEURL` | `http://code-interpreter:8000` |
 | `SD_WEBUI_URL` | `http://comfyui-shim:7860` |
+| `WHISPER_URL` | `http://whisper-shim:9000` |
+| `WHISPER_OR_MODEL` | `whisper-1` (OR 폴백 시) |
 | `OR_IMAGE_MODELS` | `nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2` |
 | `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` | `32212254720` (30 GiB) |
 

@@ -24,12 +24,13 @@ follow() {
 
 clear
 echo "KloudChat live monitor — Ctrl+C 로 종료"
-echo "  🌐 LibreChat  🧠 LiteLLM  ⚡ Ollama  📚 RAG  🔍 SearXNG  🎨 ComfyUI/Shim  💻 Code  🎙 Whisper"
+echo "  🌐 LibreChat  🧠 LiteLLM  ⚡ Ollama  📚 RAG  🔍 SearXNG  🎨 ComfyUI/Shim  🎙 Whisper/Shim  💻 Code"
 echo "─────────────────────────────────────────────"
 
 follow "$B" "🌐" "LibreChat" LibreChat        "Login|sendCompletion|onSearchResults|streamAudio|generate_image|tool|run_id|completion|message" "auth.json|getUserPluginAuth|Error scraping|Title generation|FIRECRAWL"
 follow "$G" "🧠" "LiteLLM  " litellm          "POST|GET|spend|model" "liveliness|prisma|migration"
-follow "$M" "🎨" "Shim     " comfyui-shim     "txt2img|img2img|model=|template=|variants"
+follow "$M" "🎨" "ImgShim  " comfyui-shim     "txt2img|img2img|model=|template=|variants"
+follow "$C" "🎙" "WhShim   " whisper-shim     "transcrib|Routing|backends|inflight"
 follow "$C" "📚" "RAG API  " rag_api          "embed|chunk|query|retriev|upload|document|POST|GET"
 follow "$Y" "🔍" "SearXNG  " searxng          "GET /search|query"
 follow "$R" "💻" "CodeIntp " code-interpreter "exec|run|complete|sandbox|repl" "REPL ready timeout|REPL not ready|Failed to start REPL"

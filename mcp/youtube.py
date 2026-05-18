@@ -13,15 +13,16 @@
 Single tool `transcript(url, language=None)`:
   1. youtube-transcript-api 로 자막 시도 (영상에 자막 있으면 OR/GPU 미사용 — 즉시 반환).
   2. 자막 없거나 비공개면 yt-dlp 로 audio (m4a/opus) 추출.
-  3. WHISPER_URL 우선 — 호스트 systemd 의 whisper 서비스 (faster-whisper + GPU,
-     scripts/install-whisper.sh 로 설치).
+  3. WHISPER_URL 우선 — 보통 compose 내부 whisper-shim 컨테이너 (http://whisper-shim:9000),
+     shim 이 WHISPER_URLS backend 중 inflight/VRAM 기준으로 라우팅. backend 들은
+     scripts/install-whisper.sh 로 GPU 노드(들)에 설치된 faster-whisper systemd 유닛.
   4. 실패하거나 미설정이면 LITELLM_URL 의 OpenAI-compat /v1/audio/transcriptions
      로 폴백 (OR 경유 whisper-1, OR 키 필요).
 
 환경변수:
-  WHISPER_URL          예: http://host.docker.internal:9000 (compose 호스트와 같은 머신)
-                         또는 http://gpu-node-1:9000 (원격 GPU 노드)
-                         미설정/미가용 시 LiteLLM 직행
+  WHISPER_URL          보통 http://whisper-shim:9000 (compose 내부 라우터).
+                         단일 노드라 shim 우회하려면 http://host.docker.internal:9000 도 가능.
+                         미설정/미가용 시 LiteLLM 직행.
   LITELLM_URL          기본 http://litellm:8000
   LITELLM_MASTER_KEY   LiteLLM 인증
   WHISPER_OR_MODEL     OR 폴백 모델 (기본 'whisper-1')

@@ -46,8 +46,8 @@ mcpServers:
       - mcp-server-math
   youtube:
     # YouTube 영상 텍스트 추출. 자막 있으면 youtube-transcript-api 즉시 반환,
-    # 없으면 yt-dlp 로 audio 추출 + whisper (호스트 systemd → OR 폴백).
-    # WHISPER_URL 미설정/미가용이면 LiteLLM 의 whisper-1 (OR 경유) 사용.
+    # 없으면 yt-dlp 로 audio 추출 + whisper-shim (→ WHISPER_URLS 호스트 systemd → OR 폴백).
+    # WHISPER_URL 미설정/shim 미가용이면 LiteLLM 의 whisper-1 (OR 경유) 사용.
     # whisper 첫 호출 시 모델 로드 (large-v3 ~3 GB) 가 30-60초 걸리므로 timeout 넉넉히.
     type: stdio
     timeout: 900000

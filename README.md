@@ -53,6 +53,7 @@ HF_TOKEN=hf_... ./scripts/download-image-models.sh      # HF_TOKEN 생략 시 fl
 $EDITOR .env
 #   OLLAMA_URLS=http://gpu-node-1:11434,http://gpu-node-2:11434
 #   COMFYUI_URLS=http://gpu-node-1:8188,http://gpu-node-2:8188
+#   WHISPER_URLS=http://gpu-node-1:9000,http://gpu-node-2:9000   # whisper 멀티노드 쓸 거면
 
 # 3. setup
 ./scripts/setup.sh
@@ -152,7 +153,8 @@ GPU 없으면 채팅만 가능 — 이미지 / RAG 임베딩은 로컬 모델 �
 
          RAG API → LiteLLM → bge-m3 임베딩 → pgvector + MeiliSearch (Hybrid)
          comfyui-shim → ComfyUI (COMFYUI_URLS)
-         youtube MCP → Whisper (WHISPER_URL, 자막 없는 영상 음성 인식)
+         whisper-shim → Whisper (WHISPER_URLS, inflight+VRAM 기준 라우팅)
+         youtube MCP → whisper-shim (자막 없는 영상 음성 인식)
          SearXNG / code-interpreter
 ```
 

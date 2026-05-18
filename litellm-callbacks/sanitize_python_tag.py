@@ -1,21 +1,28 @@
-"""Sanitize text-format tool-call leaks (Llama `<|python_tag|>` and Markdown
-JSON code blocks) into OpenAI `tool_calls`.
+"""Sanitize text-format tool-call leaks into OpenAI `tool_calls`, strip Llama
+PUA/turn-trailer garbage, and substitute CJK Han into Korean readings.
 
-Two observed leak shapes:
+Tool-call leak shapes detected:
     1. Llama 3.x special-token: `<|python_tag|>{"name": "...", "parameters": ...}`
-    2. Markdown code-block: ```json\\n{"name": "...", "parameters": ...}\\n``` (or no `json` lang tag)
+    2. Markdown code-block:     ```json\\n{...}\\n``` (or no `json` lang tag)
+    3. Labelled bare JSON:      `**Call Function:** {...}` / `Tool: {...}` / etc.
 
-Both happen when LiteLLM/Ollama fails to coerce the upstream raw output into
-the OpenAI `tool_calls` field, so LibreChat ends up rendering the JSON/token
-as chat text.
+Trailing-garbage shapes stripped:
+    4. PUA-prefixed trailer:    U+E200–U+E3FF then `turn{N}<tool>{M}...`
+    5. Naked turn-trailer:      `turn{0}{search}{0}` (no PUA prefix; Ollama variant)
+    6. Naked tool-pair trailer: `{search}{0}` / `{youtube}{0}` (turn 누락 변형)
 
-This callback runs as a LiteLLM CustomLogger and rewrites both non-streaming
-responses and streaming iterators in place: extracts the JSON payload(s),
-appends them to `message.tool_calls`, blanks the matching text, and forces
-`finish_reason="tool_calls"` so the client treats it as a function call.
+For CJK Han characters mixed into Korean output (qwen 계열에서 흔함), code-fence
+밖의 한자를 한글 음독으로 치환 (例: 大韓民國 → 대한민국). fence 안은 보존.
 
-Conservative trigger for the markdown case — only convert if the parsed JSON
-has a top-level `name` (string) field, to avoid eating legitimate JSON examples.
+All sanitization happens in two CustomLogger hooks — `async_post_call_success_hook`
+for non-streaming, `async_post_call_streaming_iterator_hook` for streaming. The
+stream variant runs a small state machine: buffers up to 64 chars or until a
+turn-trailer prefix is seen, then either converts to tool_calls / strips garbage /
+releases as-is depending on what materialises.
+
+Conservative trigger for fence/bare-JSON paths — only convert when parsed JSON has
+top-level `name` (string) + `parameters`/`arguments` field, to avoid eating
+legitimate JSON examples in chat output.
 """
 
 from __future__ import annotations
