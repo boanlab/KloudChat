@@ -43,7 +43,6 @@ from typing import Any
 
 import httpx
 from rich.console import Console, Group
-from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
@@ -795,22 +794,11 @@ def logs_render(max_lines: int) -> Panel:
 # 메인 루프
 # ──────────────────────────────────────────────────────────────────────
 
-def estimate_dashboard_height(n_hosts: int, panels: bool, has_shim_panel: bool,
-                               n_model_rows: int, n_containers: int) -> int:
-    """대시보드 영역에 줄 size — split layout 에서 logs 공간 계산용."""
-    header = 1
-    if panels:
-        per_host = 6  # GPU+Ollama+ComfyUI+Whisper 4 줄 + 패널 테두리 2
-        body = per_host * n_hosts
-    else:
-        body = 4 + n_hosts  # 테이블 헤더 3 + N 데이터 행 + 닫는 줄
-    shim = 6 if has_shim_panel else 0
-    models = (n_model_rows + 3) if n_model_rows > 0 else 0
-    # compose 패널: 테두리 2 + host 한 줄 + container 가 좌/우 2열이라
-    # ceil(N/2) + 헤더 1.
-    rows_per_col = (n_containers + 1) // 2 if n_containers > 0 else 0
-    compose = 2 + 1 + (1 + rows_per_col if rows_per_col > 0 else 1)
-    return header + compose + body + shim + models + 2
+def measure_height(console: Console, renderable: Any) -> int:
+    """실제 렌더 라인 수 측정 — 추정 (오차 → 빈 줄) 회피.
+    Console.render_lines 가 segment list per line 반환 → len 이 정확한 줄 수."""
+    options = console.options.update_width(console.size.width)
+    return len(console.render_lines(renderable, options, pad=False))
 
 
 async def main() -> int:
@@ -883,27 +871,20 @@ async def main() -> int:
                     return 0
                 return sum(1 for v in cached_models.values() if v)
 
-            def make_layout() -> Layout | Group:
+            def make_layout() -> Group:
                 dash = dashboard_render(
                     cached_data, args.interval, panels=args.panels,
                     models=cached_models, containers=CONTAINER_STATS,
                 )
                 if args.dashboard:
-                    return dash
-                dash_h = estimate_dashboard_height(
-                    len(hosts), args.panels, shim_present,
-                    n_model_rows(), len(CONTAINER_STATS),
-                )
-                layout = Layout()
-                layout.split_column(
-                    Layout(name="dashboard", size=dash_h),
-                    Layout(name="logs", ratio=1),
-                )
-                layout["dashboard"].update(dash)
+                    return Group(dash)
+                # 실제 dash 렌더 라인 수 측정 → logs panel 의 max_lines 결정.
+                # split_column(size=N) 으로 고정 분할하면 추정 오차만큼 빈 줄 생김.
+                # Group + 정확한 log max_lines 면 dashboard 와 logs 패널이 딱 붙음.
+                dash_h = measure_height(console, dash)
                 term_h = console.size.height
                 log_h = max(5, term_h - dash_h - 2)
-                layout["logs"].update(logs_render(max_lines=log_h))
-                return layout
+                return Group(dash, logs_render(max_lines=log_h))
 
             async def _container_probe_loop() -> None:
                 """`docker stats --no-stream` 백그라운드 폴 — 호출이 ~1.5s 라
