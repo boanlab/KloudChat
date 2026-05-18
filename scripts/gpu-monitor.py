@@ -9,17 +9,22 @@
 """KloudChat GPU 노드 라이브 모니터 (TUI).
 
 .env 의 OLLAMA_URLS / COMFYUI_URLS / WHISPER_URLS 에서 유니크 호스트 추출 →
-노드별로 다음을 한 패널에 표시:
+노드별 상태를 한 화면에 표시:
   - GPU 이름 + VRAM 사용/총량 + 컬러 게이지 (ComfyUI /system_stats)
   - Ollama 로드 모델 + per-model VRAM + keep-alive 남은 시간 (/api/ps)
   - ComfyUI 큐 (running/pending) + 실행 중 워크플로의 UNet 파일명
   - Whisper systemd /health
 
+레이아웃:
+  - 기본 (table): 한 줄에 한 호스트. 노드 많아도 한 화면. Ollama/ComfyUI 상세는
+    top-by-VRAM 1~2개로 축약, 나머지는 '+N more'.
+  - --panels: 호스트당 큰 패널 (이전 동작). 노드 ≤4 일 때 좋음.
+
 추가로 같은 호스트에서 docker exec 가능하면 whisper-shim 라우터 패널 (백엔드별
 up/down + inflight 카운터).
 
 Usage:
-    scripts/gpu-monitor.py [--once] [--interval N]
+    scripts/gpu-monitor.py [--once] [--interval N] [--panels]
 
 uv 가 첫 실행 시 rich + httpx 자동 설치.
 """
@@ -108,6 +113,24 @@ def vram_bar(pct: int, width: int = 28) -> Text:
     filled = pct * width // 100
     color = "green" if pct < 60 else ("yellow" if pct < 85 else "red")
     return Text("█" * filled, style=color) + Text("░" * (width - filled), style="dim")
+
+
+def gpu_summary(stats: dict[str, Any] | None) -> tuple[str, int, str]:
+    """stats → (gpu_short_name, vram_pct, "used/total GiB"). stats=None 이면 ('-', 0, '-')."""
+    if not stats:
+        return ("-", 0, "-")
+    devs = stats.get("devices") or []
+    if not devs:
+        return ("-", 0, "-")
+    dv = devs[0]
+    gpu = re.sub(r"^cuda:\d+\s+", "", dv.get("name", "?"))
+    gpu = re.sub(r"\s+:\s+.*$", "", gpu)
+    gpu = gpu.replace("NVIDIA ", "")
+    vram_total = dv.get("vram_total", 0) or 0
+    vram_free = dv.get("vram_free", 0) or 0
+    used = vram_total - vram_free
+    pct = (used * 100 // vram_total) if vram_total > 0 else 0
+    return (gpu, pct, f"{fmt_gib(used)}/{fmt_gib(vram_total)}")
 
 
 async def probe_host(client: httpx.AsyncClient, host: str) -> dict[str, Any]:
@@ -223,6 +246,79 @@ def host_panel(data: dict[str, Any]) -> Panel:
     return Panel(Group(*parts), title=f"[bold]{host}[/]", border_style="blue")
 
 
+def render_table(data: list[dict[str, Any]]) -> Table:
+    """Dense table: 한 줄당 한 호스트. 노드 많을 때 디폴트.
+
+    Cell 너비 제약 (좁은 터미널에서 header wrap 방지) + 상세 정보는 한 줄에
+    `count · top · extras` 식으로 압축. ComfyUI 파일명에서 확장자 제거,
+    Whisper 모델은 약어 (large-v3 → lg-v3) 로 공간 절약."""
+    tbl = Table(show_header=True, header_style="bold", expand=True,
+                padding=(0, 1), pad_edge=False)
+    tbl.add_column("host",    style="cyan",  no_wrap=True, min_width=14)
+    tbl.add_column("GPU",     no_wrap=True,  min_width=6)
+    tbl.add_column("VRAM",    no_wrap=True,  min_width=20)
+    tbl.add_column("Ollama",  no_wrap=True,  min_width=24, overflow="ellipsis")
+    tbl.add_column("ComfyUI", no_wrap=True,  min_width=16, overflow="ellipsis")
+    tbl.add_column("Whisper", no_wrap=True,  min_width=10)
+
+    for d in data:
+        host = d["host"]
+        stats, ps, queue, wh = d["stats"], d["ps"], d["queue"], d["whisper"]
+
+        gpu, pct, vram_str = gpu_summary(stats)
+        if stats is None:
+            vram_cell: Text = Text("unreachable", style="yellow")
+        else:
+            vram_cell = Text.assemble(vram_bar(pct, width=10), f" {pct:>3d}%  ",
+                                       (vram_str, "dim"))
+
+        # Ollama: "N · top (size·keep) · +N extras"
+        if ps is None:
+            ollama_cell: Text = Text("unreachable", style="yellow")
+        else:
+            models = sorted(ps.get("models") or [],
+                            key=lambda m: -(m.get("size_vram") or 0))
+            n = len(models)
+            if n == 0:
+                ollama_cell = Text("0", style="dim")
+            else:
+                top = models[0]
+                top_name = top.get("name", "?")
+                top_sz = fmt_gib(top.get("size_vram"))
+                top_keep = keep_alive(top.get("expires_at"))
+                line = f"{n} · {top_name} ({top_sz}G·{top_keep})"
+                if n > 1:
+                    line += f" +{n-1}"
+                ollama_cell = Text(line)
+
+        # ComfyUI: "R/P · 실행 모델 파일명 (+N)"
+        if queue is None:
+            comfy_cell: Text = Text("unreachable", style="yellow")
+        else:
+            r = len(queue.get("queue_running") or [])
+            p = len(queue.get("queue_pending") or [])
+            unets = running_unets(queue)
+            head = f"{r}/{p}"
+            if unets:
+                first = re.sub(r"\.(safetensors|gguf|ckpt|pt|bin)$", "", unets[0][1])
+                head += f" · {first}"
+                if len(unets) > 1:
+                    head += f" +{len(unets)-1}"
+            comfy_cell = Text(head, style=("magenta" if r > 0 else "dim"))
+
+        if wh:
+            model = wh.get("model", "?")
+            # large-v3 → lg-v3, large-v3-turbo → lg-v3-trb
+            short = model.replace("large-", "lg-").replace("turbo", "trb")
+            wh_cell: Text = Text.assemble(("ok ", "green"), f"· {short}")
+        else:
+            wh_cell = Text("-", style="dim")
+
+        tbl.add_row(host, gpu, vram_cell, ollama_cell, comfy_cell, wh_cell)
+
+    return tbl
+
+
 def whisper_shim_panel() -> Panel | None:
     """같은 호스트에 compose 의 whisper-shim 컨테이너가 있으면 백엔드별 up/inflight."""
     try:
@@ -254,15 +350,19 @@ def whisper_shim_panel() -> Panel | None:
     )
 
 
-def render(data: list[dict[str, Any]], interval: int) -> Group:
+def render(data: list[dict[str, Any]], interval: int, *, panels: bool) -> Group:
     header = Text.assemble(
         ("KloudChat GPU Monitor", "bold blue"),
         f"   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"   refresh {interval}s   ",
+        (f"mode={'panels' if panels else 'table'}   ", "dim"),
         ("Ctrl+C to quit", "dim"),
     )
     parts: list[Any] = [header]
-    parts.extend(host_panel(d) for d in data)
+    if panels:
+        parts.extend(host_panel(d) for d in data)
+    else:
+        parts.append(render_table(data))
     shim = whisper_shim_panel()
     if shim is not None:
         parts.append(shim)
@@ -273,6 +373,8 @@ async def main() -> int:
     p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     p.add_argument("--once", action="store_true", help="1회 출력 후 종료 (TUI 비활성)")
     p.add_argument("--interval", type=int, default=3, help="refresh 주기 초 (기본 3)")
+    p.add_argument("--panels", action="store_true",
+                   help="호스트당 큰 패널 (디폴트는 한 줄당 한 호스트 table — 노드 많을 때)")
     args = p.parse_args()
 
     hosts = collect_hosts()
@@ -285,13 +387,13 @@ async def main() -> int:
     async with httpx.AsyncClient() as client:
         if args.once or not console.is_terminal:
             data = await asyncio.gather(*(probe_host(client, h) for h in hosts))
-            console.print(render(list(data), args.interval))
+            console.print(render(list(data), args.interval, panels=args.panels))
             return 0
         try:
             with Live(console=console, refresh_per_second=4, screen=True) as live:
                 while True:
                     data = await asyncio.gather(*(probe_host(client, h) for h in hosts))
-                    live.update(render(list(data), args.interval))
+                    live.update(render(list(data), args.interval, panels=args.panels))
                     await asyncio.sleep(args.interval)
         except (KeyboardInterrupt, asyncio.CancelledError):
             return 0
