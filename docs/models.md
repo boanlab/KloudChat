@@ -136,7 +136,7 @@ prefix 별 해당 모델:
 - `Text + Image` — gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash
 - `Text + Image + Code` — gpt-5.5, gpt-5, 전 ollama 모델
 
-`generate_image` 의 `model` arg 는 에이전트 provider 별로 다른 백엔드로 갑니다: ollama 로컬 → ComfyUI alias (`flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit`), openai → `gpt-image-2` (OR 경유), google → `nano-banana` (OR 경유), anthropic → 없음.
+`generate_image` 은 현재 **ollama 에이전트 전용** — model arg 는 `flux-schnell`/`flux-dev`/`qwen-image`/`qwen-image-edit` 중 ComfyUI 로 라우팅. 외부 provider (openai/anthropic/google) 에이전트는 image tool 자체 제외 — OR 의 image 모델들 (gpt-5.4-image-2, gemini-3-pro-image-preview) 응답 안정성 문제로 비활성. native API 키 직결 라우팅 추가하거나 OR 안정화되면 복원 가능.
 
 기본 preset 은 `OLLAMA_DEFAULT_PRIORITY` 의 첫 매치 (현재 `qwen3.6:35b → qwen3.5:9b`). `llama3.3:70b` 는 카탈로그엔 있지만 priority 후보에선 제외 — selector 에서 명시 선택. `agent sync` 는 기존 default agent 가 카탈로그에서 빠지면 자동으로 새 default 로 reassign (멱등).
 

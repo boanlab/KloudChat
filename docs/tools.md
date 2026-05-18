@@ -89,18 +89,18 @@ usage:
 
 ## 이미지 백엔드
 
+`generate_image` 는 현재 **ollama 에이전트 전용** — ComfyUI 로만 라우팅. 외부 provider (openai/anthropic/google) 에이전트는 image tool 자체 제외.
+
 | `model` arg | 백엔드 |
 |---|---|
 | `flux-schnell` | ComfyUI |
 | `flux-dev` | ComfyUI (gated, `HF_TOKEN` 필요) |
 | `qwen-image` | ComfyUI |
 | `qwen-image-edit` | ComfyUI |
-| `gpt-image-2` | OpenRouter → OpenAI |
-| `nano-banana` | OpenRouter → Google |
 
-ComfyUI alias 는 가중치 파일이 다르고 용도가 갈립니다 — `flux-schnell` 은 빠른 iteration (4 step), `flux-dev` 는 최고 품질 (~20 step, gated), `qwen-image` 는 텍스트→이미지 (한글 강함), `qwen-image-edit` 는 이미지 편집.
+ComfyUI alias 는 가중치 파일이 다르고 용도가 갈립니다 — `flux-schnell` 은 빠른 iteration (4 step), `flux-dev` 는 최고 품질 (~20 step, gated), `qwen-image` 는 텍스트→이미지 (한글 강함), `qwen-image-edit` 는 이미지 편집. 미지정 시 `DEFAULT_MODEL=qwen-image`.
 
-외부 image 모델은 `comfyui-shim` 의 `OR_IMAGE_MODELS` env (`<alias>=<litellm-model-name>` csv) 가 매핑을 관리. 매핑에 있으면 LiteLLM `/v1/chat/completions` (`modalities=["image","text"]`) 로, 없으면 ComfyUI 로 분기. 미지정 시 `DEFAULT_MODEL=qwen-image`.
+OR image 모델 (`openai/gpt-5.4-image-2`, `google/gemini-3-pro-image-preview`) 응답이 안정적이지 않아 비활성. 복원 절차는 [디버깅](#디버깅) 참고.
 
 ## 모델별 도구 매트릭스
 
@@ -109,32 +109,32 @@ ComfyUI alias 는 가중치 파일이 다르고 용도가 갈립니다 — `flux
 | provider | execute_code | file_search | web_search | generate_image |
 |---|---|---|---|---|
 | ollama | ✓ | ✓ | ✓ | ✓ (→ ComfyUI) |
-| openai | ✓ | ✓ | ✓ | ✓ (→ gpt-image-2) |
-| google | ✓ | ✓ | ✓ | ✓ (→ nano-banana) |
-| anthropic | ✓ | ✓ | ✓ | ✗ (자사 image API 없음) |
+| openai | ✓ | ✓ | ✓ | ✗ |
+| google | ✓ | ✓ | ✓ | ✗ |
+| anthropic | ✓ | ✓ | ✓ | ✗ |
 
-기본 정책은 "전 모델 전 도구". anthropic 계열은 `EXT_IMAGE_FOR_PROVIDER` 매핑 부재로 `generate_image` 만 자동 제외.
+기본 정책은 "전 모델 전 도구". 외부 provider 는 `EXT_IMAGE_FOR_PROVIDER` 가 비어있어 `generate_image` 자동 제외. 추후 외부 image 가 안정화되면 그 mapping 에 entry 추가 + LibreChat 재빌드 + `manage.sh agent sync` 로 복원.
 
 MCP 측은 `MCP_COMMON` (= `fetch_url`, `time`, `usage`, `youtube`, `deep_research`) 이 전 에이전트 공통, 모델 크기별로 `math_basic` 또는 `math` 가 추가됩니다.
 
 prefix 라벨 매핑 (manage.sh 의 spec 생성 로직):
-- `Text` — claude-haiku-4.5
-- `Text + Code` — claude-opus-4.7/4.6, claude-sonnet-4.6
-- `Text + Image` — gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash
-- `Text + Image + Code` — gpt-5.5, gpt-5, 전 ollama 모델 (qwen3.5:9b, qwen3.6:35b, llama3.1:8b, llama3.3:70b, nemotron3:33b, qwen3-coder-next:q8_0)
+- `Text` — claude-haiku-4.5, gpt-5-mini, gpt-5-nano, gemini-3.1-pro-preview/2.5-pro/flash
+- `Text + Code` — claude-opus-4.7/4.6, claude-sonnet-4.6, gpt-5.5, gpt-5
+- `Text + Image + Code` — 전 ollama 모델 (qwen3.5:9b, qwen3.6:35b, llama3.1:8b, llama3.3:70b, nemotron3:33b, qwen3-coder-next:q8_0)
 
 ### 외부 LLM provider 별 image 매핑
 
-native 자사 image 모델이 있는 provider 만 `generate_image` 부착. Anthropic 은 자사 image API 가 없어서 툴 자체 제외 (이름도 `Text + Code` 로 빠짐).
+현재 비어있음. 복원 시 추가:
 
 ```javascript
 // scripts/manage.sh
 var EXT_IMAGE_FOR_PROVIDER = {
-  'openai': 'gpt-image-2',
-  'google': 'nano-banana',
-  // 'anthropic': undefined → generate_image 제외됨
+  // 'google': 'nano-banana',   // ← OR 안정화 후 복원
+  // 'openai': 'gpt-image-2',   // ← OR catalog 의 안정된 image ID 로 복원
 };
 ```
+
+연동된 파일 4곳 동시 갱신 필요: `manage.sh` (매핑 + 에이전트 prefix), `rag-patches/patch_librechat_sd_model.js` (enum + override 화이트리스트), `docker-compose.yml` (`OR_IMAGE_MODELS`), `litellm-config.yaml` (정적 image-* 모델 entry).
 
 ## 디버깅
 

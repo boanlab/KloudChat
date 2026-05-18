@@ -196,19 +196,20 @@ create_default_agent_for_user() {
   docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { echo "  ⚠ chat-mongodb 미실행 — agent 건너뜀" >&2; return 0; }
 
-  # 모델 1개당 에이전트 1개. 이름 prefix = 능력 요약 (Text / Text+Code / Text+Image / Text+Image+Code).
-  # generate_image backend: ollama→ComfyUI, openai→gpt-image-2 (OR), google→nano-banana (OR),
-  # anthropic→자사 image API 없음 → 툴 자체 제외.
+  # 모델 1개당 에이전트 1개. 이름 prefix = 능력 요약 (Text / Text+Code / Text+Image+Code).
+  # generate_image backend: ollama→ComfyUI. 외부 provider (openai/anthropic/google) 는 자사
+  # image API 매핑 없음 — gpt-5.4-image-2 / nano-banana 둘 다 OR 안정성 문제로 비활성. 추후
+  # 안정화되거나 native API 키 직결 routing 추가하면 복원.
   local pulled; pulled="$(ollama_union_models 2>/dev/null || true)"
   local agent_specs='[]'
   local m tag
 
-  # external — OpenRouter 키 필수.
+  # external — OpenRouter 키 필수. 전부 image tool 제외.
   if has_openrouter; then
     for m in "${OPENAI_MODELS[@]}"; do
-      local prefix="Text + Image"
+      local prefix="Text"
       case "$m" in
-        gpt-5|gpt-5.5) prefix="Text + Image + Code" ;;
+        gpt-5|gpt-5.5) prefix="Text + Code" ;;
       esac
       agent_specs=$(jq -c --arg n "$prefix ($m)" --arg mm "openai/$m" \
         '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
@@ -222,7 +223,7 @@ create_default_agent_for_user() {
         '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
     done
     for m in "${GOOGLE_MODELS[@]}"; do
-      agent_specs=$(jq -c --arg n "Text + Image ($m)" --arg mm "google/$m" \
+      agent_specs=$(jq -c --arg n "Text ($m)" --arg mm "google/$m" \
         '. + [{name:$n, model:$mm, kind:"external"}]' <<< "$agent_specs")
     done
   fi
@@ -279,11 +280,9 @@ create_default_agent_for_user() {
       // builtinFor 에서 generate_image 만 자동 제외.
       var BUILTIN_BASE = ['execute_code','file_search','web_search','generate_image'];
 
-      // 외부 provider → 자사 image 모델. anthropic 누락 = generate_image 자동 제외.
-      var EXT_IMAGE_FOR_PROVIDER = {
-        'openai': 'gpt-image-2',
-        'google': 'nano-banana',
-      };
+      // 외부 provider → 자사 image 모델. 현재 비어있음 (모두 OR 라우팅 불안정으로 비활성).
+      // builtinFor 가 외부 provider 면 generate_image 자동 제외 → image tool 은 ollama 에이전트만.
+      var EXT_IMAGE_FOR_PROVIDER = {};
 
       // local 에이전트는 ComfyUI 로 갈 모델만 안내 — shim 의 ALIAS_TO_CANONICAL.
       var IMAGE_INSTR_LOCAL =
@@ -294,19 +293,10 @@ create_default_agent_for_user() {
         '  - model=\"qwen-image\" — text-in-image, Asian-language text, or complex multi-element composition\n' +
         'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
 
-      // external — provider 자사 image 모델 한 가지만 안내. LLM 이 enum 의 다른
-      // alias (qwen-image 등) 를 픽하지 않도록 strict 금지 목록까지 명시. enum 에
-      // 보이는 다른 값들은 다른 provider 의 에이전트가 쓰는 것이고, 이 에이전트가
-      // 호출하면 잘못된 backend 로 라우팅되어 응답 시간/품질 모두 망가짐.
-      function imageInstrExt(imageModel) {
-        return '\n\nFor image / picture / photo / diagram / illustration requests, call generate_image directly. ' +
-               'You MUST use model=\"' + imageModel + '\". This is the only image model wired for this agent. ' +
-               'DO NOT use \"qwen-image\", \"qwen-image-edit\", \"flux-schnell\", or \"flux-dev\" — those are reserved for ollama-based agents and routing to them from this agent yields a wrong-backend stall. ' +
-               'Required args: prompt (>=7 visual keywords for subject, style, lighting), negative_prompt (>=7 keywords).';
-      }
-
       function builtinFor(spec) {
-        // external 중 image 매핑 없는 provider (anthropic) 는 generate_image 만 drop.
+        // 외부 provider (openai/anthropic/google) 는 EXT_IMAGE_FOR_PROVIDER 매핑 없으면
+        // generate_image 자동 제외. 현재 외부 image 전부 비활성이라 외부 에이전트엔 image
+        // tool 안 붙음 (anthropic 와 동일 정책).
         var skip = [];
         if (spec.kind !== 'local') {
           var provider = spec.model.split('/')[0];
@@ -331,14 +321,9 @@ create_default_agent_for_user() {
           'Do not announce the call (\"I will use X...\"); just emit the tool call.';
         instr += '\n\nFor any YouTube URL (youtube.com, youtu.be, shorts) — never answer from prior knowledge or by guessing from the title. Call the transcript tool from the youtube MCP server first to get the actual text, then summarize / answer based on that text.';
         instr += '\n\nMath tool selection: for simple arithmetic — +, -, *, /, ^, sqrt, comparisons, min/max, percent, average — call the math_basic tools (compare, subtract, divide, sum, product, power, sqrt, etc.). Use the sympy-prefixed math tools only for symbolic algebra, calculus, equations, matrices, unit conversion, or anything that requires symbolic manipulation. Never call sympy_sympify or sympy_simplify just to compute a numeric expression.';
-        if (tools.indexOf('generate_image') !== -1) {
-          if (spec.kind === 'local') {
-            instr += IMAGE_INSTR_LOCAL;
-          } else {
-            var provider = spec.model.split('/')[0];
-            var img = EXT_IMAGE_FOR_PROVIDER[provider];
-            if (img) instr += imageInstrExt(img);
-          }
+        // generate_image 은 builtinFor 기준 ollama 에이전트만 부착됨. 외부는 매핑 부재로 제외.
+        if (tools.indexOf('generate_image') !== -1 && spec.kind === 'local') {
+          instr += IMAGE_INSTR_LOCAL;
         }
         return instr;
       }

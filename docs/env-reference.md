@@ -174,7 +174,7 @@ LibreChat / RAG API → LiteLLM 호출용 가상 키. `./scripts/manage.sh key i
 
 | 변수 | 위치 | 기본값 | 용도 |
 |---|---|---|---|
-| `OR_IMAGE_MODELS` | `docker-compose.yml` (`comfyui-shim`) | `nano-banana=image-nano-banana,gpt-image-2=image-gpt-image-2` | shim 이 LiteLLM 경유 외부 image API 로 라우팅할 alias 매핑 |
+| `OR_IMAGE_MODELS` | `docker-compose.yml` (`comfyui-shim`) | (비어있음) | shim 이 LiteLLM 경유 외부 image API 로 라우팅할 alias 매핑. 현재 비활성 — OR 의 image 모델들 응답 안정성 문제로 외부 image 전체 disable, ollama 에이전트만 ComfyUI 로 image 생성. |
 | `OLLAMA_VRAM_LOADED_THRESHOLD_BYTES` | `comfyui-shim/app.py`, `whisper-shim/app.py` Python default | `32212254720` (30 GiB) | shim 의 VRAM-aware 라우팅 임계 — 노드의 ollama 가 이 값 초과로 VRAM 점유 중이면 다른 노드 우선 |
 
 ## 모델 등록 동작 요약

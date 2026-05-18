@@ -19,17 +19,14 @@ if (src.includes(MARKER)) {
 
 const SCHEMA_NEEDLE =
   "  required: ['prompt', 'negative_prompt'],\n};";
-// enum 에 들어가는 alias 들: 로컬 ComfyUI (flux/qwen) + 외부 OR 경유 (nano-banana, gpt-image-2).
-// shim 의 OR_IMAGE_MODELS 매핑이 nano-banana/gpt-image-2 를 LiteLLM 으로 분기. enum 에서 빠지면
-// 모델이 부르려 해도 schema validator 가 거부 → fallback 으로 로컬 alias 잘못 사용.
-// description 은 의도적으로 매력적인 변별 문구 (e.g. "Asian text 좋음") 를 빼고 중립화 — LLM 이
-// 에이전트 instructions 무시하고 enum description 보고 다른 alias 픽하는 사고 방지. 어떤 모델을
-// 써야 하는지는 agent instructions 에 strict 하게 박혀있음.
+// enum: 로컬 ComfyUI alias 만. 외부 OR 경유 image (nano-banana / gpt-image-2) 는 응답 안정성
+// 문제로 비활성 — generate_image tool 은 ollama 기반 에이전트에서만 의미. 외부 provider
+// 에이전트는 builtinFor 가 자동으로 tool 제외 (manage.sh EXT_IMAGE_FOR_PROVIDER 비어있음).
 const SCHEMA_REPLACEMENT =
   "    model: {\n" +
   "      type: 'string',\n" +
-  "      enum: ['flux-schnell', 'flux-dev', 'qwen-image', 'qwen-image-edit', 'nano-banana', 'gpt-image-2'],\n" +
-  "      description: 'Image model alias. Use ONLY the value specified in your agent instructions — other entries are reserved for other agents and routing to them yields wrong-backend errors.',\n" +
+  "      enum: ['flux-schnell', 'flux-dev', 'qwen-image', 'qwen-image-edit'],\n" +
+  "      description: 'Image model alias. flux-schnell = fast draft (4 steps), flux-dev = high quality, qwen-image = text-in-image / detailed composition, qwen-image-edit = img2img edit.',\n" +
   "    },\n" +
   "  },\n" +
   "  required: ['prompt', 'negative_prompt'],\n" +
@@ -93,18 +90,14 @@ src = src.replace(
 const CALL_NEEDLE = "  async _call(data) {\n    const url = this.url;\n    const { prompt, negative_prompt, model } = data;";
 const CALL_REPLACEMENT =
   "  async _call(data) {\n" +
-  "    // KLOUDCHAT_SD_MODEL_PATCH — agent.model provider 보고 data.model 강제 교체.\n" +
-  "    // openai/* → gpt-image-2, google/* → nano-banana, anthropic/* → reject (자사 image 없음),\n" +
-  "    // ollama/* → LLM 픽 그대로 (로컬 ComfyUI alias). agentModel 없으면 (legacy) skip.\n" +
+  "    // KLOUDCHAT_SD_MODEL_PATCH — 외부 provider (openai/anthropic/google) 에이전트가\n" +
+  "    // generate_image 호출하면 즉시 거부. 외부 OR image 모델 (gpt-5.4-image-2 /\n" +
+  "    // gemini-3-pro-image-preview) 응답이 OR proxy 측에서 hang/깨짐 — local ComfyUI\n" +
+  "    // 라우팅은 의도와 안 맞음. ollama 에이전트만 이 tool 사용. agentModel 없으면 legacy skip.\n" +
   "    if (this.agentModel) {\n" +
   "      const __prov = String(this.agentModel).split('/')[0];\n" +
-  "      const __force = { openai: 'gpt-image-2', google: 'nano-banana' };\n" +
-  "      if (__prov === 'anthropic') {\n" +
-  "        return this.returnValue('This agent has no image model wired (anthropic 자사 image API 없음). Switch to an openai / google / ollama agent.');\n" +
-  "      }\n" +
-  "      if (__force[__prov] && data.model !== __force[__prov]) {\n" +
-  "        logger.warn(`[generate_image] override model='${data.model}' → '${__force[__prov]}' (agent provider=${__prov})`);\n" +
-  "        data.model = __force[__prov];\n" +
+  "      if (__prov !== 'ollama') {\n" +
+  "        return this.returnValue('Image generation is currently wired only for ollama-based agents. Switch to an ollama agent (qwen3.6:35b / qwen3-coder-next 등) for image generation.');\n" +
   "      }\n" +
   "    }\n" +
   "    const url = this.url;\n" +
