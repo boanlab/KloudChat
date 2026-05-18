@@ -191,6 +191,92 @@ MODEL_CACHE_AT: float = 0.0
 MODEL_REFRESH_SEC = 60.0
 LITELLM_URL = "http://localhost:8000"
 
+# docker stats 캐시 — 'docker stats --no-stream' 은 두 번 샘플링하느라 1~2초 걸림.
+# 매 render 마다 호출 못 함. 백그라운드 태스크가 interval 마다 갱신.
+CONTAINER_STATS: list[dict[str, str]] = []
+# /proc/stat 델타용 — 직전 (total_jiffies, idle_jiffies). 첫 호출 시 (None, None) → 0%.
+_PREV_CPU: tuple[int, int] | None = None
+
+
+def host_stats() -> dict[str, Any]:
+    """/proc/loadavg + /proc/meminfo 한 번 read — synchronous, ~µs.
+    MemAvailable 우선 (reclaimable cache 빼고 진짜 가용량). 없으면 MemFree 폴백."""
+    try:
+        with open("/proc/loadavg") as f:
+            la = f.read().split()
+        load = (float(la[0]), float(la[1]), float(la[2]))
+    except Exception:
+        load = (0.0, 0.0, 0.0)
+    mem: dict[str, int] = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, rest = line.partition(":")
+                parts = rest.strip().split()
+                if parts:
+                    mem[k] = int(parts[0]) * 1024  # kB → bytes
+    except Exception:
+        pass
+    total = mem.get("MemTotal", 0)
+    avail = mem.get("MemAvailable", mem.get("MemFree", 0))
+    used = max(0, total - avail)
+    pct = (used * 100 // total) if total > 0 else 0
+    return {"load": load, "mem_total": total, "mem_used": used, "mem_pct": pct}
+
+
+def host_cpu_pct() -> int:
+    """/proc/stat 델타 기반 CPU%. 첫 호출은 0 (델타 베이스라인 없음), 이후 정확."""
+    global _PREV_CPU
+    try:
+        with open("/proc/stat") as f:
+            line = f.readline()
+        # cpu user nice system idle iowait irq softirq steal guest guest_nice
+        parts = line.split()[1:]
+        nums = [int(x) for x in parts[:8]]
+    except Exception:
+        return 0
+    idle = nums[3] + nums[4]  # idle + iowait
+    total = sum(nums)
+    prev = _PREV_CPU
+    _PREV_CPU = (total, idle)
+    if prev is None:
+        return 0
+    dt, di = total - prev[0], idle - prev[1]
+    if dt <= 0:
+        return 0
+    return max(0, min(100, int((dt - di) * 100 / dt)))
+
+
+async def probe_container_stats() -> list[dict[str, str]]:
+    """`docker stats --no-stream` 한 번 — 모든 컨테이너의 CPU%/MEM/MEM%.
+    docker 없거나 daemon unreachable 이면 빈 리스트."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "stats", "--no-stream", "--format",
+            "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=8.0)
+    except (FileNotFoundError, asyncio.TimeoutError):
+        return []
+    rows: list[dict[str, str]] = []
+    for line in out.decode(errors="replace").splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        rows.append({
+            "name": parts[0].strip(),
+            "cpu": parts[1].strip(),
+            "mem": parts[2].strip(),
+            "mem_pct": parts[3].strip(),
+        })
+    # CPU% 내림차순 정렬 — 바쁜 컨테이너 위로.
+    def cpu_num(r: dict[str, str]) -> float:
+        try: return float(r["cpu"].rstrip("%"))
+        except Exception: return -1.0
+    rows.sort(key=cpu_num, reverse=True)
+    return rows
+
 
 async def probe_models(client: httpx.AsyncClient) -> dict[str, list[str]] | None:
     """LiteLLM /v1/models → provider 별 그룹. master key 없거나 LiteLLM unreachable
@@ -396,6 +482,50 @@ def render_table(data: list[dict[str, Any]]) -> Table:
     return tbl
 
 
+def compose_panel(host: dict[str, Any], containers: list[dict[str, str]]) -> Panel:
+    """Compose 호스트 CPU/load/MEM + 컨테이너별 CPU/MEM 테이블."""
+    cpu_pct = host_cpu_pct()
+    head = Text.assemble(
+        ("CPU ", "bold"), f"{cpu_pct:>3d}%   ",
+        ("load ", "bold"),
+        f"{host['load'][0]:.2f} {host['load'][1]:.2f} {host['load'][2]:.2f}   ",
+        ("MEM ", "bold"),
+        f"{fmt_gib(host['mem_used'])} / {fmt_gib(host['mem_total'])} GiB ",
+        f"({host['mem_pct']}%)",
+    )
+
+    if not containers:
+        body = Group(head, Text("(docker stats unreachable — 컨테이너 정보 없음)",
+                                style="dim yellow"))
+    else:
+        tbl = Table.grid(padding=(0, 2))
+        tbl.add_column(no_wrap=True, style="white")     # name
+        tbl.add_column(no_wrap=True, justify="right")    # cpu%
+        tbl.add_column(no_wrap=True)                     # mem usage
+        tbl.add_column(no_wrap=True, justify="right",
+                        style="dim")                     # mem%
+        tbl.add_row("[bold]container[/]", "[bold]CPU[/]", "[bold]MEM[/]", "[bold]%[/]")
+        for c in containers:
+            # CPU% > 50% 빨강, > 10% 노랑, 그 외 dim
+            try:
+                pc = float(c["cpu"].rstrip("%"))
+            except Exception:
+                pc = 0.0
+            cpu_style = "red" if pc > 50 else ("yellow" if pc > 10 else "white")
+            # docker stats MemUsage 는 "used / limit" 형식 — limit 은 호스트 MEM 에서
+            # 이미 보이니 used 만 노출 (모든 컨테이너에 limit 반복은 노이즈).
+            mem_used = c["mem"].split(" / ", 1)[0]
+            tbl.add_row(
+                c["name"],
+                Text(c["cpu"], style=cpu_style),
+                mem_used,
+                c["mem_pct"],
+            )
+        body = Group(head, tbl)
+
+    return Panel(body, title="[bold]Compose host[/]", border_style="white")
+
+
 def models_panel(groups: dict[str, list[str]] | None) -> Panel | None:
     """LiteLLM 등록 모델 카탈로그 — provider 별 한 줄. LibreChat 모델 셀렉터에
     노출되는 entries 와 사실상 동치."""
@@ -462,6 +592,7 @@ def dashboard_render(
     *,
     panels: bool,
     models: dict[str, list[str]] | None = None,
+    containers: list[dict[str, str]] | None = None,
 ) -> Group:
     header = Text.assemble(
         ("KloudChat Monitor", "bold blue"),
@@ -470,7 +601,7 @@ def dashboard_render(
         (f"mode={'panels' if panels else 'table'}   ", "dim"),
         ("Ctrl+C to quit", "dim"),
     )
-    parts: list[Any] = [header]
+    parts: list[Any] = [header, compose_panel(host_stats(), containers or [])]
     if panels:
         parts.extend(host_panel(d) for d in data)
     else:
@@ -643,7 +774,7 @@ def logs_render(max_lines: int) -> Panel:
 # ──────────────────────────────────────────────────────────────────────
 
 def estimate_dashboard_height(n_hosts: int, panels: bool, has_shim_panel: bool,
-                               n_model_rows: int) -> int:
+                               n_model_rows: int, n_containers: int) -> int:
     """대시보드 영역에 줄 size — split layout 에서 logs 공간 계산용."""
     header = 1
     if panels:
@@ -652,8 +783,10 @@ def estimate_dashboard_height(n_hosts: int, panels: bool, has_shim_panel: bool,
     else:
         body = 4 + n_hosts  # 테이블 헤더 3 + N 데이터 행 + 닫는 줄
     shim = 6 if has_shim_panel else 0
-    models = (n_model_rows + 3) if n_model_rows > 0 else 0  # 패널 테두리 2 + 헤더
-    return header + body + shim + models + 2
+    models = (n_model_rows + 3) if n_model_rows > 0 else 0
+    # compose 패널: 테두리 2 + host 한 줄 + container 헤더 1 + container 행 N
+    compose = 2 + 1 + (1 + n_containers if n_containers > 0 else 1)
+    return header + compose + body + shim + models + 2
 
 
 async def main() -> int:
@@ -677,15 +810,18 @@ async def main() -> int:
 
     console = Console()
 
-    # --once: 대시보드 한 프레임만
+    # --once: 대시보드 한 프레임만. CPU% 는 델타라 첫 호출엔 0 — warm-up 한 번 더.
     if args.once or not console.is_terminal:
+        host_cpu_pct()  # baseline
+        await asyncio.sleep(0.5)
         async with httpx.AsyncClient() as client:
-            data, mods = await asyncio.gather(
+            data, mods, ctrs = await asyncio.gather(
                 asyncio.gather(*(probe_host(client, h) for h in hosts)),
                 probe_models(client),
+                probe_container_stats(),
             )
         console.print(dashboard_render(list(data), args.interval,
-                                       panels=args.panels, models=mods))
+                                       panels=args.panels, models=mods, containers=ctrs))
         return 0
 
     log_tasks: list[asyncio.Task] = []
@@ -705,10 +841,12 @@ async def main() -> int:
         # 대시보드 단독 OR 합본
         async with httpx.AsyncClient() as client:
             shim_present = whisper_shim_panel() is not None
+            host_cpu_pct()  # /proc/stat baseline
 
             last_probe_ts = 0.0
             cached_data: list[dict[str, Any]] = []
             cached_models: dict[str, list[str]] | None = None
+            container_probe_task: asyncio.Task | None = None
 
             def n_model_rows() -> int:
                 if not cached_models:
@@ -716,12 +854,15 @@ async def main() -> int:
                 return sum(1 for v in cached_models.values() if v)
 
             def make_layout() -> Layout | Group:
-                dash = dashboard_render(cached_data, args.interval,
-                                        panels=args.panels, models=cached_models)
+                dash = dashboard_render(
+                    cached_data, args.interval, panels=args.panels,
+                    models=cached_models, containers=CONTAINER_STATS,
+                )
                 if args.dashboard:
                     return dash
                 dash_h = estimate_dashboard_height(
-                    len(hosts), args.panels, shim_present, n_model_rows(),
+                    len(hosts), args.panels, shim_present,
+                    n_model_rows(), len(CONTAINER_STATS),
                 )
                 layout = Layout()
                 layout.split_column(
@@ -734,18 +875,40 @@ async def main() -> int:
                 layout["logs"].update(logs_render(max_lines=log_h))
                 return layout
 
-            with Live(console=console, refresh_per_second=4, screen=True) as live:
+            async def _container_probe_loop() -> None:
+                """`docker stats --no-stream` 백그라운드 폴 — 호출이 ~1.5s 라
+                render 와 동기로 못 돌림. interval 마다 갱신, CONTAINER_STATS 에
+                in-place 반영."""
                 while True:
-                    now = asyncio.get_event_loop().time()
-                    if now - last_probe_ts >= args.interval or not cached_data:
-                        cached_data, cached_models = await asyncio.gather(
-                            asyncio.gather(*(probe_host(client, h) for h in hosts)),
-                            probe_models(client),
-                        )
-                        cached_data = list(cached_data)
-                        last_probe_ts = now
-                    live.update(make_layout())
-                    await asyncio.sleep(0.25)
+                    try:
+                        rows = await probe_container_stats()
+                        CONTAINER_STATS[:] = rows
+                    except Exception:
+                        pass
+                    await asyncio.sleep(args.interval)
+
+            container_probe_task = asyncio.create_task(_container_probe_loop())
+
+            try:
+                with Live(console=console, refresh_per_second=4, screen=True) as live:
+                    while True:
+                        now = asyncio.get_event_loop().time()
+                        if now - last_probe_ts >= args.interval or not cached_data:
+                            cached_data, cached_models = await asyncio.gather(
+                                asyncio.gather(*(probe_host(client, h) for h in hosts)),
+                                probe_models(client),
+                            )
+                            cached_data = list(cached_data)
+                            last_probe_ts = now
+                        live.update(make_layout())
+                        await asyncio.sleep(0.25)
+            finally:
+                if container_probe_task:
+                    container_probe_task.cancel()
+                    try:
+                        await container_probe_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
