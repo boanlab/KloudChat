@@ -1,0 +1,26 @@
+# Deep Research (LearningCircuit/local-deep-research) MCP 사이드카.
+# LibreChat 컨테이너가 alpine/musl 이라 playwright wheel 호환 안 됨 → debian-slim 으로 별도 분리.
+# mcp-proxy 가 STDIO ldr-mcp 를 streamable-http 로 wrap, LibreChat 은 HTTP MCP 로 호출.
+FROM python:3.12-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "local-deep-research[mcp]==1.6.11" \
+    "mcp-proxy"
+
+# LibreChat 가 MCP tool 인자를 dispatch 전에 스키마 검증한다. LDR 의 quick/detailed_research
+# 는 iterations/questions_per_iteration 을 Optional[int] 로 노출해 스키마가 integer 라,
+# 122b 가 문자열("2")로 보내면 거부 → deep_research 가 안 돌고 일반 검색으로 degrade.
+# 파라미터를 Optional[Union[int,str]] 로 넓히고 validator 에서 coerce 한다.
+COPY rag-patches/patch_ldr_mcp_iterations.py /tmp/patch_ldr_mcp_iterations.py
+RUN python3 /tmp/patch_ldr_mcp_iterations.py
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8081
+
+# mcp-proxy 가 ldr-mcp 를 child 로 spawn, streamable-http 로 /mcp 에 expose.
+# --pass-environment 필수: 기본은 env strip 이라 LDR_* 가 ldr-mcp 까지 못 감.
+CMD ["mcp-proxy", "--pass-environment", "--port=8081", "--host=0.0.0.0", "--transport=streamablehttp", "ldr-mcp"]

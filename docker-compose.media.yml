@@ -1,0 +1,78 @@
+# amd64 GPU 노드의 미디어 백엔드 — ComfyUI(이미지/비디오 생성) + Whisper(음성 전사).
+# arm64(GB10)는 install-{comfyui,whisper}.sh 가 systemd 로 설치하므로 이 파일을 쓰지 않는다
+# (amd64 전용). 메인 stack(docker-compose.yml) 입장에선 외부 백엔드 — comfyui-shim /
+# whisper-shim 이 .env 의 COMFYUI_URLS / WHISPER_URLS 로 호출한다(같은 호스트면
+# host.docker.internal:<port>, 분산이면 GPU 노드 IP).
+#
+# 이미지는 Docker Hub 의 boanlab/kloudchat-{comfyui,whisper} 를 pull 한다 (amd64 단일아키 —
+# arm64 는 systemd). 퍼블리시는 ./scripts/build-push-images.sh comfyui whisper. install-
+# {comfyui,whisper}.sh 의 amd64 분기가 pull + up 하고, --reinstall 시 로컬 빌드한다
+# (아래 build: 정의). GPU 런타임은 vLLM stack 과 같은 nvidia container runtime 요구.
+#
+# 모델 weight 는 이미지에 굽지 않고 호스트 볼륨으로 마운트 — download-{image,whisper}-models.sh
+# 가 호스트 경로(COMFYUI_MODELS_DIR / WHISPER_DATA_ROOT)에 받는다.
+
+# 메인 stack 의 orphan 경고 회피용 별도 project name.
+name: kloudchat-media
+
+services:
+  comfyui:
+    container_name: comfyui
+    image: ${KLOUDCHAT_IMAGE_NS:-boanlab}/kloudchat-comfyui:${KLOUDCHAT_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.comfyui
+    restart: unless-stopped
+    ports:
+      - "${COMFYUI_PORT:-8188}:8188"
+    volumes:
+      # 코드는 이미지에, 가변 상태(모델/출력/Manager 상태)는 호스트 볼륨.
+      - ${COMFYUI_MODELS_DIR:-/var/lib/comfyui/models}:/app/ComfyUI/models
+      - ${COMFYUI_DATA_ROOT:-/var/lib/comfyui}/output:/app/ComfyUI/output
+      - ${COMFYUI_DATA_ROOT:-/var/lib/comfyui}/user:/app/ComfyUI/user
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8188/system_stats || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # flux fullset weight 로드 첫 호출 전 코어 startup — 여유롭게.
+      start_period: 120s
+
+  whisper:
+    container_name: whisper
+    image: ${KLOUDCHAT_IMAGE_NS:-boanlab}/kloudchat-whisper:${KLOUDCHAT_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.whisper
+    restart: unless-stopped
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    environment:
+      # lazy-load 다운로드의 HF rate-limit / xet CDN 가속 토큰 (없으면 빈 값).
+      HF_TOKEN: ${HF_TOKEN:-}
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-auto}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-float16}
+    volumes:
+      # weight 캐시(HF_HOME) — 재기동/재빌드에도 재다운로드 회피.
+      - ${WHISPER_DATA_ROOT:-/var/lib/whisper}:/var/lib/whisper
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

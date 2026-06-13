@@ -1,0 +1,15 @@
+FROM ghcr.io/usnavy13/librecodeinterpreter:main
+
+COPY fonts/NanumGothic-Regular.ttf /usr/share/fonts/truetype/NanumGothic-Regular.ttf
+
+# matplotlib 기본 폰트를 NanumGothic 으로 (execute_code 에서 한글 차트 라벨 지원) — 안 하면
+# 기본 DejaVu Sans 가 한글 글리프가
+# 없어 축/제목이 □□□(tofu). NanumGothic 을 sans-serif 최우선으로 두고, 한글과 함께
+# 깨지던 음수 부호도 axes.unicode_minus:False 로 방지. (폰트 자체는 위에서 설치됨.)
+# 기존 font.* 키(주석/비주석)를 먼저 제거 후 1회만 추가 — Duplicate/Bad key 경고 방지.
+RUN MPLRC="$(python3 -c 'import matplotlib; print(matplotlib.matplotlib_fname())')" && \
+    sed -i -E '/^#?[[:space:]]*font\.family[[:space:]]*:/d; /^#?[[:space:]]*font\.sans-serif[[:space:]]*:/d; /^#?[[:space:]]*axes\.unicode_minus[[:space:]]*:/d' "$MPLRC" && \
+    printf 'font.family: sans-serif\nfont.sans-serif: NanumGothic, DejaVu Sans, sans-serif\naxes.unicode_minus: False\n' >> "$MPLRC" && \
+    fc-cache -f >/dev/null 2>&1 || true
+
+RUN rm -rf /root/.cache/matplotlib /home/*/.cache/matplotlib 2>/dev/null || true

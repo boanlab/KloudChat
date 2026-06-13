@@ -1,0 +1,344 @@
+version: 1.3.9
+cache: true
+
+# agent auto-summarization off — 로컬 채팅 모델이 mid-stream summary 를 prior-session
+# 으로 오인해 history hallucination 을 일으킨다. context 소진 시 ContextWindowExceededError
+# 로 fail-fast 시키는 편이 안전하다.
+summarization:
+  enabled: false
+
+webSearch:
+  searchProvider: "searxng"
+  searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
+  safeSearch: 1
+  # firecrawl 프로토콜 shim 뒤의 self-hosted Crawl4AI 로 라우팅한다. apiKey 는 비어있으면
+  # 클라이언트가 거부해 placeholder 값을 넣는다 (shim 은 무시). ${VAR} 는 LibreChat 가
+  # 컨테이너 env 에서 치환하는 형식이다.
+  scraperType: "firecrawl"
+  firecrawlApiUrl: "${FIRECRAWL_BASE_URL}"
+  firecrawlApiKey: "${FIRECRAWL_API_KEY}"
+
+# MCP HTTP/SSE 사이드카 컨테이너의 internal hostname allowlist.
+# 미설정 시 SSRF 보호로 internal hostname (예: ldr, container 이름) 자동 차단됨.
+# 매칭은 호스트명 기준이라 포트는 생략. stdio MCP 는 영향 없음 (항상 허용).
+mcpSettings:
+  allowedDomains:
+    - deep-research
+
+# MCP (Model Context Protocol) 서버. 대부분 stdio (LibreChat 가 자식 프로세스로 spawn,
+# 첫 호출 시 uvx 가 패키지 자동 다운로드 후 ~/.cache 캐시). deep_research 만 별도
+# 사이드카 컨테이너의 streamable-http endpoint.
+# agent.tools 에 'sys__all__sys_mcp_<servername>' 추가하면 그 서버의 모든 tool 노출.
+mcpServers:
+  fetch_url:
+    type: stdio
+    command: uvx
+    args:
+      - mcp-server-fetch
+  time:
+    # 현재 시간 / 타임존 변환. 모델이 "오늘" 환각 방지용.
+    type: stdio
+    command: uvx
+    args:
+      - mcp-server-time
+      - --local-timezone=Asia/Seoul
+  # 수학 (사칙연산 / symbolic / 단위변환) 은 execute_code (Python, sympy 포함) 로 처리.
+  youtube:
+    # YouTube 영상 텍스트 추출. 자막 있으면 youtube-transcript-api 즉시 반환,
+    # 없으면 yt-dlp 로 audio 추출 + whisper-shim (→ WHISPER_URLS 호스트 systemd backend).
+    # whisper 는 GPU 전용 — backend 미가용이면 전사 불가(자막 있는 영상만 동작, OR 폴백 없음).
+    # whisper 첫 호출 시 모델 로드 (large-v3 ~3 GB) 가 30-60초 걸리므로 timeout 넉넉히.
+    type: stdio
+    timeout: 900000
+    command: uv
+    args:
+      - run
+      - --script
+      - /app/mcp/youtube.py
+    env:
+      WHISPER_URL: "${WHISPER_URL}"
+  usage:
+    # 사용자 본인의 LiteLLM 사용량/예산 조회. tools: my_usage(months_back), budget_status().
+    # uv run --script 로 inline-deps 스크립트 실행 (mcp + httpx 자동 설치).
+    # startup: false — app-level init 건너뛰고 user-scoped 연결만 만듦.
+    # 그래야 {{LIBRECHAT_USER_EMAIL}} 가 호출자별로 치환됨 (app 단계엔 user 객체 없음).
+    type: stdio
+    startup: false
+    command: uv
+    args:
+      - run
+      - --script
+      - /app/mcp/usage.py
+    env:
+      LITELLM_URL: "${LITELLM_URL}"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+      LIBRECHAT_USER_EMAIL: "{{LIBRECHAT_USER_EMAIL}}"
+  smart_search:
+    # 업로드 문서 정밀 검색 — reformulation + multi-query + dense(pgvector) + relevance
+    # 평가. 부품 전부 로컬(gemma reformulate/eval, bge-m3 embed). startup:false —
+    # {{LIBRECHAT_USER_ID}} 가 호출자별 치환돼야 테넌시 격리(타 사용자 문서 차단).
+    type: stdio
+    startup: false
+    command: uv
+    args:
+      - run
+      - --script
+      - /app/mcp/smart_search.py
+    env:
+      LITELLM_URL: "${LITELLM_URL}"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+      RAG_DB_URL: "${RAG_DB_URL}"
+      LIBRECHAT_USER_ID: "{{LIBRECHAT_USER_ID}}"
+      # bge-reranker 배포 시 그 /rerank endpoint. 비면 rerank 스킵(hybrid 까지만).
+      RERANK_URL: "${RERANK_URL:-}"
+  export_deck:
+    # Slide Studio HTML 덱 → 16:9 PDF 내보내기. 현재 대화의 최신 text/html 아티팩트를
+    # Mongo 에서 꺼내 slide-export 사이드카로 렌더 → public/images/decks 저장 → 링크.
+    # startup:false — {{LIBRECHAT_BODY_CONVERSATIONID}} 가 호출 대화별 치환돼야 함.
+    type: stdio
+    startup: false
+    command: uv
+    args:
+      - run
+      - --script
+      - /app/mcp/export_deck.py
+    env:
+      # MONGO_URI 는 LibreChat MCP ${} denylist 라 KC_MONGO_URI(동일 값)로 우회.
+      MONGO_URI: "${KC_MONGO_URI}"
+      SLIDE_EXPORT_URL: "${SLIDE_EXPORT_URL}"
+      DOMAIN_CLIENT: "${DOMAIN_CLIENT}"
+      LIBRECHAT_BODY_CONVERSATIONID: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
+  generate_video:
+    # Video Studio — 텍스트→비디오. comfyui-shim 으로 OpenRouter(Veo/Sora) 또는 로컬 LTXV 생성.
+    # 비동기: generate_video 가 ~2분 인라인 폴링 후 미완이면 작업 ID 반환 → check_video 로 회수.
+    # startup:false — {{LIBRECHAT_USER_ID}} 치환(과금 귀속: _id→email→shim→x-litellm-end-user-id).
+    type: stdio
+    startup: false
+    timeout: 300000
+    command: uv
+    args:
+      - run
+      - --script
+      - /app/mcp/generate_video.py
+    env:
+      COMFYUI_SHIM_URL: "${COMFYUI_SHIM_URL}"
+      DOMAIN_CLIENT: "${DOMAIN_CLIENT}"
+      MONGO_URI: "${KC_MONGO_URI}"
+      LIBRECHAT_USER_ID: "{{LIBRECHAT_USER_ID}}"
+      # 기본 비디오 모델 = 로컬 무료 LTXV (미설정 시 코드 기본 veo-lite).
+      VIDEO_MODEL: "ltx-video"
+  paperbanana:
+    # PaperBanana — 학술 논문용 다이어그램/통계 플롯 자동 생성 (multi-agent: planner/
+    # stylist/visualizer/critic). uvx 가 첫 호출 시 paperbanana[mcp] 자동 설치. 모든 LLM/
+    # 이미지 호출은 OpenRouter 경유 — VLM=gemini-2.5-flash(vision), 이미지 생성은
+    # gemini-3.1-flash-image-preview(= nano-banana-2). 다단계 refine 이라 수 분 → timeout 넉넉히.
+    type: stdio
+    timeout: 900000
+    command: uvx
+    args:
+      - --from
+      - paperbanana[mcp]
+      - paperbanana-mcp
+    env:
+      # PaperBanana 네이티브 openrouter provider (OPENROUTER_API_KEY 직접 읽음).
+      VLM_PROVIDER: openrouter
+      VLM_MODEL: "google/gemini-2.5-flash"
+      IMAGE_PROVIDER: openrouter_imagen
+      IMAGE_MODEL: "google/gemini-3.1-flash-image-preview"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+  deep_research:
+    # Local Deep Research (ReAct + iterative reasoning, 8 tools). alpine/musl 호환 안 되는
+    # playwright 의존성 때문에 debian 사이드카 (deep-research 서비스) + mcp-proxy 로 wrap.
+    # LDR 설정은 docker-compose.yml 의 deep-research.environment 에 LDR_* 로.
+    type: streamable-http
+    url: http://deep-research:8081/mcp
+    startup: false
+    # detailed_research 가 arxiv/web retry + iteration 누적 + 122b(~14 tok/s) 생성으로
+    # 무거운 쿼리는 30분도 초과 가능 → 60분.
+    timeout: 3600000
+
+endpoints:
+  agents:
+    disableBuilder: false
+    # langgraph recursion limit. 기본 50 은 tool 루프 시 backend 큐 장기 점유 →
+    # 20 으로 제한 (정상 chain ~5 hop 여유). maxRecursionLimit 은 agent 별 override 상한.
+    recursionLimit: 20
+    maxRecursionLimit: 20
+    # DB-backed agent 의 도구 허용 목록 (patch_librechat_agent_capabilities.js 가
+    # ephemeral 한정 폴백을 풀어서 모든 agent 에 적용).
+    capabilities:
+      - "execute_code"
+      - "file_search"
+      - "web_search"
+      - "actions"
+      - "tools"
+      - "artifacts"
+      - "context"
+      - "chain"
+      - "ocr"
+  custom:
+    - name: "LiteLLM"
+      apiKey: "user_provided"
+      userProvide: true
+      baseURL: "${LITELLM_URL}/v1"
+      models:
+        default:
+          # >>> KLOUDCHAT_MODELS_START
+          - "openai/gpt-5.5"
+          - "openai/gpt-5"
+          - "openai/gpt-5-mini"
+          - "openai/gpt-5-nano"
+          - "anthropic/claude-opus-4.8"
+          - "anthropic/claude-opus-4.7"
+          - "anthropic/claude-opus-4.6"
+          - "anthropic/claude-sonnet-4.6"
+          - "anthropic/claude-haiku-4.5"
+          - "google/gemini-3.1-pro-preview"
+          - "google/gemini-2.5-pro"
+          - "google/gemini-2.5-flash"
+          - "google/gemma-4-31b-it"
+          - "deepseek/deepseek-v4-pro"
+          - "x-ai/grok-4.3"
+          - "perplexity/sonar"
+          - "meta/llama-4-maverick"
+          - "qwen/qwen3.5-397b-a17b"
+          - "local/gemma-4-26b"
+          - "local/qwen3.5:122b"
+          - "local/auto-route"
+          # <<< KLOUDCHAT_MODELS_END
+        fetch: false
+      titleConvo: true
+      # gemma-4-26b 가 titleConvo 도 처리한다 (채팅 기본 모델과 동일하게 통일).
+      titleModel: "local/gemma-4-26b"
+      # 대화 제목을 한국어로. 기본 프롬프트가 "in the detected language" 라 gemma 가
+      # 영어로 내던 걸 한글 강제로 교체. {convo} 플레이스홀더는 대화 내용 주입점이라 필수.
+      titlePrompt: |-
+        다음 대화를 분석하여 핵심 주제를 나타내는 간결한 제목을 작성하세요. 반드시 한국어로, 5단어 이내, 따옴표나 문장부호 없이 제목 텍스트만 출력하세요.
+
+        {convo}
+      summarize: false
+      forcePrompt: false
+      modelDisplayLabel: "KloudChat"
+      iconURL: "/images/endpoint-icon.png"
+
+# 개인화 메모리 — 대화에서 사용자 관련 지속 사실을 추출·저장해 이후 대화에 활용.
+# 추출 모델은 로컬 vLLM gemma-4-26b (LiteLLM 경유) — 데이터 외부로 나가지 않음.
+# personalize:true → 사용자별로 메모리 on/off 토글 가능. validKeys 로 저장 범주 제한.
+memory:
+  disabled: false
+  personalize: true
+  tokenLimit: 2000
+  messageWindowSize: 5
+  validKeys:
+    - "preferences"
+    - "work_info"
+    - "personal_info"
+    - "skills"
+    - "interests"
+    - "context"
+  agent:
+    provider: "LiteLLM"
+    model: "local/gemma-4-26b"
+    model_parameters:
+      temperature: 0
+    instructions: "You are a memory manager. From the conversation, extract durable, useful facts about the user (preferences, work context, skills, interests, ongoing projects) and persist them with the provided tools under the allowed keys. Store only stable, non-sensitive facts; never store passwords, API keys, or one-off transient details."
+
+# modelSpecs — 새 대화 기본값만 설정한다(보이는 핀 없음). prioritize:true + 단일
+# super-agent spec(showIcon false) → 새 대화 기본 = Super Agent. addedEndpoints 로 agents
+# 엔드포인트(My Agents + 상용 LLM)도 노출돼 다른 모델 선택 가능. agent_id 는 실제 id 를
+# 박는다(${ENV} 치환 불가) — `manage.sh agent sync` 가 spec label 로 현재 id 를 자동 동기화.
+modelSpecs:
+  enforce: false
+  prioritize: true
+  addedEndpoints:
+    - agents
+  list:
+    # 보이는 핀은 두지 않는다(showIcon false). super-agent spec 은 prioritize 의
+    # 새 대화 기본값(Super Agent) 용도로만 유지 — 사이드바/헤더에 아이콘 미노출.
+    - name: super-agent
+      label: "Super Agent"
+      showIconInMenu: false
+      showIconInHeader: false
+      preset:
+        endpoint: agents
+        agent_id: "agent_34i8ue6buy2ritpbxawpb"
+
+interface:
+  modelSelect: true
+  parameters: true
+  presets: false        # 채팅 상단 '프리셋' 메뉴 숨김
+  prompts: false
+  bookmarks: true
+  multiConvo: false     # '다중 응답 대화 추가' 메뉴 숨김
+  temporaryChat: true
+  runCode: true
+  webSearch: true
+  fileSearch: true
+  fileCitations: true
+  memories: true
+  # agent 정책: 전 사용자 생성 가능(CREATE), 단 공유/공개는 ADMIN 만.
+  # interface.agents 권한은 USER/ADMIN 에 동일 적용돼(updateInterfacePermissions)
+  # yaml 만으로 역할 분리가 불가하다. 그래서 여기선 fail-closed 베이스라인(생성 O, 공유 X)을
+  # 양쪽에 시드하고, manage.sh agent sync 가 ADMIN 만 SHARE/SHARE_PUBLIC 으로 승격한다.
+  # (USER 는 어떤 경우에도 공유 권한을 못 받음 — bare 재시작 시에도 fail-closed.)
+  # USE:true → 전 사용자가 공유 카탈로그 사용. 사용자 생성 agent 는 본인 전용(공유 불가).
+  agents:
+    USE: true
+    CREATE: true
+    SHARE: false
+    SHARE_PUBLIC: false
+  marketplace:
+    use: true
+  mcpServers:
+    USE: true
+    CREATE: false
+    SHARE: false
+    SHARE_PUBLIC: false
+
+# 음성 입력/업로드 전사 — LibreChat 내장 STT 를 whisper-shim(OpenAI 호환
+# /v1/audio/transcriptions)에 연결. 효과: 에이전트에 오디오를 "텍스트로 업로드"하면
+# 업로드 시점에 whisper 로 전사돼 전사문이 텍스트 첨부로 들어간다(Note Taker 의 자연스러운
+# 입력 경로). file_search/execute_code 는 오디오를 거부하므로 STT(context) 경로가 정답.
+# openai provider = whisper-shim 의 OpenAI 호환 엔드포인트. apiKey 불필요(shim 무인증).
+# axios 타임아웃 없음 → 1시간+ 회의도 OK. 지원 mimetype 은 data-provider 기본값
+# (audio/mpeg·mp3·m4a·wav·ogg·flac·aac·opus·wma)을 그대로 사용.
+speech:
+  stt:
+    openai:
+      url: "http://whisper-shim:9000/v1/audio/transcriptions"
+      model: "whisper-1"
+      apiKey: "${WHISPER_STT_API_KEY}"   # shim 무인증 — 스키마 필수 필드라 빈 env 로 충족(Authorization 미전송)
+
+fileConfig:
+  serverFileSizeLimit: 200
+  avatarSizeLimit: 4
+  endpoints:
+    default:
+      fileLimit: 10
+      fileSizeLimit: 100
+      supportedMimeTypes:
+        - "^[\\w.-]+/[\\w.-]+$"
+        - "^application/x-hwp$"
+        - "^application/vnd\\.hancom\\.hwp$"
+        - "^application/haansofthwp$"
+    agents:
+      fileLimit: 10
+      fileSizeLimit: 200          # 긴 회의 녹음(Note Taker) 대비 — audio 업로드 여유
+      supportedMimeTypes:
+        - "^[\\w.-]+/[\\w.-]+$"
+        - "^audio/[\\w.+-]+$"      # Note Taker — mp3/m4a/wav/ogg/flac 등 (catch-all 보강)
+        - "^application/x-hwp$"
+        - "^application/vnd\\.hancom\\.hwp$"
+        - "^application/haansofthwp$"
+
+rateLimits:
+  fileUploads:
+    ipMax: 100
+    ipWindowInMinutes: 60
+    userMax: 50
+    userWindowInMinutes: 60
+  conversationsImport:
+    ipMax: 40
+    ipWindowInMinutes: 60
+    userMax: 25
+    userWindowInMinutes: 60

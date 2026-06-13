@@ -1,0 +1,108 @@
+{
+  "_comment": "LTX-Video text-to-video (ComfyUI API graph). 샤임의 _populate_video_workflow 가 _meta.title 핸들로 prompt/dims/seed/steps/cfg/length 를 주입. VHS_VideoCombine(=ComfyUI-VideoHelperSuite 커스텀노드) 가 mp4 로 합성 → history outputs[*].gifs. 모델: checkpoints/ltx-video-2b-v0.9.5.safetensors (DiT+VAE; CLIP 미포함) + clip/t5xxl_fp16.safetensors (CLIPLoader type=ltxv) — T5 인코더는 별도 로드. _load_workflow 가 이 _comment(비-dict)를 POST 전 제거.",
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {"title": "CheckpointLoader"},
+    "inputs": {
+      "ckpt_name": "ltx-video-2b-v0.9.5.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "PositivePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["11", 0]
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "NegativePrompt"},
+    "inputs": {
+      "text": "low quality, worst quality, deformed, distorted, blurry, jpeg artifacts",
+      "clip": ["11", 0]
+    }
+  },
+  "4": {
+    "class_type": "LTXVConditioning",
+    "_meta": {"title": "LTXVConditioning"},
+    "inputs": {
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "frame_rate": 25.0
+    }
+  },
+  "5": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {"title": "EmptyLTXVLatent"},
+    "inputs": {
+      "width": 768,
+      "height": 512,
+      "length": 97,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "LTXVScheduler",
+    "_meta": {"title": "Scheduler"},
+    "inputs": {
+      "steps": 30,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1,
+      "latent": ["5", 0]
+    }
+  },
+  "7": {
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "SamplerSelect"},
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "8": {
+    "class_type": "SamplerCustom",
+    "_meta": {"title": "Sampler"},
+    "inputs": {
+      "model": ["1", 0],
+      "add_noise": true,
+      "noise_seed": 0,
+      "cfg": 3.0,
+      "positive": ["4", 0],
+      "negative": ["4", 1],
+      "sampler": ["7", 0],
+      "sigmas": ["6", 0],
+      "latent_image": ["5", 0]
+    }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAEDecode"},
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["1", 2]
+    }
+  },
+  "10": {
+    "class_type": "VHS_VideoCombine",
+    "_meta": {"title": "SaveVideo"},
+    "inputs": {
+      "images": ["9", 0],
+      "frame_rate": 25,
+      "loop_count": 0,
+      "filename_prefix": "kloudchat-ltxv",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true
+    }
+  },
+  "11": {
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "T5Loader"},
+    "inputs": {
+      "clip_name": "t5xxl_fp16.safetensors",
+      "type": "ltxv"
+    }
+  }
+}

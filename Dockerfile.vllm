@@ -1,0 +1,11 @@
+# Base vLLM image 위에 pytest layer 추가.
+#
+# cu129-nightly amd64 빌드는 torch._dynamo 가 trace 경로에서 pytest 를 lazy
+# import 한다. base image 엔 pytest 가 없어 dynamo 가 engine init 단계에서
+# ModuleNotFoundError 로 죽는다. aarch64 nightly 는 영향 없지만 동일 layer
+# 통과 (build overhead 미미).
+
+ARG BASE_IMAGE=vllm/vllm-openai:nightly-aarch64
+FROM ${BASE_IMAGE}
+
+RUN pip install --no-cache-dir pytest

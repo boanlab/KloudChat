@@ -1,0 +1,70 @@
+FROM node:20-bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git python3 build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 --branch v0.8.5 https://github.com/danny-avila/LibreChat.git .
+
+COPY rag-patches/patch_librechat_hwp.py /tmp/patch_librechat_hwp.py
+RUN python3 /tmp/patch_librechat_hwp.py && \
+    grep -q "extension === 'hwp'" packages/data-provider/src/file-config.ts && \
+    rm /tmp/patch_librechat_hwp.py
+
+RUN npm install --no-audit
+# Vite build 가 기본 Node heap (~2G) 초과 — 7.7G 호스트에서 OOM. 4G 로 상향.
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run frontend
+
+FROM registry.librechat.ai/danny-avila/librechat:v0.8.5
+
+RUN sed -i 's|parseTextParts(message.content)|parseTextParts(message.content, true)|g' \
+    /app/api/server/services/Files/Audio/streamAudio.js && \
+    grep -q 'parseTextParts(message.content, true)' /app/api/server/services/Files/Audio/streamAudio.js \
+    || (echo "ERROR: streamAudio.js TTS thinking patch failed" && exit 1)
+
+COPY rag-patches/patch_librechat_sd_model.js /tmp/patch_librechat_sd_model.js
+RUN node /tmp/patch_librechat_sd_model.js && \
+    grep -q 'KLOUDCHAT_SD_MODEL_PATCH' /app/api/app/clients/tools/structured/StableDiffusion.js
+
+COPY rag-patches/patch_librechat_agent_capabilities.js /tmp/patch_librechat_agent_capabilities.js
+RUN node /tmp/patch_librechat_agent_capabilities.js && \
+    grep -q 'KLOUDCHAT_AGENT_CAP_PATCH' /app/api/server/services/ToolService.js
+
+# 서버측 에러 wrapper 를 [KloudChat] 마커 붙은 메시지에서만 벗긴다.
+# 클라이언트 번들의 동일 wrapper 는 런타임 entrypoint 가 .orig 에서 복원하므로
+# 빌드 패치가 무효 — 그쪽은 scripts/librechat-patch.py 가 매 startup 마다 처리.
+COPY rag-patches/patch_librechat_error_unwrap.js /tmp/patch_librechat_error_unwrap.js
+RUN node /tmp/patch_librechat_error_unwrap.js && \
+    grep -q 'KLOUDCHAT_ERROR_UNWRAP_PATCH' /app/api/server/controllers/agents/client.js
+
+# RAG 업로드가 /embed 로 원본 filename+MIME 을 명시 → rag_api 가 HWP 등 확장자
+# 의존 포맷의 로더를 올바로 선택 (없으면 octet-stream+확장자없는 임시경로라 fallback).
+COPY rag-patches/patch_librechat_embed_mime.py /tmp/patch_librechat_embed_mime.py
+# temp 파일 rm 안 함 — 이 스테이지(runtime base)는 비-root(node) 로 돌아 COPY 한 root
+# 소유 /tmp 파일을 sticky /tmp 에서 못 지운다(EPERM). 다른 stage-2 패치들과 동일하게 잔존
+# 허용 (이미지 레이어 한정, 무해). hwp 패치의 rm 은 stage-1(root)이라 무관.
+RUN python3 /tmp/patch_librechat_embed_mime.py && \
+    grep -q 'contentType: file.mimetype' /app/api/server/services/Files/VectorDB/crud.js
+
+# 메모리(개인화) 처리 타임아웃 3s→30s (gemma-4-26b 추출이 3s 초과 → 메모리 미저장 방지).
+COPY rag-patches/patch_librechat_memory_timeout.js /tmp/patch_librechat_memory_timeout.js
+RUN node /tmp/patch_librechat_memory_timeout.js && \
+    grep -q 'KLOUDCHAT_MEMORY_TIMEOUT_PATCH' /app/api/server/controllers/agents/client.js
+
+# 저장된 에이전트도 채팅 Artifacts 토글(ephemeralAgent.artifacts)을 따르게 — artifact 은
+# 프롬프트가 아니라 사용자 토글로만 트리거 (routing/instructions.md trigger.artifact 제거 +
+# manage.sh agent artifacts 기본 '' 와 함께 동작).
+COPY rag-patches/patch_librechat_artifacts_toggle.js /tmp/patch_librechat_artifacts_toggle.js
+RUN node /tmp/patch_librechat_artifacts_toggle.js && \
+    grep -q 'KLOUDCHAT_ARTIFACTS_TOGGLE_PATCH' /app/api/server/services/Endpoints/agents/build.js
+
+# 제한 MCP(deep_research/export_deck/generate_video/paperbanana/youtube)는 비-ADMIN 이
+# 본인 agent 에 부착·사용 불가 + 빌더 'MCP 도구 추가' 목록에서 숨김. 관리자가 만든 공유
+# agent 의 실행엔 영향 없음(create/update/duplicate 인가 + getMCPTools 목록만 손댐).
+COPY rag-patches/patch_librechat_mcp_admin_only.js /tmp/patch_librechat_mcp_admin_only.js
+RUN node /tmp/patch_librechat_mcp_admin_only.js && \
+    grep -q 'KLOUDCHAT_MCP_ADMIN_ONLY' /app/api/server/controllers/agents/v1.js && \
+    grep -q 'KLOUDCHAT_MCP_ADMIN_ONLY' /app/api/server/controllers/mcp.js
+
+COPY --from=builder --chown=1000:1000 /src/client/dist /app/client/dist

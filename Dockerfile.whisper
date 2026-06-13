@@ -1,0 +1,31 @@
+# amd64 GPU 노드용 Whisper 컨테이너 (음성 전사 백엔드). arm64(GB10)는 install-whisper.sh
+# 가 systemd 로 설치한다 (aarch64 ctranslate2 휠이 CPU-only → int8) — 이 이미지는 amd64
+# CUDA 전용이다. faster-whisper(ctranslate2)는 GPU 추론에 cuBLAS+cuDNN 런타임을 요구하므로
+# cudnn-runtime base 를 쓴다.
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip ffmpeg ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# install-whisper.sh(systemd) 와 동일한 의존성 셋 — app.py 가 양쪽에서 동일하게 동작.
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir \
+      "faster-whisper>=1.0" "fastapi>=0.110" "uvicorn[standard]>=0.27" "python-multipart>=0.0.9"
+
+WORKDIR /app
+COPY whisper/app.py /app/app.py
+
+# weight 캐시는 호스트 볼륨(/var/lib/whisper)에 둔다 — 재빌드/재기동에도 ~3GB 재다운로드 회피.
+# DEVICE=auto → CUDA 가용 시 GPU. compute_type float16 은 모든 NVIDIA GPU(Maxwell+) 표준;
+# 저VRAM 필요 시 WHISPER_COMPUTE_TYPE=int8 로 override.
+ENV HF_HOME=/var/lib/whisper \
+    WHISPER_MODEL=large-v3 \
+    WHISPER_DEVICE=auto \
+    WHISPER_COMPUTE_TYPE=float16 \
+    WHISPER_PORT=9000
+EXPOSE 9000
+
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${WHISPER_PORT}"]

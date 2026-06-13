@@ -1,0 +1,118 @@
+# LiteLLM stack — 메인 docker-compose.yml 과 라이프사이클을 분리해 별도 노드에서
+# 띄운다 (메모리 분산). 메인 stack 입장에선 외부 OpenAI 호환 endpoint (.env 의
+# LITELLM_URL=http://<litellm-host>:8000) 다.
+#
+# 같은 노드에 두 stack 을 띄울 때는 메인 stack 컨테이너가 litellm DNS 를 못 찾는다
+# (compose project 가 달라 bridge 네트워크가 격리됨). 호스트 publish 포트(8000)
+# 경유로 통신하도록 .env 의 LITELLM_URL=http://host.docker.internal:8000 + 메인 stack
+# 의 librechat / rag_api / deep-research 에 extra_hosts (host-gateway) 가 필요하다
+# (docker-compose.yml 에 이미 박혀있음).
+
+# 메인 stack 의 orphan 경고 회피용 별도 project name.
+name: kloudchat-litellm
+
+services:
+  litellm-db:
+    container_name: litellm-db
+    image: postgres:16.13
+    restart: always
+    environment:
+      POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_DB: litellm
+    volumes:
+      - ./data/litellm/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kloudchat-litellm
+
+  litellm:
+    container_name: litellm
+    image: ${KLOUDCHAT_IMAGE_NS:-boanlab}/kloudchat-litellm:${KLOUDCHAT_IMAGE_TAG:-latest}
+    restart: always
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      # :ro — store_model_in_db:false 라 LiteLLM 은 config 를 읽기만 한다. rw 로 두면
+      # 컨테이너(root)가 파일을 rewrite 해 호스트 소유권이 root 로 넘어가고, 이후
+      # gen-litellm-config.sh 가 Permission denied 로 깨진다.
+      - ./litellm-config.yaml:/app/config.yaml:ro
+      - ./litellm-callbacks:/app/callbacks:ro
+    # LiteLLM uvicorn worker 수. 워커당 ~600MB RSS 점유한다. 동시 트래픽이 늘면 LITELLM_NUM_WORKERS 를 상향한다.
+    command:
+      [
+        "--config", "/app/config.yaml",
+        "--port", "8000",
+        "--num_workers", "${LITELLM_NUM_WORKERS:-4}",
+      ]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      DATABASE_URL: "postgres://${LITELLM_DB_USER:-litellm}:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm"
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LITELLM_LOG: ${LITELLM_LOG:-INFO}
+      # truncate_to_ctx callback 모드. 자세한 옵션은 callback docstring.
+      # - preserve_first (default): system + 첫 user 턴 + 마지막 user 보호, 중간 drop
+      # - drop_oldest: system + 마지막 user 만 보호, 오래된 것부터 drop
+      KC_TRUNCATE_MODE: ${KC_TRUNCATE_MODE:-preserve_first}
+      # 1 이면 drop 된 turn 을 chat 모델로 요약해 system 의 끝에
+      # <earlier_conversation_summary> 블록으로 합침. 추가 LLM 호출 비용 +
+      # summary-환각 risk 가 있어 opt-in. 호출 실패 시 자동으로
+      # 일반 notice 로 폴백.
+      KC_TRUNCATE_SUMMARIZE: ${KC_TRUNCATE_SUMMARIZE:-}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/liveliness')"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kloudchat-litellm
+
+  super-agent-shim:
+    # local/auto-route 가상 모델 백엔드. LiteLLM model_list 의 local/auto-route
+    # deployment 가 이 shim 의 /v1 으로 라우팅한다. 단일 stage: 모든 요청을 CHAT_MODEL
+    # 로 보내고 stream forward + post-process(artifact 루프차단/anti-repeat). 자세히는
+    # super-agent-shim/app.py.
+    container_name: super-agent-shim
+    image: ${KLOUDCHAT_IMAGE_NS:-boanlab}/kloudchat-super-agent-shim:${KLOUDCHAT_IMAGE_TAG:-latest}
+    restart: always
+    environment:
+      - LITELLM_URL=http://litellm:8000
+      - LITELLM_API_KEY=${LITELLM_MASTER_KEY}
+      # 단일 chat 모델 = gemma-4-26b(범용·vision·장문맥·아티팩트). chat 모델이 상시
+      # 레지던트라 별도 라우터 stage 없이 CHAT_MODEL 이 직접 tool-call 을 처리한다.
+      # 아티팩트 토글 ON 이면 shim 이 같은 CHAT(gemma) 경로에 concise/detox 아티팩트
+      # 디렉티브를 single-pass 로 적용한다 — 별도 coder 라우팅 없음.
+      - CHAT_MODEL=local/gemma-4-26b
+      # ARTIFACT_MODEL 을 채우면 아티팩트 토글 시 그 모델로 override 한다. 비우면
+      # CHAT_MODEL 이 아티팩트도 처리한다 (현 구성).
+      - ARTIFACT_MODEL=
+      # 난이도 동적 라우팅: 무거운 요청(심층 키워드 또는 user 입력 ≥MIN_CHARS)을 이
+      # 모델로 보낸다(휴리스틱). 비우면 off(항상 gemma). 아티팩트는 제외. 로컬모델
+      # 가격 0 이라 비용 동일, 트레이드오프는 122b 가 느린 것뿐.
+      - ROUTE_HEAVY_MODEL=local/qwen3.5:122b
+      - ROUTE_HEAVY_MIN_CHARS=4000
+      - CHAT_TIMEOUT_SEC=900
+      - LOG_LEVEL=INFO
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - kloudchat-litellm
+
+networks:
+  kloudchat-litellm:
+    driver: bridge

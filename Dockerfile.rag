@@ -1,0 +1,6 @@
+FROM registry.librechat.ai/danny-avila/librechat-rag-api-dev:latest
+
+RUN pip install --no-cache-dir pyhwp
+
+COPY rag-patches/patch_document_loader.py /tmp/patch_document_loader.py
+RUN python /tmp/patch_document_loader.py && rm /tmp/patch_document_loader.py

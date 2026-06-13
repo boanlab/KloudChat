@@ -1,0 +1,14 @@
+code-interpreter/
+mongodb/
+meilisearch/
+litellm/
+librechat/
+rag/
+searxng/
+
+.git/
+.gitignore
+
+__pycache__/
+*.log
+.env

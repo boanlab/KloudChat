@@ -1,0 +1,16 @@
+.env
+.claude/
+
+# Python 빌드 산출물
+__pycache__/
+*.pyc
+
+# Runtime configs — generated / edited per deployment. Templates committed
+# as *.example files; the live files stay untracked.
+litellm-config.yaml
+searxng/settings.yml
+scheduler/sites/kloudchat.yaml
+
+# 서비스 런타임 데이터 — 전부 data/ 아래로 통합 (mongodb/meilisearch/rag/litellm/
+# librechat logs·uploads·images·uv-cache/code-interpreter).
+data/

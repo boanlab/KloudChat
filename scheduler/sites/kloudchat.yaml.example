@@ -1,0 +1,91 @@
+# KloudChat 운영용 site config 템플릿. 사용 방법:
+#
+#   cp scheduler/sites/kloudchat.yaml.example scheduler/sites/kloudchat.yaml
+#   # → 편집해서 nodes / default_ssh_user / compose.working_dir 채우기
+#
+# 실제 kloudchat.yaml 은 .gitignore — 노드 IP·사용자명·홈 디렉토리 같은 배포
+# 고유 정보가 들어가므로 저장소에 커밋하지 않는다.
+#
+# scheduler 가 site config 를 찾는 순서:
+#   1. --site <path> CLI 인자
+#   2. $KLOUDCHAT_SCHEDULER_SITE 환경변수
+#   3. ~/.config/kloudchat-scheduler/site.yaml
+#   4. scheduler/sites/kloudchat.yaml  (위 cp 명령으로 생성한 사본)
+#   5. scheduler/sites/kloudchat.yaml.example  (이 파일 — 마지막 fallback)
+#
+# scripts/setup.sh scheduler 는 .env 의 NODES_VLLM 을 --hosts 로 덮어쓴다.
+# 그래서 setup 경로로 호출하면 여기 nodes: 값은 무시되고, 직접 `python -m
+# scheduler …` 로 부를 때만 fallback 으로 쓰인다.
+
+name: kloudchat-cluster
+
+# ssh user@host for each compute node. 키는 노드 식별자 (예: IPv4 마지막 옥텟,
+# 호스트명 첫 라벨, 또는 자유 문자열) — `--hosts` 와 litellm api_base 생성에 사용.
+# 두 가지 형식 지원:
+#
+#   (1) 문자열 — host 만 지정. 노드의 VRAM 은 nvidia-smi 로 자동 감지.
+#       "gpu-1": <your-user>@<gpu-node-1>
+#
+#   (2) dict — host + 옵션. usable_vram_gb 는 planner 가 인식할 VRAM 상한
+#       (physical 보다 작게 지정하면 차이만큼 OS / page cache / co-resident 서비스
+#       reserve 로 락됨). unified-memory 노드 (예: GB10 — vLLM 의 util fraction 이
+#       시스템 RAM 까지 over-claim 가능) 에 권장. discrete-VRAM 노드는 생략하여
+#       nvidia-smi 값 그대로 사용.
+#       "gpu-1":
+#         host: <your-user>@<gpu-node-1>
+#         usable_vram_gb: 96      # 예: 128 GB unified 중 96 GB 만 planner 가 사용
+#
+# usable_vram_gb 의 효과는 solver 의 sum(commitments) ≤ usable_vram_bytes 제약
+# 으로만 발현된다 — 개별 vLLM 의 --gpu-memory-utilization 은 catalog 값 그대로
+# 전달 (rescale 하면 weight + KV cache + activation 자리가 줄어 startup 시
+# _initialize_kv_caches OOM). 즉 cap 안에 들어가도록 solver 가 가벼운 config
+# 또는 더 적은 동거 workload 를 자동 선택한다.
+nodes:
+  "gpu-1": <your-user>@<gpu-node-1>
+  "gpu-2": <your-user>@<gpu-node-2>
+
+default_ssh_user: <your-user>
+
+# Per-workload deployment binding. Workload ID 는 catalog.WORKLOAD_TEMPLATES 와 일치.
+workloads:
+  # chat + 아티팩트 + image-brain — super-agent shim 의 CHAT_MODEL (single-pass).
+  chat-gemma4-26b:
+    container: vllm-gemma26
+    port: 8001
+    env_prefix: VLLM_GEMMA26
+    model_path: /var/lib/vllm/models/gemma-4-26b
+    litellm_model_name: local/gemma-4-26b
+
+  embed-bge-m3:
+    container: vllm-bge-m3
+    port: 8004
+    env_prefix: VLLM_BGE_M3
+    model_path: /var/lib/vllm/models/bge-m3
+    litellm_model_name: bge-m3
+
+  # Deep Research / Slide Studio 모델. Deep Research agent 와 LDR 백엔드는 plain
+  # local/qwen3.5:122b 를 쓴다 (현재 클러스터는 128K ctx 로 서빙).
+  chat-122b:
+    container: vllm-qwen122b
+    port: 8002
+    env_prefix: VLLM_QWEN122B
+    model_path: /var/lib/vllm/models/qwen3.5-122b-a10b
+    litellm_model_name: local/qwen3.5:122b
+
+  # 외부 코딩 클라이언트(Claude Code / Codex) 전용 — LiteLLM 에만 등록, LibreChat
+  # UI dropdown 에서 숨기고 자동 생성 에이전트에서도 제외.
+  coder-next:
+    container: vllm-codernext
+    port: 8003
+    env_prefix: VLLM_CODERNEXT
+    model_path: /var/lib/vllm/models/qwen3-coder-next
+    litellm_model_name: local/qwen3-coder-next
+
+  image-flux:
+    systemd_unit: comfyui.service
+    port: 8188   # ComfyUI HTTP
+
+compose:
+  working_dir: /home/<your-user>/KloudChat
+  vllm_compose_file: docker-compose.vllm.yml
+  env_file: .env                          # working_dir 상대 경로

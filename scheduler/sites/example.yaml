@@ -1,0 +1,67 @@
+# Starter template for deploying the scheduler to a *new* cluster.
+#
+# Quick start:
+#   1. Copy this file to ~/.config/kloudchat-scheduler/site.yaml
+#      (or pass it via `python -m scheduler --site /path/to/this.yaml ...`).
+#   2. Fill in your nodes' ssh targets, then your workload bindings.
+#   3. Run `python -m scheduler inventory` — every node should probe
+#      successfully and report its GPU class + currently-running workloads.
+#   4. Run `python -m scheduler plan` — the planner will tell you what to do.
+#
+# Workload IDs MUST match catalog.WORKLOAD_TEMPLATES. If your cluster runs
+# a different model family (Llama, Mistral, …) you also need to:
+#   (a) add a WorkloadTemplate in scheduler/catalog.py for the new archetype,
+#   (b) populate scheduler/sites/<your>.yaml with the binding.
+# See README.md §"Adding a workload" for the workflow.
+
+name: my-new-cluster
+
+# Two example compute nodes; replace with your own. The "id" is an
+# arbitrary short label the planner uses internally — use whatever's
+# memorable (rack number, hostname suffix, etc).
+nodes:
+  "01": ubuntu@gpu-01.internal
+  "02": ubuntu@gpu-02.internal
+
+# ssh user used when adding nodes via CLI without explicit user@.
+default_ssh_user: ubuntu
+
+# Per-workload binding. Comment out workloads you don't run.
+workloads:
+
+  chat-gemma4-26b:                            # chat + artifact + image-brain
+    container: vllm-gemma26
+    port: 8001
+    env_prefix: VLLM_GEMMA26
+    model_path: /models/gemma-4-26b
+    litellm_model_name: local/gemma-4-26b
+
+  embed-bge-m3:
+    container: vllm-bge-m3
+    port: 8004
+    env_prefix: VLLM_BGE_M3
+    model_path: /models/bge-m3
+    litellm_model_name: bge-m3
+
+  chat-122b:                                  # Deep Research / Slide Studio (long-ctx)
+    container: vllm-qwen122b
+    port: 8002
+    env_prefix: VLLM_QWEN122B
+    model_path: /models/qwen3.5-122b-a10b
+    litellm_model_name: local/qwen3.5:122b
+
+  coder-next:                                 # coding assist (litellm-only, hidden from UI)
+    container: vllm-codernext
+    port: 8003
+    env_prefix: VLLM_CODERNEXT
+    model_path: /models/qwen3-coder-next
+    litellm_model_name: local/qwen3-coder-next
+
+  image-flux:
+    systemd_unit: comfyui.service
+    port: 8188
+
+compose:
+  working_dir: /opt/cluster                 # where docker-compose.yml lives
+  vllm_compose_file: docker-compose.vllm.yml
+  env_file: .env

@@ -1,0 +1,5 @@
+# LiteLLM base + hanja (한자 → 한글 음 변환 사전).
+# sanitize_python_tag callback 에서 qwen 등 중국계 모델의 한자 leak 을 한글 음독으로 치환.
+FROM ghcr.io/berriai/litellm:v1.83.7-stable
+
+RUN pip install --no-cache-dir hanja==0.15.1

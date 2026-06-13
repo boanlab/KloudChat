@@ -1,0 +1,23 @@
+# Playwright python base — Chromium + system deps 가 사전 설치돼 있어 crawl4ai-setup 이
+# 필요로 하는 fonts/x11 등 apt 설치를 생략한다.
+FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY crawl4ai-shim/requirements.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
+
+# crawl4ai-setup 이 브라우저 바이너리 검증 + config 생성을 한다. Playwright 베이스라
+# /ms-playwright 에 이미 설치돼 있지만 setup 이 다운로드(또는 no-op) 를 시도하므로 그대로 둔다.
+RUN crawl4ai-setup || true
+
+COPY crawl4ai-shim/app.py /app/app.py
+
+EXPOSE 8080
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]

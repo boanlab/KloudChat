@@ -1,0 +1,182 @@
+model_list:
+  # >>> KLOUDCHAT_AUTOGEN_START
+  #
+  # 이 블록은 ./scripts/gen-litellm-config.sh 가 .env 의 vLLM backend URL csv 에서
+  # 자동 생성한다. 수동 편집 금지 — gen-litellm-config.sh 가 양쪽 마커 사이를 통째로
+  # 덮어쓴다.
+  #
+  # vLLM chat deployment 의 max_input_tokens 는 각 backend 의 /v1/models 에서
+  # max_model_len 을 직접 읽어 emit (scheduler 가 노드별로 다른 ctx 박는 경우
+  # 자동 반영). 디스커버리 실패 시 CTX_FALLBACK (scripts/gen-litellm-config.sh) 폴백.
+  #
+  # local/* chat deployment 는 model_info.supports_function_calling: true 를 달고
+  # emit 된다 — LibreChat agent 가 ReAct 텍스트 대신 native tool-call 을 실행한다.
+  #
+  # <<< KLOUDCHAT_AUTOGEN_END
+
+  # ────────────────────────────────────────────────────────────────────
+  # External image-gen (OpenRouter chat/completions + modalities=["image","text"]).
+  # comfyui-shim 의 EXTERNAL_IMAGE_ALIASES 가 이 model_name 들을 그대로 호출
+  # → LiteLLM 이 openrouter/<provider>/<model> 로 라우팅. cost 는 OpenRouter
+  # 의 response usage.cost 에서 LiteLLM 이 자동 산정 (per-image, token 무관).
+  # 사용자 귀속은 rag-patches/patch_librechat_sd_model.js 가 payload.user 로
+  # caller email 을 주입 → shim 이 LiteLLM user= 필드로 전달 → end_user 컬럼에
+  # 기록 → mcp/usage.py 의 my_usage 가 사용자별로 표시.
+  - model_name: nano-banana
+    litellm_params:
+      model: openrouter/google/gemini-2.5-flash-image
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: nano-banana-2
+    litellm_params:
+      model: openrouter/google/gemini-3.1-flash-image-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: gpt-image-2
+    litellm_params:
+      model: openrouter/openai/gpt-5.4-image-2
+      api_key: os.environ/OPENROUTER_API_KEY
+
+router_settings:
+  num_retries: 2
+  # 900s = 15분. Deep Research(qwen3.5:122b) 가 thinking 모델 + 느려서 LDR 다단계
+  # 호출 1건이 10분 초과할 수 있다 — per-call LLM timeout 을 넉넉히.
+  timeout: 900
+  # 같은 model_name 으로 등록된 deployment(=vLLM 노드 여러 대) 간 자동 LB.
+  # least-busy = 진행 중 요청 적은 노드 우선 (GPU 부하 분산에 자연).
+  routing_strategy: least-busy
+  # deployment 의 model_info.max_input_tokens 를 사전에 보고, 요청 토큰 수가
+  # 한도 초과면 해당 deployment 를 후보에서 제외 — cooldown / 503 회피.
+  # 같은 model_name 이 여러 노드 (서로 다른 max_model_len) 에 등록될 때 long
+  # prompt 를 자동으로 더 큰 ctx 노드로 라우팅한다.
+  enable_pre_call_checks: true
+  # 로컬 vLLM 노드 다운/과부하(에러·timeout·cooldown) 시 OR 동일모델로 자동 폴백.
+  # num_retries 소진 후 발동. 폴백 타깃은 AUTOGEN 의 OR fallback deployment.
+  # 이 블록은 AUTOGEN 마커 밖이라 gen-litellm-config.sh 가 재생성하지 않는 static 목록 —
+  # 해당 VLLM_*_URL 이 비면 source/target deployment 가 없어 그 줄은 no-op (해롭지 않음).
+  # 특히 coder-next 는 OR 직결 두뇌가 없어(vLLM 전용) 코더 노드 없을 땐 dead 줄.
+  fallbacks:
+    - {"local/gemma-4-26b": ["google/gemma-4-26b-a4b-it"]}
+    - {"local/qwen3.5:122b": ["qwen/qwen3.5-122b-a10b"]}
+    - {"local/qwen3-coder-next": ["qwen/qwen3-coder-next"]}
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  store_model_in_db: false
+  store_prompts_in_spend_logs: true
+  # Video Studio — OpenRouter Video API(Veo/Sora)를 LiteLLM 경유로(키/egress 중앙화 +
+  # per-user 과금). submit 은 cost_per_request 로 클립당 1회 과금(고정 추정) +
+  # x-litellm-end-user-id 헤더로 user 귀속, job(폴/다운로드)은 과금 0(경로 분리로 중복 과금 방지).
+  # submit 은 (모델 × 해상도 × 오디오 × 길이) 조합별 엔드포인트 — passthrough 는 동적 비용
+  # 불가라 path 별 고정 cost. cost_per_request = OR pricing_skus rate($/s) × 초. shim 이
+  # /orvideo/submit/<alias>/<res>/<a|na>/<dur> 로 라우팅. Veo 720p/1080p/4K·4|6|8초,
+  # Sora 720p/1080p·4|8|12|16|20초(오디오 항상 포함). OR pricing_skus 에서 생성.
+  pass_through_endpoints:
+    - { path: "/orvideo/submit/veo-lite/720p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.2 }
+    - { path: "/orvideo/submit/veo-lite/720p/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.3 }
+    - { path: "/orvideo/submit/veo-lite/720p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.4 }
+    - { path: "/orvideo/submit/veo-lite/720p/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.12 }
+    - { path: "/orvideo/submit/veo-lite/720p/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.18 }
+    - { path: "/orvideo/submit/veo-lite/720p/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.24 }
+    - { path: "/orvideo/submit/veo-lite/1080p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.32 }
+    - { path: "/orvideo/submit/veo-lite/1080p/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.48 }
+    - { path: "/orvideo/submit/veo-lite/1080p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.64 }
+    - { path: "/orvideo/submit/veo-lite/1080p/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.2 }
+    - { path: "/orvideo/submit/veo-lite/1080p/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.3 }
+    - { path: "/orvideo/submit/veo-lite/1080p/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.4 }
+    - { path: "/orvideo/submit/veo-fast/720p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.4 }
+    - { path: "/orvideo/submit/veo-fast/720p/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.6 }
+    - { path: "/orvideo/submit/veo-fast/720p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.8 }
+    - { path: "/orvideo/submit/veo-fast/720p/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.32 }
+    - { path: "/orvideo/submit/veo-fast/720p/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.48 }
+    - { path: "/orvideo/submit/veo-fast/720p/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.64 }
+    - { path: "/orvideo/submit/veo-fast/1080p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.48 }
+    - { path: "/orvideo/submit/veo-fast/1080p/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.72 }
+    - { path: "/orvideo/submit/veo-fast/1080p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.96 }
+    - { path: "/orvideo/submit/veo-fast/1080p/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.4 }
+    - { path: "/orvideo/submit/veo-fast/1080p/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.6 }
+    - { path: "/orvideo/submit/veo-fast/1080p/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.8 }
+    - { path: "/orvideo/submit/veo-fast/4k/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.2 }
+    - { path: "/orvideo/submit/veo-fast/4k/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.8 }
+    - { path: "/orvideo/submit/veo-fast/4k/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.4 }
+    - { path: "/orvideo/submit/veo-fast/4k/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.0 }
+    - { path: "/orvideo/submit/veo-fast/4k/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.5 }
+    - { path: "/orvideo/submit/veo-fast/4k/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.0 }
+    - { path: "/orvideo/submit/veo/1080p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.6 }
+    - { path: "/orvideo/submit/veo/1080p/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.4 }
+    - { path: "/orvideo/submit/veo/1080p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 3.2 }
+    - { path: "/orvideo/submit/veo/1080p/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 0.8 }
+    - { path: "/orvideo/submit/veo/1080p/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.2 }
+    - { path: "/orvideo/submit/veo/1080p/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.6 }
+    - { path: "/orvideo/submit/veo/4k/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.4 }
+    - { path: "/orvideo/submit/veo/4k/a/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 3.6 }
+    - { path: "/orvideo/submit/veo/4k/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 4.8 }
+    - { path: "/orvideo/submit/veo/4k/na/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.6 }
+    - { path: "/orvideo/submit/veo/4k/na/6", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.4 }
+    - { path: "/orvideo/submit/veo/4k/na/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 3.2 }
+    - { path: "/orvideo/submit/sora-2/720p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 1.2 }
+    - { path: "/orvideo/submit/sora-2/720p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.4 }
+    - { path: "/orvideo/submit/sora-2/720p/a/12", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 3.6 }
+    - { path: "/orvideo/submit/sora-2/720p/a/16", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 4.8 }
+    - { path: "/orvideo/submit/sora-2/720p/a/20", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 6.0 }
+    - { path: "/orvideo/submit/sora-2/1080p/a/4", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 2.0 }
+    - { path: "/orvideo/submit/sora-2/1080p/a/8", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 4.0 }
+    - { path: "/orvideo/submit/sora-2/1080p/a/12", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 6.0 }
+    - { path: "/orvideo/submit/sora-2/1080p/a/16", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 8.0 }
+    - { path: "/orvideo/submit/sora-2/1080p/a/20", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, forward_headers: false, cost_per_request: 10.0 }
+    - { path: "/orvideo/job", target: "https://openrouter.ai/api/v1/videos", headers: { Authorization: "Bearer os.environ/OPENROUTER_API_KEY" }, include_subpath: true, forward_headers: false }
+    # 로컬 미디어 명목 과금(OR 동급 50%) — shim 이 로컬 생성 후 호출. /billsink 로 흘려보내고
+    # cost_per_request 만 x-litellm-end-user-id user 에 귀속 기록. 이미지 $0.02/장, 비디오 $0.04/초.
+    - { path: "/localbill/image", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.02 }
+    - { path: "/localbill/video/1", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.04 }
+    - { path: "/localbill/video/2", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.08 }
+    - { path: "/localbill/video/3", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.12 }
+    - { path: "/localbill/video/4", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.16 }
+    - { path: "/localbill/video/5", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.2 }
+    - { path: "/localbill/video/6", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.24 }
+    - { path: "/localbill/video/7", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.28 }
+    - { path: "/localbill/video/8", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.32 }
+    - { path: "/localbill/video/9", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.36 }
+    - { path: "/localbill/video/10", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.4 }
+    - { path: "/localbill/video/11", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.44 }
+    - { path: "/localbill/video/12", target: "http://comfyui-shim:7860/billsink", headers: {}, forward_headers: false, cost_per_request: 0.48 }
+
+litellm_settings:
+  # /app/callbacks/ 에 마운트된 CustomLogger 모듈들. 순서 무관.
+  callbacks:
+    # 로컬 모델이 OpenAI tool_calls 대신 텍스트로 함수 호출을 leak 하는 경우
+    # (`<|python_tag|>{...}` / ```json 펜스 / 라벨 붙은 bare-JSON)를 tool_calls 로
+    # 재구성하고, qwen 계열의 CJK 한자 leak 을 한글 음독으로 치환한다.
+    - "callbacks.sanitize_python_tag.sanitizer_instance"
+    # local/super-agent 호출 시 caller user_id 를 extra_body.user 로 주입 — shim 이
+    # downstream end_user 태그로 propagate 해서 spend 가 default_user_id 가 아닌
+    # 실제 호출자에 귀속되게 한다.
+    - "callbacks.inject_super_agent_user.injector_instance"
+    # local/* (qwen) 모델의 input 이 deployment 의 max_input_tokens 초과 시
+    # graceful trim — librechat 의 summarization 이 꺼져 있어 (로컬 모델의 summary
+    # 환각 회피) ctx 초과 시 hard fail 하던 걸 보완. ctx 는 model_info.max_input_tokens
+    # 에서 동적 lookup. 모드는 KC_TRUNCATE_MODE 환경변수 (preserve_first 기본 — system
+    # + 첫 user 턴 + 마지막 user 보호, 중간 oldest-first drop / drop_oldest — 마지막
+    # user 만 보호). KC_TRUNCATE_SUMMARIZE=1 이면 drop 된 부분을 LLM 요약해 system 에
+    # 합침 (opt-in). 자세한 정책은 truncate_to_ctx.py docstring.
+    - "callbacks.truncate_to_ctx.truncator_instance"
+    # qwen3.5:122b(Deep Research 두뇌)의 reasoning_content(장황한 "Thinking Process"
+    # 사고 블록)를 제거 — content(최종 답)만 사용자에게. thinking 길이는 프롬프트로
+    # 제어 불가라 표시 단계에서 숨긴다.
+    - "callbacks.strip_reasoning.stripper_instance"
+  drop_params: true
+  drop_unsupported_params: true
+  request_timeout: 900   # 15분 — Deep Research 122b 느린 호출 대비 (router timeout 과 동일)
+  num_retries: 2
+  check_provider_endpoint: false
+  max_internal_user_budget: 25
+  internal_user_budget_duration: "1mo"
+  default_key_generate_params:
+    max_budget: 10
+    budget_duration: "1mo"
+  upperbound_key_generate_params:
+    max_budget: 9999
+    tpm_limit: 100000
+    rpm_limit: 500
+
+anthropic_proxy:
+  enabled: true
+  prefix: /

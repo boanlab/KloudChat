@@ -1,0 +1,47 @@
+# amd64 GPU 노드용 ComfyUI 컨테이너 (이미지/비디오 생성 백엔드). arm64(GB10)는
+# install-comfyui.sh 가 systemd venv 로 설치한다 — 이 이미지는 amd64 CUDA 전용이다.
+#
+# torch 는 cu128 휠(2.9.1)을 쓴다 — Blackwell(sm_120: PRO5000/PRO6000/RTX5090) 안정 +
+# Ada(sm_89: RTX4090)도 호환하는 단일 빌드. 모델 weight(flux fullset ~22GB)는 이미지에
+# 굽지 않고 호스트 볼륨(/var/lib/comfyui/models)으로 마운트한다 — 이미지는 코드+런타임만.
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+
+# build-arg 로 torch/ComfyUI 버전 고정 가능 (기본은 amd64 전 GPU 클래스 커버).
+ARG TORCH=2.9.1
+ARG TORCHVIS=0.24.1
+ARG TORCHAUD=2.9.1
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
+ARG COMFYUI_REF=master
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip git curl ca-certificates libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir --upgrade pip
+
+WORKDIR /app
+RUN git clone --depth 1 --branch "${COMFYUI_REF}" \
+      https://github.com/comfyanonymous/ComfyUI.git /app/ComfyUI
+
+RUN pip3 install --no-cache-dir --index-url "${TORCH_INDEX}" \
+      "torch==${TORCH}" "torchvision==${TORCHVIS}" "torchaudio==${TORCHAUD}"
+RUN pip3 install --no-cache-dir -r /app/ComfyUI/requirements.txt
+
+# custom nodes — install-comfyui.sh(systemd) 와 동일 셋: Manager / GGUF(flux-gguf) /
+# VideoHelperSuite(LTXV mp4 합성). LTXV 코어 노드는 ComfyUI master 에 내장.
+RUN set -eux; cd /app/ComfyUI/custom_nodes; \
+    git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
+      pip3 install --no-cache-dir -r ComfyUI-Manager/requirements.txt; \
+    git clone --depth 1 https://github.com/city96/ComfyUI-GGUF.git; \
+    git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
+      pip3 install --no-cache-dir -r ComfyUI-VideoHelperSuite/requirements.txt; \
+    pip3 install --no-cache-dir --upgrade gguf
+
+WORKDIR /app/ComfyUI
+ENV COMFYUI_PORT=8188
+EXPOSE 8188
+
+# --disable-dynamic-vram: 결정적 로딩 (systemd installer 와 동일 사유 — PRO/Blackwell 의
+# dynamic staging SIGTRAP / unified-memory 회계 noise 회피). models/output/user 는 볼륨 마운트.
+CMD ["sh", "-c", "exec python3 main.py --listen 0.0.0.0 --port ${COMFYUI_PORT} --disable-dynamic-vram"]

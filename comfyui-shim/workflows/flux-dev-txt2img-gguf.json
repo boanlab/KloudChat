@@ -1,0 +1,90 @@
+{
+  "1": {
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "UnetLoader"},
+    "inputs": {
+      "unet_name": "flux1-dev-Q8_0.gguf"
+    }
+  },
+  "2": {
+    "class_type": "DualCLIPLoader",
+    "_meta": {"title": "DualCLIPLoader"},
+    "inputs": {
+      "clip_name1": "t5xxl_fp16.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "VAELoader"},
+    "inputs": {
+      "vae_name": "flux-ae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "PositivePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "NegativePrompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "6": {
+    "class_type": "EmptyLatentImage",
+    "_meta": {"title": "EmptyLatent"},
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    }
+  },
+  "10": {
+    "class_type": "FluxGuidance",
+    "_meta": {"title": "FluxGuidance"},
+    "inputs": {
+      "conditioning": ["4", 0],
+      "guidance": 3.5
+    }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"},
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["10", 0],
+      "negative": ["5", 0],
+      "latent_image": ["6", 0],
+      "seed": 0,
+      "steps": 20,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAEDecode"},
+    "inputs": {
+      "samples": ["7", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": {"title": "SaveImage"},
+    "inputs": {
+      "images": ["8", 0],
+      "filename_prefix": "kloudchat-flux-dev"
+    }
+  }
+}
