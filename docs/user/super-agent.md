@@ -25,7 +25,7 @@
 | MCP | 하는 일 |
 |---|---|
 | `fetch_url` | URL 직독 + Markdown 변환 |
-| `smart_search` | 업로드 문서 **정밀 검색**(reformulation + hybrid + rerank) — 기본 `file_search` 가 놓치는 동의어·우회표현 회수 ([상세](../operator/smart-search.md)) |
+| `smart_search` | 업로드 문서 **정밀 검색**(reformulation + hybrid + rerank) — 기본 `file_search` 가 놓치는 동의어·우회표현 회수 ([상세](../operator/internal/smart-search.md)) |
 | `time` | 현재 시간 / 타임존 변환 |
 | `usage` | 본인 토큰 사용량 / 예산 조회 |
 | `youtube` | 유튜브 텍스트 추출 (자막 또는 whisper) — *whisper 백엔드(`WHISPER_URLS`)가 있는 배포에서만 부착; GPU 없는 OR 전용 배포엔 미노출* |

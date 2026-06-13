@@ -123,4 +123,4 @@ GB10 의 MoE chat 모델 동시성 스케일링(참고치):
 - continuous batching + PagedAttention 덕에 동시 사용자 8+ 환경에서 throughput 이 단일 요청 대비 크게 증가, TTFT 짧게 유지
 - PRO5000/PRO6000/GB10 같은 대용량 노드에서 효과 큼
 
-vLLM 운영 디테일은 [vLLM 튜닝](vllm-tuning.md).
+vLLM 운영 디테일은 [vLLM 튜닝](vllm-tuning.md). 전체 실측 throughput 매트릭스는 [internal/performance.md](internal/performance.md).

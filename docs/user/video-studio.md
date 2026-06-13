@@ -18,7 +18,7 @@
 | `generate_video` | 텍스트 → 비디오 잡 제출 후 ~2분 인라인 폴링. 완료되면 링크, 미완이면 **작업 ID** 반환 |
 | `check_video` | 작업 ID 로 결과 회수 ("영상 확인해줘") |
 
-> 렌더는 수십 초~수 분. 비동기라 오래 걸리면 "렌더링 중 + 작업 ID" 로 응답하고, 잠시 뒤 다시 물으면 `check_video` 로 회수한다. 운영/배포 내부는 [operator/video-studio.md](../operator/video-studio.md).
+> 렌더는 수십 초~수 분. 비동기라 오래 걸리면 "렌더링 중 + 작업 ID" 로 응답하고, 잠시 뒤 다시 물으면 `check_video` 로 회수한다. 운영/배포 내부는 [operator/internal/video-studio.md](../operator/internal/video-studio.md).
 
 ## 모델
 

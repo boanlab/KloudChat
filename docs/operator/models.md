@@ -92,7 +92,7 @@ vLLM 이 유일한 로컬 LLM 백엔드. 모델은 두 아키텍처에서 동작
 - **`gemma-4-26b`** — Super Agent 단일패스 챗+아티팩트 두뇌 + title / memory 모델
 - **Image/Video Studio 두뇌는 122b** — gemma 의 `generate_image` 툴콜 신뢰도가 낮아 이전
 
-자세히는 [Super Agent 동작](overview.md#컴포넌트별-역할).
+자세히는 [Super Agent 동작](internal/overview.md#컴포넌트별-역할).
 
 ### 로컬 → OR 폴백
 
@@ -168,7 +168,7 @@ VLLM_MODELS=( [gemma-4-26b]=nvidia/gemma-4-26b-A4B-it-NVFP4 [gemma-4-26b-awq]=cy
 - **ComfyUI** — 항상 native systemd (`./scripts/install-comfyui.sh` 가 `/opt/comfyui/{venv,app}` + `/var/lib/comfyui/output`)
 - **가중치 경로** — `/opt/comfyui/app/ComfyUI/models/`
 
-아키텍처 + 비교는 [tools.md](tools.md#이미지-백엔드), [overview.md](overview.md#요청-흐름--이미지-생성--편집), [gpu-memory.md](gpu-memory.md).
+아키텍처 + 비교는 [tools.md](tools.md#이미지-백엔드), [overview.md](internal/overview.md#요청-흐름--이미지-생성--편집), [gpu-memory.md](gpu-memory.md).
 
 ### 가중치
 

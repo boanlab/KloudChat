@@ -107,7 +107,7 @@ $EDITOR .env                # 키 채우기 (아래 표 참고)
 | Linux amd64 + NVIDIA GPU (RTX4090 / RTX5090 / PRO5000 / PRO6000) | 로컬 GPU + OR 폴백 |
 | Linux arm64 — GB10 | 로컬 GPU + OR 폴백 |
 
-자세한 아키텍처 다이어그램은 [docs/operator/overview.md](docs/operator/overview.md).
+자세한 아키텍처 다이어그램은 [docs/operator/internal/overview.md](docs/operator/internal/overview.md).
 
 ## 다음에 읽을 것
 
@@ -120,26 +120,14 @@ $EDITOR .env                # 키 채우기 (아래 표 참고)
 
 ### 운영자 관점 — 배포 · 운영 · 튜닝 ([docs/operator/](docs/operator/))
 
-**첫 셋업 / 막힐 때:**
-- [사전 요구사항](docs/operator/prerequisites.md) — 하드웨어/소프트웨어 체크리스트
-- [장애 대응](docs/operator/troubleshooting.md) — 컨테이너 죽음, vLLM cold-start fail, 로그 위치
-- [환경변수 레퍼런스](docs/operator/env-reference.md) — `.env` 변수 전체
+운영 문서 허브는 **[docs/operator/README.md](docs/operator/README.md)** — 처음 띄우는 순서, 전체 구조 한눈에, "어디서 뭘 바꾸나" 맵이 거기 있다.
 
-**멀티노드 / 모델 운영:**
-- [scheduler](docs/operator/scheduler.md) — 멀티노드 vLLM placement 자동화 (단일노드면 안 봐도 됨)
-- [모델 설정](docs/operator/models.md) — 카탈로그 + 라우팅 매트릭스 + 모델 추가법
-- [vLLM 튜닝](docs/operator/vllm-tuning.md) — ctx 옵션 + gpu_memory_utilization
-- [라우팅 정책](docs/operator/routing-policy.md) — instruction / 도구 / 모델 / shim / scheduler 의 변경 위치 한 곳 인덱스
+**자주 가는 곳:**
+- [사전 요구사항](docs/operator/prerequisites.md) · [장애 대응](docs/operator/troubleshooting.md) · [환경변수](docs/operator/env-reference.md)
+- [모델 설정](docs/operator/models.md) · [scheduler](docs/operator/scheduler.md) · [vLLM 튜닝](docs/operator/vllm-tuning.md) · [GPU 메모리](docs/operator/gpu-memory.md)
+- [도구](docs/operator/tools.md) · [라우팅 정책](docs/operator/routing-policy.md) · [브랜딩](docs/operator/branding.md)
 
-**참고:**
-- [도구](docs/operator/tools.md) — Built-in / MCP / image 백엔드 + agent 별 도구 매트릭스
-- [Slide Studio 내보내기](docs/operator/slide-export.md) — 덱 PDF/PPTX export 서비스 + export_deck MCP
-- [정밀 문서 검색](docs/operator/smart-search.md) — smart_search MCP (hybrid retrieve + rerank)
-- [Video Studio 운영](docs/operator/video-studio.md) — 동작 구조 · 과금 · 로컬 LTXV 설정
-- [아키텍처 상세](docs/operator/overview.md) — 컴포넌트별 동작 + 요청 흐름
-- [GPU 메모리 가이드](docs/operator/gpu-memory.md) — 로컬 GPU VRAM 점유
-- [성능 측정](docs/operator/performance.md) — 실측 throughput 매트릭스
-- [브랜딩 커스터마이징](docs/operator/branding.md) — 로고 / 파비콘 / PWA
+아키텍처 심화·벤치마크·컴포넌트 내부구조는 [docs/operator/internal/](docs/operator/internal/) 에 따로 모았다.
 
 > CLI 스크립트(`setup.sh` / `manage.sh` / `manage-vllm.sh` / `usage-priorities.sh` / `build-push-images.sh` / `tune-host.sh`)는 **인자 없이 실행하면 각자 도움말을 출력**한다.
 

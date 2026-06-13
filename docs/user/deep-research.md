@@ -25,7 +25,7 @@
 |---|---|
 | `deep_research` | ReAct 학술 사이드카 — arxiv/scholar/openalex/crossref/pubmed 다단계 sweep |
 | `fetch_url` | 인용 URL 직독으로 원문 검증 |
-| `smart_search` | 업로드 문서 정밀 검색(hybrid + rerank)으로 문헌 대조 ([상세](../operator/smart-search.md)) |
+| `smart_search` | 업로드 문서 정밀 검색(hybrid + rerank)으로 문헌 대조 ([상세](../operator/internal/smart-search.md)) |
 
 > ⏱ `deep_research` 는 다단계라 **5-15분** 걸린다. "지금 돌리면 몇 분 걸린다"고 미리 알아두자.
 

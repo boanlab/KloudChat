@@ -18,7 +18,7 @@
 
 | MCP | 하는 일 |
 |---|---|
-| `export_deck` | 완성된 HTML 덱을 **PDF / PPTX(16:9)** 로 내보내기 — `export_deck_pdf` / `export_deck_pptx`. headless chromium 캡처라 한글·그라데이션·SVG·표가 화면 그대로 보존 ([상세](../operator/slide-export.md)) |
+| `export_deck` | 완성된 HTML 덱을 **PDF / PPTX(16:9)** 로 내보내기 — `export_deck_pdf` / `export_deck_pptx`. headless chromium 캡처라 한글·그라데이션·SVG·표가 화면 그대로 보존 ([상세](../operator/internal/slide-export.md)) |
 
 > ⏱ 122b 가 덱 전체를 통째로 저작하므로 **~10분** 걸린다. 아티팩트 토글이 켜져 있어야 우측 패널에 렌더된다.
 
