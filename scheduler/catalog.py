@@ -100,8 +100,8 @@ _CHAT_GEMMA4_26B_CONFIGS: tuple[Config, ...] = (
     Config(name="32K@0.55", max_len=32 * 1024, gpu_util=0.55, kv_dtype=Dtype.FP8),
     Config(name="32K@0.60", max_len=32 * 1024, gpu_util=0.60, kv_dtype=Dtype.FP8),
     # 64K / 128K — bigger ctx for heavy agent / vision-OCR turns. discrete GPU
-    # (PRO6000 류) 는 0.80~0.90 까지 push 가능, GB10 unified memory 는
-    # ComfyUI/Whisper 와 동거 시 빠듯하므로 0.50 의 보수적 옵션도 둔다.
+    # (PRO6000 류) = 0.80~0.90 push 가능, GB10 unified memory = ComfyUI/Whisper
+    # 동거 시 빠듯 → 0.50 보수적 옵션도 병치.
     Config(name="64K@0.60", max_len=64 * 1024, gpu_util=0.60, kv_dtype=Dtype.FP8),
     Config(name="64K@0.70", max_len=64 * 1024, gpu_util=0.70, kv_dtype=Dtype.FP8),
     Config(name="128K@0.50", max_len=128 * 1024, gpu_util=0.50, kv_dtype=Dtype.FP8),
@@ -116,11 +116,10 @@ _EMBED_CONFIGS: tuple[Config, ...] = (
 # vLLM chat-122b (Deep Research, served as plain local/qwen3.5:122b). NVFP4
 # weights ~78 GiB — needs a high-VRAM card (PRO6000 96G) at tp=1, or tp=2 to span
 # two 48G cards. Hybrid-Mamba, so every config carries the feasible max_num_seqs.
-# 128K floor: LDR(deep-research)이 다단계로 컨텍스트를 누적해 ≥128K 가 필요하고,
-# deep-research FEATURE 제약도 "chat-122b 가 ≥128K effective context 를 admit" 을
-# 요구한다(위 FEATURES 참조). 64K 면 truncate_to_ctx 가 누적 컨텍스트를 잘라 리서치가
-# 망가지므로 64K config 는 두지 않는다. KV 풀은 VRAM 으로 결정되므로(max_len 무관)
-# 128K 라고 동시성이 줄지 않는다.
+# 128K floor: LDR(deep-research) 다단계 컨텍스트 누적 → ≥128K 필요, deep-research
+# FEATURE 제약도 "chat-122b 가 ≥128K effective context admit" 요구 (위 FEATURES 참조).
+# 64K 시 truncate_to_ctx 가 누적 컨텍스트 절단 → 리서치 손상 → 64K config 미배치.
+# KV 풀은 VRAM 으로 결정 (max_len 무관) → 128K 라도 동시성 불변.
 _CHAT_122B_CONFIGS: tuple[Config, ...] = (
     Config(name="128K@0.85", max_len=128 * 1024, gpu_util=0.85, kv_dtype=Dtype.FP8, max_num_seqs=_MNS_122B),
     Config(name="128K@0.90", max_len=128 * 1024, gpu_util=0.90, kv_dtype=Dtype.FP8, max_num_seqs=_MNS_122B),
@@ -140,15 +139,15 @@ _CODERNEXT_CONFIGS: tuple[Config, ...] = (
     Config(name="16K@0.85", max_len=16 * 1024, gpu_util=0.85, kv_dtype=Dtype.FP8),
 )
 
-# ComfyUI 는 image(FLUX)와 video(LTXV)를 같은 systemd 서비스 하나로 서빙한다 — 워크로드
-# 도 하나(image-flux)이고 두 capability(image/video feature)가 이걸 공유한다.
+# ComfyUI = image(FLUX) + video(LTXV) 를 같은 systemd 서비스 하나로 서빙 — 워크로드도
+# 하나(image-flux), 두 capability(image/video feature) 가 공유.
 # vram_required (admission floor) 30 GiB = 더 큰 단일 워크플로의 peak. ComfyUI 는
-# --normalvram 으로 모델을 RAM 에 offload 했다가 요청 시 로드하고 큐는 직렬이라, 한 번에
-# 한 모델셋만 상주한다 → peak = max(image ~30G[FLUX Q8 12 + T5-XXL 9 + CLIP/VAE/latent],
-# video ~20G[LTXV 6 + 공유 T5-XXL 9 + latent]) = image 쪽. 따라서 video 를 더해도 reserve
-# 는 동일. 가중치+인코더 몫까지 포함해야 scheduler 가 ComfyUI 를 vLLM-heavy 노드에
-# packing 하지 않아 GPU 경합을 피한다. comfyui-shim 의 런타임 admission(3–10 GiB,
-# 단일 in-flight 워킹셋)과는 별개의 long-lived reserve.
+# --normalvram 으로 모델 RAM offload → 요청 시 로드, 큐 직렬 → 한 번에 한 모델셋만 상주
+# → peak = max(image ~30G[FLUX Q8 12 + T5-XXL 9 + CLIP/VAE/latent], video ~20G[LTXV 6 +
+# 공유 T5-XXL 9 + latent]) = image 쪽. 따라서 video 추가해도 reserve 동일. 가중치+인코더
+# 몫까지 포함해야 scheduler 가 ComfyUI 를 vLLM-heavy 노드에 packing 안 함 → GPU 경합 회피.
+# comfyui-shim 런타임 admission(3–10 GiB, 단일 in-flight 워킹셋)과는 별개의 long-lived
+# reserve.
 _COMFYUI_CONFIGS: tuple[Config, ...] = (
     Config(name="image+video", vram_required=30 * GB),
 )
@@ -174,8 +173,8 @@ WORKLOAD_TEMPLATES: tuple[WorkloadTemplate, ...] = (
         kind=WorkloadKind.VLLM,
         model_id="BAAI/bge-m3",
         min_replicas=1,
-        # 단일 인스턴스: RAG 호출은 짧은 forward pass 라 한 노드에서 16 concurrent
-        # 까지 충분. 두 인스턴스는 메모리 18 GiB × 2 만 잡고 다른 워크로드와 충돌.
+        # 단일 인스턴스: RAG 호출 = 짧은 forward pass → 한 노드 16 concurrent 까지 충분.
+        # 두 인스턴스는 메모리 18 GiB × 2 만 점유 + 다른 워크로드와 충돌.
         max_replicas=1,
         expected_concurrent_sessions=16,
         configs=_EMBED_CONFIGS,
@@ -186,8 +185,8 @@ WORKLOAD_TEMPLATES: tuple[WorkloadTemplate, ...] = (
         kind=WorkloadKind.VLLM,
         model_id="Qwen/Qwen3.5-122B-A10B-NVFP4",
         min_replicas=1,
-        # 단일 인스턴스: Deep Research 전용 long-ctx 모델이라 일반 chat 만큼
-        # 트래픽이 많지 않고, 78 GiB 라 한 노드에 하나만 띄운다.
+        # 단일 인스턴스: Deep Research 전용 long-ctx 모델 → 일반 chat 만큼 트래픽 적음,
+        # 78 GiB → 한 노드에 하나만 배치.
         max_replicas=1,
         expected_concurrent_sessions=2,
         configs=_CHAT_122B_CONFIGS,
@@ -199,14 +198,14 @@ WORKLOAD_TEMPLATES: tuple[WorkloadTemplate, ...] = (
         model_id="Qwen/Qwen3-Coder-Next-FP8",
         min_replicas=1,
         # 단일 인스턴스: 외부 코딩 클라이언트(Claude Code / Codex) 전용. LiteLLM 에만
-        # 등록되고 LibreChat UI / 자동 생성 에이전트에서는 제외된다.
+        # 등록 + LibreChat UI / 자동 생성 에이전트에서 제외.
         max_replicas=1,
         expected_concurrent_sessions=4,
         configs=_CODERNEXT_CONFIGS,
         weight_bytes=W_CODERNEXT_FP8,
     ),
     # ComfyUI 서비스 하나 — image(FLUX) + video(LTXV) 둘 다 서빙. image/video feature
-    # 가 이 워크로드를 공유하고, vram_required 가 둘의 합산 캐시 peak 를 reserve.
+    # 가 이 워크로드 공유, vram_required 가 둘의 합산 캐시 peak reserve.
     WorkloadTemplate(
         id="image-flux",
         kind=WorkloadKind.COMFYUI,
@@ -223,8 +222,8 @@ WORKLOAD_TEMPLATES: tuple[WorkloadTemplate, ...] = (
 # Features
 # ──────────────────────────────────────────────────────────────────────
 
-# "deep-research" 는 별개 워크로드가 아니라 chat-122b 가 충분한 effective context
-# 를 제공할 수 있어야 켜지는 *capability*. 학술적 형식화는 docs/ALGORITHM.md §4.3.
+# "deep-research" = 별개 워크로드 아님 → chat-122b 가 충분한 effective context 제공
+# 가능 시 켜지는 *capability*. 학술적 형식화는 docs/ALGORITHM.md §4.3.
 FEATURES: dict[str, Feature] = {
     # ────────────────────────────────────────────────────────────────────
     # GPU-bound features — these drive placement decisions.
@@ -249,17 +248,17 @@ FEATURES: dict[str, Feature] = {
     # Identical placement constraint as the builtin deep-research feature
     # — both surface long-context demand on the same chat-122b deployment.
     # 128K = 현 GB10 클러스터의 122b 운영 지점 (gpu_util 0.85 에서 128K 서빙).
-    # LDR 이 검색 결과를 다단계로 누적해 ≥128K 가 필요하다 — 64K 면 truncate_to_ctx
-    # 가 누적 컨텍스트를 잘라 리서치가 망가진다. solver 가 128K admit config 만
-    # 고르도록 강제 (catalog 의 chat-122b config 는 전부 128K).
+    # LDR 검색 결과 다단계 누적 → ≥128K 필요 — 64K 시 truncate_to_ctx 가 누적
+    # 컨텍스트 절단 → 리서치 손상. solver 가 128K admit config 만 고르도록 강제
+    # (catalog 의 chat-122b config 는 전부 128K).
     "deep-research": Feature("deep-research", requires_workload="chat-122b",
                              min_effective_len=128 * 1024),
     "mcp-deep-research": Feature("mcp-deep-research", requires_workload="chat-122b",
                                  min_effective_len=128 * 1024),
     # ComfyUI image generation (FLUX-schnell Q8 GGUF).
     "image":         Feature("image",         requires_workload="image-flux"),
-    # ComfyUI text-to-video (LTXV) — image 와 같은 ComfyUI 서비스(image-flux 워크로드)를
-    # 공유한다. 별도 워크로드가 아니라 같은 노드의 같은 서비스가 모델만 바꿔 서빙.
+    # ComfyUI text-to-video (LTXV) — image 와 같은 ComfyUI 서비스(image-flux 워크로드)
+    # 공유. 별도 워크로드 아님 → 같은 노드의 같은 서비스가 모델만 교체해 서빙.
     "video":         Feature("video",         requires_workload="image-flux"),
     # Artifact generation (code / slide / webpage). Super Agent runs single-pass
     # on the chat model — the shim applies the concise/detox artifact directive
@@ -295,8 +294,8 @@ DEFAULT_PRIORITIES: tuple[str, ...] = (
     "rag",                # file upload is heavily used
     "agents-chain",       # multi-step agent runs
     "artifacts",          # code/slide/webpage gen → same gemma chat path (heavily used)
-    "image",              # ComfyUI 이미지 생성 (video 도 같은 image-flux 워크로드를
-                          # 공유 — image 가 자리잡으면 video 도 함께. 별도 rank 불필요)
+    "image",              # ComfyUI 이미지 생성 (video 도 같은 image-flux 워크로드 공유
+                          # — image 배치 시 video 동반. 별도 rank 불필요)
     "deep-research",      # heavy but valued → chat-122b
     "vision-ocr",
     "coding",             # external coding clients → coder-next (litellm-only)

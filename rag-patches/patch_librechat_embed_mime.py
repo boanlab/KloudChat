@@ -1,20 +1,20 @@
-"""LibreChat 의 RAG 업로드(uploadVectors) 가 rag_api /embed 로 파일을 보낼 때
-원본 파일명과 MIME 타입을 명시하도록 패치.
+"""LibreChat RAG 업로드(uploadVectors) → rag_api /embed 전송 시 원본 파일명·MIME
+타입 명시 패치.
 
 문제:
-  base 의 VectorDB/crud.js 는 `formData.append('file', fs.createReadStream(file.path))`
-  로만 보낸다. file.path 는 multer 임시 경로(확장자 없는 해시) 라 multipart 의 filename
-  에 확장자가 없고, content-type 은 form-data 기본값 application/octet-stream 이 된다.
-  rag_api 의 get_loader(filename, content_type, ...) 는 확장자도 MIME 도 못 맞춰
-  HWP(및 기타 확장자 의존 포맷) 분기를 놓치고 TextLoader 로 fallback → OLE 이진을
-  그대로 임베딩해 검색 품질이 깨진다 (embedded 는 되지만 내용이 쓰레기).
+  base VectorDB/crud.js = `formData.append('file', fs.createReadStream(file.path))`
+  로만 전송. file.path = multer 임시 경로(확장자 없는 해시) → multipart filename 에
+  확장자 없음, content-type = form-data 기본값 application/octet-stream.
+  rag_api get_loader(filename, content_type, ...) 가 확장자·MIME 둘 다 못 맞춰
+  HWP(및 기타 확장자 의존 포맷) 분기 누락 → TextLoader fallback → OLE 이진 그대로
+  임베딩 → 검색 품질 깨짐 (embedded 는 되지만 내용 쓰레기).
 
 수정:
-  3번째 인자로 {filename: file.originalname, contentType: file.mimetype} 을 넘겨
-  rag_api 가 확장자/ MIME 으로 올바른 로더(HWP→hwp5txt 등) 를 선택하게 한다.
+  3번째 인자 {filename: file.originalname, contentType: file.mimetype} 전달 →
+  rag_api 가 확장자·MIME 으로 올바른 로더(HWP→hwp5txt 등) 선택.
 
-Dockerfile.librechat 빌드 단계에서 1회 실행. 멱등(이미 패치면 skip).
-base 구조가 바뀌어 패턴이 안 맞으면 명시적 실패.
+Dockerfile.librechat 빌드 단계 1회 실행. 멱등(이미 패치면 skip).
+base 구조 변경으로 패턴 불일치 시 명시적 실패.
 """
 
 import sys

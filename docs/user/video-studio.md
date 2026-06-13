@@ -69,7 +69,7 @@ Video Studio
 - 외부 egress 없음. 사용량 가시화 위해 shim 의 `_bill_local` 이 생성 완료 후 LiteLLM passthrough `/localbill/video/<초>` 로 1회 과금.
   - `cost_per_request = 0.04 × 초`(**OR 동급 50%**), `x-litellm-end-user-id` 로 귀속.
   - best-effort — 실패해도 생성물엔 영향 없음.
-- 이 spend 는 `mcp/usage.py` my_usage 와 `usage-priorities.sh` 의 **Video Studio** 행에 합산([scheduler.md](scheduler.md#실사용-기반-우선순위-usage-prioritiessh)).
+- 이 spend 는 `mcp/usage.py` my_usage 와 `usage-priorities.sh` 의 **Video Studio** 행에 합산([scheduler.md](../operator/scheduler.md#실사용-기반-우선순위-usage-prioritiessh)).
 
 ## 로컬 LTX-Video 설정
 

@@ -14,8 +14,8 @@ Trailing-garbage shapes stripped:
        thinking-channel markers into content on multi-turn tool responses —
        no --reasoning-parser configured; tokens arrive mangled, stripped wherever seen)
 
-For CJK Han characters mixed into Korean output (qwen 계열에서 흔함), code-fence
-밖의 한자를 한글 음독으로 치환 (例: 大韓民國 → 대한민국). fence 안은 보존.
+For CJK Han characters mixed into Korean output (qwen 계열 빈발), code-fence
+밖 한자를 한글 음독으로 치환 (例: 大韓民國 → 대한민국). fence 안은 보존.
 
 All sanitization happens in two CustomLogger hooks — `async_post_call_success_hook`
 for non-streaming, `async_post_call_streaming_iterator_hook` for streaming. The
@@ -38,21 +38,21 @@ from typing import Any, AsyncGenerator
 
 from litellm.integrations.custom_logger import CustomLogger
 
-# 한자 → 한글 음 변환. qwen 등 중국계 모델이 한국어 응답 중간에 한자를 섞는 leak 을
+# 한자 → 한글 음 변환. qwen 등 중국계 모델이 한국어 응답 중간에 섞는 한자 leak 을
 # 자연스러운 음독으로 대체 ("大韓民國" → "대한민국"). 단순 제거 시 문장 깨짐 회피.
 try:
     import hanja as _hanja
-except Exception:  # pragma: no cover — 사전 install 안 된 환경 대비
+except Exception:  # pragma: no cover — 사전 미설치 환경 대비
     _hanja = None
 
 # CJK Unified Ideographs (Basic, Extension A, Compatibility) 단일 매치.
-# 코드 fence 안은 보존하기 위해 fence-aware 헬퍼에서 segment 단위로 호출.
+# 코드 fence 안 보존 위해 fence-aware 헬퍼에서 segment 단위 호출.
 CJK_HAS_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 FENCE_SPLIT_RE = re.compile(r"(```[\s\S]*?```)")
 
 
 def _han_to_kor(text: str) -> str:
-    """code fence 밖의 한자만 한글 음독으로 변환. fence 안은 그대로 유지."""
+    """code fence 밖 한자만 한글 음독으로 변환. fence 안은 그대로 유지."""
     if not text or _hanja is None or not CJK_HAS_RE.search(text):
         return text
     parts = FENCE_SPLIT_RE.split(text)
@@ -62,9 +62,9 @@ def _han_to_kor(text: str) -> str:
     return "".join(parts)
 
 
-# 사용자가 *번역 대상 언어로 중국어/일본어/한문* 등을 명시한 경우, han→kor 자동 변환을
-# skip 한다 — 모델이 leak 한 한자가 아니라 *의도된 target language 출력* 이라.
-# trigger 가 잡히면 PUA/turn-trailer/tool-call leak 처리는 여전히 적용, han 변환만 우회.
+# 사용자가 *번역 대상 언어로 중국어/일본어/한문* 등을 명시한 경우, han→kor 자동 변환
+# skip — 모델 leak 한자가 아니라 *의도된 target language 출력* 이므로.
+# trigger 적중 시 PUA/turn-trailer/tool-call leak 처리는 여전히 적용, han 변환만 우회.
 _CJK_TARGET_TRIGGER_RE = re.compile(
     r"중국어|중문|한자|한문|일본어|일문|히라가나|가타카나|kanji|hanja|hanzi|"
     r"\b(?:simplified|traditional)\s+chinese\b|"
@@ -76,8 +76,8 @@ _CJK_TARGET_TRIGGER_RE = re.compile(
 
 
 def _user_requested_cjk_target(data: Any) -> bool:
-    """request body 의 user/system messages 에서 *결과를 한자/일본어 등 CJK 로 내달라*
-    는 의도가 명시됐는지 추론. messages 가 missing 인 경우 False (= 변환 적용)."""
+    """request body 의 user/system messages 에서 *결과를 한자/일본어 등 CJK 로 출력*
+    의도 명시 여부 추론. messages missing 시 False (= 변환 적용)."""
     msgs = (data or {}).get("messages") if isinstance(data, dict) else None
     if not msgs:
         return False
@@ -99,7 +99,7 @@ def _user_requested_cjk_target(data: Any) -> bool:
 
 def _filter_cjk(chunk: Any, skip: bool = False) -> Any:
     """streaming chunk in-place mutate: delta.content 의 한자만 한글로.
-    skip=True 면 변환 안 함 (사용자가 CJK target 명시했을 때)."""
+    skip=True 시 변환 안 함 (사용자가 CJK target 명시 시)."""
     if skip:
         return chunk
     if getattr(chunk, "choices", None):
@@ -134,8 +134,8 @@ TURN_PARTIAL_RE = re.compile(
 )
 TURN_START_RE = re.compile(r"\s*turn(\{|$)", re.DOTALL)
 
-# 'turn' prefix 없이 `{search}{0}`, `{youtube}{0}` 같은 brace-pair 만 단독 leak 되는 변형.
-# tool 이름이 들어가는 첫 brace + 인덱스(또는 빈 brace) 페어가 1회 이상.
+# 'turn' prefix 없이 `{search}{0}`, `{youtube}{0}` 같은 brace-pair 단독 leak 변형.
+# tool 이름 포함 첫 brace + 인덱스(또는 빈 brace) 페어 1회 이상.
 NAKED_TOOL_GLOBAL_RE = re.compile(
     r"\s*\{(?:search|youtube|tool|browse|fetch)\}(?:\{[^}]*\})+\.?",
     re.DOTALL,
@@ -371,8 +371,8 @@ class PythonTagSanitizer(CustomLogger):
                     )
                 stripped = harmonized
                 # 1a2. 본문 맨 앞 공백/빈줄 제거 — 122b 등 thinking 모델이 reasoning
-                #      분리 후 본문 앞에 \n\n\n 을 남기는 경우. 정상 응답은 공백으로
-                #      시작하지 않으므로 안전(아티팩트 :::, 코드 펜스도 비공백).
+                #      분리 후 본문 앞에 \n\n\n 잔류하는 경우. 정상 응답은 비공백
+                #      시작이므로 안전(아티팩트 :::, 코드 펜스도 비공백).
                 stripped = stripped.lstrip()
                 # 1b. 한자 → 한글 음독 (code fence 보존). 사용자가 CJK target 명시 시 skip.
                 if not cjk_target:
@@ -422,10 +422,10 @@ class PythonTagSanitizer(CustomLogger):
         pua_seen = False
 
         # Naked turn-trailer state machine. Llama 가 `turn{N}{<tool>}{M}` 를
-        # 평문 ASCII 로 leak 하는 경우, 패턴이 여러 chunk 에 걸쳐 split 돼서 들어옴
+        # 평문 ASCII 로 leak 하는 경우, 패턴이 여러 chunk 에 걸쳐 split 유입
         # (예: "turn" → "{0}" → "{search}" → "{0}"). 'turn' chunk 발견 시 hold 모드
-        # 진입 → 후속 chunk 누적해서 패턴 완성되면 모든 hold 된 chunk content 소거,
-        # 매치 안 되면 (다른 합법 텍스트로 이어지면) 그대로 release.
+        # 진입 → 후속 chunk 누적, 패턴 완성 시 hold 된 chunk content 전부 소거,
+        # 미매치 시 (다른 합법 텍스트로 이어지면) 그대로 release.
         turn_hold = False
         turn_buf = ""
         turn_held: list[Any] = []

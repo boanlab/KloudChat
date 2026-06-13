@@ -144,8 +144,8 @@ def test_gemma_fits_long_ctx_on_48g():
 
 
 def test_tp2_coder_on_2gpu_node():
-    """H4: coder-next (75G) fits tp=2 on a 2×48G node, not tp=1."""
-    print("coder-next TP=2 on 2-GPU node (H4):")
+    """coder-next (75G) fits tp=2 on a 2×48G node, not tp=1."""
+    print("coder-next TP=2 on 2-GPU node:")
     one = _node("p5x1", "pro5000", 48)              # gpu_count default 1
     two = NodeSpec(node_id="p5x2", hostname="p5x2",
                    gpu_class="pro5000",
@@ -168,9 +168,9 @@ def test_tp2_coder_on_2gpu_node():
 
 
 def test_catalog_builds_with_measured_weights():
-    """H2: build_catalog (no site → cache-only) still wires weight overrides.
+    """build_catalog (no site → cache-only) still wires weight overrides.
     We can't probe here, so just assert the template weights are set."""
-    print("catalog measured-weight plumbing (H2):")
+    print("catalog measured-weight plumbing:")
     from scheduler import catalog
     by_id = {t.id: t for t in catalog.WORKLOAD_TEMPLATES}
     ok = check("chat-gemma4-26b weight override set",

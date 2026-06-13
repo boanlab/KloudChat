@@ -15,7 +15,7 @@
   - `image`·`video` feature 가 공유, 30 GiB reserve 로 vLLM-heavy 노드 packing 차단
   - ComfyUI 는 모델 스왑(직렬 큐) → reserve 는 더 큰 단일 워크플로 peak(=이미지) 기준
 - **Whisper** — 전 whisper 노드에 설치 + shim LB 서비스라 "단일 노드 배치"가 아님
-  - **running 노드마다 co-tenant reserve**(~3 GiB)로 헤드룸 확보 ([memory_model.node_co_resident_reserve](../scheduler/memory_model.py))
+  - **running 노드마다 co-tenant reserve**(~3 GiB)로 헤드룸 확보 ([memory_model.node_co_resident_reserve](../../scheduler/memory_model.py))
 
 vLLM 노드 1개 + 모델 1개면 `.env` 의 `VLLM_*_URL` + `VLLM_*_GPU_UTIL` 정적 설정으로 충분 — scheduler 우회.
 

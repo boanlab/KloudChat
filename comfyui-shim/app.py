@@ -56,15 +56,15 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 def _parse_backends() -> list[str]:
     """COMFYUI_URLS — comma-separated ComfyUI backend URLs. 비어 있으면 [] (로컬
-    ComfyUI 없는 GPU-less/OR 전용 배포). 외부 OR 이미지/비디오 라우팅은 그대로
-    동작하고, 로컬 모델(flux/ltxv) 요청만 per-request 503 으로 거부한다."""
+    ComfyUI 없는 GPU-less/OR 전용 배포). 외부 OR 이미지/비디오 라우팅 = 정상
+    동작, 로컬 모델(flux/ltxv) 요청만 per-request 503 거부."""
     raw = os.getenv("COMFYUI_URLS", "")
     return [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
 
 
 BACKENDS: list[str] = _parse_backends()
 WORKFLOWS_DIR = Path(__file__).parent / "workflows"
-# 로컬 ComfyUI 없으면 기본값을 최저가 외부 OR 이미지로 — "모델 미지정" 요청도 동작.
+# 로컬 ComfyUI 없으면 기본값 = 최저가 외부 OR 이미지 — "모델 미지정" 요청도 동작.
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL") or ("flux-schnell" if BACKENDS else "nano-banana")
 POLL_INTERVAL_SEC = float(os.getenv("POLL_INTERVAL_SEC", "0.5"))
 POLL_TIMEOUT_SEC = float(os.getenv("POLL_TIMEOUT_SEC", "1800"))
@@ -98,26 +98,26 @@ ALIAS_TO_CANONICAL: dict[str, str] = {
 }
 
 # 비디오 생성 alias (Video Studio). 이미지(A1111 /txt2img)와 별개 경로 — /video/submit
-# 이 처리하고 generate_video MCP 가 호출한다. loader-kind 가 "checkpoint" 라 디스커버리는
-# CheckpointLoaderSimple.ckpt_name 풀에서 매칭(이미지의 "unet" 와 다름). LTXV 체크포인트는
-# DiT+VAE 만 담고, T5 텍스트 인코더는 워크플로가 clip/t5xxl 로 별도 로드한다.
+# 처리, generate_video MCP 가 호출. loader-kind = "checkpoint" 라 디스커버리는
+# CheckpointLoaderSimple.ckpt_name 풀에서 매칭(이미지의 "unet" 와 다름). LTXV 체크포인트 =
+# DiT+VAE 만, T5 텍스트 인코더는 워크플로가 clip/t5xxl 로 별도 로드.
 VIDEO_ALIAS_VARIANTS: dict[str, list[tuple[str, str, str]]] = {
     "ltx-video": [
         ("checkpoint", "ltx-video-2b-v0.9.5.safetensors", "ltx-video-t2v.json"),
     ],
 }
 
-# 디스커버리/라우팅이 이미지+비디오 alias 를 함께 본다. 각 variant 의 첫 원소(loader-kind)로
-# 어느 object_info 풀(unet vs checkpoint)에서 파일 존재를 확인할지 결정.
+# 디스커버리/라우팅 = 이미지+비디오 alias 함께. 각 variant 의 첫 원소(loader-kind)로
+# 어느 object_info 풀(unet vs checkpoint)에서 파일 존재 확인할지 결정.
 ALL_VARIANTS: dict[str, list[tuple[str, str, str]]] = {
     **COMFYUI_ALIAS_VARIANTS,
     **VIDEO_ALIAS_VARIANTS,
 }
 
-# 외부 image-gen alias → LiteLLM model_name. 호출은 LiteLLM 의 chat/completions
-# 에 `modalities=["image","text"]` 로 보내고 응답의 message.images[0].image_url
-# 의 data URL 을 strip 해서 A1111 response shape 으로 wrap.
-# 등록은 litellm-config.yaml 의 KLOUDCHAT_AUTOGEN 블록 밖 manual section.
+# 외부 image-gen alias → LiteLLM model_name. 호출 = LiteLLM 의 chat/completions
+# 에 `modalities=["image","text"]` 전송 → 응답의 message.images[0].image_url
+# 의 data URL strip → A1111 response shape 으로 wrap.
+# 등록 = litellm-config.yaml 의 KLOUDCHAT_AUTOGEN 블록 밖 manual section.
 EXTERNAL_IMAGE_ALIASES: dict[str, str] = {
     "nano-banana":    "nano-banana",     # → openrouter/google/gemini-2.5-flash-image
     "nano-banana-2":  "nano-banana-2",   # → openrouter/google/gemini-3.1-flash-image-preview
@@ -129,10 +129,10 @@ LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "")
 EXTERNAL_IMAGE_TIMEOUT_SEC = float(os.environ.get("EXTERNAL_IMAGE_TIMEOUT_SEC", "300"))
 
 # ── 외부 비디오 생성 (OpenRouter Video API, LiteLLM 경유) ─────────────────
-# OR 의 /videos 는 비동기 잡(submit→poll→download)이라 LiteLLM 네이티브 video provider
-# 대상이 아니다 → LiteLLM 의 pass_through_endpoints 로 OR 에 포워딩한다. shim 은 OR 키를
-# 직접 쥐지 않고 LiteLLM(LITELLM_API_KEY)에만 인증, OR 키 주입은 LiteLLM 이 한다.
-# 응답 shape 은 로컬 LTXV(comfyui) 와 통일. alias → OR model slug. 외부·유료(초당 과금).
+# OR 의 /videos = 비동기 잡(submit→poll→download)이라 LiteLLM 네이티브 video provider
+# 대상 아님 → LiteLLM 의 pass_through_endpoints 로 OR 에 포워딩. shim 은 OR 키
+# 직접 미보유, LiteLLM(LITELLM_API_KEY)에만 인증 — OR 키 주입은 LiteLLM 담당.
+# 응답 shape = 로컬 LTXV(comfyui) 와 통일. alias → OR model slug. 외부·유료(초당 과금).
 # LiteLLM passthrough → openrouter.ai/api/v1. submit(과금 1회) / job(폴·다운로드, 과금 0) 분리.
 OR_VIDEO_SUBMIT = f"{LITELLM_URL}/orvideo/submit"
 OR_VIDEO_JOB = f"{LITELLM_URL}/orvideo/job"
@@ -170,14 +170,14 @@ async def _queue_depth(client: httpx.AsyncClient, backend: str) -> int | None:
 # forward until /system_stats vram_free ≥ required to avoid OOM during model
 # swap (old + new weights co-resident).
 MODEL_VRAM_REQUIRED: dict[str, int] = {
-    # GGUF dequant 가 layer-by-layer 라 GPU peak 가 weight 전체보다 작고,
+    # GGUF dequant = layer-by-layer 라 GPU peak < weight 전체, 게다가
     # GB10 unified memory 는 page cache 가 nvidia-smi used 에 잡혀 vram_free 가
-    # 낮게 보이므로 보수적 디폴트 (FP16 weight 합산) 를 그대로 쓰면 admission 이
-    # 영구 막힘. weight load peak 직전 측정값 기준으로 잡음.
+    # 낮게 보임 → 보수적 디폴트(FP16 weight 합산) 그대로면 admission 영구 막힘.
+    # weight load peak 직전 측정값 기준.
     "flux-schnell":    int(3 * 1024**3),
     "flux-dev":        int(5 * 1024**3),
-    # LTXV 2B weight 는 가볍지만 97프레임 latent + VAE decode peak 가 큼. GB10
-    # unified memory 라 ram_free 폴백으로 admission — 보수적으로 10G.
+    # LTXV 2B weight 는 가볍지만 97프레임 latent + VAE decode peak 큼. GB10
+    # unified memory 라 ram_free 폴백으로 admission — 보수적 10G.
     "ltx-video":       int(10 * 1024**3),
 }
 DEFAULT_VRAM_REQUIRED = int(12 * 1024**3)
@@ -188,17 +188,17 @@ CAPACITY_POLL_INTERVAL_SEC = float(os.getenv("CAPACITY_POLL_INTERVAL_SEC", "3"))
 async def _vram_free(client: httpx.AsyncClient, backend: str) -> int | None:
     """이 ComfyUI 가 새 generation 에 쓸 수 있는 메모리 (bytes).
 
-    Discrete GPU 면 `vram_free + torch_vram_total` — 시스템 free 에 ComfyUI 자기
-    PyTorch allocator reserve 를 더한 값 (그 reserve 는 같은 프로세스가 재사용
-    가능하므로 admission 판단에 포함).
+    Discrete GPU = `vram_free + torch_vram_total` — 시스템 free + ComfyUI 자기
+    PyTorch allocator reserve (그 reserve 는 같은 프로세스가 재사용
+    가능 → admission 판단에 포함).
 
-    Unified memory (GB10 등, `vram_total == ram_total`) 면 위 값과 `system.ram_free`
+    Unified memory (GB10 등, `vram_total == ram_total`) = 위 값과 `system.ram_free`
     중 큰 값. unified memory 에선 OS page cache + 같은 노드 vLLM 의 cudaMallocAsync
-    reserve 가 `vram_free` 를 underreport 시켜서 admission 이 영구 막힘 — page
+    reserve 가 `vram_free` underreport → admission 영구 막힘 — page
     cache 는 ComfyUI 가 GPU mem 요청 시 즉시 evict 되므로 사실상 evictable 가용량.
-    `ram_free` 가 그 진짜 가용량에 더 가까운 신호.
+    `ram_free` = 그 진짜 가용량에 더 가까운 신호.
 
-    None 이면 probe 실패 → caller 가 best-effort 통과."""
+    None = probe 실패 → caller 가 best-effort 통과."""
     try:
         r = await client.get(f"{backend}/system_stats", timeout=QUEUE_PROBE_TIMEOUT_SEC)
         r.raise_for_status()
@@ -209,7 +209,7 @@ async def _vram_free(client: httpx.AsyncClient, backend: str) -> int | None:
         sys_free = int(devices[0].get("vram_free", 0))
         own_reserve = int(devices[0].get("torch_vram_total", 0))
         base = sys_free + own_reserve
-        # Unified memory 감지: device.vram_total == system.ram_total.
+        # Unified memory 감지 = device.vram_total == system.ram_total.
         system = body.get("system") or {}
         vram_total = int(devices[0].get("vram_total", 0))
         ram_total = int(system.get("ram_total", 0))
@@ -239,7 +239,7 @@ async def _vllm_busy_count(client: httpx.AsyncClient, backend: str) -> int | Non
         for line in r.text.splitlines():
             if line.startswith("#") or not line.strip():
                 continue
-            # Prometheus exposition: `metric_name{labels} value` 또는 `name value`.
+            # Prometheus exposition = `metric_name{labels} value` 또는 `name value`.
             head, _, value = line.rpartition(" ")
             name = head.split("{", 1)[0]
             if name == "vllm:num_requests_running":
@@ -284,8 +284,8 @@ async def _discover_node_variants(client: httpx.AsyncClient, backend: str) -> di
         info = r.json()
     except (httpx.HTTPError, ValueError):
         return {}
-    # loader-kind 별 파일 풀. 이미지(unet/gguf)는 UNETLoader, 비디오(LTXV)는
-    # CheckpointLoaderSimple 에서 노출된다.
+    # loader-kind 별 파일 풀. 이미지(unet/gguf) = UNETLoader, 비디오(LTXV) =
+    # CheckpointLoaderSimple 에서 노출.
     pools: dict[str, set[str]] = {
         "unet": (_files_from_object_info(info, "UNETLoader", "unet_name")
                  | _files_from_object_info(info, "UnetLoaderGGUF", "unet_name")),
@@ -335,9 +335,9 @@ async def _pick_backend(client: httpx.AsyncClient, *, canonical: str | None = No
     variant of it on disk; that's a real configuration miss, not transient load."""
     candidates = BACKENDS
     if canonical:
-        # _backends_with_alias 는 _refresh_node_variants 를 트리거해 _NODE_VARIANTS
-        # 캐시를 채우는 부수효과를 가짐. txt2img/img2img 의 template_name lookup 이
-        # 같은 캐시를 읽으므로 alias 가 있는 호출은 반드시 이 path 를 거쳐야 함.
+        # _backends_with_alias 는 _refresh_node_variants 트리거 → _NODE_VARIANTS
+        # 캐시 채우는 부수효과. txt2img/img2img 의 template_name lookup 이
+        # 같은 캐시를 읽으므로 alias 있는 호출은 반드시 이 path 경유 필수.
         narrowed = await _backends_with_alias(client, canonical)
         if not narrowed:
             raise HTTPException(
@@ -358,7 +358,7 @@ async def _pick_backend(client: httpx.AsyncClient, *, canonical: str | None = No
             asyncio.gather(*(_queue_depth(client, b) for b in candidates)),
             asyncio.gather(*(_vram_free(client, b) for b in candidates)),
         )
-        # vram None (probe 실패) 은 best-effort 통과 — 거부보다 시도가 안전.
+        # vram None (probe 실패) = best-effort 통과 — 거부보다 시도가 안전.
         eligible = [
             (d, v, vr, b) for d, v, vr, b in zip(depths, busies, vrams, candidates)
             if d is not None and (vr is None or vr >= required)
@@ -410,9 +410,9 @@ def _load_workflow(filename: str) -> dict[str, Any]:
         raise HTTPException(500, f"workflow template missing: {filename}")
     with path.open() as f:
         graph = json.load(f)
-    # 템플릿은 문서용 `_comment` 같은 비-노드 최상위 키를 가질 수 있다. ComfyUI
-    # /prompt 는 모든 최상위 키를 노드로 취급하고(문자열이면 검증 실패) shim 의 노드
-    # 순회도 dict 를 가정하므로, 노드(dict)만 남긴다.
+    # 템플릿은 문서용 `_comment` 같은 비-노드 최상위 키를 가질 수 있음. ComfyUI
+    # /prompt 는 모든 최상위 키를 노드로 취급(문자열이면 검증 실패), shim 의 노드
+    # 순회도 dict 가정 → 노드(dict)만 잔류.
     return {k: v for k, v in graph.items() if isinstance(v, dict)}
 
 
@@ -489,12 +489,12 @@ def _populate_video_workflow(
     length: int | None = None,
     frame_rate: int | None = None,
 ) -> dict[str, Any]:
-    """LTXV 워크플로 템플릿에 t2v 요청 필드를 주입한다.
+    """LTXV 워크플로 템플릿에 t2v 요청 필드 주입.
 
-    이미지(_populate_workflow)와 노드 핸들이 다르다: 시드/cfg 는 SamplerCustom("Sampler"),
-    steps 는 LTXVScheduler("Scheduler"), 해상도/길이는 EmptyLTXVLatentVideo("EmptyLTXVLatent").
-    캐시 히트로 SaveVideo 가 skip 돼 outputs={} 가 되는 걸 막으려고 항상 시드 주입 +
-    VHS_VideoCombine.filename_prefix 에 per-call 유니크 suffix 를 찍어 매번 실행시킨다.
+    이미지(_populate_workflow)와 노드 핸들 상이: 시드/cfg = SamplerCustom("Sampler"),
+    steps = LTXVScheduler("Scheduler"), 해상도/길이 = EmptyLTXVLatentVideo("EmptyLTXVLatent").
+    캐시 히트로 SaveVideo skip → outputs={} 되는 것 방지 위해 항상 시드 주입 +
+    VHS_VideoCombine.filename_prefix 에 per-call 유니크 suffix 로 매번 실행 강제.
     """
     wf = copy.deepcopy(template)
     _set_node_input(wf, "PositivePrompt", "text", prompt)
@@ -516,7 +516,7 @@ def _populate_video_workflow(
         _set_node_input(wf, "LTXVConditioning", "frame_rate", float(frame_rate))
         _set_node_input(wf, "SaveVideo", "frame_rate", int(frame_rate))
 
-    # VHS_VideoCombine / SaveVideo 가 매 호출 실행되도록 prefix 유니크화.
+    # VHS_VideoCombine / SaveVideo 매 호출 실행되도록 prefix 유니크화.
     unique = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}"
     for node in wf.values():
         if node.get("class_type") in ("VHS_VideoCombine", "SaveVideo"):
@@ -625,7 +625,7 @@ class Txt2ImgRequest(BaseModel):
 
 class Txt2VidRequest(BaseModel):
     """generate_video MCP → /video/submit. A1111 과 무관한 자체 shape.
-    model 이 OR_VIDEO_ALIASES 면 OpenRouter, 'ltx-video' 면 로컬 ComfyUI 로 분기."""
+    model ∈ OR_VIDEO_ALIASES → OpenRouter, 'ltx-video' → 로컬 ComfyUI 분기."""
     model_config = {"extra": "allow"}
     prompt: str = ""
     negative_prompt: str = ""
@@ -657,8 +657,8 @@ async def health() -> dict[str, Any]:
 
 @app.post("/billsink")
 async def billsink() -> dict[str, bool]:
-    # 로컬 미디어 명목 과금의 LiteLLM passthrough 타깃 — cost_per_request 기록만 트리거하고
-    # 본문은 버린다(실제 egress 없음). 200 만 돌려주면 LiteLLM 이 비용을 집계한다.
+    # 로컬 미디어 명목 과금의 LiteLLM passthrough 타깃 — cost_per_request 기록만 트리거.
+    # 본문은 사용 안 함(실제 egress 없는 과금 기록용 sink). 200 회신 → LiteLLM 이 비용 집계.
     return {"ok": True}
 
 
@@ -692,23 +692,23 @@ async def _call_external_image(req: "Txt2ImgRequest", alias: str) -> dict[str, A
     """OpenRouter-routed image-gen (Gemini Nano Banana / GPT image) via LiteLLM.
 
     Uses chat/completions endpoint with `modalities=["image","text"]` (OpenRouter
-    의 image-gen 인터페이스 — /v1/images/generations 가 아님). 응답의
-    message.images[0].image_url.url 은 `data:image/png;base64,...` 형태라
-    prefix 떼고 raw base64 만 A1111 response 의 `images` 배열로.
+    의 image-gen 인터페이스 — /v1/images/generations 아님). 응답의
+    message.images[0].image_url.url = `data:image/png;base64,...` 형태 →
+    prefix 제거, raw base64 만 A1111 response 의 `images` 배열로.
 
-    negative_prompt 는 instruction-following 모델이 native 지원 안 함 — drop.
-    seed / steps / cfg / width / height 도 모델별 옵션 상이라 우선 무시 (필요
+    negative_prompt = instruction-following 모델이 native 미지원 — drop.
+    seed / steps / cfg / width / height 도 모델별 옵션 상이 → 우선 무시 (필요
     시 image_config.aspect_ratio 등으로 확장).
     """
     litellm_model = EXTERNAL_IMAGE_ALIASES[alias]
-    # caller user_id (LibreChat StableDiffusion.js patch 가 payload.user 로 넣어줌).
+    # caller user_id (LibreChat StableDiffusion.js patch 가 payload.user 로 주입).
     # LiteLLM 이 end_user 컬럼에 기록 → mcp/usage.py 의 /customer/daily/activity?
-    # end_user_ids= 가 사용자별 spend 로 잡아냄. 없으면 default_user_id 귀속.
+    # end_user_ids= 가 사용자별 spend 로 포착. 없으면 default_user_id 귀속.
     caller_user = getattr(req, "user", "") or ""
     body: dict[str, Any] = {
         "model": litellm_model,
         "messages": [{"role": "user", "content": req.prompt}],
-        # extra_body 로 보내 LiteLLM 의 drop_unsupported_params 우회 + provider
+        # extra_body 로 전송 → LiteLLM 의 drop_unsupported_params 우회 + provider
         # 로 verbatim forward 보장.
         "extra_body": {"modalities": ["image", "text"]},
     }
@@ -738,7 +738,7 @@ async def _call_external_image(req: "Txt2ImgRequest", alias: str) -> dict[str, A
     except (ValueError, KeyError, IndexError, TypeError) as e:
         raise HTTPException(502, f"external image response unparseable: {e}")
     if not images:
-        # content-policy refusal 또는 모델이 text-only 로 답한 경우.
+        # content-policy refusal 또는 모델이 text-only 응답한 경우.
         txt = (msg.get("content") or "")[:300] if isinstance(msg, dict) else ""
         raise HTTPException(502,
             f"external image returned no image (model may have refused; text={txt!r})")
@@ -747,9 +747,9 @@ async def _call_external_image(req: "Txt2ImgRequest", alias: str) -> dict[str, A
     except (KeyError, TypeError) as e:
         raise HTTPException(502, f"external image url shape unexpected: {e}")
     # data:image/png;base64,XXXX → XXXX. 비 data-URL (https://) 케이스는 일단
-    # 그대로 통과 — 일부 provider 가 external URL 로 회신할 수 있음, LibreChat
-    # 의 A1111 파서가 raw base64 만 받으므로 그런 경우 별도 fetch 필요해질 수
-    # 있는데 OpenRouter 의 image-gen 은 현재 모두 data URL 회신.
+    # 그대로 통과 — 일부 provider 가 external URL 회신 가능, LibreChat
+    # 의 A1111 파서가 raw base64 만 수용하므로 그 경우 별도 fetch 필요해질 수
+    # 있으나 OpenRouter 의 image-gen 은 현재 모두 data URL 회신.
     b64 = url.split(",", 1)[1] if url.startswith("data:") else url
     return {
         "images": [b64],
@@ -762,8 +762,8 @@ async def _call_external_image(req: "Txt2ImgRequest", alias: str) -> dict[str, A
 async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
     model = (req.override_settings.get("sd_model_checkpoint")
              or req.override_settings.get("model") or DEFAULT_MODEL)
-    # 외부 모델은 ComfyUI routing/admission/workflow 전부 우회. (DEFAULT_MODEL 도
-    # ComfyUI 없으면 외부(nano-banana)라, 모델 미지정도 외부로 빠진다.)
+    # 외부 모델 = ComfyUI routing/admission/workflow 전부 우회. (DEFAULT_MODEL 도
+    # ComfyUI 없으면 외부(nano-banana) → 모델 미지정도 외부로 분기.)
     if model.lower() in EXTERNAL_IMAGE_ALIASES:
         return await _call_external_image(req, model.lower())
     if not BACKENDS:
@@ -776,10 +776,10 @@ async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
         if not template_name:
             raise HTTPException(500, f"no variant resolved for {canonical!r} on {backend}")
         template = _load_workflow(template_name)
-        # Flux 계열은 guidance-distilled (schnell=4 steps/cfg=1, dev=20 steps/cfg=1)
-        # 이라 LibreChat 의 SD 표준 payload (steps=22, cfg=4.5) 를 그대로 받으면
-        # 5배 느리고 품질도 떨어진다. caller 에서 의미있는 override 를 보낼 경로가
-        # 없으므로 (LibreChat UI 에 노출 안 됨) workflow 의 baked-in default 우선.
+        # Flux 계열 = guidance-distilled (schnell=4 steps/cfg=1, dev=20 steps/cfg=1)
+        # 이라 LibreChat 의 SD 표준 payload (steps=22, cfg=4.5) 그대로 받으면
+        # 5배 느리고 품질 저하. caller 에서 의미있는 override 보낼 경로
+        # 없으므로 (LibreChat UI 에 미노출) workflow 의 baked-in default 우선.
         is_flux = (canonical or "").startswith("flux")
         workflow = _populate_workflow(
             template,
@@ -805,14 +805,14 @@ async def txt2img(req: Txt2ImgRequest) -> dict[str, Any]:
 
 
 # ── 비동기 잡 핸들 (submit 으로 발급 → fetch 로 회수) ────────────────────
-# 문자열 1개로 백엔드+식별자를 캡슐화: OR 은 `or:<alias>:<jobid>`, 로컬 ComfyUI 는
-# `comfy:<promptid>@<idx>` (idx=BACKENDS 인덱스 — 내부 IP 미노출). 핸들을 job id 로 넘기고
-# check_video 로 되돌려준다.
+# 문자열 1개로 백엔드+식별자 캡슐화: OR = `or:<alias>:<jobid>`, 로컬 ComfyUI =
+# `comfy:<promptid>@<idx>` (idx=BACKENDS 인덱스 — 내부 IP 미노출). 핸들을 job id 로 전달,
+# check_video 로 반환.
 def _encode_handle(kind: str, ident: str, *, backend: str = "", alias: str = "") -> str:
     if kind == "or":
         return f"or:{alias}:{ident}"
-    # backend URL(내부 IP) 을 노출하지 않도록 BACKENDS 인덱스로 인코딩한다 — 핸들은
-    # 모델을 거쳐 사용자에게 보일 수 있으므로 raw http://10.x... 를 박지 않는다.
+    # backend URL(내부 IP) 미노출 위해 BACKENDS 인덱스로 인코딩 — 핸들은
+    # 모델 거쳐 사용자에게 노출 가능 → raw http://10.x... 미삽입.
     try:
         idx = BACKENDS.index(backend)
     except ValueError:
@@ -836,7 +836,7 @@ def _decode_handle(h: str) -> tuple[str, str, str, str]:
 
 
 def _or_headers() -> dict[str, str]:
-    # LiteLLM passthrough 인증 — OR 키는 LiteLLM 이 주입한다.
+    # LiteLLM passthrough 인증 — OR 키는 LiteLLM 이 주입.
     return {"Authorization": f"Bearer {LITELLM_API_KEY}", "Content-Type": "application/json"}
 
 
@@ -850,11 +850,11 @@ async def _bill_local(client: httpx.AsyncClient, path: str, end_user: str) -> No
         headers = _or_headers()
         headers["x-litellm-end-user-id"] = end_user
         await client.post(f"{LOCALBILL}/{path}", json={}, headers=headers, timeout=10)
-    except Exception as e:  # noqa: BLE001 — 과금 실패가 생성을 막지 않게.
+    except Exception as e:  # noqa: BLE001 — 과금 실패가 생성을 막지 않도록.
         LOG.warning("local bill failed (%s): %s", path, e)
 
 
-# OR 모델별 지원셋 — litellm-config 의 (모델×해상도×오디오×길이) 과금 엔드포인트와 일치해야 함.
+# OR 모델별 지원셋 — litellm-config 의 (모델×해상도×오디오×길이) 과금 엔드포인트와 일치 필수.
 _OR_DURATIONS: dict[str, tuple[int, ...]] = {
     "veo-lite": (4, 6, 8), "veo-fast": (4, 6, 8), "veo": (4, 6, 8),
     "sora-2": (4, 8, 12, 16, 20),
@@ -873,7 +873,7 @@ def _snap_dur(alias: str, d: int | None) -> int:
 
 
 def _norm_res(alias: str, res: str | None) -> str:
-    """해상도를 모델 지원 path tag(720p|1080p|4k)로 정규화. 미지원/미지정이면 1080p(기본)."""
+    """해상도를 모델 지원 path tag(720p|1080p|4k)로 정규화. 미지원/미지정 = 1080p(기본)."""
     opts = _OR_RESOLUTIONS.get(alias, ("1080p",))
     r = (res or "1080p").lower()  # "4K"→"4k", "1080P"→"1080p"
     return r if r in opts else ("1080p" if "1080p" in opts else opts[-1])
@@ -881,7 +881,7 @@ def _norm_res(alias: str, res: str | None) -> str:
 
 async def _or_submit(client: httpx.AsyncClient, req: "Txt2VidRequest", alias: str) -> str:
     """OR 비디오 잡 제출(폴링 안 함). 잡 id 반환. submit 경로 = /orvideo/submit/<alias>/<dur>
-    로 라우팅해 LiteLLM 이 모델×길이별 cost_per_request 로 과금(x-litellm-end-user-id 귀속)."""
+    로 라우팅 → LiteLLM 이 모델×길이별 cost_per_request 로 과금(x-litellm-end-user-id 귀속)."""
     or_model = OR_VIDEO_ALIASES[alias]
     dur = _snap_dur(alias, req.duration)
     res = _norm_res(alias, req.resolution)
@@ -890,7 +890,7 @@ async def _or_submit(client: httpx.AsyncClient, req: "Txt2VidRequest", alias: st
     body: dict[str, Any] = {"model": or_model, "prompt": req.prompt, "duration": dur,
                             "resolution": ("4K" if res == "4k" else res)}
     if alias not in _OR_AUDIO_FIXED:
-        body["generate_audio"] = audio  # Sora 는 오디오 항상 포함이라 미전송
+        body["generate_audio"] = audio  # Sora 는 오디오 항상 포함 → 미전송
     if req.aspect_ratio:
         body["aspect_ratio"] = req.aspect_ratio
     if req.seed >= 0:
@@ -914,7 +914,7 @@ async def _or_submit(client: httpx.AsyncClient, req: "Txt2VidRequest", alias: st
 
 
 async def _or_check(client: httpx.AsyncClient, job_id: str, alias: str = "") -> dict[str, Any]:
-    """OR 잡 상태 1회 확인. completed 면 다운로드까지 해서 video 포함 반환.
+    """OR 잡 상태 1회 확인. completed 면 다운로드까지 → video 포함 반환.
     반환 status ∈ {pending, in_progress, completed, failed}."""
     pr = await client.get(f"{OR_VIDEO_JOB}/{job_id}", headers=_or_headers())
     if pr.status_code >= 400:
@@ -990,7 +990,7 @@ class VideoFetchRequest(BaseModel):
 @app.post("/video/submit")
 async def video_submit(req: Txt2VidRequest) -> dict[str, Any]:
     """비동기: 잡만 제출하고 즉시 핸들 반환(렌더 대기 안 함). generate_video MCP 가
-    호출하고, 이후 /video/fetch 로 회수한다. 정체 잡에 연결을 붙들지 않는다."""
+    호출 → 이후 /video/fetch 로 회수. 정체 잡에 연결 미점유."""
     alias = (req.model or "veo-lite").lower()
     if alias in OR_VIDEO_ALIASES:
         async with httpx.AsyncClient(timeout=60) as c:

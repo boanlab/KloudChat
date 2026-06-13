@@ -1,6 +1,6 @@
-// LibreChat 의 stable-diffusion 툴을 'generate_image' 으로 rename + 스키마에 'model' enum
+// LibreChat stable-diffusion 툴 → 'generate_image' rename + 스키마에 'model' enum
 // 필드와 override_settings 주입. 영향: StableDiffusion.js, handleTools.js, manifest.json,
-// 그리고 @librechat/api dist (definitionsOnly 경로의 builtin tool registry).
+// + @librechat/api dist (definitionsOnly 경로의 builtin tool registry).
 
 const fs = require('fs');
 
@@ -50,11 +50,11 @@ const PAYLOAD_NEEDLE =
   "      width: 1024,\n" +
   "      height: 1024,\n" +
   "    };";
-// `user` 주입은 외부 image-gen (nano-banana 등) spend 를 호출자에게 귀속시키기 위함.
+// `user` 주입 = 외부 image-gen (nano-banana 등) spend 를 호출자에게 귀속하기 위함.
 // comfyui-shim 이 LiteLLM 의 chat/completions 로 넘길 때 extra_body.user 로 전달 →
 // LiteLLM 이 end_user 컬럼에 기록 → mcp/usage.py 의 /customer/daily/activity?
-// end_user_ids= 필터가 잡아냄. 로컬 ComfyUI 경로는 user 필드 무시 (워크플로 영향
-// 없음). req.user.email 은 LibreChat 의 Express user 객체에서 옴 — 없으면 Mongo
+// end_user_ids= 필터가 포착. 로컬 ComfyUI 경로는 user 필드 무시 (워크플로 영향
+// 없음). req.user.email = LibreChat 의 Express user 객체에서 유래 — 없으면 Mongo
 // userId 로 폴백.
 const PAYLOAD_REPLACEMENT =
   "    const { prompt, negative_prompt, model } = data;\n" +

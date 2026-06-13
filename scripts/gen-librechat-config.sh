@@ -22,6 +22,18 @@ grep -qF '# >>> KLOUDCHAT_MODELS_START' "$CONFIG_FILE" \
   || { err "KLOUDCHAT_MODELS marker 누락: $CONFIG_FILE"; exit 1; }
 
 MODELS=()
+# 로컬 vLLM 모델 먼저 — dropdown / agent builder 상단 노출.
+# 챗 두뇌(gemma-4-26b) = vLLM 전용. 중복 회피.
+vllm_gemma26_url="$(env_get VLLM_GEMMA26_URL || true)"
+if [[ -n "$vllm_gemma26_url" ]] && ! printf '%s\n' "${MODELS[@]}" | grep -qxF "local/gemma-4-26b"; then
+  MODELS+=("local/gemma-4-26b")
+fi
+# Deep Research(122b) 도 vLLM 전용 — 사용자 직접 선택 가능.
+vllm_qwen122b_url="$(env_get VLLM_QWEN122B_URL || true)"
+if [[ -n "$vllm_qwen122b_url" ]] && ! printf '%s\n' "${MODELS[@]}" | grep -qxF "local/qwen3.5:122b"; then
+  MODELS+=("local/qwen3.5:122b")
+fi
+# 그다음 OpenRouter 상용 모델.
 if has_openrouter; then
   for m in "${OPENAI_MODELS[@]}";    do MODELS+=("openai/${m}");    done
   for m in "${ANTHROPIC_MODELS[@]}"; do MODELS+=("anthropic/${m}"); done
@@ -32,20 +44,11 @@ if has_openrouter; then
   for m in "${META_MODELS[@]}";       do MODELS+=("meta/${m}");      done
   for m in "${QWEN_MODELS[@]}";       do MODELS+=("qwen/${m}");       done
 fi
-# 챗 두뇌 (gemma-4-26b) 는 vLLM 전용 — dropdown 노출 보장. 중복은 회피.
-vllm_gemma26_url="$(env_get VLLM_GEMMA26_URL || true)"
-if [[ -n "$vllm_gemma26_url" ]] && ! printf '%s\n' "${MODELS[@]}" | grep -qxF "local/gemma-4-26b"; then
-  MODELS+=("local/gemma-4-26b")
-fi
-# Deep Research (122b) 도 vLLM 전용 — dropdown 노출. 사용자가 직접 선택할 수 있게 한다.
-vllm_qwen122b_url="$(env_get VLLM_QWEN122B_URL || true)"
-if [[ -n "$vllm_qwen122b_url" ]] && ! printf '%s\n' "${MODELS[@]}" | grep -qxF "local/qwen3.5:122b"; then
-  MODELS+=("local/qwen3.5:122b")
-fi
-# Super Agent 의 내부 라우트(local/auto-route)도 모델 목록에 포함해야 한다 — LibreChat 의
-# ResumableAgentController 가 에이전트 model 을 엔드포인트 models 목록과 대조해 검증하므로,
-# 빠지면 Super Agent 가 illegal_model_request 로 초기화 실패한다(라우트 자체는 dropdown 보다
-# modelSpecs 기본값으로 노출). 등장 조건은 emit_super_agent 와 동일(super_agent_eligible).
+# Super Agent 내부 라우트(local/auto-route) = 모델 목록 포함 필수 — LibreChat
+# ResumableAgentController 가 에이전트 model 을 엔드포인트 models 목록과 대조 검증 →
+# 누락 시 Super Agent illegal_model_request 초기화 실패. UI 노출은 librechat-patch.py
+# 의 hide_auto_route_in_builder 가 agent builder 모델 메뉴에서만 숨김(Super Agent 는
+# 이 모델로 정상 동작). 맨 끝에 둠 — 패치 실패 시에도 목록 최하단. 조건 = super_agent_eligible.
 if super_agent_eligible && ! printf '%s\n' "${MODELS[@]}" | grep -qxF "local/auto-route"; then
   MODELS+=("local/auto-route")
 fi
@@ -74,7 +77,7 @@ PY
 mv "$tmp" "$CONFIG_FILE"; trap - EXIT
 
 # Video Studio 기본 모델: 로컬 ComfyUI 있으면 ltx-video(무료), 없고 OR 키면 veo-lite(외부·저가).
-# generate_video MCP 의 VIDEO_MODEL(librechat.yaml literal)를 매 gen 시 ComfyUI 가용성에 맞춘다.
+# generate_video MCP 의 VIDEO_MODEL(librechat.yaml literal) → 매 gen 시 ComfyUI 가용성에 맞춤.
 vid_default="ltx-video"; [[ -z "$(env_get COMFYUI_URLS)" ]] && has_openrouter && vid_default="veo-lite"
 sed -i "s|VIDEO_MODEL: \"[^\"]*\"|VIDEO_MODEL: \"${vid_default}\"|" "$CONFIG_FILE"
 

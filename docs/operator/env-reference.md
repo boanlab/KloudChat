@@ -1,6 +1,6 @@
 # 환경변수 레퍼런스
 
-> `.env` 변수가 무엇이고 누가 채우는지 (사용자 vs `gen-env.sh` vs `setup.sh`). 처음 띄우는 거면 [README](../README.md) 만 보면 된다.
+> `.env` 변수가 무엇이고 누가 채우는지 (사용자 vs `gen-env.sh` vs `setup.sh`). 처음 띄우는 거면 [README](../../README.md) 만 보면 된다.
 
 - **`.env` 생성**: `./scripts/gen-env.sh` 가 `.env.example` 복사 + `change-me-*` → 랜덤 시크릿 치환.
 - **직접 채울 변수**: **외부 키**(OpenRouter / `HF_TOKEN`) + **노드 토폴로지**(`NODES_*`, `*_URL`).

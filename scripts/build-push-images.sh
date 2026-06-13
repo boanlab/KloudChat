@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Usage: build-push-images.sh [--ns NS] [--tag TAG] [--no-push] [--push-only] [--multi-arch] [SERVICE...]
 #
-# KloudChat 자체 빌드 이미지(boanlab/kloudchat-*) 를 빌드하고 Docker Hub 로 push 한다.
-# compose 파일은 이 이미지들을 pull 만 하므로(배포 전용), 빌드/퍼블리시는 여기서 전담한다.
+# KloudChat 자체 빌드 이미지(boanlab/kloudchat-*) 빌드 + Docker Hub push.
+# compose 파일은 이 이미지들 pull 만(배포 전용) → 빌드/퍼블리시는 여기 전담.
 # vLLM 은 업스트림 이미지라 제외.
 #
 #   기본            전체 이미지를 host 아키텍처로 build → push.
@@ -18,8 +18,8 @@
 #   --ns NS         네임스페이스 override (기본 .env 의 KLOUDCHAT_IMAGE_NS=boanlab).
 #   --tag TAG       태그 override (기본 .env 의 KLOUDCHAT_IMAGE_TAG=latest).
 #
-# 사전: Docker Hub 에 push 하려면 `docker login` 선행. push 권한 없으면 실패 시 안내.
-# 로컬 빌드만(push 안 함): build-push-images.sh --no-push  (setup.sh 는 항상 pull 하므로 로컬본을 덮어쓴다)
+# 사전: Docker Hub push 하려면 `docker login` 선행. push 권한 없으면 실패 시 안내.
+# 로컬 빌드만(push 안 함): build-push-images.sh --no-push  (setup.sh 는 항상 pull → 로컬본 덮어씀)
 # 한 이미지만 멀티아키 재배포: build-push-images.sh --multi-arch comfyui-shim
 set -euo pipefail
 
@@ -28,8 +28,8 @@ source "$__SCRIPT_DIR/lib.sh"
 cd "$__SCRIPT_DIR/.."
 
 # 빌드 대상: "이미지 short-name | dockerfile | build context | 플랫폼(선택)".
-# 최종 이미지명 = <NS>/kloudchat-<short>:<TAG>. compose 의 image: 와 1:1 이어야 한다.
-# 플랫폼 필드가 비면 host arch(기본) / amd64+arm64(--multi-arch). 값이 있으면 그걸 강제한다.
+# 최종 이미지명 = <NS>/kloudchat-<short>:<TAG>. compose 의 image: 와 1:1 필수.
+# 플랫폼 필드 비면 host arch(기본) / amd64+arm64(--multi-arch). 값 있으면 그것 강제.
 BUILD_TABLE=(
   "librechat|Dockerfile.librechat|."
   "rag-api|Dockerfile.rag|."
@@ -43,8 +43,8 @@ BUILD_TABLE=(
   "super-agent-shim|Dockerfile.super-agent-shim|."
 )
 
-# GPU 미디어 백엔드 (amd64 전용 — arm64 는 systemd). comfyui ~13GB 라 무거워서 'build all'
-# 에 미포함, 명시 선택 시에만. 플랫폼 linux/amd64 강제(--multi-arch 여도 arm64 시도 안 함).
+# GPU 미디어 백엔드 (amd64 전용 — arm64 는 systemd). comfyui ~13GB 라 무거워 'build all'
+# 미포함, 명시 선택 시에만. 플랫폼 linux/amd64 강제(--multi-arch 여도 arm64 시도 안 함).
 MEDIA_TABLE=(
   "comfyui|Dockerfile.comfyui|.|linux/amd64"
   "whisper|Dockerfile.whisper|.|linux/amd64"
@@ -69,8 +69,8 @@ NS="${NS:-$(env_get KLOUDCHAT_IMAGE_NS 2>/dev/null || true)}"; NS="${NS:-boanlab
 TAG="${TAG:-$(env_get KLOUDCHAT_IMAGE_TAG 2>/dev/null || true)}"; TAG="${TAG:-latest}"
 img_of() { echo "${NS}/kloudchat-${1}:${TAG}"; }
 
-# SERVICE 인자 있으면 그 short-name 들로 좁힌다 (없으면 BUILD_TABLE 전체 — MEDIA 는 제외).
-# 명시 선택은 BUILD_TABLE + MEDIA_TABLE 양쪽에서 찾는다. 미존재명은 거부.
+# SERVICE 인자 있으면 그 short-name 들로 좁힘 (없으면 BUILD_TABLE 전체 — MEDIA 제외).
+# 명시 선택은 BUILD_TABLE + MEDIA_TABLE 양쪽에서 탐색. 미존재명은 거부.
 if (( ${#SELECTED[@]} )); then
   _filtered=()
   for want in "${SELECTED[@]}"; do
@@ -111,7 +111,7 @@ if (( DO_BUILD )); then
   host_plat="linux/$(detect_arch)"
   for e in "${BUILD_TABLE[@]}"; do
     IFS='|' read -r short df ctx plat <<<"$e"; img="$(img_of "$short")"
-    # 플랫폼 강제(amd64 전용 미디어) 엔트리는 호스트 arch 가 맞을 때만 빌드.
+    # 플랫폼 강제(amd64 전용 미디어) 엔트리는 호스트 arch 맞을 때만 빌드.
     if [[ -n "$plat" && "$plat" != *"$host_plat"* ]]; then
       warn "$short 는 ${plat} 전용 — 호스트(${host_plat})에서 빌드 불가, 건너뜀 (amd64 노드에서 실행)"
       continue
@@ -128,7 +128,7 @@ if (( DO_PUSH )); then
   host_plat="linux/$(detect_arch)"
   for e in "${BUILD_TABLE[@]}"; do
     IFS='|' read -r short _ _ plat <<<"$e"; img="$(img_of "$short")"
-    # 빌드 루프와 동일 가드 — 호스트 arch 에서 못 만든 플랫폼 강제 엔트리는 push 도 건너뛴다.
+    # 빌드 루프와 동일 가드 — 호스트 arch 에서 못 만든 플랫폼 강제 엔트리는 push 도 스킵.
     if [[ -n "$plat" && "$plat" != *"$host_plat"* ]]; then
       warn "$short 는 ${plat} 전용 — 호스트(${host_plat}) 빌드물 없음, push 건너뜀"
       continue

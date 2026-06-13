@@ -1,6 +1,6 @@
 # 모델 설정
 
-> 라우팅 매트릭스 · 카탈로그 위치 · 이미지 모델 매핑. 처음 띄우는 거면 [README](../README.md).
+> 라우팅 매트릭스 · 카탈로그 위치 · 이미지 모델 매핑. 처음 띄우는 거면 [README](../../README.md).
 
 ## 카탈로그 (lib.sh 단일 진실)
 
@@ -146,7 +146,7 @@ QWEN_MODELS=(qwen3.5-397b-a17b)          # $0.39/$2.34
 VLLM_MODELS=( [gemma-4-26b]=nvidia/gemma-4-26b-A4B-it-NVFP4 [gemma-4-26b-awq]=cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit [qwen3.5-122b-a10b]=Qwen/Qwen3.5-122B-A10B-NVFP4 [qwen3-coder-next]=Qwen/Qwen3-Coder-Next-FP8 [bge-m3]=BAAI/bge-m3 )
 ```
 
-`qwen3-coder-next` 는 Claude Code / Codex CLI 의 로컬 coder backend — [코딩 에이전트 연동](coding-agents.md).
+`qwen3-coder-next` 는 Claude Code / Codex CLI 의 로컬 coder backend — [코딩 에이전트 연동](../user/coding-agents.md).
 
 ## 셋업 흐름
 
@@ -209,7 +209,7 @@ VLLM_MODELS=( [gemma-4-26b]=nvidia/gemma-4-26b-A4B-it-NVFP4 [gemma-4-26b-awq]=cy
 - `Deep Research` — `local/qwen3.5:122b` (PLAIN) 직결. `execute_code` + `file_search` + `fetch_url` + `deep_research` + `smart_search` (학술 ReAct + 인용; `web_search` 는 의도적 제외 — deep_research 가 다중소스 검색을 내부 수행).
 - `Slide Studio` — `local/qwen3.5:122b` 직결. `export_deck` MCP(PDF/PPTX 내보내기)만 — 본문은 발표 디자이너 프롬프트로 자체완결형 HTML 발표자료를 아티팩트로 직접 저작.
 - `Note Taker` — `local/gemma-4-26b` 직결. `file_search` 부착. 오디오를 「텍스트로 업로드」하면 내장 STT(whisper)가 전사 → 회의록/강의노트/보고서 작성. Productivity 카테고리.
-- `Video Studio` — `local/qwen3.5:122b` 직결. `generate_video` MCP(텍스트→비디오, 기본=로컬 LTX-Video, 명시 시 OpenRouter Veo/Sora). Productivity 카테고리, promoted(Top Picks). 자세히는 [video-studio.md](video-studio.md).
+- `Video Studio` — `local/qwen3.5:122b` 직결. `generate_video` MCP(텍스트→비디오, 기본=로컬 LTX-Video, 명시 시 OpenRouter Veo/Sora). Productivity 카테고리, promoted(Top Picks). 자세히는 [video-studio.md](../user/video-studio.md).
 - `Paper Banana` — `local/gemma-4-26b` 직결. `file_search` + `paperbanana` MCP(학술 figure 생성). Research 카테고리, promoted 아님(Top Picks 제외).
 
 **GPU 없는 OR 전용 배포**: 로컬 두뇌(`local/gemma-4-26b`·`local/qwen3.5:122b`)가 OR 동일모델로 직결 등록(`gen-litellm-config::emit_brain`)돼 `super_agent_eligible` 이 OR 키만으로 참 → **Super Agent·Slide Studio·Deep Research·Paper Banana·모델별 이미지/비디오 agent 가 OR 두뇌로 동작**. capability 별 게이팅:

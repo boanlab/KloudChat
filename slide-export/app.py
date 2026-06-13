@@ -4,10 +4,10 @@ POST /pdf   {"html": "…<section class='slide'>…"}  → application/pdf
 POST /pptx  {"html": …}                            → .pptx
 GET  /health
 
-두 형식 모두 **슬라이드 단위 캡처** 방식이다: 덱의 각 `.slide` 만 차례로 active
-토글해 headless chromium 으로 1280×720 PNG 캡처 → PDF(Pillow)·PPTX(python-pptx)로
-슬라이드당 이미지 1장 조립. N 슬라이드 = N 페이지가 보장된다(CSS page-break 의
-누락 이슈 없음). 텍스트 편집성은 잃지만 그라데이션/SVG차트/한글 디자인은 화면 그대로.
+두 형식 모두 **슬라이드 단위 캡처** 방식: 덱의 각 `.slide` 만 차례로 active
+토글 → headless chromium 으로 1280×720 PNG 캡처 → PDF(Pillow)·PPTX(python-pptx)로
+슬라이드당 이미지 1장 조립. N 슬라이드 = N 페이지 보장(CSS page-break
+누락 이슈 없음). 텍스트 편집성 상실, 단 그라데이션/SVG차트/한글 디자인은 화면 그대로.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from playwright.async_api import async_playwright
 from pptx import Presentation
 from pptx.util import Inches
 
-# 슬라이드 i 만 active 로 토글 (덱의 go() 의존 없이 직접 — 견고).
+# 슬라이드 i 만 active 토글 (덱의 go() 의존 없이 직접 — 견고).
 _ACTIVATE = (
     "(k)=>{document.querySelectorAll('.slide')"
     ".forEach((s,i)=>s.classList.toggle('active', i===k))}"
@@ -53,7 +53,7 @@ async def health() -> dict:
 
 
 async def _slide_shots(html: str) -> list[bytes]:
-    """덱의 각 .slide 를 차례로 active 토글해 1280×720 PNG 캡처."""
+    """덱의 각 .slide 차례로 active 토글 → 1280×720 PNG 캡처."""
     if not isinstance(html, str) or not html.strip():
         raise HTTPException(400, "missing 'html'")
     page = await _state["browser"].new_page(viewport={"width": 1280, "height": 720})

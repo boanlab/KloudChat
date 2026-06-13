@@ -7,7 +7,7 @@
 **② replica** — 남는 VRAM 을 고우선 워크로드 복제본으로 채운다 → **③ KV-QoS** — 남은 슬랙으로
 컨텍스트를 최대화한다 → **④ migration / affinity / balance** — 동률일 때만 흔들기 최소화. 이
 문제는 NP-hard 라 정확해(MILP)와 근사해(greedy) 두 솔버를 둔다. 아래는 그 형식 정의·난이도
-증명·솔버 분석이다. (운영 사용법은 [docs/scheduler.md](../../docs/scheduler.md).)
+증명·솔버 분석이다. (운영 사용법은 [docs/operator/scheduler.md](../../docs/operator/scheduler.md).)
 
 > **Coverage term shape**: the `coverage` *displayed score*
 > ($\sum_w \pi_w \cdot \mathbb{1}[\text{alive}]$, per-workload-active) reads

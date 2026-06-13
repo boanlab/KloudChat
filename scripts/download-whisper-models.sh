@@ -32,8 +32,8 @@ EOF
 
 for a in "$@"; do [[ "$a" =~ ^(-h|--help)$ ]] && usage; done
 
-# amd64: 호스트 venv 가 없다 — weight 는 whisper 컨테이너 안에서 마운트된 볼륨
-# (/var/lib/whisper)으로 받는다. arm64(systemd)는 아래 venv 경로.
+# amd64: 호스트 venv 없음 — weight 는 whisper 컨테이너 내부에서 마운트된 볼륨
+# (/var/lib/whisper)으로 받음. arm64(systemd)는 아래 venv 경로.
 if [[ "$(detect_arch)" == amd64 ]]; then
   COMPOSE_FILE="$(dirname "$SCRIPT_DIR")/docker-compose.media.yml"
   command -v docker &>/dev/null || { err "docker 필요."; exit 1; }
@@ -65,8 +65,8 @@ getent passwd "$USR" &>/dev/null \
 "${VENV}/bin/python" -c 'import faster_whisper' &>/dev/null \
   || { err "venv 에 faster_whisper 없음 — install-whisper.sh 재실행 필요."; exit 1; }
 
-# HF Hub rate-limit / xet CDN 가속용. .env 는 compose 전용이라 호스트 셸엔 안 들어와서
-# 직접 로드 후 두 sudo hop (root 승격 → whisper 드롭) 모두 preserve 시켜야 전달됨.
+# HF Hub rate-limit / xet CDN 가속용. .env 는 compose 전용이라 호스트 셸엔 미주입 →
+# 직접 로드 후 두 sudo hop (root 승격 → whisper 드롭) 모두 preserve 해야 전달됨.
 : "${HF_TOKEN:=$(env_get HF_TOKEN)}"
 export HF_TOKEN
 
@@ -91,8 +91,8 @@ pull() {
     info "skip $name (이미 보유)"; return 0
   fi
   info "pull $name"
-  # device=cpu / compute_type=int8 → GPU 없이 다운로드 + 무결성 검증만. WhisperModel 을
-  # 쓰는 이유는 app.py 와 동일 download_root 경로 매핑을 보장하기 위해 (cache layout drift 방지).
+  # device=cpu / compute_type=int8 → GPU 없이 다운로드 + 무결성 검증만. WhisperModel
+  # 사용 이유 = app.py 와 동일 download_root 경로 매핑 보장 (cache layout drift 방지).
   sudo -u "$USR" --preserve-env=HF_TOKEN "${VENV}/bin/python" - "$name" "$DATA_ROOT" <<'PY'
 import sys
 from faster_whisper import WhisperModel

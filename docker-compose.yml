@@ -39,7 +39,7 @@ services:
       - LIBRECHAT_CODE_API_KEY=${CODE_INTERPRETER_API_KEY}
       - LIBRECHAT_CODE_BASEURL=${LIBRECHAT_CODE_BASEURL:-http://code-interpreter:8000}
       # LITELLM_URL: docker-compose.litellm.yml 가 별도 노드면 .env 에서 host:port 로 교체.
-      # librechat.yaml 의 baseURL 및 MCP 자식 (youtube/usage) 가 이 값을 참조한다.
+      # librechat.yaml 의 baseURL 및 MCP 자식 (youtube/usage) 가 이 값 참조.
       - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:8000}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       # smart_search MCP 가 pgvector(langchain_pg_embedding)를 직접 질의 — 접속 URL 주입.
@@ -51,23 +51,23 @@ services:
       - SLIDE_EXPORT_URL=${SLIDE_EXPORT_URL:-http://slide-export:8090}
       # generate_video MCP (Video Studio) — comfyui-shim 의 /video/{submit,fetch} 호출.
       - COMFYUI_SHIM_URL=${COMFYUI_SHIM_URL:-http://comfyui-shim:7860}
-      # MONGO_URI 는 LibreChat 이 MCP ${} 치환에서 denylist 로 막으므로(보안), export_deck
-      # MCP 가 대화 아티팩트를 읽도록 비-denylist 이름으로 같은 값을 노출한다.
+      # MONGO_URI 는 LibreChat 이 MCP ${} 치환에서 denylist 로 차단(보안) → export_deck
+      # MCP 가 대화 아티팩트를 읽도록 비-denylist 이름으로 같은 값 노출.
       - KC_MONGO_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
       # paperbanana MCP (학술 다이어그램 생성) 가 OpenRouter 로 VLM/이미지 호출 —
       # mcpServers.paperbanana.env 가 OPENAI_API_KEY 로 이 값을 참조.
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      # crawl4ai-shim 이 firecrawl-호환 endpoint 라 LibreChat 의 firecrawl client
-      # 가 환경변수에서 key 를 찾는다. 실제 인증은 안 함 — shim 에서 무시.
+      # crawl4ai-shim 이 firecrawl-호환 endpoint → LibreChat 의 firecrawl client
+      # 가 환경변수에서 key 탐색. 실제 인증 없음 — shim 에서 무시.
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-internal-shim-noauth}
       - FIRECRAWL_BASE_URL=${FIRECRAWL_BASE_URL:-http://crawl4ai-shim:8080}
       - HELP_AND_FAQ_URL=${HELP_AND_FAQ_URL:-/}
-      # 앱 타이틀(브라우저 탭/로고 alt fallback). /app/.env dotenv 로도 로드되지만
-      # CUSTOM_FOOTER 처럼 컨테이너 env 에도 명시해 일관성 유지(셸 env 혼란 방지).
+      # 앱 타이틀(브라우저 탭/로고 alt fallback). /app/.env dotenv 로도 로드되나
+      # CUSTOM_FOOTER 처럼 컨테이너 env 에도 명시 → 일관성 유지(셸 env 혼란 방지).
       - APP_TITLE=${APP_TITLE:-KloudChat}
       - CUSTOM_FOOTER=${CUSTOM_FOOTER:- }
       - WELCOME_BACK_MESSAGE=${WELCOME_BACK_MESSAGE:-}
-      # MCP 자식 프로세스로 전달용 — librechat.yaml 의 ${VAR} 가 컨테이너 env 에서 찾음.
+      # MCP 자식 프로세스 전달용 — librechat.yaml 의 ${VAR} 가 컨테이너 env 에서 탐색.
       - WHISPER_URL=${WHISPER_URL:-}
     entrypoint: ["/usr/local/bin/librechat-entrypoint.sh"]
     command: ["npm", "run", "backend"]
@@ -86,7 +86,7 @@ services:
       - ./data/librechat/logs:/app/logs
       # MCP 의 uvx/uv 패키지 캐시 — fetch/time/youtube/usage 등의 의존성 재설치 회피.
       - ./data/librechat/uv-cache:/home/node/.cache/uv
-      # 브랜딩 자산 — branding/ 파일 교체 후 컨테이너 재시작
+      # 브랜딩 자산 — branding/ 파일 교체 후 컨테이너 재시작 필요.
       - ./branding/logo.svg:/app/client/dist/assets/logo.svg:ro
       - ./branding/favicon-16x16.png:/app/client/dist/assets/favicon-16x16.png:ro
       - ./branding/favicon-32x32.png:/app/client/dist/assets/favicon-32x32.png:ro
@@ -174,7 +174,7 @@ services:
       - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-openai}
       - EMBEDDINGS_MODEL=${EMBEDDINGS_MODEL:-bge-m3}
       # RAG_OPENAI_BASEURL = LITELLM_URL/v1. LiteLLM stack 이 별도 노드면 .env 의
-      # LITELLM_URL 만 갱신하면 여기까지 자동 반영된다 (env_file 의 stale 값은 이
+      # LITELLM_URL 만 갱신해도 여기까지 자동 반영 (env_file 의 stale 값은 이
       # environment 블록이 override).
       - RAG_OPENAI_BASEURL=${LITELLM_URL:-http://host.docker.internal:8000}/v1
       - RAG_OPENAI_API_KEY=${RAG_OPENAI_API_KEY:-}
@@ -184,12 +184,12 @@ services:
       - kloudchat
 
   # LiteLLM stack (litellm / litellm-db / super-agent-shim) 정의는 docker-compose.litellm.yml.
-  # 여기서는 .env 의 LITELLM_URL 로만 호출한다 (cross-stack endpoint).
+  # 여기서는 .env 의 LITELLM_URL 로만 호출 (cross-stack endpoint).
 
   valkey:
     # SearXNG 의 shared state 백엔드 (settings.yml 의 valkey.url 로 연결, 워커 4개 공유).
     # 현재 limiter 는 settings 에서 off — 켜면(limiter:true) bot/rate-limit 카운터가
-    # 여기에 들어간다. persistence 끄고 tmpfs /data 라 컨테이너 재시작 시 상태 0 부터
+    # 여기 적재. persistence off + tmpfs /data → 컨테이너 재시작 시 상태 0 부터
     # (운영상 OK — 휘발성 캐시).
     container_name: valkey
     image: valkey/valkey:8-alpine
@@ -224,13 +224,13 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       # 빈 값은 빈 채로 전달 — :- 기본을 넣으면 OR 전용(GPU 없는) 배포에서 phantom
-      # backend 가 생겨 shim 의 'backend 없음 → 503' 분기가 안 먹고 요청이 매달린다.
+      # backend 발생 → shim 의 'backend 없음 → 503' 분기 무력화, 요청 행(hang).
       - COMFYUI_URLS=${COMFYUI_URLS:-}
-      # DEFAULT_MODEL 은 주입하지 않는다 — shim 이 backend 유무로 결정한다
+      # DEFAULT_MODEL 미주입 — shim 이 backend 유무로 결정
       # (ComfyUI 있으면 flux-schnell, 없으면 외부 nano-banana).
       - LOG_LEVEL=INFO
       # 외부 image-gen alias (nano-banana / gpt-image-2 등) 가 LiteLLM 의
-      # chat/completions 로 OpenRouter image-route 를 호출할 때 사용.
+      # chat/completions 로 OpenRouter image-route 호출 시 사용.
       - LITELLM_URL=${LITELLM_URL:-http://litellm:8000}
       # 외부 이미지(nano-banana 등)와 Video Studio 비디오(Veo/Sora) 모두 LiteLLM 경유.
       # 비디오는 LiteLLM 의 OpenRouter passthrough(/openrouter/api/v1/videos) 로 포워딩.
@@ -243,11 +243,11 @@ services:
       start_period: 10s
     networks:
       - kloudchat
-      - litellm      # LiteLLM 이 /billsink(로컬 미디어 명목 과금)에 닿게.
+      - litellm      # LiteLLM 이 /billsink(로컬 미디어 명목 과금) 도달용.
 
   crawl4ai-shim:
     # Firecrawl-호환 scrape endpoint (Crawl4AI 백엔드). LibreChat web_search 가
-    # firecrawlApiUrl 로 가리킴 — 외부 Firecrawl Cloud 회피 (KloudChat 정책: 검색
+    # firecrawlApiUrl 로 지목 — 외부 Firecrawl Cloud 회피 (KloudChat 정책: 검색
     # query 외부 미전송).
     container_name: crawl4ai-shim
     image: ${KLOUDCHAT_IMAGE_NS:-boanlab}/kloudchat-crawl4ai-shim:${KLOUDCHAT_IMAGE_TAG:-latest}
@@ -399,14 +399,14 @@ services:
       # LDR env = LDR_ + key (dot→underscore, UPPER). LiteLLM 은 openai_endpoint provider.
       LDR_LLM_PROVIDER: openai_endpoint
       # Deep Research reasoning 모델 — plain canonical alias. 클러스터가 122b 를
-      # 128K ctx 로 서빙하므로 plain alias 로 충분하다.
+      # 128K ctx 로 서빙 → plain alias 로 충분.
       LDR_LLM_MODEL: local/qwen3.5:122b
       LDR_LLM_OPENAI_ENDPOINT_API_KEY: ${LITELLM_MASTER_KEY}
       LDR_LLM_OPENAI_ENDPOINT_URL: ${LITELLM_URL:-http://host.docker.internal:8000}/v1
       # SearXNG science 탭 (arxiv+scholar+openalex+crossref+pubmed) 으로 학술+web 일괄.
       LDR_SEARCH_TOOL: searxng
       LDR_SEARCH_ENGINE_WEB_SEARXNG_DEFAULT_PARAMS_INSTANCE_URL: http://searxng:8080
-      # 122b 의 verbose 질문 생성 경향 — iteration 2 / question 1 로 제약 (~5분 안에 종료).
+      # 122b 의 verbose 질문 생성 경향 — iteration 2 / question 1 로 제약 (~5분 내 종료).
       LDR_SEARCH_ITERATIONS: "2"
       LDR_SEARCH_QUESTIONS_PER_ITERATION: "1"
     networks:
@@ -438,7 +438,7 @@ services:
 
   # Slide Studio HTML 덱 → 16:9 다중페이지 PDF/PPTX 렌더 (headless chromium).
   # opt-in: `docker compose --profile slide-export up -d slide-export`.
-  # export_deck MCP 로 연결됨 (librechat.yaml, startup:false) — docs/slide-export.md 참고.
+  # export_deck MCP 로 연결됨 (librechat.yaml, startup:false) — docs/user/slide-export.md 참고.
   slide-export:
     container_name: slide-export
     profiles: ["slide-export"]
@@ -457,8 +457,8 @@ networks:
   kloudchat:
     driver: bridge
   # litellm 은 별도 compose 스택(다른 네트워크). comfyui-shim 이 로컬 미디어 명목 과금을
-  # LiteLLM passthrough(/localbill)로 기록할 때, LiteLLM 이 그 target(/billsink)에 닿으려면
-  # 같은 네트워크여야 한다. litellm 스택의 네트워크를 external 로 끌어와 공유한다.
+  # LiteLLM passthrough(/localbill)로 기록 시, LiteLLM 이 그 target(/billsink) 도달하려면
+  # 같은 네트워크 필요. litellm 스택 네트워크를 external 로 끌어와 공유.
   litellm:
     external: true
     name: kloudchat-litellm_kloudchat-litellm

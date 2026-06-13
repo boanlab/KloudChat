@@ -145,7 +145,7 @@ docker logs deep-research --tail 50
 | 원인 | 조치 |
 |---|---|
 | 122b 미배치 | scheduler 가 122b 를 어느 노드에도 두지 못함. `usable_vram_gb` cap 상향 또는 다른 워크로드 축소 ([scheduler.md](scheduler.md#usable_vram_gb-노드별-cap)) 후 scheduler apply → `gen-litellm-config.sh` |
-| 배치됐는데 fail | LDR 누적 input 이 서빙 ctx 초과. `LDR_SEARCH_ITERATIONS` 축소 / 결과 size 제한. callback 이 안전망 ([truncate_to_ctx.py](../litellm-callbacks/truncate_to_ctx.py)) |
+| 배치됐는데 fail | LDR 누적 input 이 서빙 ctx 초과. `LDR_SEARCH_ITERATIONS` 축소 / 결과 size 제한. callback 이 안전망 ([truncate_to_ctx.py](../../litellm-callbacks/truncate_to_ctx.py)) |
 | 더 큰 ctx 필요 | 122b 를 더 높은 `max-model-len` (≥128K) config 로 서빙하는 노드를 둔다 — 별도 alias 없이 plain `local/qwen3.5:122b` 가 그 노드의 ctx 로 라우팅된다 |
 
 ## Super Agent dropdown 사라짐

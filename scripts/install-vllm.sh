@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Usage: install-vllm.sh [--reinstall] [--image <tag>]
 #
-# Docker 이미지 pull + 모델 디렉토리 + GPU 런타임 검증. weight 다운은
-# download-vllm-models.sh, launch 는 manage-vllm.sh.
+# Docker 이미지 pull + 모델 디렉토리 + GPU 런타임 검증. weight 다운 =
+# download-vllm-models.sh, launch = manage-vllm.sh.
 #
 # Env:
 #   VLLM_IMAGE        이미지 override (default: arch 자동)
@@ -37,23 +37,23 @@ ok "GPU: $(get_gpu_name) (class=$(detect_gpu_class))"
 command -v docker &>/dev/null || { err "Docker 없음."; exit 1; }
 ok "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
 
-# `docker run --gpus all` 이 동작해야 vLLM 컨테이너가 GPU 접근.
+# 권위 있는 기준 = 실제 `docker run --gpus all` 패스스루. docker info 의 Runtimes
+# 텍스트는 데몬 부하(동시 pull/build) 시 부분응답으로 false-negative →
+# 게이트로 미사용. probe 성공이면 runtime 무조건 정상.
 hdr "1. GPU runtime 확인"
-if docker info 2>/dev/null | grep -q "Runtimes:.*nvidia"; then
-  ok "nvidia container runtime 등록됨"
+if docker run --rm --gpus all --entrypoint nvidia-smi nvcr.io/nvidia/cuda:12.6.3-base-ubuntu24.04 -L &>/dev/null; then
+  ok "GPU passthrough 동작 확인 (--gpus all)"
+elif docker info 2>/dev/null | grep -q "Runtimes:.*nvidia"; then
+  # runtime 등록돼 있는데 probe 만 실패 → cuda 베이스 이미지 pull/네트워크
+  # 문제로 추정. 치명 아님 — 실제 vLLM 컨테이너 기동에서 판명.
+  warn "GPU passthrough probe 실패하나 nvidia runtime 은 등록됨 — cuda 베이스 이미지 pull/네트워크 문제로 추정, 계속 진행"
 else
-  warn "nvidia container runtime 미감지 — nvidia-container-toolkit 설치 + docker restart 필요"
+  err "nvidia container runtime 미동작 — nvidia-container-toolkit 설치 + docker restart 필요"
   echo "  → curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg"
   echo "  → curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb #deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] #g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list"
   echo "  → sudo apt update && sudo apt install -y nvidia-container-toolkit"
   echo "  → sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
   exit 1
-fi
-
-if docker run --rm --gpus all --entrypoint nvidia-smi nvcr.io/nvidia/cuda:12.6.3-base-ubuntu24.04 -L &>/dev/null; then
-  ok "GPU passthrough 동작 확인"
-else
-  warn "GPU passthrough probe 실패 — 별도 베이스 이미지로 확인 필요"
 fi
 
 hdr "2. vLLM 이미지"
@@ -66,8 +66,8 @@ if (( REINSTALL )) || ! docker image inspect "$VLLM_IMAGE" &>/dev/null; then
   docker pull "$VLLM_IMAGE"
 fi
 
-# Base image 위에 pytest layer 를 덮어쓴다 — 같은 tag 로 rebuild 라 compose 의
-# image: ${VLLM_IMAGE} 가 그대로 작동. 자세한 사유는 Dockerfile.vllm.
+# Base image 위에 pytest layer 덮어씀 — 같은 tag 로 rebuild 라 compose 의
+# image: ${VLLM_IMAGE} 그대로 작동. 자세한 사유 = Dockerfile.vllm.
 echo "  → rebuild with Dockerfile.vllm (pytest layer)"
 docker build --quiet \
   --build-arg "BASE_IMAGE=$VLLM_IMAGE" \
@@ -81,8 +81,8 @@ ok "image ready: $(docker image inspect "$VLLM_IMAGE" --format '{{.Size}}' | awk
 # compose default targets GB10 (arm64, *-aarch64 image); on the amd64 discrete
 # cards that's the wrong arch and the container dies with "Failed to infer device
 # type". Always-set is OK — on arm64 nodes the value matches so it's a no-op.
-# Rsync 가 .env 를 덮어쓰는 다음 setup.sh vllm dispatch 에서 install-vllm.sh 가
-# 다시 호출돼 같은 줄을 복원한다.
+# Rsync 가 .env 덮어쓰는 다음 setup.sh vllm dispatch 에서 install-vllm.sh
+# 재호출 → 같은 줄 복원.
 env_set VLLM_IMAGE "$VLLM_IMAGE"
 
 hdr "3. 모델 디렉토리"

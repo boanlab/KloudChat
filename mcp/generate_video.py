@@ -10,13 +10,13 @@
 """KloudChat generate_video MCP (stdio) — Video Studio 용 텍스트→비디오.
 
 도구 2개:
-  - generate_video: comfyui-shim 의 /video/submit 으로 잡 제출 → ~2분 인라인 폴링(/video/fetch).
-    그 안에 끝나면 mp4 를 저장하고 링크 반환, 미완이면 작업 ID(핸들)를 돌려준다.
+  - generate_video: comfyui-shim /video/submit 잡 제출 → ~2분 인라인 폴링(/video/fetch).
+    그 안에 완료 시 mp4 저장 + 링크 반환, 미완 시 작업 ID(핸들) 반환.
   - check_video: 작업 ID 로 /video/fetch 폴링 → 완료 시 링크 반환.
 
-완료된 mp4 는 LibreChat 이 서빙하는 public/images/videos 에 저장하면
-`{DOMAIN_CLIENT}/images/videos/*.mp4` 로 바로 접근된다(별도 스토리지 불필요, export_deck 과 동형).
-로컬 LTXV 는 프레임 길이가 8n+1 이어야 안정적이라 seconds → length 를 그 격자에 스냅한다.
+완료 mp4 → LibreChat 서빙 public/images/videos 저장 시
+`{DOMAIN_CLIENT}/images/videos/*.mp4` 로 즉시 접근(별도 스토리지 불요, export_deck 과 동형).
+로컬 LTXV 는 프레임 길이 8n+1 이어야 안정적 → seconds → length 를 그 격자에 스냅.
 """
 from __future__ import annotations
 
@@ -36,16 +36,16 @@ VIDEO_DIR = Path(os.environ.get("VIDEO_DIR", "/app/client/public/images/videos")
 DEFAULT_MODEL = os.environ.get("VIDEO_MODEL", "veo-lite")  # 기본 = OpenRouter(외부)
 FRAME_RATE = int(os.environ.get("VIDEO_FRAME_RATE", "25"))
 VIDEO_TTL_SEC = int(os.environ.get("VIDEO_TTL_SEC", "86400"))  # 24h 후 청소
-# 비동기: generate_video 가 인라인으로 기다리는 상한(이 안에 끝나면 바로 링크, 아니면
-# 핸들을 돌려주고 check_video 로 회수). 정체 잡에 연결을 오래 붙들지 않는다.
+# 비동기: generate_video 인라인 대기 상한(이 안에 완료 시 즉시 링크, 아니면
+# 핸들 반환 → check_video 로 회수). 정체 잡에 연결 장시간 점유 회피.
 INLINE_WAIT_SEC = float(os.environ.get("VIDEO_INLINE_WAIT_SEC", "120"))
 POLL_SEC = float(os.environ.get("VIDEO_POLL_SEC", "8"))
-# per-user 과금 귀속 — 호출자 _id(LIBRECHAT_USER_ID)로 email 을 Mongo 에서 조회해 shim 에
-# 넘기면, shim 이 x-litellm-end-user-id 헤더로 LiteLLM passthrough 과금을 그 user 에 귀속한다.
+# per-user 과금 귀속 — 호출자 _id(LIBRECHAT_USER_ID)로 email 을 Mongo 조회 → shim 에
+# 전달 시, shim 이 x-litellm-end-user-id 헤더로 LiteLLM passthrough 과금을 그 user 에 귀속.
 MONGO_URI = os.environ.get("MONGO_URI", "")
 USER_ID = os.environ.get("LIBRECHAT_USER_ID", "").strip()
 
-# 친화 alias(샤임 OR_VIDEO_ALIASES + 로컬). 모델 미지정/오타 시 기본으로 폴백.
+# 친화 alias(샤임 OR_VIDEO_ALIASES + 로컬). 모델 미지정/오타 시 기본 폴백.
 KNOWN_MODELS = {
     "veo-lite", "veo-fast", "veo", "sora-2",  # OpenRouter(외부·유료)
     "ltx-video",                              # 로컬(무료, 활성화 후)
@@ -79,7 +79,7 @@ def _caller_email() -> str:
 
 
 def _snap_length(seconds: float) -> int:
-    """seconds(@FRAME_RATE) → LTXV 가 요구하는 8n+1 프레임 길이로 스냅(클램프 1~6초)."""
+    """seconds(@FRAME_RATE) → LTXV 요구 8n+1 프레임 길이로 스냅(클램프 1~6초)."""
     seconds = max(1.0, min(6.0, seconds))
     frames = seconds * FRAME_RATE
     n = max(1, round((frames - 1) / 8))
@@ -87,7 +87,7 @@ def _snap_length(seconds: float) -> int:
 
 
 def _prune_old() -> None:
-    """TTL 지난 vid-*.mp4 정리 (best-effort) — 생성 시점에 누적분 청소."""
+    """TTL 지난 vid-*.mp4 정리 (best-effort) — 생성 시점 누적분 청소."""
     if not VIDEO_DIR.exists():
         return
     cutoff = time.time() - VIDEO_TTL_SEC
@@ -100,11 +100,11 @@ def _prune_old() -> None:
 
 
 def _save_and_link(res: dict, chosen: str) -> str:
-    """완료된 fetch 결과의 mp4 를 public 에 저장하고 재생용 출력을 만든다.
+    """완료 fetch 결과 mp4 를 public 에 저장 + 재생용 출력 생성.
 
-    LibreChat 은 채팅 본문의 raw <video> 를 sanitize(skipHtml)로 버린다 → 임베디드
-    플레이어는 아티팩트(우측 패널, Slide Studio 와 동일 메커니즘)로 띄우고, 본문엔
-    항상 동작하는 다운로드 링크를 같이 남긴다."""
+    LibreChat 은 채팅 본문 raw <video> 를 sanitize(skipHtml)로 폐기 → 임베디드
+    플레이어는 아티팩트(우측 패널, Slide Studio 동일 메커니즘)로 표시, 본문엔
+    항상 동작하는 다운로드 링크 병기."""
     raw = base64.b64decode(res["video"])
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     _prune_old()
@@ -112,8 +112,8 @@ def _save_and_link(res: dict, chosen: str) -> str:
     (VIDEO_DIR / name).write_bytes(raw)
     url = f"{DOMAIN}/images/videos/{name}" if DOMAIN else f"/images/videos/{name}"
     mb = round(len(raw) / 1024 / 1024, 1)
-    # muted: 오디오 있는 클립의 autoplay 차단 회피(무음 자동재생). full-bleed 고정 사이징:
-    # 메타데이터 로드 전 flex 0-size 로 안 보이는 문제 회피.
+    # muted: 오디오 클립의 autoplay 차단 회피(무음 자동재생). full-bleed 고정 사이징:
+    # 메타데이터 로드 전 flex 0-size 비표시 문제 회피.
     player = (
         "<!doctype html><html><head><meta charset=\"utf-8\"><style>"
         "html,body{margin:0;height:100%;background:#000}"
@@ -131,7 +131,7 @@ def _save_and_link(res: dict, chosen: str) -> str:
 
 
 async def _fetch_until(handle: str, budget_sec: float) -> dict:
-    """budget 동안 /video/fetch 폴링. terminal(completed/failed) 이거나 시간초과 시 최신 res 반환."""
+    """budget 동안 /video/fetch 폴링. terminal(completed/failed) 또는 시간초과 시 최신 res 반환."""
     deadline = time.monotonic() + budget_sec
     last: dict = {"status": "pending"}
     async with httpx.AsyncClient(timeout=150) as c:
@@ -150,19 +150,19 @@ async def _fetch_until(handle: str, budget_sec: float) -> dict:
 async def generate_video(prompt: str, model: str = "", seconds: float = 4.0,
                          aspect_ratio: str = "16:9", resolution: str = "",
                          audio: bool = True, negative_prompt: str = "") -> str:
-    """텍스트 프롬프트로 짧은 비디오 클립 생성을 시작한다(비동기).
+    """텍스트 프롬프트로 짧은 비디오 클립 생성 시작(비동기).
 
-    빠르면(약 2분 내) 바로 재생 링크를, 더 걸리면 '렌더링 중 + 작업 ID' 를 반환한다 —
-    그 경우 잠시 뒤 check_video(그 작업 ID) 로 결과를 받는다(사용자에게 '잠시 후 영상
-    확인해줘'라고 안내).
+    빠르면(약 2분 내) 즉시 재생 링크, 더 걸리면 '렌더링 중 + 작업 ID' 반환 —
+    그 경우 잠시 뒤 check_video(그 작업 ID)로 결과 수령(사용자에게 '잠시 후 영상
+    확인해줘' 안내).
     model: 기본 veo-lite(OpenRouter, 외부·유료). 선택지 — veo-lite/veo-fast/veo(Google Veo
-    3.1), sora-2(OpenAI Sora 2 Pro). 로컬 무료는 ltx-video(활성화 후).
+    3.1), sora-2(OpenAI Sora 2 Pro). 로컬 무료 = ltx-video(활성화 후).
     resolution: 720p/1080p/4K (모델별 지원: veo-lite 720p·1080p, veo-fast 720p·1080p·4K,
-    veo 1080p·4K, sora-2 720p·1080p; 미지정=1080p). 해상도가 높을수록 비싸다.
-    audio: 사운드 생성 여부(Veo만; Sora 는 항상 포함). 끄면 더 싸다.
-    프롬프트는 영어가 품질이 가장 좋다 — 피사체·동작·배경·조명/분위기·카메라 무빙을 구체적으로.
+    veo 1080p·4K, sora-2 720p·1080p; 미지정=1080p). 해상도 높을수록 고가.
+    audio: 사운드 생성 여부(Veo만; Sora 는 항상 포함). 끄면 저가.
+    프롬프트는 영어가 최고 품질 — 피사체·동작·배경·조명/분위기·카메라 무빙을 구체적으로.
     seconds 는 모델 허용값으로 스냅 — Veo 4/6/8(최대 8초), Sora 4/8/12/16/20(최대 20초).
-    1분 등 그 이상은 단발 불가(모델 한계). 사용자가 영상/비디오 생성을 요청할 때 호출.
+    1분 등 그 이상은 단발 불가(모델 한계). 사용자의 영상/비디오 생성 요청 시 호출.
     """
     if not prompt.strip():
         return "어떤 영상을 만들지 한 줄로 설명해 주세요 (예: '해질녘 해변을 걷는 사람, 카메라 천천히 추적')."
@@ -211,8 +211,8 @@ async def generate_video(prompt: str, model: str = "", seconds: float = 4.0,
 
 @mcp.tool()
 async def check_video(job_id: str) -> str:
-    """진행 중인 비디오 작업(generate_video 가 돌려준 작업 ID)의 결과를 확인한다.
-    완료면 재생 링크를, 아직이면 '렌더링 중' 을, 실패면 사유를 반환한다."""
+    """진행 중인 비디오 작업(generate_video 반환 작업 ID)의 결과 확인.
+    완료 시 재생 링크, 진행 중이면 '렌더링 중', 실패 시 사유 반환."""
     if not job_id.strip():
         return "확인할 작업 ID 가 없습니다. 먼저 영상 생성을 시작해 주세요."
     try:

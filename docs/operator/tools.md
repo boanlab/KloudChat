@@ -87,7 +87,7 @@
 - **검색 엔진** — searxng (default `LDR_SEARCH_TOOL=searxng`). KloudChat science 탭이 arxiv+scholar+openalex+crossref+pubmed 묶음이라 0-result 위험 적음.
 - **reasoning** — LiteLLM 경유 plain `local/qwen3.5:122b`.
 - **전송** — `deep-research` 사이드카가 `mcp-proxy` 로 ldr-mcp 의 stdio 를 streamable-http (`http://deep-research:8081/mcp`) 로 wrap. `librechat.yaml.mcpSettings.allowedDomains` 에 `deep-research` 등록돼야 SSRF guard 통과.
-- **타임아웃** — `librechat.yaml.mcpServers.deep_research.timeout: 1800000` (30분). quick_research 1-5min, detailed_research 5-15min 이라 충분 헤드룸.
+- **타임아웃** — `librechat.yaml.mcpServers.deep_research.timeout: 3600000` (60분). detailed_research 가 arxiv/web retry + iteration 누적 + 느린 122b 생성으로 30분 초과 가능 → 60분.
 - **검색 폭** — `LDR_SEARCH_ITERATIONS=2` / `LDR_SEARCH_QUESTIONS_PER_ITERATION=1` (env default, model arg 로 override). qwen3.5:122b 가 verbose 질문 생성 경향이라 작게.
 
 ### `usage` 의 startup: false
@@ -174,7 +174,7 @@ usage:
 - **¹ Slide Studio** (`local/qwen3.5:122b`) — builtin 도구 없음. `export_deck` MCP(PDF/PPTX 내보내기)만 부착. 본문은 전문 발표 디자이너 프롬프트로 **자체완결형 HTML 발표자료(인라인 CSS/JS/SVG)** 를 `:::artifact{type="text/html"}` 로 직접 저작 → 우측 패널 렌더.
 - **² Paper Banana** (`local/gemma-4-26b`) — `file_search` + `paperbanana` MCP(`generate_diagram` / `generate_plot` / `evaluate_diagram`). 학술 논문용 publication-quality figure 생성(multi-agent 렌더, OpenRouter VLM gemini-2.5-flash + 이미지 nano-banana-2). Research 카테고리, Top Picks(promoted) 제외.
 - **³ Note Taker** (`local/gemma-4-26b`) — `file_search`. 오디오를 「텍스트로 업로드」하면 내장 STT(whisper-shim)가 업로드 시 전사 → 그 전사문으로 회의록/강의노트/보고서 작성. Productivity 카테고리.
-- **⁴ Video Studio** (`local/qwen3.5:122b`) — `generate_video` MCP(텍스트→비디오, 기본=로컬 LTX-Video, `model` 명시 시 OpenRouter Veo/Sora 외부·유료). Productivity 카테고리, Top Picks 포함. 자세히는 [video-studio.md](video-studio.md).
+- **⁴ Video Studio** (`local/qwen3.5:122b`) — `generate_video` MCP(텍스트→비디오, 기본=로컬 LTX-Video, `model` 명시 시 OpenRouter Veo/Sora 외부·유료). Productivity 카테고리, Top Picks 포함. 자세히는 [video-studio.md](../user/video-studio.md).
 
 기본 정책: **공통 풀 없음, kind 별 명시 부착**.
 

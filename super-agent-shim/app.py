@@ -29,7 +29,7 @@ system prompt. When that toggle is on we:
   3. Call gemma non-stream (so we can post-process), then `_post_process_artifact`
      guarantees a well-formed :::artifact wrapper around the first renderable
      code block.
-This is a single gemma pass — no separate coder model, no draft+refine.
+This is a single gemma pass — one model, one call (no multi-stage pipeline).
 
 Behaviour notes:
   - On chat HTTP error or timeout we return an OpenAI-shaped error envelope so
@@ -223,10 +223,10 @@ def _error_sse_chunks(message: str) -> list[bytes]:
 
 
 # 토큰 반복 degeneration(`a a a a a`) 억제 — 샘플링에 penalty 없으면 모델이 한 토큰에
-# 갇혀 반복한다. frequency_penalty 는 OpenAI 표준(litellm forward 확실), repetition_penalty
-# 는 vLLM 전용(곱셈식, 심한 반복에 강함). 0/1.0 = 비활성.
+# 갇혀 반복. frequency_penalty = OpenAI 표준(litellm forward 확실), repetition_penalty
+# = vLLM 전용(곱셈식, 심한 반복에 강함). 0/1.0 = 비활성.
 # 주의: 너무 크면(예: freq 0.5 + rep 1.2) 코드의 정상적 토큰 반복까지 억눌러 모델이
-# 조기 종료(opener 만 내고 멈춤)한다. 약하게 — frequency 만 mild, repetition 은 기본 off.
+# 조기 종료(opener 만 내고 멈춤). 약하게 — frequency 만 mild, repetition 은 기본 off.
 CHAT_FREQUENCY_PENALTY = float(os.environ.get("CHAT_FREQUENCY_PENALTY", "0.3"))
 CHAT_REPETITION_PENALTY = float(os.environ.get("CHAT_REPETITION_PENALTY", "1.0"))
 
@@ -315,8 +315,8 @@ async def _call_chat_nonstream(body: dict[str, Any], chat_model: str = CHAT_MODE
         return _error_completion(f"[super-agent] upstream chat exception: {e!r}")
 
 
-# 사용자가 *artifact 형식* 으로 응답받을 의도였음을 추론하는 키워드. instruction 으로
-# 100% 보장 안 되니 코드에서 후처리 — 모델이 raw 만 emit 한 경우 :::artifact{} 로 wrap.
+# 사용자가 *artifact 형식* 응답 의도였음을 추론하는 키워드. instruction 으로
+# 100% 보장 불가 → 코드에서 후처리 — 모델이 raw 만 emit 한 경우 :::artifact{} 로 wrap.
 _HTML_TRIGGER_PAT = re.compile(
     r"슬라이드|slide|프레젠테이션|presentation|발표\s*자료|강연\s*자료|강의\s*자료|"
     r"\bppt\b|\bdeck\b|"
@@ -333,8 +333,8 @@ _MERMAID_FENCE_PAT = re.compile(
     r"```mermaid\s*\n(.*?)\n?```", re.DOTALL | re.IGNORECASE
 )
 
-# 모델이 슬라이드/HTML 에 data:base64 이미지를 박는데(지시로 금지해도 무시) 대개 깨진
-# garbage SVG 라 broken-image 로 뜬다 → 아티팩트 본문에서 결정적으로 제거한다.
+# 모델이 슬라이드/HTML 에 data:base64 이미지 삽입(지시로 금지해도 무시), 대개 깨진
+# garbage SVG 라 broken-image 로 표시 → 아티팩트 본문에서 결정적 제거.
 _DATA_IMG_RE = re.compile(
     r'<img\b[^>]*\bsrc\s*=\s*["\']data:[^"\']*["\'][^>]*>', re.IGNORECASE)
 
@@ -342,9 +342,9 @@ _DATA_IMG_RE = re.compile(
 def _strip_data_images(s: str) -> str:
     return _DATA_IMG_RE.sub("", s)
 
-# 펜스 언어 → LibreChat artifact MIME type. 모델은 :::artifact 래퍼를 일관되게 안 따르고
-# ```lang 코드블록만 내놓는 경우가 많다(특히 한국어/일반 "앱" 요청). 토글이 켜져 있으면
-# 첫 *렌더 가능* 블록을 그 펜스 언어로 추론해 감싼다.
+# 펜스 언어 → LibreChat artifact MIME type. 모델은 :::artifact 래퍼를 일관되게 미준수,
+# ```lang 코드블록만 내놓는 경우 다수(특히 한국어/일반 "앱" 요청). 토글 ON 시
+# 첫 *렌더 가능* 블록을 그 펜스 언어로 추론해 감쌈.
 _FENCE_ARTIFACT_TYPE = {
     "html": "text/html", "htm": "text/html",
     "jsx": "application/vnd.react", "tsx": "application/vnd.react",
@@ -353,11 +353,11 @@ _FENCE_ARTIFACT_TYPE = {
 }
 _ANY_FENCE_RE = re.compile(r"```([a-zA-Z0-9+_.-]*)[ \t]*\n(.*?)\n?```", re.DOTALL)
 
-# LibreChat 의 11K 아티팩트 시스템 프롬프트와 만나면 모델이 광범위하게 degenerate 한다 —
+# LibreChat 의 11K 아티팩트 시스템 프롬프트와 만나면 모델이 광범위하게 degenerate —
 # 슬라이드/웹페이지/대시보드/랜딩/게임/에디터 등에서 '```' 만 출력하고 멈춤(raw vLLM
-# 에서도 동일하므로 콜백 무관, temperature/penalty 무관, 결정적). 같은 요청을
-# 간결한 지시로 주면 정상 생성(8~10K자). post-process 가 :::artifact 래핑을 보장하므로
-# 모델엔 "완전한 코드를 한 블록에" 만 알려주면 충분하다. artifact 경로에서만 치환한다.
+# 에서도 동일 → 콜백 무관, temperature/penalty 무관, 결정적). 같은 요청을
+# 간결한 지시로 주면 정상 생성(8~10K자). post-process 가 :::artifact 래핑 보장하므로
+# 모델엔 "완전한 코드를 한 블록에" 만 알리면 충분. artifact 경로에서만 치환.
 _ARTIFACT_PROMPT_START = "The assistant can create and reference artifacts"
 _CONCISE_ARTIFACT_DIRECTIVE = (
     "When asked to build something visual — webpage, web app, dashboard, slide deck / 발표자료, "
@@ -379,9 +379,9 @@ _CONCISE_ARTIFACT_DIRECTIVE = (
 
 
 def _detox_artifact_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """system 메시지의 LibreChat 아티팩트 프롬프트 블록을 간결한 지시로 치환한다(artifact
+    """system 메시지의 LibreChat 아티팩트 프롬프트 블록을 간결한 지시로 치환(artifact
     경로 전용). 아티팩트 프롬프트는 base 프롬프트 뒤에 append 되므로 그 시작 마커부터
-    끝까지(=ARTIFACT_GUIDE 포함) 잘라내고 간결 지시로 대체한다. 마커 없으면 무변경."""
+    끝까지(=ARTIFACT_GUIDE 포함) 잘라내고 간결 지시로 대체. 마커 없으면 무변경."""
     out: list[dict[str, Any]] = []
     for m in messages:
         c = m.get("content") if isinstance(m, dict) else None
@@ -395,16 +395,16 @@ def _detox_artifact_messages(messages: list[dict[str, Any]]) -> list[dict[str, A
 
 
 def _wrap_first_renderable_block(content: str) -> str | None:
-    """첫 *렌더 가능* 코드펜스를 :::artifact 로 감싼다. type 은 펜스 언어(또는 bare
-    펜스면 본문)로 추론. 내부 펜스는 bare ``` 로 정규화한다(LibreChat react/html
-    파서가 언어 토큰 없는 펜스를 기대 — type 속성이 언어를 지정). 렌더 불가(python/bash
-    등 평범한 코드)면 None → 코드블록 그대로 둔다."""
+    """첫 *렌더 가능* 코드펜스를 :::artifact 로 감쌈. type 은 펜스 언어(또는 bare
+    펜스면 본문)로 추론. 내부 펜스는 bare ``` 로 정규화(LibreChat react/html
+    파서가 언어 토큰 없는 펜스 기대 — type 속성이 언어 지정). 렌더 불가(python/bash
+    등 평범한 코드)면 None → 코드블록 그대로."""
     m = _ANY_FENCE_RE.search(content)
     if m:
         lang, body, start, end = (m.group(1) or "").strip().lower(), m.group(2), m.start(), m.end()
     else:
         # 닫는 ``` 없음 — 큰 아티팩트가 max_tokens 에서 잘린 경우(```html ... <EOF>).
-        # 여는 펜스부터 끝까지를 본문으로 보고 감싼다(잘린 코드라도 아티팩트로 렌더).
+        # 여는 펜스부터 끝까지를 본문으로 보고 감쌈(잘린 코드라도 아티팩트로 렌더).
         mo = re.search(r"```([a-zA-Z0-9+_.-]*)[ \t]*\n(.*)$", content, re.DOTALL)
         if not mo:
             return None
@@ -428,9 +428,9 @@ def _wrap_first_renderable_block(content: str) -> str | None:
 
 # 모델이 자체적으로 (잘못된) :::artifact 래퍼를 emit 하는 경우 — Super Agent 의 도구 중심
 # base 프롬프트 영향으로 `:::artifact{type:"html" filename=...}` 처럼 LibreChat 포맷이
-# 아닌 opener(콜론/잘못된 type/identifier 없음)나 내부 ``` 펜스 없는 raw HTML 를 내놓기도
-# 한다. LibreChat 파서는 `type="<MIME>"` + ``` 펜스를 요구하므로 렌더 안 된다. well-formed
-# 면 그대로, malformed 면 정규화한다.
+# 아닌 opener(콜론/잘못된 type/identifier 없음)나 내부 ``` 펜스 없는 raw HTML 출력
+# 가능. LibreChat 파서는 `type="<MIME>"` + ``` 펜스 요구 → 렌더 안 됨. well-formed
+# 면 그대로, malformed 면 정규화.
 _WELLFORMED_ART_RE = re.compile(
     r':::artifact\{[^}]*type="[\w.+-]+/[\w.+-]+"[^}]*\}[^\n]*\n[ \t]*```', re.IGNORECASE)
 _ART_OPENER_RE = re.compile(r':::artifact\{([^}]*)\}[^\n]*\n', re.IGNORECASE)
@@ -439,9 +439,9 @@ _TYPE_ATTR_RE = re.compile(r'type\s*[:=]\s*"?([\w./+-]+)"?', re.IGNORECASE)
 
 def _normalize_artifact(content: str) -> str | None:
     """모델이 emit 한 malformed :::artifact 를 표준 포맷으로 재작성. opener 의 type
-    (콜론/등호 무관)을 MIME 으로 매핑하고, 본문의 leading/trailing ``` 펜스를 정리한 뒤
-    `identifier`/`type="MIME"`/bare ``` 펜스로 감싼다. 앞쪽 prose 는 보존, 닫는 ::: 가
-    없거나 truncated 여도 끝까지 본문으로 본다."""
+    (콜론/등호 무관)을 MIME 으로 매핑, 본문의 leading/trailing ``` 펜스 정리 후
+    `identifier`/`type="MIME"`/bare ``` 펜스로 감쌈. 앞쪽 prose 보존, 닫는 ::: 가
+    없거나 truncated 여도 끝까지 본문으로 간주."""
     m = _ART_OPENER_RE.search(content)
     if not m:
         return None
@@ -472,12 +472,12 @@ def _normalize_artifact(content: str) -> str | None:
 def _post_process_artifact(resp: dict[str, Any], req_body: dict[str, Any],
                            artifact_mode: bool = False) -> None:
     """모델이 artifact wrapper 없이 raw HTML 또는 ```mermaid 만 emit 한 경우
-    :::artifact{} 로 감싼다. 조건 (모두 만족):
+    :::artifact{} 로 감쌈. 조건 (모두 만족):
       - 사용자 마지막 user message 에 type 별 trigger 키워드.
-      - 응답 content 가 이미 ':::artifact' 포함하지 않음 (idempotent).
+      - 응답 content 가 이미 ':::artifact' 미포함 (idempotent).
       - HTML: content 가 ```html / <!DOCTYPE / <html 로 시작.
         mermaid: content 안에 ```mermaid ... ``` 블록 존재.
-    React 는 export 패턴이 다양해 우선순위 밖.
+    React 는 export 패턴 다양 → 우선순위 밖.
     """
     try:
         msgs = req_body.get("messages") or []
@@ -493,9 +493,9 @@ def _post_process_artifact(resp: dict[str, Any], req_body: dict[str, Any],
         if not isinstance(content, str):
             return
 
-        # 모델이 자체 :::artifact 를 emit — well-formed(type="MIME" + ``` 펜스)면 그대로,
+        # 모델이 자체 :::artifact emit — well-formed(type="MIME" + ``` 펜스)면 그대로,
         # malformed(type:"html"/identifier 없음/펜스 없음 등)면 정규화. 모델이 Super Agent
-        # 도구 base 프롬프트 영향으로 잘못된 래퍼를 내놓는 케이스를 결정적으로 보정.
+        # 도구 base 프롬프트 영향으로 잘못된 래퍼 내놓는 케이스를 결정적 보정.
         if ":::artifact" in content:
             if not _WELLFORMED_ART_RE.search(content):
                 norm = _normalize_artifact(content)
@@ -504,12 +504,12 @@ def _post_process_artifact(resp: dict[str, Any], req_body: dict[str, Any],
                     LOG.info("post-process: normalized malformed :::artifact")
             return
 
-        # Artifact mode(토글 ON): 펜스 언어 기반 robust wrap 을 *먼저* 시도한다.
+        # Artifact mode(토글 ON): 펜스 언어 기반 robust wrap 을 *먼저* 시도.
         # html/jsx/tsx/svg/mermaid 를 type 추론해 감싸고, 닫는 ``` 가 없는 truncated
-        # 응답(큰 아티팩트가 max_tokens 에서 잘림)도 여는 펜스부터 끝까지 감싼다. 아래
+        # 응답(큰 아티팩트가 max_tokens 에서 잘림)도 여는 펜스부터 끝까지 감쌈. 아래
         # 키워드(HTML/mermaid) 경로는 완전한 fence 만 처리하고 truncated 면 return 해
-        # 버리므로, 더 견고한 이 경로를 우선한다. (artifact_mode 는 handler 가 *원본*
-        # 메시지로 판정해 전달 — detox 후엔 system 에 :::artifact 가 없어 재판정 불가.)
+        # 버리므로, 더 견고한 이 경로 우선. (artifact_mode 는 handler 가 *원본*
+        # 메시지로 판정해 전달 — detox 후엔 system 에 :::artifact 없어 재판정 불가.)
         if artifact_mode:
             wrapped = _wrap_first_renderable_block(content)
             if wrapped is not None:
@@ -518,8 +518,8 @@ def _post_process_artifact(resp: dict[str, Any], req_body: dict[str, Any],
                 return
 
         # HTML wrap path — trigger 매칭 시 content 어디서든 ```html fence 또는 raw
-        # <!DOCTYPE.../html> 블록을 찾아 :::artifact 로 감싼다. 모델이 앞에 제목/설명을
-        # 붙여도(예: "# To-Do 앱\n\n```html...") 그 텍스트는 보존하고 HTML 만 wrap.
+        # <!DOCTYPE.../html> 블록을 찾아 :::artifact 로 감쌈. 모델이 앞에 제목/설명을
+        # 붙여도(예: "# To-Do 앱\n\n```html...") 그 텍스트는 보존, HTML 만 wrap.
         if _HTML_TRIGGER_PAT.search(last_text):
             m = re.search(r"```(?:html)?\s*\n(.*?)\n?```", content, re.DOTALL | re.IGNORECASE)
             if m:
@@ -540,8 +540,8 @@ def _post_process_artifact(resp: dict[str, Any], req_body: dict[str, Any],
             LOG.info("post-process: html artifact wrap (identifier=%s, size=%d)", identifier, len(html))
             return
 
-        # Mermaid wrap path — fence 추출 + 본문 wrap. 다른 텍스트 (설명) 가 같이 있으면
-        # mermaid fence 만 wrap 하고 앞뒤 설명은 보존.
+        # Mermaid wrap path — fence 추출 + 본문 wrap. 다른 텍스트(설명) 동반 시
+        # mermaid fence 만 wrap, 앞뒤 설명은 보존.
         if _MERMAID_TRIGGER_PAT.search(last_text):
             m = _MERMAID_FENCE_PAT.search(content)
             if m:
@@ -560,12 +560,12 @@ def _post_process_artifact(resp: dict[str, Any], req_body: dict[str, Any],
 
 
 def _artifact_kw_intent(messages: list[dict[str, Any]] | None) -> bool:
-    """user 의 마지막 message 에 HTML/mermaid trigger 키워드가 있는지.
+    """user 의 마지막 message 에 HTML/mermaid trigger 키워드 존재 여부.
 
-    raw HTML/mermaid 를 모델이 :::artifact wrapper 없이 emit 할 가능성이 있는 케이스 —
-    이때 non-stream + SSE wrap 으로 강제해 post-process(_post_process_artifact)로 감싼다.
-    (별개로 artifacts 토글 ON 도 non-stream wrap 을 강제한다 — 모델이 :::artifact 를
-    일관되게 안 emit 하고 ```lang 코드블록만 내놓기 때문. handler 의 _artifact_toggle_on 분기.)"""
+    raw HTML/mermaid 를 모델이 :::artifact wrapper 없이 emit 할 가능성 있는 케이스 —
+    이때 non-stream + SSE wrap 강제 → post-process(_post_process_artifact)로 감쌈.
+    (별개로 artifacts 토글 ON 도 non-stream wrap 강제 — 모델이 :::artifact 를
+    일관되게 미emit 하고 ```lang 코드블록만 내놓기 때문. handler 의 _artifact_toggle_on 분기.)"""
     if not messages:
         return False
     last_user = next((m for m in reversed(messages)
@@ -579,9 +579,9 @@ def _artifact_kw_intent(messages: list[dict[str, Any]] | None) -> bool:
 
 
 def _artifact_toggle_on(messages: list[dict[str, Any]] | None) -> bool:
-    """artifacts 토글 ON 여부 — LibreChat 가 system 프롬프트에 내장 artifacts 지침을
-    주입하면 ':::artifact' 가 system 메시지에 들어온다. 이게 켜져 있으면 첫 턴부터
-    tool 을 막아 한 방에 아티팩트를 생성시킨다(반복 수정 시 degenerate 회피)."""
+    """artifacts 토글 ON 여부 — LibreChat 가 system 프롬프트에 내장 artifacts 지침
+    주입 시 ':::artifact' 가 system 메시지에 진입. ON 이면 첫 턴부터
+    tool 차단 → 한 방에 아티팩트 생성(반복 수정 시 degenerate 회피)."""
     if not messages:
         return False
     return any(isinstance(m, dict) and m.get("role") == "system"
@@ -627,13 +627,13 @@ def _select_chat_model(messages: list[dict[str, Any]] | None) -> str:
 def _artifact_intent(messages: list[dict[str, Any]] | None) -> bool:
     """artifact 응답 의도(broad) — 루프 차단기(tool_choice=none) 발동 조건.
 
-    (1) artifacts 토글 ON: LibreChat 가 system 프롬프트에 내장 artifacts 지침을 주입
-        → ':::artifact' 가 system 메시지에 들어온다. 토글이 진짜 신호이므로 user 키워드와
+    (1) artifacts 토글 ON: LibreChat 가 system 프롬프트에 내장 artifacts 지침 주입
+        → ':::artifact' 가 system 메시지에 진입. 토글이 진짜 신호 → user 키워드와
         무관하게 감지(예: "HTML 계산기 만들어줘" 처럼 키워드 패턴 밖이어도 루프 차단).
     (2) 폴백: HTML/mermaid trigger 키워드(_artifact_kw_intent).
 
-    주의: 이건 루프 차단기 전용. non-stream 강제는 _artifact_kw_intent 만 사용해야 한다
-    (broad 로 non-stream 을 강제하면 토글 켠 모든 응답이 2분 freeze)."""
+    주의: 루프 차단기 전용. non-stream 강제는 _artifact_kw_intent 만 사용 필수
+    (broad 로 non-stream 강제 시 토글 켠 모든 응답이 2분 freeze)."""
     if not messages:
         return False
     for m in messages:
@@ -700,9 +700,9 @@ async def chat_completions(req: Request):
     #
     # 두 모드:
     #  (A) artifacts 토글 ON (_artifact_toggle_on): system 에 :::artifact 지침 주입됨 =
-    #      사용자가 '아티팩트로 답하라' 명시. 첫 턴부터 tool_choice="none" 로 강제해
-    #      *한 방에* 생성시킨다. 1번이라도 tool 턴을 거치면(빌드·실행·수정) 모델이
-    #      `a a a a a` 식 토큰 반복으로 degenerate 한다("수정하면 망가짐"). 한방이 제일 안전.
+    #      사용자가 '아티팩트로 답하라' 명시. 첫 턴부터 tool_choice="none" 강제 →
+    #      *한 방에* 생성. 1번이라도 tool 턴 거치면(빌드·실행·수정) 모델이
+    #      `a a a a a` 식 토큰 반복으로 degenerate("수정하면 망가짐"). 한방이 제일 안전.
     #  (B) 키워드 기반(_artifact_intent, 토글 OFF): tool-result 턴(last_role=="tool")에서만
     #      강제 — 검색/페치 1회 후 생성하는 정상 orchestration 은 허용.
     if tool_choice != "none" and (

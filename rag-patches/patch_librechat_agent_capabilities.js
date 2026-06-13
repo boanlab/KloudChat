@@ -1,8 +1,8 @@
 // LibreChat ToolService.js 의 resolveAgentCapabilities() 폴백 조건 패치.
 //
-// 원본: `if (capabilities.size === 0 && isEphemeralAgentId(agentId))` 로 ephemeral
-// 에이전트만 default capability 폴백을 받음. DB-backed agent (mongo 의 agents 컬렉션
-// 에 저장된 일반 에이전트) 는 endpointsConfig 의 capabilities 가 비어있으면 빈 Set
+// 원본: `if (capabilities.size === 0 && isEphemeralAgentId(agentId))` → ephemeral
+// 에이전트만 default capability 폴백 수신. DB-backed agent (mongo agents 컬렉션
+// 저장 일반 에이전트) 는 endpointsConfig capabilities 비어있으면 빈 Set
 // 그대로 → 'tools' false → plugin tool 전부 loadAgentTools 에서 silent skip.
 //
 // 패치: ephemeral 조건 제거 → 모든 에이전트가 appConfig.endpoints.agents.capabilities

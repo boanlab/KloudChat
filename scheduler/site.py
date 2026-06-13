@@ -19,7 +19,7 @@ A SiteConfig has three sections:
 The shipped sites are at ``scheduler/sites/`` — ``kloudchat.yaml`` is the
 production binding (gitignored), created by copying ``kloudchat.yaml.example``
 and filling it in (``load()`` 가 이 .example 을 hint 로 안내). ``example.yaml``
-은 다른 클러스터용 범용 참고 예시다.
+= 다른 클러스터용 범용 참고 예시.
 """
 
 from __future__ import annotations
@@ -168,8 +168,8 @@ def load(path: Optional[str | os.PathLike] = None) -> SiteConfig:
 
 def _from_dict(d: dict, *, source: str = "<inline>") -> SiteConfig:
     name = str(d.get("name") or Path(source).stem)
-    # 노드 항목은 string (host) 또는 dict ({host, usable_vram_gb}) 둘 다 허용.
-    # dict 형은 unified-memory 노드에서 planner ceiling 을 physical 보다 낮추기 위해 쓴다.
+    # 노드 항목 = string (host) 또는 dict ({host, usable_vram_gb}) 둘 다 허용.
+    # dict 형 = unified-memory 노드에서 planner ceiling 을 physical 보다 낮추는 용도.
     raw_nodes = d.get("nodes") or {}
     nodes: dict[str, str] = {}
     node_usable_vram: dict[str, int] = {}

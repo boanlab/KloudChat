@@ -44,7 +44,7 @@ DEFAULT_WHISPER_COTENANT_PENALTY: int = 3 * (1024 ** 3)   # 3 GiB
 # absent. ~4 GiB covers activation + cudagraph (~1-1.6 GiB) + non-torch for
 # gemma-4-26b in the typical case; large non_torch_memory on some nodes pushes
 # it higher (fit precisely by calibration). NB: measured gemma-4-26b weights
-# ≈ 15.9 GiB GPU / 15.3 disk (not the older ~21.5 figure). Real per-(workload,
+# ≈ 15.9 GiB GPU / 15.3 disk. Real per-(workload,
 # max_len) values fit by calibration; this default protects first-run planning.
 DEFAULT_ACTIVATION_BYTES: int = 4 * (1024 ** 3)   # 4 GiB
 

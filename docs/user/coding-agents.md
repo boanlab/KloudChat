@@ -86,4 +86,4 @@ KLOUDCHAT_API_KEY="sk-..." codex --profile qwen-coder
 
 ## 같이 보면 좋은 문서
 
-- [모델 설정](models.md) — 사용 가능한 `model_name` 카탈로그
+- [모델 설정](../operator/models.md) — 사용 가능한 `model_name` 카탈로그

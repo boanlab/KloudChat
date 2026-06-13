@@ -65,8 +65,8 @@ check "local/auto-route 등록(Super Agent)" "$(has_model local/auto-route)"
 hdr "3. 챗 라운드트립 (LiteLLM)"
 chat() { # chat <model> [max_tokens] -> prints "1" if 200 + non-empty output (content OR reasoning).
   # 122b 는 reasoning 모델 — thinking 은 reasoning_content 로 나오는데 strip_reasoning 콜백이
-  # 그걸 벗기므로, 답변(content)까지 도달해야 비어있지 않다. thinking 에 토큰을 다 쓰고 답변에
-  # 못 가면 FAIL → reasoning 모델은 max_tokens 를 넉넉히 줘 답변까지 생성하게 한다(120s 내).
+  # 그걸 벗김 → 답변(content)까지 도달해야 비어있지 않음. thinking 에 토큰 다 쓰고 답변에
+  # 못 가면 FAIL → reasoning 모델은 max_tokens 넉넉히 줘 답변까지 생성(120s 내).
   local mt="${2:-64}"
   curl -s --max-time 120 -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "User-Agent: $UA" \
     -X POST "$LL_HOST/v1/chat/completions" \
@@ -175,7 +175,7 @@ PY
     check "[$1] $3 실행" "$([[ "${r%%|*}" == PASS ]] && echo 1)" "${r#*|}"
   }
   # ── demo 시나리오 기반 (docs/*-demo.md). 각 시나리오는 해당 에이전트의 대표 도구를
-  #    실제로 구동하는지(ReAct 폴백 아님) 검증한다. 빠른 도구 → 느린 생성 순서.
+  #    실제 구동하는지(ReAct 폴백 아님) 검증. 빠른 도구 → 느린 생성 순서.
   #    EXPECT 는 tool_call 이름 substring (MCP 는 <tool>_mcp_<server> 로 네임스페이스).
   #
   # US-1 [Super Agent] execute_code — 통계 평균/표준편차 (trigger.math: 계산은 print())
@@ -197,7 +197,7 @@ PY
   # US-9 [Slide Studio] 자체완결형 HTML 발표자료를 :::artifact 로 직접 저작 (도구 없음). 122b ~10분.
   agent_tool "Slide Studio"  "'딥러닝 기초' 발표자료를 10장 슬라이드로 만들어줘" deck 900
   # US-10 [Deep Research] deep_research — 학술 다단계 조사 + 인용. 122b(~14 tok/s) ReAct
-  # 루프가 다회 반복이라 가장 느림 — 캡 60분(느린 노드/긴 sweep 여유).
+  # 루프 다회 반복이라 가장 느림 — 캡 60분(느린 노드/긴 sweep 여유).
   agent_tool "Deep Research" "기말 리포트 주제로, LLM 환각(hallucination) 완화 최신 연구를 출처와 함께 정리해줘" deep_research 3600
   rm -f "$HELPER" "$KC_SMOKE_TOKENF"
 
@@ -209,8 +209,8 @@ PY
   check "auto-route 아티팩트 → :::artifact 래핑" "$ART"
 
   hdr "6. smart_search MCP (정밀 문서검색 — reformulate+hybrid+eval)"
-  # 알려진 fact 를 테스트 user_id 로 pgvector 에 시드 → 파이프라인이 회수하는지 →
-  # 정리. 업로드/에이전트 호출 비결정성을 피해 retrieve 품질만 결정적으로 검증한다.
+  # 알려진 fact 를 테스트 user_id 로 pgvector 에 시드 → 파이프라인 회수 여부 →
+  # 정리. 업로드/에이전트 호출 비결정성 회피 → retrieve 품질만 결정적으로 검증.
   PG_USER="$(env_get POSTGRES_USER)"; PG_DB="$(env_get POSTGRES_DB)"
   SS_UID="smoketest-$$"
   SS_FACT="KloudChat 스모크테스트 전용 비밀 식별코드는 ZEBRA-7741 이며 다른 의미는 없다."
@@ -241,13 +241,13 @@ print(" ".join(x["document"] for x in r))' 2>/dev/null)"
   fi
 
   hdr "7. Note Taker STT (오디오 → whisper-shim 전사)"
-  # Note Taker 의 핵심 = 오디오 「텍스트로 업로드」 시 speech.stt→whisper-shim 전사.
-  # 런타임에 실제 깨지는 곳은 whisper 백엔드(compute_type/GPU)이므로, 공유 에이전트
-  # 상태를 건드리지 않게 whisper-shim 으로 픽스처를 직접 전사해 검증한다(전사문 비어있지
-  # 않으면 통과). LibreChat speech.stt 배선은 부팅 시 config 검증으로 자기검증됨.
+  # Note Taker 핵심 = 오디오 「텍스트로 업로드」 시 speech.stt→whisper-shim 전사.
+  # 런타임에 실제 깨지는 곳은 whisper 백엔드(compute_type/GPU) → 공유 에이전트
+  # 상태 안 건드리게 whisper-shim 으로 픽스처 직접 전사해 검증(전사문 비어있지
+  # 않으면 통과). LibreChat speech.stt 배선은 부팅 시 config 검증으로 자기검증.
   NT_FIX="${BASH_SOURCE[0]%/*}/fixtures/nt-sample.mp3"
-  # whisper-shim 의 네트워크(단일홈)를 쓴다 — comfyui-shim 은 litellm 망까지 multi-home
-  # 이라 {{range}} 가 이름을 이어붙여 잘못된 network 를 만든다. println+head 로 첫 망만.
+  # whisper-shim 의 네트워크(단일홈) 사용 — comfyui-shim 은 litellm 망까지 multi-home
+  # 이라 {{range}} 가 이름 이어붙여 잘못된 network 생성. println+head 로 첫 망만.
   NT_NET="$(docker inspect whisper-shim --format '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' 2>/dev/null | head -1)"
   if [[ -f "$NT_FIX" && -n "$NT_NET" ]]; then
     NT_OUT="$(docker run --rm --network "$NT_NET" -v "$NT_FIX:/nt.mp3:ro" curlimages/curl:latest \

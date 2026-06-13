@@ -12,7 +12,7 @@
 #   --deep     vllm-qwen122b 단독 (Deep Research 노드 — 78G+KV, VRAM 큰 노드)
 #   --coder    vllm-codernext 단독 (코딩 클라이언트 전용 노드, chat 과 격리)
 #
-# compose project name = kloudchat-vllm — 메인 stack 과 라이프사이클을 분리한다.
+# compose project name = kloudchat-vllm — 메인 stack 과 라이프사이클 분리.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,8 +41,8 @@ cmd_up() {
 
   local root="${VLLM_MODELS_ROOT:-/var/lib/vllm/models}"
 
-  # --deep: Qwen3.5-122B-A10B (port 8002) Deep Research 노드만 띄운다 (additive —
-  # 돌고 있는 chat gemma 는 안 건드림). VRAM 큰 노드 (78G+KV).
+  # --deep: Qwen3.5-122B-A10B (port 8002) Deep Research 노드만 (additive —
+  # 돌고 있는 chat gemma 불간섭). VRAM 큰 노드 (78G+KV).
   if (( deep )); then
     local cd; cd="$(env_get VLLM_QWEN122B_DIR)"; cd="${cd:-qwen3.5-122b-a10b}"
     if [[ ! -f "$root/$cd/config.json" ]]; then
@@ -52,7 +52,7 @@ cmd_up() {
     fi
     ok "weight: $cd ($(du -sh "$root/$cd" 2>/dev/null | cut -f1))"
     local rec=(); (( recreate )) && rec=(--force-recreate)
-    docker compose -f "$COMPOSE_FILE" --profile deep up -d "${rec[@]}" vllm-qwen122b
+    docker compose -f "$COMPOSE_FILE" --profile deep up -d --no-build "${rec[@]}" vllm-qwen122b
     echo
     echo "  → curl http://localhost:8002/v1/models"
     echo "  → ./scripts/gen-litellm-config.sh && docker compose up -d --force-recreate litellm"
@@ -67,7 +67,7 @@ cmd_up() {
   else
     local cd
     cd="$(env_get VLLM_GEMMA26_DIR)"
-    # RTX4090 은 FP4 미지원이라 AWQ-int4 변종으로 swap 한다. .env 명시값이 있으면 존중한다.
+    # RTX4090 = FP4 미지원 → AWQ-int4 변종으로 swap. .env 명시값 우선.
     if [[ "$gpu_class" == "rtx4090" && ( "$cd" == "gemma-4-26b" || -z "$cd" ) ]]; then
       env_set VLLM_GEMMA26_DIR gemma-4-26b-awq
       warn "GPU=RTX4090 — VLLM_GEMMA26_DIR=gemma-4-26b-awq 로 swap (FP4 미지원)"
@@ -91,7 +91,7 @@ cmd_up() {
     info "force-recreate — 모델 재로드 (~2-4분, gemma-4-26b 기준)"
     recreate_args=(--force-recreate)
   fi
-  docker compose -f "$COMPOSE_FILE" "${profile_args[@]}" up -d "${recreate_args[@]}"
+  docker compose -f "$COMPOSE_FILE" "${profile_args[@]}" up -d --no-build "${recreate_args[@]}"
 
   echo
   echo "  → ./scripts/manage-vllm.sh status"
@@ -113,7 +113,7 @@ cmd_down() {
   docker compose -f "$COMPOSE_FILE" "${profile_args[@]}" down "$@"
 }
 
-# 모든 profile 을 명시해 어느 profile 의 서비스든 대상에 포함시킨다 (미활성은 자동 무시).
+# 전 profile 명시 → 어느 profile 의 서비스든 대상 포함 (미활성은 자동 무시).
 _ALL_PROFILES=(--profile deep --profile coder)
 cmd_restart() { docker compose -f "$COMPOSE_FILE" "${_ALL_PROFILES[@]}" restart "$@"; }
 cmd_logs()    { docker compose -f "$COMPOSE_FILE" "${_ALL_PROFILES[@]}" logs -f "$@"; }

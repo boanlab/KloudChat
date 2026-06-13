@@ -6,16 +6,16 @@
 
 | 의도 | 어디서 | 적용 명령 |
 |---|---|---|
-| agent instruction (말투 / 트리거 / 정책 텍스트) 추가·수정 | [`routing/instructions.md`](../routing/instructions.md) | `./scripts/manage.sh agent sync` |
-| 공통 운영 규칙 (honesty / deep_research 가이드 / execute_code 규칙) | [`scripts/agent-instructions-appendix.txt`](../scripts/agent-instructions-appendix.txt) | `agent sync` |
-| 새 도구 부착 / 제거 | [`scripts/manage.sh`](../scripts/manage.sh) 의 `mcpToolsFor()` — `MCP_DEFAULT` / `MCP_RESEARCH` / `MCP_PAPERBANANA` 배열 + kind 인라인 분기(video→`generate_video`, ppt→`export_deck`, image·notetaker→없음) | `agent sync` |
-| 모델 카탈로그 (commercial / vLLM) | [`scripts/lib.sh`](../scripts/lib.sh) 의 `OPENAI_MODELS` / `ANTHROPIC_MODELS` / `GOOGLE_MODELS` / `VLLM_MODELS` | `./scripts/setup.sh litellm` (config 재생성) |
-| 새 대화 기본 | [`librechat.yaml`](../librechat.yaml) 의 `modelSpecs` — `prioritize:true` + 단일 super-agent spec(showIcon false)으로 새 대화 기본=Super Agent 만 설정(보이는 핀 없음). agent_id 는 실제 id 고정 — `agent sync` 가 label 로 자동 동기화 | `agent sync` + `librechat` 재기동 |
-| AI Agent Store 카테고리 / 생성권한(ADMIN 전용) | [`scripts/manage.sh`](../scripts/manage.sh) 의 `categoryFor()` + `cmd_agent_sync` 카테고리·role 시드 | `agent sync` |
+| agent instruction (말투 / 트리거 / 정책 텍스트) 추가·수정 | [`routing/instructions.md`](../../routing/instructions.md) | `./scripts/manage.sh agent sync` |
+| 공통 운영 규칙 (honesty / deep_research 가이드 / execute_code 규칙) | [`scripts/agent-instructions-appendix.txt`](../../scripts/agent-instructions-appendix.txt) | `agent sync` |
+| 새 도구 부착 / 제거 | [`scripts/manage.sh`](../../scripts/manage.sh) 의 `mcpToolsFor()` — `MCP_DEFAULT` / `MCP_RESEARCH` / `MCP_PAPERBANANA` 배열 + kind 인라인 분기(video→`generate_video`, ppt→`export_deck`, image·notetaker→없음) | `agent sync` |
+| 모델 카탈로그 (commercial / vLLM) | [`scripts/lib.sh`](../../scripts/lib.sh) 의 `OPENAI_MODELS` / `ANTHROPIC_MODELS` / `GOOGLE_MODELS` / `VLLM_MODELS` | `./scripts/setup.sh litellm` (config 재생성) |
+| 새 대화 기본 | [`librechat.yaml`](../../librechat.yaml) 의 `modelSpecs` — `prioritize:true` + 단일 super-agent spec(showIcon false)으로 새 대화 기본=Super Agent 만 설정(보이는 핀 없음). agent_id 는 실제 id 고정 — `agent sync` 가 label 로 자동 동기화 | `agent sync` + `librechat` 재기동 |
+| AI Agent Store 카테고리 / 생성권한(ADMIN 전용) | [`scripts/manage.sh`](../../scripts/manage.sh) 의 `categoryFor()` + `cmd_agent_sync` 카테고리·role 시드 | `agent sync` |
 | Super Agent 활성 조건 | `scripts/lib.sh::super_agent_eligible` (`gemma-4-26b` chat backend 가용) | scheduler apply + `librechat` 재기동 |
-| scheduler feature 우선순위 | [`scheduler/catalog.py::DEFAULT_PRIORITIES`](../scheduler/catalog.py) | `setup.sh scheduler apply` |
-| workload → sidecar URL 매핑 (image-flux → COMFYUI_URLS 등) | [`scheduler/applier.py::_SIDECAR_URL_VARS`](../scheduler/applier.py) | `setup.sh scheduler apply` |
-| Super Agent shim 분기 로직 (router skip / tool_call 우회 등) | [`super-agent-shim/app.py::chat_completions`](../super-agent-shim/app.py) | `docker compose -f docker-compose.litellm.yml restart super-agent-shim` |
+| scheduler feature 우선순위 | [`scheduler/catalog.py::DEFAULT_PRIORITIES`](../../scheduler/catalog.py) | `setup.sh scheduler apply` |
+| workload → sidecar URL 매핑 (image-flux → COMFYUI_URLS 등) | [`scheduler/applier.py::_SIDECAR_URL_VARS`](../../scheduler/applier.py) | `setup.sh scheduler apply` |
+| Super Agent shim 분기 로직 (router skip / tool_call 우회 등) | [`super-agent-shim/app.py::chat_completions`](../../super-agent-shim/app.py) | `docker compose -f docker-compose.litellm.yml restart super-agent-shim` |
 | LibreChat artifact prompt (`:::artifact{}` 형식) | LibreChat 내장 (`generateArtifactsPrompt`) — Artifacts 토글 ON 시 자동 주입. 변경 불가 | 해당 없음 |
 
 ## `routing/instructions.md` 구조

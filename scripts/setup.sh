@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Usage: setup.sh <role> [options]
 #
-# 사전: ./scripts/gen-env.sh 로 .env 생성 후 키/URL 채운다.
+# 사전: ./scripts/gen-env.sh 로 .env 생성 후 키/URL 채움.
 # 필수: OPENROUTER_API_KEY 또는 reachable 한 vLLM 노드 (VLLM_*_URL) 1개 이상.
 #
-# .env 의 NODE_* / NODES_* 가 노드 위치의 SoT. 로컬이면 직접 실행, 원격이면 rsync + ssh 로
-# 그 노드에 setup.sh 를 보낸다 (is_local_host 가 localhost / 내 IP / hostname / DNS 매칭).
+# .env 의 NODE_* / NODES_* = 노드 위치의 SoT. 로컬이면 직접 실행, 원격이면 rsync + ssh 로
+# 그 노드에 setup.sh 전송 (is_local_host 가 localhost / 내 IP / hostname / DNS 매칭).
 # 단일노드 = 모든 NODE_* 를 같은 호스트 (또는 비워두면 = 로컬).
 #
 # Roles (multi-node host installs — .env NODES_<ROLE> csv):
@@ -94,13 +94,13 @@ step_env_validate() {
 }
 
 # hdr 1b — .env 의 VLLM_*_URL probe. VLLM_ACTIVE / VLLM_CODER_ACTIVE / VLLM_URL 글로벌로.
-# URL 이 채워져 있으면 ready 까지 wait — 컨테이너가 Up 인 한(모델 로딩 중)이면 시간 무관하게
-# 대기하고, 컨테이너가 exited/없음(=미기동)이면 즉시 종료한다. 시간 기반 grace 가 아니라
-# 실제 컨테이너 상태로 판정한다 (lib.sh __vllm_container_state — cold start 가 느려도
-# false-dead 안 나고, 진짜 크래시만 fail-fast). 이렇게 해야 후속 gen-litellm-config 가
-# vLLM 의 /v1/models 에서 max_model_len 을 정확히 받아온다. 환경변수:
+# URL 채워져 있으면 ready 까지 wait — 컨테이너가 Up 인 한(모델 로딩 중) 시간 무관 대기,
+# 컨테이너가 exited/없음(=미기동)이면 즉시 종료. 시간 기반 grace 가 아니라
+# 실제 컨테이너 상태로 판정 (lib.sh __vllm_container_state — cold start 가 느려도
+# false-dead 안 나고, 진짜 크래시만 fail-fast). 이래야 후속 gen-litellm-config 가
+# vLLM 의 /v1/models 에서 max_model_len 정확히 수신. 환경변수:
 #   KLOUDCHAT_VLLM_WAIT_TIMEOUT (기본 1200s) — 전체 deadline (안전 상한). 큰 모델을
-#     GB10 등에서 cold-load 하면 600s 를 넘기는 경우가 있어 상향.
+#     GB10 등에서 cold-load 시 600s 초과 경우가 있어 상향.
 #   KLOUDCHAT_VLLM_WAIT_INTERVAL (10s)      — probe 주기
 step_vllm_probe() {
   hdr "1b. vLLM (옵셔널, .env 의 VLLM_*_URL 채워졌을 때만)"
@@ -124,10 +124,10 @@ step_vllm_probe() {
   local wait_timeout="${KLOUDCHAT_VLLM_WAIT_TIMEOUT:-1200}"
   local wait_interval="${KLOUDCHAT_VLLM_WAIT_INTERVAL:-10}"
   # rc=2 (컨테이너 미기동/종료) → 운영 사고. fail-fast 로 종료.
-  # rc=3 (timeout) → 로딩이 지나치게 오래 걸림. 모델 디스크 첫 로딩이거나 GPU 메모리 문제 — 운영자 개입 필요.
+  # rc=3 (timeout) → 로딩 과다 지연. 모델 디스크 첫 로딩이거나 GPU 메모리 문제 — 운영자 개입 필요.
   __wait_or_exit() {
     local csv="$1" label="$2"
-    # set -e 상속: bare 호출이 non-zero 반환 시 rc 캡처 전에 종료되므로 || 로 가드.
+    # set -e 상속: bare 호출이 non-zero 반환 시 rc 캡처 전 종료 → || 로 가드.
     local rc=0
     vllm_wait_until_ready "$csv" "$label" "$wait_timeout" "$wait_interval" 3 || rc=$?
     case "$rc" in
@@ -138,7 +138,7 @@ step_vllm_probe() {
     esac
   }
 
-  # VLLM_GEMMA26_URL 이 chat profile sentinel — 채워지면 gemma/122b/bge-m3 묶음을 활성으로 간주한다.
+  # VLLM_GEMMA26_URL = chat profile sentinel — 채워지면 gemma/122b/bge-m3 묶음을 활성 간주.
   if [[ -n "$VLLM_URL" ]]; then
     __wait_or_exit "$VLLM_URL" "chat ($VLLM_URL)"
     ok "vLLM chat ready"
@@ -153,7 +153,7 @@ step_vllm_probe() {
     fi
   fi
 
-  # coder profile — vllm-codernext 단독 노드, chat 과 격리한다.
+  # coder profile — vllm-codernext 단독 노드, chat 과 격리.
   if [[ -n "$VLLM_CODER_URL_VAL" ]]; then
     __wait_or_exit "$VLLM_CODER_URL_VAL" "coder ($VLLM_CODER_URL_VAL)"
     ok "vLLM coder ready"
@@ -242,18 +242,18 @@ role_litellm() {
   ./scripts/gen-litellm-config.sh
 
   hdr "3. Pull images (litellm stack)"
-  # 자체 이미지는 boanlab/kloudchat-* 를 pull (빌드/퍼블리시는 build-push-images.sh).
+  # 자체 이미지는 boanlab/kloudchat-* pull (빌드/퍼블리시는 build-push-images.sh).
   docker compose -f docker-compose.litellm.yml pull
 
   hdr "4. Start litellm stack"
-  docker compose -f docker-compose.litellm.yml up -d
+  docker compose -f docker-compose.litellm.yml up -d --no-build
 
   hdr "5. teams + service key"
   wait_for_litellm 120
   ./scripts/manage.sh team create --alias admin   --budget 9999 --tpm 100000 --rpm 500
   ./scripts/manage.sh team create --alias default --budget 9999 --tpm 100000 --rpm 500
   ./scripts/manage.sh key issue --service librechat --budget 9999
-  # 기존 팀의 model allowlist 를 현재 카탈로그로 sync 한다 (멱등).
+  # 기존 팀의 model allowlist 를 현재 카탈로그로 sync (멱등).
   ./scripts/manage.sh team sync
 
   hdr "Verify (litellm)"
@@ -293,19 +293,23 @@ role_librechat() {
   ./scripts/gen-litellm-config.sh
   ./scripts/gen-librechat-config.sh
   ./scripts/gen-searxng-config.sh
-  warn "LiteLLM 이 별도 노드라면 위에서 생성된 litellm-config.yaml 을 그 노드로 sync 후 'setup.sh litellm' 재실행 필요"
+  # LiteLLM 이 원격 노드일 때만 의미 — 방금 재생성한 config 를 그쪽으로 sync 필요.
+  # 로컬(localhost/host.docker.internal/litellm:, lib.sh 가 localhost 로 정규화)이면 노이즈.
+  local ll_host="${LITELLM_URL#*://}"; ll_host="${ll_host%%[:/]*}"
+  is_local_host "$ll_host" || \
+    warn "LiteLLM 이 별도 노드(${ll_host}) — 재생성된 litellm-config.yaml 을 그 노드로 sync 후 'setup.sh litellm' 재실행 필요"
 
   step_comfyui_probe
 
   hdr "3. Pull images (main stack)"
-  # 자체 이미지는 boanlab/kloudchat-* 를 pull (빌드/퍼블리시는 build-push-images.sh).
+  # 자체 이미지는 boanlab/kloudchat-* pull (빌드/퍼블리시는 build-push-images.sh).
   docker compose pull
 
   hdr "4. Start main stack"
-  docker compose up -d
-  # 사이드카 자동 비활성: URL 이 비었는데 shim 만 떠있으면 health 무의미 fail → 명시 stop.
+  docker compose up -d --no-build
+  # 사이드카 자동 비활성: URL 비었는데 shim 만 떠있으면 health 무의미 fail → 명시 stop.
   # 단 comfyui-shim 은 COMFYUI_URLS 비어도 OR 키 있으면 외부 이미지/비디오 라우팅용으로
-  # 유지(빈 백엔드로 부팅 가능). whisper-shim 은 whisper 가 GPU 전용(OR STT 폴백 없음)이라
+  # 유지(빈 백엔드로 부팅 가능). whisper-shim 은 whisper 가 GPU 전용(OR STT 폴백 없음) →
   # WHISPER_URLS 비면 그냥 stop. URL/키 채워지면 다음 setup 의 up -d 가 자동 start.
   if [[ -z "$(env_get COMFYUI_URLS)" ]] && ! has_openrouter; then
     warn "COMFYUI_URLS 비어있음 + OR 키 없음 — comfyui-shim stop (이미지/비디오 백엔드 없음)"
@@ -321,20 +325,20 @@ role_librechat() {
   docker compose restart librechat rag_api
   wait_for_lc 60 8
 
-  # .env ADMIN_* 로 LibreChat ADMIN 계정 자동 생성 (멱등). agent sync 가 ADMIN owner 를
-  # 요구하므로 반드시 그 전에.
+  # .env ADMIN_* 로 LibreChat ADMIN 계정 자동 생성 (멱등). agent sync 가 ADMIN owner
+  # 요구 → 반드시 그 전에.
   step_admin_user
 
   # ADMIN 글로벌 공유 에이전트 카탈로그를 현재 spec 으로 upsert + 전 사용자 read-only
-  # 공유 (멱등). 사용자 생성과 무관한 1회성 부트스트랩이라 여기서만 호출한다.
+  # 공유 (멱등). 사용자 생성과 무관한 1회성 부트스트랩 → 여기서만 호출.
   ./scripts/manage.sh agent sync
 
   step_verify_main
   print_vllm_status
 }
 
-# .env 의 ADMIN_ID/ADMIN_PW/ADMIN_EMAIL 로 LibreChat ADMIN 계정을 생성한다 (멱등).
-# ADMIN_PW 는 gen-env.sh 가 change-me- placeholder 를 랜덤값으로 교체한 결과.
+# .env 의 ADMIN_ID/ADMIN_PW/ADMIN_EMAIL 로 LibreChat ADMIN 계정 생성 (멱등).
+# ADMIN_PW = gen-env.sh 가 change-me- placeholder 를 랜덤값으로 교체한 결과.
 step_admin_user() {
   hdr "6b. Admin 계정 (.env ADMIN_*)"
   local aid apw aemail
@@ -381,7 +385,7 @@ EOF
 # ───────────────────────── dispatch helpers ─────────────────────────
 
 # host install role 1개를 NODES_<ROLE> csv 의 각 노드에 분배. csv 비었거나 노드가 로컬이면
-# install-*.sh 직접 실행. ssh 케이스는 rsync + ssh "KLOUDCHAT_DISPATCHED=1 setup.sh <role>".
+# install-*.sh 직접 실행. ssh 케이스 = rsync + ssh "KLOUDCHAT_DISPATCHED=1 setup.sh <role>".
 dispatch_csv() {
   local role="$1"; shift
   local var="NODES_${role^^}"
@@ -434,8 +438,8 @@ dispatch_single() {
   fi
 }
 
-# setup.sh litellm 후 원격 노드의 .env 가 LITELLM_SERVICE_KEY 를 박는다. 이걸 로컬로 회수해
-# 다음 단계 (librechat rsync) 가 같은 키를 들고 가게 한다. 로컬 케이스는 .env 가 이미 같은 곳.
+# setup.sh litellm 후 원격 노드의 .env 가 LITELLM_SERVICE_KEY 를 박음. 이걸 로컬로 회수해
+# 다음 단계 (librechat rsync) 가 같은 키를 들고 가게 함. 로컬 케이스는 .env 가 이미 같은 곳.
 pull_litellm_env() {
   local host; host="$(env_get NODE_LITELLM)"
   [[ -z "$host" ]] && return 0
@@ -444,9 +448,9 @@ pull_litellm_env() {
   ok "litellm 노드의 .env (LITELLM_SERVICE_KEY 포함) 로컬로 회수"
 }
 
-# pulp(python) + cbc(MILP solver 바이너리) + PyYAML. apt 로 자동 설치 시도하며,
-# apt 가 없거나 KLOUDCHAT_SCHEDULER_NO_AUTOINSTALL=1 이면 수동 설치 안내로 fallback.
-# venv 안에서 돌리거나 pip 으로 관리하고 싶을 때 NO_AUTOINSTALL=1 을 쓰면 됨.
+# pulp(python) + cbc(MILP solver 바이너리) + PyYAML. apt 로 자동 설치 시도,
+# apt 부재 또는 KLOUDCHAT_SCHEDULER_NO_AUTOINSTALL=1 이면 수동 설치 안내로 fallback.
+# venv 내 실행 또는 pip 관리 원할 때 NO_AUTOINSTALL=1 사용.
 ensure_scheduler_deps() {
   local need_py=0 need_cbc=0
   python3 -c 'import pulp, yaml' &>/dev/null || need_py=1
@@ -467,7 +471,7 @@ ensure_scheduler_deps() {
     err "apt 설치 실패 — sudo apt update && sudo apt install python3-pulp coinor-cbc python3-yaml 수동 시도 필요"
     return 1
   fi
-  # apt 가 성공했어도 venv 등에서 import 못 잡는 경우가 있어 한 번 더 검증한다.
+  # apt 성공했어도 venv 등에서 import 못 잡는 경우가 있어 한 번 더 검증.
   if ! python3 -c 'import pulp, yaml' &>/dev/null; then
     err "설치 후에도 pulp/yaml import 실패 — venv/PYTHONPATH 가 시스템 site-packages 를 못 보는지 확인"
     return 1
@@ -502,7 +506,7 @@ run_scheduler() {
 # ───────────────────────── all role ─────────────────────────
 
 role_all() {
-  # 0) NODES_* → *_URLS 자동 derive (Whisper — scheduler 가 안 다루는 것).
+  # 0) NODES_* → *_URLS 자동 derive (Whisper — scheduler 미관여분).
   # vLLM / ComfyUI 의 URL 은 step 2 의 scheduler apply 가 placement 따라 갱신.
   derive_urls_from_nodes
 
@@ -526,21 +530,21 @@ role_all() {
       || warn "scheduler 단계 실패 — 정적 VLLM_*_URL 로 fallback 시도"
   fi
 
-  # 3) litellm — 실패하면 librechat 사전 검증이 fail 하므로 중단.
+  # 3) litellm — 실패 시 librechat 사전 검증이 fail → 중단.
   dispatch_single litellm
   pull_litellm_env
 
-  # 4) librechat — 갱신된 .env 가 rsync_push 되어 SERVICE_KEY / LITELLM_URL 동기화됨.
+  # 4) librechat — 갱신된 .env 가 rsync_push 되어 SERVICE_KEY / LITELLM_URL 동기화.
   dispatch_single librechat
 }
 
 # ── start / stop ──────────────────────────────────────────
-# docker 스택(litellm + librechat) 만 정지/재개한다. 컨테이너 state 만 바꾸고
-# (compose stop/start) 볼륨·네트워크·bind-mount 데이터는 모두 보존 — 데이터 삭제는
+# docker 스택(litellm + librechat) 만 정지/재개. 컨테이너 state 만 변경
+# (compose stop/start), 볼륨·네트워크·bind-mount 데이터는 모두 보존 — 데이터 삭제는
 # clean role 담당. vLLM/ComfyUI 등 GPU 백엔드는 대상 아님 (수동: manage-vllm.sh).
 # 노드는 .env 의 NODE_LITELLM / NODE_LIBRECHAT 기준 (분리 노드면 각자 ssh).
 #
-# 의존 방향: librechat → litellm. stop 은 역순(librechat 먼저), start 는 정순.
+# 의존 방향: librechat → litellm. stop = 역순(librechat 먼저), start = 정순.
 role_stack_stop() {
   hdr "stop — docker 스택 정지 (데이터 보존)"
   echo "[librechat] $(env_get NODE_LIBRECHAT 2>/dev/null || echo localhost)"
@@ -562,8 +566,8 @@ role_stack_start() {
 # ── clean (DESTRUCTIVE) ───────────────────────────────────
 # 재설치/초기화용. docker compose down 후 bind-mount runtime data 디렉토리 삭제.
 # ⚠️ 복구 불가 — 대화/사용자(Mongo), 검색 인덱스(Meili), RAG 임베딩(pgvector),
-#    LiteLLM 사용량/팀/키(litellm-db), Code Interpreter 샌드박스 파일이 통째로 삭제된다.
-#    백업이 필요하면 실행 전 따로 받을 것 (이 스크립트는 백업 안 함).
+#    LiteLLM 사용량/팀/키(litellm-db), Code Interpreter 샌드박스 파일 통째 삭제.
+#    백업 필요 시 실행 전 따로 받을 것 (이 스크립트는 백업 안 함).
 # 노드는 .env NODE_LITELLM / NODE_LIBRECHAT 기준 (분리 노드면 각자 rsync+ssh dispatch).
 # YES=1 로 확인 프롬프트 스킵.
 CLEAN_LITELLM_TARGETS=(data/litellm)
@@ -581,7 +585,7 @@ clean_stack_down() {
   fi
 }
 
-# bind-mount 데이터 삭제. sudo 는 컨테이너가 root 로 만든 파일 때문에 필요.
+# bind-mount 데이터 삭제. sudo = 컨테이너가 root 로 만든 파일 때문에 필요.
 clean_remove_targets() {
   local d t
   for d in "$@"; do
@@ -610,7 +614,7 @@ clean_worker_local() {
 }
 
 # clean 의 노드별 dispatch — litellm/librechat 워커를 로컬 직접 또는 원격 ssh 로 실행.
-# 원격은 setup.sh clean <sub> 를 KLOUDCHAT_DISPATCHED 로 보내 worker 만 직행시킨다.
+# 원격은 setup.sh clean <sub> 를 KLOUDCHAT_DISPATCHED 로 보내 worker 만 직행.
 clean_dispatch() {
   local sub="$1" var="NODE_${1^^}" host
   host="$(env_get "$var")"
@@ -655,8 +659,8 @@ role_clean() {
 [[ $# -eq 0 ]] && { usage; exit 1; }
 ROLE="$1"; shift
 
-# ssh 로 도착한 worker — 재dispatch 차단하고 worker 함수 직행. .env 가 mis-config 돼서
-# is_local_host 가 가짜 negative 를 내도 무한 ssh 루프를 막는 안전망.
+# ssh 로 도착한 worker — 재dispatch 차단하고 worker 함수 직행. .env mis-config 로
+# is_local_host 가 가짜 negative 를 내도 무한 ssh 루프 차단하는 안전망.
 if [[ "${KLOUDCHAT_DISPATCHED:-0}" == "1" ]]; then
   case "$ROLE" in
     litellm)   role_litellm   "$@" ;;

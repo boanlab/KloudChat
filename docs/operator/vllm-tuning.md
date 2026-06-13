@@ -167,4 +167,4 @@ solver 가 enumerate 하는 **(max_len × gpu_util)** 조합. 출처 — `schedu
 
 - [모델 설정](models.md)
 - [GPU 메모리 가이드](gpu-memory.md)
-- [코딩 에이전트](coding-agents.md)
+- [코딩 에이전트](../user/coding-agents.md)

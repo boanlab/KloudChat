@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Usage: tune-host.sh [--check]
 #
-# LLM 서빙 호스트 sysctl 튜닝. 모델 weight mmap 이 file cache GB 단위로 잡고 있어
-# 기본 swappiness=60 이면 idle 구간에 file cache 가 회수되고 다음 추론 때 cold start.
-# GB10 unified memory 노드는 file cache 압박이 특히 심함.
+# LLM 서빙 호스트 sysctl 튜닝. 모델 weight mmap 이 file cache 를 GB 단위로 점유 →
+# 기본 swappiness=60 이면 idle 구간에 file cache 회수 → 다음 추론 때 cold start.
+# GB10 unified memory 노드는 file cache 압박 특히 심함.
 #
 #   --check   적용 없이 현재값만 표시
 set -euo pipefail

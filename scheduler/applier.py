@@ -99,9 +99,9 @@ def _config_lookup(workloads: Sequence[Workload], wid: str, cname: str) -> Optio
 
 
 # Sidecar URL env-var mapping. Workloads without ``env_prefix`` (systemd
-# 류 — ComfyUI) still expose a host URL that sidecar shims (comfyui-shim
-# 등) probe. Maps workload_id → orchestrator .env var. Empty placements →
-# empty csv → ``setup.sh librechat`` stops the corresponding shim.
+# 류 — ComfyUI) 도 sidecar shim (comfyui-shim 등) 이 probe 하는 host URL 노출.
+# workload_id → orchestrator .env var 매핑. 빈 placement → 빈 csv →
+# ``setup.sh librechat`` 가 해당 shim 정지.
 _SIDECAR_URL_VARS: dict[str, str] = {
     "image-flux": "COMFYUI_URLS",
 }
@@ -226,12 +226,12 @@ def compute_diff(
                 continue
             _, prefix = vllm_bindings[wid]
             env_lines.append(f"{prefix}_MAX_LEN={cfg.max_len}")
-            # cfg.gpu_util 은 vLLM 의 --gpu-memory-utilization 의미 (physical VRAM
-            # fraction) 그대로 — 한 vLLM 이 weights + KV + activation + cudagraph 를
-            # 다 담아야 하는 단위라 임의로 rescale 하면 KV/activation 자리 사라져
-            # startup 시 _initialize_kv_caches OOM. 노드별 usable_vram cap 의 효과는
-            # solver 의 sum(commitments) ≤ planner_vram 제약으로만 발현된다 (여러
-            # vLLM 의 합산 reserve 가 ceiling 안에 들도록 가벼운 config 자동 선택).
+            # cfg.gpu_util = vLLM --gpu-memory-utilization 의미 (physical VRAM
+            # fraction) 그대로 — 한 vLLM 이 weights + KV + activation + cudagraph
+            # 다 담는 단위라 임의 rescale 시 KV/activation 자리 소멸 → startup
+            # _initialize_kv_caches OOM. 노드별 usable_vram cap 의 효과는 solver 의
+            # sum(commitments) ≤ planner_vram 제약으로만 발현 (여러 vLLM 합산 reserve
+            # 가 ceiling 안에 들도록 가벼운 config 자동 선택).
             env_lines.append(f"{prefix}_GPU_UTIL={cfg.gpu_util:.2f}")
         if env_lines:
             env_updates.append(NodeAction(

@@ -1,11 +1,11 @@
 """OpenAI-compatible whisper server (faster-whisper backend).
 
-POST /v1/audio/transcriptions  — multipart file + form fields. 응답은 OpenAI 와 동일한
-스키마: {"text": "..."}. `language` / `prompt` / `response_format` 받음.
+POST /v1/audio/transcriptions  — multipart file + form fields. 응답 = OpenAI 와 동일
+스키마: {"text": "..."}. `language` / `prompt` / `response_format` 수용.
 
-Model 은 첫 호출 시 로드 후 메모리에 상주 (WhisperModel 인스턴스 lazy). WHISPER_DEVICE=auto
-는 CUDA 가용 시 GPU, 아니면 CPU. WHISPER_COMPUTE_TYPE 은 float16 (GPU 기본) / int8 (CPU).
-설정값을 GPU/ct2 가 미지원하면 로드 시 int8 로 자동 폴백한다.
+Model = 첫 호출 시 로드 후 메모리 상주 (WhisperModel 인스턴스 lazy). WHISPER_DEVICE=auto
+= CUDA 가용 시 GPU, 아니면 CPU. WHISPER_COMPUTE_TYPE = float16 (GPU 기본) / int8 (CPU).
+설정값을 GPU/ct2 가 미지원 시 로드 때 int8 로 자동 폴백.
 """
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ async def transcribe(
     response_format: Optional[str] = Form("json"),
     temperature: Optional[float] = Form(0.0),
 ) -> Response:
-    # tempfile 로 떨어뜨려 ffmpeg 가 직접 읽게 — faster-whisper 가 stream API 없음.
+    # tempfile 로 저장 → ffmpeg 가 직접 읽도록 — faster-whisper 가 stream API 없음.
     suffix = os.path.splitext(file.filename or "")[1] or ".bin"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(await file.read())

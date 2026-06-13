@@ -44,8 +44,8 @@ def _comfyui_port(site: Optional[SiteConfig]) -> int:
 
 
 def _whisper_port(_site: Optional[SiteConfig]) -> int:
-    # whisper 는 catalog 에 workload template 이 없어 site.workloads override 경로
-    # 없음. 호출부 일관성 위해 인자만 받고 무시 (`_` prefix 로 lint 회피).
+    # whisper = catalog 에 workload template 없음 → site.workloads override 경로 부재.
+    # 호출부 일관성 위해 인자만 받고 무시 (`_` prefix 로 lint 회피).
     return _DEFAULT_WHISPER_PORT
 
 
@@ -130,8 +130,8 @@ def _probe_vllm(host: str, container: str, port: int) -> RunningWorkload:
     On scrape failure we still return a RunningWorkload so the caller has a
     record that the container exists — only the calibration fields are absent.
     """
-    # realized config (max_len, gpu_util) 는 docker inspect Args 에서 — /metrics 가
-    # 안 떠도(로딩 중) create 시점 인자라 읽힌다. applier 가 현재 config 식별 → 수렴 시
+    # realized config (max_len, gpu_util) = docker inspect Args 에서 — /metrics 미기동
+    # (로딩 중)이어도 create 시점 인자라 read 가능. applier 가 현재 config 식별 → 수렴 시
     # force-recreate 회피.
     rml, rgu = _probe_vllm_config(host, container)
     rc, out, _ = _ssh(host, f"curl -fsS http://localhost:{port}/metrics")
@@ -151,9 +151,9 @@ def _probe_vllm(host: str, container: str, port: int) -> RunningWorkload:
 
 def _probe_vllm_config(host: str, container: str) -> tuple[Optional[int], Optional[float]]:
     """실행 중 컨테이너의 (--max-model-len, --gpu-memory-utilization) 을 docker inspect
-    Args 에서 읽는다. config grid 가 같은 max_len 에 gpu_util 만 다른 경우가 많아(예:
-    16K@0.45 vs 16K@0.55) 둘 다 있어야 config 를 유일 식별할 수 있다. 로딩 중에도
-    read 가능(create 시점 고정). 실패 시 (None, None) → caller 가 '(probed)' 폴백."""
+    Args 에서 read. config grid 가 같은 max_len 에 gpu_util 만 다른 경우 多(예: 16K@0.45
+    vs 16K@0.55) → 둘 다 있어야 config 유일 식별. 로딩 중에도 read 가능(create 시점 고정).
+    실패 시 (None, None) → caller 가 '(probed)' 폴백."""
     rc, out, _ = _ssh(host, f"sudo -n docker inspect {container} --format '{{{{json .Args}}}}'")
     if rc != 0 or not out:
         return None, None
@@ -290,8 +290,8 @@ def probe_node(
     if not comfy_up:
         errors.append("comfyui /system_stats unreachable")
     whisper_up = _probe_whisper(host, site)
-    # whisper 미가용은 흔한 정상 상태 (WHISPER_URLS 에서 그 노드를 빼두는 경우 등)이라
-    # errors 에 안 넣는다 — comfyui 와 달리 GPU class/VRAM 정보를 도출하지도 않음.
+    # whisper 미가용 = 흔한 정상 상태 (WHISPER_URLS 에서 해당 노드 제외 등) → errors 에
+    # 미포함 — comfyui 와 달리 GPU class/VRAM 정보 도출도 안 함.
     total_vram = _probe_total_vram(host, site)
     gpu_class = _probe_gpu_class(host, site)
     gpu_count = _probe_gpu_count(host)

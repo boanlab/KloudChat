@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LibreChat 빌드 번들 in-place 패치.
 
-대상 디렉토리(=dist/assets) 의 모든 locales/index 번들을 처리.
+대상 디렉토리(=dist/assets) 의 모든 locales/index 번들 처리.
 - locales.*.js : i18n 키 치환 (WELCOME_BACK_MESSAGE)
 - index.*.js   : 언어 셀렉터 축약(ko-KR/en-US), 기본 언어 ko-KR 고정,
                  "Upload to Provider" 메뉴 숨김,
@@ -11,9 +11,9 @@
                  브랜드명 LibreChat→KloudChat,
                  thinkingDisplay 기본값 auto→summarized,
                  Artifacts on/off 토글만 노출(세부 옵션 숨김) + 새 대화마다 off 강제,
-                 [KloudChat] 마커 박힌 에러는 영어 wrapper 벗기기,
+                 [KloudChat] 마커 박힌 에러 = 영어 wrapper 벗기기,
                  Data Controls(Agent API Keys / credential 회수) 숨김
-- AccountSettings.*.js : Account 탭의 이단계 인증(2FA)·계정 삭제 행 숨김
+- AccountSettings.*.js : Account 탭 이단계 인증(2FA)·계정 삭제 행 숨김
 """
 import os, re, sys, pathlib
 
@@ -27,17 +27,17 @@ account_files = sorted(p for p in assets.glob("AccountSettings.*.js") if p.suffi
 
 
 def replace_i18n_value(text: str, key: str, value: str) -> str:
-    """모든 locale 의 `key:"..."` 항목을 value 로 치환."""
+    """모든 locale 의 `key:"..."` 항목 → value 치환."""
     pattern = re.compile(rf'({re.escape(key)}:")[^"]*(")')
     return pattern.sub(lambda m: m.group(1) + value.replace('"', '\\"') + m.group(2), text)
 
 
 def patch_lang_selector(text: str) -> str:
-    """언어 셀렉터를 ko-KR(첫번째) + en-US 만 노출하도록 축약."""
+    """언어 셀렉터 축약 → ko-KR(첫번째) + en-US 만 노출."""
     m = re.search(r'\{value:"auto",label:([a-zA-Z_$]+)\("com_nav_lang_auto"\)\}', text)
     if not m:
         return text
-    t_fn = m.group(1)  # i18next t 함수 식별자 (빌드마다 minified name 변함)
+    t_fn = m.group(1)  # i18next t 함수 식별자 (빌드마다 minified name 변동)
     start = text.rfind("[", 0, m.start())
     depth, end = 0, start
     while end < len(text):
@@ -57,7 +57,7 @@ def patch_lang_selector(text: str) -> str:
 
 
 def force_default_korean(text: str) -> str:
-    """저장된 lang 이 없거나 'auto' 면 ko-KR 로 강제 — 브라우저 자동감지 제거."""
+    """저장된 lang 없거나 'auto' 면 ko-KR 강제 — 브라우저 자동감지 제거."""
     return re.sub(
         r'\("lang",\(\(\)=>\{const ([a-zA-Z_$]+)=navigator\.language\|\|navigator\.languages\[0\];'
         r'return ([a-zA-Z_$]+)\.get\("lang"\)\|\|localStorage\.getItem\("lang"\)\|\|\1\}\)\(\)\)',
@@ -71,9 +71,9 @@ def default_thinking_summarized(text: str) -> str:
     """대화 파라미터 thinkingDisplay 기본값 auto→summarized (전역 UI 기본).
 
     번들: thinkingDisplay:{default:NS.auto,options:[NS.auto,NS.summarized,NS.omitted]}
-    NS 는 ThinkingDisplay enum 의 minified 네임스페이스(빌드/청크마다 다름) → \\w+ 캡처.
-    default 만 교체하고 options 는 유지 — 사용자가 auto/omitted 도 그대로 선택 가능.
-    한 index 청크에 2건(서로 다른 NS) 등장. 매칭 0건이면 앵커 stale 경고.
+    NS = ThinkingDisplay enum 의 minified 네임스페이스(빌드/청크마다 상이) → \\w+ 캡처.
+    default 만 교체, options 유지 — 사용자가 auto/omitted 도 그대로 선택 가능.
+    한 index 청크에 2건(서로 다른 NS) 등장. 매칭 0건 시 앵커 stale 경고.
     """
     text, n = re.subn(
         r'(thinkingDisplay:\{default:\w+)\.auto(,options:\[)',
@@ -84,23 +84,23 @@ def default_thinking_summarized(text: str) -> str:
 
 
 def show_artifacts_toggle_no_options(text: str) -> str:
-    """Artifacts on/off 토글만 agents 포함 모든 endpoint 에 노출, 세부 옵션은 숨김.
+    """Artifacts on/off 토글만 agents 포함 모든 endpoint 에 노출, 세부 옵션 숨김.
 
-    showEphemeralBadges 는 건드리지 않는다(그걸 켜면 attach 메뉴의 파일검색 업로드가
-    깨지는 회귀). 인라인 Artifacts 배지만 손본다:
+    showEphemeralBadges 는 건드리지 않음 — 변경 시 attach 메뉴의 파일검색 업로드가 깨짐.
+    인라인 Artifacts 배지만 수정:
 
     (A) `!0===n&&Fragment[Web,Code,File,Artifacts,MCP]` 에서 Artifacts 컴포넌트만 n
-        게이트 밖으로 → agents(n=false)에선 Artifacts 만 렌더. Artifacts 는 본문
-        (NT()+jI()+?.artifacts)으로 식별 — 위치 가정 안 함.
+        게이트 밖으로 → agents(n=false)에선 Artifacts 만 렌더. Artifacts 식별 = 본문
+        (NT()+jI()+?.artifacts) — 위치 가정 없음.
     (B) `return m||o?badge:null` → `return !0?` 항상 렌더(off 라도 클릭 토글 노출).
-    (C) on 일 때 펼쳐지는 세부 옵션 서브메뉴(shadcn/custom; com_ui_artifacts_options)
-        `m&&t.jsxs(...chevron"w-7 rounded-l-none"...)` → `!1&&...` 로 숨김 → 단순 on/off.
-    (D) 서브메뉴가 없으니 메인 토글 우측 모서리를 둥글게 유지
+    (C) on 시 펼쳐지는 세부 옵션 서브메뉴(shadcn/custom; com_ui_artifacts_options)
+        `m&&t.jsxs(...chevron"w-7 rounded-l-none"...)` → `!1&&...` 숨김 → 단순 on/off.
+    (D) 서브메뉴 없으므로 메인 토글 우측 모서리 둥글게 유지
         (`m&&"rounded-r-none border-r-0"` → `!1&&...`).
 
-    배지 컨텍스트(wI.Provider)는 showEphemeralBadges 무관하게 마운트 → 클릭 토글 동작.
+    배지 컨텍스트(wI.Provider) = showEphemeralBadges 무관하게 마운트 → 클릭 토글 동작.
     토글값=ephemeralAgent.artifacts → patch_librechat_artifacts_toggle.js(서버) 가
-    agent.artifacts 로 override. A/B/C/D 각 1건 기대, 다르면 경고.
+    agent.artifacts 로 override. A/B/C/D 각 1건 기대, 불일치 시 경고.
     """
     n_a = 0
     am = re.search(
@@ -139,18 +139,18 @@ def show_artifacts_toggle_no_options(text: str) -> str:
 
 
 def reset_artifacts_on_new_convo(text: str) -> str:
-    """새 대화(conversationId="new")에 진입할 때마다 artifacts 토글을 off 로 강제.
+    """새 대화(conversationId="new") 진입 시마다 artifacts 토글 off 강제.
 
-    artifacts 토글 상태는 ephemeralAgent 아톰(Gj(convoId))에 저장되는데, 새 대화는
-    NEW_CONVO("new") 키를 공유해 세션 내에서 이전에 켠 값이 다음 새 대화로 캐리오버된다
-    (하드 새로고침 전까지). 그래서 "새 대화는 항상 off" 가 안 된다.
+    artifacts 토글 상태 = ephemeralAgent 아톰(Gj(convoId)) 저장. 새 대화는
+    NEW_CONVO("new") 키 공유 → 세션 내 이전에 켠 값이 다음 새 대화로 캐리오버
+    (하드 새로고침 전까지). 따라서 "새 대화는 항상 off" 불성립.
 
-    AD(토글 상태 팩토리, 5개 toolKey 가 공유)에 useEffect 를 주입 — 의존성 [l](convoId)이
-    "new" 로 바뀔 때 한 번만 실행. toolKey 가 "artifacts" 인 인스턴스에서만 아톰의 artifacts
-    키를 "" 로 비운다(런타임 스코핑 → web_search/file_search 등은 무영향). 사용자가 그 새
-    대화에서 토글을 켜면 l 이 안 바뀌므로 리셋 안 됨 → 켜기는 정상 동작.
+    AD(토글 상태 팩토리, 5개 toolKey 공유)에 useEffect 주입 — 의존성 [l](convoId)이
+    "new" 로 바뀔 때 1회만 실행. toolKey 가 "artifacts" 인 인스턴스에서만 아톰의 artifacts
+    키 "" 로 비움(런타임 스코핑 → web_search/file_search 등 무영향). 사용자가 그 새
+    대화에서 토글 켜면 l 불변 → 리셋 안 됨 → 켜기는 정상 동작.
 
-    AD 내부 minified 식별자(l/d/ug/toolKey)는 시그니처/본문에서 캡처. 앵커는 persist
+    AD 내부 minified 식별자(l/d/ug/toolKey) = 시그니처/본문에서 캡처. 앵커 = persist
     useEffect 직전. 캡처 실패 시 스킵(경고).
     """
     sig = re.search(
@@ -172,7 +172,7 @@ def reset_artifacts_on_new_convo(text: str) -> str:
     if not dm:
         print("warn: reset_artifacts_on_new_convo d 못 찾음 — 스킵", file=sys.stderr)
         return text
-    d = dm.group(2)          # 직접 아톰 setter
+    d = dm.group(2)          # 직접 아톰 setter.
     anchor = re.search(
         r'e\.useEffect\(\(\(\)=>\{const [\w$]+=' + re.escape(dm.group(1)) +
         r'\?\.\[[\w$]+\];void 0!==[\w$]+&&\(localStorage\.setItem', text)
@@ -188,17 +188,17 @@ def reset_artifacts_on_new_convo(text: str) -> str:
 
 
 def unwrap_kloudchat_errors(text: str) -> str:
-    """Error.tsx 의 defaultResponse 영어 wrapper 를 [KloudChat] 마커가 박힌
-    메시지에서만 벗긴다.
+    """Error.tsx 의 defaultResponse 영어 wrapper 를 [KloudChat] 마커 박힌
+    메시지에서만 벗기기.
 
     원본 번들: `Something went wrong. Here's the specific error message we
     encountered: ${e.length>512&&!n?e.slice(0,512)+"...":e}`
-    → 메시지에 `[KloudChat]` 가 있으면 그 위치부터 슬라이스 (서버측 'An error
+    → 메시지에 `[KloudChat]` 있으면 그 위치부터 슬라이스 (서버측 'An error
     occurred while processing the request:' prefix 까지 함께 제거). 마커 없는
-    실제 upstream 에러는 기존 wrapper 그대로 — 디버깅 컨텍스트 유지.
+    실제 upstream 에러 = 기존 wrapper 그대로 — 디버깅 컨텍스트 유지.
 
-    truncate_to_ctx.py 의 _make_ctx_error() 가 동일 마커를 선두에 박는다.
-    다른 KloudChat 콜백도 같은 마커를 쓰면 자동으로 보호받음.
+    truncate_to_ctx.py 의 _make_ctx_error() 가 동일 마커를 선두에 박음.
+    다른 KloudChat 콜백도 같은 마커 사용 시 자동 보호.
     """
     needle = (
         '`Something went wrong. Here\'s the specific error message we encountered: '
@@ -217,10 +217,10 @@ def unwrap_kloudchat_errors(text: str) -> str:
 def hide_upload_to_provider(text: str) -> str:
     """"Upload to Provider" 메뉴 항목 숨김.
 
-    두 곳에서 push 됨:
-    1. 에이전트 컨텍스트 — `condition:<ident>` 필드를 `!1` 로 뒤집어 렌더에서 필터링.
+    두 곳에서 push:
+    1. 에이전트 컨텍스트 — `condition:<ident>` 필드 → `!1` 로 뒤집어 렌더에서 필터링.
     2. 일반 채팅 컨텍스트 — `?n.push({...upload_provider...}):n.push({...image_input...})`
-       삼항 truthy 분기를 no-op `({})` 로 치환 — falsy 분기(이미지 업로드)가 항상 실행됨.
+       삼항 truthy 분기 → no-op `({})` 치환 → falsy 분기(이미지 업로드) 항상 실행.
     """
     text = re.sub(
         r'(\.push\(\{label:[a-zA-Z]\("com_ui_upload_provider"\),'
@@ -241,17 +241,17 @@ def hide_upload_to_provider(text: str) -> str:
 
 
 def hide_agent_builder_menus(text: str) -> str:
-    """agent builder 를 일반 사용자용으로 단순화 — 일부 메뉴/버튼 숨김.
+    """agent builder 일반 사용자용 단순화 — 일부 메뉴/버튼 숨김.
 
-    런타임 capability(librechat.yaml endpoints.agents.capabilities)는 그대로 두고
-    UI 진입점만 제거한다. tools/actions capability 를 끄면 ToolService 가 MCP 도구
-    실행까지 막으므로(공유 에이전트 파손) 반드시 UI 레벨에서만 숨겨야 한다.
+    런타임 capability(librechat.yaml endpoints.agents.capabilities)는 유지,
+    UI 진입점만 제거. tools/actions capability 끄면 ToolService 가 MCP 도구
+    실행까지 차단(공유 에이전트 파손) → 반드시 UI 레벨에서만 숨김.
 
-    앵커는 빌드마다 안 바뀌는 소스 레벨 문자열(i18n 키, panel enum prop, CSS class).
-    minified 식별자(컴포넌트/변수명)는 \\w 로 매칭. 치환 건수를 stderr 로 보고한다.
+    앵커 = 빌드 불변 소스 레벨 문자열(i18n 키, panel enum prop, CSS class).
+    minified 식별자(컴포넌트/변수명) = \\w 매칭. 치환 건수 stderr 보고.
     """
     subs = [
-        # "Add Tools" 버튼: 선행 조건 (X??!1)&& 을 (!1)&& 로 → 항상 falsy → 미렌더.
+        # "Add Tools" 버튼: 선행 조건 (X??!1)&& → (!1)&& → 항상 falsy → 미렌더.
         ("add_tools_btn",
          r'\(\w+\?\?!1\)(&&t\.jsx\("button",\{type:"button",onClick:\(\)=>\w+\(!0\),'
          r'className:"btn btn-neutral[^"]*","aria-haspopup":"dialog",children:t\.jsx\("div",'
@@ -265,10 +265,10 @@ def hide_agent_builder_menus(text: str) -> str:
          r'\{className:"flex w-full items-center justify-center gap-2",'
          r'children:\w+\("com_assistants_add_actions"\)\}\)\}\))',
          r'(!1)\1'),
-        # "Advanced" 진입 버튼 컴포넌트: 본문을 return null 로 → 버튼 자체 미렌더.
-        # .advanced + com_ui_advanced 두 번 등장(aria-label + children)으로 version
-        # 버튼(.version)과 구분. jsxs 내부는 세미콜론이 없으므로 [^;] lazy 로 안전하게 소거.
-        # 컴포넌트 본문의 i18n 훅 식별자는 빌드마다 바뀌므로 \w+ 로 매칭(NT 고정 금지).
+        # "Advanced" 진입 버튼 컴포넌트: 본문 → return null → 버튼 자체 미렌더.
+        # .advanced + com_ui_advanced 두 번 등장(aria-label + children) = version
+        # 버튼(.version)과 구분. jsxs 내부 세미콜론 없음 → [^;] lazy 로 안전 소거.
+        # 컴포넌트 본문 i18n 훅 식별자 = 빌드마다 변동 → \w+ 매칭(NT 고정 금지).
         ("advanced_btn",
          r'(\(\{setActivePanel:\w\}\)=>\{const \w=\w+\(\);return )'
          r't\.jsxs\([^;]{20,400}?\.advanced\),"aria-label":\w\("com_ui_advanced"\)'
@@ -282,26 +282,29 @@ def hide_agent_builder_menus(text: str) -> str:
     return text
 
 
-# agent builder 신규 폼의 모델/프로바이더 기본값.
-# 등록된 모델 전부 선택 가능하되, 빈 폼은 이 값으로 미리 채워둔다 (사용자 변경 가능).
-AGENT_BUILDER_DEFAULT_MODEL = "local/gemma-4-26b"
+# agent builder 신규 폼 기본 provider. model 은 목록 첫 항목(p[0])을 쓰므로 상수 불필요.
 AGENT_BUILDER_DEFAULT_PROVIDER = "LiteLLM"
 
 
 def default_agent_builder_model(text: str) -> str:
-    """신규 에이전트 폼 기본값 생성 함수 L_ 의 model/provider 빈 fallback 을 채운다.
+    """신규 에이전트 폼 기본값: provider=LiteLLM, model=목록 첫 항목(p[0]).
 
     원본: L_=()=>({...hm,model:localStorage.getItem(mg.LAST_AGENT_MODEL)??"",
                   provider:P_(localStorage.getItem(mg.LAST_AGENT_PROVIDER)??""),...})
-    → localStorage 값이 없을 때의 빈 문자열 fallback("")만 기본 모델/프로바이더로 교체.
-    이전에 다른 모델을 골랐으면 localStorage 값이 우선하므로 자유 선택은 유지된다.
-    앵커는 소스 식별자(LAST_AGENT_MODEL/PROVIDER, P_) — 빌드 불변.
+    - provider 빈 fallback → "LiteLLM" — 모델 목록 p = LiteLLM 셋 확정.
+    - model 은 lastAgentModel(localStorage) 을 읽지 않고 "" 로 고정 → 빌더 자체
+      effect(`provider && !model → setValue(model, p[0])`)가 목록 첫 모델을 선택.
+      p[0] = librechat.yaml models.default 순서의 첫 항목(현행 로컬 gemma-4-26b).
+      과거 localStorage 에 자동 저장된 stale 모델(예: openai/gpt-5.5 — builder
+      mount 시 목록 로딩 race 로 자동 persist)을 무시 → 항상 목록 최상단(로컬)부터.
+    앵커 = 소스 식별자(LAST_AGENT_MODEL/PROVIDER, P_) — 빌드 불변.
     """
-    model_js = AGENT_BUILDER_DEFAULT_MODEL.replace('"', '\\"')
     prov_js = AGENT_BUILDER_DEFAULT_PROVIDER.replace('"', '\\"')
+    # model: localStorage 읽기 제거 → "" (빌더 effect 가 p[0] 선택)
     text, n1 = re.subn(
-        r'(model:localStorage\.getItem\(\w+\.LAST_AGENT_MODEL\)\?\?)""',
-        r'\1"' + model_js + '"', text)
+        r'model:localStorage\.getItem\(\w+\.LAST_AGENT_MODEL\)\?\?""',
+        'model:""', text)
+    # provider: 빈 fallback → LiteLLM
     text, n2 = re.subn(
         r'(provider:\w+\(localStorage\.getItem\(\w+\.LAST_AGENT_PROVIDER\)\?\?)""(\))',
         r'\1"' + prov_js + r'"\2', text)
@@ -311,12 +314,77 @@ def default_agent_builder_model(text: str) -> str:
     return text
 
 
-def _remove_jsx_node(text, anchor, tag):
-    """anchor(literal)로 시작하는 JSX 노드 1개를 괄호 균형으로 통째 제거.
+def hide_auto_route_in_builder(text: str) -> str:
+    """agent builder 모델 dropdown 에서 local/auto-route 옵션만 숨김.
 
-    minified 중첩 JSX 는 정규식으로 자르면 위험하므로 paren 깊이로 끝을 찾는다.
-    문자열 리터럴(' " `) 안의 괄호는 무시. 노드 뒤 콤마 1개도 흡수.
-    anchor 는 tag(예: 't.jsxs(') 로 시작해야 한다. 반환: (text, 제거건수0/1).
+    auto-route = Super Agent 내부 두뇌 — librechat.yaml models.default 에는
+    검증용으로 남기고(서버 ResumableAgentController 가 이 목록으로 에이전트 model
+    검증 → 빠지면 Super Agent illegal_model_request), 신규 에이전트 모델 picker
+    에서만 제거. 앵커 = provider-first 플레이스홀더 ternary(소스 i18n 키, 빌드
+    불변) 직후 items 모델배열 .map. 모델배열 var·콜백 var 는 minified → 캡처 보존.
+    서버 검증은 무관 → Super Agent 정상 동작.
+
+    원본: ...com_ui_select_provider_first"),searchPlaceholder:r("com_ui_select_model"),
+          setValue:E.onChange,items:P.map((E=>({label:E,value:E})))
+    → items:P.filter((kc=>kc!=="local/auto-route")).map((E=>({...})))
+    """
+    pat = (r'(com_ui_select_provider_first"\),searchPlaceholder:r\("com_ui_select_model"\),'
+           r'setValue:\w+\.onChange,items:)(\w+)\.map\(\((\w+)=>\(\{label:\3,value:\3\}\)\)\)')
+    def repl(m):
+        pre, arr, cb = m.group(1), m.group(2), m.group(3)
+        return (f'{pre}{arr}.filter((kc=>kc!=="local/auto-route"))'
+                f'.map(({cb}=>({{label:{cb},value:{cb}}})))')
+    text, n = re.subn(pat, repl, text)
+    if n != 1:
+        print(f"warn: hide_auto_route_in_builder 매칭 {n}건 (기대 1) — 패턴 stale 가능",
+              file=sys.stderr)
+    return text
+
+
+def hide_agent_category_for_non_sharers(text: str) -> str:
+    """agent builder 카테고리 행을 공유 권한자(= ADMIN)에게만 노출.
+
+    비-ADMIN 은 생성 시 서버가 category=my_agents 강제(librechat-entrypoint.sh) →
+    빌더의 카테고리 셀렉터는 선택해도 무시되어 오해 소지. AGENTS.SHARE 권한 보유자
+    (ADMIN — librechat.yaml/manage.sh 에서 USER 는 SHARE:false)에게만 전체 카테고리
+    셀렉터 노출, 그 외엔 행 전체(라벨+셀렉터) 숨김.
+
+    구현: 카테고리 행을 가진 패널 컴포넌트(HG) 최상단 hook 블록(첫 mi() 직후)에
+    SHARE 권한 변수 `_kcShare` 주입 → 카테고리 행 JSX 를 `_kcShare && <row>` 로 게이팅.
+    - SHARE 권한식은 번들 내 기존 사용처에서 캡처(minified 식별자 빌드별 가변).
+    - hook 은 조건부 return 이전(컴포넌트 최상단)에 두어 hook 순서 안정.
+    - 두 앵커 모두 있을 때만 적용(부분 적용 시 _kcShare undefined → 런타임 에러 회피).
+    - 공유 프롬프트 카테고리 셀렉터(별도 컴포넌트)는 미영향.
+    """
+    me = re.search(r'\w+\(\{permissionType:\w+\.AGENTS,permission:\w+\.SHARE\}\)', text)
+    if not me:
+        print("warn: hide_agent_category — SHARE 권한식 미발견, 스킵", file=sys.stderr)
+        return text
+    expr = me.group(0)
+    ri = text.find('htmlFor:"category-selector"')
+    fi = text.rfind('function ', 0, ri) if ri != -1 else -1
+    mh = re.search(r',\w+=mi\(\),', text[fi:ri]) if fi != -1 else None
+    row = re.search(
+        r't\.jsxs\("div",\{className:"mb-4",children:\[t\.jsxs\("label",'
+        r'\{className:[^,]+,htmlFor:"category-selector"', text)
+    if not (mh and row):
+        print(f"warn: hide_agent_category 앵커 누락 (hook={bool(mh)} row={bool(row)}) — 스킵",
+              file=sys.stderr)
+        return text
+    pos_hook = fi + mh.end()      # HG 내 mi() 직후 (행보다 앞)
+    pos_row = row.start()         # 카테고리 행 시작 (뒤)
+    # 뒤(row)부터 삽입해 앞(hook) 인덱스 보존.
+    text = text[:pos_row] + "_kcShare&&" + text[pos_row:]
+    text = text[:pos_hook] + f"_kcShare={expr}," + text[pos_hook:]
+    return text
+
+
+def _remove_jsx_node(text, anchor, tag):
+    """anchor(literal)로 시작하는 JSX 노드 1개 괄호 균형으로 통째 제거.
+
+    minified 중첩 JSX = 정규식 절단 위험 → paren 깊이로 끝 탐색.
+    문자열 리터럴(' " `) 안 괄호 무시. 노드 뒤 콤마 1개도 흡수.
+    anchor = tag(예: 't.jsxs(') 로 시작 필수. 반환: (text, 제거건수0/1).
     """
     i = text.find(anchor)
     if i < 0:
@@ -343,19 +411,19 @@ def _remove_jsx_node(text, anchor, tag):
 
 
 def simplify_agent_builder(text: str) -> str:
-    """agent builder 폼을 일반 사용자용으로 단순화 (런타임 capability 무변경, UI 만).
+    """agent builder 폼 일반 사용자용 단순화 (런타임 capability 무변경, UI 만).
 
     1) tools/actions 섹션 제목 라벨 제거(버튼은 hide_agent_builder_menus 가 이미 숨김)
-    2) shadcn/ui 컴포넌트 안내 토글 제거(빌더 인스턴스만; 채팅 artifacts 설정은 유지)
+    2) shadcn/ui 컴포넌트 안내 토글 제거(빌더 인스턴스만; 채팅 artifacts 설정 유지)
     3) 모델 패널(eK): 제목 '모델 매개변수'→'모델 선택', 파라미터 슬라이더/리셋 버튼만
-       제거. provider/model 셀렉터는 유지(등록된 모델 전부 선택 가능) — 기본값은
-       default_agent_builder_model 이 채운다.
+       제거. provider/model 셀렉터 유지(등록 모델 전부 선택 가능) — 기본값 =
+       default_agent_builder_model 이 채움.
     4) 코드 인터프리터: 키버튼+info아이콘 제거, 체크박스만으로 on/off
-       (키 다이얼로그 우회 — self-host 라 키 불필요). 라벨('코드 실행')은 유지.
+       (키 다이얼로그 우회 — self-host 라 키 불필요). 라벨('코드 실행') 유지.
     5) 웹 검색: 키버튼+info아이콘 제거, 체크박스만으로 on/off
 
-    앵커는 i18n 키·고정 className·필드명 등 소스 레벨 문자열(빌드 불변).
-    먼저 regex 치환, 그 다음 괄호균형 노드 제거(순서 의존 회피). 매칭 수 보고.
+    앵커 = i18n 키·고정 className·필드명 등 소스 레벨 문자열(빌드 불변).
+    먼저 regex 치환, 다음 괄호균형 노드 제거(순서 의존 회피). 매칭 수 보고.
     """
     def rsub(name, pat, repl, expect=1):
         nonlocal text
@@ -371,7 +439,7 @@ def simplify_agent_builder(text: str) -> str:
             print(f"warn: simplify_agent_builder[{name}] 노드제거 {n}건 (기대 1)",
                   file=sys.stderr)
 
-    # --- (1) tools/actions 제목 라벨 → null (children 배열 내라 허용) ---
+    # --- (1) tools/actions 제목 라벨 → null (children 배열 내부라 허용) ---
     rsub('tools_actions_title',
          r't\.jsx\("label",\{className:[\w$]+,children:!0===[\w$]+&&!0===[\w$]+\?'
          r'[\w$]+\("com_ui_tools_and_actions"\):!0===[\w$]+\?[\w$]+\("com_ui_tools"\):'
@@ -388,7 +456,7 @@ def simplify_agent_builder(text: str) -> str:
 
     # --- (4) 코드 체크박스 keyless 핸들러 + disabled 해제 ---
     #     원형: g=e=>{a?i(Hf.execute_code,e,..):f?i(Hf.execute_code,!1,..):u(!0)}
-    #     조건변수는 (\w+)\? 로 캡처(greedy [\w$]+ 는 백트래킹으로 비결정적이라 금지).
+    #     조건변수 = (\w+)\? 로 캡처(greedy [\w$]+ 는 백트래킹으로 비결정적 → 금지).
     #     키 없이 체크값(e) 그대로 setValue → 키 다이얼로그 우회.
     rsub('code_handler',
          r'(\w+)=(\w+)=>\{(\w+)\?(\w+)\((\w+)\.execute_code,\2,\{shouldDirty:!0\}\):'
@@ -432,10 +500,10 @@ def simplify_agent_builder(text: str) -> str:
 def hide_sidepanel_tabs(text: str) -> str:
     """우측 사이드패널(Nav) 탭 중 '파일 첨부'/'MCP 설정' 숨김.
 
-    사이드패널 탭은 e.push({title,label,icon,id,Component}) 시퀀스로 빌드된다.
-    해당 push 호출만 !1(no-op)로 치환 → 탭 미등록. 조건부(mcp)는 (cond)&&!1 이 되어
-    역시 false. 컴포저의 파일 첨부 버튼(id:"attach-file"/"attach-file-menu-button")은
-    별도 컴포넌트라 무영향. 앵커는 i18n 키+id(소스 불변), icon/Component 만 \\w+ 캡처.
+    사이드패널 탭 = e.push({title,label,icon,id,Component}) 시퀀스로 빌드.
+    해당 push 호출만 !1(no-op) 치환 → 탭 미등록. 조건부(mcp)는 (cond)&&!1 →
+    역시 false. 컴포저 파일 첨부 버튼(id:"attach-file"/"attach-file-menu-button") =
+    별도 컴포넌트라 무영향. 앵커 = i18n 키+id(소스 불변), icon/Component 만 \\w+ 캡처.
     """
     text, na = re.subn(
         r'e\.push\(\{title:"com_sidepanel_attach_files",label:"",icon:[\w$]+,'
@@ -452,9 +520,9 @@ def hide_sidepanel_tabs(text: str) -> str:
 
 
 def rebrand_visible_librechat(text: str) -> str:
-    """브라우저에 표기되는 브랜드명 'LibreChat' → 'KloudChat' (header/body 한정).
+    """브라우저 표기 브랜드명 'LibreChat' → 'KloudChat' (header/body 한정).
 
-    index.*.js 번들에 정확히 4건 등장하며 전부 표시 문자열이다:
+    index.*.js 번들에 정확히 4건 등장, 전부 표시 문자열:
     - AI Agent Store 탭 title  `${t("com_agents_marketplace")} | LibreChat` (하드코딩)
     - document.title fallback `appTitle||"LibreChat"`
     - 로고 alt fallback       `appTitle??"LibreChat"`
@@ -462,8 +530,8 @@ def rebrand_visible_librechat(text: str) -> str:
 
     정확히 'LibreChat'(대문자 L,C)만 치환 — 소문자 librechat(URL https://librechat.ai,
     import 경로, localStorage 키, librechat.yaml)·글루 식별자는 미존재 확인됨(불변).
-    locale(i18n) 110건은 범위 외(브라우저 텍스트가 아닌 다국어 본문)라 건드리지 않는다.
-    appTitle fallback 들은 APP_TITLE=KloudChat 으로 이미 해소되지만, 미설정 환경 대비.
+    locale(i18n) 110건은 범위 외(브라우저 텍스트 아닌 다국어 본문) → 미변경.
+    appTitle fallback = APP_TITLE=KloudChat 으로 이미 해소, 단 미설정 환경 대비.
     """
     n = text.count("LibreChat")
     text = text.replace("LibreChat", "KloudChat")
@@ -475,8 +543,8 @@ def rebrand_visible_librechat(text: str) -> str:
 
 def hide_datacontrols_items(text: str) -> str:
     """Settings → Data Controls 의 'Agent API Keys' / 'Revoke all user provided
-    credentials' 블록을 숨긴다. 두 블록은 안정적 label id(api-keys-label /
-    revoke-info-label)를 가진 div.pb-3 래퍼라, :has() CSS 를 head 에 주입해 숨긴다
+    credentials' 블록 숨김. 두 블록 = 안정적 label id(api-keys-label /
+    revoke-info-label) 가진 div.pb-3 래퍼 → :has() CSS 를 head 에 주입해 숨김
     (어느 청크가 렌더하든 전역 적용 — minified JSX 수술 불필요)."""
     MARK = "KLOUDCHAT_HIDE_DATACONTROLS"
     if MARK in text:
@@ -491,10 +559,10 @@ def hide_datacontrols_items(text: str) -> str:
 
 
 def hide_account_items(text: str) -> str:
-    """Settings → Account 의 '이단계 인증(2FA)' / '계정 삭제' 행을 숨긴다 (AccountSettings 청크).
-    delete-account 행 라벨은 안정적 id(delete-account-label)가 있으나 2FA 행 라벨엔 id 가
-    없어 먼저 주입하고, 두 행 래퍼(div.flex.items-center.justify-between)를 :has() CSS 로
-    숨긴다 (청크 로드 시 <style> head 주입 — 행 렌더 전에 적용)."""
+    """Settings → Account 의 '이단계 인증(2FA)' / '계정 삭제' 행 숨김 (AccountSettings 청크).
+    delete-account 행 라벨 = 안정적 id(delete-account-label) 보유, 단 2FA 행 라벨엔 id
+    없음 → 먼저 주입 후, 두 행 래퍼(div.flex.items-center.justify-between) 를 :has() CSS 로
+    숨김 (청크 로드 시 <style> head 주입 — 행 렌더 전에 적용)."""
     MARK = "KLOUDCHAT_HIDE_ACCOUNT"
     if MARK in text:
         return text
@@ -518,7 +586,7 @@ for p in locales_files:
         text = replace_i18n_value(text, "com_auth_welcome_back", msg)
     # 'Agent Marketplace' → 'AI Agent Store' (브랜딩; 전 언어 동일 영문 라벨).
     # com_agents_marketplace / com_ui_marketplace 둘 다 — ':' 경계로 _subtitle,
-    # _allow_use 같은 파생 키는 매칭 제외.
+    # _allow_use 같은 파생 키 매칭 제외.
     text = replace_i18n_value(text, "com_agents_marketplace", "AI Agent Store")
     text = replace_i18n_value(text, "com_ui_marketplace", "AI Agent Store")
     p.write_text(text)
@@ -530,6 +598,8 @@ for p in index_files:
     text = hide_upload_to_provider(text)
     text = hide_agent_builder_menus(text)
     text = default_agent_builder_model(text)
+    text = hide_auto_route_in_builder(text)
+    text = hide_agent_category_for_non_sharers(text)
     text = simplify_agent_builder(text)
     text = hide_sidepanel_tabs(text)
     text = rebrand_visible_librechat(text)

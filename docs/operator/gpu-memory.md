@@ -26,7 +26,7 @@
 | qwen3-coder-next (FP8, 80B MoE) | vLLM | 75 GiB (실측 74.9) | **~90 GiB** (`gpu_util 0.80`) |
 | bge-m3 (embed) | vLLM | ~1.1 GB | **~6 GB** (`gpu_util 0.05`) — pooling runner overhead 큼 |
 | FLUX.1-dev / schnell (Q8 GGUF) | ComfyUI | UNet 12 + Clip 9 + VAE 0.2 = **~21 GB** | GGUF dequant 후 BF16 GEMM — 품질 거의 무손실 |
-| Whisper large-v3 (faster-whisper, int8_float16) | Whisper | ~1.5 GB | ~1.5 GB |
+| Whisper large-v3 (faster-whisper, float16; arm64/CPU → int8) | Whisper | ~1.5 GB | ~1.5 GB |
 
 > vLLM 의 **운영 reserve** 는 `gpu_memory_utilization × total VRAM` 으로 정해지는 상한값이다. weights, KV cache, activation, CUDA graph 가 이 한도 안에서 동적으로 할당된다. 실측 사용량은 동시성과 context 길이에 따라 한도보다 작을 수 있다.
 
@@ -52,7 +52,7 @@
 
 ## ComfyUI 성능 메모
 
-- **기본 모드**(`--normalvram`) 기동: 생성 중에만 GPU 메모리 점유, 종료 시 RAM 으로 offload → LLM 과 VRAM 공존 수월
+- **`--disable-dynamic-vram` 강제 기동**(모든 ComfyUI 노드): dynamic VRAM staging 비활성 → 결정적 로딩 (GB10/Blackwell 의 메모리 회계 noise·SIGTRAP 회피). weight 는 요청 시 로드 후 상주 → 같은 GPU 의 LLM 과 VRAM 경합하므로 노드 VRAM 예산 주의
 - 첫 생성 시 모델 로드 latency(수~수십 초), 같은 모델 연달아 호출 시 캐시 활용
 - GB10 1024×1024 측정 예시:
 

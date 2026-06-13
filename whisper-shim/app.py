@@ -40,7 +40,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 def _parse_backends() -> list[str]:
     """WHISPER_URLS — comma-separated whisper backend URLs (host systemd faster-whisper).
-    WHISPER_URL 은 consumer (youtube MCP) 가 shim 을 가리키는 별개 변수 — 여기서 안 읽음."""
+    WHISPER_URL = consumer (youtube MCP) 가 shim 을 가리키는 별개 변수 — 여기서 미사용."""
     raw = os.getenv("WHISPER_URLS", "")
     urls = [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
     if not urls:

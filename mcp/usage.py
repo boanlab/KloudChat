@@ -21,17 +21,17 @@ Trust / boundary
 LiteLLM admin endpoints (/user/daily/activity, /customer/daily/activity,
 /user/info, /model/info) require master_key auth — user-scoped virtual keys
 can't read these, so we have no choice but to call them with the master key.
-**조회는 master key 로 하되 결과는 caller 본인 데이터만** — 세 겹으로 강제한다:
+**조회는 master key, 결과는 caller 본인 데이터만** — 세 겹 강제:
 
   1. Every per-user query passes `user_id=USER_EMAIL` (or `end_user_ids=`)
      so LiteLLM applies its own filter. These endpoints return *global* data
      when the filter is omitted, so we refuse to call them without a non-empty
      USER_EMAIL.
-  2. `_get` 가 응답에서 `teams` 로스터(타 멤버 user_id/키 — 어떤 도구도 안 씀)를
-     제거한다. 그 뒤 `_verify_self_only` 가 남은 응답을 post-walk 해, 어떤 user
+  2. `_get` 가 응답에서 `teams` 로스터(타 멤버 user_id/키 — 미사용) 제거.
+     이후 `_verify_self_only` 가 잔여 응답을 post-walk → 어떤 user
      identifier(`user_id` / `user_email` / `end_user` 필드값, `users` rollup 의
-     dict 키)든 USER_EMAIL 과 다르면 raise — 필터 버그 시 누수 대신 거부.
-  3. 렌더 직전 본인 소유로 한 번 더 필터: budget_status 는 `user_id == USER_EMAIL`
+     dict 키)든 USER_EMAIL 과 불일치 시 raise — 필터 버그 시 누수 대신 거부.
+  3. 렌더 직전 본인 소유로 재필터: budget_status 는 `user_id == USER_EMAIL`
      인 키만 표시, my_usage 는 caller 의 api_key 기준으로만 집계.
 
 The remaining trust point is `LIBRECHAT_USER_EMAIL` placeholder substitution
@@ -135,8 +135,8 @@ async def _get(path: str, **params: Any) -> Any:
         )
         r.raise_for_status()
         data = r.json()
-    # team 로스터(/user/info.teams)는 caller 와 무관한 멤버의 user_id / 키를 담는다 —
-    # 어떤 도구도 쓰지 않으므로 검증·렌더 이전에 제거해 타 사용자 데이터를 원천 배제한다.
+    # team 로스터(/user/info.teams) = caller 무관 멤버의 user_id / 키 보유 —
+    # 미사용이므로 검증·렌더 이전 제거 → 타 사용자 데이터 원천 배제.
     if isinstance(data, dict):
         data.pop("teams", None)
     _verify_self_only(data, USER_EMAIL)
@@ -338,8 +338,8 @@ async def budget_status() -> str:
     user_budget_duration = user_info.get("budget_duration")
     user_budget_reset_at = user_info.get("budget_reset_at")
 
-    # 본인 소유 키만 렌더 — user_id 가 caller 와 다른 키는 제외 (user_id 없는 레코드는
-    # 허용: 일부 키 레코드가 소유자 미포함). master key 로 조회해도 결과는 사용자만.
+    # 본인 소유 키만 렌더 — user_id 가 caller 와 다른 키 제외 (user_id 없는 레코드는
+    # 허용: 일부 키 레코드가 소유자 미포함). master key 조회라도 결과는 사용자만.
     keys = [k for k in (info.get("keys") or info.get("info") or [])
             if isinstance(k, dict) and (not k.get("user_id") or k.get("user_id") == USER_EMAIL)]
 

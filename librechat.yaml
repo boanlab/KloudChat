@@ -184,6 +184,8 @@ endpoints:
       models:
         default:
           # >>> KLOUDCHAT_MODELS_START
+          - "local/gemma-4-26b"
+          - "local/qwen3.5:122b"
           - "openai/gpt-5.5"
           - "openai/gpt-5"
           - "openai/gpt-5-mini"
@@ -202,8 +204,6 @@ endpoints:
           - "perplexity/sonar"
           - "meta/llama-4-maverick"
           - "qwen/qwen3.5-397b-a17b"
-          - "local/gemma-4-26b"
-          - "local/qwen3.5:122b"
           - "local/auto-route"
           # <<< KLOUDCHAT_MODELS_END
         fetch: false
@@ -261,7 +261,7 @@ modelSpecs:
       showIconInHeader: false
       preset:
         endpoint: agents
-        agent_id: "agent_34i8ue6buy2ritpbxawpb"
+        agent_id: "agent_1pa10xsrp2uu5juf1ejsv"
 
 interface:
   modelSelect: true

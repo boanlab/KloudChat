@@ -1,22 +1,22 @@
-// LibreChat 의 서버측 에러 wrapper 를 [KloudChat] 마커가 붙은 메시지에서만 벗긴다.
+// LibreChat 서버측 에러 wrapper 를 [KloudChat] 마커 붙은 메시지에서만 벗기기.
 //
 // 원본 동작
 // ---------
 // /app/api/server/controllers/agents/client.js (sendCompletion catch 블록):
-//   `An error occurred while processing the request: <err.message>` 로 감싼다.
-// → upstream LiteLLM/provider 에러 stack 이 사용자에게 그대로 노출됨.
+//   `An error occurred while processing the request: <err.message>` 로 감쌈.
+// → upstream LiteLLM/provider 에러 stack 이 사용자에게 그대로 노출.
 //
 // 패치
 // ----
-// err.message 에 `[KloudChat]` 마커가 있으면 그 위치부터 슬라이스(=wrapper 제거).
+// err.message 에 `[KloudChat]` 마커 있으면 그 위치부터 슬라이스(=wrapper 제거).
 // KloudChat 콜백 (예: truncate_to_ctx.py 의 _make_ctx_error) 이 던지는 정제된
-// 한국어 에러는 깨끗하게 노출되고, 다른 upstream 에러는 기존 wrapper 그대로
+// 한국어 에러 = 깨끗하게 노출, 다른 upstream 에러 = 기존 wrapper 그대로
 // — 디버깅 컨텍스트 유지.
 //
-// 클라이언트측 wrapper("Something went wrong. Here's the specific...") 는
-// 런타임에 entrypoint 가 .orig 에서 복원하기 때문에 빌드시 패치가 무효된다.
+// 클라이언트측 wrapper("Something went wrong. Here's the specific...") =
+// 런타임에 entrypoint 가 .orig 에서 복원 → 빌드시 패치 무효.
 // 그쪽은 scripts/librechat-patch.py 의 unwrap_kloudchat_errors() 가 매 startup
-// 마다 다시 박는다. 책임을 나눠 둠.
+// 마다 다시 박음. 책임 분담.
 
 const fs = require('fs');
 

@@ -1,5 +1,5 @@
-# vLLM stack — 메인 docker-compose.yml 과 라이프사이클을 분리해 GPU 노드에서 별도로
-# 띄운다. 메인 stack 입장에선 외부 OpenAI 호환 백엔드 (.env 의 VLLM_*_URL) 다.
+# vLLM stack — 메인 docker-compose.yml 과 라이프사이클 분리, GPU 노드에서 별도
+# 기동. 메인 stack 입장에선 외부 OpenAI 호환 백엔드 (.env 의 VLLM_*_URL).
 # 운영은 ./scripts/manage-vllm.sh.
 #
 # Profile:
@@ -7,29 +7,29 @@
 #   deep     vllm-qwen122b 단독 (Deep Research / Slide Studio, `--profile deep`)
 #   coder    vllm-codernext 단독 (코더 전용 노드, chat 과 격리, `--profile coder`)
 #
-# 이미지 선택은 아키텍처별로 명시한다:
-#   arm64 (GB10): default 의 `*-aarch64` 이미지를 그대로 쓴다.
+# 이미지 선택은 아키텍처별로 명시:
+#   arm64 (GB10): default 의 `*-aarch64` 이미지를 그대로 사용.
 #   amd64 (RTX4090/RTX5090/PRO5000/PRO6000): .env 의 VLLM_IMAGE 에 표준 amd64 vLLM
-#     이미지를 명시한다.
-# RTX4090 은 FP4 미지원이므로 manage-vllm.sh up 이 VLLM_GEMMA26_DIR 을 AWQ-int4
-# 변종으로 swap 한다 (그 외 노드의 기본 weights 는 NVFP4).
+#     이미지 명시.
+# RTX4090 은 FP4 미지원 → manage-vllm.sh up 이 VLLM_GEMMA26_DIR 을 AWQ-int4
+# 변종으로 swap (그 외 노드의 기본 weights 는 NVFP4).
 #
-# Dockerfile.vllm: base image 위에 pytest layer 를 추가. install-vllm.sh 가 pull
-# 직후 자동 rebuild 한다 (자세한 사유는 Dockerfile.vllm).
+# Dockerfile.vllm: base image 위에 pytest layer 추가. install-vllm.sh 가 pull
+# 직후 자동 rebuild (자세한 사유는 Dockerfile.vllm).
 
 # 메인 stack 의 orphan 경고 회피용 별도 project name.
 name: kloudchat-vllm
 
 services:
   # chat + artifact + image-brain 통합 모델. 멀티모달(vision). single-stage
-  # super-agent 의 CHAT_MODEL — 아티팩트 토글도 이 모델이 처리한다(별도 coder 라우팅
+  # super-agent 의 CHAT_MODEL — 아티팩트 토글도 이 모델이 처리(별도 coder 라우팅
   # 없음).
   vllm-gemma26:
     container_name: vllm-gemma26
     image: ${VLLM_IMAGE:-vllm/vllm-openai:nightly-aarch64}
-    # 모든 vLLM 서비스가 같은 ${VLLM_IMAGE} 를 공유 — build 정의는 여기 한 곳에만.
+    # 모든 vLLM 서비스가 같은 ${VLLM_IMAGE} 공유 — build 정의는 여기 한 곳에만.
     # amd64 (cu129-nightly) 는 base image 의 pytest 누락이 dynamo 경로에서 fail
-    # 되므로 pytest layer 필수. arm64 nightly 는 무해. install-vllm.sh 가 자동
+    # → pytest layer 필수. arm64 nightly 는 무해. install-vllm.sh 가 자동
     # rebuild. 자세한 사유는 Dockerfile.vllm.
     build:
       context: .
@@ -54,16 +54,16 @@ services:
       - "${VLLM_GEMMA26_GPU_UTIL:-0.45}"
       - --kv-cache-dtype
       - fp8
-      # 멀티모달(vision) mm-budget 확보 — multimodal 입력엔 batched-tokens >= 16384.
+      # 멀티모달(vision) mm-budget 확보 — multimodal 입력엔 batched-tokens >= 16384 필요.
       - --max-num-batched-tokens
       - "${VLLM_GEMMA26_MAX_BATCHED_TOKENS:-16384}"
       # gemma4 parser matches Gemma-4 chat-template tool-call output.
-      # NOTE: gemma 는 reasoning 모델이 아니다 — 절대 --reasoning-parser 를 붙이지 말 것.
+      # NOTE: gemma 는 reasoning 모델이 아님 — 절대 --reasoning-parser 금지.
       - --enable-auto-tool-choice
       - --tool-call-parser
       - gemma4
       - --trust-remote-code
-      # DO NOT add --enforce-eager — CUDA graph capture 까지 꺼져 decode throughput
+      # DO NOT add --enforce-eager — CUDA graph capture 까지 off → decode throughput
       # 4× 손실. Dockerfile.vllm 의 pytest layer 로 대체.
     volumes:
       - ${VLLM_MODELS_ROOT:-/var/lib/vllm/models}/${VLLM_GEMMA26_DIR:-gemma-4-26b}:/model:ro
@@ -87,7 +87,7 @@ services:
       start_period: 600s
 
   # Deep Research / Slide Studio 모델 (Qwen3.5-122B-A10B MoE, NVFP4). chat 노드와 격리 —
-  # profiles:[deep]. reasoning 모델이라 --reasoning-parser qwen3 로 <think> 분리.
+  # profiles:[deep]. reasoning 모델 → --reasoning-parser qwen3 로 <think> 분리.
   vllm-qwen122b:
     profiles: [deep]
     container_name: vllm-qwen122b
@@ -183,8 +183,8 @@ services:
       start_period: 60s
 
   # coding assist 전용 (litellm-등록, LibreChat UI/agent 에서 숨김). 외부 코딩 클라이언트
-  # (Claude Code / Codex) 용. chat 노드와 격리한다. qwen3_coder parser 가 Qwen3-Coder
-  # chat template 와 매칭되며 tool-call 정확도에 필수다.
+  # (Claude Code / Codex) 용. chat 노드와 격리. qwen3_coder parser 가 Qwen3-Coder
+  # chat template 와 매칭 — tool-call 정확도에 필수.
   vllm-codernext:
     profiles: [coder]
     container_name: vllm-codernext

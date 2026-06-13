@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: download-vllm-models.sh [alias|all|recommended] [...]
 #
-# 인자 없이 실행하면 GPU class 자동 감지해서 권장 셋 다운로드.
+# 인자 없이 실행 시 GPU class 자동 감지 → 권장 셋 다운로드.
 #
 # Aliases (lib.sh::VLLM_MODELS):
 #   gemma-4-26b        nvidia/gemma-4-26b-A4B-it-NVFP4       ~16 GB (챗 두뇌, NVFP4 MoE A4B)
@@ -25,7 +25,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
 
 # GPU 클래스별 권장 셋. gemma-4-26b 는 어느 단일 GPU든 기본 챗 두뇌. RTX4090 은 FP4
-# 미지원이라 AWQ-int4 변종을 받는다. Deep Research(122b)는 VRAM 큰 노드(PRO6000)만 명시 호출.
+# 미지원이라 AWQ-int4 변종. Deep Research(122b)는 VRAM 큰 노드(PRO6000)만 명시 호출.
 recommended_vllm_set() {
   case "$(detect_gpu_class)" in
     gb10|pro6000|pro5000|rtx5090) echo "gemma-4-26b bge-m3" ;;
@@ -88,7 +88,7 @@ pull_one() {
     ok "이미 받음 ($(du -sh "$dest" | cut -f1)) — 재다운 원하면 디렉토리 삭제 후 재실행"
     return 0
   fi
-  # hf_xet 끔: legacy(non-xet) repo 에서 deadlock — TLS 다수 연결 + io 0 hang. 표준 chunked HTTP 가 안정적.
+  # hf_xet 끔: legacy(non-xet) repo 에서 deadlock — TLS 다수 연결 + io 0 hang. 표준 chunked HTTP 가 안정.
   HF_TOKEN="$HF_TOKEN" \
   HF_HUB_DISABLE_XET=1 \
   HF_HUB_DOWNLOAD_TIMEOUT=180 \

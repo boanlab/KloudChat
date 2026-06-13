@@ -71,11 +71,10 @@ def _site_and_hosts(args) -> tuple[site_mod.SiteConfig, dict[str, str]]:
     site = site_mod.load(getattr(args, "site", None))
     hosts_override = _parse_hosts(getattr(args, "hosts", None))
     if hosts_override:
-        # node_usable_vram / node_gpu_tier 는 site config 의 dict-form 노드에서 파싱한
-        # per-node override. --hosts 가 동일 node_id 를 그대로 쓰면 (setup.sh 가
-        # NODES_VLLM csv 로 같은 id=user@host 패턴 전달) override 가 그대로 적용된다.
-        # node_id 가 달라지면 매칭 안 돼 무시 — 운영자가 --hosts 로 노드 ID 를 재정의했단
-        # 뜻이라 정상.
+        # node_usable_vram / node_gpu_tier = site config 의 dict-form 노드에서 파싱한
+        # per-node override. --hosts 가 동일 node_id 유지 시 (setup.sh 가 NODES_VLLM csv
+        # 로 같은 id=user@host 패턴 전달) override 그대로 적용. node_id 변경 시 매칭 실패 →
+        # 무시 — 운영자가 --hosts 로 노드 ID 재정의한 뜻이라 정상.
         site = site_mod.SiteConfig(
             name=site.name, nodes=hosts_override, workloads=site.workloads,
             compose=site.compose, default_ssh_user=site.default_ssh_user,
@@ -216,13 +215,13 @@ def cmd_apply(args: argparse.Namespace) -> int:
         )
 
     # Current placement reconstructed from probes (workload presence per node).
-    # config_name 은 probe 한 realized_max_len 으로 식별한다 — max_len 이 어떤 config 와
-    # 유일 매칭되면 그 이름, 아니면(미serving/모호) '(probed)' 로 둬서 force-recreate 유도.
-    # 이게 있어야 수렴 상태 재apply 가 no-op (불필요한 vLLM 재기동/cold-load 리셋 방지).
+    # config_name = probe 한 realized_max_len 으로 식별 — max_len 이 어떤 config 와 유일
+    # 매칭 시 그 이름, 아니면(미serving/모호) '(probed)' → force-recreate 유도. 이게 있어야
+    # 수렴 상태 재apply 가 no-op (불필요한 vLLM 재기동/cold-load 리셋 방지).
     workloads_by_id = {w.id: w for w in workloads}
 
     def _probed_config_name(wid: str, rw) -> str:
-        # config grid 가 같은 max_len 에 gpu_util 만 다른 경우가 많아 둘 다로 유일 식별.
+        # config grid 가 같은 max_len 에 gpu_util 만 다른 경우 多 → 둘 다로 유일 식별.
         wl = workloads_by_id.get(wid)
         if wl is None or rw.realized_max_len is None or rw.realized_gpu_util is None:
             return "(probed)"

@@ -7,8 +7,8 @@ __R='\033[0;31m'; __G='\033[0;32m'; __Y='\033[1;33m'
 __B='\033[1;34m'; __N='\033[0m'
 
 hdr()  { echo; echo -e "${__B}━━━ $* ━━━${__N}"; }
-# 진단 메시지는 모두 stderr 로 — `$(...)` 캡처(예: gen-*-config 의 SECTION)에 섞여
-# 들어가 YAML 을 오염시키는 걸 방지(컬러 ESC 가 unacceptable char 로 깨짐).
+# 진단 메시지 전부 stderr — `$(...)` 캡처(예: gen-*-config 의 SECTION)에 섞여
+# YAML 오염 방지(컬러 ESC 가 unacceptable char 로 깨짐).
 ok()   { echo -e "${__G}✓${__N} $*" >&2; }
 info() { echo -e "${__G}[INFO]${__N} $*" >&2; }
 warn() { echo -e "${__Y}[WARN]${__N} $*" >&2; }
@@ -49,12 +49,12 @@ env_set() {
   else echo "${key}=${val}" >> "$file"; fi
 }
 
-# tmp+mv 로 파일을 재생성하기 전 현재 유저가 실제로 쓸 수 있는지 검증한다.
-# sudo 로 gen/setup 을 한 번 돌렸거나 rw 마운트된 컨테이너(root)가 파일을 rewrite 하면
-# 호스트 파일/디렉터리 소유권이 root(혹은 컨테이너 uid)로 넘어가, 이후 grep/read 가
-# Permission denied 로 죽으며 엉뚱한 에러("marker 누락" 등)로 오진된다. 먼저 명시 차단.
-#   $1 = 대상 파일, $2 = need_read(기본 1; 기존 내용을 읽어야 하면 1, 통째 재생성이면 0)
-# mv 는 부모 디렉터리 쓰기 권한이 필요 → 디렉터리 -w 는 항상 확인.
+# tmp+mv 재생성 전 현재 유저 쓰기 권한 검증.
+# sudo 로 gen/setup 1회 실행 또는 rw 마운트 컨테이너(root)의 파일 rewrite →
+# 호스트 파일/디렉터리 소유권이 root(혹은 컨테이너 uid)로 넘어감 → 이후 grep/read 가
+# Permission denied 로 죽으며 엉뚱한 에러("marker 누락" 등)로 오진됨. 먼저 명시 차단.
+#   $1 = 대상 파일, $2 = need_read(기본 1; 기존 내용 읽기 필요 시 1, 통째 재생성이면 0)
+# mv 는 부모 디렉터리 쓰기 권한 필요 → 디렉터리 -w 는 항상 확인.
 assert_regen_writable() {
   local f="$1" need_read="${2:-1}" d owner me; d="$(dirname "$f")"; me="$(id -un)"
   if [[ "$need_read" == 1 && -e "$f" && ! -r "$f" ]]; then
@@ -72,11 +72,11 @@ assert_regen_writable() {
   return 0
 }
 
-# NODES_* csv (ssh 타겟) 로부터 *_URLS csv 를 자동 derive 한다. Whisper 는 scheduler 가
-# 다루지 않아 별도 운영자 입력 대신 NODES_WHISPER 에서 URL 을 유추한다.
-# vLLM (VLLM_*_URL) 과 ComfyUI (COMFYUI_URLS) 는 scheduler apply 의 applier 가
-# placement 결정 따라 갱신하므로 여기선 건드리지 않는다 — 호출 위치는 scheduler
-# apply *이전* setup 단계, 그래야 scheduler 가 우선권 (NODES_* 가 단순 default).
+# NODES_* csv (ssh 타겟) → *_URLS csv 자동 derive. Whisper 는 scheduler 미관여라
+# 별도 운영자 입력 대신 NODES_WHISPER 에서 URL 유추.
+# vLLM (VLLM_*_URL) / ComfyUI (COMFYUI_URLS) 는 scheduler apply 의 applier 가
+# placement 결정 따라 갱신 → 여기선 불간섭. 호출 위치 = scheduler apply *이전*
+# setup 단계, 그래야 scheduler 우선권 (NODES_* 는 단순 default).
 derive_urls_from_nodes() {
   local ssh_target host
   local -A defaults=(
@@ -140,7 +140,7 @@ port_in_use() {
   else return 1; fi
 }
 
-# Commercial 카탈로그 — OpenRouter 경유. OR 키 없으면 미등록한다.
+# Commercial 카탈로그 — OpenRouter 경유. OR 키 없으면 미등록.
 # provider 그룹별 배열 → gen-litellm/gen-librechat 가 동일 카탈로그에서 생성.
 OPENAI_MODELS=(gpt-5.5 gpt-5 gpt-5-mini gpt-5-nano)
 ANTHROPIC_MODELS=(claude-opus-4.8 claude-opus-4.7 claude-opus-4.6 claude-sonnet-4.6 claude-haiku-4.5)
@@ -155,9 +155,9 @@ QWEN_MODELS=(qwen3.5-397b-a17b)
 # bge-m3 미보유 + OR 키 환경에서 RAG 임베딩 폴백.
 OPENAI_EMBED_CATALOG=(text-embedding-3-small)
 
-# vLLM 카탈로그 (alias → HF repo). 추가 시 download-vllm-models.sh::recommended_vllm_set 와 동기한다.
-# gemma-4-26b 별칭은 노드 하드웨어에 따라 다른 가중치를 가리킨다: NVFP4 지원 카드는 NVFP4,
-# RTX4090 은 FP4 미지원이라 AWQ-int4 변종(gemma-4-26b-awq).
+# vLLM 카탈로그 (alias → HF repo). 추가 시 download-vllm-models.sh::recommended_vllm_set 와 동기.
+# gemma-4-26b 별칭 = 노드 하드웨어 따라 다른 가중치: NVFP4 지원 카드는 NVFP4,
+# RTX4090 = FP4 미지원 → AWQ-int4 변종(gemma-4-26b-awq).
 declare -A VLLM_MODELS=(
   [gemma-4-26b]="nvidia/gemma-4-26b-A4B-it-NVFP4"
   [gemma-4-26b-awq]="cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
@@ -167,8 +167,8 @@ declare -A VLLM_MODELS=(
 )
 : "${VLLM_MODELS_ROOT:=/var/lib/vllm/models}"
 
-# arch 별 vLLM 이미지. GB10(arm64)은 aarch64 빌드, 디스크리트 카드(amd64)는 표준 amd64 빌드.
-# 신규 아키텍처(gemma4 / qwen3.5 MoE) 지원을 위해 nightly 빌드를 사용한다.
+# arch 별 vLLM 이미지. GB10(arm64) = aarch64 빌드, 디스크리트 카드(amd64) = 표준 amd64 빌드.
+# 신규 아키텍처(gemma4 / qwen3.5 MoE) 지원 위해 nightly 빌드 사용.
 vllm_default_image() {
   case "$(detect_arch)" in
     arm64) echo "vllm/vllm-openai:nightly-aarch64" ;;
@@ -177,9 +177,9 @@ vllm_default_image() {
   esac
 }
 
-# LiteLLM spend 추적용 단가 (USD / 1M tokens). 로컬 모델은 무료(0) — GPU 자체호스팅이라
-# 토큰 과금 0. OR 폴백(노드 다운/과부하) 시에만 emit_or_fallback 의 OR twin 단가로 과금된다
-# (LiteLLM 은 실제 서빙한 deployment 의 단가로 과금하므로 로컬 0 ↔ 폴백 OR 가 자동 분리됨).
+# LiteLLM spend 추적용 단가 (USD / 1M tokens). 로컬 모델 = 무료(0) — GPU 자체호스팅 →
+# 토큰 과금 0. OR 폴백(노드 다운/과부하) 시에만 emit_or_fallback 의 OR twin 단가로 과금
+# (LiteLLM 은 실제 서빙한 deployment 단가로 과금 → 로컬 0 ↔ 폴백 OR 자동 분리).
 declare -A MODEL_PRICE_IN_PM=(
   [gpt-5.5]=5      [gpt-5]=2.5    [gpt-5-mini]=0.25    [gpt-5-nano]=0.05
   [claude-opus-4.8]=5    [claude-opus-4.7]=5    [claude-opus-4.6]=5    [claude-sonnet-4.6]=3    [claude-haiku-4.5]=1
@@ -207,8 +207,8 @@ per_token_cost() { awk -v v="$1" 'BEGIN { printf "%.10f", v/1000000 }'; }
 
 has_openrouter() { [[ -n "$(env_get OPENROUTER_API_KEY)" ]]; }
 
-# 출력: "<URL>\t<served-model-name>" per line. 호출측이 URL csv 를 인자로 넘긴다
-# (모델별 .env 변수가 별도 — VLLM_GEMMA26_URL / VLLM_QWEN122B_URL / VLLM_CODERNEXT_URL / VLLM_BGE_M3_URL).
+# 출력: "<URL>\t<served-model-name>" per line. 호출측이 URL csv 를 인자로 전달
+# (모델별 .env 변수 별도 — VLLM_GEMMA26_URL / VLLM_QWEN122B_URL / VLLM_CODERNEXT_URL / VLLM_BGE_M3_URL).
 __vllm_normalize_url() {
   local u="$1"
   u="$(echo "$u" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s|/$||')"
@@ -220,9 +220,9 @@ __vllm_node_models() {
   probe="${url//host.docker.internal/localhost}"
   curl -sf --max-time 5 "${probe}/v1/models" 2>/dev/null | jq -r '.data[]?.id' 2>/dev/null || true
 }
-# 같은 URL 이 csv 에 중복으로 들어가도 (사용자 typo 또는 외부 도구의 dedup 없는 append)
-# 한 번만 probe·emit 한다 — downstream AUTOGEN 블록에서 동일 deployment 가 중복 등록되어
-# LiteLLM 재시도가 같은 죽은 host 로 증폭되는 사고를 방지한다.
+# 같은 URL 이 csv 에 중복 진입해도 (사용자 typo 또는 외부 도구의 dedup 없는 append)
+# 한 번만 probe·emit — downstream AUTOGEN 블록에서 동일 deployment 중복 등록 →
+# LiteLLM 재시도가 같은 죽은 host 로 증폭되는 사고 방지.
 vllm_union_node_models() {
   local urls_csv="$1"
   [[ -n "$urls_csv" ]] || return 0
@@ -248,7 +248,7 @@ vllm_union_node_models() {
 #   0 = ready   (/v1/models 200 + 모델 1개 이상)
 #   1 = loading (TCP 응답하지만 HTTP 미준비 — 모델 로딩 / 503 / 빈 모델 리스트)
 #   2 = dead    (TCP 거부 / DNS 실패 — 컨테이너 미기동)
-# --connect-timeout 으로 TCP 와 HTTP 시간을 분리해 curl exit/HTTP code 로 구분한다.
+# --connect-timeout 으로 TCP 와 HTTP 시간 분리 → curl exit/HTTP code 로 구분.
 __vllm_one_state() {
   local raw="$1" probe code body
   probe="$(__vllm_normalize_url "$raw")"
@@ -288,11 +288,11 @@ vllm_discover_max_len() {
 #   - 한 URL 의 컨테이너가 exited/없음으로 dead_thresh 회 연속 → rc=2 (미기동 fast-fail)
 #   - 어떤 URL 이 timeout 안에 ready 못함 → rc=3
 #   - 모두 ready → rc=0
-# vLLM 의 startup 순서가 "모델 로딩 → 그 후에야 uvicorn listen" 이라 cold-start 시 처음
-# 수 분간 TCP 거부가 정상. 따라서 TCP refused 면 시간(grace)이 아니라 __vllm_container_state
-# 로 실제 컨테이너 상태를 본다 — Up 이면(로딩 중) 시간 무관 대기, exited/없음이면 dead.
+# vLLM startup 순서 = "모델 로딩 → 그 후에야 uvicorn listen" → cold-start 시 처음
+# 수 분간 TCP 거부가 정상. 따라서 TCP refused 면 시간(grace) 아니라 __vllm_container_state
+# 로 실제 컨테이너 상태 판정 — Up 이면(로딩 중) 시간 무관 대기, exited/없음이면 dead.
 # 큰 모델(GB10 122b cold-start ~6-7분)도 false-dead 없이 통과, 진짜 크래시만 fast-fail.
-# 진행 로그는 stderr 로 (caller 가 캡처해도 동작 동일).
+# 진행 로그 = stderr (caller 가 캡처해도 동작 동일).
 # 사용: vllm_wait_until_ready "$URL_CSV" "label" [timeout=600] [interval=10] [dead_thresh=3]
 # url 의 host → ssh 타겟. NODES_VLLM csv 에서 user@host 매칭, 없으면 host 그대로.
 __vllm_ssh_target() {
@@ -310,8 +310,8 @@ __vllm_ssh_target() {
 #   0 = alive (Up, "health: starting" 포함 = 로딩 중)
 #   1 = dead  (해당 포트 컨테이너 없음 / exited / restart 루프)
 #   2 = unknown (ssh/docker 조회 실패 → 판단 보류, deadline 까지 대기)
-# host 는 URL 에서 추출하므로 is_local_host 대신 여기서 직접 localhost/loopback/내 IP 를
-# 비교해 ssh 우회 여부를 정한다.
+# host 는 URL 에서 추출 → is_local_host 대신 여기서 직접 localhost/loopback/내 IP
+# 비교해 ssh 우회 여부 결정.
 __vllm_container_state() {
   local raw="$1" url hostport host port target out h islocal=0 ip
   url="$(__vllm_normalize_url "$raw")"
@@ -385,8 +385,8 @@ vllm_wait_until_ready() {
   return 0
 }
 
-# 단일 ComfyUI 노드의 보유 alias 를 반환한다. 같은 alias 의 quant 변형 (FP16/GGUF) 중
-# 하나라도 있으면 alias 1회만 emit 한다. 변형 선택은 shim 의 COMFYUI_ALIAS_VARIANTS 가 결정한다.
+# 단일 ComfyUI 노드의 보유 alias 반환. 같은 alias 의 quant 변형 (FP16/GGUF) 중
+# 하나라도 있으면 alias 1회만 emit. 변형 선택은 shim 의 COMFYUI_ALIAS_VARIANTS 가 결정.
 __comfyui_node_models() {
   local raw="$1" url info
   url="$(echo "$raw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -399,7 +399,7 @@ __comfyui_node_models() {
   grep -qxFf <(printf '%s\n' 'flux1-dev.safetensors'     'flux1-dev-Q8_0.gguf')     <<<"$unets" && echo flux-dev
 }
 
-# 출력: "<URL>\t<alias>" per line. unreachable 노드는 stderr 에 [warn] 후 skip 한다.
+# 출력: "<URL>\t<alias>" per line. unreachable 노드는 stderr 에 [warn] 후 skip.
 comfyui_union_node_models() {
   local urls; urls="$(env_get COMFYUI_URLS)"
   [[ -n "$urls" ]] || return 0
@@ -423,11 +423,11 @@ comfyui_union_models() {
   comfyui_union_node_models | awk -F'\t' 'NF==2 {print $2}' | sort -u
 }
 
-# Super Agent 활성 조건 — single-stage 구조라 별도 router 는 없다. chat 두뇌
+# Super Agent 활성 조건 — single-stage 구조 → 별도 router 없음. chat 두뇌
 # (gemma-4-26b) 가 vLLM 로 잡히면 유효 (shim 이 단일 stage + post-processing/artifact
 # 디렉티브를 챗 경로에 직접 적용).
 # gemma 챗 두뇌 가용 = 로컬 vLLM(VLLM_GEMMA26_URL) 또는 OR 키(gen-litellm 가 local/gemma
-# -4-26b 를 OR 동일모델로 직결). Super Agent + 두뇌형 functional 에이전트의 등장 조건.
+# -4-26b 를 OR 동일모델로 직결). Super Agent + 두뇌형 functional 에이전트 등장 조건.
 super_agent_eligible() {
   [[ -n "$(env_get VLLM_GEMMA26_URL 2>/dev/null || true)" ]] || has_openrouter
 }
@@ -443,7 +443,7 @@ image_gen_eligible() {
   [[ -n "$(env_get COMFYUI_URLS 2>/dev/null || true)" ]] || has_openrouter
 }
 
-# LiteLLM team allowlist — gen-litellm-config 의 emit 결과와 동일한 셋을 반환해야 한다.
+# LiteLLM team allowlist — gen-litellm-config 의 emit 결과와 동일한 셋 반환 필수.
 litellm_chat_models_csv() {
   local vllm_gemma_url; vllm_gemma_url="$(env_get VLLM_GEMMA26_URL 2>/dev/null || true)"
   local vllm_research_url; vllm_research_url="$(env_get VLLM_QWEN122B_URL 2>/dev/null || true)"
@@ -461,13 +461,13 @@ litellm_chat_models_csv() {
     for m in "${QWEN_MODELS[@]}";       do out+=("qwen/$m");       done
   fi
   # 챗 두뇌 (gemma-4-26b), Deep Research (122b) 는 로컬 vLLM 또는 OR 직결(emit_brain)로
-  # emit 되므로 allowlist 도 같은 조건(URL 또는 OR 키)이어야 team gate 통과 — 안 그러면
-  # OR 전용 배포에서 에이전트는 떠도 직접호출이 model-not-allowed 로 막힌다. 코딩 보조
-  # (coder-next) 는 OR-직결 없이 vLLM 전용이라 URL 게이팅 유지.
+  # emit → allowlist 도 같은 조건(URL 또는 OR 키)이어야 team gate 통과 — 아니면
+  # OR 전용 배포에서 에이전트는 떠도 직접호출이 model-not-allowed 로 막힘. 코딩 보조
+  # (coder-next) 는 OR-직결 없이 vLLM 전용 → URL 게이팅 유지.
   { [[ -n "$vllm_gemma_url"    ]] || has_openrouter; } && out+=("local/gemma-4-26b")
   { [[ -n "$vllm_research_url" ]] || has_openrouter; } && out+=("local/qwen3.5:122b")
-  # coder-next 의 served-model-name 은 'qwen3-coder-next' — emit_vllm_chat 의
-  # 'local/qwen3-coder-next' 와 일치시킨다.
+  # coder-next 의 served-model-name = 'qwen3-coder-next' — emit_vllm_chat 의
+  # 'local/qwen3-coder-next' 와 일치.
   [[ -n "$vllm_coder_url"    ]] && out+=("local/qwen3-coder-next")
   [[ -n "$vllm_embed_url"    ]] && out+=("bge-m3")
   if has_openrouter; then
@@ -479,9 +479,9 @@ litellm_chat_models_csv() {
 }
 
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-$(env_get LITELLM_MASTER_KEY)}"
-# LITELLM_URL 우선순위: shell env > .env > localhost:8000. .env 의 값은 docker 내부에서
-# 쓰는 호스트명(host.docker.internal 또는 service name 'litellm')일 수 있어, host-side
-# 에서 호출할 때는 호스트 publish 포트로 직접 접근하도록 정규화한다.
+# LITELLM_URL 우선순위: shell env > .env > localhost:8000. .env 값은 docker 내부에서
+# 쓰는 호스트명(host.docker.internal 또는 service name 'litellm')일 수 있음 → host-side
+# 호출 시 호스트 publish 포트 직접 접근하도록 정규화.
 LITELLM_URL="${LITELLM_URL:-$(env_get LITELLM_URL)}"
 LITELLM_URL="${LITELLM_URL:-http://localhost:8000}"
 LITELLM_URL="${LITELLM_URL//host.docker.internal/localhost}"
@@ -526,9 +526,9 @@ team_id_by_alias() {
 }
 
 # ───────────────────────── multi-node dispatch ─────────────────────────
-# .env 의 NODE_* / NODES_* 가 SoT. setup.sh / manage.sh 가 ssh 우회 결정에 이걸 쓴다.
+# .env 의 NODE_* / NODES_* = SoT. setup.sh / manage.sh 의 ssh 우회 결정 근거.
 # 단일노드 = 모든 NODE_* 를 같은 호스트로 (또는 비워두면 = 로컬). is_local_host 가
-# localhost / 내 IP / 내 hostname / DNS resolve 까지 비교해 ssh 를 우회한다.
+# localhost / 내 IP / 내 hostname / DNS resolve 까지 비교해 ssh 우회.
 
 # 원격 노드의 레포 경로. 로그인 사용자의 $HOME 하위. env 로 override.
 KLOUDCHAT_REMOTE_DIR="${KLOUDCHAT_REMOTE_DIR:-KloudChat}"
@@ -546,7 +546,7 @@ is_local_host() {
   for ip in $local_ips; do
     [[ "$target" == "$ip" ]] && return 0
   done
-  # target 이 hostname 인 경우 DNS resolve 후 IP 매칭. getent 가 없거나 실패해도 무해.
+  # target 이 hostname 인 경우 DNS resolve 후 IP 매칭. getent 부재/실패해도 무해.
   local target_ip
   target_ip="$(getent hosts "$target" 2>/dev/null | awk '{print $1; exit}')"
   if [[ -n "$target_ip" ]]; then
@@ -557,7 +557,7 @@ is_local_host() {
   return 1
 }
 
-# is_local_node NODE_LIBRECHAT — env var name 받아서 host 추출 후 is_local_host. 비어 있으면 true
+# is_local_node NODE_LIBRECHAT — env var name 받아 host 추출 후 is_local_host. 비어 있으면 true
 # (= "비어있음 = 로컬" 규약).
 is_local_node() {
   local var="$1" host
@@ -576,7 +576,7 @@ csv_split() {
 }
 
 # csv "user@host,user@host" → "id=user@host,id=user@host" (scheduler --hosts 포맷).
-# id 는 IPv4 마지막 옥텟 (예: 1.2.3.4 → 4), IP 가 아니면 hostname 의 첫 '.' 이전 부분 (닷이 없는 짧은 호스트명은 그대로).
+# id = IPv4 마지막 옥텟 (예: 1.2.3.4 → 4), IP 아니면 hostname 의 첫 '.' 이전 부분 (닷 없는 짧은 호스트명은 그대로).
 nodes_to_hosts() {
   local csv="$1" entry host id out=""
   while IFS= read -r entry; do
@@ -620,7 +620,7 @@ rsync_push_file() {
   rsync -az "${__PROJECT_DIR}/${path}" "${host}:${KLOUDCHAT_REMOTE_DIR}/${path}"
 }
 
-# ssh + cd repo + 명령. -n 으로 호출자 stdin 보호 — while-read 안에서 ssh 호출 시
+# ssh + cd repo + 명령. -n 으로 호출자 stdin 보호 — while-read 안 ssh 호출 시
 # 첫 노드 후 EOF 보는 버그 회피.
 ssh_run() {
   local host="$1"; shift
@@ -629,7 +629,7 @@ ssh_run() {
 }
 
 # docker_on_node NODE_LIBRECHAT exec -i chat-mongodb mongosh ...
-# 로컬이면 docker 직접, 아니면 ssh 우회. stdin 은 자동 전달 (원격 케이스 -n 없음).
+# 로컬이면 docker 직접, 아니면 ssh 우회. stdin 자동 전달 (원격 케이스 -n 없음).
 # 각 인자는 printf %q 로 안전 quote 후 remote shell 에 전달.
 docker_on_node() {
   local var="$1"; shift
@@ -645,7 +645,7 @@ docker_on_node() {
 }
 
 # LIBRECHAT_URL 우선순위: shell env > .env LIBRECHAT_URL > NODE_LIBRECHAT 호스트 + :8080 > localhost:8080.
-# manage.sh 의 register_litellm_key_for_librechat_user 가 이걸 쓴다.
+# manage.sh 의 register_litellm_key_for_librechat_user 가 사용.
 __compute_librechat_url() {
   local url
   url="${LIBRECHAT_URL:-$(env_get LIBRECHAT_URL)}"

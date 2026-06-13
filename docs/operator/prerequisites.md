@@ -1,6 +1,6 @@
 # 사전 요구사항
 
-[README](../README.md#빠른-시작) 의 단일 셋업(**로컬 GPU 기본 + OpenRouter 폴백**) 기준.
+[README](../../README.md#빠른-시작) 의 단일 셋업(**로컬 GPU 기본 + OpenRouter 폴백**) 기준.
 
 - **로컬 GPU 사용** — "공통 — compose 호스트" + 아래 "로컬 GPU 추가 요건"
 - **OpenRouter 만 사용** — "공통 — compose 호스트" 요건만

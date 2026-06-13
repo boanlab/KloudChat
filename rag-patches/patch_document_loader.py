@@ -1,11 +1,11 @@
 """rag_api 의 document_loader.py 에 HWP 분기 추가.
 
-base 의 get_loader() 가 hwp 를 미처리 → TextLoader fallback → OLE 이진을 텍스트로
-읽어 임베딩이 깨짐. 이 패치가 hwp5txt CLI 로 .hwp → .txt 변환 후 TextLoader 사용.
-hwp5txt 는 base 이미지의 pyhwp 패키지 entry_point (/usr/local/bin/hwp5txt).
+base get_loader() hwp 미처리 → TextLoader fallback → OLE 이진을 텍스트로 읽어
+임베딩 깨짐. 이 패치 = hwp5txt CLI 로 .hwp → .txt 변환 후 TextLoader 사용.
+hwp5txt = base 이미지 pyhwp 패키지 entry_point (/usr/local/bin/hwp5txt).
 
-Dockerfile.rag 빌드 단계에서 1회 실행. 멱등 (이미 patch 면 skip). base 가 업그레이드돼
-패턴이 안 맞으면 명시적 실패.
+Dockerfile.rag 빌드 단계 1회 실행. 멱등 (이미 patch 면 skip). base 업그레이드로
+패턴 불일치 시 명시적 실패.
 """
 
 import re

@@ -96,7 +96,7 @@ cmd_team_delete() {
 }
 
 # 전 팀의 model allowlist 를 현재 카탈로그로 동기화. lib.sh 카탈로그 변경 후
-# 이거 안 돌리면 기존 팀이 새 모델을 401 거부.
+# 미실행 시 기존 팀이 새 모델을 401 거부.
 cmd_team_sync() {
   local models; models="$(litellm_chat_models_csv)"
   [[ -z "$models" ]] && { err "litellm chat 모델 0건 — gen-litellm-config + restart 먼저"; exit 1; }
@@ -138,7 +138,7 @@ cmd_user_create() {
   for v in "$lc_name" "$lc_username" "$lc_password"; do [[ -n "$v" ]] && lc_count=$((lc_count+1)); done
   (( lc_count != 0 && lc_count != 3 )) && { err "--name/--username/--password 는 함께 지정."; exit 1; }
   local full=$(( lc_count == 3 ))
-  # --admin 은 LibreChat 사용자 레코드(role 갱신 대상)가 있어야 의미가 있다.
+  # --admin 은 LibreChat 사용자 레코드(role 갱신 대상) 있어야 의미.
   (( is_admin && ! full )) && { err "--admin 은 --name/--username/--password 와 함께 지정."; exit 1; }
 
   if (( full )); then
@@ -156,7 +156,7 @@ cmd_user_create() {
     fi
 
     # --admin: 방금 만든(혹은 기존) LibreChat 사용자 role 을 ADMIN 으로. create-user 가
-    # 이미-존재로 실패했어도 멱등하게 적용한다 (agent sync 등이 ADMIN owner 를 요구).
+    # 이미-존재로 실패했어도 멱등 적용 (agent sync 등이 ADMIN owner 요구).
     if (( is_admin )); then
       local mu mp email_js r
       mu=$(env_get MONGO_ROOT_USER); mp=$(env_get MONGO_ROOT_PASSWORD)
@@ -174,10 +174,10 @@ cmd_user_create() {
     fi
   fi
 
-  # user-레벨 max_budget 도 --budget 으로 명시 설정한다. 안 하면 litellm_settings 의
-  # max_internal_user_budget(기본 $25)이 적용되고, LiteLLM 은 min(user, key, team) 을
-  # 한도로 쓰므로 --budget 이 $25 보다 크면 $25 에 잘못 캡된다. /user/new 는 기존 유저면
-  # no-op 이므로, 멱등 갱신을 위해 /user/update 도 한 번 호출.
+  # user-레벨 max_budget 도 --budget 으로 명시 설정. 안 하면 litellm_settings 의
+  # max_internal_user_budget(기본 $25) 적용, LiteLLM 은 min(user, key, team) 을
+  # 한도로 사용 → --budget 이 $25 초과 시 $25 에 잘못 캡됨. /user/new 는 기존 유저면
+  # no-op → 멱등 갱신 위해 /user/update 도 한 번 호출.
   local payload; payload=$(jq -n --arg u "$user_id" --argjson b "$budget" \
     '{user_id:$u, user_role:"internal_user", max_budget:$b, budget_duration:"1mo"}')
   litellm_post "/user/new" "$payload" >/dev/null 2>&1 || true
@@ -200,15 +200,15 @@ cmd_user_create() {
     echo "$out"
     issued=$(echo "$out" | grep -oE 'sk-[A-Za-z0-9_-]+' | head -1)
     [[ -n "$issued" ]] && register_litellm_key_for_librechat_user "$user_id" "$lc_password" "$issued"
-    # 에이전트는 ADMIN 글로벌 공유본을 쓰므로 사용자 생성 시 따로 할 일이 없다.
-    # 카탈로그 부트스트랩/재공유는 setup.sh 의 'agent sync' 1회로 충분하고,
-    # 카탈로그를 바꿨을 때만 'manage.sh agent sync' 를 수동 재실행하면 된다.
+    # 에이전트는 ADMIN 글로벌 공유본 사용 → 사용자 생성 시 별도 작업 없음.
+    # 카탈로그 부트스트랩/재공유는 setup.sh 의 'agent sync' 1회로 충분,
+    # 카탈로그 변경 시에만 'manage.sh agent sync' 수동 재실행.
   fi
 }
 
 register_litellm_key_for_librechat_user() {
   local email="$1" pw="$2" key="$3"
-  # LIBRECHAT_URL 은 lib.sh 가 .env / NODE_LIBRECHAT 호스트 기준으로 자동 유추한다.
+  # LIBRECHAT_URL 은 lib.sh 가 .env / NODE_LIBRECHAT 호스트 기준으로 자동 유추.
   local lc_url="$LIBRECHAT_URL"
   local jwt
   jwt=$(curl -s -X POST "${lc_url}/api/auth/login" \
@@ -226,9 +226,9 @@ register_litellm_key_for_librechat_user() {
     || warn "키 자동 등록 실패 (HTTP $code)"
 }
 
-# ADMIN 한 사용자(email) 소유로 공유 에이전트 카탈로그를 upsert 한다. 모델별 일반
-# 에이전트 + functional 에이전트(Super/Image/Slide/Note Taker/Deep Research/Video/Paper Banana)를
-# 생성·갱신하고, 카테고리를 매핑하며, 잔존 defaultPreset 을 제거한다. cmd_agent_sync 가 ADMIN 에게
+# ADMIN 한 사용자(email) 소유로 공유 에이전트 카탈로그 upsert. 모델별 일반
+# 에이전트 + functional 에이전트(Super/Image/Slide/Note Taker/Deep Research/Video/Paper Banana)
+# 생성·갱신, 카테고리 매핑, 잔존 defaultPreset 제거. cmd_agent_sync 가 ADMIN 에게
 # 1회 호출 → 이후 전 사용자에게 read-only 공유. (사용자별 복제 아님.)
 upsert_shared_agent_catalog() {
   local email="$1"
@@ -239,12 +239,12 @@ upsert_shared_agent_catalog() {
 
   # 일반 agent 이름 = 모델 ID (`openai/gpt-5-mini`, `local/gemma-4-26b` 등) — dropdown 이
   # LiteLLM 라우트와 1:1. functional agent 7종 (Super Agent / Image Studio / Video Studio /
-  # Slide Studio / Note Taker / Deep Research / Paper Banana) 만 별도 이름으로 도구 셋을 분기한다.
+  # Slide Studio / Note Taker / Deep Research / Paper Banana) 만 별도 이름으로 도구 셋 분기.
   local agent_specs='[]'
   local m
 
   # 에이전트 표시이름 = 각 모델 정식 명칭(대소문자). spec.name / DISPLAY_ORDER / rename
-  # 매핑이 공통으로 참조. 미등록 키는 slug 그대로 폴백.
+  # 매핑이 공통 참조. 미등록 키는 slug 그대로 폴백.
   local -A AGENT_DISPLAY=(
     [openai/gpt-5.5]="GPT-5.5" [openai/gpt-5]="GPT-5" [openai/gpt-5-mini]="GPT-5 mini" [openai/gpt-5-nano]="GPT-5 nano"
     [anthropic/claude-opus-4.8]="Claude Opus 4.8" [anthropic/claude-opus-4.7]="Claude Opus 4.7" [anthropic/claude-opus-4.6]="Claude Opus 4.6"
@@ -276,14 +276,14 @@ upsert_shared_agent_catalog() {
     _add_chat meta       "${META_MODELS[@]}"
     _add_chat qwen       "${QWEN_MODELS[@]}"
 
-    # 유료 이미지/비디오 모델별 agent — 브레인이 122b(Studio 와 동일)라 로컬 챗
-    # 두뇌가 있어야 동작한다. 그래서 super_agent_eligible(VLLM_GEMMA26_URL) AND OR키 둘 다
-    # 있을 때만 생성 — GPU 없는 OR 전용 배포에선 브레인이 없으니 만들지 않는다(깨진 에이전트
+    # 유료 이미지/비디오 모델별 agent — 브레인이 122b(Studio 와 동일) → 로컬 챗
+    # 두뇌 있어야 동작. 따라서 super_agent_eligible(VLLM_GEMMA26_URL) AND OR키 둘 다
+    # 있을 때만 생성 — GPU 없는 OR 전용 배포는 브레인 없음 → 미생성(깨진 에이전트
     # 노출 방지). kind 로 도구 부착, lockModel 로 생성 모델 고정(instructions 강제).
     if super_agent_eligible; then
-      # 두뇌 = 122b: gemma 는 generate_image 툴콜을 복잡 프롬프트에서 ~1/6 만 내고(ReAct-JSON
-      # 텍스트 누수) 122b 는 6/6, generate_video 도 5/6→6/6. 일관성 위해 image/video 모두 122b.
-      # (둘 다 vision 지원이라 이미지 입력/편집 보존). 트레이드오프는 122b reasoning 으로 약간
+      # 두뇌 = 122b: gemma 는 복잡 프롬프트에서 generate_image/video 툴콜 신뢰도가 낮음
+      # (ReAct-JSON 텍스트 누수), 122b 는 안정적. 일관성 위해 image/video 모두 122b.
+      # (둘 다 vision 지원 → 이미지 입력/편집 보존). 트레이드오프는 122b reasoning 으로 약간
       # 느린 것뿐 — 이미지/영상 생성 시간 대비 무시 가능.
       _add_gen() {  # $1=kind(image|video)  $2=alias  $3=desc
         agent_specs=$(jq -c --arg n "$(disp_name "$2")" --arg mm "local/qwen3.5:122b" --arg k "$1" --arg lm "$2" --arg d "$3" \
@@ -299,30 +299,30 @@ upsert_shared_agent_catalog() {
     fi
   fi
 
-  # plain `local/<m>` default agent 는 만들지 않는다 — gemma-4-26b 는 아래 functional
-  # agent (Super Agent / Image Studio / Slide Studio) 의 base 이고, coder-next 는 외부 코딩
-  # 클라이언트(Claude Code/Codex) 전용이라 LiteLLM 등록만 유지하고 UI/agent 에는 안 띄운다.
+  # plain `local/<m>` default agent 미생성 — gemma-4-26b 는 아래 functional
+  # agent (Super Agent / Image Studio / Slide Studio) 의 base, coder-next 는 외부 코딩
+  # 클라이언트(Claude Code/Codex) 전용 → LiteLLM 등록만 유지, UI/agent 에는 미노출.
 
   # Super Agent — 챗 두뇌(gemma-4-26b) 가용 시 promoted default (single-stage).
   # 같은 조건에서 functional 에이전트(Image/Slide/Note Taker/Deep Research/Video/Paper
-  # Banana)도 함께 등장. Super/Image/Video/Slide/Note Taker/Deep Research 는 promoted
-  # (AI Agent Store Top Picks), Paper Banana 만 비promoted. 새 대화 기본은 Super Agent.
+  # Banana)도 함께 등장. Super/Image/Video/Slide/Note Taker/Deep Research = promoted
+  # (AI Agent Store Top Picks), Paper Banana 만 비promoted. 새 대화 기본 = Super Agent.
   if super_agent_eligible; then
     agent_specs=$(jq -c --arg n "Super Agent" --arg mm "local/auto-route" \
       '. + [{name:$n, model:$mm, kind:"super", is_promoted:true}]' <<< "$agent_specs")
-    # Image/Video Studio — 이미지/비디오 백엔드(로컬 ComfyUI 또는 OR 외부)가 있어야 등장.
+    # Image/Video Studio — 이미지/비디오 백엔드(로컬 ComfyUI 또는 OR 외부) 있어야 등장.
     # GPU 없으면 comfyui-shim 이 외부 OR 모델(nano-banana/veo-lite 등)로 라우팅(유료).
     if image_gen_eligible; then
-      # Image/Video Studio 두뇌 = 122b: gemma 의 generate_image/video 툴콜 신뢰도가 낮고
-      # (이미지 ~1/6 누수) 122b 는 6/6. vision 유지(122b 도 멀티모달). 일관성 위해 둘 다 122b.
+      # Image/Video Studio 두뇌 = 122b: gemma 의 generate_image/video 툴콜 신뢰도 낮음,
+      # 122b 는 안정적. vision 유지(122b 도 멀티모달). 일관성 위해 둘 다 122b.
       agent_specs=$(jq -c --arg n "Image Studio" --arg mm "local/qwen3.5:122b" \
         '. + [{name:$n, model:$mm, kind:"image", is_promoted:true}]' <<< "$agent_specs")
       agent_specs=$(jq -c --arg n "Video Studio" --arg mm "local/qwen3.5:122b" \
         '. + [{name:$n, model:$mm, kind:"video", is_promoted:true}]' <<< "$agent_specs")
     fi
     # Deep Research = 122b (추론 깊이 우선). plain alias (local/qwen3.5:122b) 를 backend 로
-    # 쓴다 — 단일 122b deployment 라 모든 reasoning step (짧은 tool-routing 호출 ~ 누적 input
-    # 호출) 이 같은 노드의 같은 ctx budget 을 공유해 max_completion_tokens/ctx reject 가 없다.
+    # 사용 — 단일 122b deployment → 모든 reasoning step (짧은 tool-routing 호출 ~ 누적 input
+    # 호출) 이 같은 노드의 같은 ctx budget 공유 → max_completion_tokens/ctx reject 없음.
     agent_specs=$(jq -c --arg n "Deep Research" --arg mm "local/qwen3.5:122b" \
       '. + [{name:$n, model:$mm, kind:"research", is_promoted:true}]' <<< "$agent_specs")
     # Slide Studio — 122b 가 전문 발표 디자이너 프롬프트(Architect→Designer)로 자체완결형
@@ -331,14 +331,14 @@ upsert_shared_agent_catalog() {
     agent_specs=$(jq -c --arg n "Slide Studio" --arg mm "local/qwen3.5:122b" \
       '. + [{name:$n, model:$mm, kind:"ppt", is_promoted:true}]' <<< "$agent_specs")
     # Paper Banana — gemma-4-26b 가 paperbanana MCP(학술 다이어그램/플롯 생성, OpenRouter
-    # 경유 VLM+이미지) 를 호출. Research 카테고리. PaperBanana 프레임워크가 multi-agent
-    # render 를 전담하니 에이전트는 도구 호출만. is_promoted:false — 스토어 Research
+    # 경유 VLM+이미지) 호출. Research 카테고리. PaperBanana 프레임워크가 multi-agent
+    # render 전담 → 에이전트는 도구 호출만. is_promoted:false — 스토어 Research
     # 카테고리엔 남기되 Top Picks(featured)에선 제외.
     agent_specs=$(jq -c --arg n "Paper Banana" --arg mm "local/gemma-4-26b" \
       '. + [{name:$n, model:$mm, kind:"paperbanana", is_promoted:false}]' <<< "$agent_specs")
     # Note Taker — 오디오 "텍스트로 업로드" 시 내장 STT(→whisper-shim)가 전사해 컨텍스트로
-    # 붙이고 gemma 가 회의록/강의노트로 정리. 전사 백엔드(whisper)는 GPU 전용(OR 폴백 없음)
-    # 이라 whisper_eligible 일 때만 등장 — 없으면 코어 기능(전사)이 불가하므로 미생성.
+    # 첨부, gemma 가 회의록/강의노트로 정리. 전사 백엔드(whisper)는 GPU 전용(OR 폴백 없음)
+    # → whisper_eligible 일 때만 등장 — 없으면 코어 기능(전사) 불가 → 미생성.
     if whisper_eligible; then
       agent_specs=$(jq -c --arg n "Note Taker" --arg mm "local/gemma-4-26b" \
         '. + [{name:$n, model:$mm, kind:"notetaker", is_promoted:true}]' <<< "$agent_specs")
@@ -348,8 +348,8 @@ upsert_shared_agent_catalog() {
   local email_js; email_js=$(jq -Rn --arg e "$email" '$e')
 
   # appendix.txt 의 섹션별 본문 추출 (`=== name ===` sentinel) — agent kind / 부착 도구 에
-  # 따라 *해당 섹션만* 조립해서 instructions 끝에 append (모든 agent 에 전체를 붙이면
-  # 불필요한 가이드가 instruction 을 부풀려 attention 을 분산시킨다).
+  # 따라 *해당 섹션만* 조립해서 instructions 끝에 append (모든 agent 에 전체 부착 시
+  # 불필요한 가이드가 instruction 을 부풀려 attention 분산).
   local appendix_path="${SCRIPT_DIR}/agent-instructions-appendix.txt"
   __appendix_section() {
     [[ -f "$appendix_path" ]] || return 0
@@ -390,14 +390,14 @@ upsert_shared_agent_catalog() {
   SEC_MATH=$( jq -Rn --arg s "$(__routing_section trigger.math)"          '$s')
 
   # AI Agent Store/드롭다운 표시 순서 (index 0 = 상단). 마켓 카테고리·드롭다운 둘 다
-  # {updatedAt:-1} 정렬이라 이 한 배열이 양쪽을 결정한다(Productivity = Image→Video→
+  # {updatedAt:-1} 정렬 → 이 한 배열이 양쪽 결정(Productivity = Image→Video→
   # Slide→Note Taker, Research = Deep Research→Paper Banana):
   #   Super Agent → Image Studio → Video Studio → Slide Studio → Note Taker →
   #   Deep Research → Paper Banana → openai(오름차순) → anthropic → google.
-  # 상용 모델 배열은 내림차순(고성능 우선) 유지이므로 역순으로 펼쳐 오름차순을 만든다.
+  # 상용 모델 배열은 내림차순(고성능 우선) 유지 → 역순으로 펼쳐 오름차순 생성.
   # Productivity studios → 상용 LLM(provider 그룹: openai→anthropic→google→그외) →
   # 모델별 이미지/비디오 agent(Closed Models 의 그외 꼬리) 순.
-  # 표시이름(disp_name)으로 — rename 후에도 rank 가 유지된다.
+  # 표시이름(disp_name)으로 — rename 후에도 rank 유지.
   local _disp=("Super Agent" "Image Studio" "Video Studio" "Slide Studio" "Note Taker" "Deep Research" "Paper Banana") _i _p
   for ((_i=${#OPENAI_MODELS[@]}-1; _i>=0; _i--));     do _disp+=("$(disp_name "openai/${OPENAI_MODELS[$_i]}")"); done
   for ((_i=${#ANTHROPIC_MODELS[@]}-1; _i>=0; _i--));  do _disp+=("$(disp_name "anthropic/${ANTHROPIC_MODELS[$_i]}")"); done
@@ -794,7 +794,7 @@ cmd_agent_sync() {
   docker_on_node NODE_LIBRECHAT ps --format '{{.Names}}' 2>/dev/null | grep -q '^chat-mongodb$' \
     || { err "chat-mongodb 미실행 (NODE_LIBRECHAT 도달 불가)"; exit 1; }
 
-  # 에이전트는 ADMIN 한 벌만 만들고 전 사용자에게 read-only 로 공유한다 (사용자별 복제 X).
+  # 에이전트는 ADMIN 한 벌만 생성하고 전 사용자에게 read-only 공유 (사용자별 복제 X).
   # 1) ADMIN owner 로 카탈로그 upsert  2) admin 의 각 agent 에 public viewer ACL(permBits 1)
   #    = LibreChat 의 글로벌 공유 (getListAgents 가 public ACL 로 노출, 편집 불가)
   # 3) 비-ADMIN 사용자가 소유한 managed 카탈로그 복제본 정리.
@@ -821,7 +821,8 @@ cmd_agent_sync() {
       {value:"productivity", label:"Productivity",   order:1},
       {value:"education",    label:"Education",       order:2},
       {value:"research",     label:"Research",       order:3},
-      {value:"commercial",   label:"Closed Models",  order:4}
+      {value:"commercial",   label:"Closed Models",  order:4},
+      {value:"my_agents",    label:"My Agents",      order:5}
     ];
     wantActive.forEach(function(c){
       db.agentcategories.updateOne({value:c.value},
@@ -830,7 +831,7 @@ cmd_agent_sync() {
     });
     // 나머지 카테고리는 전부 비활성 (image/development 포함).
     db.agentcategories.updateMany(
-      {value:{"$nin":["general","productivity","research","commercial","education"]}},
+      {value:{"$nin":["general","productivity","research","commercial","education","my_agents"]}},
       {"$set":{isActive:false}});
     print("CATEGORIES_SET");
 
@@ -875,10 +876,10 @@ cmd_agent_sync() {
     }' 2>&1 | grep -E "SHARED:|SKIP_SHARE|CATEGORIES_SET|AGENT_PERMS|DEFAULT_PRESET_REMOVED"
   ok "글로벌 read-only 공유 완료"
 
-  # librechat.yaml modelSpecs 의 모든 pin agent_id 를 현재 DB id 로 동기화한다.
-  # LibreChat 는 modelSpecs 내부 ${ENV} 치환을 안 하므로 실제 id 를 박아야 하는데,
-  # MongoDB wipe/재설정 시 id 가 새로 발급되면 pin 이 깨진다 → 각 spec 의 label(=에이전트
-  # 이름)로 현재 id 를 조회해 그 spec 의 agent_id 줄을 모두 교체(awk, 주석/포맷 보존).
+  # librechat.yaml modelSpecs 의 모든 pin agent_id 를 현재 DB id 로 동기화.
+  # LibreChat 는 modelSpecs 내부 ${ENV} 치환 미지원 → 실제 id 를 박아야 하는데,
+  # MongoDB wipe/재설정 시 id 신규 발급되면 pin 깨짐 → 각 spec 의 label(=에이전트
+  # 이름)로 현재 id 조회해 그 spec 의 agent_id 줄을 모두 교체(awk, 주석/포맷 보존).
   local lc_yaml="${SCRIPT_DIR}/../librechat.yaml"
   if [[ ! -f "$lc_yaml" ]] || ! grep -qE '^\s*agent_id: ' "$lc_yaml"; then
     info "librechat.yaml modelSpecs agent_id 없음 — 동기화 스킵 (modelSpecs 미사용)"
@@ -890,8 +891,8 @@ cmd_agent_sync() {
     'db.agents.find({author:db.users.findOne({role:"ADMIN"})._id},{name:1,id:1}).forEach(function(a){if(a.id)print(a.name+"\t"+a.id)});' 2>/dev/null | grep -P '\tagent_' || true)
   if [[ -z "$id_map" ]]; then warn "에이전트 id 맵 조회 실패 — modelSpecs 미갱신"; return 0; fi
   # modelSpecs 블록 내 각 spec 의 label 직후 agent_id 를 맵 값으로 치환.
-  # 또한 새 대화 기본인 Super Agent 가 미생성(GPU 없는 OR 전용 배포)이면 prioritize 를
-  # false 로 내려 깨진 기본값 핀을 막는다(있으면 true 로 복구 — 멱등·양방향).
+  # 또한 새 대화 기본인 Super Agent 미생성(GPU 없는 OR 전용 배포)이면 prioritize
+  # false 로 내려 깨진 기본값 핀 차단(있으면 true 로 복구 — 멱등·양방향).
   local tmp; tmp=$(mktemp)
   awk -F'\t' '
     FNR==NR { if (NF==2) map[$1]=$2; next }
@@ -926,7 +927,7 @@ cmd_user_list() {
 }
 
 # 사용자별 사용량(이번 달 spend) vs 월 예산(max_budget). --user 로 한 명만.
-# spend 는 budget_duration(1mo)마다 리셋 — RESET 컬럼이 다음 리셋일.
+# spend 는 budget_duration(1mo)마다 리셋 — RESET 컬럼 = 다음 리셋일.
 cmd_user_usage() {
   local user_id=""
   while [[ $# -gt 0 ]]; do case "$1" in --user) need_val "$@"; user_id="$2"; shift 2 ;; *) shift ;; esac; done
@@ -940,13 +941,13 @@ cmd_user_usage() {
           (if .max_budget == null then "unlimited" else "$" + (.max_budget|tostring) end),
           (if (.max_budget // 0) > 0 then (((.spend // 0)/.max_budget*100)|floor|tostring)+"%" else "-" end),
           ((.budget_reset_at // "-")[0:10]) ] | @tsv'; } )"
-  # column 없으면(드묾) raw TSV 로 폴백 — 파이프 우측 fallback 은 입력을 못 받으니 분기로.
+  # column 없으면(드묾) raw TSV 로 폴백 — 파이프 우측 fallback 은 입력 못 받음 → 분기로.
   if command -v column >/dev/null 2>&1; then printf '%s\n' "$out" | column -t -s "$(printf '\t')"
   else printf '%s\n' "$out"; fi
 }
 
-# 만료된 topup(예산 임시상향) 자동 복구. expires_at(상향 당시 budget_reset_at)이 지났으면
-# = 그 사이 budget_duration 리셋이 일어났으므로 original_budget 으로 되돌린다.
+# 만료된 topup(예산 임시상향) 자동 복구. expires_at(상향 당시 budget_reset_at) 경과 시
+# = 그 사이 budget_duration 리셋 발생 → original_budget 으로 복원.
 # user usage/list/topup 진입 시 lazy 실행(원장 비었으면 no-op). 즉시성 필요하면 월초 cron.
 reconcile_topups() {
   local f="${DATA_DIR}/topups.json"
@@ -973,10 +974,10 @@ reconcile_topups() {
   return 0
 }
 
-# 일시 budget 충전 — 월 한도(max_budget)를 amount 만큼 올린다. spend(실사용량)는 그대로
-# 둬서 통계가 정확히 유지된다. original_budget·만료일(=현재 budget_reset_at)을 원장
+# 일시 budget 충전 — 월 한도(max_budget)를 amount 만큼 상향. spend(실사용량)는 그대로
+# 유지해 통계 정확. original_budget·만료일(=현재 budget_reset_at)을 원장
 # (data/ledger/topups.json)에 기록 → 월 리셋 후 reconcile_topups 가 원래 한도로 자동
-# 원복(영구 상향 아님). 같은 달 재충전은 누적되고 original 은 첫 충전값 유지.
+# 원복(영구 상향 아님). 같은 달 재충전은 누적, original 은 첫 충전값 유지.
 cmd_user_topup() {
   local user_id="" amount=""
   while [[ $# -gt 0 ]]; do case "$1" in
@@ -1017,8 +1018,8 @@ cmd_user_delete() {
 }
 
 # data/ledger/keys.json 원장에 발급된 평문 키를 append. LiteLLM 은 hash 만
-# 저장하므로, 발급 후 평문을 다시 보려면 여기 적어둔 게 유일한 출처다. data/ 는
-# gitignore 되고 파일은 600 으로 잠근다.
+# 저장 → 발급 후 평문 재확인은 여기가 유일 출처. data/ 는
+# gitignore, 파일은 600 으로 잠금.
 record_issued_key() {
   local user_id="$1" key_alias="$2" team_id="$3" key="$4" budget="$5"
   mkdir -p "$DATA_DIR"
@@ -1050,8 +1051,8 @@ cmd_key_issue() {
 
   if [[ -n "$service" ]]; then
     local alias="${service}-service-key"
-    # LiteLLM 은 key hash 만 저장한다. plaintext 는 issue 시점에 .env 로 박힌다.
-    # alias 충돌로 reissue 가 HTTP 400 을 내므로 .env 의 키가 아직 유효하면 skip 한다.
+    # LiteLLM 은 key hash 만 저장. plaintext 는 issue 시점에 .env 로 박힘.
+    # alias 충돌로 reissue 가 HTTP 400 → .env 의 키가 아직 유효하면 skip.
     local env_var=""
     case "$service" in
       librechat) env_var="LITELLM_SERVICE_KEY" ;;
@@ -1089,8 +1090,8 @@ cmd_key_issue() {
     if [[ "$service" == "librechat" ]]; then
       env_set LITELLM_SERVICE_KEY "$key"
       env_set RAG_OPENAI_API_KEY  "$key"
-      # NODE_LIBRECHAT 이 원격이면 갱신된 .env push + librechat/rag_api restart. 안 그러면
-      # 컨테이너는 옛 키로 계속 도므로 사용자 키 발급이 한 번에 안 통한다.
+      # NODE_LIBRECHAT 이 원격이면 갱신된 .env push + librechat/rag_api restart. 아니면
+      # 컨테이너가 옛 키로 계속 동작 → 사용자 키 발급이 한 번에 안 통함.
       local lc_host; lc_host="$(env_get NODE_LIBRECHAT)"
       if [[ -n "$lc_host" ]] && ! is_local_host "$lc_host"; then
         rsync_push_file "$lc_host" ".env" \
@@ -1125,14 +1126,14 @@ cmd_key_issue() {
 cmd_key_list() {
   local user_id=""
   while [[ $# -gt 0 ]]; do case "$1" in --user) need_val "$@"; user_id="$2"; shift 2 ;; *) shift ;; esac; done
-  # return_full_object=true 없으면 .keys[] 가 해시 문자열이라 객체 인덱싱이 실패한다.
+  # return_full_object=true 없으면 .keys[] 가 해시 문자열 → 객체 인덱싱 실패.
   local ep="/key/list?return_full_object=true"; [[ -n "$user_id" ]] && ep+="&user_id=${user_id}"
   litellm_get "$ep" | jq -r '.keys[]
     | "\(.key_alias // "unnamed")\t\((.token // "?")[0:20])...\tuser:\(.user_id // "-")\tbudget:\(.max_budget)$\tspend:\(.spend // 0)$"'
 }
 
-# 원장(data/ledger/keys.json)에 저장된 평문 키를 보여준다. --user 로 필터.
-# LiteLLM 의 key list 는 hash 만 알아 앞 20자밖에 못 보지만 여기는 전체 평문.
+# 원장(data/ledger/keys.json)에 저장된 평문 키 표시. --user 로 필터.
+# LiteLLM 의 key list 는 hash 만 알아 앞 20자만, 여기는 전체 평문.
 cmd_key_show() {
   local user_id=""
   while [[ $# -gt 0 ]]; do case "$1" in --user) need_val "$@"; user_id="$2"; shift 2 ;; *) shift ;; esac; done

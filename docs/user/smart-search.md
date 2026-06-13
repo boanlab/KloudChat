@@ -23,7 +23,7 @@ return [{document, file_id, source, score}]
 
 | 파일 | 역할 |
 |---|---|
-| [`mcp/smart_search.py`](../mcp/smart_search.py) | stdio MCP 서버 (`uv run --script`, FastMCP) |
+| [`mcp/smart_search.py`](../../mcp/smart_search.py) | stdio MCP 서버 (`uv run --script`, FastMCP) |
 | `librechat.yaml::mcpServers.smart_search` | 등록 (`startup:false`, `{{LIBRECHAT_USER_ID}}` 주입) |
 | `docker-compose.yml` LibreChat env `RAG_DB_URL` | pgvector 접속 URL |
 | `scripts/manage.sh` `MCP_DEFAULT`/`MCP_RESEARCH` | 에이전트 부착 |
@@ -94,4 +94,4 @@ docker compose up -d --force-recreate librechat
 
 ## 같이 보면 좋은 문서
 
-- [도구/MCP](tools.md) · [라우팅 정책](routing-policy.md) · [모델 설정](models.md)
+- [도구/MCP](../operator/tools.md) · [라우팅 정책](../operator/routing-policy.md) · [모델 설정](../operator/models.md)

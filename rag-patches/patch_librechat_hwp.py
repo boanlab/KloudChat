@@ -1,6 +1,6 @@
 """
-LibreChat client 소스 (data-provider/src/file-config.ts) 의 inferMimeType 함수에
-.hwp / .hwpx 분기 추가. Dockerfile.librechat 의 multi-stage builder 단계에서 실행.
+LibreChat client 소스 (data-provider/src/file-config.ts) inferMimeType 함수에
+.hwp / .hwpx 분기 추가. Dockerfile.librechat multi-stage builder 단계 실행.
 
 base 코드:
     const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
@@ -11,7 +11,7 @@ base 코드:
     if (extension === 'hwp' || extension === 'hwpx') return 'application/x-hwp';
     return codeTypeMapping[extension] || imageTypeMapping[extension] || currentType;
 
-vite build 시 새 chunk hash 자연스럽게 생성 → 캐시·service worker 충돌 없음.
+vite build 시 새 chunk hash 자동 생성 → 캐시·service worker 충돌 없음.
 """
 
 import sys

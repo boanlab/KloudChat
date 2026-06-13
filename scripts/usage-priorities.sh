@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Usage: usage-priorities.sh [--days N] [--apply] [-h]
 #
-# 실사용(LiteLLM 모델별 요청수·토큰·처리시간)을 집계해 리포트하고, 그 빈도로 scheduler
-# 우선순위를 재산정한다. scheduler 의 --priorities 는 "사용 빈도 랭킹"으로 해석되므로
-# (catalog.DEFAULT_PRIORITIES 주석) 최근 트래픽이 많은 워크로드부터 VRAM 을 받게 한다.
+# 실사용(LiteLLM 모델별 요청수·토큰·처리시간) 집계 → 리포트 + 그 빈도로 scheduler
+# 우선순위 재산정. scheduler 의 --priorities 는 "사용 빈도 랭킹"으로 해석되므로
+# (catalog.DEFAULT_PRIORITIES 주석) 최근 트래픽 많은 워크로드부터 VRAM 우선 할당.
 #
 #   기본(검토)   사용량 리포트 + 도출된 우선순위 + 적용 명령만 출력. 아무것도 안 바꿈.
 #   --apply      python -m scheduler apply 를 도출 우선순위로 즉시 실행(컨테이너 재배치).
@@ -12,11 +12,11 @@
 # 우선순위 재정렬 대상 = vLLM 로컬 워크로드(chat=gemma-4-26b/auto-route, deep-research=
 # qwen3.5:122b, coding=qwen3-coder-next, rag=bge-m3) — scheduler 가 배치하는 것들.
 # 리포트 표엔 OR 상용 모델 + Image/Video Studio(로컬 FLUX/LTXV + 외부 nano-banana/Veo/Sora,
-# 과금 passthrough 로 집계)도 포함. 단 이미지·비디오는 같은 ComfyUI(image-flux 워크로드)를
-# 공유해 별도 placement 결정이 없으므로 우선순위 재정렬엔 들어가지 않는다(리포트 전용).
+# 과금 passthrough 로 집계)도 포함. 단 이미지·비디오는 같은 ComfyUI(image-flux 워크로드)
+# 공유라 별도 placement 결정 없음 → 우선순위 재정렬엔 미포함(리포트 전용).
 #
-# ⚠ --apply 는 vLLM 컨테이너 재기동(가중치 재로드 gemma ~3-5분, 122b ~5-7분)을 유발할
-#   수 있다. 저트래픽 시간대 + 변화가 충분히 클 때만. diff 없으면 no-op.
+# ⚠ --apply 는 vLLM 컨테이너 재기동(가중치 재로드 gemma ~3-5분, 122b ~5-7분) 유발
+#   가능. 저트래픽 시간대 + 변화 충분히 클 때만. diff 없으면 no-op.
 set -euo pipefail
 
 __SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,8 +45,8 @@ BASE_CSV="$(python3 -c 'from scheduler.catalog import DEFAULT_PRIORITIES; print(
 
 hdr "사용량 리포트 — 최근 ${DAYS}일 (≥ ${START}) · LiteLLM ${LITELLM_URL}"
 
-# /spend/logs raw(모델별 토큰·처리시간 포함)를 집계. 사람용 표는 stderr, DERIVED=<csv>
-# 한 줄만 stdout 으로 흘려 bash 가 받는다.
+# /spend/logs raw(모델별 토큰·처리시간 포함) 집계. 사람용 표는 stderr, DERIVED=<csv>
+# 한 줄만 stdout 으로 흘려 bash 가 수신.
 DERIVED="$(curl -fsS "${LITELLM_URL}/spend/logs" -H "Authorization: Bearer ${KEY}" 2>/dev/null \
   | START="$START" BASE_CSV="$BASE_CSV" python3 -c '
 import json, os, sys

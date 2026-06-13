@@ -1,18 +1,18 @@
-// LibreChat 의 메모리(개인화) 처리 타임아웃을 3s → 기본 30s 로 늘린다.
+// LibreChat 메모리(개인화) 처리 타임아웃 3s → 기본 30s 로 증가.
 //
 // 원본 동작
 // ---------
 // /app/api/server/controllers/agents/client.js:
 //   async awaitMemoryWithTimeout(memoryPromise, timeoutMs = 3000) { ... }
-// → 메모리 추출(LLM 호출, 우리는 local/gemma-4-26b)이 3초를 넘기면 잘려서
-//   "Memory processing timed out after 3 seconds" 후 개인화 사실이 저장되지 않는다.
-//   로컬 추출은 보통 3초를 초과 → 메모리 기능이 사실상 동작 안 함.
+// → 메모리 추출(LLM 호출, 우리는 local/gemma-4-26b)이 3초 초과 시 절단 →
+//   "Memory processing timed out after 3 seconds" 후 개인화 사실 미저장.
+//   로컬 추출은 보통 3초 초과 → 메모리 기능 사실상 미동작.
 //
 // 패치
 // ----
-// 기본 타임아웃을 30s 로. 메모리 처리는 응답 스트림과 별개(best-effort, 비동기)라
-// 타임아웃을 늘려도 사용자 응답 지연은 없다. KC_MEMORY_TIMEOUT_MS 로 override 가능.
-// warn 메시지의 'after 3 seconds' 하드코딩도 실제 timeoutMs 로 정정.
+// 기본 타임아웃 30s 로. 메모리 처리 = 응답 스트림과 별개(best-effort, 비동기) →
+// 타임아웃 늘려도 사용자 응답 지연 없음. KC_MEMORY_TIMEOUT_MS 로 override 가능.
+// warn 메시지 'after 3 seconds' 하드코딩도 실제 timeoutMs 로 정정.
 
 const fs = require('fs');
 
