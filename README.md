@@ -115,10 +115,7 @@ $EDITOR .env                # 키 채우기 (아래 표 참고)
 
 ### 사용자 관점 — 플랫폼으로 무엇을, 어떻게 ([docs/user/](docs/user/))
 
-- [예제 / 데모 프롬프트](examples/) — 에이전트별 사용 예시
-- [Slide Studio 내보내기](docs/user/slide-export.md) — 덱을 PDF/PPTX 로 export
-- [Video Studio](docs/user/video-studio.md) — 텍스트 → 비디오 생성
-- [정밀 문서 검색](docs/user/smart-search.md) — 첨부 문서 대상 smart_search
+- [에이전트 활용 가이드](docs/user/) — Super Agent · Image Studio · Video Studio · Slide Studio · Note Taker · Deep Research (도구·MCP 활용 + 예시 프롬프트)
 - [코딩 에이전트 연동](docs/user/coding-agents.md) — Claude Code / Codex 를 본인 키로 연결
 
 ### 운영자 관점 — 배포 · 운영 · 튜닝 ([docs/operator/](docs/operator/))
@@ -136,6 +133,9 @@ $EDITOR .env                # 키 채우기 (아래 표 참고)
 
 **참고:**
 - [도구](docs/operator/tools.md) — Built-in / MCP / image 백엔드 + agent 별 도구 매트릭스
+- [Slide Studio 내보내기](docs/operator/slide-export.md) — 덱 PDF/PPTX export 서비스 + export_deck MCP
+- [정밀 문서 검색](docs/operator/smart-search.md) — smart_search MCP (hybrid retrieve + rerank)
+- [Video Studio 운영](docs/operator/video-studio.md) — 동작 구조 · 과금 · 로컬 LTXV 설정
 - [아키텍처 상세](docs/operator/overview.md) — 컴포넌트별 동작 + 요청 흐름
 - [GPU 메모리 가이드](docs/operator/gpu-memory.md) — 로컬 GPU VRAM 점유
 - [성능 측정](docs/operator/performance.md) — 실측 throughput 매트릭스

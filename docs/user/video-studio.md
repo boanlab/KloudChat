@@ -1,98 +1,70 @@
-# Video Studio — 텍스트 → 비디오
+# Video Studio 활용 가이드
 
-프롬프트로 짧은 비디오 클립을 만드는 에이전트. **AI Agent Store** 의 **Productivity** 카테고리.
+> 텍스트 → 짧은 비디오 클립 생성 에이전트 (`local/qwen3.5:122b`). 프롬프트로 4~8초 클립을
+> 만들어 **다운로드 링크 + 임베디드 플레이어(아티팩트)** 로 돌려준다. Artifacts 기본 ON이라
+> 플레이어가 우측 패널에 바로 뜬다.
+>
+> 이미지는 [Image Studio](image-studio.md), 발표자료는 [Slide Studio](slide-studio.md),
+> 일상 작업은 [Super Agent](super-agent.md) 로.
 
-## 사용법
+## 도구 구성
 
-- **영상 설명** → Video Studio 대화에서 만들고 싶은 영상 묘사. 예: *"해질녘 해변을 걷는 사람, 카메라가 천천히 따라가는 4초 영상"*.
-- **결과물**: 에이전트가 영상 생성 후 **다운로드 링크 + 임베디드 플레이어(아티팩트)** 반환.
-  - Video Studio 는 **Artifacts 기본 ON** → 플레이어가 우측 패널에 바로 표시(Slide Studio 와 동일).
-- **모델 지목**: 특정 모델은 *"sora로 만들어줘"* 처럼 지목.
-- **렌더 지연 시**: 에이전트가 **작업 ID** 와 함께 "렌더링 중" 응답 → 잠시 뒤 *"영상 확인해줘"* 로 결과 회수.
+이미지(`generate_image`)와 달리 비디오는 렌더에 시간이 걸려, **파일을 만들어 링크로 돌려주는 MCP** 로 구성된다. 빌트인 도구는 쓰지 않는다.
+
+**KloudChat 추가 MCP**
+
+| MCP | 하는 일 |
+|---|---|
+| `generate_video` | 텍스트 → 비디오 잡 제출 후 ~2분 인라인 폴링. 완료되면 링크, 미완이면 **작업 ID** 반환 |
+| `check_video` | 작업 ID 로 결과 회수 ("영상 확인해줘") |
+
+> 렌더는 수십 초~수 분. 비동기라 오래 걸리면 "렌더링 중 + 작업 ID" 로 응답하고, 잠시 뒤 다시 물으면 `check_video` 로 회수한다. 운영/배포 내부는 [operator/video-studio.md](../operator/video-studio.md).
 
 ## 모델
 
-- **선택 방법**: `model` 인자(또는 사용자 지목).
-- **기본값**: `ltx-video`(로컬·온프레미스, 외부 비용 0·명목 단가만 기록).
-- **OpenRouter 모델**: 지목 시 사용.
+`model` 인자(또는 사용자 지목)로 고른다. 기본은 로컬 무료, 품질이 필요하면 OpenRouter 모델을 **이름으로 지목**.
 
-| alias | 백엔드 | 비고 |
-|---|---|---|
-| `ltx-video` (기본) | 로컬 ComfyUI(LTX-Video) | 온프레미스(외부 비용 0)·명목 단가만 기록 |
-| `veo-lite` | OpenRouter — google/veo-3.1-lite | 오디오, 저가 |
-| `veo-fast` | OpenRouter — google/veo-3.1-fast | 오디오, 고품질 |
-| `veo` | OpenRouter — google/veo-3.1 | Veo 3.1 풀 |
-| `sora-2` | OpenRouter — openai/sora-2-pro | OpenAI 플래그십 |
+| alias | 백엔드 | 비용 | 비고 |
+|---|---|---|---|
+| `ltx-video` (기본) | 로컬 ComfyUI(LTX-Video) | 무료(온프레미스) | 짧은 저해상도, 외부 전송 없음 |
+| `veo-lite` | OpenRouter — google/veo-3.1-lite | ~$0.08/s | 오디오, 저가 기본 |
+| `veo-fast` | OpenRouter — google/veo-3.1-fast | ~$0.12/s | 오디오, 고품질 |
+| `veo` | OpenRouter — google/veo-3.1 | ~$0.40/s | Veo 3.1 풀 |
+| `sora-2` | OpenRouter — openai/sora-2-pro | ~$0.50/s | OpenAI 플래그십 |
 
-- **OpenRouter 모델**: 품질 높음. **외부·유료**(초당 과금)이고 프롬프트가 OpenRouter 로 전송된다.
-- **로컬 LTX-Video**: 온프레미스(외부 egress 비용 0). 짧은 저해상도 클립 위주로 품질은 상용 모델보다 낮다. 사용량 가시화를 위해 **명목 단가**(OR 동급 50%, $0.04/초)만 per-user 로 기록된다(아래 과금).
+> OpenRouter 모델은 품질이 높지만 **외부·유료**(초당 과금)이고 프롬프트가 OpenRouter 로 전송된다. 비용/프라이버시가 걱정되면 로컬 `ltx-video`(무료·온프레미스)를 쓰자.
 
-## 동작 구조
+---
 
-- **MCP 구성 이유**: 이미지(Image Studio)는 LibreChat 빌트인 `generate_image` 사용. 비디오는 그 경로(A1111/PNG) 사용 불가 → **파일을 만들어 링크로 돌려주는 MCP** 로 구성.
-- **라우팅**: `comfyui-shim` 이 `model` 로 로컬 ComfyUI ↔ OpenRouter 를 한곳에서 라우팅.
+## 1. 기본 생성 (로컬 ltx-video)
 
-```
-Video Studio
-  ├─ generate_video MCP   잡 제출 → ~2분 인라인 폴링 → 미완이면 작업 ID 반환
-  └─ check_video MCP      작업 ID 로 결과 회수
-        POST comfyui-shim/video/submit {model, prompt, …}  → {handle}
-        POST comfyui-shim/video/fetch  {handle}            → {status, video?}
-          ├─ veo/sora  → LiteLLM passthrough → OpenRouter Video API (submit/job 분리, 과금 귀속)
-          └─ ltx-video → ComfyUI (/prompt → /history → /view)
-        완료 시 mp4 → public/images/videos/  → {DOMAIN_CLIENT}/images/videos/… 링크
-```
+영상을 묘사할수록 좋다 — 피사체·동작·배경·조명/분위기·카메라 움직임을 담아서.
 
-**비동기인 이유**
+- `해질녘 해변을 걷는 사람, 카메라가 천천히 따라가는 4초 영상.`
+- `빗방울이 유리창을 타고 흐르는 클로즈업, 뒤로 흐릿한 도시 네온, 잔잔한 분위기.`
 
-- Veo 등은 렌더 시간 편차가 큼(수십 초 ~ 수 분) → 제출과 회수를 분리해 연결을 길게 붙들지 않음.
-- 핸들 인코딩: OpenRouter `or:<alias>:<jobid>`, 로컬 `comfy:<promptid>@<backend>`.
+## 2. 카메라 움직임 지정
 
-**과금(per-user, 근사)**
+- `눈 덮인 산맥 위를 나는 항공 트래킹 샷, 8초.`
+- `커피잔으로 천천히 다가가는 돌리인(dolly-in), 따뜻한 아침 햇살.`
 
-- **OR passthrough**: OR 호출은 LiteLLM 의 OpenRouter passthrough 경유 → shim 은 OR 키를 직접 쥐지 않고 LiteLLM 에만 인증, OR 키 주입·egress 는 LiteLLM 담당.
-- **submit 과금**: `/orvideo/submit/<model>/<dur>` 경로별 `cost_per_request = rate[model] × 초` 1회 과금, `x-litellm-end-user-id`(호출 user email)로 귀속.
-- **폴/다운로드**: `/orvideo/job/...` 과금 0.
-- **rate 기준**: **OR `pricing_skus`(오디오 기본 tier)**.
+## 3. 고품질 / 오디오 (OpenRouter 모델 지목)
 
-  | 모델 | rate ($/s) |
-  |---|---|
-  | veo-lite | 0.08 |
-  | veo-fast | 0.12 |
-  | veo | 0.40 |
-  | sora-2 | 0.50 |
+- `veo-fast 로: 도시 야경 타임랩스, 차량 불빛 궤적, 8초.`
+- `sora로 만들어줘: 우주 정거장에서 지구를 바라보는 우주인, 시네마틱.`
 
-- **근사 주의**: 해상도/오디오 옵션 미노출(OR 모델 기본값) → 해당 tier 가격으로 근사. 정확한 청구는 해상도/오디오에 따라 달라질 수 있음(`litellm-config` 의 rate 로 조정).
+## 4. 렌더 지연 시 회수 (check_video)
 
-**로컬 LTX-Video 과금(명목)**
-
-- 외부 egress 없음. 사용량 가시화 위해 shim 의 `_bill_local` 이 생성 완료 후 LiteLLM passthrough `/localbill/video/<초>` 로 1회 과금.
-  - `cost_per_request = 0.04 × 초`(**OR 동급 50%**), `x-litellm-end-user-id` 로 귀속.
-  - best-effort — 실패해도 생성물엔 영향 없음.
-- 이 spend 는 `mcp/usage.py` my_usage 와 `usage-priorities.sh` 의 **Video Studio** 행에 합산([scheduler.md](../operator/scheduler.md#실사용-기반-우선순위-usage-prioritiessh)).
-
-## 로컬 LTX-Video 설정
-
-각 GPU 노드에 필요:
-
-```bash
-./scripts/download-image-models.sh ltx-video flux-shared   # DiT+VAE(~6 GB) + t5xxl 인코더
-./scripts/install-comfyui.sh                               # ComfyUI-VideoHelperSuite(VHS) 노드
-docker compose pull comfyui-shim && docker compose up -d comfyui-shim   # shim 최신 이미지로 재기동
-```
-
-- **T5 인코더 별도**: `ltx-video-2b-v0.9.5.safetensors` 는 DiT+VAE 만 담고 텍스트 인코더는
-  없다 — 워크플로가 `clip/t5xxl_fp16.safetensors`(flux 와 공유, `CLIPLoader type=ltxv`)를
-  따로 로드한다. 그래서 `flux-shared`(t5xxl) 다운로드가 LTXV 에도 필수다.
-- VHS 노드: `install-comfyui.sh` 는 venv 가 이미 있으면 비대화형에서 노드 설치를 건너뛴다
-  (`--reinstall` 로 강제하거나 VHS repo 만 `custom_nodes/` 에 clone + venv pip install).
-- 노드 배치: 비디오는 `COMFYUI_URLS` 의 least-loaded 백엔드로 라우팅된다 — 챗 두뇌(8001)가
-  없는 빈 노드를 우선하도록 그 노드를 csv 앞에 둔다.
-- LTXV 는 프레임 길이가 `8n+1` 이어야 안정적 — MCP 가 초→프레임으로 스냅한다(기본 97 = 4초@25fps).
-- ComfyUI 실행 에러는 shim 이 502/`failed` 로 전달하며, 상세는 노드의 `/history/<id>` 에 남는다.
+- *(생성 요청 → "렌더링 중 + 작업 ID" 응답을 받으면, 잠시 뒤)* `영상 확인해줘.` / `됐어?`
 
 ## 한계
 
-- 길이는 OR 모델별 이산값: **Veo 4/6/8초(최대 8), Sora 2 Pro 4/8/12/16/20초(최대 20)**.
-  단발 1분+ 영상은 모델 한계로 불가(여러 클립 stitching 필요). 렌더는 수십 초~수 분.
-- OpenRouter 경로는 외부·유료 + 프롬프트 외부 전송. 온프레미스/무료가 필요하면 로컬 LTX-Video.
+- 길이는 OR 모델별 이산값: **Veo 4/6/8초(최대 8), Sora 2 Pro 4/8/12/16/20초(최대 20)**. 1분+ 단발 영상은 모델 한계로 불가(여러 클립 stitching 필요).
+- 로컬 `ltx-video` 는 짧은 저해상도 클립 위주 — 품질은 상용 모델보다 낮다.
+- 렌더는 수십 초~수 분 걸린다.
+
+## 활용 팁
+
+- 막연히 "동영상 만들어줘"보다 **피사체·장면·카메라**를 주면 결과가 크게 좋아진다. 너무 막연하면 에이전트가 한 번 되묻는다.
+- 무료로 먼저 `ltx-video` 로 감을 잡고, 마음에 들면 `veo`/`sora` 로 고품질 재생성하는 흐름을 추천.
+- OpenRouter 모델은 초당 과금 — 길이를 줄이면 비용도 준다. 사용량은 Super Agent 의 `usage` 도구로 확인.

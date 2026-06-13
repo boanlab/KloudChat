@@ -94,4 +94,4 @@ docker compose up -d --force-recreate librechat
 
 ## 같이 보면 좋은 문서
 
-- [도구/MCP](../operator/tools.md) · [라우팅 정책](../operator/routing-policy.md) · [모델 설정](../operator/models.md)
+- [도구/MCP](tools.md) · [라우팅 정책](routing-policy.md) · [모델 설정](models.md)

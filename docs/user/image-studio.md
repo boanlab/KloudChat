@@ -1,12 +1,20 @@
-# Image Studio 데모 프롬프트
+# Image Studio 활용 가이드
 
-> functional 에이전트 Image Studio (텍스트 → 이미지) 시연용 프롬프트.
-> Super Agent 는 [super-agent-demo.md](super-agent-demo.md), Deep Research 는
-> [deep-research-demo.md](deep-research-demo.md), Paper Banana 는
-> [paper-banana-demo.md](paper-banana-demo.md), Slide Studio 는
-> [slide-studio-demo.md](slide-studio-demo.md) 참고.
+> 텍스트 → 이미지 생성 전용 에이전트. 빌트인 `generate_image` 한 도구로 동작하며,
+> 로컬 ComfyUI(무료) ↔ OpenRouter(유료) 모델을 한곳에서 라우팅한다.
+>
+> 텍스트·코드·연구 요청은 [Super Agent](super-agent.md), 발표자료는 [Slide Studio](slide-studio.md),
+> 비디오는 [Video Studio](video-studio.md) 로 안내된다 (역할 분리).
 
-`generate_image` 로 이미지를 생성한다. 모델별 특성:
+## 도구 구성
+
+**LibreChat 빌트인**
+
+| 도구 | 하는 일 |
+|---|---|
+| `generate_image` | 텍스트 프롬프트 → 이미지 (A1111 호환 → comfyui-shim 동기 생성). 추가 MCP 없음 |
+
+모델별 특성:
 
 | 모델 | 비용 | 속도 | 용도 |
 |---|---|---|---|
@@ -17,6 +25,8 @@
 | `gpt-image-2` | ~$0.10-0.30 | — | **이미지 내 텍스트** 최적 (명시) |
 
 > 유료 모델은 사용자가 **이름을 명시**해야만 쓴다 (자동 업그레이드 안 함). 프롬프트엔 시각 키워드 7개 이상이 좋다.
+
+---
 
 ## 1. 기본 생성 (flux-schnell)
 
@@ -42,13 +52,10 @@
 
 - `gpt-image-2 로: "KloudChat" 로고가 또렷하게 박힌 모던한 테크 컨퍼런스 배너, 깔끔한 타이포그래피`
 
-## 6. 라우팅 시연 (비-이미지 요청)
-
-- `파이썬으로 퀵소트 짜줘` → Image Studio 는 코드/연구 요청이면 **Super Agent 로 안내**한다 (도구 분리 시연)
-
-## 데모 팁
+## 활용 팁
 
 - 기본은 무료 `flux-schnell`. "고품질로"라고 하면 `flux-dev` 를 명시 유도.
-- 유료 모델(nano-banana, gpt-image-2)은 비용을 미리 안내하고 사용자가 명시할 때만.
-- prompt + negative_prompt 둘 다 스키마 필수 — 시각 키워드를 충분히.
-- 자기 영역 밖(텍스트/코드/연구) 요청은 Super Agent 로 안내하도록 instruction 됨 → 역할 분리도 시연 포인트.
+- 유료 모델(nano-banana, gpt-image-2)은 비용을 미리 안내하고 **이름을 명시할 때만** 쓴다.
+- prompt + negative_prompt 둘 다 스키마 필수 — 시각 키워드(피사체·구도·조명·색감·스타일)를 충분히 줄수록 결과가 좋다.
+- 글자가 박힌 이미지(배너·로고·포스터)는 `gpt-image-2` 가 가장 정확하다.
+- 텍스트/코드/연구 요청은 [Super Agent](super-agent.md) 로 안내된다 — Image Studio 는 이미지 전용.
