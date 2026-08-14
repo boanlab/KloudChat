@@ -1,0 +1,43 @@
+name: CodeQL
+
+# Static analysis for the two languages that actually ship. The weekly run
+# matters as much as the per-push one: most new findings come from updated
+# queries rather than from new code.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+          # security-extended adds the query packs that cover the paths this
+          # app actually exposes: request-forgery, path traversal on the file
+          # store, and unsafe deserialization.
+          queries: security-extended
+
+      # Both languages are interpreted, so the default autobuild is a no-op
+      # here and the extraction step below is the whole analysis.
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}

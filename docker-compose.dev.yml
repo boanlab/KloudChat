@@ -1,0 +1,22 @@
+# Development overlay — serves the web app from Vite instead of a built bundle.
+#
+# The production image contains compiled static files, so editing source has no
+# effect on it. Here the source tree is mounted and HMR does the work. The
+# service name is unchanged, so ports and URLs match production; the only
+# difference is what is listening.
+#
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.dev.yml up -d
+services:
+  kchat-web:
+    build: !reset null
+    image: node:22-alpine
+    working_dir: /app
+    command: [node, node_modules/vite/bin/vite.js, --host, 0.0.0.0, --port, '5173']
+    environment:
+      # Vite's dev proxy forwards /api in place of nginx.
+      API_BASE_URL: ${KCHAT_API_URL:-http://kchat-api:8100}
+    volumes:
+      - ./apps/web:/app
+    ports: !override
+      - "${KCHAT_WEB_PORT:-5173}:5173"

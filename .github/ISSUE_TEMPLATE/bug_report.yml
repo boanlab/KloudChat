@@ -1,0 +1,65 @@
+name: Bug report
+description: Something behaves differently from what the documentation says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Model calls and tools live in a separate service (`kloudchat-backend`).
+        If the symptom is "not connected" or an empty model list, check
+        **Settings → System → Integrations** first — a missing gateway URL
+        disables those features by design.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in as an approved user
+        2. Open /new/report
+        3. …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Chat
+        - Report
+        - Slides
+        - Image
+        - Audio / Video
+        - Workspace (projects, skills, memory, agents)
+        - Connectors (MCP)
+        - Admin
+        - API / coding agent (`/llm`)
+        - Deployment
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Image tag, or `git rev-parse --short HEAD`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        `docker compose logs kchat-api --tail=100`, or the browser console.
+        Redact tokens — the master key and any `sk-` value are credentials.
+      render: shell

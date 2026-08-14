@@ -1,0 +1,496 @@
+import { Bot, Download, Globe, Lock, Play, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { PageBody } from '@/components/layout/AppShell'
+import { TopBar } from '@/components/layout/TopBar'
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Modal,
+  PageHeader,
+  Switch,
+  Tabs,
+  Textarea,
+} from '@/components/ui'
+import { kindMeta, kindOrder } from '@/lib/kinds'
+import { cn, relativeTime, uid } from '@/lib/utils'
+import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { useStore } from '@/store/useStore'
+import type { Agent } from '@/types'
+import { useT } from '@/lib/useT'
+
+const allTools = ['read', 'write', 'bash', 'websearch', 'artifact', 'memory']
+
+const emptyAgent = (model: string): Agent => ({
+  id: uid('ag'),
+  name: '',
+  slug: '',
+  description: '',
+  model,
+  systemPrompt: '',
+  tools: ['read'],
+  skillIds: [],
+  kinds: ['chat'],
+  visibility: 'private',
+  // Filled in by the server on save; a draft has no owner yet.
+  ownerId: '',
+  ownerName: '',
+  installs: 0,
+  temperature: 0.5,
+  color: '#5b53e8',
+  enabled: true,
+  runs: 0,
+  updatedAt: new Date().toISOString(),
+})
+
+export function AgentsPage() {
+  const t = useT()
+  const navigate = useNavigate()
+  const { agents, models, skills, upsertAgent, deleteAgent, forkAgent, newSession, loadWorkspace, user } =
+    useStore()
+  const [skillQuery, setSkillQuery] = useState('')
+
+  useEffect(() => {
+    void loadWorkspace()
+  }, [loadWorkspace])
+  const [draft, setDraft] = useState<Agent | null>(null)
+  const [tab, setTab] = useState<'mine' | 'store'>('mine')
+
+  // The store is what makes one person's agent reusable by the workspace.
+  const shared = agents.filter((a) => a.visibility === 'org')
+  // Cheapest model that can hold a conversation, the same rule the surface
+  // defaults use.
+  const defaultModel =
+    [...models]
+      .filter((m) => m.kinds.includes('chat'))
+      .sort((a, b) => a.creditCost - b.creditCost)[0]?.id ?? ''
+  // Same reasoning as skills: newest first, so a fresh agent is on the first page.
+  const all = [...(tab === 'store' ? shared : agents)].sort(
+    (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
+  )
+  const { visible, hidden, more } = usePaged(all, [tab, agents.length])
+
+  // Attached first, then matches; capped, with `skills.length` in the
+  // placeholder saying what is hidden.
+  const matchedSkills = skills.filter((s) =>
+    s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()),
+  )
+  const chosen = new Set(draft?.skillIds ?? [])
+  const rankedSkills = [
+    ...matchedSkills.filter((s) => chosen.has(s.id)),
+    ...matchedSkills.filter((s) => !chosen.has(s.id)),
+  ]
+  const visibleSkills = rankedSkills.slice(0, 24)
+  const hiddenSkills = rankedSkills.length - visibleSkills.length
+
+  return (
+    <>
+      <TopBar left={<span className="text-[13px] font-medium">{t('에이전트')}</span>} />
+      <PageBody>
+        <PageHeader
+          title={t('에이전트')}
+          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 워크스페이스에 공유합니다.')}
+          action={
+            <Button
+              variant="primary"
+              // `models` is empty until the catalogue lands, and stays empty
+              // when the proxy is unreachable.
+              disabled={models.length === 0}
+              title={models.length === 0 ? t('모델 목록을 불러오는 중입니다') : undefined}
+              onClick={() => setDraft(emptyAgent(defaultModel))}
+            >
+              <Plus size={16} />
+          {t('새 에이전트')}
+            </Button>
+          }
+        />
+
+        <Tabs<'mine' | 'store'>
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: 'mine', label: t('내 에이전트'), count: agents.length },
+            { id: 'store', label: t('워크스페이스 스토어'), count: shared.length },
+          ]}
+        />
+
+        <div className="grid gap-3 pt-4 sm:grid-cols-2">
+          {visible.map((a) => (
+            <Card key={a.id} className="flex flex-col p-4">
+              <div className="flex items-start gap-3">
+                <span
+                  className="grid size-9 shrink-0 place-items-center rounded-xl text-white"
+                  style={{ background: a.color }}
+                >
+                  <Bot size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-medium">{t(a.name)}</p>
+                    <span className="font-mono text-[11px] text-faint">@{a.slug}</span>
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{t(a.description)}</p>
+                </div>
+                <Switch
+                  checked={a.enabled}
+                  onChange={(v) => upsertAgent({ ...a, enabled: v })}
+                  label={t('{name} 활성화').replace('{name}', t(a.name))}
+                />
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {a.kinds.map((k) => {
+                  const meta = kindMeta[k]
+                  const KindIcon = meta.icon
+                  return (
+                    <Badge key={k} tone="accent">
+                      <KindIcon size={10} />
+                      {t(meta.label)}
+                    </Badge>
+                  )
+                })}
+                {a.ownerId !== user?.id && a.ownerName && (
+                  <Badge>{a.ownerName}</Badge>
+                )}
+                <Badge tone={a.visibility === 'org' ? 'success' : 'neutral'}>
+                  {a.visibility === 'org' ? <Globe size={10} /> : <Lock size={10} />}
+                  {a.visibility === 'org' ? t('공유됨') : t('개인')}
+                </Badge>
+                {/* 모델을 고정하지 않은 에이전트가 정상이다 — 화면의 기본 모델을 따른다 */}
+                <Badge>{models.find((m) => m.id === a.model)?.label ?? t('화면 기본 모델')}</Badge>
+                <Badge>temp {a.temperature}</Badge>
+                {a.tools.map((t) => (
+                  <Badge key={t}>{t}</Badge>
+                ))}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
+                <span className="flex items-center gap-2 text-[11px] text-faint">
+                  {t('{n}회 실행').replace('{n}', String(a.runs))}
+                  {a.visibility === 'org' && (
+                    <span className="flex items-center gap-1">
+                      <Download size={10} />
+                      {a.installs}
+                    </span>
+                  )}
+                  <span>{relativeTime(a.updatedAt)}</span>
+                </span>
+                <div className="flex gap-1.5">
+                  {/* Someone else's shared agent is read-only: editing or
+                      deleting it would 403, and offering buttons that cannot
+                      work is worse than not offering them. Copying is the
+                      action that makes sense — it is why the store exists. */}
+                  {a.ownerId === user?.id ? (
+                    <>
+                      {/* Same reasoning as skills: the card is where the other
+                          screens put it, and the edit modal is a strange place
+                          to go looking for a delete. */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('{name} 삭제').replace('{name}', t(a.name))}
+                        onClick={() => void deleteAgent(a.id)}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                      <Button size="sm" onClick={() => setDraft(a)}>
+                        {t('편집')}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" onClick={() => void forkAgent(a)}>
+                      <Download size={13} />
+                      {t('가져오기')}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() =>
+                      void newSession(a.kinds[0] ?? 'chat', { agentId: a.id }).then((id) =>
+                        navigate(`/s/${id}`),
+                      )
+                    }
+                  >
+                    <Play size={13} />
+                    {t('실행')}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+        <ShowMore hidden={hidden} onMore={more} />
+      </PageBody>
+
+      <Modal
+        open={!!draft}
+        onClose={() => setDraft(null)}
+        title={agents.some((a) => a.id === draft?.id) ? t('에이전트 편집') : t('새 에이전트')}
+        width="max-w-2xl"
+        footer={
+          <>
+            {draft && agents.some((a) => a.id === draft.id) && (
+              <Button
+                variant="danger"
+                className="mr-auto"
+                onClick={() => {
+                  deleteAgent(draft.id)
+                  setDraft(null)
+                }}
+              >
+                <Trash2 size={14} />
+                {t('삭제')}
+              </Button>
+            )}
+            <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
+            <Button
+              variant="primary"
+              disabled={!draft?.name.trim()}
+              onClick={() => {
+                if (draft)
+                  upsertAgent({
+                    ...draft,
+                    slug: draft.slug || draft.name.toLowerCase().replace(/\s+/g, '-'),
+                    updatedAt: new Date().toISOString(),
+                  })
+                setDraft(null)
+              }}
+            >
+              {t('저장')}
+            </Button>
+          </>
+        }
+      >
+        {draft && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t('이름')}>
+                <Input
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  placeholder={t('예: 논문 리뷰어')}
+                />
+              </Field>
+              <Field label={t('슬러그')} hint={t('@슬러그로 호출합니다.')}>
+                <Input
+                  value={draft.slug}
+                  onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                  placeholder="paper-reviewer"
+                  className="font-mono"
+                />
+              </Field>
+            </div>
+
+            <Field label={t('설명')}>
+              <Input
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              />
+            </Field>
+
+            <Field
+              label={t('공개 범위')}
+              hint={t('공유하면 워크스페이스 스토어에 올라가고 다른 구성원이 그대로 씁니다.')}
+            >
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    { id: 'private', label: t('개인'), icon: Lock },
+                    { id: 'org', label: t('워크스페이스 공유'), icon: Globe },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => setDraft({ ...draft, visibility: o.id })}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                      draft.visibility === o.id
+                        ? 'border-accent bg-accent-soft text-accent'
+                        : 'border-line text-muted hover:bg-elevated',
+                    )}
+                  >
+                    <o.icon size={13} />
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label={t('사용할 화면')} hint={t('여기서 선택한 화면의 입력창에서만 @로 호출됩니다.')}>
+              <div className="flex flex-wrap gap-1.5">
+                {kindOrder.map((k) => {
+                  const on = draft.kinds.includes(k)
+                  const meta = kindMeta[k]
+                  return (
+                    <button
+                      key={k}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          kinds: on ? draft.kinds.filter((x) => x !== k) : [...draft.kinds, k],
+                        })
+                      }
+                      className={cn(
+                        'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                        on
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-line text-muted hover:bg-elevated',
+                      )}
+                    >
+                      {t(meta.label)}
+                    </button>
+                  )
+                })}
+                {visibleSkills.length === 0 && (
+                  <p className="py-2 text-[13px] text-faint">{t('검색 결과가 없습니다')}</p>
+                )}
+                {hiddenSkills > 0 && (
+                  <span className="self-center text-[12px] text-faint">
+                    {t('외 {n}개 — 검색해서 찾으세요').replace('{n}', String(hiddenSkills))}
+                  </span>
+                )}
+              </div>
+            </Field>
+
+            <Field label={t('시스템 프롬프트')}>
+              <Textarea
+                rows={6}
+                value={draft.systemPrompt}
+                onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+              />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t('모델')}>
+                <select
+                  value={draft.model}
+                  onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                  className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm focus:border-accent focus:outline-none"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={`Temperature — ${draft.temperature}`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={draft.temperature}
+                  onChange={(e) => setDraft({ ...draft, temperature: Number(e.target.value) })}
+                  className="h-9 w-full accent-[var(--accent)]"
+                />
+              </Field>
+            </div>
+
+            {/* 공개 범위. 모델도 목록 질의도 처음부터 org 를 다뤘고, 배지도
+                "공유됨" 을 그릴 줄 알았는데, 정작 그렇게 **바꿀 방법이**
+                없었습니다 — 워크스페이스 스토어 탭이 영원히 비어 있던 이유. */}
+            <Field
+              label={t('공개 범위')}
+              hint={t('워크스페이스에 공유하면 같은 조직 구성원이 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
+            >
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    { id: 'private', label: t('나만 쓰기'), icon: Lock },
+                    { id: 'org', label: t('워크스페이스에 공유'), icon: Globe },
+                  ] as const
+                ).map((o) => {
+                  const Icon = o.icon
+                  return (
+                    <button
+                      key={o.id}
+                      onClick={() => setDraft({ ...draft, visibility: o.id })}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                        draft.visibility === o.id
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-line text-muted hover:bg-elevated',
+                      )}
+                    >
+                      <Icon size={13} />
+                      {o.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </Field>
+
+            <Field label={t('도구 권한')}>
+              <div className="flex flex-wrap gap-1.5">
+                {allTools.map((t) => {
+                  const on = draft.tools.includes(t)
+                  return (
+                    <button
+                      key={t}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          tools: on ? draft.tools.filter((x) => x !== t) : [...draft.tools, t],
+                        })
+                      }
+                      className={cn(
+                        'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                        on
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-line text-muted hover:bg-elevated',
+                      )}
+                    >
+                      {t}
+                    </button>
+                  )
+                })}
+              </div>
+            </Field>
+
+            <Field label={t('연결된 스킬')}>
+              {/* 전체를 나열하면 다섯 개일 때는 괜찮아도 예순 개면 못 쓴다.
+                  선택된 것은 앞에 고정해, 검색이 이미 붙은 것을 가리지 않게 한다. */}
+              <Input
+                value={skillQuery}
+                onChange={(e) => setSkillQuery(e.target.value)}
+                placeholder={t('스킬 검색 ({n}개)').replace('{n}', String(skills.length))}
+                className="mb-2 h-8 text-[13px]"
+              />
+              <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+                {visibleSkills.map((s) => {
+                  const on = draft.skillIds.includes(s.id)
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          skillIds: on
+                            ? draft.skillIds.filter((x) => x !== s.id)
+                            : [...draft.skillIds, s.id],
+                        })
+                      }
+                      className={cn(
+                        'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                        on
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-line text-muted hover:bg-elevated',
+                      )}
+                    >
+                      {t(s.name)}
+                    </button>
+                  )
+                })}
+              </div>
+            </Field>
+          </>
+        )}
+      </Modal>
+    </>
+  )
+}

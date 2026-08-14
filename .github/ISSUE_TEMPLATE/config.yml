@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/boanlab/kloudchat/security/advisories/new
+    about: Report privately. Do not open a public issue — see SECURITY.md.
+  - name: Model and tool backend
+    url: https://github.com/boanlab/kloudchat-backend
+    about: Model routing, web search, code execution and speech-to-text live there, not here.
+  - name: Questions and discussion
+    url: https://github.com/boanlab/kloudchat/discussions
+    about: Deployment help, configuration questions, and ideas that are not yet a proposal.
