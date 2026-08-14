@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a capability the workspace does not have yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What are you trying to do that the current build makes hard? Describe
+        the situation rather than the solution — the shape of the fix is
+        usually clearer once the constraint is written down.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What should happen instead, from a user's point of view.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - A new output kind (a sixth surface alongside chat/report/slides/image/av)
+        - An existing surface
+        - Workspace context (projects, skills, memory, agents)
+        - Connectors and tools
+        - Credits, quotas, or admin controls
+        - Deployment and operations
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "do nothing" — say why the status quo is not enough.

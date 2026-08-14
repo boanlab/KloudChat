@@ -1,0 +1,121 @@
+# KloudChat — web, API, and database.
+#
+# Models and tools are not here. They live in KloudChat-LLM, reached
+# through one gateway URL that an administrator sets under Settings → System →
+# Integrations. When that backend is down, sign-in, history, workspace and
+# settings keep working; only model calls and tools fail, and they say so.
+#
+#   docker compose up -d
+#
+# This file runs the published images. Nothing here builds: a deployment pulls
+# `kloudchat-api` and `kloudchat-web` from Docker Hub, which is what the release
+# workflow puts there. To build from this checkout instead — because you are
+# changing the source, or on an architecture with no published tag — overlay
+# docker-compose.build.yml.
+#
+# `latest` moves with every push to main, so it points at whatever was merged
+# most recently. In production, replace it with a version tag here — the tags
+# are immutable, and an upgrade is then a one-line edit with a record in git.
+#
+# Service names are short because the project name is already the prefix.
+# Containers are named explicitly so they read the same way beside the
+# KloudChat-LLM stack on the same host.
+name: kloudchat
+
+services:
+  db:
+    container_name: kloudchat-db
+    image: postgres:16.13
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${KCHAT_DB_USER:-kchat}
+      POSTGRES_PASSWORD: ${KCHAT_DB_PASSWORD:-kchat}
+      POSTGRES_DB: kchat
+    ports:
+      # Published on 5433: 5432 is commonly already taken by a vector database
+      # on the same host.
+      - "5433:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KCHAT_DB_USER:-kchat} -d kchat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Docker creates bind-mount directories owned by root, and the API runs as
+  # uid 1000. Without this, uploads fail with "permission denied" — and only on
+  # a first boot, which is the hardest time to recognise the cause.
+  init:
+    container_name: kloudchat-init
+    image: alpine:3.20
+    restart: 'no'
+    command: ["sh", "-c", "mkdir -p /d/files /d/uv-cache && chown -R 1000:1000 /d/files /d/uv-cache"]
+    volumes:
+      - ./data:/d
+
+  api:
+    container_name: kloudchat-api
+    image: boanlab/kloudchat-api:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    ports:
+      - "8100:8100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      ENV: ${KCHAT_ENV:-dev}
+      DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
+      JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
+      SIGNUP_MODE: ${KCHAT_SIGNUP_MODE:-approval}
+      DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.6-35b}
+      # Applied only when the database holds no accounts. Blank means the first
+      # account to sign up becomes the administrator instead.
+      BOOTSTRAP_ADMIN_EMAIL: ${KCHAT_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${KCHAT_ADMIN_PASSWORD:-}
+      # 1 credit = $0.00001, so 1,000,000 ≈ $10/month. See app/core/config.py.
+      DEFAULT_MONTHLY_CREDITS: ${KCHAT_DEFAULT_MONTHLY_CREDITS:-1000000}
+      COOKIE_SECURE: ${KCHAT_COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${KCHAT_CORS_ORIGINS:-["http://localhost:5173"]}
+      # The master key stays in this container; nothing routes it to a browser.
+      # A value saved in the admin screen is stored in the database and wins
+      # over this default, without a restart.
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      # Tool endpoints are administrator settings. This is a bootstrap value
+      # for unattended deployments; a tool with no URL is simply absent from
+      # the tool list rather than broken.
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-}
+      FILE_STORAGE_DIR: /srv/data/files
+    volumes:
+      # Uploaded originals. Extracted text lives in the database; only blobs
+      # are here.
+      - ./data/files:/srv/data/files
+      # MCP stdio server scripts, spawned by the connector runtime.
+      - ./mcp:/srv/mcp:ro
+      # uv's cache for PEP 723 script dependencies, so a connector does not
+      # reinstall its tree on every spawn.
+      - ./data/uv-cache:/srv/data/uv-cache
+    # Migrations on boot. This assumes a single instance — with multiple
+    # replicas, move `alembic upgrade head` into its own job so that two
+    # containers do not race the same migration.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8100"
+
+  # The only thing the browser talks to: static bundle plus a proxy for /api
+  # and /llm.
+  web:
+    container_name: kloudchat-web
+    image: boanlab/kloudchat-web:latest
+    restart: always
+    depends_on:
+      - api
+    environment:
+      KCHAT_API_URL: ${KCHAT_API_URL:-http://kloudchat-api:8100}
+    ports:
+      - "${KCHAT_WEB_PORT:-5173}:80"

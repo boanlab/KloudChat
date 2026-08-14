@@ -1,0 +1,197 @@
+name: CI
+
+# Runs on every push and pull request that touches code. The jobs are split by
+# app so a change to the web bundle does not wait on the Python toolchain, and
+# a red job names the surface that broke rather than "CI failed".
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to a PR makes the in-flight run obsolete. `main` is exempt so the
+# history of what was green on the default branch stays complete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web · lint, typecheck, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      # `ci` rather than `install`: the lockfile is the contract, and a build
+      # that silently resolves a different tree is not the build we ship.
+      - run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build` — the type check is part of
+      # the build, so a type error fails here rather than at image build time.
+      - name: Typecheck and build
+        run: npm run build
+
+  api:
+    name: API · lint, tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      # The runtime dependencies come along because the unit tests import
+      # `app.services.*` directly; the dev extra adds pytest and ruff.
+      - name: Install
+        run: pip install -e '.[dev]'
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest -q
+
+  scripts:
+    name: Scripts · shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The integration scripts under scripts/ are run by hand against a live
+      # stack, so nothing else checks them. shellcheck (preinstalled on the
+      # runner) is the only gate they get.
+      #
+      # Pinned at `error` rather than `warning`: these scripts pass unquoted
+      # ids and URLs around by design, and the informational findings that
+      # produces would drown the ones that mean something. Raise the severity
+      # once the existing findings are cleared.
+      - name: shellcheck
+        run: shellcheck --severity=error scripts/*.sh scripts/lib/*.sh
+
+  image-changes:
+    name: Image · detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      any: ${{ steps.pick.outputs.any }}
+    steps:
+      # Full history: the diff base is a commit the shallow clone omits.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide what to build
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          build_all() {
+            echo "$1"
+            {
+              echo 'matrix={"include":[{"name":"api","context":"apps/api"},{"name":"web","context":"apps/web"}]}'
+              echo 'any=true'
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            build_all "manual run — building both"; exit 0
+          fi
+          # No usable base: first commit, new branch, or a force push that
+          # removed the previous tip.
+          if [ -z "${BASE:-}" ] \
+             || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            build_all "no diff base — building both"; exit 0
+          fi
+
+          changed=$(git diff --name-only "$BASE" "$HEAD")
+          echo "Changed files:"; echo "$changed" | sed 's/^/  /'
+
+          if echo "$changed" | grep -qx '.github/workflows/ci.yml'; then
+            build_all "ci.yml changed — building both"; exit 0
+          fi
+
+          entries=""
+          if echo "$changed" | grep -q '^apps/api/'; then
+            entries='{"name":"api","context":"apps/api"}'
+          fi
+          if echo "$changed" | grep -q '^apps/web/'; then
+            [ -n "$entries" ] && entries="$entries,"
+            entries="$entries{\"name\":\"web\",\"context\":\"apps/web\"}"
+          fi
+
+          if [ -z "$entries" ]; then
+            echo "No image sources changed — nothing to build."
+            { echo 'matrix={"include":[]}'; echo 'any=false'; } >> "$GITHUB_OUTPUT"
+          else
+            echo "Building: $entries"
+            { echo "matrix={\"include\":[$entries]}"; echo 'any=true'; } >> "$GITHUB_OUTPUT"
+          fi
+
+  images:
+    name: Image · build ${{ matrix.name }}
+    needs: image-changes
+    if: needs.image-changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.image-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      # Build only — publishing happens in release.yml, on the default branch
+      # and on tags. A pull request from a fork must never be able to push an
+      # image, so no registry credentials are available in this workflow.
+      - name: Build ${{ matrix.name }} image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          load: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  compose:
+    name: Compose · validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Catches interpolation and schema mistakes in the compose files without
+      # starting anything. KCHAT_JWT_SECRET is declared required (`:?`), so it
+      # has to be present for the file to render at all.
+      - name: Validate compose files
+        env:
+          KCHAT_JWT_SECRET: ci-placeholder-not-a-secret
+        run: |
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.build.yml \
+                         -f docker-compose.dev.yml config -q

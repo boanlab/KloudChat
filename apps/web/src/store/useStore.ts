@@ -1,0 +1,2171 @@
+import { create } from 'zustand'
+import { applyBrand } from '@/lib/brand'
+import { kindMeta } from '@/lib/kinds'
+import {
+  ApiError,
+  UnauthorizedError,
+  adminApi,
+  agentsApi,
+  artifactsApi,
+  jobsApi,
+  authConfig,
+  auth,
+  connectorsApi,
+  keysApi,
+  filesApi,
+  memoryApi,
+  modelsApi,
+  projectsApi,
+  sessionsApi,
+  setAccessToken,
+  skillsApi,
+  streamComparison,
+  streamSession,
+  usageApi,
+} from '@/lib/api'
+import type {
+  AgentRow,
+  ApiKeyRow,
+  ArtifactRow,
+  AuditRow,
+  GovernancePolicy,
+  CatalogEntry,
+  ConnectorRow,
+  JobRow,
+  FileRow,
+  MemoryRow,
+  MessageRow,
+  ProjectRow,
+  SessionRow,
+  SkillRow,
+  UsageReport,
+} from '@/lib/api'
+import type {
+  Agent,
+  Artifact,
+  Connector,
+  Job,
+  MemoryEntry,
+  Message,
+  ModelInfo,
+  Project,
+  ProjectFile,
+  Session,
+  Preferences,
+  DeckArtifact,
+  ReportArtifact,
+  ReportSection,
+  SessionKind,
+  Variant,
+  Skill,
+  Step,
+  User,
+} from '@/types'
+import { uid } from '@/lib/utils'
+import { currentLang, translate, type Lang } from '@/lib/i18n'
+
+/** The store is not a component and cannot use hooks, so only strings that
+ *  reach the screen are translated here. */
+const tr = (text: string) => translate(currentLang(), text)
+
+type Theme = 'light' | 'dark'
+
+interface State {
+  // ── auth (KloudChat's own, not LiteLLM's) — live against /api/auth ─────────
+  user: User | null
+  authenticated: boolean
+  /** True until the boot-time session check finishes. The sign-in screen is
+   *  not drawn while it is. */
+  authLoading: boolean
+  /** Backend `detail` code from the last failed auth call, for the form to render. */
+  authError: string | null
+  bootstrap: () => Promise<void>
+  login: (email: string, password: string) => Promise<void>
+  signup: (email: string, password: string, name: string) => Promise<void>
+  logout: () => Promise<void>
+  /** Re-reads the caller's own row. The approval-waiting screen polls this. */
+  refreshMe: () => Promise<void>
+  updateProfile: (patch: {
+    name?: string
+    avatarColor?: string
+    preferences?: Partial<Preferences>
+  }) => Promise<void>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
+
+  // ── chrome ────────────────────────────────────────────────────────────
+  theme: Theme
+  toggleTheme: () => void
+  lang: Lang
+  toggleLang: () => void
+  sidebarOpen: boolean
+  toggleSidebar: () => void
+
+  // ── data ──────────────────────────────────────────────────────────────
+  users: User[]
+  sessions: Session[]
+  jobs: Job[]
+  projects: Project[]
+  artifacts: Artifact[]
+  skills: Skill[]
+  memories: MemoryEntry[]
+  agents: Agent[]
+
+  // ── models — live against /api/models ─────────────────────────────────
+  models: ModelInfo[]
+  modelsLoading: boolean
+  /** False when the proxy did not answer; only adapter models are listed. */
+  litellmAvailable: boolean
+  loadModels: () => Promise<void>
+
+  // ── session / generation ──────────────────────────────────────────────
+  activeSessionId: string | null
+  streaming: boolean
+  abortStream: (() => void) | null
+  modelByKind: Record<SessionKind, string>
+  setModel: (kind: SessionKind, id: string) => void
+  /** Changes one conversation's model. The surface default is left alone. */
+  setSessionModel: (sessionId: string, modelId: string) => Promise<void>
+  setActiveSession: (id: string | null) => void
+  /** Sidebar list. Titles only — transcripts arrive with `openSession`. */
+  loadSessions: () => Promise<void>
+  openSession: (id: string) => Promise<void>
+  newSession: (
+    kind: SessionKind,
+    opts?: { projectId?: string | null; agentId?: string | null },
+  ) => Promise<string>
+  send: (
+    sessionId: string | null,
+    kind: SessionKind,
+    text: string,
+    opts?: {
+      projectId?: string | null
+      /** The composer's toggle — the user asking for the web to be consulted. */
+      webSearch?: boolean
+      /** Ids of already-uploaded files; the server reads their extracted text. */
+      attachments?: string[]
+      /** Their names, so the optimistic bubble does not show raw ids. */
+      attachmentNames?: string[]
+            /**
+             * Called as soon as a session id exists. Waiting for the stream to
+             * finish would lose the conversation on a refresh mid-answer.
+             */
+      onSession?: (id: string) => void
+    },
+  ) => Promise<string>
+  stopStreaming: () => void
+  renameSession: (id: string, title: string) => Promise<void>
+  deleteSession: (id: string) => Promise<void>
+  /** Bulk removal from the history screen. Returns how many the server removed. */
+  deleteSessions: (payload: { ids?: string[]; all?: boolean }) => Promise<number>
+  /** Polls one job until it settles. */
+  followJob: (sessionId: string, jobId: string) => Promise<void>
+  /** Starts a video and follows it to completion. */
+  generateVideo: (
+    sessionId: string | null,
+    prompt: string,
+    opts?: { projectId?: string | null; onSession?: (id: string) => void },
+  ) => Promise<void>
+  /** Runs a failed job's request again. Nothing was charged for the failure. */
+  retryJob: (job: Job) => Promise<void>
+  /** Generates one sound clip on the a/v surface. */
+  generateAudio: (
+    sessionId: string | null,
+    prompt: string,
+    opts?: { projectId?: string | null; onSession?: (id: string) => void },
+  ) => Promise<void>
+  /** Generates pictures on the image surface and opens the panel on the last. */
+  generateImages: (
+    sessionId: string | null,
+    prompt: string,
+    opts?: { projectId?: string | null; onSession?: (id: string) => void },
+  ) => Promise<void>
+  togglePinSession: (id: string) => Promise<void>
+  rateMessage: (sessionId: string, messageId: string, rating: 'up' | 'down' | null) => void
+
+  // ── model comparison ──────────────────────────────────────────────────
+  compareMode: boolean
+  compareModels: string[]
+  toggleCompareMode: () => void
+  toggleCompareModel: (id: string) => void
+  /** Keeps one variant's answer and continues the conversation from it. */
+  chooseVariant: (sessionId: string, messageId: string, model: string) => Promise<void>
+
+  // ── governance (admin) ────────────────────────────────────────────────
+  /** Both null until fetched. Null means "not loaded", not "zero". */
+  usage: UsageReport | null
+  audit: AuditRow[] | null
+  loadUsage: (days?: number) => Promise<void>
+  loadAudit: () => Promise<void>
+  /** Instance policy. Null until fetched. */
+  /** The user's own API keys. Null until fetched. */
+  apiKeys: ApiKeyRow[] | null
+  loadApiKeys: () => Promise<void>
+  createApiKey: (name: string) => Promise<string | null>
+  revokeApiKey: (id: string) => Promise<void>
+  governance: GovernancePolicy | null
+  loadGovernance: () => Promise<void>
+  setGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
+
+  // ── image / audio-video ───────────────────────────────────────────────
+  imageOptions: { aspect: string; style: string; count: number }
+  setImageOptions: (patch: Partial<State['imageOptions']>) => void
+  /** `mode` picks which artifact the av surface produces; the rest is per-mode. */
+  /** Text to drop into the composer. A template fills it in; it is never sent
+   *  on the user's behalf. */
+  draft: string
+  setDraft: (text: string) => void
+  /** Whether this instance has a Whisper backend. Drives the composer's mic. */
+  dictationEnabled: boolean
+  /** Service name and logo to render. An empty logo draws the default mark. */
+  brand: { name: string; logo: string }
+  /** Re-read after an administrator saves branding, so it applies without a
+   *  page reload. */
+  refreshBrand: () => Promise<void>
+  /** Surfaces the administrator has enabled. Chat is always among them. */
+  enabledKinds: SessionKind[]
+  avOptions: {
+    mode: 'video' | 'audio'
+    aspect: string
+    durationSec: number
+    audioKind: 'narration' | 'music'
+    /** Video only. Both are priced separately — see videogen's rate table. */
+    resolution: '720p' | '1080p'
+    withAudio: boolean
+  }
+  setAvOptions: (patch: Partial<State['avOptions']>) => void
+  cancelJob: (id: string) => void
+
+  // ── artifact panel ────────────────────────────────────────────────────
+  openArtifactId: string | null
+  openArtifact: (id: string | null) => void
+
+  // ── workspace — all live against /api ─────────────────────────────────
+  /** One call after sign-in; each screen also refreshes its own slice. */
+  loadWorkspace: () => Promise<void>
+  createProject: (
+    p: Pick<Project, 'name' | 'description' | 'emoji' | 'instructions'>,
+  ) => Promise<string>
+  updateProject: (id: string, patch: Partial<Project>) => Promise<void>
+  deleteProject: (id: string) => Promise<void>
+  uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
+  deleteFile: (id: string) => Promise<void>
+  loadArtifacts: () => Promise<void>
+  deleteArtifact: (id: string) => Promise<void>
+
+  // ── MCP connectors ────────────────────────────────────────────────────
+  connectors: Connector[]
+  /** Servers available to install, with the ones already installed marked. */
+  connectorCatalog: CatalogEntry[]
+  toggleConnector: (id: string) => Promise<void>
+  /** Re-supply a connector's credentials. Values are write-only server-side. */
+  updateConnectorEnv: (id: string, env: Record<string, string>) => Promise<void>
+  toggleConnectorTool: (id: string, tool: string) => Promise<void>
+  installConnector: (slug: string, env?: Record<string, string>) => Promise<void>
+  uninstallConnector: (id: string) => Promise<void>
+  /** Re-asks the server what tools it exposes. */
+  syncConnector: (id: string) => Promise<void>
+  addCustomConnector: (
+    c: Pick<Connector, 'name' | 'transport' | 'endpoint' | 'auth'> & {
+      /** `KEY: value` credentials for the server process. Write-only. */
+      env?: Record<string, string>
+    },
+  ) => Promise<void>
+
+  // ── workspace ─────────────────────────────────────────────────────────
+  toggleSkill: (id: string) => Promise<void>
+  upsertSkill: (s: Skill) => Promise<void>
+  deleteSkill: (id: string) => Promise<void>
+  upsertMemory: (m: MemoryEntry) => Promise<void>
+  deleteMemory: (id: string) => Promise<void>
+  togglePinMemory: (id: string) => Promise<void>
+  upsertAgent: (a: Agent) => Promise<void>
+  /** Copies someone else's shared agent into your own workspace. */
+  forkAgent: (a: Agent) => Promise<void>
+  deleteAgent: (id: string) => Promise<void>
+
+  // ── keys (KloudChat issues these against LiteLLM, server-side) ────────────
+
+  // ── admin — live against /api/admin ───────────────────────────────────
+  usersLoading: boolean
+  loadUsers: () => Promise<void>
+  approveUser: (id: string, monthlyCredits?: number) => Promise<void>
+  rejectUser: (id: string) => Promise<void>
+  suspendUser: (id: string) => Promise<void>
+  reinstateUser: (id: string) => Promise<void>
+  rotateLitellmKey: (id: string) => Promise<void>
+  removeUser: (id: string) => Promise<void>
+  /** Restricts an account to a set of models. Empty means the whole catalogue. */
+  setUserModels: (id: string, models: string[]) => Promise<void>
+  setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
+}
+
+/** Bumped on every workspace write, so a stale fetch cannot overwrite newer
+ *  state. */
+let workspaceEpoch = 0
+const touchWorkspace = () => ++workspaceEpoch
+
+const MODEL_STORAGE_KEY = 'kchat-models'
+
+/** Remembered model choice per surface. Only ever holds ids picked from the
+ *  real catalogue. */
+const initialModelByKind: Record<SessionKind, string> = (() => {
+  const blank = { chat: '', report: '', slides: '', image: '', av: '' }
+  try {
+    return { ...blank, ...JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') }
+  } catch {
+    return blank
+  }
+})()
+
+const initialTheme: Theme =
+  (localStorage.getItem('kchat-theme') as Theme | null) ??
+  (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+
+function applyTheme(theme: Theme) {
+  document.documentElement.classList.toggle('dark', theme === 'dark')
+  localStorage.setItem('kchat-theme', theme)
+}
+applyTheme(initialTheme)
+
+// Start in Korean when the browser says Korean; English otherwise.
+const initialLang: Lang =
+  (localStorage.getItem('kchat-lang') as Lang | null) ??
+  (navigator.language?.toLowerCase().startsWith('ko') ? 'ko' : 'en')
+
+function applyLang(lang: Lang) {
+  document.documentElement.lang = lang
+  localStorage.setItem('kchat-lang', lang)
+}
+applyLang(initialLang)
+
+/**
+ * Re-issues the token shortly before it expires. The access token lives in
+ * memory and lasts 15 minutes; the refresh cookie is httpOnly, so this is the
+ * only way to learn whether the session is still alive.
+ */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Collapses concurrent refreshes into one. Presenting the same refresh cookie
+ * twice is what the server reads as token reuse.
+ */
+let inFlight: Promise<void> | null = null
+
+function scheduleRefresh(expiresIn: number, run: () => void) {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  // 60s of headroom, and never busier than once a minute.
+  const delayMs = Math.max(30, expiresIn - 60) * 1000
+  refreshTimer = setTimeout(run, delayMs)
+}
+
+function cancelRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = null
+}
+
+/**
+ * What to say when a conversational turn arrives on a job surface. Duration and
+ * voice come from the composer's controls, so this points at them rather than
+ * imitating an answer.
+ */
+function notBuiltYet(set: Set, sessionId: string, kind: SessionKind) {
+  const label = kindMeta[kind].label
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            messages: [
+              ...c.messages,
+              {
+                id: uid('m'),
+                role: 'assistant' as const,
+                content: tr('{kind}은(는) 아래 입력창의 만들기 버튼으로 시작해 주세요. 길이와 목소리를 여기서는 정할 수 없습니다.').replace(
+                  '{kind}',
+                  tr(label),
+                ),
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }
+        : c,
+    ),
+  }))
+}
+
+/**
+ * Falls back to the instance default when the remembered model is not in the
+ * catalogue, and to the cheapest one when that model does not serve this
+ * surface.
+ */
+function reconcileDefaults(
+  current: Record<SessionKind, string>,
+  available: ModelInfo[],
+  instanceDefault = '',
+): Record<SessionKind, string> {
+  const next = { ...current }
+  for (const kind of Object.keys(next) as SessionKind[]) {
+    if (available.some((m) => m.id === next[kind])) continue
+    const usable = available
+      .filter((m) => m.kinds.includes(kind))
+      .sort((a, b) => a.creditCost - b.creditCost)
+    const preferred = usable.find((m) => m.id === instanceDefault)
+    if (preferred) next[kind] = preferred.id
+    else if (usable.length) next[kind] = usable[0].id
+  }
+  return next
+}
+
+
+export const useStore = create<State>((set, get) => ({
+  user: null,
+  authenticated: false,
+  authLoading: true,
+  authError: null,
+
+  /** Adopts a fresh session and arms the next silent refresh. */
+  bootstrap: async () => {
+    if (inFlight) return inFlight
+    inFlight = (async () => {
+      try {
+        const session = await auth.refresh()
+        setAccessToken(session.accessToken)
+        set({ authenticated: true, user: session.user, authLoading: false, authError: null })
+        // What this deployment can offer: no Whisper backend means the
+        // composer hides its microphone rather than failing on click.
+        void authConfig
+          .get()
+          .then((c) => {
+            applyBrand(c.brand)
+            set({
+              dictationEnabled: c.dictationEnabled,
+              brand: c.brand,
+              enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
+            })
+          })
+          .catch(() => {})
+        scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        void get().loadModels()
+        void get().loadSessions()
+      void get().loadWorkspace()
+        void get().loadWorkspace()
+      } catch {
+        // No cookie, expired, or the account was suspended — all mean "log in".
+        cancelRefresh()
+        setAccessToken(null)
+        set({ authenticated: false, user: null, authLoading: false })
+      } finally {
+        inFlight = null
+      }
+    })()
+    return inFlight
+  },
+
+  login: async (email, password) => {
+    set({ authError: null })
+    try {
+      const session = await auth.login(email, password)
+      setAccessToken(session.accessToken)
+      set({ authenticated: true, user: session.user, authLoading: false })
+      scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+      void get().loadModels()
+      void get().loadSessions()
+      void get().loadWorkspace()
+    } catch (err) {
+      set({ authError: err instanceof ApiError ? err.detail : 'network_error' })
+      throw err
+    }
+  },
+
+  /** New accounts land in `pending` and cannot use the app until an admin approves. */
+  signup: async (email, password, name) => {
+    set({ authError: null })
+    try {
+      const { user, session } = await auth.signup(email, password, name)
+      if (session) {
+        // `open` signup mode, or the bootstrap admin — straight in.
+        setAccessToken(session.accessToken)
+        set({ authenticated: true, user: session.user, authLoading: false })
+        scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        void get().loadModels()
+      } else {
+        // Pending: log in so the waiting screen has an identity to show.
+        await get().login(email, password)
+        set({ user })
+      }
+    } catch (err) {
+      set({ authError: err instanceof ApiError ? err.detail : 'network_error' })
+      throw err
+    }
+  },
+
+  logout: async () => {
+    try {
+      await auth.logout()
+    } catch {
+      // Already gone server-side; the local teardown below is what matters.
+    }
+    cancelRefresh()
+    setAccessToken(null)
+    // Invalidates any workspace load still in the air: otherwise a response
+    // requested by the previous account repopulates the screen after logout.
+    touchWorkspace()
+    set({
+      authenticated: false,
+      user: null,
+      activeSessionId: null,
+      authError: null,
+      // Never leave one account's work on screen for the next.
+      sessions: [],
+      users: [],
+      projects: [],
+      artifacts: [],
+      skills: [],
+      memories: [],
+      agents: [],
+      connectors: [],
+      connectorCatalog: [],
+    })
+  },
+
+  refreshMe: async () => {
+    try {
+      set({ user: await auth.me() })
+    } catch (err) {
+      if (err instanceof UnauthorizedError) await get().bootstrap()
+    }
+  },
+
+  updateProfile: async (patch) => {
+    set({ user: await auth.updateMe(patch) })
+  },
+  changePassword: async (currentPassword, newPassword) => {
+    await auth.changePassword(currentPassword, newPassword)
+  },
+
+  theme: initialTheme,
+  toggleTheme: () => {
+    const next: Theme = get().theme === 'dark' ? 'light' : 'dark'
+    applyTheme(next)
+    set({ theme: next })
+  },
+  lang: initialLang,
+  toggleLang: () => {
+    const next: Lang = get().lang === 'ko' ? 'en' : 'ko'
+    applyLang(next)
+    set({ lang: next })
+  },
+  // Three columns do not fit under ~1024px; start collapsed there.
+  sidebarOpen: window.matchMedia('(min-width: 1024px)').matches,
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+
+  // Every slice below starts empty and is filled from the API. Nothing is
+  // seeded: a fresh install shows nothing.
+  users: [],
+  usersLoading: false,
+  models: [],
+  modelsLoading: false,
+  litellmAvailable: true,
+
+  sessions: [],
+  jobs: [],
+  projects: [],
+  artifacts: [],
+  skills: [],
+  memories: [],
+  agents: [],
+  connectorCatalog: [],
+
+  /**
+   * Loads the workspace in one go, straight after sign-in.
+   *
+   * A partial failure still renders the rest; each screen re-reads its own
+   * slice when it mounts.
+   */
+  loadWorkspace: async () => {
+    // Screens refetch on mount, and a mutation can land mid-flight. Applying a
+    // snapshot taken before it would drop the row just created.
+    const epoch = ++workspaceEpoch
+    const results = await Promise.allSettled([
+      projectsApi.list(),
+      artifactsApi.list(),
+      skillsApi.list(),
+      memoryApi.list(),
+      agentsApi.list(),
+      connectorsApi.list(),
+      connectorsApi.catalog(),
+    ])
+    const [projects, artifacts, skills, memories, agents, connectors, catalog] = results
+    // Something changed under us; that write already holds the truth.
+    if (epoch !== workspaceEpoch) return
+    set((s) => ({
+      projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
+      artifacts:
+        artifacts.status === 'fulfilled'
+          ? artifacts.value.map(toArtifact)
+          : s.artifacts,
+      skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
+      memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
+      agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
+      connectors:
+        connectors.status === 'fulfilled' ? connectors.value.map(toConnector) : s.connectors,
+      connectorCatalog: catalog.status === 'fulfilled' ? catalog.value : s.connectorCatalog,
+    }))
+  },
+
+  usage: null,
+  audit: null,
+  loadUsage: async (days = 7) => {
+    const report = await usageApi.report(days).catch(() => null)
+    if (report) set({ usage: report })
+  },
+  apiKeys: null,
+  loadApiKeys: async () => {
+    const rows = await keysApi.list().catch(() => null)
+    if (rows) set({ apiKeys: rows })
+  },
+  createApiKey: async (name) => {
+    const row = await keysApi.create(name)
+    set((s) => ({ apiKeys: [{ ...row, secret: null }, ...(s.apiKeys ?? [])] }))
+    // Returned, not stored: the only moment it exists outside the database.
+    return row.secret ?? null
+  },
+  revokeApiKey: async (id) => {
+    await keysApi.revoke(id)
+    set((s) => ({ apiKeys: (s.apiKeys ?? []).filter((k) => k.id !== id) }))
+  },
+  governance: null,
+  loadGovernance: async () => {
+    const policy = await usageApi.governance().catch(() => null)
+    if (policy) set({ governance: policy })
+  },
+  setGovernance: async (patch) => {
+    // Optimistic — a switch that lags a round trip feels broken. The reload
+    // below is what the screen trusts.
+    set((s) => (s.governance ? { governance: { ...s.governance, ...patch } } : s))
+    const result = await usageApi.setGovernance(patch).catch(() => null)
+    await get().loadGovernance()
+    return result?.clearedMessages ?? 0
+  },
+  loadAudit: async () => {
+    const rows = await usageApi.audit(200).catch(() => null)
+    if (rows) set({ audit: rows })
+  },
+
+  loadModels: async () => {
+    set({ modelsLoading: true })
+    try {
+      const { models: live, litellmAvailable, defaultChatModel } = await modelsApi.list()
+      set((s) => ({
+        models: live,
+        litellmAvailable,
+        modelsLoading: false,
+        modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel),
+      }))
+    } catch {
+      // Leave whatever is already loaded; the picker keeps working offline.
+      set({ modelsLoading: false, litellmAvailable: false })
+    }
+  },
+
+  loadUsers: async () => {
+    set({ usersLoading: true })
+    try {
+      set({ users: await adminApi.users(), usersLoading: false })
+    } catch {
+      set({ usersLoading: false })
+    }
+  },
+
+  activeSessionId: null,
+  streaming: false,
+  abortStream: null,
+  modelByKind: initialModelByKind,
+  setModel: (kind, id) =>
+    set((s) => {
+      const next = { ...s.modelByKind, [kind]: id }
+      // Remembered per surface; `reconcileDefaults` drops anything the
+      // catalogue has stopped serving.
+      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(next))
+      return { modelByKind: next }
+    }),
+  setSessionModel: async (sessionId, modelId) => {
+    set((s) => ({
+      sessions: s.sessions.map((c) => (c.id === sessionId ? { ...c, model: modelId } : c)),
+    }))
+    {
+      await sessionsApi.update(sessionId, { model: modelId }).catch(() => get().loadSessions())
+    }
+  },
+  setActiveSession: (id) => {
+    const session = id ? get().sessions.find((s) => s.id === id) : null
+    set({
+      activeSessionId: id,
+      openArtifactId: session?.artifactId ?? null,
+    })
+  },
+
+  loadSessions: async () => {
+    try {
+      const rows = await sessionsApi.list()
+      set((s) => ({
+        // The list response carries titles only, so an open transcript is kept.
+        sessions: rows.map((row) =>
+          toSession(row, s.sessions.find((c) => c.id === row.id)?.messages),
+        ),
+      }))
+    } catch {
+      /* offline: leave the sidebar as it is */
+    }
+  },
+
+  openSession: async (id) => {
+    try {
+      const row = await sessionsApi.get(id)
+      set((s) => ({
+        sessions: s.sessions.some((c) => c.id === id)
+          ? s.sessions.map((c) => (c.id === id ? toSession(row) : c))
+          : [toSession(row), ...s.sessions],
+      }))
+    } catch {
+      /* deleted or not ours — the page renders its empty state */
+    }
+  },
+
+  newSession: async (kind, { projectId = null, agentId = null } = {}) => {
+    // Writes projects[].sessionIds, so an earlier workspace snapshot would drop
+    // the new chat back out of its project.
+    touchWorkspace()
+    const row = await sessionsApi.create({
+      kind,
+      projectId,
+      agentId,
+      model: get().modelByKind[kind],
+    })
+    const session = toSession(row, [])
+    set((s) => ({
+      sessions: [session, ...s.sessions],
+      activeSessionId: session.id,
+      openArtifactId: null,
+      projects: projectId
+        ? s.projects.map((p) =>
+            p.id === projectId ? { ...p, sessionIds: [session.id, ...p.sessionIds] } : p,
+          )
+        : s.projects,
+    }))
+    return session.id
+  },
+
+  /**
+   * The single entry point for all five surfaces.
+   *
+   * Chat, report and slides take the streaming-turn path; image and
+   * audio/video take the job path.
+   */
+  send: async (sessionId, kind, text, opts = {}) => {
+    const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
+    if (!sessionId) opts.onSession?.(id)
+    const now = new Date().toISOString()
+    // The conversation's own model wins; the surface default would undo the
+    // in-session picker every turn.
+    const model = get().sessions.find((c) => c.id === id)?.model || get().modelByKind[kind]
+    const userMsg: Message = {
+      id: uid('m'),
+      role: 'user',
+      content: text,
+      createdAt: now,
+      attachments: opts.attachmentNames?.map((name) => ({ name, size: '', type: '' })),
+    }
+
+    set((s) => ({
+      sessions: s.sessions.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              model,
+              title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
+              updatedAt: now,
+              messages: [...c.messages, userMsg],
+            }
+          : c,
+      ),
+    }))
+
+    if (kind === 'report') {
+      await streamReport(set, get, id, text, model)
+      return id
+    }
+
+    if (kind === 'slides') {
+      await streamDeck(set, get, id, text, model)
+      return id
+    }
+
+    if (kind === 'image') {
+      // The composer calls `generateImages` directly; this path only catches an
+      // image prompt routed through chat.
+      await get().generateImages(id, text, { projectId: opts.projectId ?? null })
+      return id
+    }
+
+    if (kind !== 'chat') {
+      // Likewise: the composer calls `generateAudio`/`generateVideo` directly,
+      // since those are jobs rather than turns.
+      notBuiltYet(set, id, kind)
+      return id
+    }
+
+    if (get().streaming) return id
+
+    if (kind === 'chat' && get().compareMode && get().compareModels.length >= 2) {
+      await runComparison(set, get, id, text)
+      return id
+    }
+
+    if (kind === 'chat') {
+      await streamTurn(set, get, id, text, model, {
+        webSearch: opts.webSearch,
+        attachments: opts.attachments,
+        attachmentNames: opts.attachmentNames,
+      })
+      return id
+    }
+
+    return id
+  },
+
+  stopStreaming: () => get().abortStream?.(),
+
+  // Optimistic, then persisted.
+  renameSession: async (id, title) => {
+    set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, title } : c)) }))
+    await sessionsApi.update(id, { title }).catch(() => get().loadSessions())
+  },
+  retryJob: async (job) => {
+    // Only video carries a resolution, which is what selects the producer. The
+    // failed row is dropped: two cards for one request read as two charges.
+    set((s) => ({ jobs: s.jobs.filter((j) => j.id !== job.id) }))
+    const video = Boolean(job.params && 'resolution' in job.params)
+    if (video) await get().generateVideo(job.sessionId, job.prompt)
+    else await get().generateAudio(job.sessionId, job.prompt)
+  },
+
+  generateVideo: async (sessionId, prompt, opts = {}) => {
+    const { avOptions, modelByKind } = get()
+    let id = sessionId
+    if (!id) {
+      id = await get().newSession('av', { projectId: opts.projectId ?? null })
+      opts.onSession?.(id)
+    }
+    try {
+      const job = await jobsApi.create(id, {
+        prompt,
+        model: modelByKind.av || undefined,
+        resolution: avOptions.resolution,
+        seconds: avOptions.durationSec,
+        audio: avOptions.withAudio,
+        aspect: avOptions.aspect,
+      })
+      set((s) => ({ jobs: [toJob(job), ...s.jobs.filter((j) => j.id !== job.id)] }))
+      void get().followJob(id!, job.id)
+    } catch (err) {
+      set((s) => ({
+        jobs: [
+          {
+            id: uid('j'),
+            sessionId: id!,
+            kind: 'av',
+            status: 'failed',
+            progress: 0,
+            stage: '실패',
+            creditsUsed: 0,
+            creditsEstimated: 0,
+            // Carried so the card's retry action has the request to rebuild.
+            prompt,
+            model: modelByKind.av || '',
+            params: {
+              resolution: avOptions.resolution,
+              seconds: avOptions.durationSec,
+              audio: avOptions.withAudio,
+            },
+            error: err instanceof Error ? err.message : '영상 작업을 시작하지 못했습니다.',
+            createdAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+          },
+          ...s.jobs,
+        ],
+      }))
+    }
+  },
+  /** Polls one job until it settles. The server does the work; this keeps the
+   *  card current and stops when the row stops moving. */
+  followJob: async (sessionId, jobId) => {
+    for (let i = 0; i < 200; i++) {
+      await new Promise((r) => setTimeout(r, 4000))
+      const rows = await jobsApi.list(sessionId).catch(() => null)
+      if (!rows) continue
+      const job = rows.find((j) => j.id === jobId)
+      if (!job) return
+      set((s) => ({
+        jobs: s.jobs.map((j) => (j.id === jobId ? toJob(job) : j)),
+      }))
+      if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
+        // The artifact is the point; the card is how it was watched.
+        await get().loadArtifacts()
+        if (job.artifactId) set({ openArtifactId: job.artifactId })
+        return
+      }
+    }
+  },
+  generateAudio: async (sessionId, prompt, opts = {}) => {
+    const { avOptions, modelByKind, models } = get()
+    let id = sessionId
+    if (!id) {
+      id = await get().newSession('av', { projectId: opts.projectId ?? null })
+      opts.onSession?.(id)
+    }
+    const jobId = uid('j')
+    const model = models.find((m) => m.id === modelByKind.av)
+    set((s) => ({
+      streaming: true,
+      jobs: [
+        {
+          id: jobId,
+          sessionId: id,
+          kind: 'av' as const,
+          status: 'running' as const,
+          progress: 0,
+          stage: '만드는 중',
+          prompt,
+          model: modelByKind.av || '',
+          params: { seconds: avOptions.durationSec },
+          creditsUsed: 0,
+          creditsEstimated: model?.creditPerCall || model?.creditCost || 0,
+          createdAt: new Date().toISOString(),
+          finishedAt: null,
+        },
+        ...s.jobs,
+      ],
+    }))
+    try {
+      const row = await sessionsApi.audio(id, {
+        prompt,
+        model: modelByKind.av || undefined,
+        // Speech or music: there is no third kind.
+        audioKind: avOptions.audioKind === 'music' ? 'music' : 'narration',
+      })
+      set((s) => ({
+        artifacts: [toArtifact(row), ...s.artifacts],
+        openArtifactId: row.id,
+        jobs: s.jobs.map((j) =>
+          j.id === jobId
+            ? { ...j, status: 'succeeded' as const, progress: 100, finishedAt: new Date().toISOString() }
+            : j,
+        ),
+      }))
+      await get().loadSessions()
+    } catch (err) {
+      set((s) => ({
+        jobs: s.jobs.map((j) =>
+          j.id === jobId
+            ? {
+                ...j,
+                status: 'failed' as const,
+                finishedAt: new Date().toISOString(),
+                error: err instanceof Error ? err.message : '오디오를 만들지 못했습니다.',
+              }
+            : j,
+        ),
+      }))
+    } finally {
+      set({ streaming: false })
+    }
+  },
+  generateImages: async (sessionId, prompt, opts = {}) => {
+    const { imageOptions, modelByKind } = get()
+    let id = sessionId
+    if (!id) {
+      // Same shape as a chat turn from /new/:kind: the session exists before
+      // anything is generated, so a slow model cannot strand the result.
+      id = await get().newSession('image', { projectId: opts.projectId ?? null })
+      opts.onSession?.(id)
+    }
+    const jobId = uid('j')
+    set((s) => ({
+      streaming: true,
+      jobs: [
+        {
+          id: jobId,
+          sessionId: id,
+          kind: 'image' as const,
+          status: 'running' as const,
+          progress: 0,
+          stage: '만드는 중',
+          prompt,
+          model: modelByKind.image || '',
+          params: null,
+          creditsUsed: 0,
+          // Quoted from the catalogue; the charge lands on what the upstream
+          // reports.
+          creditsEstimated:
+            (get().models.find((m) => m.id === modelByKind.image)?.creditPerImage ?? 0) *
+            imageOptions.count,
+          createdAt: new Date().toISOString(),
+          finishedAt: null,
+        },
+        ...s.jobs,
+      ],
+    }))
+    try {
+      const rows = await sessionsApi.images(id, {
+        prompt,
+        model: modelByKind.image || undefined,
+        aspect: imageOptions.aspect,
+        style: imageOptions.style,
+        count: imageOptions.count,
+      })
+      set((s) => ({
+        artifacts: [...rows.map(toArtifact), ...s.artifacts],
+        openArtifactId: rows.length ? rows[rows.length - 1].id : s.openArtifactId,
+        jobs: s.jobs.map((j) =>
+          j.id === jobId
+            ? { ...j, status: 'succeeded' as const, progress: 100, finishedAt: new Date().toISOString() }
+            : j,
+        ),
+      }))
+      // The gallery is the record; the sidebar entry should carry the prompt.
+      await get().loadSessions()
+    } catch (err) {
+      set((s) => ({
+        jobs: s.jobs.map((j) =>
+          j.id === jobId
+            ? {
+                ...j,
+                status: 'failed' as const,
+                finishedAt: new Date().toISOString(),
+                error: err instanceof Error ? err.message : '이미지를 만들지 못했습니다.',
+              }
+            : j,
+        ),
+      }))
+    } finally {
+      set({ streaming: false })
+    }
+  },
+  deleteSessions: async (payload) => {
+    const { deleted } = await sessionsApi.deleteMany(payload)
+    // Refetched, not filtered locally: `all` is resolved server-side.
+    await get().loadSessions()
+    set((s) => ({
+      activeSessionId: null,
+      jobs: payload.all ? [] : s.jobs,
+    }))
+    return deleted
+  },
+  deleteSession: async (id) => {
+    touchWorkspace()
+    set((s) => ({
+      sessions: s.sessions.filter((c) => c.id !== id),
+      jobs: s.jobs.filter((j) => j.sessionId !== id),
+      activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
+      projects: s.projects.map((p) => ({
+        ...p,
+        sessionIds: p.sessionIds.filter((x) => x !== id),
+      })),
+    }))
+    await sessionsApi.remove(id).catch(() => get().loadSessions())
+  },
+  togglePinSession: async (id) => {
+    const pinned = !get().sessions.find((c) => c.id === id)?.pinned
+    set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, pinned } : c)) }))
+    {
+      await sessionsApi.update(id, { pinned }).catch(() => get().loadSessions())
+    }
+  },
+  rateMessage: (sessionId, messageId, rating) =>
+    set((s) => ({
+      sessions: s.sessions.map((c) =>
+        c.id === sessionId
+          ? {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === messageId ? { ...m, liked: m.liked === rating ? null : rating } : m,
+              ),
+            }
+          : c,
+      ),
+    })),
+
+  compareMode: false,
+  compareModels: ['claude-opus-5', 'gpt-4o'],
+  toggleCompareMode: () => set((s) => ({ compareMode: !s.compareMode })),
+  toggleCompareModel: (id) =>
+    set((s) => {
+      const has = s.compareModels.includes(id)
+      if (has && s.compareModels.length <= 2) return s
+      if (!has && s.compareModels.length >= 3) return s
+      return {
+        compareModels: has
+          ? s.compareModels.filter((m) => m !== id)
+          : [...s.compareModels, id],
+      }
+    }),
+  chooseVariant: async (sessionId, messageId, model) => {
+    set((s) => ({
+      sessions: s.sessions.map((c) =>
+        c.id === sessionId
+          ? {
+              ...c,
+              model,
+              messages: c.messages.map((m) =>
+                m.id === messageId
+                  ? {
+                      ...m,
+                      model,
+                      // The kept answer becomes the turn's content.
+                      content: m.variants?.find((v) => v.model === model)?.content ?? m.content,
+                      variants: m.variants?.map((v) => ({ ...v, chosen: v.model === model })),
+                    }
+                  : m,
+              ),
+            }
+          : c,
+      ),
+      modelByKind: { ...s.modelByKind, chat: model },
+    }))
+    // Optimistic above, durable here: the choice has to survive a reload,
+    // because the next turn's history is built from it.
+    await sessionsApi
+      .chooseVariant(sessionId, messageId, model)
+      .catch(() => get().openSession(sessionId))
+  },
+
+  imageOptions: { aspect: '1:1', style: '미니멀', count: 1 },
+  setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
+  draft: '',
+  setDraft: (draft) => set({ draft }),
+  dictationEnabled: false,
+  brand: { name: 'KloudChat', logo: '' },
+  refreshBrand: async () => {
+    const c = await authConfig.get().catch(() => null)
+    if (!c?.brand) return
+    applyBrand(c.brand)
+    set({ brand: c.brand })
+  },
+  enabledKinds: ['chat', 'report', 'slides'],
+  avOptions: {
+    mode: 'video',
+    aspect: '16:9',
+    durationSec: 4,
+    audioKind: 'narration',
+    resolution: '720p',
+    withAudio: false,
+  },
+  setAvOptions: (patch) =>
+    set((s) => {
+      const avOptions = { ...s.avOptions, ...patch }
+      if (!patch.mode || patch.mode === s.avOptions.mode) return { avOptions }
+      // Audio and video share one surface and one remembered model, and the
+      // cheapest `av` model is a speech model. The model follows the mode
+      // unless the one already chosen suits it.
+      const wanted = patch.mode === 'video' ? 'video' : 'audio'
+      const current = s.models.find((m) => m.id === s.modelByKind.av)
+      if (current?.modality === wanted) return { avOptions }
+      const usable = s.models
+        .filter((m) => m.kinds.includes('av') && m.modality === wanted)
+        .sort((a, b) => a.creditCost - b.creditCost)
+      if (!usable.length) return { avOptions }
+      return { avOptions, modelByKind: { ...s.modelByKind, av: usable[0].id } }
+    }),
+  cancelJob: (id) =>
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.id === id
+          ? { ...j, status: 'canceled', stage: '취소됨', finishedAt: new Date().toISOString() }
+          : j,
+      ),
+    })),
+
+  openArtifactId: null,
+  openArtifact: (id) => set({ openArtifactId: id }),
+
+  createProject: async (p) => {
+    touchWorkspace()
+    const row = await projectsApi.create(p)
+    set((s) => ({ projects: [toProject(row), ...s.projects] }))
+    return row.id
+  },
+  updateProject: async (id, patch) => {
+    // Optimistic: a textarea that snaps back mid-edit is worse than one that
+    // saves a beat late. The epoch is what stops an in-flight list request from
+    // causing exactly that.
+    touchWorkspace()
+    set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch } : p)) }))
+    const row = await projectsApi.update(id, patch as never).catch(() => null)
+    if (row) set((s) => ({ projects: s.projects.map((p) => (p.id === id ? toProject(row) : p)) }))
+  },
+  deleteProject: async (id) => {
+    touchWorkspace()
+    set((s) => ({
+      projects: s.projects.filter((p) => p.id !== id),
+      // The server detaches sessions rather than deleting them; mirror that.
+      sessions: s.sessions.map((c) => (c.projectId === id ? { ...c, projectId: null } : c)),
+    }))
+    await projectsApi.remove(id).catch(() => get().loadWorkspace())
+  },
+
+  uploadFile: async (file, opts) => {
+    // Epoch guard: stops a fetch that started just before the upload from
+    // arriving later and overwriting the new file.
+    touchWorkspace()
+    const row = await filesApi.upload(file, opts)
+    if (opts?.projectId) {
+      set((s) => ({
+        projects: s.projects.map((p) =>
+          p.id === opts.projectId ? { ...p, files: [toProjectFile(row), ...p.files] } : p,
+        ),
+      }))
+    }
+    return row
+  },
+  deleteFile: async (id) => {
+    touchWorkspace()
+    set((s) => ({
+      projects: s.projects.map((p) => ({ ...p, files: p.files.filter((f) => f.id !== id) })),
+    }))
+    await filesApi.remove(id).catch(() => get().loadWorkspace())
+  },
+
+  loadArtifacts: async () => {
+    const rows = await artifactsApi.list().catch(() => null)
+    if (rows) set({ artifacts: rows.map(toArtifact) })
+  },
+  deleteArtifact: async (id) => {
+    touchWorkspace()
+    set((s) => ({ artifacts: s.artifacts.filter((a) => a.id !== id) }))
+    await artifactsApi.remove(id).catch(() => get().loadArtifacts())
+  },
+
+  connectors: [],
+  updateConnectorEnv: async (id, env) => {
+    touchWorkspace()
+    const row = await connectorsApi.update(id, { env }).catch(() => null)
+    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+    // A new key is only worth having if the server can be reached with it.
+    await get().syncConnector(id)
+  },
+  toggleConnector: async (id) => {
+    touchWorkspace()
+    const enabled = !get().connectors.find((c) => c.id === id)?.enabled
+    set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled } : c)) }))
+    const row = await connectorsApi.update(id, { enabled }).catch(() => null)
+    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+  },
+  toggleConnectorTool: async (id, tool) => {
+    touchWorkspace()
+    const current = get()
+      .connectors.find((c) => c.id === id)
+      ?.tools.find((t) => t.name === tool)
+    const row = await connectorsApi.toggleTool(id, tool, !current?.enabled).catch(() => null)
+    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+  },
+  installConnector: async (slug, env) => {
+    touchWorkspace()
+    // Installing spawns the server to ask what it exposes — a real round trip,
+    // so the catalogue entry stays disabled meanwhile.
+    const row = await connectorsApi.install(slug, env)
+    set((s) => ({
+      connectors: [toConnector(row), ...s.connectors.filter((c) => c.id !== row.id)],
+      connectorCatalog: s.connectorCatalog.map((e) =>
+        e.slug === slug ? { ...e, installed: true } : e,
+      ),
+    }))
+  },
+  uninstallConnector: async (id) => {
+    touchWorkspace()
+    const slug = get().connectors.find((c) => c.id === id)?.slug
+    set((s) => ({
+      connectors: s.connectors.filter((c) => c.id !== id),
+      connectorCatalog: s.connectorCatalog.map((e) =>
+        e.slug === slug ? { ...e, installed: false } : e,
+      ),
+    }))
+    await connectorsApi.uninstall(id).catch(() => get().loadWorkspace())
+  },
+  syncConnector: async (id) => {
+    touchWorkspace()
+    const row = await connectorsApi.sync(id).catch(() => null)
+    if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+  },
+  addCustomConnector: async (c) => {
+    touchWorkspace()
+    const row = await connectorsApi.addCustom({
+      name: c.name,
+      transport: c.transport,
+      endpoint: c.endpoint,
+      auth: c.auth,
+      env: c.env,
+      description: '직접 등록한 MCP 서버',
+    })
+    set((s) => ({ connectors: [toConnector(row), ...s.connectors] }))
+  },
+
+  toggleSkill: async (id) => {
+    touchWorkspace()
+    set((s) => ({
+      skills: s.skills.map((sk) => (sk.id === id ? { ...sk, enabled: !sk.enabled } : sk)),
+    }))
+    const row = await skillsApi.toggle(id).catch(() => null)
+    if (row) set((s) => ({ skills: s.skills.map((sk) => (sk.id === id ? toSkill(row) : sk)) }))
+  },
+  upsertSkill: async (skill) => {
+    touchWorkspace()
+    const payload = {
+      name: skill.name,
+      description: skill.description,
+      whenToUse: skill.whenToUse,
+      body: (skill as Skill & { body?: string }).body ?? '',
+      kinds: skill.kinds,
+      enabled: skill.enabled,
+    }
+    const exists = get().skills.some((s) => s.id === skill.id)
+    const row = exists ? await skillsApi.update(skill.id, payload) : await skillsApi.create(payload)
+    set((s) => ({
+      skills: exists
+        ? s.skills.map((x) => (x.id === skill.id ? toSkill(row) : x))
+        : [toSkill(row), ...s.skills],
+    }))
+  },
+  deleteSkill: async (id) => {
+    touchWorkspace()
+    set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }))
+    await skillsApi.remove(id).catch(() => get().loadWorkspace())
+  },
+
+  upsertMemory: async (m) => {
+    touchWorkspace()
+    const payload = {
+      name: m.name,
+      description: m.description,
+      type: m.type,
+      body: m.body,
+      scope: m.scope,
+      links: m.links,
+      pinned: m.pinned,
+    }
+    const exists = get().memories.some((x) => x.id === m.id)
+    const row = exists ? await memoryApi.update(m.id, payload) : await memoryApi.create(payload)
+    set((s) => ({
+      memories: exists
+        ? s.memories.map((x) => (x.id === m.id ? toMemory(row) : x))
+        : [toMemory(row), ...s.memories],
+    }))
+  },
+  deleteMemory: async (id) => {
+    touchWorkspace()
+    set((s) => ({ memories: s.memories.filter((m) => m.id !== id) }))
+    await memoryApi.remove(id).catch(() => get().loadWorkspace())
+  },
+  togglePinMemory: async (id) => {
+    touchWorkspace()
+    set((s) => ({
+      memories: s.memories.map((m) => (m.id === id ? { ...m, pinned: !m.pinned } : m)),
+    }))
+    const row = await memoryApi.pin(id).catch(() => null)
+    if (row) set((s) => ({ memories: s.memories.map((m) => (m.id === id ? toMemory(row) : m)) }))
+  },
+
+  forkAgent: async (a) => {
+    touchWorkspace()
+    // A copy, not a reference: the original's owner keeps editing theirs.
+    const row = await agentsApi.create({
+      name: `${a.name} 사본`,
+      description: a.description,
+      model: a.model,
+      systemPrompt: a.systemPrompt,
+      tools: a.tools,
+      skillIds: a.skillIds,
+      kinds: a.kinds,
+      temperature: a.temperature,
+      color: a.color,
+      visibility: 'private',
+    })
+    set((s) => ({ agents: [toAgent(row), ...s.agents] }))
+    // Counts how useful the shared one turned out to be.
+    await agentsApi.update(a.id, { installs: a.installs + 1 }).catch(() => {})
+  },
+  upsertAgent: async (a) => {
+    touchWorkspace()
+    const payload = {
+      name: a.name,
+      description: a.description,
+      model: a.model,
+      systemPrompt: a.systemPrompt,
+      tools: a.tools,
+      skillIds: a.skillIds,
+      kinds: a.kinds,
+      temperature: a.temperature,
+      color: a.color,
+      enabled: a.enabled,
+      visibility: a.visibility,
+    }
+    const exists = get().agents.some((x) => x.id === a.id)
+    const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
+    set((s) => ({
+      agents: exists
+        ? s.agents.map((x) => (x.id === a.id ? toAgent(row) : x))
+        : [toAgent(row), ...s.agents],
+    }))
+  },
+  deleteAgent: async (id) => {
+    touchWorkspace()
+    set((s) => ({ agents: s.agents.filter((a) => a.id !== id) }))
+    await agentsApi.remove(id).catch(() => get().loadWorkspace())
+  },
+
+
+
+
+
+  approveUser: (id, monthlyCredits) => applyUserChange(set, adminApi.approve(id, monthlyCredits)),
+  rejectUser: (id) => applyUserChange(set, adminApi.reject(id)),
+  suspendUser: (id) => applyUserChange(set, adminApi.suspend(id)),
+  reinstateUser: (id) => applyUserChange(set, adminApi.reinstate(id)),
+  rotateLitellmKey: (id) => applyUserChange(set, adminApi.rotateLitellmKey(id)),
+  setUserModels: (id, models) => applyUserChange(set, adminApi.setUserModels(id, models)),
+  removeUser: async (id) => {
+    await adminApi.removeUser(id)
+    set((s) => ({ users: s.users.filter((u) => u.id !== id) }))
+  },
+  setUserCredits: (id, monthlyCredits) =>
+    applyUserChange(set, adminApi.setCredits(id, monthlyCredits)),
+}))
+
+/**
+ * Admin mutations answer with the updated row, so the table patches itself from
+ * the response rather than refetching, and a self-edit stays in sync.
+ */
+async function applyUserChange(set: Set, pending: Promise<User>) {
+  const updated = await pending
+  set((s) => ({
+    users: s.users.map((u) => (u.id === updated.id ? updated : u)),
+    user: s.user?.id === updated.id ? updated : s.user,
+  }))
+}
+
+/* ── helpers ────────────────────────────────────────────────────────────
+ * Out of the store body so `send` stays readable. They take set/get explicitly
+ * rather than closing over them.
+ */
+
+type Set = (u: Partial<State> | ((s: State) => Partial<State>)) => void
+type Get = () => State
+
+/**
+ * Fan the prompt out to the selected models and stream each column
+ * independently, so a slow model does not hold up a fast one.
+ */
+/**
+ * Server row → the shape components read.
+ *
+ * Stream `step` events carry no `type`, and stored attachments carry only a
+ * key; both are filled in here.
+ */
+/** The UI's step categories. Anything else is a tool call. */
+const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
+
+function toStep(raw: Record<string, unknown>): Step {
+  // `raw.type` is the stream event kind — always "step" — not `Step.type`, the
+  // UI category that picks an icon. Only known categories are honoured;
+  // anything else is a tool call.
+  const category = raw.type as Step['type']
+  return {
+    id: String(raw.id ?? uid('step')),
+    type: STEP_TYPES.has(category) ? category : 'tool',
+    label: String(raw.label ?? ''),
+    status: (raw.status as Step['status']) ?? 'done',
+    detail: raw.detail as string | undefined,
+  }
+}
+
+function toMessage(raw: MessageRow): Message {
+  return {
+    id: raw.id,
+    role: raw.role,
+    content: raw.content,
+    createdAt: raw.createdAt,
+    model: raw.model ?? undefined,
+    steps: raw.steps?.map((s) => toStep(s as Record<string, unknown>)),
+    attachments: raw.attachments?.map((a) =>
+      typeof a === 'string'
+        ? { name: a, size: '', type: '' }
+        : (a as { name: string; size: string; type: string }),
+    ),
+    usage: raw.usage ?? undefined,
+    // A comparison turn stores columns rather than one body, so a reload has to
+    // rebuild them.
+    variants: raw.variants?.map((v) => ({
+      model: v.model,
+      content: v.content,
+      status: v.error ? ('error' as const) : ('done' as const),
+      chosen: v.chosen ?? false,
+      usage: v.usage
+        ? { ...v.usage, credits: v.credits }
+        : { inputTokens: 0, outputTokens: 0, credits: v.credits },
+    })),
+  }
+}
+
+function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
+  return {
+    id: raw.id,
+    kind: raw.kind,
+    title: raw.title || tr('새 작업'),
+    projectId: raw.projectId,
+    agentId: raw.agentId,
+    model: raw.model,
+    artifactId: raw.artifactId,
+    pinned: raw.pinned,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+    messages: raw.messages ? raw.messages.map(toMessage) : (keepMessages ?? []),
+    preview: raw.preview,
+    messageCount: raw.messageCount,
+  }
+}
+
+/* ── workspace mappers ───────────────────────────────────────────────────
+ * Wire format and component props are separate contracts; these bridge the two
+ * rather than reshaping either.
+ */
+
+const bytes = (n: number) =>
+  n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+
+function toProjectFile(f: FileRow): ProjectFile {
+  return {
+    id: f.id,
+    name: f.name,
+    size: bytes(f.size),
+    type: f.mime || f.name.split('.').pop() || '',
+    addedAt: f.createdAt,
+    tokens: f.tokens,
+  }
+}
+
+function toProject(p: ProjectRow): Project {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    emoji: p.emoji,
+    instructions: p.instructions,
+    files: p.files.map(toProjectFile),
+    sessionIds: p.sessionIds,
+    skillIds: p.skillIds,
+    updatedAt: p.updatedAt,
+  }
+}
+
+/**
+ * `data` holds the kind-specific body (report sections, deck slides, …), which
+ * the union in types.ts carries at the top level — so it is spread, not nested.
+ */
+/** Wire row → the shape the job card renders. */
+function toJob(row: JobRow): Job {
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    kind: (row.kind as Job['kind']) ?? 'av',
+    status: row.status,
+    progress: row.progress,
+    stage: row.stage,
+    creditsUsed: row.creditsUsed,
+    creditsEstimated: row.creditsEstimated,
+    error: row.error ?? undefined,
+    createdAt: row.createdAt,
+    finishedAt: row.finishedAt,
+    prompt: row.prompt ?? '',
+    model: row.model ?? '',
+    params: row.params ?? null,
+  }
+}
+
+function toArtifact(a: ArtifactRow): Artifact {
+  return {
+    id: a.id,
+    title: a.title,
+    version: a.version,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    sessionId: a.sessionId,
+    projectId: a.projectId,
+    kind: a.kind,
+    ...(a.data ?? {}),
+  } as Artifact
+}
+
+function toSkill(s: SkillRow): Skill {
+  return {
+    id: s.id,
+    name: s.name,
+    slug: s.slug,
+    description: s.description,
+    whenToUse: s.whenToUse,
+    source: (s.source as Skill['source']) ?? 'personal',
+    kinds: s.kinds as SessionKind[],
+    enabled: s.enabled,
+    version: s.version,
+    files: ['SKILL.md'],
+    updatedAt: s.updatedAt,
+  }
+}
+
+function toMemory(m: MemoryRow): MemoryEntry {
+  return {
+    id: m.id,
+    name: m.name,
+    description: m.description,
+    type: m.type as MemoryEntry['type'],
+    body: m.body,
+    scope: m.scope,
+    links: m.links,
+    pinned: m.pinned,
+    updatedAt: m.updatedAt,
+  }
+}
+
+function toAgent(a: AgentRow): Agent {
+  return {
+    ownerId: a.ownerId,
+    ownerName: a.ownerName,
+    id: a.id,
+    name: a.name,
+    slug: a.slug,
+    description: a.description,
+    model: a.model,
+    systemPrompt: a.systemPrompt,
+    tools: a.tools,
+    skillIds: a.skillIds,
+    kinds: a.kinds as SessionKind[],
+    temperature: a.temperature,
+    color: a.color,
+    enabled: a.enabled,
+    visibility: a.visibility as Agent['visibility'],
+    installs: a.installs,
+    runs: a.runs,
+    updatedAt: a.updatedAt,
+  }
+}
+
+/** Catalog entries have no id until installed; the row id is what the UI keys on. */
+function toConnector(c: ConnectorRow): Connector {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    description: c.description,
+    category: c.category,
+    transport: c.transport as Connector['transport'],
+    endpoint: c.endpoint,
+    auth: c.auth as Connector['auth'],
+    status: c.status as Connector['status'],
+    installed: c.installed,
+    enabled: c.enabled,
+    kinds: c.kinds as SessionKind[],
+    tools: c.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      readOnly: t.readOnly,
+      enabled: t.enabled,
+    })),
+    envKeys: c.envKeys ?? [],
+    official: c.official,
+    icon: '🔌',
+    color: '#6b7280',
+    lastSyncAt: c.lastSyncAt,
+    error: c.error ?? undefined,
+  }
+}
+
+/**
+ * One conversational turn.
+ *
+ * An empty message is created and filled in place as events arrive. `stop`
+ * aborts the request only; the server still stores what it had produced.
+ */
+async function streamTurn(
+  set: Set,
+  get: Get,
+  sessionId: string,
+  text: string,
+  model: string,
+  opts: { webSearch?: boolean; attachments?: string[]; attachmentNames?: string[] } = {},
+) {
+  const assistantId = uid('m')
+  const controller = new AbortController()
+
+  set((s) => ({
+    streaming: true,
+    abortStream: () => controller.abort(),
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            messages: [
+              ...c.messages,
+              {
+                id: assistantId,
+                role: 'assistant',
+                content: '',
+                model,
+                createdAt: new Date().toISOString(),
+                steps: [],
+              } as Message,
+            ],
+          }
+        : c,
+    ),
+  }))
+
+  const patch = (fn: (m: Message) => Message) =>
+    set((s) => ({
+      sessions: s.sessions.map((c) =>
+        c.id === sessionId
+          ? { ...c, messages: c.messages.map((m) => (m.id === assistantId ? fn(m) : m)) }
+          : c,
+      ),
+    }))
+
+  // With streaming off the transport still streams; the text is buffered and
+  // shown in one piece. Steps stay live — progress is not half an answer.
+  const live = get().user?.preferences.streamResponses !== false
+  let buffered = ''
+
+  try {
+    for await (const event of streamSession(
+      sessionId,
+      { content: text, webSearch: opts.webSearch, attachments: opts.attachments },
+      controller.signal,
+    )) {
+      switch (event.type) {
+        case 'delta':
+          if (live) patch((m) => ({ ...m, content: m.content + event.text }))
+          else buffered += event.text
+          break
+        case 'artifact':
+          // Load it and open the panel, as opening a session with an artifact
+          // does.
+          void get()
+            .loadArtifacts()
+            .then(() => set({ openArtifactId: event.artifactId }))
+          break
+        case 'step':
+          patch((m) => {
+            const step = toStep(event as unknown as Record<string, unknown>)
+            const steps = m.steps ?? []
+            const at = steps.findIndex((s) => s.id === step.id)
+            return {
+              ...m,
+              steps: at >= 0 ? steps.map((s, i) => (i === at ? step : s)) : [...steps, step],
+            }
+          })
+          break
+        case 'usage':
+          patch((m) => ({
+            ...m,
+            usage: {
+              inputTokens: event.inputTokens,
+              outputTokens: event.outputTokens,
+              credits: event.credits,
+            },
+          }))
+          if (event.credits) chargeCredits(set, get, event.credits)
+          break
+        case 'title':
+          set((s) => ({
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId ? { ...c, title: event.title } : c,
+            ),
+          }))
+          break
+        case 'error':
+          // Content is left alone: a partial answer beats none.
+          patch((m) => ({ ...m, error: event.message }))
+          break
+      }
+    }
+  } catch (err) {
+    // Abort is the stop button doing its job, not a failure.
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      patch((m) => ({ ...m, error: '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.' }))
+    }
+  } finally {
+    // Buffered text lands here, including on abort or error.
+    if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
+    set({ streaming: false, abortStream: null })
+    // Ordering, pinning, and the generated title all live server-side.
+    void get().loadSessions()
+  }
+}
+
+/**
+ * Sends one prompt to several models and stores the result as a single turn.
+ *
+ * The columns arrive interleaved on one connection, so the merged stream is
+ * reduced here. Billing is counted by the server.
+ */
+async function runComparison(set: Set, get: Get, sessionId: string, text: string) {
+  const models = get().compareModels
+  const assistantId = uid('m')
+  const variants: Variant[] = models.map((model) => ({ model, content: '', status: 'streaming' }))
+
+  set((s) => ({
+    streaming: true,
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            messages: [
+              ...c.messages,
+              {
+                id: assistantId,
+                role: 'assistant' as const,
+                content: '',
+                createdAt: new Date().toISOString(),
+                variants,
+              },
+            ],
+          }
+        : c,
+    ),
+  }))
+
+  const patch = (model: string, next: Partial<Variant>) =>
+    set((s) => ({
+      sessions: s.sessions.map((c) =>
+        c.id === sessionId
+          ? {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === assistantId
+                  ? { ...m, variants: m.variants?.map((v) => (v.model === model ? { ...v, ...next } : v)) }
+                  : m,
+              ),
+            }
+          : c,
+      ),
+    }))
+
+  const controller = new AbortController()
+  set({ abortStream: () => controller.abort() })
+  try {
+    for await (const e of streamComparison(sessionId, { content: text, models }, controller.signal)) {
+      if (e.type === 'variant') {
+        const current = get()
+          .sessions.find((c) => c.id === sessionId)
+          ?.messages.find((m) => m.id === assistantId)
+          ?.variants?.find((v) => v.model === e.model)
+        patch(e.model, { content: (current?.content ?? '') + e.text })
+      } else if (e.type === 'variant_done') {
+        patch(e.model, {
+          status: e.error ? 'error' : 'done',
+          usage: {
+            inputTokens: e.inputTokens,
+            outputTokens: e.outputTokens,
+            credits: e.credits,
+          },
+        })
+      } else if (e.type === 'done') {
+        chargeCredits(set, get, e.credits ?? 0)
+      }
+    }
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      for (const m of models) patch(m, { status: 'error' })
+    }
+  } finally {
+    set({ streaming: false, abortStream: null })
+    void get().loadSessions()
+  }
+}
+
+/**
+ * A report turn.
+ *
+ * The table of contents arrives first as empty headings, fixing the progress
+ * denominator from the start; sections fill in after. The artifact is built
+ * locally while streaming and swapped for the server's copy at the end.
+ */
+async function streamReport(
+  set: Set,
+  get: Get,
+  sessionId: string,
+  text: string,
+  model: string,
+) {
+  const draftId = uid('a')
+  const assistantId = uid('m')
+  const now = new Date().toISOString()
+
+  const draft: Artifact = {
+    id: draftId,
+    kind: 'report',
+    title: text.slice(0, 60),
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    sessionId,
+    projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
+    sections: [],
+    sources: [],
+    citationStyle: 'APA',
+    wordCount: 0,
+  }
+
+  set((s) => ({
+    streaming: true,
+    artifacts: [draft, ...s.artifacts],
+    openArtifactId: draftId,
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            artifactId: draftId,
+            messages: [
+              ...c.messages,
+              { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
+            ],
+          }
+        : c,
+    ),
+  }))
+
+  const patchReport = (fn: (a: ReportArtifact) => ReportArtifact) =>
+    set((s) => ({
+      artifacts: s.artifacts.map((a) =>
+        a.id === draftId && a.kind === 'report' ? fn(a) : a,
+      ),
+    }))
+
+  const controller = new AbortController()
+  set({ abortStream: () => controller.abort() })
+  try {
+    for await (const e of streamSession(sessionId, { content: text, model }, controller.signal)) {
+      switch (e.type) {
+        // The outline names the document; until then the draft carries the
+        // request, which is a prompt rather than a title.
+        case 'title':
+          patchReport((a) => ({ ...a, title: e.title }))
+          break
+        case 'section':
+          patchReport((a) => {
+            const at = a.sections.findIndex((x) => x.id === e.sectionId)
+            const next: ReportSection = {
+              id: e.sectionId,
+              heading: e.heading,
+              level: 1,
+              status: e.done ? 'done' : 'pending',
+              content: e.content,
+            }
+            const sections =
+              at >= 0
+                ? a.sections.map((x, i) => (i === at ? next : x))
+                : [...a.sections, next]
+            return {
+              ...a,
+              sections,
+              wordCount: sections.reduce((n, x) => n + x.content.split(/\s+/).filter(Boolean).length, 0),
+            }
+          })
+          break
+        case 'step':
+          set((s) => ({
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) => {
+                      if (m.id !== assistantId) return m
+                      const step = toStep(e as unknown as Record<string, unknown>)
+                      const steps = m.steps ?? []
+                      const at = steps.findIndex((x) => x.id === step.id)
+                      return {
+                        ...m,
+                        steps: at >= 0 ? steps.map((x, i) => (i === at ? step : x)) : [...steps, step],
+                      }
+                    }),
+                  }
+                : c,
+            ),
+          }))
+          break
+        case 'usage':
+          chargeCredits(set, get, e.credits)
+          break
+        case 'error':
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
+          break
+        case 'artifact':
+          // The server's copy supersedes the draft: same content, real id, and
+          // the version history hangs off it.
+          await get().loadArtifacts()
+          set((s) => ({
+            artifacts: s.artifacts.filter((a) => a.id !== draftId),
+            openArtifactId: e.artifactId,
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId ? { ...c, artifactId: e.artifactId } : c,
+            ),
+          }))
+          break
+      }
+    }
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      patchMessage(set, sessionId, assistantId, (m) => ({
+        ...m,
+        error: '보고서를 만들지 못했습니다.',
+      }))
+    }
+  } finally {
+    set({ streaming: false, abortStream: null })
+    void get().loadSessions()
+  }
+}
+
+/**
+ * A slides turn. Slides fill into a local draft, which is replaced by the
+ * server's copy when the turn ends.
+ */
+async function streamDeck(set: Set, get: Get, sessionId: string, text: string, model: string) {
+  const draftId = uid('a')
+  const assistantId = uid('m')
+  const now = new Date().toISOString()
+
+  const draft: Artifact = {
+    id: draftId,
+    kind: 'deck',
+    title: text.slice(0, 60),
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    sessionId,
+    projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
+    theme: '기본',
+    slides: [],
+  }
+
+  set((s) => ({
+    streaming: true,
+    artifacts: [draft, ...s.artifacts],
+    openArtifactId: draftId,
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            artifactId: draftId,
+            messages: [
+              ...c.messages,
+              { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
+            ],
+          }
+        : c,
+    ),
+  }))
+
+  const patchDeck = (fn: (a: DeckArtifact) => DeckArtifact) =>
+    set((s) => ({
+      artifacts: s.artifacts.map((a) => (a.id === draftId && a.kind === 'deck' ? fn(a) : a)),
+    }))
+
+  const controller = new AbortController()
+  set({ abortStream: () => controller.abort() })
+  try {
+    for await (const e of streamSession(sessionId, { content: text, model }, controller.signal)) {
+      switch (e.type) {
+        // The outline step names the deck. Until it lands the draft carries the
+        // request itself, which is a prompt rather than a title.
+        case 'title':
+          patchDeck((a) => ({ ...a, title: e.title }))
+          break
+        case 'slide':
+          patchDeck((a) => {
+            const at = a.slides.findIndex((x) => x.id === e.slide.id)
+            return {
+              ...a,
+              slides:
+                at >= 0
+                  ? a.slides.map((x, i) => (i === at ? e.slide : x))
+                  : [...a.slides, e.slide],
+            }
+          })
+          break
+        case 'step':
+          set((s) => ({
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) => {
+                      if (m.id !== assistantId) return m
+                      const step = toStep(e as unknown as Record<string, unknown>)
+                      const steps = m.steps ?? []
+                      const at = steps.findIndex((x) => x.id === step.id)
+                      return {
+                        ...m,
+                        steps:
+                          at >= 0 ? steps.map((x, i) => (i === at ? step : x)) : [...steps, step],
+                      }
+                    }),
+                  }
+                : c,
+            ),
+          }))
+          break
+        case 'usage':
+          chargeCredits(set, get, e.credits)
+          break
+        case 'error':
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
+          break
+        case 'artifact':
+          await get().loadArtifacts()
+          set((s) => ({
+            artifacts: s.artifacts.filter((a) => a.id !== draftId),
+            openArtifactId: e.artifactId,
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId ? { ...c, artifactId: e.artifactId } : c,
+            ),
+          }))
+          break
+      }
+    }
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      patchMessage(set, sessionId, assistantId, (m) => ({
+        ...m,
+        error: '슬라이드를 만들지 못했습니다.',
+      }))
+    }
+  } finally {
+    set({ streaming: false, abortStream: null })
+    void get().loadSessions()
+  }
+}
+
+function patchMessage(set: Set, sessionId: string, messageId: string, fn: (m: Message) => Message) {
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? { ...c, messages: c.messages.map((m) => (m.id === messageId ? fn(m) : m)) }
+        : c,
+    ),
+  }))
+}
+
+/** Deduct on completion. Nothing is held up front, so failures cost nothing. */
+function chargeCredits(set: Set, _get: Get, credits: number) {
+  set((s) => ({
+    user: s.user ? { ...s.user, creditsUsed: s.user.creditsUsed + credits } : s.user,
+  }))
+}

@@ -1,0 +1,50 @@
+version: 2
+
+# Grouped, weekly, and quiet. Ungrouped updates on a repository with four
+# ecosystems produce a dozen pull requests a week, which is how a security
+# update ends up buried under patch bumps nobody read.
+updates:
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # React and its type packages move together; splitting them produces a
+      # pull request that cannot pass `tsc -b` on its own.
+      react:
+        patterns: ['react', 'react-dom', '@types/react', '@types/react-dom', 'react-router-dom']
+      build-tooling:
+        patterns: ['vite', '@vitejs/*', 'typescript', 'oxlint', 'tailwindcss', '@tailwindcss/*']
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /apps/api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Both Dockerfiles pin base image tags, so this is the only thing that will
+  # ever notice that python:3.12-slim has moved on.
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/web
+    schedule:
+      interval: weekly
+      day: monday
