@@ -18,7 +18,7 @@ COPY . .
 RUN node node_modules/typescript/bin/tsc -b \
     && node node_modules/vite/bin/vite.js build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
