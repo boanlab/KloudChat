@@ -1,6 +1,6 @@
 # slim (not alpine) — argon2-cffi and asyncpg ship manylinux wheels for glibc;
 # musl would build them from source on every image rebuild.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
