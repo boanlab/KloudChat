@@ -3,7 +3,7 @@
 # The browser only ever talks to the kchat API. Neither the LiteLLM URL nor the
 # master key reaches this image — every model call is made server-side by the
 # API process.
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 
 # Dependency layer kept separate from source: a source-only rebuild skips the
