@@ -20,13 +20,13 @@ export function HomePage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('홈')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
       <PageBody>
         <div className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight">
             {t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')}
           </h1>
-          <p className="mt-1 text-sm text-muted">{t('무엇을 만들까요?')}</p>
+          <p className="mt-1 text-base text-muted">{t('무엇을 만들까요?')}</p>
         </div>
 
         <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -46,13 +46,13 @@ export function HomePage() {
                   >
                     <Icon size={16} />
                   </span>
-                  <span className="flex-1 text-sm font-medium">{t(meta.label)}</span>
+                  <span className="flex-1 text-base font-medium">{t(meta.label)}</span>
                   <ArrowRight
                     size={15}
                     className="text-faint transition-transform group-hover:translate-x-0.5"
                   />
                 </div>
-                <p className="mt-2.5 text-[13px] leading-relaxed text-muted">{t(meta.tagline)}</p>
+                <p className="mt-2.5 text-base leading-relaxed text-muted">{t(meta.tagline)}</p>
               </button>
             )
           })}
@@ -60,7 +60,7 @@ export function HomePage() {
 
         {running.length > 0 && (
           <section className="mb-8">
-            <h2 className="mb-2.5 text-sm font-semibold">{t('진행 중')}</h2>
+            <h2 className="mb-2.5 text-base font-semibold">{t('진행 중')}</h2>
             <div className="space-y-2">
               {running.map((j) => {
                 const session = sessions.find((s) => s.id === j.sessionId)
@@ -72,10 +72,10 @@ export function HomePage() {
                   >
                     <Loader2 size={15} className="shrink-0 animate-spin text-accent" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium">
+                      <p className="truncate text-base font-medium">
                         {session?.title ?? t('작업')}
                       </p>
-                      <p className="text-[11px] text-faint">{j.stage}</p>
+                      <p className="text-xs text-faint">{j.stage}</p>
                     </div>
                     <div className="w-24">
                       <div className="h-1.5 overflow-hidden rounded-full bg-elevated">
@@ -85,7 +85,7 @@ export function HomePage() {
                         />
                       </div>
                     </div>
-                    <span className="w-9 text-right text-[11px] tabular-nums text-faint">
+                    <span className="w-9 text-right text-xs tabular-nums text-faint">
                       {j.progress}%
                     </span>
                   </Card>
@@ -96,7 +96,7 @@ export function HomePage() {
         )}
 
         <section>
-          <h2 className="mb-2.5 text-sm font-semibold">{t('최근 작업')}</h2>
+          <h2 className="mb-2.5 text-base font-semibold">{t('최근 작업')}</h2>
           <div className="space-y-2">
             {recent.map((s) => {
               const meta = kindMeta[s.kind]
@@ -110,13 +110,13 @@ export function HomePage() {
                 >
                   <Icon size={15} className="shrink-0" style={{ color: meta.color }} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium">{s.title}</p>
-                    <p className="truncate text-[11px] text-muted">
+                    <p className="truncate text-base font-medium">{s.title}</p>
+                    <p className="truncate text-xs text-muted">
                       {s.messages.at(-1)?.content.slice(0, 80) ?? s.preview ?? t('아직 주고받은 메시지가 없습니다')}
                     </p>
                   </div>
                   {project && <Badge>{project.emoji}</Badge>}
-                  <span className="shrink-0 text-[11px] text-faint">
+                  <span className="shrink-0 text-xs text-faint">
                     {relativeTime(s.updatedAt)}
                   </span>
                 </Card>

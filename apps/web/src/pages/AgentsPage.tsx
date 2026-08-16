@@ -131,7 +131,7 @@ export function AgentsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('에이전트')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('에이전트')}</span>} />
       <PageBody>
         <PageHeader
           title={t('에이전트')}
@@ -172,10 +172,10 @@ export function AgentsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium">{t(a.name)}</p>
-                    <span className="font-mono text-[11px] text-faint">@{a.slug}</span>
+                    <p className="truncate text-base font-medium">{t(a.name)}</p>
+                    <span className="font-mono text-xs text-faint">@{a.slug}</span>
                   </div>
-                  <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{t(a.description)}</p>
+                  <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(a.description)}</p>
                 </div>
                 <Switch
                   checked={a.enabled}
@@ -213,7 +213,7 @@ export function AgentsPage() {
               </div>
 
               <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
-                <span className="flex items-center gap-2 text-[11px] text-faint">
+                <span className="flex items-center gap-2 text-xs text-faint">
                   {t('{n}회 실행').replace('{n}', String(a.runs))}
                   {a.visibility === 'org' && (
                     <span className="flex items-center gap-1">
@@ -337,7 +337,7 @@ export function AgentsPage() {
             {saveError && (
               <p
                 role="status"
-                className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+                className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
               >
                 {saveError}
               </p>
@@ -383,7 +383,7 @@ export function AgentsPage() {
                     key={o.id}
                     onClick={() => setDraft({ ...draft, visibility: o.id })}
                     className={cn(
-                      'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                      'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                       draft.visibility === o.id
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line text-muted hover:bg-elevated',
@@ -411,7 +411,7 @@ export function AgentsPage() {
                         })
                       }
                       className={cn(
-                        'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                        'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                         on
                           ? 'border-accent bg-accent-soft text-accent'
                           : 'border-line text-muted hover:bg-elevated',
@@ -422,10 +422,10 @@ export function AgentsPage() {
                   )
                 })}
                 {visibleSkills.length === 0 && (
-                  <p className="py-2 text-[13px] text-faint">{t('검색 결과가 없습니다')}</p>
+                  <p className="py-2 text-base text-faint">{t('검색 결과가 없습니다')}</p>
                 )}
                 {hiddenSkills > 0 && (
-                  <span className="self-center text-[12px] text-faint">
+                  <span className="self-center text-sm text-faint">
                     {t('외 {n}개 — 검색해서 찾으세요').replace('{n}', String(hiddenSkills))}
                   </span>
                 )}
@@ -451,7 +451,7 @@ export function AgentsPage() {
                 <select
                   value={draft.model}
                   onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm focus:border-accent focus:outline-none"
+                  className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -493,7 +493,7 @@ export function AgentsPage() {
                       key={o.id}
                       onClick={() => setDraft({ ...draft, visibility: o.id })}
                       className={cn(
-                        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                         draft.visibility === o.id
                           ? 'border-accent bg-accent-soft text-accent'
                           : 'border-line text-muted hover:bg-elevated',
@@ -513,7 +513,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, tools: null })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    'rounded-lg border px-2.5 py-1.5 text-base',
                     draft.tools === null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -525,7 +525,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, tools: draft.tools ?? [] })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    'rounded-lg border px-2.5 py-1.5 text-base',
                     draft.tools !== null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -561,7 +561,7 @@ export function AgentsPage() {
                           })
                         }
                         className={cn(
-                          'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                          'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                           on
                             ? 'border-accent bg-accent-soft text-accent'
                             : runtimeAvailable
@@ -570,7 +570,7 @@ export function AgentsPage() {
                         )}
                       >
                         {tool.label}
-                        <span className="ml-1 font-mono text-[10px] text-faint">
+                        <span className="ml-1 font-mono text-2xs text-faint">
                           {tool.name}
                         </span>
                       </button>
@@ -586,7 +586,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, skillIds: null })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    'rounded-lg border px-2.5 py-1.5 text-base',
                     draft.skillIds === null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -598,7 +598,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, skillIds: draft.skillIds ?? [] })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    'rounded-lg border px-2.5 py-1.5 text-base',
                     draft.skillIds !== null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -613,7 +613,7 @@ export function AgentsPage() {
                 value={skillQuery}
                 onChange={(e) => setSkillQuery(e.target.value)}
                 placeholder={t('스킬 검색 ({n}개)').replace('{n}', String(skills.length))}
-                className="mb-2 h-8 text-[13px]"
+                className="mb-2 h-8 text-base"
               />
               {draft.skillIds !== null && (
                 <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
@@ -632,7 +632,7 @@ export function AgentsPage() {
                           })
                         }
                         className={cn(
-                          'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                          'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                           on
                             ? 'border-accent bg-accent-soft text-accent'
                             : 'border-line text-muted hover:bg-elevated',

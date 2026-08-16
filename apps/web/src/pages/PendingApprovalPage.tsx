@@ -48,7 +48,7 @@ export function PendingApprovalPage() {
         <h1 className="text-xl font-semibold tracking-tight">
           {suspended ? t('계정이 정지되었습니다') : t('승인을 기다리는 중입니다')}
         </h1>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+        <p className="mt-2 text-base leading-relaxed text-muted">
           {suspended
             ? t('관리자가 이 계정의 접근을 중지했습니다. 사유가 궁금하다면 관리자에게 문의하세요.')
             : t('가입 요청이 접수되었습니다. 관리자가 승인하고 월 크레딧을 배정하면 바로 사용할 수 있습니다. 승인되면 등록하신 메일로 알려 드립니다.')}
@@ -61,7 +61,7 @@ export function PendingApprovalPage() {
             [t('요청일'), user && formatDate(user.createdAt)],
             [t('상태'), suspended ? t('정지') : t('승인 대기')],
           ].map(([k, v]) => (
-            <div key={k} className="flex gap-3 text-[13px]">
+            <div key={k} className="flex gap-3 text-base">
               <span className="w-16 shrink-0 text-faint">{k}</span>
               <span className="min-w-0 flex-1 break-words">{v}</span>
             </div>
@@ -84,7 +84,7 @@ export function PendingApprovalPage() {
         </div>
 
         {!suspended && (
-          <p className="mt-6 text-[11px] text-faint">
+          <p className="mt-6 text-xs text-faint">
             {t('이 화면은 15초마다 상태를 확인합니다. 승인되면 자동으로 넘어갑니다.')}
           </p>
         )}

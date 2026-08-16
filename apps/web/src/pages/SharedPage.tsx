@@ -41,10 +41,10 @@ export function SharedPage() {
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
         <Lock size={22} className="mx-auto mb-3 text-faint" />
-        <h1 className="text-[17px] font-semibold">
+        <h1 className="text-lg font-semibold">
           {error === 'signin' ? t('로그인이 필요한 링크입니다') : t('열 수 없는 링크입니다')}
         </h1>
-        <p className="mt-1.5 text-[13px] text-muted">
+        <p className="mt-1.5 text-base text-muted">
           {error === 'signin'
             ? t('워크스페이스 구성원에게만 공개된 자료입니다. 로그인한 뒤 다시 열어 주세요.')
             : /* 만료·철회·오타를 구분해 말하지 않는다. 모르는 사람에게 그 링크가
@@ -57,7 +57,7 @@ export function SharedPage() {
 
   if (!payload) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md items-center justify-center text-[13px] text-faint">
+      <div className="mx-auto flex min-h-dvh max-w-md items-center justify-center text-base text-faint">
         {t('불러오는 중…')}
       </div>
     )
@@ -91,7 +91,7 @@ export function SharedPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{payload.title}</h1>
       </header>
       <Markdown>{body}</Markdown>
-      <footer className="mt-10 border-t border-line pt-4 text-[11px] text-faint">
+      <footer className="mt-10 border-t border-line pt-4 text-xs text-faint">
         {t('공유된 자료입니다. 원본은 공유한 사람만 수정할 수 있습니다.')}
       </footer>
     </div>

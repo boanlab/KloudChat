@@ -60,7 +60,7 @@ export function AgentKnowledge({
   if (!agentId) {
     return (
       <Field label={t('자료')} hint={t('에이전트를 저장하면 자료를 붙일 수 있습니다')}>
-        <p className="text-[13px] text-faint">
+        <p className="text-base text-faint">
           {t('파일이나 URL 을 붙이면, 이 에이전트가 그 안에서 찾아 답합니다.')}
         </p>
       </Field>
@@ -128,7 +128,7 @@ export function AgentKnowledge({
             ref={fileInput}
             type="file"
             aria-label={t('자료 파일')}
-            className="block text-[13px] file:mr-3 file:rounded-lg file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-[13px]"
+            className="block text-base file:mr-3 file:rounded-lg file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-base"
             onChange={(e) => {
               const picked = e.target.files?.[0]
               if (picked) void addFile(picked)
@@ -149,7 +149,7 @@ export function AgentKnowledge({
             }}
             placeholder="https://…"
             aria-label={t('자료 URL')}
-            className="font-mono text-[12px]"
+            className="font-mono text-sm"
           />
           <Button disabled={busy !== null || !url.trim()} onClick={() => void addUrl()}>
             {busy === 'url' ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
@@ -157,16 +157,16 @@ export function AgentKnowledge({
           </Button>
         </div>
 
-        {error && <p className="text-[13px] text-danger">{error}</p>}
+        {error && <p className="text-base text-danger">{error}</p>}
 
         {rows.length === 0 ? (
-          <p className="text-[13px] text-faint">{t('아직 붙인 자료가 없습니다.')}</p>
+          <p className="text-base text-faint">{t('아직 붙인 자료가 없습니다.')}</p>
         ) : (
           <ul className="space-y-1">
             {rows.map((f) => (
               <li
                 key={f.id}
-                className="flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[13px]"
+                className="flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-base"
               >
                 {f.sourceUrl ? (
                   <Globe size={13} className="shrink-0 text-faint" />
@@ -178,7 +178,7 @@ export function AgentKnowledge({
                     here, because a document the agent cannot read is one it
                     will report as present and never be able to quote. */}
                 {f.error ? (
-                  <span className="flex items-center gap-1 text-[11px] text-warn">
+                  <span className="flex items-center gap-1 text-xs text-warn">
                     <TriangleAlert size={11} />
                     {t('읽지 못함')}
                   </span>
@@ -191,13 +191,13 @@ export function AgentKnowledge({
                     {f.indexed === false && (
                       <span
                         title={t('낱말 검색으로는 찾지만, 뜻으로 찾는 검색에는 아직 안 들어갔습니다')}
-                        className="flex shrink-0 items-center gap-1 text-[11px] text-faint"
+                        className="flex shrink-0 items-center gap-1 text-xs text-faint"
                       >
                         <CircleAlert size={11} />
                         {t('색인 안 됨')}
                       </span>
                     )}
-                    <span className="shrink-0 text-[11px] text-faint tabular-nums">
+                    <span className="shrink-0 text-xs text-faint tabular-nums">
                       {t('{n} 토큰').replace('{n}', f.tokens.toLocaleString())}
                     </span>
                   </>
@@ -216,7 +216,7 @@ export function AgentKnowledge({
         )}
         {rows.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <p className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-faint">
+            <p className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-faint">
               <Paperclip size={10} />
               {t('URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.')}
             </p>

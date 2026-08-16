@@ -80,7 +80,7 @@ export function ArtifactsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('아티팩트')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('아티팩트')}</span>} />
       <PageBody>
         <PageHeader
           title={t('아티팩트')}
@@ -150,7 +150,7 @@ export function ArtifactsPage() {
                     <div className="p-3.5">
                       <div className="flex items-center gap-2">
                         <Icon size={14} className="shrink-0 text-accent" />
-                        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{a.title}</p>
+                        <p className="min-w-0 flex-1 truncate text-base font-medium">{a.title}</p>
                         <Badge>v{a.version}</Badge>
                         {/* `deleteArtifact` has been in the store since the
                             screen was built; nothing ever called it, so the one
@@ -166,7 +166,7 @@ export function ArtifactsPage() {
                           <Trash2 size={14} />
                         </Button>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-faint">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-faint">
                         <Badge>{t(kindLabel[a.kind])}</Badge>
                         {project && (
                           <span>

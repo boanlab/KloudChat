@@ -87,7 +87,7 @@ function SourceList({ sources, style }: { sources: Source[]; style: string }) {
   const t = useT()
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-faint">
+      <p className="text-xs text-faint">
         {t('{style} 형식 · {n}건').replace('{style}', style).replace('{n}', String(sources.length))}
       </p>
       {sources.map((src) => {
@@ -95,20 +95,20 @@ function SourceList({ sources, style }: { sources: Source[]; style: string }) {
         return (
           <div key={src.id} className="rounded-xl border border-line bg-panel p-3">
             <div className="flex items-start gap-2">
-              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-md bg-accent-soft text-[10px] font-semibold text-accent">
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-md bg-accent-soft text-2xs font-semibold text-accent">
                 {src.ordinal}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium">{src.title}</p>
-                <p className="mt-0.5 text-[12px] text-muted">
+                <p className="text-base font-medium">{src.title}</p>
+                <p className="mt-0.5 text-sm text-muted">
                   {[src.author, src.publisher, src.year].filter(Boolean).join(' · ')}
                 </p>
                 {src.quote && (
-                  <p className="mt-1.5 border-l-2 border-line-strong pl-2 text-[12px] text-muted">
+                  <p className="mt-1.5 border-l-2 border-line-strong pl-2 text-sm text-muted">
                     {src.quote}
                   </p>
                 )}
-                <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-faint">
+                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-faint">
                   <Icon size={11} />
                   {src.originLabel}
                   {src.url && (
@@ -415,8 +415,8 @@ export function ReportPanel({
         )}
       >
         <div className="border-b border-line px-3 py-2.5">
-          <p className="text-[11px] font-semibold tracking-wide text-faint uppercase">{t('목차')}</p>
-          <p className="mt-1 text-[11px] text-muted">
+          <p className="text-xs font-semibold tracking-wide text-faint uppercase">{t('목차')}</p>
+          <p className="mt-1 text-xs text-muted">
             {t('{done}/{total} 섹션 · {words} 단어').replace('{done}', String(done)).replace('{total}', String(report.sections.length)).replace('{words}', formatTokens(report.wordCount))}
           </p>
           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-elevated">
@@ -433,7 +433,7 @@ export function ReportPanel({
               onClick={() => s.status !== 'pending' && scrollTo(s.id)}
               disabled={s.status === 'pending'}
               className={cn(
-                'flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors',
+                'flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
                 s.status === 'pending'
                   ? 'cursor-default text-faint'
                   : activeId === s.id
@@ -456,7 +456,7 @@ export function ReportPanel({
         {/* 덱과 같은 이유로 접힌다. 이쪽은 버튼이 하나 더 많다. */}
         <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
           <FileText size={15} className="shrink-0 text-accent" />
-          <p className="min-w-0 flex-1 truncate text-[13px] font-medium max-sm:basis-full">
+          <p className="min-w-0 flex-1 truncate text-base font-medium max-sm:basis-full">
             {report.title}
           </p>
           <Button
@@ -591,7 +591,7 @@ export function ReportPanel({
             <div className="@container flex h-full min-h-0 flex-col gap-2 px-4 py-4">
               <div className="grid min-h-0 flex-1 items-stretch gap-3 @lg:grid-cols-2">
                 <div className="flex min-h-0 flex-col gap-1">
-                  <p className="text-[11px] font-medium text-faint">
+                  <p className="text-xs font-medium text-faint">
                     원본 (Markdown) · <code>{t('# 제목')}</code>, <code>## 절 제목</code>,{' '}
                     <code>{t('### 소제목')}</code>
                   </p>
@@ -603,12 +603,12 @@ export function ReportPanel({
                       if (e.key === 'Escape') openEditor(false)
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void saveDocument()
                     }}
-                    className="min-h-0 w-full flex-1 resize-none rounded-xl border border-line bg-panel px-3 py-2 font-mono text-[13px] leading-relaxed outline-none focus:border-accent"
+                    className="min-h-0 w-full flex-1 resize-none rounded-xl border border-line bg-panel px-3 py-2 font-mono text-base leading-relaxed outline-none focus:border-accent"
                     autoFocus
                   />
                 </div>
                 <div className="flex min-h-0 flex-col gap-1">
-                  <p className="text-[11px] font-medium text-faint">{t('미리보기')}</p>
+                  <p className="text-xs font-medium text-faint">{t('미리보기')}</p>
                   <div
                     aria-label={t('문서 미리보기')}
                     className="min-h-[10rem] flex-1 overflow-auto rounded-xl border border-line bg-elevated px-4 py-3"
@@ -616,13 +616,13 @@ export function ReportPanel({
                     {draft.trim() ? (
                       <Markdown>{draft}</Markdown>
                     ) : (
-                      <p className="text-[13px] text-faint">{t('내용을 입력하면 여기에 결과가 보입니다.')}</p>
+                      <p className="text-base text-faint">{t('내용을 입력하면 여기에 결과가 보입니다.')}</p>
                     )}
                   </div>
                 </div>
               </div>
-              {saveError && <p className="text-[13px] text-danger">{saveError}</p>}
-              <p className="text-[11px] text-faint">
+              {saveError && <p className="text-base text-danger">{saveError}</p>}
+              <p className="text-xs text-faint">
                 {t('⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다')}
               </p>
             </div>
@@ -666,7 +666,7 @@ export function ReportPanel({
                         className="flex items-start gap-2 rounded-lg border border-accent/25 bg-accent-soft/60 px-2.5 py-1.5"
                       >
                         <Quote size={12} className="mt-0.5 shrink-0 text-accent" />
-                        <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-muted">
+                        <p className="min-w-0 flex-1 text-sm leading-relaxed text-muted">
                           {rewriteQuote.length > 220
                             ? `${rewriteQuote.slice(0, 220)}…`
                             : rewriteQuote}
@@ -705,11 +705,11 @@ export function ReportPanel({
                       <Button size="sm" onClick={() => setRewriting(null)} disabled={rewriteBusy}>
                         {t('취소')}
                       </Button>
-                      <span className="text-[11px] text-faint">
+                      <span className="text-xs text-faint">
                         {t('이전 내용은 버전 기록에 남습니다.')}
                       </span>
                     </div>
-                    {rewriteError && <p className="text-[12px] text-danger">{rewriteError}</p>}
+                    {rewriteError && <p className="text-sm text-danger">{rewriteError}</p>}
                   </div>
                 )}
                 {s.status === 'pending' ? (
@@ -744,9 +744,9 @@ export function ReportPanel({
         description={`${report.title} · ${t('현재')} v${report.version}`}
       >
         <div className="space-y-1.5">
-          {versions === null && <p className="text-[13px] text-faint">{t('불러오는 중…')}</p>}
+          {versions === null && <p className="text-base text-faint">{t('불러오는 중…')}</p>}
           {versions?.length === 0 && (
-            <p className="text-[13px] text-faint">{t('아직 저장된 이전 판이 없습니다.')}</p>
+            <p className="text-base text-faint">{t('아직 저장된 이전 판이 없습니다.')}</p>
           )}
           {/* Only superseded revisions come back — the current one is the
               document on screen, and offering to restore it would be a button
@@ -758,8 +758,8 @@ export function ReportPanel({
             >
               <Badge>v{v}</Badge>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px]">{summary || t('편집')}</p>
-                <p className="text-[11px] text-faint">{relativeTime(createdAt)}</p>
+                <p className="text-base">{summary || t('편집')}</p>
+                <p className="text-xs text-faint">{relativeTime(createdAt)}</p>
               </div>
               <Button
                 size="sm"

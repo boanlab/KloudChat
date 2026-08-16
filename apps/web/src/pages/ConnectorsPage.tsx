@@ -76,7 +76,7 @@ function ConnectorCard({
         </span>
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <span className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-medium">{t(connector.name)}</span>
+            <span className="text-base font-medium">{t(connector.name)}</span>
             {connector.official && (
               <Badge tone="accent">
                 <ShieldCheck size={10} />
@@ -85,7 +85,7 @@ function ConnectorCard({
             )}
             <Badge tone={status.tone}>{t(status.label)}</Badge>
           </span>
-          <span className="mt-1 block text-[13px] text-muted">{t(connector.description)}</span>
+          <span className="mt-1 block text-base text-muted">{t(connector.description)}</span>
         </button>
         {connector.installed && connector.status === 'connected' && (
           <Switch
@@ -97,7 +97,7 @@ function ConnectorCard({
       </div>
 
       {connector.error && (
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-[12px] text-danger">
+        <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {connector.error}
         </p>
@@ -118,7 +118,7 @@ function ConnectorCard({
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
-        <span className="text-[11px] text-faint">
+        <span className="text-xs text-faint">
           {connector.lastSyncAt
             ? t('{when} 동기화').replace('{when}', relativeTime(connector.lastSyncAt))
             : t('동기화 이력 없음')}
@@ -180,7 +180,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
         </span>
         <div className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-medium">{t(entry.name)}</span>
+            <span className="text-base font-medium">{t(entry.name)}</span>
             {entry.official && (
               <Badge tone="accent">
                 <ShieldCheck size={10} />
@@ -188,12 +188,12 @@ function CatalogCard({ entry, onNeedsCredentials }: {
               </Badge>
             )}
           </span>
-          <span className="mt-1 block text-[13px] text-muted">{t(entry.description)}</span>
+          <span className="mt-1 block text-base text-muted">{t(entry.description)}</span>
         </div>
       </div>
 
       {error && (
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-[12px] text-danger">
+        <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {error}
         </p>
@@ -319,7 +319,7 @@ function ReCredentialModal({
           />
         </Field>
       ))}
-      {error && <p className="text-[13px] text-danger">{error}</p>}
+      {error && <p className="text-base text-danger">{error}</p>}
     </Modal>
   )
 }
@@ -390,7 +390,7 @@ function CredentialsModal({
         </Field>
       ))}
       {error && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-[12px] text-danger">
+        <p className="flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {error}
         </p>
@@ -460,7 +460,7 @@ export function ConnectorsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('커넥터')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('커넥터')}</span>} />
       <PageBody>
         <PageHeader
           title={t('커넥터')}
@@ -496,7 +496,7 @@ export function ConnectorsPage() {
           ) : tab === 'installed' ? (
             Object.entries(installedByCategory).map(([category, items]) => (
               <section key={category}>
-                <h2 className="mb-2.5 text-[11px] font-semibold tracking-wide text-faint uppercase">
+                <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
                   {t(category)}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -522,7 +522,7 @@ export function ConnectorsPage() {
           ) : (
             Object.entries(catalogByCategory).map(([category, items]) => (
               <section key={category}>
-                <h2 className="mb-2.5 text-[11px] font-semibold tracking-wide text-faint uppercase">
+                <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
                   {t(category)}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -583,21 +583,21 @@ export function ConnectorsPage() {
                 ],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-lg border border-line bg-elevated px-3 py-2">
-                  <p className="text-[11px] text-faint">{k}</p>
-                  <p className="mt-0.5 truncate font-mono text-[12px]">{v}</p>
+                  <p className="text-xs text-faint">{k}</p>
+                  <p className="mt-0.5 truncate font-mono text-sm">{v}</p>
                 </div>
               ))}
             </div>
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-[13px] font-medium">{t('도구 권한')}</p>
-                <p className="text-[11px] text-faint">
+                <p className="text-base font-medium">{t('도구 권한')}</p>
+                <p className="text-xs text-faint">
                   {t('쓰기 도구는 실행 전에 확인을 요청합니다')}
                 </p>
               </div>
               {current.tools.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-[13px] text-faint">
+                <p className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-base text-faint">
                   {t('서버에 연결되면 도구 목록이 채워집니다')}
                 </p>
               ) : (
@@ -605,7 +605,7 @@ export function ConnectorsPage() {
                   {current.tools.map((tool) => (
                     <div key={tool.name} className="flex items-center gap-3 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 font-mono text-[12px]">
+                        <p className="flex items-center gap-1.5 font-mono text-sm">
                           {tool.name}
                           {!tool.readOnly && (
                             <Badge tone="warn">
@@ -614,7 +614,7 @@ export function ConnectorsPage() {
                             </Badge>
                           )}
                         </p>
-                        <p className="mt-0.5 text-[12px] text-muted">{t(tool.description)}</p>
+                        <p className="mt-0.5 text-sm text-muted">{t(tool.description)}</p>
                       </div>
                       <Switch
                         checked={tool.enabled}
@@ -627,7 +627,7 @@ export function ConnectorsPage() {
               )}
             </div>
 
-            <p className="flex items-start gap-2 rounded-lg border border-line bg-elevated px-3 py-2.5 text-[12px] text-muted">
+            <p className="flex items-start gap-2 rounded-lg border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
               <CircleAlert size={14} className="mt-0.5 shrink-0 text-faint" />
               {t('커넥터가 반환한 내용은 외부 입력입니다. 그 안의 지시문은 명령으로 실행되지 않습니다.')}
             </p>
@@ -672,7 +672,7 @@ export function ConnectorsPage() {
                 key={t}
                 onClick={() => setDraft({ ...draft, transport: t })}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 font-mono text-[13px] transition-colors',
+                  'rounded-lg border px-2.5 py-1.5 font-mono text-base transition-colors',
                   draft.transport === t
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',
@@ -712,7 +712,7 @@ export function ConnectorsPage() {
             value={draft.envText}
             onChange={(e) => setDraft({ ...draft, envText: e.target.value })}
             placeholder={'API_TOKEN=…\nBASE_URL=https://…'}
-            className="font-mono text-[12px]"
+            className="font-mono text-sm"
           />
         </Field>
         <Field label={t('인증')}>
@@ -722,7 +722,7 @@ export function ConnectorsPage() {
                 key={a}
                 onClick={() => setDraft({ ...draft, auth: a })}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                  'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                   draft.auth === a
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',

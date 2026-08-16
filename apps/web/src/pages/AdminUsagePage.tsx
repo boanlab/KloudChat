@@ -25,17 +25,17 @@ function Bars({
     <div className="space-y-2.5">
       {rows.map((r) => (
         <div key={r.label} className="flex items-center gap-3">
-          <span className="w-44 shrink-0 truncate text-[13px]">{r.label}</span>
+          <span className="w-44 shrink-0 truncate text-base">{r.label}</span>
           <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-elevated">
             <div
               className="h-full rounded-full"
               style={{ width: `${(r.value / max) * 100}%`, background: r.color ?? 'var(--accent)' }}
             />
           </div>
-          <span className="w-28 shrink-0 text-right text-[12px] tabular-nums text-muted">
+          <span className="w-28 shrink-0 text-right text-sm tabular-nums text-muted">
             {format(r.value)}
           </span>
-          {r.sub && <span className="w-24 shrink-0 text-right text-[11px] text-faint">{r.sub}</span>}
+          {r.sub && <span className="w-24 shrink-0 text-right text-xs text-faint">{r.sub}</span>}
         </div>
       ))}
     </div>
@@ -45,9 +45,9 @@ function Bars({
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card className="p-4">
-      <p className="text-[11px] tracking-wide text-faint uppercase">{label}</p>
+      <p className="text-xs tracking-wide text-faint uppercase">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="mt-0.5 text-[11px] text-faint">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-faint">{hint}</p>}
     </Card>
   )
 }
@@ -107,8 +107,8 @@ export function AdminUsagePage() {
                     onClick={() => setDays(r)}
                     className={
                       days === r
-                        ? 'min-w-11 rounded-md bg-elevated px-3 py-2 text-[12px] font-medium'
-                        : 'min-w-11 rounded-md px-3 py-2 text-[12px] text-muted hover:text-fg'
+                        ? 'min-w-11 rounded-md bg-elevated px-3 py-2 text-sm font-medium'
+                        : 'min-w-11 rounded-md px-3 py-2 text-sm text-muted hover:text-fg'
                     }
                   >
                     {t('{n}일').replace('{n}', String(r))}
@@ -124,11 +124,11 @@ export function AdminUsagePage() {
         />
 
         {!usage ? (
-          <Card className="p-10 text-center text-[13px] text-muted">{t('집계를 불러오는 중입니다…')}</Card>
+          <Card className="p-10 text-center text-base text-muted">{t('집계를 불러오는 중입니다…')}</Card>
         ) : usage.totals.requests === 0 ? (
           <Card className="p-10 text-center">
-            <p className="text-sm font-medium">{t('이 기간에 기록된 응답이 없습니다')}</p>
-            <p className="mt-1 text-[13px] text-muted">
+            <p className="text-base font-medium">{t('이 기간에 기록된 응답이 없습니다')}</p>
+            <p className="mt-1 text-base text-muted">
               {t('누군가 대화를 시작하면 여기에 모델별·화면별 사용량이 쌓입니다.')}
             </p>
           </Card>
@@ -152,7 +152,7 @@ export function AdminUsagePage() {
             </div>
 
             <Card className="mb-4 p-4">
-              <p className="mb-3 flex items-center gap-1.5 text-[13px] font-medium">
+              <p className="mb-3 flex items-center gap-1.5 text-base font-medium">
                 <TrendingUp size={15} />
                 {t('일별')} {byCredits ? t('크레딧') : t('응답 수')}
                 {!byCredits && (
@@ -164,7 +164,7 @@ export function AdminUsagePage() {
               <div className="flex h-40 items-end gap-1.5">
                 {daily.map((d) => (
                   <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                    <span className="text-[10px] tabular-nums text-faint">
+                    <span className="text-2xs tabular-nums text-faint">
                       {d.value > 0 ? d.value.toLocaleString() : ''}
                     </span>
                     <div
@@ -172,14 +172,14 @@ export function AdminUsagePage() {
                       style={{ height: `${(d.value / maxDaily) * 100}%` }}
                       title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
                     />
-                    <span className="truncate text-[10px] text-faint">{d.date.slice(5)}</span>
+                    <span className="truncate text-2xs text-faint">{d.date.slice(5)}</span>
                   </div>
                 ))}
               </div>
             </Card>
 
             <Card className="mb-4 p-4">
-              <p className="mb-3 text-[13px] font-medium">{t('모델별')}</p>
+              <p className="mb-3 text-base font-medium">{t('모델별')}</p>
               <Bars
                 rows={usage.byModel.map((m) => ({
                   label: m.model,
@@ -192,7 +192,7 @@ export function AdminUsagePage() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="p-4">
-                <p className="mb-3 text-[13px] font-medium">{t('화면별')}</p>
+                <p className="mb-3 text-base font-medium">{t('화면별')}</p>
                 <Bars
                   rows={usage.bySurface.map((s) => ({
                     label: t(kindMeta[s.kind as SessionKind]?.label ?? s.kind),
@@ -204,13 +204,13 @@ export function AdminUsagePage() {
                 />
               </Card>
               <Card className="p-4">
-                <p className="mb-3 text-[13px] font-medium">{t('사용량 상위')}</p>
+                <p className="mb-3 text-base font-medium">{t('사용량 상위')}</p>
                 <div className="space-y-2">
                   {usage.topUsers.map((u, i) => (
-                    <div key={u.id} className="flex items-center gap-3 text-[13px]">
+                    <div key={u.id} className="flex items-center gap-3 text-base">
                       <span className="w-4 text-faint tabular-nums">{i + 1}</span>
                       <span className="min-w-0 flex-1 truncate">{u.name}</span>
-                      <span className="text-[11px] text-faint">
+                      <span className="text-xs text-faint">
                         {u.allowance > 0
                           ? `${((u.credits / u.allowance) * 100).toFixed(1)}%`
                           : t('한도 없음')}

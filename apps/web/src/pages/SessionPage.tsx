@@ -41,7 +41,7 @@ function Intro({ kind }: { kind: SessionKind }) {
         </h1>
         {/* 챗은 인사하고 나머지는 설명한다. 인사를 `tagline` 에 두면 홈 카드와
             로그인 목록이 기능 나열 한가운데서 독자에게 인사하게 된다. */}
-        <p className="mt-1.5 text-sm text-muted">
+        <p className="mt-1.5 text-base text-muted">
           {kind === 'chat' ? t('무엇을 도와드릴까요?') : t(meta.tagline)}
         </p>
       </div>
@@ -50,7 +50,7 @@ function Intro({ kind }: { kind: SessionKind }) {
           <button
             key={prompt}
             onClick={() => start(prompt)}
-            className="animate-fade-up rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-[13px] text-muted transition-colors hover:border-line-strong hover:bg-elevated hover:text-fg"
+            className="animate-fade-up rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-base text-muted transition-colors hover:border-line-strong hover:bg-elevated hover:text-fg"
           >
             {t(prompt)}
           </button>
@@ -143,7 +143,7 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
         left={
           <div className="flex min-w-0 items-center gap-2">
             <Icon size={14} className="shrink-0" style={{ color: meta.color }} />
-            <span className="truncate text-[13px] font-medium">
+            <span className="truncate text-base font-medium">
               {session?.title ?? t('새 {kind}').replace('{kind}', t(meta.label))}
             </span>
             {project && (

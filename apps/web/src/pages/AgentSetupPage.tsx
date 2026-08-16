@@ -25,7 +25,7 @@ function Snippet({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="group relative">
-      <pre className="overflow-x-auto rounded-lg border border-line bg-elevated px-3 py-2.5 text-[12px] leading-relaxed">
+      <pre className="overflow-x-auto rounded-lg border border-line bg-elevated px-3 py-2.5 text-sm leading-relaxed">
         <code className="font-mono">{text}</code>
       </pre>
       <Button
@@ -69,18 +69,18 @@ export function AgentSetupPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('AI 에이전트 연동')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('AI 에이전트 연동')}</span>} />
       <PageBody>
         <h1 className="text-2xl font-semibold tracking-tight">{t('AI 에이전트 연동')}</h1>
-        <p className="mt-1 text-[13px] text-muted">
+        <p className="mt-1 text-base text-muted">
           {t('Claude Code, Codex 같은 코딩 에이전트를 이 인스턴스에 연결합니다. 발급받은 키로 인증하며, 사용량과 한도는 그 키를 따라갑니다.')}
         </p>
 
         <Card className="mt-6 flex flex-wrap items-center gap-3 p-4">
           <KeyRound size={18} className="text-muted" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{t('먼저 키를 발급하세요')}</p>
-            <p className="text-[13px] text-muted">
+            <p className="text-base font-medium">{t('먼저 키를 발급하세요')}</p>
+            <p className="text-base text-muted">
               {t('발급 직후 한 번만 보이고 다시 확인할 수 없습니다.')}
             </p>
           </div>
@@ -92,14 +92,14 @@ export function AgentSetupPage() {
         </Card>
 
         <section className="mt-6">
-          <h2 className="text-sm font-medium">{t('모델 선택')}</h2>
-          <p className="mt-1 mb-2 text-[13px] text-muted">
+          <h2 className="text-base font-medium">{t('모델 선택')}</h2>
+          <p className="mt-1 mb-2 text-base text-muted">
             {t('고른 모델의 이름이 아래 설정에 그대로 들어갑니다.')}
           </p>
           <Dropdown
             className="min-w-[360px]"
             trigger={() => (
-              <button className="flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-left text-[13px] transition-colors hover:bg-elevated">
+              <button className="flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-left text-base transition-colors hover:bg-elevated">
                 <span className="min-w-0 flex-1 truncate">
                   {model ? model.label : t('사용 가능한 모델 없음')}
                 </span>
@@ -112,25 +112,25 @@ export function AgentSetupPage() {
               <MenuItem key={m.id} onClick={() => setPicked(m.id)}>
                 <span className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="min-w-0 flex-1 truncate">{m.label}</span>
-                  <span className="shrink-0 text-[11px] text-faint">{priceLabel(m, t)}</span>
+                  <span className="shrink-0 text-xs text-faint">{priceLabel(m, t)}</span>
                 </span>
               </MenuItem>
             ))}
           </Dropdown>
-          <p className="mt-2 font-mono text-[12px] text-muted">{modelId}</p>
+          <p className="mt-2 font-mono text-sm text-muted">{modelId}</p>
         </section>
 
         <section className="mt-6">
-          <h2 className="text-sm font-medium">Claude Code</h2>
-          <p className="mt-1 mb-2 text-[13px] text-muted">{t('Anthropic 형식으로 주고받습니다.')}</p>
+          <h2 className="text-base font-medium">Claude Code</h2>
+          <p className="mt-1 mb-2 text-base text-muted">{t('Anthropic 형식으로 주고받습니다.')}</p>
           <Snippet
             text={`export ANTHROPIC_BASE_URL=${base}\nexport ANTHROPIC_AUTH_TOKEN=<${t('발급받은 키')}>\nexport ANTHROPIC_MODEL=${modelId}`}
           />
         </section>
 
         <section className="mt-5">
-          <h2 className="text-sm font-medium">{t('Codex · OpenAI 호환 도구')}</h2>
-          <p className="mt-1 mb-2 text-[13px] text-muted">
+          <h2 className="text-base font-medium">{t('Codex · OpenAI 호환 도구')}</h2>
+          <p className="mt-1 mb-2 text-base text-muted">
             {t('OpenAI 형식으로 주고받습니다. 주소 끝에 /v1 이 붙는 것에 주의하세요.')}
           </p>
           <Snippet
@@ -139,8 +139,8 @@ export function AgentSetupPage() {
         </section>
 
         <section className="mt-6">
-          <h2 className="text-sm font-medium">{t('알아 둘 것')}</h2>
-          <ul className="mt-2 space-y-1.5 text-[13px] text-muted">
+          <h2 className="text-base font-medium">{t('알아 둘 것')}</h2>
+          <ul className="mt-2 space-y-1.5 text-base text-muted">
             <li>
               {t('이 키로 쓴 양은 사용량 화면의 API 키 항목에 따로 집계됩니다.')}{' '}
               <Link to="/usage" className="underline">

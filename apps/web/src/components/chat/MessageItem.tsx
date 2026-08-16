@@ -98,14 +98,14 @@ export function MessageItem({
           {message.attachments?.map((a) => (
             <div
               key={a.name}
-              className="ml-auto flex w-fit items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[13px]"
+              className="ml-auto flex w-fit items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-base"
             >
               <Paperclip size={13} className="text-faint" />
               <span>{a.name}</span>
               <span className="text-faint">{a.size}</span>
             </div>
           ))}
-          <div className="rounded-2xl rounded-br-md bg-elevated px-4 py-2.5 text-[15px] leading-[1.7] whitespace-pre-wrap">
+          <div className="rounded-2xl rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap">
             {message.content}
           </div>
         </div>
@@ -185,7 +185,7 @@ export function MessageItem({
           // "thinking…" under it reads as still running.
           !message.steps?.length &&
           !message.error && (
-            <p className="animate-blink text-[15px] text-faint">{t('생각하는 중…')}</p>
+            <p className="animate-blink text-md text-faint">{t('생각하는 중…')}</p>
           )
         )}
         {streaming && message.content && (
@@ -198,7 +198,7 @@ export function MessageItem({
         {message.error && (
           <div
             role="status"
-            className="mt-3 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2.5 text-[13px] text-danger"
+            className="mt-3 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger"
           >
             <TriangleAlert size={14} className="mt-0.5 shrink-0" />
             <span>{message.error}</span>
@@ -219,8 +219,8 @@ export function MessageItem({
                     <Icon size={14} />
                   </span>
                   <span>
-                    <span className="block text-[13px] font-medium">{a.title}</span>
-                    <span className="block text-[11px] text-faint">
+                    <span className="block text-base font-medium">{a.title}</span>
+                    <span className="block text-xs text-faint">
                       {artifactLabel[a.kind]} · v{a.version}
                     </span>
                   </span>
@@ -257,7 +257,7 @@ export function MessageItem({
                 behind a hover: on a shared proxy with a monthly allowance, "what
                 did that just cost me" is not a detail you go looking for. */}
             {message.usage && user?.preferences.showUsage !== false && (
-              <span className="ml-1 text-[11px]">
+              <span className="ml-1 text-xs">
                 {model?.label ?? message.model} · {formatTokens(message.usage.inputTokens)} in ·{' '}
                 {formatTokens(message.usage.outputTokens)} out ·{' '}
                 {message.usage.credits > 0 ? (

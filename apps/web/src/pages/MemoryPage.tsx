@@ -72,7 +72,7 @@ export function MemoryPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('메모리')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('메모리')}</span>} />
       <PageBody>
         <PageHeader
           title={t('메모리')}
@@ -126,7 +126,7 @@ export function MemoryPage() {
                         title={t('이 기억을 엽니다')}
                         /* 이름 자체가 여는 버튼이다. 글자 높이(18px)가 곧
                            누르는 높이여서, 손가락으로는 옆의 배지를 눌렀다. */
-                        className="-my-2 py-2 font-mono text-[12px] text-accent hover:underline"
+                        className="-my-2 py-2 font-mono text-sm text-accent hover:underline"
                       >
                         {m.name}
                       </button>
@@ -139,12 +139,12 @@ export function MemoryPage() {
                         </Badge>
                       )}
                     </div>
-                    <p className="mt-1.5 text-[13px]">{m.description}</p>
-                    <p className="mt-1.5 line-clamp-2 text-[12px] whitespace-pre-line text-muted">
+                    <p className="mt-1.5 text-base">{m.description}</p>
+                    <p className="mt-1.5 line-clamp-2 text-sm whitespace-pre-line text-muted">
                       {m.body}
                     </p>
                     {m.links.length > 0 && (
-                      <p className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-faint">
+                      <p className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-faint">
                         {m.links.map((l) => (
                           <span key={l} className="font-mono">
                             [[{l}]]
@@ -152,7 +152,7 @@ export function MemoryPage() {
                         ))}
                       </p>
                     )}
-                    <p className="mt-2 text-[11px] text-faint">{t('{when} 수정').replace('{when}', relativeTime(m.updatedAt))}</p>
+                    <p className="mt-2 text-xs text-faint">{t('{when} 수정').replace('{when}', relativeTime(m.updatedAt))}</p>
                   </div>
                   <div className="flex shrink-0 gap-0.5">
                     <Button
@@ -230,7 +230,7 @@ export function MemoryPage() {
         {draft && (
           <>
             {saveError && (
-              <p role="status" className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger">
+              <p role="status" className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
                 {saveError}
               </p>
             )}
@@ -250,7 +250,7 @@ export function MemoryPage() {
                     key={t}
                     onClick={() => setDraft({ ...draft, type: t })}
                     className={cn(
-                      'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                      'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                       draft.type === t
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line hover:bg-elevated',
@@ -271,7 +271,7 @@ export function MemoryPage() {
               <select
                 value={draft.scope}
                 onChange={(e) => setDraft({ ...draft, scope: e.target.value })}
-                className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm focus:border-accent focus:outline-none"
+                className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
               >
                 <option value="global">{t('전역')}</option>
                 {projects.map((p) => (

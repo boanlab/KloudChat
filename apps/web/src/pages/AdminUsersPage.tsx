@@ -62,7 +62,7 @@ function CreditBar({ user }: { user: User }) {
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
-      <span className="mt-1 block text-[11px] tabular-nums text-faint">
+      <span className="mt-1 block text-xs tabular-nums text-faint">
         {user.creditsUsed.toLocaleString()} / {user.monthlyCredits.toLocaleString()}
       </span>
     </div>
@@ -151,7 +151,7 @@ export function AdminUsersPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('사용자 · 크레딧')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('사용자 · 크레딧')}</span>} />
       <PageBody>
         <PageHeader
           title={t('사용자 · 크레딧')}
@@ -161,7 +161,7 @@ export function AdminUsersPage() {
         {error && (
           <p
             role="alert"
-            className="mb-4 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+            className="mb-4 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
           >
             {error}
           </p>
@@ -178,7 +178,7 @@ export function AdminUsersPage() {
             { label: t('다음 리필'), value: resetDate ? formatDate(resetDate) : '—' },
           ].map((s) => (
             <Card key={s.label} className="px-4 py-3">
-              <p className="text-[11px] tracking-wide text-faint uppercase">{s.label}</p>
+              <p className="text-xs tracking-wide text-faint uppercase">{s.label}</p>
               <p className="mt-1 text-xl font-semibold tabular-nums">{s.value}</p>
             </Card>
           ))}
@@ -202,14 +202,14 @@ export function AdminUsersPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('이름 또는 이메일')}
               aria-label={t('사용자 검색')}
-              className="h-8 w-56 pl-8 text-[13px]"
+              className="h-8 w-56 pl-8 text-base"
             />
           </div>
         </div>
 
         <Card className="overflow-hidden">
-          <table className="w-full text-[13px]">
-            <thead className="bg-elevated text-[11px] tracking-wide text-faint uppercase">
+          <table className="w-full text-base">
+            <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
               <tr>
                 <th className="px-4 py-2.5 text-left font-semibold">{t('사용자')}</th>
                 <th className="px-4 py-2.5 text-left font-semibold">{t('상태')}</th>
@@ -221,7 +221,7 @@ export function AdminUsersPage() {
             <tbody>
               {visible.length === 0 && (
                 <tr className="border-t border-line">
-                  <td colSpan={5} className="px-4 py-10 text-center text-[13px] text-faint">
+                  <td colSpan={5} className="px-4 py-10 text-center text-base text-faint">
                     {usersLoading ? (
                       <Loader2 size={16} className="mx-auto animate-spin" />
                     ) : users.length === 0 ? (
@@ -237,7 +237,7 @@ export function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <span
-                        className="grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white"
+                        className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
                         style={{ background: u.avatarColor }}
                       >
                         {u.name[0]}
@@ -252,11 +252,11 @@ export function AdminUsersPage() {
                             </Badge>
                           )}
                         </p>
-                        <p className="truncate text-[11px] text-faint">{u.email}</p>
+                        <p className="truncate text-xs text-faint">{u.email}</p>
                         {/* Whether the proxy can tell this person's calls apart
                             from everyone else's. No key means their turns fall
                             back to the shared master key and land unattributed. */}
-                        <p className="mt-0.5 flex items-center gap-1 text-[10px] text-faint">
+                        <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
                           <KeyRound size={9} />
                           {u.litellmKeyPreview ? (
                             <span className="font-mono">{u.litellmKeyPreview}</span>
@@ -273,7 +273,7 @@ export function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <CreditBar user={u} />
                   </td>
-                  <td className="px-4 py-3 text-[11px] text-muted">
+                  <td className="px-4 py-3 text-xs text-muted">
                     {relativeTime(u.lastActiveAt)}
                   </td>
                   <td className="px-4 py-3">
@@ -407,7 +407,7 @@ export function AdminUsersPage() {
                     void setUserModels(restricting.id, next)
                   }}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                    'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                     on
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted hover:bg-elevated',
@@ -446,7 +446,7 @@ export function AdminUsersPage() {
           </>
         }
       >
-        <p className="text-[13px] text-muted">
+        <p className="text-base text-muted">
           {t('잠시 막아 두려는 것이라면 정지를 쓰세요. 정지는 되돌릴 수 있고, 기록도 남습니다.')}
         </p>
       </Modal>
@@ -485,14 +485,14 @@ export function AdminUsersPage() {
                 key={p.label}
                 onClick={() => setDraftCredits(String(p.credits))}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                  'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
                   Number(draftCredits) === p.credits
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',
                 )}
               >
                 {t(p.label)}
-                <span className="ml-1.5 text-[11px] text-faint">
+                <span className="ml-1.5 text-xs text-faint">
                   ${(p.credits / economics.perUsd).toFixed(0)}
                 </span>
               </button>
@@ -507,7 +507,7 @@ export function AdminUsersPage() {
           />
         </Field>
         {editing && (
-          <div className="space-y-1.5 rounded-lg border border-line bg-elevated px-3 py-2.5 text-[13px] text-muted">
+          <div className="space-y-1.5 rounded-lg border border-line bg-elevated px-3 py-2.5 text-base text-muted">
             <p>
               {t('현재 주기 사용량 {n} 크레딧').replace('{n}', editing.creditsUsed.toLocaleString())} ·{' '}
               {t('{date} 리필').replace('{date}', formatDate(editing.cycleResetsAt))}
@@ -515,7 +515,7 @@ export function AdminUsersPage() {
             {/* The limit people hit is this one — KloudChat checks it before every
                 turn. The proxy gets a copy so a bug here cannot spend without
                 bound, and it sits above the real limit so it never fires first. */}
-            <p className="text-[11px] text-faint">
+            <p className="text-xs text-faint">
               {t('LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
                 .replace('{limit}', proxyBudget(Number(draftCredits) || 0))
                 .replace('{pct}', String(Math.round(economics.budgetHeadroom * 100)))}

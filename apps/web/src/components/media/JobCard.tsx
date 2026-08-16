@@ -65,8 +65,8 @@ export function JobCard({ job }: { job: Job }) {
       <div className="animate-fade-up rounded-2xl border border-line bg-panel p-4">
         <div className="flex items-center gap-2.5">
           <Loader2 size={15} className="shrink-0 animate-spin text-accent" />
-          <span className="flex-1 text-[13px] font-medium">{t(job.stage)}</span>
-          <span className="text-[11px] tabular-nums text-faint">{job.progress}%</span>
+          <span className="flex-1 text-base font-medium">{t(job.stage)}</span>
+          <span className="text-xs tabular-nums text-faint">{job.progress}%</span>
           <Button variant="ghost" size="icon" aria-label={t('취소')} onClick={() => cancelJob(job.id)}>
             <X size={14} />
           </Button>
@@ -77,7 +77,7 @@ export function JobCard({ job }: { job: Job }) {
             style={{ width: `${job.progress}%` }}
           />
         </div>
-        <p className="mt-2 text-[11px] text-faint">
+        <p className="mt-2 text-xs text-faint">
           {t('예상 {n} 크레딧 · 완료 시에만 차감됩니다').replace('{n}', job.creditsEstimated.toLocaleString())}
         </p>
       </div>
@@ -99,11 +99,11 @@ export function JobCard({ job }: { job: Job }) {
             className={cn('mt-0.5 shrink-0', failed ? 'text-danger' : 'text-faint')}
           />
           <div className="min-w-0 flex-1">
-            <p className={cn('text-[13px] font-medium', failed && 'text-danger')}>
+            <p className={cn('text-base font-medium', failed && 'text-danger')}>
               {failed ? t('생성 실패') : t('취소됨')}
             </p>
-            {job.error && <p className="mt-0.5 text-[13px] text-muted">{t(job.error)}</p>}
-            <p className="mt-1.5 text-[11px] text-faint">
+            {job.error && <p className="mt-0.5 text-base text-muted">{t(job.error)}</p>}
+            <p className="mt-1.5 text-xs text-faint">
               {t('크레딧이 차감되지 않았습니다')} · {relativeTime(job.createdAt)}
             </p>
           </div>
@@ -135,7 +135,7 @@ export function JobCard({ job }: { job: Job }) {
               <track kind="captions" />
             </audio>
             {a.waveform.length > 0 && <Waveform peaks={a.waveform} />}
-            <p className="mt-1 truncate text-[11px] text-faint">
+            <p className="mt-1 truncate text-xs text-faint">
               {t(audioKindLabel[a.audioKind])} · {t('{n}초').replace('{n}', String(a.durationSec))} ·{' '}
                 {model?.label ?? a.model}
             </p>
@@ -167,8 +167,8 @@ export function JobCard({ job }: { job: Job }) {
           />
           <div className="flex items-center gap-2 px-3.5 py-2.5">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium">{v.title}</p>
-              <p className="text-[11px] text-faint">
+              <p className="truncate text-base font-medium">{v.title}</p>
+              <p className="text-xs text-faint">
                 {t('{n}초').replace('{n}', String(v.durationSec))} · {v.aspect} · {model?.label ?? v.model}
               </p>
             </div>
@@ -211,7 +211,7 @@ export function JobCard({ job }: { job: Job }) {
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-faint">
+          <p className="text-xs text-faint">
             {t('{n}장').replace('{n}', String(images.length))} ·{' '}
             {t('{n} 크레딧 차감됨').replace('{n}', job.creditsUsed.toLocaleString())}
           </p>

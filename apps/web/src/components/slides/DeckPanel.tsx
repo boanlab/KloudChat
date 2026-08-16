@@ -38,7 +38,7 @@ function FactCheckResults({ check }: { check: FactCheck }) {
   const t = useT()
   if (check.claims.length === 0) {
     return (
-      <p className="mt-3 rounded-xl border border-line bg-panel p-3 text-[12px] text-muted">
+      <p className="mt-3 rounded-xl border border-line bg-panel p-3 text-sm text-muted">
         {t('검색으로 확인할 수 있는 주장이 이 장에는 없습니다. 의견과 정의는 판정하지 않습니다.')}
       </p>
     )
@@ -48,7 +48,7 @@ function FactCheckResults({ check }: { check: FactCheck }) {
     <div className="mt-3 rounded-xl border border-line bg-panel p-3">
       <div className="mb-2 flex items-center gap-2">
         <ShieldQuestion size={13} className="shrink-0 text-accent" />
-        <span className="text-[11px] font-semibold tracking-wide text-faint uppercase">{t('팩트체크')}</span>
+        <span className="text-xs font-semibold tracking-wide text-faint uppercase">{t('팩트체크')}</span>
         <Badge tone={weak > 0 ? 'warn' : 'success'}>
           {weak > 0 ? t('확인 필요 {n}').replace('{n}', String(weak)) : t('전부 근거 있음')}
         </Badge>
@@ -58,7 +58,7 @@ function FactCheckResults({ check }: { check: FactCheck }) {
           const meta = verdictMeta[c.verdict]
           const Icon = meta.icon
           return (
-            <div key={c.id} className="flex items-start gap-2 text-[12px]">
+            <div key={c.id} className="flex items-start gap-2 text-sm">
               <Icon size={13} className={cn('mt-0.5 shrink-0', meta.color)} />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{c.text}</p>
@@ -68,7 +68,7 @@ function FactCheckResults({ check }: { check: FactCheck }) {
                     href={c.sourceUrl}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
+                    className="mt-1 inline-flex items-center gap-1 text-xs text-accent hover:underline"
                   >
                     <ExternalLink size={10} />
                     {t('근거 열기')}
@@ -210,13 +210,13 @@ function PresentMode({
     <div role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2 text-white/70">
         <Presentation size={14} />
-        <span className="text-[13px]">{deck.title}</span>
-        <span className="ml-auto text-[13px] tabular-nums">
+        <span className="text-base">{deck.title}</span>
+        <span className="ml-auto text-base tabular-nums">
           {index + 1} / {deck.slides.length}
         </span>
         <button
           onClick={() => setShowNotes((s) => !s)}
-          className="rounded-lg px-2 py-1 text-[12px] transition-colors hover:bg-white/10"
+          className="rounded-lg px-2 py-1 text-sm transition-colors hover:bg-white/10"
         >
           {t('노트')} (N)
         </button>
@@ -234,7 +234,7 @@ function PresentMode({
         </div>
       </div>
       {showNotes && (
-        <div className="max-h-40 overflow-y-auto border-t border-white/10 px-6 py-3 text-[14px] leading-relaxed text-white/75">
+        <div className="max-h-40 overflow-y-auto border-t border-white/10 px-6 py-3 text-base leading-relaxed text-white/75">
           {slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
         </div>
       )}
@@ -247,7 +247,7 @@ function PresentMode({
         >
           <ChevronLeft size={18} />
         </button>
-        <span className="text-[12px]">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
+        <span className="text-sm">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
         <button
           onClick={() => onIndex(Math.min(index + 1, deck.slides.length - 1))}
           disabled={index >= deck.slides.length - 1}
@@ -441,7 +441,7 @@ export function DeckPanel({
           버튼은 줄어들지 않는 것이 옳은 순서다. */}
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
         <Presentation size={15} className="shrink-0 text-accent" />
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium max-sm:basis-full">
+        <p className="min-w-0 flex-1 truncate text-base font-medium max-sm:basis-full">
           {deck.title}
         </p>
         {/* 장수와 테마는 참고 정보다. 좁으면 먼저 접는다. */}
@@ -538,7 +538,7 @@ export function DeckPanel({
                 <v.icon size={13} />
               </button>
             ))}
-            <span className="ml-auto pr-1 text-[11px] text-faint tabular-nums">
+            <span className="ml-auto pr-1 text-xs text-faint tabular-nums">
               {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
             </span>
           </div>
@@ -557,7 +557,7 @@ export function DeckPanel({
                   )}
                 >
                   <SlideView slide={s} scale={0.3} />
-                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/55 px-1 text-[9px] font-medium text-white tabular-nums">
+                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/55 px-1 text-2xs font-medium text-white tabular-nums">
                     {i + 1}
                   </span>
                   {weak && (
@@ -572,7 +572,7 @@ export function DeckPanel({
                   onClick={() => go(i)}
                   aria-current={i === index}
                   className={cn(
-                    'flex w-full items-start gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] leading-snug transition-colors',
+                    'flex w-full items-start gap-1.5 rounded-md px-1.5 py-1 text-left text-xs leading-snug transition-colors',
                     i === index ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
                   )}
                 >
@@ -604,7 +604,7 @@ export function DeckPanel({
                 {slide ? (
                   <SlideView slide={slide} scale={stage.scale} />
                 ) : (
-                  <div className="grid size-full place-items-center bg-white text-[13px] text-[#999]">
+                  <div className="grid size-full place-items-center bg-white text-base text-[#999]">
                     {t('구성을 잡는 중…')}
                   </div>
                 )}
@@ -623,7 +623,7 @@ export function DeckPanel({
               <div className="mx-auto mt-3 max-w-lg">
                 <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
-                  <span className="flex-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
+                  <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
                     {t('발표 노트')}
                   </span>
                   {!editing && (
@@ -666,7 +666,7 @@ export function DeckPanel({
                       onChange={(e) => setDraft(e.target.value)}
                       aria-label={t('슬라이드 텍스트')}
                     />
-                    <p className="text-[11px] text-faint">{t('첫 줄이 제목, 나머지 줄이 각각 한 항목')}</p>
+                    <p className="text-xs text-faint">{t('첫 줄이 제목, 나머지 줄이 각각 한 항목')}</p>
                     <Textarea
                       rows={3}
                       value={notes}
@@ -674,17 +674,17 @@ export function DeckPanel({
                       placeholder={t('발표 노트')}
                       aria-label={t('발표 노트')}
                     />
-                    {error && <p className="text-[12px] text-danger">{error}</p>}
+                    {error && <p className="text-sm text-danger">{error}</p>}
                   </div>
                 ) : (
                   <>
-                    <p className="mt-1.5 text-[13px] text-muted">
+                    <p className="mt-1.5 text-base text-muted">
                       {slide.notes || <span className="text-faint">{t('노트 없음')}</span>}
                     </p>
                     {slide.factCheck?.status === 'done' && (
                       <FactCheckResults check={slide.factCheck} />
                     )}
-                    {error && !editing && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+                    {error && !editing && <p className="mt-2 text-sm text-danger">{error}</p>}
                   </>
                 )}
               </div>

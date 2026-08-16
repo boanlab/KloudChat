@@ -32,7 +32,7 @@ export function ShowMore({ hidden, onMore }: { hidden: number; onMore: () => voi
   return (
     <button
       onClick={onMore}
-      className="mt-2 w-full rounded-lg border border-line py-2 text-[13px] text-muted transition-colors hover:bg-elevated hover:text-fg"
+      className="mt-2 w-full rounded-lg border border-line py-2 text-base text-muted transition-colors hover:bg-elevated hover:text-fg"
     >
       {translate(currentLang(), '{n}개 더 보기').replace('{n}', hidden.toLocaleString())}
     </button>

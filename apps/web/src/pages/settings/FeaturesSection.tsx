@@ -61,8 +61,8 @@ export function FeaturesSection({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2.5">
-        <span className="text-[13px] font-medium">{t(kindMeta.chat.label)}</span>
-        <span className="text-[12px] text-muted">{t('항상 켜져 있습니다.')}</span>
+        <span className="text-base font-medium">{t(kindMeta.chat.label)}</span>
+        <span className="text-sm text-muted">{t('항상 켜져 있습니다.')}</span>
       </div>
 
       {OPTIONAL.map((kind) => {
@@ -79,9 +79,9 @@ export function FeaturesSection({
               className="size-4 accent-[var(--accent)]"
             />
             <span className="min-w-0 flex-1">
-              <span className="text-[13px] font-medium">{t(kindMeta[kind].label)}</span>
+              <span className="text-base font-medium">{t(kindMeta[kind].label)}</span>
               {NOTE[kind] && (
-                <span className="ml-2 text-[12px] text-muted">{t(NOTE[kind])}</span>
+                <span className="ml-2 text-sm text-muted">{t(NOTE[kind])}</span>
               )}
             </span>
           </label>
@@ -96,7 +96,7 @@ export function FeaturesSection({
         >
           {t('저장')}
         </Button>
-        <span className="text-[12px] text-muted">
+        <span className="text-sm text-muted">
           {t('끈 화면은 목록에서 사라지고 새 작업도 만들 수 없습니다. 기존 기록은 남습니다.')}
         </span>
       </div>

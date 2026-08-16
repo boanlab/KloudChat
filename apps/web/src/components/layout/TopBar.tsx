@@ -31,7 +31,7 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           title={t('언어 전환')}
         >
           <Languages size={16} />
-          <span className="text-[12px] font-medium">{lang === 'ko' ? 'EN' : '한'}</span>
+          <span className="text-sm font-medium">{lang === 'ko' ? 'EN' : '한'}</span>
         </Button>
         <Button
           variant="ghost"

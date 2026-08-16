@@ -89,14 +89,14 @@ export function SystemTab() {
           className={!current ? 'text-muted' : connected ? 'text-success' : 'text-danger'}
         />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">
+          <p className="text-base font-medium">
             {!current
               ? t('LiteLLM 연결 상태를 확인하는 중입니다')
               : connected
                 ? t('LiteLLM 에 연결되어 있습니다')
                 : t('LiteLLM 에 연결되지 않았습니다')}
           </p>
-          <p className="text-[13px] text-muted">
+          <p className="text-base text-muted">
             {current ? current.litellm.baseUrl || t('주소가 설정되지 않았습니다') : ' '}
           </p>
         </div>
@@ -126,7 +126,7 @@ export function SystemTab() {
 
       {probe && (
         <p
-          className={`flex items-start gap-1.5 rounded-lg border px-3 py-2 text-[13px] ${
+          className={`flex items-start gap-1.5 rounded-lg border px-3 py-2 text-base ${
             probe.ok
               ? 'border-success/25 bg-success/5 text-success'
               : 'border-danger/25 bg-danger/5 text-danger'
@@ -153,7 +153,7 @@ export function SystemTab() {
               dirty.current = true
             }}
             placeholder="http://litellm:4000"
-            className="font-mono text-[13px]"
+            className="font-mono text-base"
           />
           {current && (
             <Badge>
@@ -169,16 +169,16 @@ export function SystemTab() {
 
       {(current?.unpricedModels?.length ?? 0) > 0 && (
         <Card className="border-warn/30 bg-warn/5 p-4">
-          <p className="flex items-center gap-1.5 text-[13px] font-medium text-warn">
+          <p className="flex items-center gap-1.5 text-base font-medium text-warn">
             <TriangleAlert size={14} />
             {t('가격을 알 수 없어 숨긴 모델 {n}개').replace('{n}', String(current!.unpricedModels.length))}
           </p>
-          <p className="mt-1 text-[13px] text-muted">
+          <p className="mt-1 text-base text-muted">
             {t('프록시가 서빙하지만 단가를 보고하지 않습니다. 추정치로 과금하지 않기 위해 목록에서 빼두었습니다. 쓰려면 제공자의 가격표를 확인해 MODEL_OVERRIDES 에 실제 단가를 넣으세요.')}
           </p>
           <ul className="mt-2 space-y-0.5">
             {current!.unpricedModels.map((m) => (
-              <li key={m.id} className="font-mono text-[12px] text-faint">
+              <li key={m.id} className="font-mono text-sm text-faint">
                 {m.id} <span className="text-muted">({m.provider})</span>
               </li>
             ))}
@@ -204,7 +204,7 @@ export function SystemTab() {
                 : t('설정되지 않음')
             }
             autoComplete="off"
-            className="font-mono text-[13px]"
+            className="font-mono text-base"
           />
           {current && (
             <Badge tone={current.litellm.masterKeySet ? 'success' : 'danger'}>
@@ -219,7 +219,7 @@ export function SystemTab() {
       </Field>
 
       {error && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-[13px] text-danger">
+        <p className="flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {error}
         </p>
@@ -271,14 +271,14 @@ export function SystemTab() {
         </Button>
       </div>
 
-      <p className="text-[11px] text-faint">
+      <p className="text-xs text-faint">
         {t('키는 암호화해 서버에만 보관하며, 저장한 뒤에는 화면에 표시하지 않습니다. 저장하면 곧바로 적용됩니다.')}
       </p>
 
       {/* ── 사용할 기능 ─────────────────────────────────────────── */}
       <div className="border-t border-line pt-5">
-        <h2 className="mb-1 text-sm font-medium">{t('사용할 기능')}</h2>
-        <p className="mb-4 text-[13px] text-muted">
+        <h2 className="mb-1 text-base font-medium">{t('사용할 기능')}</h2>
+        <p className="mb-4 text-base text-muted">
           {t('사용자에게 어떤 화면을 열어 둘지 정합니다.')}
         </p>
         <FeaturesSection settings={current} onSaved={() => load({ resetForm: true })} />
@@ -286,8 +286,8 @@ export function SystemTab() {
 
       {/* ── 공용 템플릿 ─────────────────────────────────────────── */}
       <div className="border-t border-line pt-5">
-        <h2 className="mb-1 text-sm font-medium">{t('공용 템플릿')}</h2>
-        <p className="mb-4 text-[13px] text-muted">
+        <h2 className="mb-1 text-base font-medium">{t('공용 템플릿')}</h2>
+        <p className="mb-4 text-base text-muted">
           {t('기관 양식처럼 모두가 같은 형식으로 시작해야 하는 것을 한 번만 등록합니다.')}
         </p>
         <TemplatesSection />
@@ -295,8 +295,8 @@ export function SystemTab() {
 
       {/* ── 브랜딩 ─────────────────────────────────────────────── */}
       <div className="border-t border-line pt-5">
-        <h2 className="mb-1 text-sm font-medium">{t('브랜딩')}</h2>
-        <p className="mb-4 text-[13px] text-muted">
+        <h2 className="mb-1 text-base font-medium">{t('브랜딩')}</h2>
+        <p className="mb-4 text-base text-muted">
           {t('사이드바와 로그인 화면에 보이는 이름과 로고입니다.')}
         </p>
         <BrandingSection settings={current} onSaved={() => load({ resetForm: true })} />
@@ -304,8 +304,8 @@ export function SystemTab() {
 
       {/* ── 기능 연동 ───────────────────────────────────────────── */}
       <div className="border-t border-line pt-5">
-        <h2 className="mb-1 text-sm font-medium">{t('기능 연동')}</h2>
-        <p className="mb-4 text-[13px] text-muted">
+        <h2 className="mb-1 text-base font-medium">{t('기능 연동')}</h2>
+        <p className="mb-4 text-base text-muted">
           {t('웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사를 연결합니다.')}
         </p>
         <ToolsSection settings={current} onSaved={() => load({ resetForm: true })} />
@@ -316,11 +316,11 @@ export function SystemTab() {
         <div className="flex flex-wrap items-center gap-3">
           <Mail size={18} className={current?.smtp.passwordResetEnabled ? 'text-success' : 'text-muted'} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{t('메일 발송')}</p>
+            <p className="text-base font-medium">{t('메일 발송')}</p>
             {/* The consequence, not the configuration. An operator filling this
                 in is doing it for one reason, and the screen should say whether
                 that reason is satisfied yet. */}
-            <p className="text-[13px] text-muted">
+            <p className="text-base text-muted">
               {current?.smtp.passwordResetEnabled
                 ? t('비밀번호 재설정이 켜져 있습니다. 로그인 화면에 재설정 링크가 보입니다.')
                 : t('설정되지 않아 비밀번호 재설정이 꺼져 있습니다. 로그인 화면은 관리자에게 문의하라고 안내합니다.')}
@@ -349,7 +349,7 @@ export function SystemTab() {
 
         {mailProbe && (
           <p
-            className={`mt-3 flex items-start gap-1.5 rounded-lg border px-3 py-2 text-[13px] ${
+            className={`mt-3 flex items-start gap-1.5 rounded-lg border px-3 py-2 text-base ${
               mailProbe.ok
                 ? 'border-success/25 bg-success/5 text-success'
                 : 'border-danger/25 bg-danger/5 text-danger'
@@ -374,7 +374,7 @@ export function SystemTab() {
                   mailDirty.current = true
                 }}
                 placeholder="smtp.example.com"
-                className="font-mono text-[13px]"
+                className="font-mono text-base"
               />
             </Field>
             <Field label={t('포트')}>
@@ -386,7 +386,7 @@ export function SystemTab() {
                 }}
                 placeholder="587"
                 inputMode="numeric"
-                className="font-mono text-[13px]"
+                className="font-mono text-base"
               />
             </Field>
             {/* Named modes rather than a checkbox: STARTTLS and SSL use different
@@ -399,7 +399,7 @@ export function SystemTab() {
                   setSmtp((v) => ({ ...v, security: e.target.value }))
                   mailDirty.current = true
                 }}
-                className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-[13px] outline-none focus:border-accent"
+                className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent"
               >
                 <option value="starttls">STARTTLS (587)</option>
                 <option value="ssl">SSL/TLS (465)</option>
@@ -417,7 +417,7 @@ export function SystemTab() {
                   mailDirty.current = true
                 }}
                 autoComplete="off"
-                className="font-mono text-[13px]"
+                className="font-mono text-base"
               />
             </Field>
             <Field label={t('비밀번호')} hint={t('저장한 비밀번호는 표시하지 않습니다. 그대로 두면 현재 값을 유지합니다.')}>
@@ -434,7 +434,7 @@ export function SystemTab() {
                     : t('설정되지 않음')
                 }
                 autoComplete="off"
-                className="font-mono text-[13px]"
+                className="font-mono text-base"
               />
             </Field>
           </div>
@@ -447,7 +447,7 @@ export function SystemTab() {
                 mailDirty.current = true
               }}
               placeholder="KloudChat <no-reply@example.com>"
-              className="font-mono text-[13px]"
+              className="font-mono text-base"
             />
           </Field>
 
@@ -462,7 +462,7 @@ export function SystemTab() {
                 mailDirty.current = true
               }}
               placeholder="https://kchat.example.com"
-              className="font-mono text-[13px]"
+              className="font-mono text-base"
             />
           </Field>
 

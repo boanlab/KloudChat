@@ -30,9 +30,9 @@ const variants: Record<Variant, string> = {
 }
 
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-2.5 text-[13px] gap-1.5',
-  md: 'h-9 px-3.5 text-sm gap-2',
-  lg: 'h-11 px-5 text-[15px] gap-2',
+  sm: 'h-8 px-2.5 text-sm gap-1.5',
+  md: 'h-9 px-3.5 text-base gap-2',
+  lg: 'h-11 px-5 text-md gap-2',
   icon: 'h-8 w-8',
 }
 
@@ -84,7 +84,7 @@ export function ButtonLink({
 /* ── Inputs ─────────────────────────────────────────────────────────── */
 
 const fieldBase =
-  'w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-fg placeholder:text-faint ' +
+  'w-full rounded-lg border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
   'transition-colors focus:border-accent focus:outline-none'
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
@@ -106,9 +106,9 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-[13px] font-medium text-fg">{label}</span>
+      <span className="text-base font-medium text-fg">{label}</span>
       {children}
-      {hint && <span className="block text-xs text-faint">{hint}</span>}
+      {hint && <span className="block text-sm text-faint">{hint}</span>}
     </label>
   )
 }
@@ -180,7 +180,7 @@ export function Badge({
     <span
       title={title}
       className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium',
         tones[tone],
         className,
       )}
@@ -296,8 +296,8 @@ export function Modal({
       >
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
-            <h2 className="text-[15px] font-semibold">{title}</h2>
-            {description && <p className="mt-0.5 text-[13px] text-muted">{description}</p>}
+            <h2 className="text-md font-semibold">{title}</h2>
+            {description && <p className="mt-0.5 text-base text-muted">{description}</p>}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('닫기')}>
             <X size={16} />
@@ -525,7 +525,7 @@ export function MenuItem({
         close()
       }}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors',
+        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-base transition-colors',
         disabled
           ? 'cursor-not-allowed text-faint opacity-60'
           : danger
@@ -535,14 +535,14 @@ export function MenuItem({
     >
       {icon && <span className="shrink-0 text-muted">{icon}</span>}
       <span className="flex-1 truncate">{children}</span>
-      {hint && <span className="shrink-0 text-xs text-faint">{hint}</span>}
+      {hint && <span className="shrink-0 text-sm text-faint">{hint}</span>}
     </button>
   )
 }
 
 export function MenuLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
+    <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
       {children}
     </div>
   )
@@ -571,8 +571,8 @@ export function EmptyState({
         {icon}
       </div>
       <div className="space-y-1">
-        <p className="text-sm font-medium">{title}</p>
-        {description && <p className="max-w-sm text-[13px] text-muted">{description}</p>}
+        <p className="text-base font-medium">{title}</p>
+        {description && <p className="max-w-sm text-base text-muted">{description}</p>}
       </div>
       {action}
     </div>
@@ -588,7 +588,7 @@ export function LoadingState({ label }: { label?: string }) {
   return (
     <div
       role="status"
-      className="flex items-center justify-center gap-2 px-6 py-16 text-[13px] text-faint"
+      className="flex items-center justify-center gap-2 px-6 py-16 text-base text-faint"
     >
       <span className="size-3 animate-spin rounded-full border-2 border-line-strong border-t-transparent" />
       {label ?? t('불러오는 중…')}
@@ -605,7 +605,7 @@ export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
   return (
     <div
       role="status"
-      className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-[13px] text-warn"
+      className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn"
     >
       <span className="min-w-0 flex-1">
         {t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')}
@@ -630,7 +630,7 @@ export function PageHeader({
     <div className="flex flex-wrap items-end justify-between gap-4 pb-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+        {description && <p className="mt-1 text-base text-muted">{description}</p>}
       </div>
       {action}
     </div>
@@ -655,7 +655,7 @@ export function Tabs<T extends string>({
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            '-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors',
+            '-mb-px border-b-2 px-3 py-2 text-base font-medium transition-colors',
             value === t.id
               ? 'border-accent text-fg'
               : 'border-transparent text-muted hover:text-fg',

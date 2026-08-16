@@ -21,7 +21,7 @@ export function Markdown({ children, className }: { children: string; className?
         /* The text itself, unstyled, rather than a spinner: it is already here,
            and a paragraph that appears twice — once plain, once set — reads
            better than one that is withheld until the fonts arrive. */
-        <div className={cn('text-[15px] leading-[1.7] break-words whitespace-pre-wrap', className)}>
+        <div className={cn('text-md leading-[1.7] break-words whitespace-pre-wrap', className)}>
           {children}
         </div>
       }

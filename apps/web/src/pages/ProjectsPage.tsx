@@ -41,7 +41,7 @@ export function ProjectsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('프로젝트')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('프로젝트')}</span>} />
       <PageBody>
         <PageHeader
           title={t('프로젝트')}
@@ -83,9 +83,9 @@ export function ProjectsPage() {
                     {p.emoji}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{p.name}</p>
-                    <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{p.description}</p>
-                    <div className="mt-3 flex items-center gap-3 text-[11px] text-faint">
+                    <p className="truncate text-base font-medium">{p.name}</p>
+                    <p className="mt-0.5 line-clamp-2 text-base text-muted">{p.description}</p>
+                    <div className="mt-3 flex items-center gap-3 text-xs text-faint">
                       <span className="flex items-center gap-1">
                         <MessageSquare size={11} />
                         {p.sessionIds.length}

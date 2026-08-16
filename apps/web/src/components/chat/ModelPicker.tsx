@@ -73,7 +73,7 @@ export function ModelPicker({
   if (!active) {
     // An empty picker and a broken proxy look identical otherwise.
     return (
-      <span className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-faint">
+      <span className="flex items-center gap-1.5 px-2 py-1.5 text-base text-faint">
         <Cpu size={14} />
         {modelsLoading ? t('모델 불러오는 중…') : t('사용 가능한 모델 없음')}
       </span>
@@ -87,7 +87,7 @@ export function ModelPicker({
       trigger={({ open }) => (
         <button
           className={cn(
-            'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors',
+            'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-base font-medium transition-colors',
             open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
@@ -139,11 +139,11 @@ function ModelMenu({
   }, new Map<string, ModelInfo[]>())]
   return (
     <>
-      <div className="px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
+      <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
         {t('모델')}
       </div>
       {!litellmAvailable && (
-        <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-2 text-[12px] text-warn">
+        <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           <span>
             {t('모델 목록을 모두 불러오지 못했습니다. 지금은 일부 모델만 고를 수 있습니다.')}
@@ -156,7 +156,7 @@ function ModelMenu({
               thirty names is read by scanning for a vendor anyway — "the Claude
               one" is how the choice is actually made. */}
           {groups.length > 1 && (
-            <div className="px-2.5 pt-2 pb-0.5 text-[10px] font-semibold tracking-wide text-faint uppercase">
+            <div className="px-2.5 pt-2 pb-0.5 text-2xs font-semibold tracking-wide text-faint uppercase">
               {vendor}
             </div>
           )}
@@ -176,7 +176,7 @@ function ModelMenu({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
-              <span className="truncate text-[13px] font-medium">{m.label}</span>
+              <span className="truncate text-base font-medium">{m.label}</span>
               <Badge>{m.provider}</Badge>
               {m.strictLocal && (
                 <Badge tone="success">
@@ -202,8 +202,8 @@ function ModelMenu({
                 </Badge>
               )}
             </span>
-            <span className="mt-0.5 block truncate text-xs text-muted">{m.description}</span>
-            <span className="mt-1 flex items-center gap-2 text-[11px] text-faint">
+            <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
+            <span className="mt-1 flex items-center gap-2 text-xs text-faint">
               <span>{rateLabel(m, t)}</span>
               {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}
               {m.supportsVision && <Eye size={11} />}

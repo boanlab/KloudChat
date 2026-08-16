@@ -93,7 +93,7 @@ export function ShareButton({ session }: { session: Session }) {
           <>
             <Field label={t('공유 링크')}>
               <div className="flex gap-2">
-                <Input readOnly value={url} className="font-mono text-[12px]" aria-label={t('공유 링크')} />
+                <Input readOnly value={url} className="font-mono text-sm" aria-label={t('공유 링크')} />
                 <Button
                   onClick={async () => {
                     if (!(await copyText(url))) return
@@ -106,7 +106,7 @@ export function ShareButton({ session }: { session: Session }) {
                 </Button>
               </div>
             </Field>
-            <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
               <Badge tone={share.scope === 'link' ? 'warn' : 'neutral'}>
                 {share.scope === 'link' ? <Globe size={10} /> : <Users size={10} />}
                 {share.scope === 'link' ? t('계정 없이 열림') : t('구성원만')}
@@ -138,14 +138,14 @@ export function ShareButton({ session }: { session: Session }) {
                   >
                     <Icon size={15} className={cn('mt-0.5 shrink-0', active && 'text-accent')} />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium">{o.label}</span>
-                      <span className="block text-[12px] text-muted">{o.description}</span>
+                      <span className="block text-base font-medium">{o.label}</span>
+                      <span className="block text-sm text-muted">{o.description}</span>
                     </span>
                   </button>
                 )
               })}
             </div>
-            {error && <p className="text-[12px] text-danger">{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
             <Button variant="primary" disabled={busy} onClick={() => void create()}>
               {busy && <Loader2 size={13} className="animate-spin" />}
               {t('링크 만들기')}

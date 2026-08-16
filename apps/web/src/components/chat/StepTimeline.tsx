@@ -23,7 +23,7 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
   const Icon = icons[step.type]
   const running = step.status === 'running'
   return (
-    <div className="flex items-start gap-2.5 text-[13px]">
+    <div className="flex items-start gap-2.5 text-base">
       <span
         className={cn(
           'mt-[3px] grid size-3.5 shrink-0 place-items-center',
@@ -101,7 +101,7 @@ export function StepTimeline({ steps, live }: { steps: Step[]; live: boolean }) 
       <button
         onClick={() => setManual(!expanded)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-elevated"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-elevated"
       >
         <ChevronRight
           size={13}

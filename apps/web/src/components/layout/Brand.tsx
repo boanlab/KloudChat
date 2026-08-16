@@ -14,8 +14,8 @@ export function Brand({
   logo?: string
   size?: 'sm' | 'md'
 }) {
-  const box = size === 'md' ? 'size-8 rounded-xl text-sm' : 'size-7 rounded-lg text-[13px]'
-  const label = size === 'md' ? 'font-semibold tracking-tight' : 'text-sm font-semibold tracking-tight'
+  const box = size === 'md' ? 'size-8 rounded-xl text-md' : 'size-7 rounded-lg text-base'
+  const label = size === 'md' ? 'font-semibold tracking-tight' : 'text-base font-semibold tracking-tight'
 
   return (
     <div className="flex items-center gap-2.5">
