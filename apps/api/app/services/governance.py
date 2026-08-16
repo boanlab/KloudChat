@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -69,7 +70,13 @@ class Finding:
 # Narrow candidates followed by format/checksum validation. False positives on
 # this path make people disable the feature, so semantic name/address detection
 # belongs in a later opt-in classifier rather than this deterministic baseline.
-_EMAIL = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}(?![\w.-])", re.I)
+_EMAIL_LOCAL = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-"
+)
+_EMAIL_DOMAIN = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
+)
+_EMAIL_TLD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 _KR_MOBILE = re.compile(r"(?<!\d)(?:\+?82[- ]?)?0?1[016-9][- ]?\d{3,4}[- ]?\d{4}(?!\d)")
 _KR_LANDLINE = re.compile(
     r"(?<!\d)(?:\(0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4])\)\s*|"
@@ -196,14 +203,70 @@ def _valid_international_phone(value: str) -> bool:
     return depth == 0
 
 
+def _is_word_character(value: str) -> bool:
+    r"""The part of ``\w`` needed by the old email boundary contract."""
+    return value == "_" or value.isalnum()
+
+
+def _email_spans(text: str) -> Iterator[tuple[int, int]]:
+    """Find high-confidence email spans in linear time.
+
+    Starting a backtracking regex with an unbounded local-part character class
+    makes a string such as ``"%" * n`` retry the same suffix at every offset.
+    Anchoring each candidate on its ``@`` means each adjacent segment is
+    visited at most twice, including inputs containing many ``@`` characters.
+    """
+    at = text.find("@")
+    while at >= 0:
+        start = at
+        while start > 0 and text[start - 1] in _EMAIL_LOCAL:
+            start -= 1
+
+        end = at + 1
+        while end < len(text) and text[end] in _EMAIL_DOMAIN:
+            end += 1
+
+        local = text[start:at]
+        domain = text[at + 1 : end]
+        domain_head, dot, tld = domain.rpartition(".")
+        leading_boundary = start == 0 or not (
+            _is_word_character(text[start - 1]) or text[start - 1] in ".+-"
+        )
+        if not leading_boundary:
+            # ``%`` is legal inside the local part but was intentionally not
+            # part of the old regex's negative look-behind. Preserve that
+            # behaviour: ``α%person@example.com`` must still detect the valid
+            # suffix after ``%`` without retrying every character.
+            restart = text.find("%", start, at)
+            if restart >= 0:
+                start = restart + 1
+                local = text[start:at]
+                leading_boundary = bool(local)
+        trailing_boundary = end == len(text) or not (
+            _is_word_character(text[end]) or text[end] in ".-"
+        )
+        if (
+            local
+            and domain_head
+            and dot
+            and 2 <= len(tld) <= 63
+            and all(char in _EMAIL_TLD for char in tld)
+            and leading_boundary
+            and trailing_boundary
+        ):
+            yield start, end
+
+        at = text.find("@", at + 1)
+
+
 def _detections(text: str) -> list[_Detection]:
     candidates: list[_Detection] = []
 
     def add(category: str, match: re.Match[str]) -> None:
         candidates.append(_Detection(category, _LABELS[category], match.start(), match.end()))
 
-    for match in _EMAIL.finditer(text):
-        add("email", match)
+    for start, end in _email_spans(text):
+        candidates.append(_Detection("email", _LABELS["email"], start, end))
     for match in _KR_MOBILE.finditer(text):
         add("phone", match)
     for match in _KR_LANDLINE.finditer(text):

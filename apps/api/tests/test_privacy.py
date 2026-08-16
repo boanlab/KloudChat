@@ -104,6 +104,36 @@ def test_detector_handles_long_clean_input_in_linear_time() -> None:
     assert time.monotonic() - started < 2.0
 
 
+def test_detector_email_scan_resists_percent_repetition() -> None:
+    text = "%" * 250_000
+    started = time.monotonic()
+
+    assert governance.mask(text) == (text, 0)
+    assert time.monotonic() - started < 2.0
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("tagged person+tag@example.co.uk", "person+tag@example.co.uk"),
+        ("unicode α%person@example.com boundary", "person@example.com"),
+        ("진행률50%person@example.com", "person@example.com"),
+        ("unicode αperson@example.com boundary", None),
+        ("suffix person@example.com_name", None),
+        ("bad person@example.1com tld", None),
+    ],
+)
+def test_detector_email_scan_preserves_boundaries(text: str, expected: str | None) -> None:
+    masked, count = governance.mask(text)
+
+    assert count == (1 if expected else 0)
+    if expected:
+        assert expected not in masked
+        assert "[이메일]" in masked
+    else:
+        assert masked == text
+
+
 def test_detector_masks_finding_heavy_input_with_one_pass_render() -> None:
     text = " ".join(f"person{index}@example.com" for index in range(5_000))
     started = time.monotonic()
