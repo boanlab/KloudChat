@@ -2,42 +2,55 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/**
+ * Four surface levels, distinct in both themes: `--bg` is the page, `--panel`
+ * the card on it, `--elevated` the raised or hovered state of that card, and
+ * `--sidebar` the navigation column. `--panel` and `--elevated` used to be the
+ * same white, which made every `hover:bg-elevated` a no-op in light mode.
+ *
+ * Text tokens clear WCAG AA (4.5:1) against all four surfaces in both themes;
+ * the tightest pairing is `--faint` on `--sidebar` at 4.77:1.
+ */
 :root {
-  --bg: #f7f7f5;
+  color-scheme: light;
+
+  --bg: #f4f6fb;
   --panel: #ffffff;
-  --elevated: #ffffff;
-  --sidebar: #f0efec;
-  --border: #e3e1db;
-  --border-strong: #cfccc3;
-  --fg: #1e1d1b;
-  --muted: #6f6c65;
-  --faint: #9c9890;
-  --accent: #5b53e8;
-  --accent-hover: #4b43d8;
+  --elevated: #ebeff8;
+  --sidebar: #e7ecf6;
+  --border: #d9dfec;
+  --border-strong: #b6c0d4;
+  --fg: #161a24;
+  --muted: #3d4657;
+  --faint: #5d6780;
+  --accent: #2a54e4;
+  --accent-hover: #1c3fc4;
   --accent-fg: #ffffff;
-  --accent-soft: #ece9ff;
-  --success: #0e8a5f;
-  --warn: #b4780a;
-  --danger: #c0392b;
+  --accent-soft: #e3eafd;
+  --success: #0a7048;
+  --warn: #8a5300;
+  --danger: #b4322a;
 }
 
 .dark {
-  --bg: #191817;
-  --panel: #201f1e;
-  --elevated: #282725;
-  --sidebar: #141413;
-  --border: #33322f;
-  --border-strong: #46443f;
-  --fg: #edeceb;
-  --muted: #a3a09a;
-  --faint: #6f6c66;
-  --accent: #8079ff;
-  --accent-hover: #918bff;
-  --accent-fg: #14131f;
-  --accent-soft: #2a2740;
-  --success: #37c48d;
-  --warn: #e0a33a;
-  --danger: #f0776a;
+  color-scheme: dark;
+
+  --bg: #0f1116;
+  --panel: #181b23;
+  --elevated: #232833;
+  --sidebar: #13151c;
+  --border: #2a303d;
+  --border-strong: #3d4554;
+  --fg: #ebeef5;
+  --muted: #b6bfce;
+  --faint: #8a93a7;
+  --accent: #7e9cff;
+  --accent-hover: #9ab1ff;
+  --accent-fg: #0f1116;
+  --accent-soft: #1f2a47;
+  --success: #4fbf8c;
+  --warn: #e0a44a;
+  --danger: #f0736a;
 }
 
 @theme inline {
