@@ -1096,8 +1096,15 @@ async def send_message(
     elif policy.pii_masking:
         # Report/slides keep their legacy always-mask behaviour. The new
         # decision flow is intentionally chat-only in this release.
-        content, masked = governance.mask_legacy(content)
+        masker = governance.mask_legacy
+        content, masked = masker(content)
         stored_content = content
+        if attachment_meta:
+            # Document surfaces now persist the same attachment metadata as
+            # chat. A filename or extraction error is user content too, so the
+            # legacy organisation-wide policy must cover it even when the
+            # request sentence itself is clean.
+            attachment_meta = _mask_text_tree(attachment_meta, masker)
         if masked:
             await _audit_policy(user, request, "pii.masked", f"{masked}건")
 
@@ -1122,6 +1129,19 @@ async def send_message(
     if privacy_resolution and privacy_resolution.mask_outbound:
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
+    elif policy.pii_masking:
+        # Report and slide generation gained source-separated workspace context
+        # with the skill runtime. Preserve the pre-existing always-mask policy
+        # across those new outbound fields instead of protecting only the
+        # request sentence.
+        trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
+        untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
+    skills_event = workspace.skills_event()
+    if policy.pii_masking and skills_event:
+        # The document runners persist this event directly as a timeline step.
+        # Treat the selected skill's display name as user-controlled metadata,
+        # just like an attachment filename.
+        skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
 
     if not has_headroom(user, model):
         raise HTTPException(
@@ -1209,9 +1229,9 @@ async def send_message(
                 # The same blocks the chat surface gets. Without this a report
                 # or a deck saw the request sentence alone — no project
                 # instructions, no memories, no attached form.
-                trusted_context=workspace.trusted,
-                untrusted_context=workspace.untrusted,
-                skills_event=workspace.skills_event(),
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                skills_event=skills_event,
             ),
             media_type="text/event-stream",
             headers={
@@ -1233,9 +1253,9 @@ async def send_message(
                 # The same blocks the chat surface gets. Without this a report
                 # or a deck saw the request sentence alone — no project
                 # instructions, no memories, no attached form.
-                trusted_context=workspace.trusted,
-                untrusted_context=workspace.untrusted,
-                skills_event=workspace.skills_event(),
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                skills_event=skills_event,
             ),
             media_type="text/event-stream",
             headers={
@@ -1257,7 +1277,7 @@ async def send_message(
             tool_definitions=tool_definitions,
             first_user_message=stored_content,
             is_first_turn=is_first_turn,
-            skills_event=workspace.skills_event(),
+            skills_event=skills_event,
             routing=privacy_resolution.routing if privacy_resolution else None,
             # Guarded organisations mask every persisted model-generated
             # string, even when the inbound envelope was clean: a provider or
