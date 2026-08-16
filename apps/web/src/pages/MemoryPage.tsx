@@ -230,7 +230,7 @@ export function MemoryPage() {
         {draft && (
           <>
             {saveError && (
-              <p role="status" className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
+              <p role="status" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
                 {saveError}
               </p>
             )}
@@ -250,7 +250,7 @@ export function MemoryPage() {
                     key={t}
                     onClick={() => setDraft({ ...draft, type: t })}
                     className={cn(
-                      'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                      'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                       draft.type === t
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line hover:bg-elevated',
@@ -271,7 +271,7 @@ export function MemoryPage() {
               <select
                 value={draft.scope}
                 onChange={(e) => setDraft({ ...draft, scope: e.target.value })}
-                className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+                className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
               >
                 <option value="global">{t('전역')}</option>
                 {projects.map((p) => (

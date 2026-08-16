@@ -126,7 +126,7 @@ export function SystemTab() {
 
       {probe && (
         <p
-          className={`flex items-start gap-1.5 rounded-lg border px-3 py-2 text-base ${
+          className={`flex items-start gap-1.5 rounded-control border px-3 py-2 text-base ${
             probe.ok
               ? 'border-success/25 bg-success/5 text-success'
               : 'border-danger/25 bg-danger/5 text-danger'
@@ -219,7 +219,7 @@ export function SystemTab() {
       </Field>
 
       {error && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
+        <p className="flex items-start gap-1.5 rounded-control border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {error}
         </p>
@@ -349,7 +349,7 @@ export function SystemTab() {
 
         {mailProbe && (
           <p
-            className={`mt-3 flex items-start gap-1.5 rounded-lg border px-3 py-2 text-base ${
+            className={`mt-3 flex items-start gap-1.5 rounded-control border px-3 py-2 text-base ${
               mailProbe.ok
                 ? 'border-success/25 bg-success/5 text-success'
                 : 'border-danger/25 bg-danger/5 text-danger'
@@ -399,7 +399,7 @@ export function SystemTab() {
                   setSmtp((v) => ({ ...v, security: e.target.value }))
                   mailDirty.current = true
                 }}
-                className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent"
+                className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent"
               >
                 <option value="starttls">STARTTLS (587)</option>
                 <option value="ssl">SSL/TLS (465)</option>

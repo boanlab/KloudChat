@@ -128,7 +128,7 @@ export function AgentKnowledge({
             ref={fileInput}
             type="file"
             aria-label={t('자료 파일')}
-            className="block text-base file:mr-3 file:rounded-lg file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-base"
+            className="block text-base file:mr-3 file:rounded-control file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-base"
             onChange={(e) => {
               const picked = e.target.files?.[0]
               if (picked) void addFile(picked)
@@ -166,7 +166,7 @@ export function AgentKnowledge({
             {rows.map((f) => (
               <li
                 key={f.id}
-                className="flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-base"
+                className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
               >
                 {f.sourceUrl ? (
                   <Globe size={13} className="shrink-0 text-faint" />

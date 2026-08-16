@@ -193,7 +193,7 @@ export function ProjectDetailPage() {
                       key={e}
                       onClick={() => setEditing({ ...editing, emoji: e })}
                       className={cn(
-                        'grid size-9 place-items-center rounded-lg border text-lg transition-colors',
+                        'grid size-9 place-items-center rounded-control border text-lg transition-colors',
                         editing.emoji === e
                           ? 'border-accent bg-accent-soft'
                           : 'border-line hover:bg-elevated',
@@ -297,7 +297,7 @@ export function ProjectDetailPage() {
 
           {tab === 'knowledge' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl border border-dashed border-line-strong px-4 py-3">
+              <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
                 <div>
                   <p className="text-base font-medium">{t('참고 파일')}</p>
                   <p className="text-sm text-muted">

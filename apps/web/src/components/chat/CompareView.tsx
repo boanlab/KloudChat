@@ -41,7 +41,7 @@ export function CompareView({
           <div
             key={v.model}
             className={cn(
-              'flex min-w-0 flex-col rounded-xl border transition-colors',
+              'flex min-w-0 flex-col rounded-card border transition-colors',
               v.chosen ? 'border-accent bg-accent-soft/30' : 'border-line bg-panel',
               dimmed && 'opacity-55',
             )}

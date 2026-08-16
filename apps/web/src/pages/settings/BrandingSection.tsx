@@ -49,7 +49,7 @@ export function BrandingSection({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-line bg-panel p-4">
+      <div className="rounded-control border border-line bg-panel p-4">
         <p className="mb-3 text-sm text-muted">{t('미리보기')}</p>
         <Brand name={name.trim() || 'KloudChat'} logo={settings.brand.logo} size="md" />
       </div>
@@ -101,7 +101,7 @@ export function BrandingSection({
       </Field>
 
       {error && (
-        <p className="rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
+        <p className="rounded-control border border-danger/25 bg-danger/5 px-3 py-2 text-base text-danger">
           {error}
         </p>
       )}

@@ -122,7 +122,7 @@ export function SkillsPage() {
         <div className="space-y-2 pt-4">
           {visible.map((s) => (
             <Card key={s.id} className="flex items-start gap-3 p-4">
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
                 <Sparkles size={15} />
               </span>
               <button
@@ -227,13 +227,13 @@ export function SkillsPage() {
             )}
             <div>
               <p className="mb-1.5 text-base font-medium">{t('사용 시점')}</p>
-              <p className="rounded-lg border border-line bg-elevated px-3 py-2 text-base text-muted">
+              <p className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
                 {t(detail.whenToUse)}
               </p>
             </div>
             <div>
               <p className="mb-1.5 text-base font-medium">{t('번들 파일')}</p>
-              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-line">
+              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
                 {detail.files.map((f) => (
                   <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
                     <FileCode2 size={14} className="text-faint" />
@@ -305,7 +305,7 @@ export function SkillsPage() {
         {saveError && (
           <p
             role="status"
-            className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
+            className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
           >
             {saveError}
           </p>
@@ -367,7 +367,7 @@ export function SkillsPage() {
                     })
                   }
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                    'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                     on
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted hover:bg-elevated',

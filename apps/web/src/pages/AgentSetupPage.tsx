@@ -25,7 +25,7 @@ function Snippet({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="group relative">
-      <pre className="overflow-x-auto rounded-lg border border-line bg-elevated px-3 py-2.5 text-sm leading-relaxed">
+      <pre className="overflow-x-auto rounded-control border border-line bg-elevated px-3 py-2.5 text-sm leading-relaxed">
         <code className="font-mono">{text}</code>
       </pre>
       <Button
@@ -99,7 +99,7 @@ export function AgentSetupPage() {
           <Dropdown
             className="min-w-[360px]"
             trigger={() => (
-              <button className="flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-left text-base transition-colors hover:bg-elevated">
+              <button className="flex w-full items-center gap-2 rounded-control border border-line px-3 py-2 text-left text-base transition-colors hover:bg-elevated">
                 <span className="min-w-0 flex-1 truncate">
                   {model ? model.label : t('사용 가능한 모델 없음')}
                 </span>

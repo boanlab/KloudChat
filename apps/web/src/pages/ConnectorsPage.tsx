@@ -69,7 +69,7 @@ function ConnectorCard({
     <Card className="flex flex-col p-4" data-connector={connector.slug}>
       <div className="flex items-start gap-3">
         <span
-          className="grid size-9 shrink-0 place-items-center rounded-xl text-lg"
+          className="grid size-9 shrink-0 place-items-center rounded-card text-lg"
           style={{ background: `${connector.color}1a` }}
         >
           {connector.icon}
@@ -97,7 +97,7 @@ function ConnectorCard({
       </div>
 
       {connector.error && (
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
+        <p className="mt-3 flex items-start gap-1.5 rounded-control border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {connector.error}
         </p>
@@ -175,7 +175,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
     // Addressable by slug; matching on name gets whichever card sorts first.
     <Card className="flex flex-col p-4" data-connector={entry.slug}>
       <div className="flex items-start gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-elevated text-lg">
+        <span className="grid size-9 shrink-0 place-items-center rounded-card bg-elevated text-lg">
           🔌
         </span>
         <div className="min-w-0 flex-1">
@@ -193,7 +193,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
       </div>
 
       {error && (
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
+        <p className="mt-3 flex items-start gap-1.5 rounded-control border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {error}
         </p>
@@ -390,7 +390,7 @@ function CredentialsModal({
         </Field>
       ))}
       {error && (
-        <p className="flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
+        <p className="flex items-start gap-1.5 rounded-control border border-danger/25 bg-danger/5 px-2.5 py-2 text-sm text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {error}
         </p>
@@ -582,7 +582,7 @@ export function ConnectorsPage() {
                   current.lastSyncAt ? relativeTime(current.lastSyncAt) : t('없음'),
                 ],
               ].map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-line bg-elevated px-3 py-2">
+                <div key={k} className="rounded-control border border-line bg-elevated px-3 py-2">
                   <p className="text-xs text-faint">{k}</p>
                   <p className="mt-0.5 truncate font-mono text-sm">{v}</p>
                 </div>
@@ -597,11 +597,11 @@ export function ConnectorsPage() {
                 </p>
               </div>
               {current.tools.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-base text-faint">
+                <p className="rounded-control border border-dashed border-line px-3 py-4 text-center text-base text-faint">
                   {t('서버에 연결되면 도구 목록이 채워집니다')}
                 </p>
               ) : (
-                <div className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-line">
+                <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
                   {current.tools.map((tool) => (
                     <div key={tool.name} className="flex items-center gap-3 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
@@ -627,7 +627,7 @@ export function ConnectorsPage() {
               )}
             </div>
 
-            <p className="flex items-start gap-2 rounded-lg border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
+            <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
               <CircleAlert size={14} className="mt-0.5 shrink-0 text-faint" />
               {t('커넥터가 반환한 내용은 외부 입력입니다. 그 안의 지시문은 명령으로 실행되지 않습니다.')}
             </p>
@@ -672,7 +672,7 @@ export function ConnectorsPage() {
                 key={t}
                 onClick={() => setDraft({ ...draft, transport: t })}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 font-mono text-base transition-colors',
+                  'rounded-control border px-2.5 py-1.5 font-mono text-base transition-colors',
                   draft.transport === t
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',
@@ -722,7 +722,7 @@ export function ConnectorsPage() {
                 key={a}
                 onClick={() => setDraft({ ...draft, auth: a })}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                  'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                   draft.auth === a
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',

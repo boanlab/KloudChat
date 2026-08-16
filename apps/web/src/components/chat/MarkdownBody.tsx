@@ -17,7 +17,7 @@ function CodeBlock({ children, className }: { children: ReactNode; className?: s
   const text = String(children).replace(/\n$/, '')
 
   return (
-    <div className="group relative my-3 overflow-hidden rounded-xl border border-line bg-elevated">
+    <div className="group relative my-3 overflow-hidden rounded-card border border-line bg-elevated">
       <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
         <span className="font-mono text-xs text-faint">{lang ?? 'text'}</span>
         <button
@@ -26,7 +26,7 @@ function CodeBlock({ children, className }: { children: ReactNode; className?: s
             setCopied(true)
             setTimeout(() => setCopied(false), 1400)
           }}
-          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted transition-colors hover:bg-line hover:text-fg"
+          className="flex items-center gap-1 rounded-control px-1.5 py-0.5 text-xs text-muted transition-colors hover:bg-line hover:text-fg"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? t('복사됨') : t('복사')}
@@ -109,7 +109,7 @@ export function MarkdownBody({ children, className }: { children: string; classN
           ),
           hr: () => <hr className="my-4 border-line" />,
           table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-line">
+            <div className="my-3 overflow-x-auto rounded-card border border-line">
               <table className="w-full border-collapse text-base">{children}</table>
             </div>
           ),
@@ -125,7 +125,7 @@ export function MarkdownBody({ children, className }: { children: string; classN
             if (isBlock) return <CodeBlock className={className}>{children}</CodeBlock>
             return (
               <code
-                className="rounded-md border border-line bg-elevated px-1 py-0.5 font-mono text-[0.86em]"
+                className="rounded-control border border-line bg-elevated px-1 py-0.5 font-mono text-[0.86em]"
                 {...props}
               >
                 {children}

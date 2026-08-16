@@ -213,7 +213,7 @@ export function ArtifactsPage() {
         width={widePreview ? 'max-w-7xl' : 'max-w-4xl'}
       >
         {preview && (
-          <div className="flex h-[64vh] flex-col overflow-hidden rounded-xl border border-line">
+          <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
             {/* 보고서·슬라이드·차트는 자기 머리말에 이 버튼을 갖고 있다. 나머지
                 종류에는 머리말이 없어서, 넓혀 보는 일만 할 수 없었다. */}
             {!(preview.kind === 'report' || preview.kind === 'deck' || preview.kind === 'chart') && (

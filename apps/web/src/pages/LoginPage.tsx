@@ -145,7 +145,7 @@ export function LoginPage() {
               return (
                 <li key={kind} className="flex items-start gap-3">
                   <span
-                    className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg text-white"
+                    className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-control text-white"
                     style={{ background: meta.color }}
                   >
                     <Icon size={13} />
@@ -206,7 +206,7 @@ export function LoginPage() {
                 />
               </Field>
               {localError && (
-                <div className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
+                <div className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
                   <TriangleAlert size={14} className="mt-0.5 shrink-0" />
                   <span>{localError}</span>
                 </div>
@@ -231,7 +231,7 @@ export function LoginPage() {
                   {/* Deliberately says nothing about whether that address has an
                       account. Anything else turns this box into a way to ask
                       whether a particular person uses this service. */}
-                  <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
+                  <div className="flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
                     <CircleCheck size={14} className="mt-0.5 shrink-0" />
                     <span>
                       {t('해당 주소로 가입된 계정이 있다면 재설정 링크를 보냈습니다. 30분 안에 사용하세요.')}
@@ -281,14 +281,14 @@ export function LoginPage() {
               password *was* changed, and saying nothing would send them back to
               the form wondering whether it worked. */}
           {resetDone && (
-            <div className="mt-6 flex items-start gap-2 rounded-lg border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
+            <div className="mt-6 flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
               <CircleCheck size={14} className="mt-0.5 shrink-0" />
               <span>{t('비밀번호를 바꿨습니다. 새 비밀번호로 로그인하세요.')}</span>
             </div>
           )}
 
           {!resetToken && !forgotOpen && (
-          <div className="mt-6 flex gap-1 rounded-lg border border-line bg-elevated p-1">
+          <div className="mt-6 flex gap-1 rounded-control border border-line bg-elevated p-1">
             {(
               [
                 { id: 'login', label: t('로그인') },
@@ -298,7 +298,7 @@ export function LoginPage() {
               <button
                 key={t.id}
                 onClick={() => setMode(t.id)}
-                className={`flex-1 rounded-md px-3 py-1.5 text-base font-medium transition-colors ${
+                className={`flex-1 rounded-control px-3 py-1.5 text-base font-medium transition-colors ${
                   mode === t.id ? 'bg-panel text-fg shadow-sm' : 'text-muted hover:text-fg'
                 }`}
               >
@@ -368,7 +368,7 @@ export function LoginPage() {
               ))}
 
             {authError && (
-              <div className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
+              <div className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
                 <TriangleAlert size={14} className="mt-0.5 shrink-0" />
                 <span>{ERRORS[authError] ?? UNKNOWN_ERROR}</span>
               </div>

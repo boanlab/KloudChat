@@ -140,7 +140,7 @@ export function AdminGovernancePage() {
                         return (
                           <label
                             key={model.id}
-                            className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-base"
+                            className="flex items-center gap-2 rounded-control border border-line px-3 py-2 text-base"
                           >
                             <input
                               type="checkbox"
@@ -162,7 +162,7 @@ export function AdminGovernancePage() {
                         )
                       })}
                       {strictModels.length === 0 && (
-                        <p className="rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
+                        <p className="rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
                           {t('현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.')}
                         </p>
                       )}

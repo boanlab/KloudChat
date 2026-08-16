@@ -14,7 +14,7 @@ export function Brand({
   logo?: string
   size?: 'sm' | 'md'
 }) {
-  const box = size === 'md' ? 'size-8 rounded-xl text-md' : 'size-7 rounded-lg text-base'
+  const box = size === 'md' ? 'size-8 rounded-card text-md' : 'size-7 rounded-control text-base'
   const label = size === 'md' ? 'font-semibold tracking-tight' : 'text-base font-semibold tracking-tight'
 
   return (

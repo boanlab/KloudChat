@@ -37,11 +37,11 @@ export function HomePage() {
               <button
                 key={kind}
                 onClick={() => navigate(`/new/${kind}`)}
-                className="group rounded-xl border border-line bg-panel p-4 text-left transition-colors hover:border-line-strong hover:bg-elevated"
+                className="group rounded-card border border-line bg-panel p-4 text-left transition-colors hover:border-line-strong hover:bg-elevated"
               >
                 <div className="flex items-center gap-2.5">
                   <span
-                    className="grid size-8 shrink-0 place-items-center rounded-lg text-white"
+                    className="grid size-8 shrink-0 place-items-center rounded-control text-white"
                     style={{ background: meta.color }}
                   >
                     <Icon size={16} />

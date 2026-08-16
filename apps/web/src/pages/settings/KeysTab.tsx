@@ -78,7 +78,7 @@ export function KeysTab() {
         <div className="space-y-2">
           {apiKeys.map((k) => (
             <Card key={k.id} className="flex items-center gap-3 p-3.5">
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-elevated text-muted">
+              <span className="grid size-8 shrink-0 place-items-center rounded-control bg-elevated text-muted">
                 <KeyRound size={15} />
               </span>
               <div className="min-w-0 flex-1">
@@ -154,7 +154,7 @@ export function KeysTab() {
       >
         {issued ? (
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-line bg-elevated px-3 py-2 font-mono text-sm">
+            <code className="min-w-0 flex-1 overflow-x-auto rounded-control border border-line bg-elevated px-3 py-2 font-mono text-sm">
               {issued}
             </code>
             <Button

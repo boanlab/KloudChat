@@ -38,14 +38,14 @@ function FactCheckResults({ check }: { check: FactCheck }) {
   const t = useT()
   if (check.claims.length === 0) {
     return (
-      <p className="mt-3 rounded-xl border border-line bg-panel p-3 text-sm text-muted">
+      <p className="mt-3 rounded-card border border-line bg-panel p-3 text-sm text-muted">
         {t('검색으로 확인할 수 있는 주장이 이 장에는 없습니다. 의견과 정의는 판정하지 않습니다.')}
       </p>
     )
   }
   const weak = check.claims.filter((c) => c.verdict !== 'supported').length
   return (
-    <div className="mt-3 rounded-xl border border-line bg-panel p-3">
+    <div className="mt-3 rounded-card border border-line bg-panel p-3">
       <div className="mb-2 flex items-center gap-2">
         <ShieldQuestion size={13} className="shrink-0 text-accent" />
         <span className="text-xs font-semibold tracking-wide text-faint uppercase">{t('팩트체크')}</span>
@@ -216,20 +216,20 @@ function PresentMode({
         </span>
         <button
           onClick={() => setShowNotes((s) => !s)}
-          className="rounded-lg px-2 py-1 text-sm transition-colors hover:bg-white/10"
+          className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
         >
           {t('노트')} (N)
         </button>
         <button
           onClick={onClose}
           aria-label={t('발표 끝내기')}
-          className="rounded-lg p-1.5 transition-colors hover:bg-white/10"
+          className="rounded-control p-1.5 transition-colors hover:bg-white/10"
         >
           <X size={16} />
         </button>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">
-        <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-lg shadow-2xl">
+        <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-2xl">
           <SlideView slide={slide} scale={2.4} />
         </div>
       </div>
@@ -243,7 +243,7 @@ function PresentMode({
           onClick={() => onIndex(Math.max(index - 1, 0))}
           disabled={index === 0}
           aria-label={t('이전 장')}
-          className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
+          className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
         >
           <ChevronLeft size={18} />
         </button>
@@ -252,7 +252,7 @@ function PresentMode({
           onClick={() => onIndex(Math.min(index + 1, deck.slides.length - 1))}
           disabled={index >= deck.slides.length - 1}
           aria-label={t('다음 장')}
-          className="rounded-lg p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
+          className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
         >
           <ChevronRight size={18} />
         </button>
@@ -531,7 +531,7 @@ export function DeckPanel({
                 aria-label={t(v.label)}
                 title={t(v.label)}
                 className={cn(
-                  'grid size-6 place-items-center rounded-md transition-colors',
+                  'grid size-6 place-items-center rounded-control transition-colors',
                   rail === v.id ? 'bg-elevated text-fg' : 'text-faint hover:text-fg',
                 )}
               >
@@ -552,7 +552,7 @@ export function DeckPanel({
                   aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
                   aria-current={i === index}
                   className={cn(
-                    'relative block aspect-video w-full overflow-hidden rounded-md border-2 bg-white transition-colors',
+                    'relative block aspect-video w-full overflow-hidden rounded-control border-2 bg-white transition-colors',
                     i === index ? 'border-accent' : 'border-line hover:border-line-strong',
                   )}
                 >
@@ -572,7 +572,7 @@ export function DeckPanel({
                   onClick={() => go(i)}
                   aria-current={i === index}
                   className={cn(
-                    'flex w-full items-start gap-1.5 rounded-md px-1.5 py-1 text-left text-xs leading-snug transition-colors',
+                    'flex w-full items-start gap-1.5 rounded-control px-1.5 py-1 text-left text-xs leading-snug transition-colors',
                     i === index ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
                   )}
                 >
@@ -593,13 +593,13 @@ export function DeckPanel({
                 onClick={() => go(index - 1)}
                 disabled={index === 0}
                 aria-label={t('이전 장')}
-                className="grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-30"
+                className="grid size-7 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-30"
               >
                 <ChevronLeft size={16} />
               </button>
               <div
                 ref={stage.ref}
-                className="aspect-video min-w-0 flex-1 overflow-hidden rounded-xl border border-line shadow-sm"
+                className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-sm"
               >
                 {slide ? (
                   <SlideView slide={slide} scale={stage.scale} />
@@ -613,7 +613,7 @@ export function DeckPanel({
                 onClick={() => go(index + 1)}
                 disabled={index >= deck.slides.length - 1}
                 aria-label={t('다음 장')}
-                className="grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-30"
+                className="grid size-7 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-30"
               >
                 <ChevronRight size={16} />
               </button>

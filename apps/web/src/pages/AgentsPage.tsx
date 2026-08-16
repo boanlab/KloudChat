@@ -165,7 +165,7 @@ export function AgentsPage() {
             <Card key={a.id} className="flex flex-col p-4">
               <div className="flex items-start gap-3">
                 <span
-                  className="grid size-9 shrink-0 place-items-center rounded-xl text-white"
+                  className="grid size-9 shrink-0 place-items-center rounded-card text-white"
                   style={{ background: a.color }}
                 >
                   <Bot size={16} />
@@ -337,7 +337,7 @@ export function AgentsPage() {
             {saveError && (
               <p
                 role="status"
-                className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
+                className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
               >
                 {saveError}
               </p>
@@ -383,7 +383,7 @@ export function AgentsPage() {
                     key={o.id}
                     onClick={() => setDraft({ ...draft, visibility: o.id })}
                     className={cn(
-                      'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                      'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
                       draft.visibility === o.id
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line text-muted hover:bg-elevated',
@@ -411,7 +411,7 @@ export function AgentsPage() {
                         })
                       }
                       className={cn(
-                        'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                        'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                         on
                           ? 'border-accent bg-accent-soft text-accent'
                           : 'border-line text-muted hover:bg-elevated',
@@ -451,7 +451,7 @@ export function AgentsPage() {
                 <select
                   value={draft.model}
                   onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                  className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -493,7 +493,7 @@ export function AgentsPage() {
                       key={o.id}
                       onClick={() => setDraft({ ...draft, visibility: o.id })}
                       className={cn(
-                        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                        'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
                         draft.visibility === o.id
                           ? 'border-accent bg-accent-soft text-accent'
                           : 'border-line text-muted hover:bg-elevated',
@@ -513,7 +513,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, tools: null })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-base',
+                    'rounded-control border px-2.5 py-1.5 text-base',
                     draft.tools === null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -525,7 +525,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, tools: draft.tools ?? [] })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-base',
+                    'rounded-control border px-2.5 py-1.5 text-base',
                     draft.tools !== null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -561,7 +561,7 @@ export function AgentsPage() {
                           })
                         }
                         className={cn(
-                          'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                          'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                           on
                             ? 'border-accent bg-accent-soft text-accent'
                             : runtimeAvailable
@@ -586,7 +586,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, skillIds: null })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-base',
+                    'rounded-control border px-2.5 py-1.5 text-base',
                     draft.skillIds === null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -598,7 +598,7 @@ export function AgentsPage() {
                   type="button"
                   onClick={() => setDraft({ ...draft, skillIds: draft.skillIds ?? [] })}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-base',
+                    'rounded-control border px-2.5 py-1.5 text-base',
                     draft.skillIds !== null
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted',
@@ -632,7 +632,7 @@ export function AgentsPage() {
                           })
                         }
                         className={cn(
-                          'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                          'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                           on
                             ? 'border-accent bg-accent-soft text-accent'
                             : 'border-line text-muted hover:bg-elevated',

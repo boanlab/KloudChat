@@ -161,7 +161,7 @@ export function AdminUsersPage() {
         {error && (
           <p
             role="alert"
-            className="mb-4 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
+            className="mb-4 rounded-card border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
           >
             {error}
           </p>
@@ -407,7 +407,7 @@ export function AdminUsersPage() {
                     void setUserModels(restricting.id, next)
                   }}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                    'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                     on
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted hover:bg-elevated',
@@ -485,7 +485,7 @@ export function AdminUsersPage() {
                 key={p.label}
                 onClick={() => setDraftCredits(String(p.credits))}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1.5 text-base transition-colors',
+                  'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                   Number(draftCredits) === p.credits
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',
@@ -507,7 +507,7 @@ export function AdminUsersPage() {
           />
         </Field>
         {editing && (
-          <div className="space-y-1.5 rounded-lg border border-line bg-elevated px-3 py-2.5 text-base text-muted">
+          <div className="space-y-1.5 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
             <p>
               {t('현재 주기 사용량 {n} 크레딧').replace('{n}', editing.creditsUsed.toLocaleString())} ·{' '}
               {t('{date} 리필').replace('{date}', formatDate(editing.cycleResetsAt))}

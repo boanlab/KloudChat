@@ -130,7 +130,7 @@ export function ShareButton({ session }: { session: Session }) {
                     key={o.id}
                     onClick={() => setScope(o.id)}
                     className={cn(
-                      'flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors',
+                      'flex w-full items-start gap-2.5 rounded-card border p-3 text-left transition-colors',
                       active
                         ? 'border-accent bg-accent-soft'
                         : 'border-line hover:bg-elevated',

@@ -62,7 +62,7 @@ export function JobCard({ job }: { job: Job }) {
 
   if (job.status === 'running' || job.status === 'queued') {
     return (
-      <div className="animate-fade-up rounded-2xl border border-line bg-panel p-4">
+      <div className="animate-fade-up rounded-panel border border-line bg-panel p-4">
         <div className="flex items-center gap-2.5">
           <Loader2 size={15} className="shrink-0 animate-spin text-accent" />
           <span className="flex-1 text-base font-medium">{t(job.stage)}</span>
@@ -89,7 +89,7 @@ export function JobCard({ job }: { job: Job }) {
     return (
       <div
         className={cn(
-          'animate-fade-up rounded-2xl border p-4',
+          'animate-fade-up rounded-panel border p-4',
           failed ? 'border-danger/30 bg-danger/5' : 'border-line bg-panel',
         )}
       >
@@ -126,7 +126,7 @@ export function JobCard({ job }: { job: Job }) {
       {audios.map((a) => (
         <div
           key={a.id}
-          className="flex items-center gap-3 rounded-2xl border border-line bg-panel px-3.5 py-3"
+          className="flex items-center gap-3 rounded-panel border border-line bg-panel px-3.5 py-3"
         >
           <div className="min-w-0 flex-1">
             {/* 브라우저 기본 플레이어. `waveform` 은 비어 있는 채로 저장되므로
@@ -154,7 +154,7 @@ export function JobCard({ job }: { job: Job }) {
       ))}
 
       {videos.map((v) => (
-        <div key={v.id} className="overflow-hidden rounded-2xl border border-line bg-panel">
+        <div key={v.id} className="overflow-hidden rounded-panel border border-line bg-panel">
           {/* `posterSrc` is written empty — nothing makes thumbnails — so the
               <img> here drew a broken image, and the ▶ over it was decoration. */}
           <video
@@ -199,7 +199,7 @@ export function JobCard({ job }: { job: Job }) {
                 key={img.id}
                 onClick={() => openArtifact(img.id)}
                 className={cn(
-                  'group relative overflow-hidden rounded-xl border border-line bg-elevated',
+                  'group relative overflow-hidden rounded-card border border-line bg-elevated',
                   aspectClass[img.aspect] ?? 'aspect-square',
                 )}
               >

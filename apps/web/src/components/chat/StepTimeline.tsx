@@ -97,7 +97,7 @@ export function StepTimeline({ steps, live }: { steps: Step[]; live: boolean }) 
   const HeadIcon = icons[head.type]
 
   return (
-    <div className="animate-fade-up mb-3 overflow-hidden rounded-xl border border-line bg-elevated/50">
+    <div className="animate-fade-up mb-3 overflow-hidden rounded-card border border-line bg-elevated/50">
       <button
         onClick={() => setManual(!expanded)}
         aria-expanded={expanded}

@@ -45,7 +45,7 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
+        'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         'disabled:pointer-events-none disabled:opacity-45',
         variants[variant],
@@ -70,7 +70,7 @@ export function ButtonLink({
   return (
     <a
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
+        'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         variants[variant],
         sizes[size],
@@ -84,7 +84,7 @@ export function ButtonLink({
 /* ── Inputs ─────────────────────────────────────────────────────────── */
 
 const fieldBase =
-  'w-full rounded-lg border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
+  'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
   'transition-colors focus:border-accent focus:outline-none'
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
@@ -180,7 +180,7 @@ export function Badge({
     <span
       title={title}
       className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1 rounded-control border px-1.5 py-0.5 text-xs font-medium',
         tones[tone],
         className,
       )}
@@ -199,7 +199,7 @@ export function Card({
 }: React.HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
     <div
-      className={cn('rounded-xl border border-line bg-panel', className)}
+      className={cn('rounded-card border border-line bg-panel', className)}
       {...props}
     >
       {children}
@@ -290,7 +290,7 @@ export function Modal({
         // to be somewhere the keyboard can land.
         tabIndex={-1}
         className={cn(
-          'animate-fade-up relative w-full rounded-2xl border border-line bg-panel shadow-2xl outline-none',
+          'animate-fade-up relative w-full rounded-panel border border-line bg-panel shadow-2xl outline-none',
           width,
         )}
       >
@@ -482,7 +482,7 @@ export function Dropdown({
             role="menu"
             style={{ maxHeight: placement.maxHeight || undefined }}
             className={cn(
-              'animate-fade-up absolute z-40 min-w-52 overflow-y-auto rounded-xl border border-line bg-panel p-1 shadow-xl',
+              'animate-fade-up absolute z-40 min-w-52 overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-xl',
               placement.up ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
               align === 'right' ? 'right-0' : 'left-0',
               className,
@@ -525,7 +525,7 @@ export function MenuItem({
         close()
       }}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-base transition-colors',
+        'flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-base transition-colors',
         disabled
           ? 'cursor-not-allowed text-faint opacity-60'
           : danger
@@ -567,7 +567,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-      <div className="grid size-11 place-items-center rounded-xl border border-line bg-elevated text-muted">
+      <div className="grid size-11 place-items-center rounded-card border border-line bg-elevated text-muted">
         {icon}
       </div>
       <div className="space-y-1">
@@ -605,7 +605,7 @@ export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
   return (
     <div
       role="status"
-      className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn"
+      className="mb-3 flex flex-wrap items-center gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn"
     >
       <span className="min-w-0 flex-1">
         {t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')}

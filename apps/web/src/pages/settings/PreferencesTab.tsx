@@ -47,7 +47,7 @@ export function PreferencesTab() {
                 <select
                   value={modelByKind[kind]}
                   onChange={(e) => setModel(kind, e.target.value)}
-                  className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
                   {usable.length === 0 && <option value="">{t('사용 가능한 모델 없음')}</option>}
                   {usable.map((m) => (
@@ -80,7 +80,7 @@ export function PreferencesTab() {
             onChange={(event) =>
               set({ privacyDefaultAction: event.target.value as Preferences['privacyDefaultAction'] })
             }
-            className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+            className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
           >
             <option value="ask">{t('매번 확인')}</option>
             <option value="route_strict_local">{t('strict-local 모델로 전환')}</option>

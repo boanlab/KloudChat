@@ -93,9 +93,9 @@ function SourceList({ sources, style }: { sources: Source[]; style: string }) {
       {sources.map((src) => {
         const Icon = originIcon[src.origin]
         return (
-          <div key={src.id} className="rounded-xl border border-line bg-panel p-3">
+          <div key={src.id} className="rounded-card border border-line bg-panel p-3">
             <div className="flex items-start gap-2">
-              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-md bg-accent-soft text-2xs font-semibold text-accent">
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-control bg-accent-soft text-2xs font-semibold text-accent">
                 {src.ordinal}
               </span>
               <div className="min-w-0 flex-1">
@@ -433,7 +433,7 @@ export function ReportPanel({
               onClick={() => s.status !== 'pending' && scrollTo(s.id)}
               disabled={s.status === 'pending'}
               className={cn(
-                'flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
+                'flex w-full items-start gap-2 rounded-control px-2 py-1.5 text-left text-sm transition-colors',
                 s.status === 'pending'
                   ? 'cursor-default text-faint'
                   : activeId === s.id
@@ -550,7 +550,7 @@ export function ReportPanel({
           {picked && (
             <div
               ref={handleRef}
-              className="animate-fade-up absolute z-30 flex items-center gap-1 rounded-xl border border-line bg-panel p-1 shadow-xl"
+              className="animate-fade-up absolute z-30 flex items-center gap-1 rounded-card border border-line bg-panel p-1 shadow-xl"
               style={{ top: picked.top, left: picked.left }}
               // The bubble is a tool for the selection; a click that clears it
               // before the handler runs is a click that does nothing.
@@ -603,7 +603,7 @@ export function ReportPanel({
                       if (e.key === 'Escape') openEditor(false)
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void saveDocument()
                     }}
-                    className="min-h-0 w-full flex-1 resize-none rounded-xl border border-line bg-panel px-3 py-2 font-mono text-base leading-relaxed outline-none focus:border-accent"
+                    className="min-h-0 w-full flex-1 resize-none rounded-card border border-line bg-panel px-3 py-2 font-mono text-base leading-relaxed outline-none focus:border-accent"
                     autoFocus
                   />
                 </div>
@@ -611,7 +611,7 @@ export function ReportPanel({
                   <p className="text-xs font-medium text-faint">{t('미리보기')}</p>
                   <div
                     aria-label={t('문서 미리보기')}
-                    className="min-h-[10rem] flex-1 overflow-auto rounded-xl border border-line bg-elevated px-4 py-3"
+                    className="min-h-[10rem] flex-1 overflow-auto rounded-card border border-line bg-elevated px-4 py-3"
                   >
                     {draft.trim() ? (
                       <Markdown>{draft}</Markdown>
@@ -657,13 +657,13 @@ export function ReportPanel({
                   )}
                 </div>
                 {rewriting === s.id && (
-                  <div className="mb-3 space-y-2 rounded-xl border border-line bg-elevated p-3">
+                  <div className="mb-3 space-y-2 rounded-card border border-line bg-elevated p-3">
                     {/* 고칠 대목을 먼저 보여 준다. 지시만 남으면 무엇에 대한
                         지시였는지는 보낸 사람 머릿속에만 있다. */}
                     {rewriteQuote && (
                       <div
                         aria-label={t('고칠 대목')}
-                        className="flex items-start gap-2 rounded-lg border border-accent/25 bg-accent-soft/60 px-2.5 py-1.5"
+                        className="flex items-start gap-2 rounded-control border border-accent/25 bg-accent-soft/60 px-2.5 py-1.5"
                       >
                         <Quote size={12} className="mt-0.5 shrink-0 text-accent" />
                         <p className="min-w-0 flex-1 text-sm leading-relaxed text-muted">
@@ -754,7 +754,7 @@ export function ReportPanel({
           {versions?.map(({ version: v, summary, createdAt }) => (
             <div
               key={v}
-              className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5"
+              className="flex items-center gap-3 rounded-card border border-line px-3 py-2.5"
             >
               <Badge>v{v}</Badge>
               <div className="min-w-0 flex-1">

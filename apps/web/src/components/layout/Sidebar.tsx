@@ -113,7 +113,7 @@ function SessionRow({
             setEditing(false)
           }
         }}
-        className="w-full rounded-lg border border-accent bg-panel px-2.5 py-1.5 text-base outline-none"
+        className="w-full rounded-control border border-accent bg-panel px-2.5 py-1.5 text-base outline-none"
       />
     )
   }
@@ -121,7 +121,7 @@ function SessionRow({
   return (
     <div
       className={cn(
-        'group relative flex items-center rounded-lg text-base transition-colors',
+        'group relative flex items-center rounded-control text-base transition-colors',
         active ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
@@ -140,7 +140,7 @@ function SessionRow({
         align="right"
         trigger={() => (
           <button
-            className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-line hover:text-fg"
+            className="mr-1 grid size-6 shrink-0 place-items-center rounded-control text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-line hover:text-fg"
             aria-label={t('메뉴')}
             title={t('이 대화의 이름 바꾸기·고정·삭제')}
           >
@@ -246,7 +246,7 @@ export function Sidebar() {
               to={`/new/${kind}`}
               className={({ isActive }) =>
                 cn(
-                  'group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-base transition-colors',
+                  'group flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
                   isActive
                     ? 'bg-elevated font-medium text-fg'
                     : 'text-muted hover:bg-elevated hover:text-fg',
@@ -285,7 +285,7 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-base transition-colors',
+                'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
                 isActive
                   ? 'bg-elevated font-medium text-fg'
                   : 'text-muted hover:bg-elevated hover:text-fg',
@@ -325,7 +325,7 @@ export function Sidebar() {
         {hidden > 0 && (
           <button
             onClick={() => setShown((n) => n + PAGE)}
-            className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+            className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
             {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
           </button>
@@ -340,7 +340,7 @@ export function Sidebar() {
         <button
           aria-label={t('이번 달 사용량')}
           onClick={() => navigate('/usage')}
-          className="mb-1 block w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-elevated"
+          className="mb-1 block w-full rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
         >
           <span className="flex items-center justify-between text-xs">
             <span className="text-faint">{t('이번 달 크레딧')}</span>
@@ -363,7 +363,7 @@ export function Sidebar() {
           align="left"
           className="min-w-56"
           trigger={() => (
-            <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-elevated">
+            <button className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated">
               <span
                 className="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white"
                 style={{ background: user?.avatarColor }}
@@ -380,7 +380,7 @@ export function Sidebar() {
               {user?.role === 'admin' && pendingUsers > 0 && (
                 <span
                   aria-label={t('승인 대기 {n}건').replace('{n}', String(pendingUsers))}
-                  className="shrink-0 rounded-md bg-warn/15 px-1.5 text-xs font-medium text-warn"
+                  className="shrink-0 rounded-control bg-warn/15 px-1.5 text-xs font-medium text-warn"
                 >
                   {pendingUsers}
                 </span>

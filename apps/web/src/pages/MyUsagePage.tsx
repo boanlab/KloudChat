@@ -44,13 +44,13 @@ export function MyUsagePage() {
             {t('이 계정이 쓴 크레딧입니다. 매달 1일에 배정량으로 다시 채워집니다.')}
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg border border-line bg-elevated p-1">
+        <div className="flex gap-1 rounded-control border border-line bg-elevated p-1">
           {RANGES.map((r) => (
             <button
               key={r}
               onClick={() => setDays(r)}
               className={cn(
-                'min-w-11 rounded-md px-3 py-2 text-base transition-colors',
+                'min-w-11 rounded-control px-3 py-2 text-base transition-colors',
                 days === r ? 'bg-panel font-medium text-fg shadow-sm' : 'text-muted hover:text-fg',
               )}
             >

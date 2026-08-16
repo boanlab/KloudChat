@@ -87,7 +87,7 @@ export function ModelPicker({
       trigger={({ open }) => (
         <button
           className={cn(
-            'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-base font-medium transition-colors',
+            'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base font-medium transition-colors',
             open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
@@ -143,7 +143,7 @@ function ModelMenu({
         {t('모델')}
       </div>
       {!litellmAvailable && (
-        <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
+        <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           <span>
             {t('모델 목록을 모두 불러오지 못했습니다. 지금은 일부 모델만 고를 수 있습니다.')}
@@ -169,7 +169,7 @@ function ModelMenu({
             // composer and the next trigger click reads as "close".
             closeMenu()
           }}
-          className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-elevated"
+          className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated"
         >
           <span className="mt-0.5 w-4 shrink-0 text-accent">
             {m.id === active.id && <Check size={14} />}

@@ -70,7 +70,7 @@ export function TemplatesSection() {
           {shared.map((row) => (
             <li
               key={row.id}
-              className="flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-base"
+              className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
             >
               <LayoutTemplate size={13} className="shrink-0 text-faint" />
               <span className="min-w-0 flex-1 truncate">{row.title}</span>

@@ -38,7 +38,7 @@ export function PendingApprovalPage() {
 
       <div className="w-full max-w-md text-center">
         <div
-          className={`mx-auto mb-5 grid size-12 place-items-center rounded-2xl ${
+          className={`mx-auto mb-5 grid size-12 place-items-center rounded-panel ${
             suspended ? 'bg-danger/10 text-danger' : 'bg-warn/10 text-warn'
           }`}
         >

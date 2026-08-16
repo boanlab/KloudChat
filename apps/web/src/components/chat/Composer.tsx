@@ -100,7 +100,7 @@ function OptionGroup<T extends string | number>({
       trigger={({ open }) => (
         <button
           className={cn(
-            'flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-sm transition-colors',
+            'flex h-8 items-center gap-1.5 rounded-control border border-line px-2.5 text-sm transition-colors',
             open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
@@ -696,7 +696,7 @@ export function Composer({
               <span
                 key={f.id}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs',
+                  'flex items-center gap-1.5 rounded-control border px-1.5 py-0.5 text-xs',
                   // Uploaded but unreadable: said here, so nobody asks about
                   // contents that never existed.
                   f.error
@@ -725,7 +725,7 @@ export function Composer({
               </span>
             ))}
             {uploading && (
-              <span className="flex items-center gap-1.5 rounded-md border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
+              <span className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
                 <Loader2 size={10} className="animate-spin" />
                 {t('업로드 중')}
               </span>
@@ -810,7 +810,7 @@ export function Composer({
           />
           <button
             onClick={() => fileInput.current?.click()}
-            className="grid size-9 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
+            className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
             aria-label={t('첨부')}
             title={t('파일을 올려 답변의 근거로 씁니다')}
           >
@@ -825,7 +825,7 @@ export function Composer({
                   // Icon-only, so it needs an accessible name.
                   aria-label={t('스킬')}
                   className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-base transition-colors hover:bg-elevated',
+                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeSkills.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
                 >
@@ -886,7 +886,7 @@ export function Composer({
               trigger={() => (
                 <button
                   className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-base transition-colors hover:bg-elevated',
+                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     compareMode ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
                   aria-label={t('모델 비교')}
@@ -946,7 +946,7 @@ export function Composer({
               onClick={() => setWebSearch((w) => !w)}
               aria-pressed={webSearch}
               className={cn(
-                'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-base transition-colors hover:bg-elevated',
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                 webSearch ? 'text-accent' : 'text-muted hover:text-fg',
               )}
               aria-label={t('웹 검색')}
@@ -965,7 +965,7 @@ export function Composer({
               title={dictation === 'recording' ? t('멈추고 받아쓰기') : t('말한 내용을 받아 적습니다')}
               disabled={dictation === 'working'}
               className={cn(
-                'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 transition-colors hover:bg-elevated',
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 transition-colors hover:bg-elevated',
                 dictation === 'recording' ? 'text-danger' : 'text-muted hover:text-fg',
                 dictation === 'working' && 'opacity-60',
               )}
@@ -986,7 +986,7 @@ export function Composer({
               trigger={() => (
                 <button
                   className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-base transition-colors hover:bg-elevated',
+                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
                   aria-label={t('커넥터')}
@@ -1019,7 +1019,7 @@ export function Composer({
               className="min-w-64"
               trigger={() => (
                 <button
-                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-control px-2.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg"
                   title={t('에이전트를 골라 새 대화를 시작합니다')}
                 >
                   @
@@ -1081,7 +1081,7 @@ export function Composer({
       {mediaError && (
         <p
           role="status"
-          className="mt-2 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
+          className="mt-2 flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
         >
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           <span className="min-w-0 flex-1">{mediaError}</span>
@@ -1093,7 +1093,7 @@ export function Composer({
       {chatError && !pendingPrivacy && (
         <p
           role="alert"
-          className="mt-2 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
+          className="mt-2 flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
         >
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           <span className="min-w-0 flex-1">{chatError}</span>
@@ -1140,7 +1140,7 @@ export function Composer({
         {pendingPrivacy && (
           <>
             {chatError && (
-              <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+              <p role="alert" className="rounded-control bg-danger/10 px-3 py-2 text-sm text-danger">
                 {chatError}
               </p>
             )}

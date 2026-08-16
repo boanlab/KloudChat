@@ -31,7 +31,7 @@ function Intro({ kind }: { kind: SessionKind }) {
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 pb-8">
       <div className="animate-fade-up mb-7 text-center">
         <div
-          className="mx-auto mb-4 grid size-11 place-items-center rounded-2xl text-white"
+          className="mx-auto mb-4 grid size-11 place-items-center rounded-panel text-white"
           style={{ background: meta.color }}
         >
           <Icon size={20} />
@@ -50,7 +50,7 @@ function Intro({ kind }: { kind: SessionKind }) {
           <button
             key={prompt}
             onClick={() => start(prompt)}
-            className="animate-fade-up rounded-xl border border-line bg-panel px-3.5 py-3 text-left text-base text-muted transition-colors hover:border-line-strong hover:bg-elevated hover:text-fg"
+            className="animate-fade-up rounded-card border border-line bg-panel px-3.5 py-3 text-left text-base text-muted transition-colors hover:border-line-strong hover:bg-elevated hover:text-fg"
           >
             {t(prompt)}
           </button>

@@ -445,7 +445,7 @@ export function ChartPanel({
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              'flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors',
+              'flex items-center gap-1.5 rounded-control px-2 py-1 text-sm transition-colors',
               tab === t.id ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
             )}
           >
@@ -469,7 +469,7 @@ export function ChartPanel({
             )}
         </div>
         <div className={cn(tab === 'table' ? '' : 'hidden')}>
-          <div className="overflow-x-auto rounded-xl border border-line">
+          <div className="overflow-x-auto rounded-card border border-line">
             <table className="w-full border-collapse text-base">
               <thead className="bg-elevated">
                 <tr>

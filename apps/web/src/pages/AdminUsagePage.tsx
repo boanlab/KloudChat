@@ -100,15 +100,15 @@ export function AdminUsagePage() {
           description={t('실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.')}
           action={
             <div className="flex items-center gap-2">
-              <div className="flex rounded-lg border border-line p-0.5">
+              <div className="flex rounded-control border border-line p-0.5">
                 {RANGES.map((r) => (
                   <button
                     key={r}
                     onClick={() => setDays(r)}
                     className={
                       days === r
-                        ? 'min-w-11 rounded-md bg-elevated px-3 py-2 text-sm font-medium'
-                        : 'min-w-11 rounded-md px-3 py-2 text-sm text-muted hover:text-fg'
+                        ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium'
+                        : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg'
                     }
                   >
                     {t('{n}일').replace('{n}', String(r))}

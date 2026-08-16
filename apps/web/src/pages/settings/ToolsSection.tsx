@@ -141,7 +141,7 @@ export function ToolsSection({
           const probe = probes[feature.key]
           const inherited = feature.source !== 'database'
           return (
-            <div key={feature.key} className="rounded-lg border border-border p-3">
+            <div key={feature.key} className="rounded-control border border-border p-3">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-base font-medium">{t(feature.label)}</span>
                 <Badge>{t(SOURCE_LABEL[feature.source])}</Badge>

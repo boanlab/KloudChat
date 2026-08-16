@@ -79,7 +79,7 @@ export function ProjectsPage() {
                 className="cursor-pointer p-4 transition-colors hover:border-line-strong hover:bg-elevated"
               >
                 <div className="flex items-start gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-elevated text-lg">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-card bg-elevated text-lg">
                     {p.emoji}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ export function ProjectsPage() {
               <button
                 key={e}
                 onClick={() => setDraft((d) => ({ ...d, emoji: e }))}
-                className={`grid size-9 place-items-center rounded-lg border text-lg transition-colors ${
+                className={`grid size-9 place-items-center rounded-control border text-lg transition-colors ${
                   draft.emoji === e ? 'border-accent bg-accent-soft' : 'border-line hover:bg-elevated'
                 }`}
               >

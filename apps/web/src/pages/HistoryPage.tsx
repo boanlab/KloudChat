@@ -128,7 +128,7 @@ export function HistoryPage() {
       </div>
 
       {done !== null && (
-        <p className="mt-3 rounded-lg border border-line bg-elevated px-3 py-2 text-base text-muted">
+        <p className="mt-3 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
           {done}개의 대화를 삭제했습니다.
         </p>
       )}
@@ -182,7 +182,7 @@ export function HistoryPage() {
         title={t('모든 대화를 삭제할까요?')}
         description={t('대화 {n}개와 그 안의 모든 메시지가 사라집니다.').replace('{n}', String(sessions.length))}
       >
-        <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
+        <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {/* Says what survives as well as what goes. "삭제" that also silently
               took the reports would be the wrong kind of surprise. */}

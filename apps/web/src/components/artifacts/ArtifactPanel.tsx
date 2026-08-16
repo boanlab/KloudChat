@@ -123,7 +123,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
               key={t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                'flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors',
+                'flex items-center gap-1.5 rounded-control px-2 py-1 text-sm transition-colors',
                 tab === t.id ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
               )}
             >

@@ -60,7 +60,7 @@ export function FeaturesSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2.5">
+      <div className="flex items-center gap-3 rounded-control border border-line bg-panel px-3 py-2.5">
         <span className="text-base font-medium">{t(kindMeta.chat.label)}</span>
         <span className="text-sm text-muted">{t('항상 켜져 있습니다.')}</span>
       </div>
@@ -70,7 +70,7 @@ export function FeaturesSection({
         return (
           <label
             key={kind}
-            className="flex cursor-pointer items-center gap-3 rounded-lg border border-line px-3 py-2.5"
+            className="flex cursor-pointer items-center gap-3 rounded-control border border-line px-3 py-2.5"
           >
             <input
               type="checkbox"
