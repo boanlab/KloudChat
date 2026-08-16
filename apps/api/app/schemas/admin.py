@@ -71,6 +71,9 @@ class GovernanceIn(Wire):
     """Instance policy. Every field optional so a screen can send one switch."""
 
     pii_masking: bool | None = None
+    external_data_guard: bool | None = None
+    allow_user_raw_external: bool | None = None
+    privacy_safe_model_ids: list[str] | None = Field(default=None, max_length=20)
     intent_filter: bool | None = None
     blocked_categories: list[str] | None = None
     #: 0 keeps everything. Anything above it clears bodies older than that.

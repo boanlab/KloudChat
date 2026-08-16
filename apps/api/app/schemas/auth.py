@@ -7,6 +7,7 @@ is what keeps the two in sync.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -47,7 +48,11 @@ class Preferences(Wire):
     auto_memory: bool = False
     #: The model · token · credit line under each answer.
     show_usage: bool = True
-
+    #: Default action when protected data would leave for an external model.
+    #: The administrator remains the upper bound for raw delivery.
+    privacy_default_action: Literal[
+        "ask", "route_strict_local", "mask_external", "send_raw_external"
+    ] = "ask"
 
     @classmethod
     def of(cls, user: User) -> Preferences:

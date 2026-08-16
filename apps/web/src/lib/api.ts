@@ -6,7 +6,18 @@
  */
 
 import type {
-  Preferences, Message, ModelInfo, Session, SessionKind, Slide, Source, Step, User } from '@/types'
+  Preferences,
+  Message,
+  ModelInfo,
+  PrivacyAction,
+  PrivacyRouting,
+  Session,
+  SessionKind,
+  Slide,
+  Source,
+  Step,
+  User,
+} from '@/types'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -51,6 +62,28 @@ export class UnauthorizedError extends ApiError {
   constructor(detail = 'unauthorized') {
     super(401, detail)
     this.name = 'UnauthorizedError'
+  }
+}
+
+export interface PrivacyDecision {
+  code: 'privacy_decision_required'
+  findings: { category: string; source: string; count: number }[]
+  requestedModels: string[]
+  safeModels: { id: string; label: string }[]
+  allowedActions: (PrivacyAction | 'edit' | 'cancel')[]
+  decisionToken: string
+  detectorVersion: string
+  policyVersion: string
+}
+
+export class PrivacyDecisionError extends ApiError {
+  readonly decision: PrivacyDecision
+  sessionId?: string
+
+  constructor(decision: PrivacyDecision) {
+    super(409, decision.code)
+    this.name = 'PrivacyDecisionError'
+    this.decision = decision
   }
 }
 
@@ -209,6 +242,7 @@ export const authConfig = {
       dictationEnabled: boolean
       brand: { name: string; logo: string }
       enabledKinds: string[]
+      privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
     }>('/auth/config'),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
@@ -339,10 +373,14 @@ export interface AuditRow {
   detail: string
   ip: string
   severity: string
+  metadata?: Record<string, unknown> | null
 }
 
 export interface GovernancePolicy {
   piiMasking: boolean
+  externalDataGuard: boolean
+  allowUserRawExternal: boolean
+  privacySafeModelIds: string[]
   intentFilter: boolean
   blockedCategories: string[]
   /** 0 keeps everything; anything above clears message bodies older than that. */
@@ -483,6 +521,9 @@ export interface MessageRow {
   variants:
     | {
         model: string
+        routedModel?: string
+        actualModel?: string
+        dataBoundary?: ModelInfo['dataBoundary']
         content: string
         credits: number
         usage: { inputTokens: number; outputTokens: number } | null
@@ -492,6 +533,7 @@ export interface MessageRow {
     | null
   usage: Message['usage'] | null
   model: string | null
+  routing: PrivacyRouting | null
   createdAt: string
 }
 
@@ -963,11 +1005,15 @@ export type StreamEvent =
   | { type: 'artifact'; artifactId: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
   | { type: 'error'; message: string }
+  | ({ type: 'privacy_route' } & PrivacyRouting)
+  | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
   /** Model comparison: one column's text, then that column's final bill. */
-  | { type: 'variant'; model: string; text: string }
+  | { type: 'variant'; model: string; text: string; actualModel?: string }
   | {
       type: 'variant_done'
       model: string
+      routedModel?: string
+      actualModel?: string
       credits: number
       inputTokens: number
       outputTokens: number
@@ -989,6 +1035,8 @@ export async function* streamSession(
     webSearch?: boolean
     model?: string
     activatedSkillIds?: string[]
+    privacyAction?: PrivacyAction
+    privacyDecisionToken?: string
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
@@ -1001,7 +1049,14 @@ export async function* streamSession(
  */
 export async function* streamComparison(
   sessionId: string,
-  payload: { content: string; models: string[]; activatedSkillIds?: string[] },
+  payload: {
+    content: string
+    models: string[]
+    activatedSkillIds?: string[]
+    attachments?: string[]
+    privacyAction?: PrivacyAction
+    privacyDecisionToken?: string
+  },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   yield* postStream(`/sessions/${sessionId}/compare`, payload, signal)
@@ -1025,6 +1080,16 @@ async function* postStream(
   // A refused turn (no credits, unbuilt surface) answers with JSON, not a
   // stream. Surfacing it as an ApiError keeps the caller's error path uniform.
   if (!res.ok) {
+    if (res.status === 409) {
+      try {
+        const payload = (await res.json()) as PrivacyDecision
+        if (payload.code === 'privacy_decision_required') {
+          throw new PrivacyDecisionError(payload)
+        }
+      } catch (error) {
+        if (error instanceof PrivacyDecisionError) throw error
+      }
+    }
     const detail = await readDetail(res)
     if (res.status === 401) throw new UnauthorizedError(detail)
     throw new ApiError(res.status, detail)

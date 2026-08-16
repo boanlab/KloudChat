@@ -280,9 +280,54 @@ Later blocks weigh more with a small model, so the order is load-bearing: the
 material a turn was given sits closest to the question, and the standing
 instructions that shape every turn sit furthest from it.
 
-Policy (`governance`) is applied **before anything reaches the model**. Blocks
-happen before the write, and PII masking happens before the write — masking
-after sending leaves the original in the database.
+Policy (`governance`) is applied **before anything reaches the model**. For
+chat and model comparison, the privacy guard scans this exact assembled prompt,
+the current input and conversation history before it writes a message, issues a
+LiteLLM key, charges credits or starts any completion. Chat also materializes
+the exact OpenAI tool-schema array first and includes it in the same scan and
+decision-token hash; every model hop reuses that detached snapshot. A masked
+external retry drops a tool whose definition is sensitive instead of rewriting
+function or property names and breaking its runtime mapping. The deterministic
+v1 detector covers high-confidence identifiers and secrets; it does not guess
+at names or postal addresses.
+
+An external, hybrid or unknown-boundary model with findings requires one of
+four outcomes: route to an explicitly declared strict-local model, mask the
+envelope, send the raw envelope when the administrator allows it, or cancel and
+edit. The five-minute decision token is bound to the user, session, requested
+models and a hash of the complete envelope, so editing context cannot replay an
+old decision. Only value-free category, count and source aggregates are sent to
+the browser or audit log.
+
+`model_info.kchat_data_boundary`, `kchat_strict_local` and
+`kchat_privacy_only` are the authority for a model's boundary. IDs such as
+`local/*`, providers and API-base addresses are not evidence: a local-looking
+alias may have an external fallback. Missing or invalid metadata is `unknown`
+and can never be selected as a privacy-safe route. Egress decisions bypass the
+30-second display catalogue cache and refresh LiteLLM metadata on every send;
+if that refresh fails, no cached strict alias is trusted.
+
+Governance authorization likewise bypasses its process-local display cache. If
+the authoritative policy row cannot be read, every chat, comparison and legacy
+report/slides send path fails closed with `503 governance_unavailable` before
+model discovery, transcript writes, billing, virtual-key issuance or upstream
+calls. This also blocks a strict-local request: without the row the server does
+not know whether legacy masking, intent filtering or blocked categories apply.
+
+Strict-local turns disable web search, URL fetching and remote connector tools.
+Their tool registry is built from in-process runners only, rather than building
+remote connectors and filtering them afterwards. Tool output on an external
+turn is inspected before every follow-up completion and masked before it enters
+that prompt. While either guard or legacy masking is active, every persisted
+model-generated textual field (answer, comparison variants, timeline details,
+artifact payloads and routing metadata) is deterministically masked even when
+the inbound envelope was clean. Title generation and automatic memory receive
+only the masked turn text.
+
+The selectable guard is intentionally limited to chat and model comparison in
+this release. Reports, slides, media generation and the `/llm` compatibility
+API keep their existing always-mask behaviour where it was already supported;
+they do not present the new decision flow.
 
 ---
 

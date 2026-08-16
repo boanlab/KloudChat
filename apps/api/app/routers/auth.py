@@ -55,6 +55,7 @@ from app.schemas.auth import (
     SignupResponse,
     UserOut,
 )
+from app.services import governance as governance_service
 from app.services import mail as mail_service
 from app.services import settings_store, starter
 from app.services import transcribe as transcribe_service
@@ -174,9 +175,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
     await db.commit()
     await db.refresh(user)
 
-    session = (
-        await _issue_session(db, response, user) if user_status is UserStatus.active else None
-    )
+    session = await _issue_session(db, response, user) if user_status is UserStatus.active else None
     return SignupResponse(user=UserOut.of(user), session=session)
 
 
@@ -300,6 +299,21 @@ async def update_me(payload: ProfilePatch, user: CurrentIdentity, db: DbSession)
     # Merged, not replaced: a whole-dict write erases every switch the client
     # did not send.
     if (prefs := patch.pop("preferences", None)) is not None:
+        if prefs.get("privacy_default_action") == "send_raw_external":
+            # Saving a raw-external default grants future egress authority, so
+            # a process-local policy cache is not acceptable here.
+            try:
+                policy = await governance_service.current_for_egress()
+            except governance_service.GovernanceUnavailable:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="governance_unavailable",
+                ) from None
+            if policy.pii_masking or not policy.allow_user_raw_external:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="raw_external_not_allowed",
+                )
         user.preferences = {**(user.preferences or {}), **prefs}
     for field, value in patch.items():
         setattr(user, field, value)
@@ -323,9 +337,7 @@ async def change_password(
     intruder already holds have to go with it.
     """
     if not verify_password(payload.current_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="wrong_current_password"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="wrong_current_password")
 
     user.password_hash = hash_password(payload.new_password)
     db.add(user)
@@ -367,6 +379,10 @@ async def auth_config():
     no Whisper backend means no microphone. The browser cannot read the admin
     settings to find either out.
     """
+    # Display hint only. Saving/using raw external delivery re-reads the policy
+    # from the database, so this short cache can at worst show a stale option
+    # that the authorizing endpoint immediately rejects.
+    policy = await governance_service.current()
     return {
         "passwordResetEnabled": await settings_store.mail_enabled(),
         "dictationEnabled": await transcribe_service.available(),
@@ -374,6 +390,10 @@ async def auth_config():
         # name and logo too.
         "brand": await settings_store.brand(),
         "enabledKinds": await settings_store.enabled_kinds(),
+        "privacy": {
+            "externalDataGuard": policy.external_data_guard,
+            "allowUserRawExternal": (policy.allow_user_raw_external and not policy.pii_masking),
+        },
     }
 
 

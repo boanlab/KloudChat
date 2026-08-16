@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Cpu, Eye, Plug, TriangleAlert, Wrench } from 'lucide-react'
+import { Check, ChevronDown, Cpu, Eye, Plug, ShieldCheck, TriangleAlert, Wrench } from 'lucide-react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -34,7 +34,7 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
       : t('{n} 크레딧').replace('{n}', m.creditCost.toLocaleString())
   }
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
-    return m.id.startsWith('local/') ? t('자체 운영 · 무료') : t('OpenRouter 무료')
+    return m.dataBoundary === 'self_hosted' ? t('자체 운영 · 무료') : t('외부 제공 · 무료')
   }
   return t('1k당 입력 {in} · 출력 {out}')
     .replace('{in}', m.inputCreditCost.toLocaleString())
@@ -178,6 +178,22 @@ function ModelMenu({
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[13px] font-medium">{m.label}</span>
               <Badge>{m.provider}</Badge>
+              {m.strictLocal && (
+                <Badge tone="success">
+                  <ShieldCheck size={10} />
+                  strict-local
+                </Badge>
+              )}
+              {!m.strictLocal && m.dataBoundary === 'self_hosted' && (
+                <Badge tone="warn">{t('self-hosted · strict 미확인')}</Badge>
+              )}
+              {!m.strictLocal && m.dataBoundary === 'hybrid' && (
+                <Badge tone="warn">{t('외부 전환 가능')}</Badge>
+              )}
+              {m.dataBoundary === 'external' && <Badge tone="warn">{t('외부 제공')}</Badge>}
+              {m.dataBoundary === 'unknown' && (
+                <Badge tone="warn">{t('경계 미확인')}</Badge>
+              )}
               {m.id.endsWith(':free') && <Badge tone="success">{t('무료')}</Badge>}
               {m.adapter && (
                 <Badge tone="warn">

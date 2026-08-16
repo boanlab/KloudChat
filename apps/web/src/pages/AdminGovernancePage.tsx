@@ -38,7 +38,7 @@ const ACTION_LABEL: Record<string, string> = {
 
 export function AdminGovernancePage() {
   const t = useT()
-  const { audit, loadAudit, governance, loadGovernance, setGovernance } = useStore()
+  const { audit, loadAudit, governance, loadGovernance, setGovernance, models } = useStore()
   const [query, setQuery] = useState('')
   const [tab, setTab] = useState<'policy' | 'log'>('policy')
   const [category, setCategory] = useState('')
@@ -66,6 +66,10 @@ export function AdminGovernancePage() {
         .includes(q),
     )
   }, [audit, query])
+  const strictModels = models.filter(
+    (model) =>
+      model.dataBoundary === 'self_hosted' && model.strictLocal && model.kinds.includes('chat'),
+  )
 
   return (
     <>
@@ -100,9 +104,85 @@ export function AdminGovernancePage() {
                   </div>
                   <Switch
                     checked={governance.piiMasking}
-                    onChange={(v) => void apply({ piiMasking: v })}
+                    onChange={(v) =>
+                      void apply({
+                        piiMasking: v,
+                        ...(v ? { allowUserRawExternal: false } : {}),
+                      })
+                    }
                     label={t('개인정보 마스킹')}
                   />
+                </Card>
+
+                <Card className="space-y-4 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium">{t('외부 모델 개인정보 보호')}</p>
+                      <p className="text-[13px] text-muted">
+                        {t('채팅과 모델 비교의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.')}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={governance.externalDataGuard}
+                      onChange={(value) => void apply({ externalDataGuard: value })}
+                      label={t('외부 모델 개인정보 보호')}
+                    />
+                  </div>
+
+                  <div className="border-t border-line pt-3">
+                    <p className="text-[13px] font-medium">{t('strict-local 안전 모델')}</p>
+                    <p className="text-[12px] text-muted">
+                      {t('프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.')}
+                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      {strictModels.map((model) => {
+                        const checked = governance.privacySafeModelIds.includes(model.id)
+                        return (
+                          <label
+                            key={model.id}
+                            className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-[13px]"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                const selected = new Set(governance.privacySafeModelIds)
+                                if (checked) selected.delete(model.id)
+                                else selected.add(model.id)
+                                void apply({
+                                  privacySafeModelIds: strictModels
+                                    .filter((candidate) => selected.has(candidate.id))
+                                    .map((candidate) => candidate.id),
+                                })
+                              }}
+                            />
+                            <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                            {model.privacyOnly && <Badge tone="accent">{t('개인정보 전용')}</Badge>}
+                          </label>
+                        )
+                      })}
+                      {strictModels.length === 0 && (
+                        <p className="rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-[12px] text-warn">
+                          {t('현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 border-t border-line pt-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium">{t('원문 외부 전송 허용')}</p>
+                      <p className="text-[12px] text-muted">
+                        {t('사용자가 경고 후 원문 전송을 선택할 수 있게 합니다. 개인정보 마스킹 정책이 켜져 있으면 항상 금지됩니다.')}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={governance.allowUserRawExternal && !governance.piiMasking}
+                      disabled={governance.piiMasking}
+                      onChange={(value) => void apply({ allowUserRawExternal: value })}
+                      label={t('원문 외부 전송 허용')}
+                    />
+                  </div>
                 </Card>
 
                 <Card className="p-4">

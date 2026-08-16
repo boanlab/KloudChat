@@ -180,7 +180,7 @@ without a translation fall back to Korean.
 | `/usage` | Your own usage, by day, model and surface |
 | `/admin/users` | Signup approval, monthly credit allowance, suspension (admin) |
 | `/admin/usage` | Organisation-wide usage (admin) |
-| `/admin/governance` | PII masking, intent filters, no-training flags, retention, audit log (admin) |
+| `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
 | `/settings` · `/settings/preferences` · `/settings/keys` | Profile and password / default model and behaviour / API key issue and revoke |
 | `/agent-setup` | Coding agent connection — address, key, model (account menu) |
 | `/admin/system` | Enabled surfaces, branding, backend integration, LiteLLM, SMTP (admin) |

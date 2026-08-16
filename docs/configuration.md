@@ -12,9 +12,17 @@ is a working bootstrap so that a fresh deployment runs before anyone opens the
 admin screen; anything an administrator saves afterwards takes precedence and
 keeps taking precedence. Editing `.env` will not undo a value set in the UI.
 
-Runtime values are cached in-process — they are read on every model call — and
-the cache is invalidated on write. With more than one API replica, a change
-reaches the others within the cache TTL rather than instantly.
+Most runtime values are cached in-process — they are read on every model call —
+and the cache is invalidated on write. With more than one API replica, those
+display and feature settings reach the others within the cache TTL. Two values
+that can authorize external data movement deliberately bypass that rule:
+governance is read fresh for every egress decision, and model-boundary metadata
+is refreshed from LiteLLM before strict-local eligibility is trusted. If the
+authoritative governance read fails, chat, comparison and the legacy
+report/slides send path return `503 governance_unavailable` before reading the
+model catalogue, creating a message, issuing a key, charging credit or calling
+an upstream model. A cached policy remains useful for display, but never
+authorizes raw, masked or strict-local egress.
 
 ---
 
@@ -159,10 +167,29 @@ changes its URL and no cache serves the old one.
 
 ### Governance
 
-Prohibited-intent categories, PII masking, a no-training flag, and message-body
-retention. Policy is applied **before anything reaches the model**: blocks
-happen before the write and masking happens before the write, because masking
-after sending leaves the original text in the database.
+Prohibited-intent categories, message-body retention and two compatible privacy
+policies are available:
+
+- **PII masking** is the legacy organisation-wide upper bound. When enabled,
+  matching content is always masked and raw external delivery cannot be
+  enabled.
+- **External data guard** protects chat and model comparison. Administrators
+  choose a set of models whose live catalogue metadata explicitly says
+  `self_hosted` and `strictLocal`; stale or unknown model IDs are rejected.
+  The visible catalogue's top-to-bottom order is the fixed routing priority.
+  Administrators may optionally allow a user to choose raw external delivery
+  after detection. New policy rows enable the guard and disallow raw delivery;
+  upgraded installations retain the guard-off state until configured.
+
+Each user can choose `ask`, strict-local routing, masked external delivery or,
+when permitted, raw external delivery as the default action. The server
+rechecks the administrator policy on every turn, so a previously saved raw
+preference becomes ineffective as soon as the allowance is removed.
+
+Policy is applied **before a message write, credit charge or completion call**.
+Detected values are not returned in the decision response or stored in audit
+metadata. See the context-assembly section of `architecture.md` for the scanned
+sources, model metadata contract and this release's surface limits.
 
 ---
 

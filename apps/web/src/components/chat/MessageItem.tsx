@@ -14,7 +14,7 @@ import {
   Video,
 } from 'lucide-react'
 import { useState } from 'react'
-import { Button } from '@/components/ui'
+import { Badge, Button } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ArtifactKind, Message } from '@/types'
@@ -59,6 +59,16 @@ export function MessageItem({
   const { artifacts, openArtifact, rateMessage, models, user } = useStore()
   const [copied, setCopied] = useState(false)
   const model = models.find((m) => m.id === message.model)
+  const actualModelChanged = Boolean(
+    message.routing?.actualModel &&
+      message.routing.actualModel !== message.routing.requestedModels[0],
+  )
+  const showRouting = Boolean(
+    message.routing && (message.routing.action !== 'none' || actualModelChanged),
+  )
+  const messageBoundary =
+    model?.dataBoundary ??
+    (message.routing?.dataBoundary !== 'mixed' ? message.routing?.dataBoundary : undefined)
 
   const copyButton = (label: string) => (
     <Button
@@ -113,6 +123,51 @@ export function MessageItem({
         <Sparkles size={14} />
       </div>
       <div className="min-w-0 flex-1">
+        {message.routing && showRouting && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {message.routing.action !== 'none' &&
+              message.routing.initialAction === 'send_raw_external' &&
+              message.routing.action !== 'send_raw_external' && (
+                <Badge tone="warn">{t('확인 후 요청 원문은 외부 전송')}</Badge>
+              )}
+            {message.routing.action !== 'none' && (
+              <Badge
+                tone={message.routing.action === 'send_raw_external' ? 'warn' : 'success'}
+              >
+                {message.routing.action === 'route_strict_local' ||
+                message.routing.action === 'strict_local'
+                  ? t('strict-local로 보호됨')
+                  : message.routing.action === 'mask_external'
+                    ? t('개인정보를 가려 전송함')
+                    : t('확인 후 외부 원문 전송')}
+              </Badge>
+            )}
+            {messageBoundary && (
+              <Badge tone={messageBoundary === 'self_hosted' ? 'success' : 'warn'}>
+                {messageBoundary === 'self_hosted'
+                  ? 'self-hosted'
+                  : messageBoundary === 'hybrid'
+                    ? t('외부 전환 가능')
+                    : messageBoundary === 'external'
+                      ? t('외부 제공')
+                      : t('경계 미확인')}
+              </Badge>
+            )}
+            {message.routing.toolOutputMasked ? (
+              <Badge tone="warn">
+                {t('도구 결과 {n}건 추가 마스킹').replace(
+                  '{n}',
+                  message.routing.toolOutputMasked.toLocaleString(),
+                )}
+              </Badge>
+            ) : null}
+            {actualModelChanged && message.routing.actualModel && (
+              <Badge title={message.routing.actualModel}>
+                {t('실제 실행 모델')}: {message.routing.actualModel}
+              </Badge>
+            )}
+          </div>
+        )}
         {message.steps && message.steps.length > 0 && (
           <StepTimeline steps={message.steps} live={!!streaming} />
         )}
@@ -210,9 +265,13 @@ export function MessageItem({
                 ) : (
                   <span
                     title={
-                      message.model?.startsWith('local/')
+                      messageBoundary === 'self_hosted'
                         ? t('직접 운영하는 모델이라 크레딧이 차감되지 않습니다')
-                        : t('OpenRouter 가 무료로 제공하는 모델입니다')
+                        : messageBoundary === 'external'
+                          ? t('외부 제공자가 무료로 제공하는 모델입니다')
+                          : messageBoundary === 'hybrid'
+                            ? t('자체 운영 경로지만 외부 모델로 전환될 수 있습니다')
+                            : t('모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다')
                     }
                   >
                     {t('무료')}

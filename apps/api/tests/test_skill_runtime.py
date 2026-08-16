@@ -32,6 +32,7 @@ from app.services.context import build_messages
 from app.services.tools import registry
 from app.services.tools.base import Tool
 from app.services.workspace_context import (
+    AppliedSkill,
     ContextBlock,
     WorkspaceContext,
     WorkspaceContextError,
@@ -479,7 +480,7 @@ def _request(path: str = "/") -> Request:
 def _model(model_id: str) -> dict:
     return {
         "id": model_id,
-        "kinds": ["chat"],
+        "kinds": ["chat", "report", "slides"],
         "supportsTools": False,
         "creditCost": 1,
         "inputCreditCost": 1,
@@ -506,8 +507,8 @@ def _patch_route_services(monkeypatch, upstream: dict[str, int]) -> None:
         upstream["calls"] += 1
         return "http://unused", "unused"
 
-    monkeypatch.setattr(sessions_router.governance, "current", policy)
-    monkeypatch.setattr(sessions_router.model_service, "list_models", models)
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", policy)
+    monkeypatch.setattr(sessions_router.model_service, "list_models_for_egress", models)
     monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
     monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
 
@@ -736,6 +737,98 @@ async def test_document_routes_propagate_separate_context_after_prewrite_validat
     assert captured["trusted_context"] == [trusted]
     assert captured["untrusted_context"] == [untrusted]
     assert "context" not in captured
+
+
+@pytest.mark.parametrize(
+    ("kind", "runner_name"),
+    [
+        (SessionKind.report, "_run_report"),
+        (SessionKind.slides, "_run_deck"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_document_pii_masking_covers_workspace_context_and_attachment_metadata(
+    monkeypatch, kind: SessionKind, runner_name: str
+):
+    user = _route_user()
+    db = _RouteDb(_session(kind))
+    upstream = {"calls": 0}
+    _patch_route_services(monkeypatch, upstream)
+
+    async def legacy_policy():
+        return Governance(pii_masking=True, external_data_guard=False)
+
+    trusted_raw = "owner trusted-owner@example.test"
+    untrusted_raw = "attachment for reference-owner@example.test"
+    workspace = WorkspaceContext(
+        (
+            ContextBlock("skill:selected", trusted_raw, True),
+            ContextBlock("attachment", untrusted_raw, False),
+        ),
+        (
+            AppliedSkill(
+                id="skill-1",
+                name="reviewer skill-owner@example.test",
+                catalog_key=None,
+                estimated_tokens=12,
+            ),
+        ),
+    )
+
+    async def assemble_context(*_args, **_kwargs):
+        return workspace
+
+    attachment_meta = [
+        {
+            "id": "attachment-1",
+            "name": "notes for file-owner@example.test",
+            "size": 12,
+            "type": "text/plain",
+            "error": "extraction failed for error-owner@example.test",
+        }
+    ]
+
+    async def owned_attachments(*_args, **_kwargs):
+        return [], attachment_meta
+
+    captured: dict = {}
+
+    async def run_document(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type":"done"}\n\n'
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", legacy_policy)
+    monkeypatch.setattr(sessions_router, "assemble", assemble_context)
+    monkeypatch.setattr(sessions_router, "_owned_attachments", owned_attachments)
+    monkeypatch.setattr(sessions_router, runner_name, run_document)
+
+    response = await sessions_router.send_message(
+        db.session.id,
+        SendMessage(content="clean request", attachments=["attachment-1"]),
+        _request(f"/sessions/{db.session.id}/messages"),
+        user,
+        db,
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    assert captured["trusted_context"] == ["owner [이메일]"]
+    assert captured["untrusted_context"] == ["attachment for [이메일]"]
+    assert captured["skills_event"]["skills"][0]["name"] == "reviewer [이메일]"
+    user_message = next(
+        row for row in db.added if isinstance(row, Message) and row.role.value == "user"
+    )
+    assert user_message.content == "clean request"
+    assert user_message.attachments == [
+        {
+            "id": "attachment-1",
+            "name": "notes for [이메일]",
+            "size": 12,
+            "type": "text/plain",
+            "error": "extraction failed for [이메일]",
+        }
+    ]
+    assert upstream["calls"] == 2
 
 
 class _DocumentResponse:

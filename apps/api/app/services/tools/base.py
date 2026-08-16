@@ -8,6 +8,7 @@ provider from touching the loop.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,3 +77,15 @@ def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:
         }
         for t in tools
     ]
+
+
+def openai_snapshot(tools: list[Tool]) -> list[dict[str, Any]]:
+    """Materializes the exact detached definitions sent to the model.
+
+    ``to_openai`` intentionally reuses each tool's ``parameters`` object.  A
+    privacy decision, however, must bind the immutable outbound bytes rather
+    than a registry object that a later callback could mutate.  The JSON
+    round-trip both validates the schema and makes the inspected snapshot
+    independent from the runtime runners.
+    """
+    return json.loads(json.dumps(to_openai(tools), ensure_ascii=False))

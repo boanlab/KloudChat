@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
@@ -58,6 +58,9 @@ async def stream_completion(
     messages: list[dict[str, Any]],
     user_id: str,
     api_key: str,
+    *,
+    strict_local: bool = False,
+    redact_logging: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yields KloudChat stream events. The caller owns persistence and billing.
 
@@ -76,8 +79,11 @@ async def stream_completion(
         # when a call has fallen back to the master key.
         "user": user_id,
     }
+    if strict_local:
+        payload["disable_fallbacks"] = True
 
     usage: dict[str, int] | None = None
+    reported_model: str | None = None
     # Tool call fragments arrive spread across chunks, keyed by index.
     open_steps: dict[int, dict[str, Any]] = {}
 
@@ -87,13 +93,21 @@ async def stream_completion(
         base, _ = await settings_store.litellm_config()
         async with httpx.AsyncClient(
             base_url=base.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                **(
+                    {"x-litellm-enable-message-redaction": "true"}
+                    if redact_logging
+                    else {}
+                ),
+            },
             timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
         ) as client:
             async with client.stream("POST", "/v1/chat/completions", json=payload) as response:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode(errors="replace")[:400]
-                    raise ChatStreamError(f"upstream_{response.status_code}: {body}")
+                    detail = "response redacted" if redact_logging else body
+                    raise ChatStreamError(f"upstream_{response.status_code}: {detail}")
 
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
@@ -112,6 +126,19 @@ async def stream_completion(
                         usage = {
                             "inputTokens": int(u.get("prompt_tokens") or 0),
                             "outputTokens": int(u.get("completion_tokens") or 0),
+                        }
+
+                    actual_model = chunk.get("model")
+                    if (
+                        isinstance(actual_model, str)
+                        and actual_model
+                        and actual_model != reported_model
+                    ):
+                        reported_model = actual_model
+                        yield {
+                            "type": "model_route",
+                            "routedModel": model,
+                            "actualModel": actual_model,
                         }
 
                     for choice in chunk.get("choices") or []:
@@ -157,11 +184,23 @@ async def stream_completion(
 
 
 async def generate_title(
-    model: str, first_user_message: str, first_reply: str, api_key: str
+    model: str,
+    first_user_message: str,
+    first_reply: str,
+    api_key: str,
+    *,
+    masker: Callable[[str], tuple[str, int]] | None = None,
+    strict_local: bool = False,
+    redact_logging: bool = False,
 ) -> str | None:
     """One short non-streaming call. Best effort — a session with no title is a
     cosmetic problem, and blocking the turn on it would not be.
     """
+    if masker is not None:
+        first_user_message, user_hits = masker(first_user_message)
+        first_reply, reply_hits = masker(first_reply)
+        redact_logging = redact_logging or bool(user_hits + reply_hits)
+
     prompt = (
         "다음 대화의 핵심 주제를 나타내는 제목을 작성하세요. "
         "반드시 한국어로, 5단어 이내, 따옴표나 문장부호 없이 제목 텍스트만 출력하세요.\n\n"
@@ -172,7 +211,14 @@ async def generate_title(
         base, _ = await settings_store.litellm_config()
         async with httpx.AsyncClient(
             base_url=base.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                **(
+                    {"x-litellm-enable-message-redaction": "true"}
+                    if redact_logging
+                    else {}
+                ),
+            },
             timeout=settings.title_timeout_sec,
         ) as client:
             response = await client.post(
@@ -182,6 +228,7 @@ async def generate_title(
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                     "max_tokens": 40,
+                    **({"disable_fallbacks": True} if strict_local else {}),
                 },
             )
             response.raise_for_status()
@@ -195,4 +242,6 @@ async def generate_title(
         return None
     title = (choices[0].get("message") or {}).get("content") or ""
     title = title.strip().strip("\"'").splitlines()[0].strip() if title.strip() else ""
+    if masker is not None:
+        title = masker(title)[0]
     return title[:80] or None

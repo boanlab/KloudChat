@@ -117,10 +117,12 @@ export function Switch({
   checked,
   onChange,
   label,
+  disabled = false,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
   label?: string
+  disabled?: boolean
 }) {
   return (
     <button
@@ -128,6 +130,7 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
         // The button is the *hit area*, not the track. At 36×20 the track was
@@ -135,6 +138,7 @@ export function Switch({
         // lists are read on — so the control grew to 44×36 and the track moved
         // into `::before`, unchanged at 36×20.
         'relative h-9 w-11 shrink-0 border-0 bg-transparent p-0',
+        'disabled:pointer-events-none disabled:opacity-45',
         "before:absolute before:top-1/2 before:left-1 before:h-5 before:w-9 before:-translate-y-1/2 before:rounded-full before:transition-colors before:content-['']",
         checked ? 'before:bg-accent' : 'before:bg-line-strong',
       )}
@@ -158,10 +162,12 @@ export function Badge({
   children,
   tone = 'neutral',
   className,
+  title,
 }: {
   children: ReactNode
   tone?: 'neutral' | 'accent' | 'success' | 'warn' | 'danger'
   className?: string
+  title?: string
 }) {
   const tones = {
     neutral: 'bg-elevated text-muted border-line',
@@ -172,6 +178,7 @@ export function Badge({
   }
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
         tones[tone],
@@ -228,6 +235,10 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null)
   /** Whatever had focus when this opened, so it can be given back. */
   const returnTo = useRef<HTMLElement | null>(null)
+  const closeRef = useRef(onClose)
+  useLayoutEffect(() => {
+    closeRef.current = onClose
+  }, [onClose])
 
   /**
    * Focus trap and restore. `aria-modal` claims the rest of the page is inert;
@@ -242,7 +253,7 @@ export function Modal({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose()
+        closeRef.current()
         return
       }
       if (e.key !== 'Tab' || !panel) return
@@ -264,7 +275,7 @@ export function Modal({
       // which is where the browser drops you when the focused node vanishes.
       returnTo.current?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (

@@ -176,6 +176,11 @@ class AuditEvent(SQLModel, table=True):
     action: str
     target: str = Field(default="")
     detail: str = Field(default="")
+    #: Structured, value-free context for machine-readable security events.
+    #: The Python name avoids SQLAlchemy's reserved ``metadata`` attribute.
+    event_metadata: dict | None = Field(
+        default=None, sa_column=Column("metadata", JSONB, nullable=True)
+    )
     ip: str = Field(default="")
     severity: str = Field(default="info")
 

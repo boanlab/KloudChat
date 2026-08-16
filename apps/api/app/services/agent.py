@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
@@ -31,7 +31,7 @@ from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
 log = logging.getLogger(__name__)
 
 
-async def _client(api_key: str) -> httpx.AsyncClient:
+async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncClient:
     """Built per turn, so an administrator can repoint the proxy live.
 
     `api_key` is the caller's virtual key, so the proxy attributes and limits the
@@ -40,7 +40,10 @@ async def _client(api_key: str) -> httpx.AsyncClient:
     base, _ = await settings_store.litellm_config()
     return httpx.AsyncClient(
         base_url=base.rstrip("/"),
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
+        },
         timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
     )
 
@@ -57,9 +60,13 @@ class _Accumulator:
         self.calls: dict[int, dict[str, Any]] = {}
         self.usage = {"inputTokens": 0, "outputTokens": 0}
         self.finish_reason: str | None = None
+        self.actual_model: str | None = None
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Returns newly emitted visible text, if any."""
+        actual_model = chunk.get("model")
+        if isinstance(actual_model, str) and actual_model:
+            self.actual_model = actual_model
         if chunk.get("usage"):
             u = chunk["usage"]
             # `+=`: every hop bills its own prompt.
@@ -74,9 +81,7 @@ class _Accumulator:
 
             for raw in delta.get("tool_calls") or []:
                 index = raw.get("index", 0)
-                call = self.calls.setdefault(
-                    index, {"id": None, "name": "", "arguments": ""}
-                )
+                call = self.calls.setdefault(index, {"id": None, "name": "", "arguments": ""})
                 if raw.get("id"):
                     call["id"] = raw["id"]
                 fn = raw.get("function") or {}
@@ -112,6 +117,10 @@ async def _stream_once(
     tools: list[Tool],
     user_id: str,
     api_key: str,
+    *,
+    tool_definitions: list[dict[str, Any]] | None = None,
+    strict_local: bool = False,
+    redact_logging: bool = False,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Yields `('delta', text)` while streaming, then `('done', _Accumulator)`."""
     payload: dict[str, Any] = {
@@ -122,16 +131,21 @@ async def _stream_once(
         "user": user_id,
     }
     if tools:
-        payload["tools"] = to_openai(tools)
+        payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
         payload["tool_choice"] = "auto"
+    if strict_local:
+        # Defence in depth. The strict alias has no fallback in KloudChat-LLM;
+        # this also asks LiteLLM's router not to fall back for this request.
+        payload["disable_fallbacks"] = True
 
     acc = _Accumulator()
     try:
-        async with await _client(api_key) as client:
+        async with await _client(api_key, redact_logging=redact_logging) as client:
             async with client.stream("POST", "/v1/chat/completions", json=payload) as response:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode(errors="replace")[:400]
-                    raise ChatStreamError(f"upstream_{response.status_code}: {body}")
+                    detail = "response redacted" if redact_logging else body
+                    raise ChatStreamError(f"upstream_{response.status_code}: {detail}")
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
                         continue
@@ -172,8 +186,15 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
             content=f"오류: {tool.name} 도구가 시간 안에 응답하지 않았습니다.", failed=True
         )
     except Exception as exc:  # noqa: BLE001 — a broken tool must not end the turn
-        log.warning("tool %s failed: %s", tool.name, exc, exc_info=True)
-        return ToolResult(content=f"오류: {tool.name} 실행에 실패했습니다 ({exc}).", failed=True)
+        # Remote tool exceptions occasionally embed their response body. That
+        # body has not reached the outbound sanitizer yet, so neither the log
+        # nor the model-facing error may copy it verbatim.
+        error_type = type(exc).__name__
+        log.warning("tool %s failed (%s)", tool.name, error_type)
+        return ToolResult(
+            content=f"오류: {tool.name} 실행에 실패했습니다 ({error_type}).",
+            failed=True,
+        )
 
     if isinstance(output, ToolResult):
         return output
@@ -185,6 +206,12 @@ async def run_turn(
     messages: list[dict[str, Any]],
     tools: list[Tool],
     ctx: ToolContext,
+    sanitize_tool_output: Callable[[str], tuple[str, int]] | None = None,
+    sanitize_step_detail: Callable[[str], tuple[str, int]] | None = None,
+    classify_tool_output: Callable[[str], list[dict[str, Any]]] | None = None,
+    strict_local: bool = False,
+    redact_logging: bool = False,
+    tool_definitions: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -195,10 +222,34 @@ async def run_turn(
     conversation = list(messages)
     usage = {"inputTokens": 0, "outputTokens": 0}
     hop = 0
+    redact_next_request = redact_logging
+    reported_models: set[str] = set()
+
+    def visible_label(tool: Tool | None, name: str) -> str:
+        label = tool.label if tool else step_label(name)
+        if sanitize_step_detail is not None:
+            label, _ = sanitize_step_detail(label)
+        return label
 
     while True:
         acc: _Accumulator | None = None
-        async for kind, value in _stream_once(model, conversation, tools, ctx.user_id, ctx.api_key):
+        stream_kwargs: dict[str, Any] = {
+            "strict_local": strict_local,
+            "redact_logging": redact_next_request,
+        }
+        # Tests and third-party extensions that call ``run_turn`` directly can
+        # keep the legacy conversion path.  Production passes the preflighted
+        # snapshot so every hop sends byte-for-byte equivalent definitions.
+        if tool_definitions is not None:
+            stream_kwargs["tool_definitions"] = tool_definitions
+        async for kind, value in _stream_once(
+            model,
+            conversation,
+            tools,
+            ctx.user_id,
+            ctx.api_key,
+            **stream_kwargs,
+        ):
             if kind == "delta":
                 yield {"type": "delta", "text": value}
             else:
@@ -207,6 +258,13 @@ async def run_turn(
 
         usage["inputTokens"] += acc.usage["inputTokens"]
         usage["outputTokens"] += acc.usage["outputTokens"]
+        if acc.actual_model and acc.actual_model not in reported_models:
+            reported_models.add(acc.actual_model)
+            yield {
+                "type": "model_route",
+                "routedModel": model,
+                "actualModel": acc.actual_model,
+            }
 
         if not acc.calls:
             break
@@ -225,14 +283,13 @@ async def run_turn(
 
         # Concurrent within a hop: two searches should not queue.
         planned = [
-            (index, call, by_name.get(call["name"]))
-            for index, call in sorted(acc.calls.items())
+            (index, call, by_name.get(call["name"])) for index, call in sorted(acc.calls.items())
         ]
         for index, call, tool in planned:
             yield {
                 "type": "step",
                 "id": f"h{hop}_{index}",
-                "label": tool.label if tool else step_label(call["name"]),
+                "label": visible_label(tool, call["name"]),
                 "status": "running",
             }
 
@@ -249,10 +306,67 @@ async def run_turn(
         results = await asyncio.gather(*(execute(item) for item in planned))
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            finding_counts: dict[tuple[str, str], int] = {}
+
+            def collect(
+                raw: str,
+                counts: dict[tuple[str, str], int] = finding_counts,
+            ) -> None:
+                if classify_tool_output is None:
+                    return
+                for finding in classify_tool_output(raw):
+                    key = (
+                        str(finding.get("category") or "unknown"),
+                        str(finding.get("source") or "tool_output"),
+                    )
+                    counts[key] = counts.get(key, 0) + int(finding.get("count") or 0)
+
+            collect(result.content)
+            if result.detail:
+                collect(result.detail)
+            if sanitize_tool_output is not None:
+                result.content, protected = sanitize_tool_output(result.content)
+                if result.detail:
+                    result.detail, detail_protected = sanitize_tool_output(result.detail)
+                    protected += detail_protected
+                if protected:
+                    # The raw value is never placed in ``conversation``. The
+                    # next proxy request still carries privacy labels, so turn
+                    # on LiteLLM message redaction before that hop is logged.
+                    redact_next_request = True
+                    yield {
+                        "type": "privacy_route",
+                        "action": "mask_external",
+                        "source": "tool_output",
+                        "count": protected,
+                        "findings": [
+                            {"category": category, "source": source, "count": count}
+                            for (category, source), count in sorted(finding_counts.items())
+                        ],
+                    }
+            elif sanitize_step_detail is not None and result.detail:
+                # A strict-local model may use the raw tool result internally,
+                # but the timeline is persisted. Sanitize its display-only
+                # detail without changing what the model receives.
+                result.detail, _ = sanitize_step_detail(result.detail)
+            if finding_counts and sanitize_tool_output is None:
+                # A strict-local hop may consume the raw result, but LiteLLM's
+                # own message/spend log must still redact that sensitive hop.
+                redact_next_request = True
+                yield {
+                    "type": "privacy_route",
+                    "action": "strict_local",
+                    "source": "tool_output",
+                    "count": sum(finding_counts.values()),
+                    "findings": [
+                        {"category": category, "source": source, "count": count}
+                        for (category, source), count in sorted(finding_counts.items())
+                    ],
+                }
             yield {
                 "type": "step",
                 "id": f"h{hop}_{index}",
-                "label": tool.label if tool else step_label(call["name"]),
+                "label": visible_label(tool, call["name"]),
                 "status": "error" if result.failed else "done",
                 **({"detail": result.detail} if result.detail else {}),
             }
