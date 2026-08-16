@@ -1,19 +1,8 @@
 """Read-only share links.
 
-The share button existed from the beginning: a visibility selector, a copyable
-link, and a promise that "링크를 아는 사람은 읽기만 가능합니다" ("anyone with
-the link can read, and only read"). None of it was backed. The link pointed at `/share/…`, a route that did not exist and
-redirected to the home page, and the visibility was local state with no endpoint
-behind it. It was removed rather than left lying; this is what brings it back.
-
-Two personas need it and they need different things. The team-project student
-hands a deck to four classmates who all have accounts; the sales rep hands a
-proposal to a customer who never will. So `scope` is either `workspace` — signed
-in, any member — or `link`, which is genuinely public to whoever holds the URL.
-
-The token is the capability. It is unguessable and revocable, and it is the only
-thing the public route accepts: no session, no cookie, no way to walk from one
-share to another.
+`scope` is `workspace` (signed in, any member) or `link` (public to whoever
+holds the URL). The token is the capability: unguessable, revocable, and the
+only thing the public route accepts.
 
 Revision ID: 0012
 Revises: 0011

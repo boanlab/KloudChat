@@ -1,7 +1,7 @@
 import { Check, Copy, Globe, Link2, Loader2, Share2, Trash2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, Field, Input, Modal } from '@/components/ui'
-import { sharesApi, type ShareRow } from '@/lib/api'
+import { errorMessage, sharesApi, type ShareRow } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Session } from '@/types'
 import { copyText } from '@/lib/clipboard'
@@ -58,7 +58,7 @@ export function ShareButton({ session }: { session: Session }) {
     try {
       setShare(await sharesApi.create({ sessionId: session.id, scope }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('링크를 만들지 못했습니다.'))
+      setError(errorMessage(err, t('링크를 만들지 못했습니다.')))
     } finally {
       setBusy(false)
     }

@@ -67,6 +67,11 @@ class StoredFile(SQLModel, table=True):
     #: Set when the file is project knowledge; null for a one-off chat attachment.
     project_id: str | None = Field(default=None)
     session_id: str | None = Field(default=None)
+    #: Set when the file is an agent's own knowledge, searchable by that agent.
+    agent_id: str | None = Field(default=None)
+    #: Where the text came from, when it was ingested from a page rather than
+    #: uploaded. A snapshot: the page may have changed since.
+    source_url: str | None = Field(default=None)
     name: str
     size: int = Field(default=0)
     mime: str = Field(default="")
@@ -76,6 +81,10 @@ class StoredFile(SQLModel, table=True):
     tokens: int = Field(default=0)
     #: Set when extraction failed, so the UI can say why instead of showing 0 chars.
     error: str | None = Field(default=None)
+    #: When this document last reached the retrieval index. `None` means the
+    #: vector half does not cover it — attached before the index existed, or
+    #: indexed and failed. Lexical search covers it either way.
+    indexed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
@@ -257,6 +266,10 @@ class Agent(SQLModel, table=True):
     color: str = Field(default="#5b53e8")
     enabled: bool = Field(default=True)
     visibility: AgentVisibility = Field(default=AgentVisibility.private)
+    #: Names this agent's collection in the retrieval index. Minted on first
+    #: use, never derived from `id` — see migration 0015: the collection name is
+    #: the whole authorisation over there, and `id` travels too widely to be one.
+    index_key: str | None = Field(default=None)
     installs: int = Field(default=0)
     runs: int = Field(default=0)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -372,6 +385,39 @@ class ConnectorCredential(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
+class Template(SQLModel, table=True):
+    """A starting point somebody wrote down, so the next person can reuse it.
+
+    The built-in gallery ships as a static array in the frontend and cannot be
+    added to — which is fine until an organisation has a form of its own, and
+    then the one document everyone actually produces is the one the product has
+    no starting point for. This is that gap: same shape as a built-in, owned by
+    a user, and optionally carrying a file that *is* the form.
+    """
+
+    __tablename__ = "templates"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    owner_id: str = Field(foreign_key="users.id", index=True)
+    #: Which surface it starts — report, slides, chat, image, av.
+    kind: str = Field(default="report")
+    #: The gallery's filter chip. Free text; the built-ins use 학업/업무/연구.
+    group: str = Field(default="내 템플릿")
+    title: str
+    description: str = Field(default="")
+    #: What the person has to bring, shown as chips before they commit.
+    fills: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Ends mid-sentence, where the person takes over. Same rule as built-ins.
+    prompt: str = Field(default="")
+    #: An uploaded form this template writes *into*. The file's extracted text
+    #: is what reaches the model, so the shape of a 공문 survives into the draft.
+    file_id: str | None = Field(default=None, foreign_key="files.id", index=True)
+    #: Offered to every account. Administrator-only; see migration 0017.
+    shared: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
 __all__ = [
     "Job",
     "JobStatus",
@@ -390,5 +436,6 @@ __all__ = [
     "Skill",
     "SkillSource",
     "StoredFile",
+    "Template",
     "Transport",
 ]

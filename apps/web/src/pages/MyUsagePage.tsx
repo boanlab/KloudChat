@@ -5,6 +5,7 @@ import { kindMeta } from '@/lib/kinds'
 import { type MyUsage, meApi } from '@/lib/api'
 import { cn, formatTokens } from '@/lib/utils'
 import { BarChart3 } from 'lucide-react'
+import { TopBar } from '@/components/layout/TopBar'
 import { useT } from '@/lib/useT'
 
 /**
@@ -33,7 +34,9 @@ export function MyUsagePage() {
   const peak = Math.max(1, ...(data?.daily ?? []).map((d) => d.credits))
 
   return (
-    <PageBody>
+    <>
+      <TopBar left={<span className="text-[13px] font-medium">{t('사용량')}</span>} />
+      <PageBody>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('사용량')}</h1>
@@ -47,7 +50,7 @@ export function MyUsagePage() {
               key={r}
               onClick={() => setDays(r)}
               className={cn(
-                'rounded-md px-3 py-1.5 text-[13px] transition-colors',
+                'min-w-11 rounded-md px-3 py-2 text-[13px] transition-colors',
                 days === r ? 'bg-panel font-medium text-fg shadow-sm' : 'text-muted hover:text-fg',
               )}
             >
@@ -174,6 +177,7 @@ export function MyUsagePage() {
           </div>
         </>
       )}
-    </PageBody>
+      </PageBody>
+    </>
   )
 }

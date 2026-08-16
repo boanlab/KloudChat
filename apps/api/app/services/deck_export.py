@@ -89,6 +89,19 @@ def _textbox(slide, *, left: float, top: float, width: float, height: float):
     return frame
 
 
+def _split_columns(bullets: list[str]) -> list[list[str]]:
+    """A list in two columns, reading top-to-bottom then across.
+
+    Falls back to one column below five items: two columns of two is a gap
+    down the middle rather than a layout, and the model does occasionally
+    return a short list for a slide it planned as `two-column`.
+    """
+    if len(bullets) < 5:
+        return [bullets]
+    half = (len(bullets) + 1) // 2
+    return [bullets[:half], bullets[half:]]
+
+
 def to_pptx(title: str, slides: list[dict]) -> bytes:
     """The deck as a PowerPoint file.
 
@@ -152,16 +165,30 @@ def to_pptx(title: str, slides: list[dict]) -> bytes:
             _font(run, size=26, bold=True)
 
             if bullets:
-                listing = _textbox(slide, left=72, top=150, width=_W - 144, height=_H - 210)
-                for position, text in enumerate(bullets):
-                    paragraph = listing.paragraphs[0] if position == 0 else listing.add_paragraph()
-                    paragraph.space_after = Pt(12)
-                    marker = paragraph.add_run()
-                    marker.text = "• "
-                    _font(marker, size=18, bold=True, colour=accent)
-                    run = paragraph.add_run()
-                    run.text = text
-                    _font(run, size=18)
+                # Two boxes side by side rather than one wide one — PowerPoint
+                # has no column flow, so the split has to be geometry. Matches
+                # the preview's `columnCount: 2` and the .pdf below.
+                columns = _split_columns(bullets) if layout == "two-column" else [bullets]
+                span = (_W - 144 - (24 * (len(columns) - 1))) / len(columns)
+                for column_index, column in enumerate(columns):
+                    listing = _textbox(
+                        slide,
+                        left=72 + column_index * (span + 24),
+                        top=150,
+                        width=span,
+                        height=_H - 210,
+                    )
+                    for position, text in enumerate(column):
+                        paragraph = (
+                            listing.paragraphs[0] if position == 0 else listing.add_paragraph()
+                        )
+                        paragraph.space_after = Pt(12)
+                        marker = paragraph.add_run()
+                        marker.text = "• "
+                        _font(marker, size=18, bold=True, colour=accent)
+                        run = paragraph.add_run()
+                        run.text = text
+                        _font(run, size=16 if len(columns) > 1 else 18)
             elif body:
                 paragraph_frame = _textbox(slide, left=72, top=150, width=_W - 144, height=_H - 210)
                 run = paragraph_frame.paragraphs[0].add_run()
@@ -271,15 +298,25 @@ def to_pdf(title: str, slides: list[dict]) -> bytes:
             y -= 24
 
             if bullets:
-                for text in bullets:
-                    wrapped = _wrap(text, font, 18, _W - 190)
-                    pdf.setFillColorRGB(*accent)
-                    pdf.setFont(font, 18)
-                    pdf.drawString(76, y, "•")
-                    pdf.setFillColorRGB(0.1, 0.1, 0.1)
-                    for offset, line in enumerate(wrapped):
-                        pdf.drawString(98, y - offset * 26, line)
-                    y -= 26 * len(wrapped) + 14
+                # Same split as the .pptx, so the printout and the projected
+                # deck put the same items in the same places.
+                columns = _split_columns(bullets) if layout == "two-column" else [bullets]
+                size = 16 if len(columns) > 1 else 18
+                step = 22 if len(columns) > 1 else 26
+                span = (_W - 144 - 24 * (len(columns) - 1)) / len(columns)
+                top = y
+                for column_index, column in enumerate(columns):
+                    left = 72 + column_index * (span + 24)
+                    y = top
+                    for text in column:
+                        wrapped = _wrap(text, font, size, span - 26)
+                        pdf.setFillColorRGB(*accent)
+                        pdf.setFont(font, size)
+                        pdf.drawString(left + 4, y, "•")
+                        pdf.setFillColorRGB(0.1, 0.1, 0.1)
+                        for offset, line in enumerate(wrapped):
+                            pdf.drawString(left + 26, y - offset * step, line)
+                        y -= step * len(wrapped) + 14
             elif body:
                 pdf.setFillColorRGB(0.33, 0.33, 0.33)
                 pdf.setFont(font, 16)

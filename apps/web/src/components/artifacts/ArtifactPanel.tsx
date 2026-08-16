@@ -1,6 +1,7 @@
-import { AudioLines, Code2, Copy, Download, Eye, X } from 'lucide-react'
-import { useState } from 'react'
+import { AudioLines, Code2, Copy, Download, Eye } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
+import { PanelControls } from '@/components/artifacts/PanelControls'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
 import { Badge, Button, ButtonLink } from '@/components/ui'
@@ -150,6 +151,26 @@ const audioKindLabel: Record<'narration' | 'music', string> = {
   music: '음악',
 }
 
+/** Take the narration somewhere else — a script to edit, or notes to keep. */
+function TranscriptCopy({ text }: { text: string }) {
+  const t = useT()
+  const [copied, setCopied] = useState(false)
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      className="mt-3"
+      onClick={async () => {
+        if (!(await copyText(text))) return
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1400)
+      }}
+    >
+      {copied ? t('복사됨') : t('대본 복사')}
+    </Button>
+  )
+}
+
 export function MediaPanel({
   artifact,
 }: {
@@ -160,7 +181,19 @@ export function MediaPanel({
     artifact.kind === 'image'
       ? [
           [t('프롬프트'), artifact.prompt],
-          [t('비율'), artifact.aspect],
+          // The request, and — when they differ — what actually came back. The
+          // ratio reaches the model as a phrase rather than a parameter, so it
+          // is honoured approximately and a lone "16:9" over a square picture
+          // is a claim the file does not support.
+          [
+            t('비율'),
+            artifact.actualAspect && artifact.actualAspect !== artifact.aspect
+              ? `${artifact.actualAspect} (${t('요청')} ${artifact.aspect})`
+              : artifact.aspect,
+          ],
+          ...(artifact.width && artifact.height
+            ? [[t('크기'), `${artifact.width}×${artifact.height}`]]
+            : []),
           [t('스타일'), artifact.style],
           // No seed row: the field is sent but the upstream ignores it, and a
           // seed that cannot reproduce the picture promises that it can.
@@ -217,6 +250,18 @@ export function MediaPanel({
           </div>
         ))}
       </dl>
+      {/* The narration, in words. It was stored from the first clip and shown
+          nowhere — which left the only way to check what was said, or to edit
+          it and ask again, as listening to the whole thing. */}
+      {artifact.kind === 'audio' && artifact.transcript && (
+        <section className="border-t border-line px-4 py-4">
+          <h3 className="mb-2 text-[12px] font-medium text-faint">{t('대본')}</h3>
+          <p className="text-[13px] leading-relaxed whitespace-pre-wrap">
+            {artifact.transcript}
+          </p>
+          <TranscriptCopy text={artifact.transcript} />
+        </section>
+      )}
     </div>
   )
 }
@@ -225,38 +270,139 @@ export function MediaPanel({
  * Right-hand panel, branching by artifact kind: a table of contents for
  * reports, a thumbnail grid for decks, a viewer plus parameters for media.
  */
+/** Where the split was left, so it survives a reload. */
+const WIDTH_KEY = 'kchat-panel-width'
+
+/**
+ * A split the reader can move, remembered across reloads.
+ *
+ * A fixed share works on a maximised browser and not on a half-screen one,
+ * where the document ends up a column too narrow to read. Which side needs the
+ * room changes minute to minute, so it is the reader's to set.
+ */
+function useSplit(enabled: boolean) {
+  const [width, setWidth] = useState<number | null>(() => {
+    const saved = Number(localStorage.getItem(WIDTH_KEY))
+    return Number.isFinite(saved) && saved > 0 ? saved : null
+  })
+  const dragging = useRef(false)
+
+  useEffect(() => {
+    if (!enabled) return
+    const onMove = (e: PointerEvent) => {
+      if (!dragging.current) return
+      // Measured from the right edge: the panel is what is being sized, and
+      // the transcript takes whatever is left.
+      const next = Math.round(window.innerWidth - e.clientX)
+      const min = 320
+      const max = Math.max(min, window.innerWidth - 360)
+      setWidth(Math.min(max, Math.max(min, next)))
+    }
+    const onUp = () => {
+      if (!dragging.current) return
+      dragging.current = false
+      document.body.style.removeProperty('cursor')
+      document.body.style.removeProperty('user-select')
+      setWidth((w) => {
+        if (w) localStorage.setItem(WIDTH_KEY, String(w))
+        return w
+      })
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [enabled])
+
+  const start = () => {
+    dragging.current = true
+    // Held on the body: the pointer leaves the 6px handle immediately, and
+    // without this the cursor flickers and the drag selects the transcript.
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  /** Steps for the keyboard, which cannot drag. */
+  const nudge = (by: number) =>
+    setWidth((w) => {
+      const from = w ?? Math.round(window.innerWidth * 0.45)
+      const next = Math.min(Math.max(320, from + by), window.innerWidth - 360)
+      localStorage.setItem(WIDTH_KEY, String(next))
+      return next
+    })
+
+  return { width, start, nudge, reset: () => { setWidth(null); localStorage.removeItem(WIDTH_KEY) } }
+}
+
 export function ArtifactPanel() {
   const t = useT()
   const narrow = useNarrowLayout()
-  //: Set by ReportPanel while a section is open for editing. Declared above
-  //: the early return: this panel renders once with no artifact, and a hook
-  //: below `return null` changes the hook count between renders (React #300).
-  const [editingReport, setEditingReport] = useState(false)
+  //: Set by ReportPanel while it needs the width — an open editor, or focus
+  //: mode. Declared above the early return: this panel renders once with no
+  //: artifact, and a hook below `return null` changes the hook count between
+  //: renders (React #300).
+  const [wideReport, setWideReport] = useState(false)
+  const split = useSplit(!narrow)
   const { artifacts, openArtifactId, openArtifact } = useStore()
   const artifact = artifacts.find((a) => a.id === openArtifactId)
   if (!artifact) return null
 
-  const wide =
+  const selfWide =
     artifact.kind === 'report' || artifact.kind === 'deck' || artifact.kind === 'chart'
   // Reports and decks own their whole panel chrome; the rest share a header.
-  const selfChrome = wide
+  const selfChrome = selfWide
+
+  // A width the reader dragged wins over every default, including the one an
+  // open editor would otherwise impose — they can see the editor and decide.
+  const dragged = !narrow && split.width !== null
 
   return (
     <aside
+      data-panel="artifact"
+      style={dragged ? { width: split.width! } : undefined}
       className={cn(
-        'flex shrink-0 flex-col border-l border-line bg-panel',
+        'relative flex shrink-0 flex-col border-l border-line bg-panel',
         narrow
           ? 'absolute inset-0 z-20 w-full min-w-0'
-          : editingReport
-            // Editing needs source and preview side by side, and the document
-            // column is only ~350px — so the panel borrows width while an
-            // editor is open.
-            ? 'w-[72%] min-w-[720px]'
-            : wide
-              ? 'w-[52%] min-w-[460px]'
-              : 'w-[38%] min-w-[340px]',
+          : dragged
+            ? 'min-w-0'
+            : wideReport
+              // Editing needs source and preview side by side, and the document
+              // column is only ~350px — so the panel borrows width while an
+              // editor is open, or while the reader asked for room to read.
+              ? 'w-[72%] min-w-[720px]'
+              : selfWide
+                ? 'w-[52%] min-w-[460px]'
+                : 'w-[38%] min-w-[340px]',
       )}
     >
+      {!narrow && (
+        /* The grab strip. Six pixels wide with a wider invisible target, sat
+           over the border so the border itself looks like the thing you pull. */
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('패널 너비 조절')}
+          title={t('끌어서 너비를 조절합니다. 두 번 누르면 기본값으로 돌아갑니다.')}
+          tabIndex={0}
+          onPointerDown={(e) => {
+            e.preventDefault()
+            split.start()
+          }}
+          onDoubleClick={split.reset}
+          onKeyDown={(e) => {
+            // The keyboard cannot drag, so it steps.
+            if (e.key === 'ArrowLeft') split.nudge(40)
+            if (e.key === 'ArrowRight') split.nudge(-40)
+            if (e.key === 'Home') split.reset()
+          }}
+          className="group absolute inset-y-0 -left-1 z-30 w-2 cursor-col-resize focus-visible:outline-none"
+        >
+          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-accent group-focus-visible:bg-accent" />
+        </div>
+      )}
       {!selfChrome && (
         <header className="flex items-center gap-2 border-b border-line px-3 py-2.5">
           <div className="min-w-0 flex-1">
@@ -281,15 +427,20 @@ export function ArtifactPanel() {
               variant="ghost"
               size="icon"
               aria-label={t('다운로드')}
+              title={t('원본 파일을 내려받습니다')}
               href={fileUrl(artifact.src)}
               download={artifact.title}
             >
               <Download size={15} />
             </ButtonLink>
           )}
-          <Button variant="ghost" size="icon" aria-label={t('닫기')} onClick={() => openArtifact(null)}>
-            <X size={15} />
-          </Button>
+          {/* 코드와 미디어도 넓게 볼 수 있어야 한다. 한 줄이 긴 코드는 340px
+              패널에서 전부 접히고, 그림은 썸네일만 한 크기로 남는다. */}
+          <PanelControls
+            wide={wideReport}
+            onToggleWide={narrow ? undefined : () => setWideReport(!wideReport)}
+            onClose={() => openArtifact(null)}
+          />
         </header>
       )}
 
@@ -299,12 +450,20 @@ export function ArtifactPanel() {
             <ReportPanel
               report={artifact}
               onClose={() => openArtifact(null)}
-              onEditingChange={setEditingReport}
+              onWideChange={setWideReport}
             />
           ) : artifact.kind === 'deck' ? (
-            <DeckPanel deck={artifact} onClose={() => openArtifact(null)} />
+            <DeckPanel
+              deck={artifact}
+              onClose={() => openArtifact(null)}
+              onWideChange={setWideReport}
+            />
           ) : artifact.kind === 'chart' ? (
-            <ChartPanel chart={artifact} />
+            <ChartPanel
+              chart={artifact}
+              onClose={() => openArtifact(null)}
+              onWideChange={setWideReport}
+            />
           ) : null}
         </div>
       )}

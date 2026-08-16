@@ -1,5 +1,6 @@
 import {
   Check,
+  Copy,
   Download,
   ExternalLink,
   FileText,
@@ -13,22 +14,75 @@ import {
   Plug,
   Printer,
   Quote,
+  Sparkles,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
+import { PanelControls } from '@/components/artifacts/PanelControls'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
-import { artifactsApi, downloadArtifact as download } from '@/lib/api'
+import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import type { ArtifactVersionRow } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, Source } from '@/types'
+import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
+
+/** A passage the reader picked out, and the section it belongs to. */
+interface Picked {
+  sectionId: string
+  text: string
+  /** Where to float the toolbar, relative to the scrolling document. */
+  top: number
+  left: number
+}
 
 const originIcon = { web: Link2, connector: Plug, file: Paperclip }
 
-/** Sources sit beside the prose, not only at the end: an untraceable sentence
- *  is one that cannot be submitted. */
+/**
+ * The document as paper, portalled to `<body>`.
+ *
+ * `window.print()` prints the window, and the panel's document is nested inside
+ * `overflow: auto` and a `100dvh` box — a print stylesheet cannot lift a
+ * descendant out of a clipping container. So the printable tree lives at the
+ * top level and `@media print` swaps which one is visible. No controls: paper
+ * has no buttons.
+ */
+function PrintDocument({ report }: { report: ReportArtifact }) {
+  const t = useT()
+  return createPortal(
+    <article data-print-doc lang="ko">
+      <h1>{report.title}</h1>
+      {report.sections.map((s) => (
+        <section key={s.id}>
+          <h2>{s.heading}</h2>
+          <Markdown>{s.content}</Markdown>
+        </section>
+      ))}
+      {/* Citations: what makes a printed report submittable. */}
+      {report.sources.length > 0 && (
+        <section>
+          <h2>{t('참고문헌')}</h2>
+          <ol>
+            {report.sources.map((src) => (
+              <li key={src.id}>
+                {src.title}
+                {[src.author, src.publisher, src.year].filter(Boolean).length > 0 &&
+                  ` — ${[src.author, src.publisher, src.year].filter(Boolean).join(', ')}`}
+                {src.url && <div className="print-url">{src.url}</div>}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </article>,
+    document.body,
+  )
+}
+
+/** Reference list, shown beside the prose as well as at the end. */
 function SourceList({ sources, style }: { sources: Source[]; style: string }) {
   const t = useT()
   return (
@@ -91,16 +145,18 @@ function statusIcon(status: ReportSection['status']) {
 export function ReportPanel({
   report,
   onClose,
-  onEditingChange,
+  onWideChange,
 }: {
   report: ReportArtifact
   onClose?: () => void
-  /** Fires when a section opens or closes for editing, so the host can widen
-   *  the panel — the document column is ~350px at the reading width. */
-  onEditingChange?: (editing: boolean) => void
+  /** Fires when the panel needs the extra width — an open editor, or the
+   *  reader asking for focus mode. The document column is ~350px otherwise. */
+  onWideChange?: (wide: boolean) => void
 }) {
   const t = useT()
   const [activeId, setActiveId] = useState<string | null>(null)
+  //: Focus mode — 350px beside a transcript is not a reading width.
+  const [focus, setFocus] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
   // Below lg the rail becomes a drawer rather than vanishing: it carries the
   // only signal that the report is still being written.
@@ -130,13 +186,17 @@ export function ReportPanel({
       setRestoring(null)
     }
   }
-    //: Document editing is one mode over the whole report. The title, the
-    //: section headings and the space between sections belong to no section,
-    //: so a per-section editor cannot reach them.
+  //: Whole-document edit mode. Title, headings and the space between sections
+  //: belong to no section, so a per-section editor cannot reach them.
   const [editing, setEditing] = useState(false)
   //: Which section is open for a rewrite, and the instruction going with it.
   const [rewriting, setRewriting] = useState<string | null>(null)
   const [rewriteNote, setRewriteNote] = useState('')
+  //: The passage the instruction is about, when the reader started from a
+  //: selection. Kept apart from the note so it renders as what it is — a
+  //: quotation the reader can drop — instead of prefilled text they have to
+  //: type around.
+  const [rewriteQuote, setRewriteQuote] = useState('')
   const [rewriteBusy, setRewriteBusy] = useState(false)
   const [rewriteError, setRewriteError] = useState<string | null>(null)
 
@@ -144,13 +204,19 @@ export function ReportPanel({
     setRewriteBusy(true)
     setRewriteError(null)
     try {
-      const row = await artifactsApi.rewriteSection(report.id, sectionId, rewriteNote)
+      const note = rewriteQuote
+        ? t('이 부분을 고쳐 주세요: “{quote}”\n{note}')
+            .replace('{quote}', rewriteQuote)
+            .replace('{note}', rewriteNote)
+            .trim()
+        : rewriteNote
+      const row = await artifactsApi.rewriteSection(report.id, sectionId, note)
       const data = (row.data ?? {}) as { sections?: ReportSection[] }
       if (data.sections) report.sections = data.sections
       report.version = row.version
       setRewriting(null)
     } catch (err) {
-      setRewriteError(err instanceof Error ? err.message : t('다시 쓰지 못했습니다.'))
+      setRewriteError(errorMessage(err, t('다시 쓰지 못했습니다.')))
     } finally {
       setRewriteBusy(false)
     }
@@ -159,7 +225,12 @@ export function ReportPanel({
   //: widened panel and no editor in it.
   const openEditor = (open: boolean) => {
     setEditing(open)
-    onEditingChange?.(open)
+    onWideChange?.(open || focus)
+  }
+  const toggleFocus = () => {
+    setFocus(!focus)
+    // Still wide while an editor is open, whichever way focus mode just went.
+    onWideChange?.(!focus || editing)
   }
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -168,9 +239,24 @@ export function ReportPanel({
   //: half-written prose and mark every section done.
   const writing = report.sections.some((s) => s.status !== 'done')
 
-  const startEditing = () => {
+  //: The document as it stood when the editor opened. Saving compares against
+  //: this, not against a version number — the store's copy of the version can
+  //: be minutes old for reasons that have nothing to do with anybody editing.
+  const baseline = useRef('')
+
+  /** Same reasoning as the deck panel: open the editor on the current text. */
+  const startEditing = async () => {
     setSaveError(null)
-    setDraft(toMarkdown(report))
+    const latest = await artifactsApi.get(report.id).catch(() => null)
+    const onServer = (latest?.data as { sections?: ReportSection[] } | null)?.sections
+    if (latest && onServer) {
+      report.title = latest.title
+      report.sections = onServer
+      report.version = latest.version
+    }
+    const current = toMarkdown(report)
+    baseline.current = current
+    setDraft(current)
     openEditor(true)
   }
 
@@ -178,6 +264,33 @@ export function ReportPanel({
     setSaving(true)
     setSaveError(null)
     try {
+      /**
+       * Has anybody else written to this since the editor opened?
+       *
+       * A PATCH sends the whole document, so a second save would replace the
+       * first person's paragraphs silently.
+       *
+       * Compared by content, not version number: the panel's version may come
+       * from an old list, and refusing on a stale number breaks solo editing.
+       *
+       * A check before a write, not a locked write — a save landing between the
+       * two still wins.
+       */
+      const latest = await artifactsApi.get(report.id).catch(() => null)
+      const latestData = (latest?.data ?? null) as { sections?: ReportSection[] } | null
+      if (latest && latestData?.sections) {
+        const onServer = toMarkdown({
+          ...report,
+          title: latest.title,
+          sections: latestData.sections,
+        })
+        if (onServer !== baseline.current) {
+          setSaveError(
+            t('이 보고서는 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.'),
+          )
+          return
+        }
+      }
       const parsed = fromMarkdown(draft, report.sections)
       if (parsed.sections.length === 0) {
         setSaveError(t('내용이 비어 있습니다. 저장하지 않았습니다.'))
@@ -187,22 +300,92 @@ export function ReportPanel({
       const title = parsed.title || report.title
       // PATCHing `data` whole is what snapshots the previous revision
       // server-side, which is the way back from a bad edit.
-      await artifactsApi.update(report.id, {
+      const row = await artifactsApi.update(report.id, {
         data: { ...report, title, sections: parsed.sections },
         title,
         summary: t('문서 편집'),
+        // The version just read, not the one the panel is holding: the store's
+        // copy comes from a list that may be minutes old, and conditioning on
+        // that refuses saves nobody else touched. Read, compare, then write
+        // against what the read saw — which is the window this closes.
+        expectedVersion: latest?.version ?? report.version,
       })
-      // Local mutation, so the panel reflects the save without a refetch.
+      // Local mutation, so the panel reflects the save without a refetch. The
+      // version comes back from the write; without it the header kept showing
+      // the version the document carried going into this save.
       report.title = title
       report.sections = parsed.sections
+      report.version = row.version
+      baseline.current = toMarkdown({ ...report, title, sections: parsed.sections })
       openEditor(false)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('저장하지 못했습니다.'))
+      setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
     } finally {
       setSaving(false)
     }
   }
   const done = report.sections.filter((s) => s.status === 'done').length
+
+  /**
+   * Selection → rewrite. What was highlighted goes in as the quotation the
+   * instruction is about, so the reader does not re-describe it in prose.
+   */
+  const [picked, setPicked] = useState<Picked | null>(null)
+  const docRef = useRef<HTMLDivElement>(null)
+  const handleRef = useRef<HTMLDivElement>(null)
+
+  const readSelection = (e: React.MouseEvent) => {
+    // Releasing the mouse *on the handle* is the user reaching for it, not a
+    // new selection. Chrome collapses the range on that release, so reading it
+    // here would tear the handle down between mouseup and click — the button
+    // would be gone by the time its own click arrived.
+    if (handleRef.current?.contains(e.target as Node)) return
+    const sel = window.getSelection()
+    const text = sel?.toString().trim() ?? ''
+    const host = docRef.current
+    if (!sel || sel.rangeCount === 0 || text.length < 2 || !host) {
+      setPicked(null)
+      return
+    }
+    const range = sel.getRangeAt(0)
+    // Only prose inside a finished section: headings, the sources pane and the
+    // editor all have their own handles.
+    const node = range.commonAncestorContainer
+    const element = node.nodeType === 1 ? (node as Element) : node.parentElement
+    const section = element?.closest<HTMLElement>('section[id^="sec-"]')
+    if (!section || !host.contains(section)) {
+      setPicked(null)
+      return
+    }
+    const rect = range.getBoundingClientRect()
+    const hostRect = host.getBoundingClientRect()
+    setPicked({
+      sectionId: section.id.replace(/^sec-/, ''),
+      text,
+      // The scroller's own coordinates, not the viewport's: the handle belongs
+      // to the sentence, so it has to travel with it rather than being torn
+      // down on the first scroll — including the one the browser performs to
+      // bring the handle itself into view.
+      top: rect.top - hostRect.top + host.scrollTop - 40,
+      left: Math.max(8, rect.left - hostRect.left),
+    })
+  }
+
+  // Any edit mode change drops a stale bubble: the passage it points at is
+  // about to be replaced by a textarea.
+  useEffect(() => {
+    setPicked(null)
+  }, [editing, pane])
+
+  const rewritePicked = () => {
+    if (!picked) return
+    setRewriting(picked.sectionId)
+    setRewriteError(null)
+    setRewriteNote('')
+    setRewriteQuote(picked.text)
+    setPicked(null)
+    window.getSelection()?.removeAllRanges()
+  }
 
   const scrollTo = (id: string) => {
     setActiveId(id)
@@ -212,6 +395,10 @@ export function ReportPanel({
 
   return (
     <div className="relative flex h-full min-h-0">
+      {/* Mounted with the panel, not on the print click: `window.print()` is
+          synchronous, so a tree created in that handler is not on screen when
+          the browser takes its snapshot. */}
+      <PrintDocument report={report} />
       {tocOpen && (
         <button
           aria-label={t('목차 닫기')}
@@ -266,9 +453,12 @@ export function ReportPanel({
 
       {/* 본문 */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+        {/* 덱과 같은 이유로 접힌다. 이쪽은 버튼이 하나 더 많다. */}
+        <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
           <FileText size={15} className="shrink-0 text-accent" />
-          <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{report.title}</p>
+          <p className="min-w-0 flex-1 truncate text-[13px] font-medium max-sm:basis-full">
+            {report.title}
+          </p>
           <Button
             size="sm"
             className="lg:hidden"
@@ -292,7 +482,7 @@ export function ReportPanel({
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={startEditing} disabled={writing} aria-label={t('문서 수정')}>
+            <Button size="sm" onClick={() => void startEditing()} disabled={writing} aria-label={t('문서 수정')}>
               <Pencil size={13} />
               {t('수정')}
             </Button>
@@ -306,15 +496,20 @@ export function ReportPanel({
             <Quote size={13} />
             {t('출처')} {report.sources.length}
           </Button>
+          {/* 저장 시점. 되돌릴 수 있다는 사실이 편집 버튼 옆에 붙어 있어야,
+              고치기 전에 "잘못 고치면 어쩌지" 를 묻지 않는다. */}
+          <Button size="sm" aria-label={t('버전 기록')} onClick={() => void openVersions()}>
+            <History size={13} />
+            {t('저장 시점')} v{report.version}
+          </Button>
+          <PanelControls wide={focus} onToggleWide={onWideChange && toggleFocus} />
           <Button
             variant="ghost"
             size="icon"
-            aria-label={t('버전 기록')}
-            onClick={() => void openVersions()}
+            aria-label={t('인쇄')}
+            title={t('이 보고서를 인쇄합니다')}
+            onClick={() => window.print()}
           >
-            <History size={15} />
-          </Button>
-          <Button variant="ghost" size="icon" aria-label={t('인쇄')} onClick={() => window.print()}>
             <Printer size={15} />
           </Button>
           <Dropdown
@@ -344,14 +539,40 @@ export function ReportPanel({
               {t('마크다운 원문')}
             </MenuItem>
           </Dropdown>
-          {onClose && (
-            <Button variant="ghost" size="icon" aria-label={t('닫기')} onClick={onClose}>
-              <X size={15} />
-            </Button>
-          )}
+          <PanelControls wide={focus} onClose={onClose} />
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          ref={docRef}
+          className="relative min-h-0 flex-1 overflow-y-auto"
+          onMouseUp={readSelection}
+        >
+          {picked && (
+            <div
+              ref={handleRef}
+              className="animate-fade-up absolute z-30 flex items-center gap-1 rounded-xl border border-line bg-panel p-1 shadow-xl"
+              style={{ top: picked.top, left: picked.left }}
+              // The bubble is a tool for the selection; a click that clears it
+              // before the handler runs is a click that does nothing.
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <Button size="sm" variant="ghost" onClick={rewritePicked}>
+                <Sparkles size={13} className="text-accent" />
+                {t('이 부분 고치기')}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t('선택 복사')}
+                onClick={() => {
+                  void copyText(picked.text)
+                  setPicked(null)
+                }}
+              >
+                <Copy size={13} />
+              </Button>
+            </div>
+          )}
           {pane === 'sources' ? (
             <div className="mx-auto max-w-2xl px-6 py-6">
               <h2 className="mb-3 text-lg font-semibold">{t('참고문헌')}</h2>
@@ -427,6 +648,7 @@ export function ReportPanel({
                       onClick={() => {
                         setRewriting(s.id)
                         setRewriteNote('')
+                        setRewriteQuote('')
                       }}
                     >
                       <RefreshCw size={12} />
@@ -436,12 +658,38 @@ export function ReportPanel({
                 </div>
                 {rewriting === s.id && (
                   <div className="mb-3 space-y-2 rounded-xl border border-line bg-elevated p-3">
+                    {/* 고칠 대목을 먼저 보여 준다. 지시만 남으면 무엇에 대한
+                        지시였는지는 보낸 사람 머릿속에만 있다. */}
+                    {rewriteQuote && (
+                      <div
+                        aria-label={t('고칠 대목')}
+                        className="flex items-start gap-2 rounded-lg border border-accent/25 bg-accent-soft/60 px-2.5 py-1.5"
+                      >
+                        <Quote size={12} className="mt-0.5 shrink-0 text-accent" />
+                        <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-muted">
+                          {rewriteQuote.length > 220
+                            ? `${rewriteQuote.slice(0, 220)}…`
+                            : rewriteQuote}
+                        </p>
+                        <button
+                          onClick={() => setRewriteQuote('')}
+                          aria-label={t('선택 해제')}
+                          className="shrink-0 text-faint hover:text-fg"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
                     <Textarea
                       rows={2}
                       autoFocus
                       value={rewriteNote}
                       onChange={(e) => setRewriteNote(e.target.value)}
-                      placeholder={t('무엇을 바꿀지 적으세요. 비워 두면 처음부터 다시 씁니다.')}
+                      placeholder={
+                        rewriteQuote
+                          ? t('이 대목을 어떻게 바꿀지 적으세요. 예: 근거를 붙여서 두 문장으로.')
+                          : t('무엇을 바꿀지 적으세요. 비워 두면 처음부터 다시 씁니다.')
+                      }
                       aria-label={t('다시 쓰기 지시')}
                     />
                     <div className="flex items-center gap-2">

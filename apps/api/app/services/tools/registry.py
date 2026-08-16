@@ -20,7 +20,7 @@ from app.models.workspace import Connector, ConnectorStatus, ConnectorTool
 from app.services import mcp
 from app.services.tools import catalog
 from app.services.tools.base import Tool, ToolResult
-from app.services.tools.builtin import available_builtins
+from app.services.tools.builtin import available_builtins, knowledge_tool
 
 log = logging.getLogger(__name__)
 
@@ -110,12 +110,19 @@ async def build_tools(
     *,
     web_search: bool,
     allowed: list[str] | None = None,
+    knowledge: list[tuple[str, str, str | None]] | None = None,
+    knowledge_collection: str = "",
 ) -> list[Tool]:
     """The turn's tool list.
 
     `allowed` is an agent's allowlist. An empty or absent list means "everything
     this user has"; a populated one is a hard filter, so an agent built for one
     job cannot quietly reach a connector its author never considered.
+
+    `knowledge` is the running agent's own documents. It is exempt from the
+    allowlist: the shelf belongs to this agent, was attached by whoever built
+    it, and an allowlist written before the shelf existed would silently switch
+    it off.
     """
     tools = await available_builtins(web_search)
     seen = {t.name for t in tools}
@@ -130,4 +137,6 @@ async def build_tools(
     if allowed:
         keep = set(allowed)
         tools = [t for t in tools if t.name in keep]
+    if knowledge:
+        tools.append(knowledge_tool(knowledge, knowledge_collection))
     return tools

@@ -146,7 +146,10 @@ test('사용자마다 자기 LiteLLM 키가 있고, 관리자가 회전시킬 �
 
   const preview = row.locator('.font-mono').first()
   await expect(preview).toBeVisible({ timeout: 20_000 })
-  await expect(preview).not.toHaveText(before)
+  // Rotation is three round trips to the proxy — revoke, ensure user, issue —
+  // so the row can still be showing the old preview well past the five seconds
+  // an assertion waits by default.
+  await expect(preview).not.toHaveText(before, { timeout: 30_000 })
   await expect(row.getByText('전용 키 없음')).toHaveCount(0)
 
   // A rotation the browser can read back would defeat the point of the key never
@@ -322,7 +325,7 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   const [done, total] = progress.match(/(\d+)\/(\d+)/)!.slice(1).map(Number)
   expect(done, '작성되지 않은 섹션').toBe(total)
 
-  await page.getByRole('button', { name: '내보내기' }).click()
+  await page.getByRole('button', { name: '내보내기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: 'Word 문서' })).toBeVisible()
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: 'Word 문서' }).click()

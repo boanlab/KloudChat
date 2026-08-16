@@ -1,10 +1,21 @@
 import { MessageSquare, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, EmptyState, Input, Modal } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  LoadingState,
+  Modal,
+  ReloadNotice,
+} from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
+import { PageBody } from '@/components/layout/AppShell'
+import { TopBar } from '@/components/layout/TopBar'
 import { useT } from '@/lib/useT'
 
 /**
@@ -16,7 +27,7 @@ import { useT } from '@/lib/useT'
  */
 export function HistoryPage() {
   const t = useT()
-  const { sessions, deleteSessions } = useStore()
+  const { sessions, deleteSessions, sessionsLoading, sessionsFailed, loadSessions } = useStore()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -64,7 +75,9 @@ export function HistoryPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <>
+      <TopBar left={<span className="text-[13px] font-medium">{t('대화 기록')}</span>} />
+      <PageBody>
       <h1 className="text-2xl font-semibold tracking-tight">{t('대화 기록')}</h1>
       <p className="mt-1 text-[13px] text-muted">
         {t('대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없습니다. 대화에서 만든 아티팩트는 아티팩트 화면에 그대로 남습니다.').replace(
@@ -86,6 +99,7 @@ export function HistoryPage() {
         </div>
         <Button
           disabled={shown.length === 0}
+          title={shown.length === 0 ? t('지울 대화가 없습니다') : undefined}
           onClick={() =>
             setPicked((prev) => {
               const next = new Set(prev)
@@ -99,7 +113,12 @@ export function HistoryPage() {
         >
           {allShownPicked ? t('선택 해제') : t('보이는 항목 전체 선택')}
         </Button>
-        <Button variant="danger" disabled={busy || picked.size === 0} onClick={() => void removePicked()}>
+        <Button
+          variant="danger"
+          disabled={busy || picked.size === 0}
+          title={picked.size === 0 ? t('먼저 지울 대화를 고르세요') : undefined}
+          onClick={() => void removePicked()}
+        >
           <Trash2 size={14} />
           {t('선택 {n}개 삭제').replace('{n}', String(picked.size))}
         </Button>
@@ -114,8 +133,12 @@ export function HistoryPage() {
         </p>
       )}
 
+      {sessionsFailed && <ReloadNotice onRetry={() => void loadSessions()} />}
+
       <div className="mt-4 space-y-1.5">
-        {shown.length === 0 ? (
+        {sessionsLoading && sessions.length === 0 ? (
+          <LoadingState />
+        ) : shown.length === 0 ? (
           <EmptyState
             icon={<MessageSquare size={18} />}
             title={query ? t('검색 결과가 없습니다') : '아직 대화가 없습니다'}
@@ -125,13 +148,18 @@ export function HistoryPage() {
             const meta = kindMeta[s.kind]
             return (
               <Card key={s.id} className="flex items-center gap-3 px-3 py-2.5">
-                <input
-                  type="checkbox"
-                  aria-label={t('{title} 선택').replace('{title}', s.title || t('제목 없는 대화'))}
-                  checked={picked.has(s.id)}
-                  onChange={() => toggle(s.id)}
-                  className="size-4 shrink-0 accent-[var(--accent)]"
-                />
+                {/* 16px 사각형 하나가 전부이던 자리. 지울 대화를 여러 개 고르는
+                    화면이라 정확히 누르는 일이 계속 반복되고, 그때마다 옆의
+                    카드가 열렸다. 상자는 그대로 두고 누르는 영역만 넓힌다. */}
+                <label className="-m-1.5 grid size-9 shrink-0 cursor-pointer place-items-center">
+                  <input
+                    type="checkbox"
+                    aria-label={t('{title} 선택').replace('{title}', s.title || t('제목 없는 대화'))}
+                    checked={picked.has(s.id)}
+                    onChange={() => toggle(s.id)}
+                    className="size-4 accent-[var(--accent)]"
+                  />
+                </label>
                 <button
                   className="min-w-0 flex-1 text-left"
                   onClick={() => navigate(`/s/${s.id}`)}
@@ -169,6 +197,7 @@ export function HistoryPage() {
           </Button>
         </div>
       </Modal>
-    </div>
+      </PageBody>
+    </>
   )
 }

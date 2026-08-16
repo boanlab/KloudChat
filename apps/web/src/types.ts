@@ -315,7 +315,12 @@ export interface ImageArtifact extends ArtifactBase {
   /** The job that produced it — one job can emit several images. */
   jobId: string | null
   prompt: string
+  /** The ratio that was asked for. A phrase in the prompt, not a parameter. */
   aspect: string
+  /** The ratio that came back, measured off the bytes. Absent on older rows. */
+  actualAspect?: string
+  width?: number
+  height?: number
   style: string
   seed: number
   model: string

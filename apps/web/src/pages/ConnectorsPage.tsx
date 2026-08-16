@@ -1,3 +1,4 @@
+import { errorMessage } from '@/lib/api'
 import {
   CircleAlert,
   Lock,
@@ -17,6 +18,8 @@ import {
   Button,
   Card,
   EmptyState,
+  LoadingState,
+  ReloadNotice,
   Field,
   Input,
   Modal,
@@ -223,7 +226,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
             } catch (err) {
               // Installing spawns the server, so a failure here is usually a
               // missing dependency or an unreachable host.
-              setError(err instanceof Error ? err.message : t('설치에 실패했습니다.'))
+              setError(errorMessage(err, t('설치에 실패했습니다.')))
             } finally {
               setBusy(false)
             }
@@ -295,7 +298,7 @@ function ReCredentialModal({
                 await updateConnectorEnv(connector.id, values)
                 onClose()
               } catch (err) {
-                setError(err instanceof Error ? err.message : t('저장에 실패했습니다.'))
+                setError(errorMessage(err, t('저장에 실패했습니다.')))
               } finally {
                 setBusy(false)
               }
@@ -365,7 +368,7 @@ function CredentialsModal({
                 await installConnector(entry.slug, values)
                 onClose()
               } catch (err) {
-                setError(err instanceof Error ? err.message : t('설치에 실패했습니다.'))
+                setError(errorMessage(err, t('설치에 실패했습니다.')))
               } finally {
                 setBusy(false)
               }
@@ -417,6 +420,8 @@ export function ConnectorsPage() {
     toggleConnectorTool,
     uninstallConnector,
     addCustomConnector,
+    workspaceLoading,
+    workspaceFailed,
   } = useStore()
 
   useEffect(() => {
@@ -477,8 +482,12 @@ export function ConnectorsPage() {
           ]}
         />
 
+        {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
+
         <div className="space-y-6 pt-4">
-          {empty ? (
+          {workspaceLoading && empty ? (
+            <LoadingState />
+          ) : empty ? (
             <EmptyState
               icon={<Plug size={18} />}
               title={tab === 'installed' ? t('설치한 커넥터가 없습니다') : t('추가할 서버가 없습니다')}

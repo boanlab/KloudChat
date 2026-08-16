@@ -26,6 +26,7 @@ class SystemSettingsIn(Wire):
     tools_exec_url: str | None = None
     tools_research_url: str | None = None
     tools_stt_url: str | None = None
+    tools_index_url: str | None = None
 
     # ── outgoing mail ──────────────────────────────────────────────────
     smtp_host: str | None = None

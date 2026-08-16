@@ -64,6 +64,7 @@ export function BrandingSection({
           />
           <Button
             disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
             onClick={() => void run(() => adminApi.updateSettings({ brandName: name.trim() }))}
           >
             {t('저장')}
@@ -84,12 +85,14 @@ export function BrandingSection({
               if (file) void run(() => adminApi.uploadLogo(file))
             }}
           />
-          <Button variant="ghost" disabled={busy} onClick={() => fileRef.current?.click()}>
+          <Button variant="ghost" disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined} onClick={() => fileRef.current?.click()}>
             <Upload size={14} />
             {t('이미지 올리기')}
           </Button>
           {settings.brand.logo && (
-            <Button variant="ghost" disabled={busy} onClick={() => void run(adminApi.deleteLogo)}>
+            <Button variant="ghost" disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined} onClick={() => void run(adminApi.deleteLogo)}>
               <Trash2 size={14} />
               {t('기본으로 되돌리기')}
             </Button>

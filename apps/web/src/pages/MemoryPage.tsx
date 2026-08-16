@@ -1,3 +1,4 @@
+import { errorMessage } from '@/lib/api'
 import { Brain, Pin, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
@@ -6,7 +7,10 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
+  LoadingState,
+  ReloadNotice,
   Field,
   Input,
   Modal,
@@ -18,6 +22,7 @@ import { cn, relativeTime, uid } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
+import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
 const typeTone: Record<MemoryType, 'accent' | 'success' | 'warn' | 'neutral'> = {
@@ -48,13 +53,18 @@ const emptyDraft = (): MemoryEntry => ({
 
 export function MemoryPage() {
   const t = useT()
-  const { memories, projects, upsertMemory, deleteMemory, togglePinMemory, loadWorkspace } = useStore()
+  const { memories, projects, upsertMemory, deleteMemory, togglePinMemory, loadWorkspace, workspaceLoading, workspaceFailed } =
+    useStore()
 
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
   const [filter, setFilter] = useState<MemoryType | 'all'>('all')
   const [draft, setDraft] = useState<MemoryEntry | null>(null)
+  const [confirming, setConfirming] = useState<MemoryEntry | null>(null)
+  //: 저장이 실패해도 대화상자가 닫혀서, 방금 쓴 내용이 아무 말 없이 사라졌다.
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const visible = filter === 'all' ? memories : memories.filter((m) => m.type === filter)
   const ordered = [...visible].sort((a, b) => Number(b.pinned) - Number(a.pinned))
@@ -87,9 +97,22 @@ export function MemoryPage() {
           ]}
         />
 
+        {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
+
         <div className="space-y-2 pt-4">
-          {sorted.length === 0 && (
-            <EmptyState icon={<Brain size={18} />} title={t('저장된 메모리가 없습니다')} />
+          {workspaceLoading && memories.length === 0 && <LoadingState />}
+          {!workspaceLoading && sorted.length === 0 && (
+            <EmptyState
+              icon={<Brain size={18} />}
+              title={t('저장된 메모리가 없습니다')}
+              description={t('반복해서 설명하게 되는 것을 하나 적어 두면, 다음 대화부터는 말하지 않아도 됩니다.')}
+              action={
+                <Button variant="primary" onClick={() => setDraft(emptyDraft())}>
+                  <Plus size={16} />
+                  {t('첫 메모리 만들기')}
+                </Button>
+              }
+            />
           )}
           {sorted.map((m) => {
             const project = projects.find((p) => p.id === m.scope)
@@ -100,7 +123,10 @@ export function MemoryPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => setDraft(m)}
-                        className="font-mono text-[12px] text-accent hover:underline"
+                        title={t('이 기억을 엽니다')}
+                        /* 이름 자체가 여는 버튼이다. 글자 높이(18px)가 곧
+                           누르는 높이여서, 손가락으로는 옆의 배지를 눌렀다. */
+                        className="-my-2 py-2 font-mono text-[12px] text-accent hover:underline"
                       >
                         {m.name}
                       </button>
@@ -133,6 +159,7 @@ export function MemoryPage() {
                       variant="ghost"
                       size="icon"
                       aria-label={t('{name} 고정').replace('{name}', m.name)}
+                      title={t('고정하면 모든 대화에 먼저 전달됩니다')}
                       className={cn(m.pinned && 'text-accent')}
                       onClick={() => togglePinMemory(m.id)}
                     >
@@ -142,7 +169,8 @@ export function MemoryPage() {
                       variant="ghost"
                       size="icon"
                       aria-label={t('{name} 삭제').replace('{name}', m.name)}
-                      onClick={() => deleteMemory(m.id)}
+                      title={t('이 기억을 삭제합니다')}
+                      onClick={() => setConfirming(m)}
                     >
                       <Trash2 size={14} />
                     </Button>
@@ -155,9 +183,20 @@ export function MemoryPage() {
         <ShowMore hidden={hidden} onMore={more} />
       </PageBody>
 
+      <ConfirmDialog
+        open={!!confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => confirming && deleteMemory(confirming.id)}
+        title={t('{name} 삭제').replace('{name}', confirming?.name ?? '')}
+        description={t('되돌릴 수 없습니다. 다음 대화부터는 이 내용을 참고하지 않습니다.')}
+      />
+
       <Modal
         open={!!draft}
-        onClose={() => setDraft(null)}
+        onClose={() => {
+          setDraft(null)
+          setSaveError(null)
+        }}
         title={memories.some((m) => m.id === draft?.id) ? t('메모리 편집') : t('새 메모리')}
         description={t('한 번에 하나씩, 짧고 분명하게 적으세요.')}
         width="max-w-xl"
@@ -166,22 +205,39 @@ export function MemoryPage() {
             <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
             <Button
               variant="primary"
-              disabled={!draft?.name.trim()}
-              onClick={() => {
-                if (draft) upsertMemory({ ...draft, updatedAt: new Date().toISOString() })
-                setDraft(null)
+              disabled={saving || !draft?.name.trim()}
+              onClick={async () => {
+                if (!draft) return
+                setSaving(true)
+                setSaveError(null)
+                try {
+                  await upsertMemory({ ...draft, updatedAt: new Date().toISOString() })
+                  setDraft(null)
+                } catch (err) {
+                  // The form stays open holding what was typed. Closing it and
+                  // saying nothing is how the text got lost.
+                  setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+                } finally {
+                  setSaving(false)
+                }
               }}
             >
-              {t('저장')}
+              {saving ? t('저장 중…') : t('저장')}
             </Button>
           </>
         }
       >
         {draft && (
           <>
+            {saveError && (
+              <p role="status" className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger">
+                {saveError}
+              </p>
+            )}
             <Field label={t('이름')} hint={t('영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.')}>
               <Input
                 value={draft.name}
+                maxLength={NAME_LIMIT}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder="user-prefers-terse-answers"
                 className="font-mono"

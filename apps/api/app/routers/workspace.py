@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
+from sqlalchemy import or_
 from sqlmodel import col, delete, select
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
 from app.models.chat import ChatSession
-from app.models.user import User, utcnow
+from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Agent,
     Artifact,
@@ -26,6 +28,7 @@ from app.models.workspace import (
     Project,
     Skill,
     StoredFile,
+    Template,
 )
 from app.schemas.workspace import (
     AgentIn,
@@ -36,6 +39,7 @@ from app.schemas.workspace import (
     ArtifactRestore,
     ArtifactVersionOut,
     FileOut,
+    KnowledgeUrl,
     MemoryIn,
     MemoryOut,
     ProjectIn,
@@ -45,15 +49,18 @@ from app.schemas.workspace import (
     SkillIn,
     SkillOut,
     SlideFactCheck,
+    TemplateIn,
+    TemplateOut,
 )
 from app.services import deck as deck_service
-from app.services import deck_export, factcheck, report_export
+from app.services import deck_export, factcheck, index_client, report_export, settings_store
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import report as report_service
 from app.services import transcribe as transcribe_service
 from app.services.credits import charge_for_tokens, has_headroom, settle
+from app.services.tools import builtin as builtin_tools
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["workspace"])
@@ -298,6 +305,20 @@ async def patch_artifact(
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     changes = payload.model_dump(exclude_unset=True)
     summary = changes.pop("summary", "")
+    expected = changes.pop("expected_version", None)
+
+    # Checked here rather than in the browser. The client can compare before it
+    # writes, but a save landing between its read and its write still wins; the
+    # only place the two can be made one step is the transaction that performs
+    # the update.
+    if expected is not None and expected != artifact.version:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "이 결과물은 다른 곳에서 이미 수정되었습니다. "
+                "최신 내용을 받은 뒤 다시 저장하세요."
+            ),
+        )
 
     if "data" in changes:
         # Snapshot before overwriting; otherwise a bad edit is unrecoverable.
@@ -432,6 +453,7 @@ async def rewrite_section(
             model=model["id"],
             api_key=api_key,
             note=payload.note,
+            sources=list(data.get("sources") or []),
         )
     except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
         log.warning("section rewrite failed: %s", exc)
@@ -689,8 +711,16 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
-    await db.delete(await _own(db, Agent, "owner_id", user, agent_id))
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    # Read before the row goes. `files.agent_id` cascades, so KloudChat's own
+    # copies are handled — but the index is another service and knows nothing
+    # about this delete. A collection left behind is documents still searchable
+    # by whoever holds the key, which is the one leak this design can produce.
+    key = agent.index_key
+    await db.delete(agent)
     await db.commit()
+    if key:
+        await index_client.forget_collection(collection=key)
 
 
 def _attachment(body: bytes, media: str, stem: str, suffix: str) -> Response:
@@ -779,3 +809,321 @@ async def export_artifact(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
 
     return _attachment(body, media, stem, suffix)
+
+
+# ══ templates ══════════════════════════════════════════════════════════
+#
+# The gallery's built-ins live in the frontend bundle and cannot be added to.
+# These are the ones a person wrote, returned in the same shape so the gallery
+# concatenates rather than branches.
+
+
+@router.get("/templates", response_model=list[TemplateOut])
+async def list_templates(user: CurrentUser, db: DbSession):
+    """Mine, plus everything an administrator shared with the instance."""
+    rows = (
+        await db.exec(
+            select(Template)
+            .where(or_(Template.owner_id == user.id, col(Template.shared).is_(True)))
+            .order_by(col(Template.shared).desc(), col(Template.created_at).desc())
+        )
+    ).all()
+    # One lookup for the whole page rather than one per row: a gallery of forms
+    # is exactly the case where every row has a file.
+    ids = {t.file_id for t in rows if t.file_id}
+    found: dict[str, StoredFile] = {}
+    if ids:
+        files = (
+            await db.exec(select(StoredFile).where(col(StoredFile.id).in_(ids)))
+        ).all()
+        found = {f.id: f for f in files}
+    return [TemplateOut.of(t, found.get(t.file_id or ""), owner_id=user.id) for t in rows]
+
+
+async def _form_file(db: DbSession, template: Template) -> StoredFile | None:
+    """The template's attached form, or `None`. Ownership was checked on write."""
+    return await db.get(StoredFile, template.file_id) if template.file_id else None
+
+
+async def _shelf_key(db: DbSession, agent: Agent) -> str:
+    """This agent's collection name, minted the first time it needs one.
+
+    Lazy rather than backfilled: an agent with nothing attached needs no shelf,
+    and creating collections for every existing row would leave keys standing
+    for documents that never arrive.
+    """
+    if not agent.index_key:
+        agent.index_key = index_client.new_collection_key()
+        db.add(agent)
+        await db.commit()
+        await db.refresh(agent)
+    return agent.index_key
+
+
+#: Default gallery groups. The wire default is the private one, so a shared
+#: template that did not name a group is refiled.
+_OWN_GROUP = "내 템플릿"
+_SHARED_GROUP = "공용"
+
+
+def _may_share(user: User, requested: bool) -> None:
+    """Refuses `shared` from anybody but an administrator.
+
+    Refused rather than ignored: a template silently saved as private after the
+    admin screen offered to share it is worse than an error.
+    """
+    if requested and user.role is not UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin_required")
+
+
+async def _own_file(db: DbSession, user: User, file_id: str | None) -> str | None:
+    """The attached form, checked. `None` stays `None`.
+
+    The id arrives from the browser, so one belonging to somebody else must not
+    become a template that quietly reads their file on every use.
+    """
+    if not file_id:
+        return None
+    stored = await db.get(StoredFile, file_id)
+    if stored is None or stored.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
+    return stored.id
+
+
+@router.post("/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession):
+    data = payload.model_dump()
+    _may_share(user, bool(data.get("shared")))
+    data["file_id"] = await _own_file(db, user, data.get("file_id"))
+    # A shared template filed under "내 템플릿" reads as somebody's private one
+    # in every other account's gallery.
+    if data.get("shared") and data.get("group") == _OWN_GROUP:
+        data["group"] = _SHARED_GROUP
+    template = Template(owner_id=user.id, **data)
+    db.add(template)
+    await db.commit()
+    await db.refresh(template)
+    # Resolved here too, not only on the list: the gallery renders the row it
+    # gets back, and a card whose form appears only after a reload reads as a
+    # form that did not attach.
+    return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
+
+
+@router.patch("/templates/{template_id}", response_model=TemplateOut)
+async def patch_template(
+    template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession
+):
+    template = await _own(db, Template, "owner_id", user, template_id)
+    fields = payload.model_dump(exclude_unset=True)
+    if "shared" in fields:
+        _may_share(user, bool(fields["shared"]))
+    if "file_id" in fields:
+        fields["file_id"] = await _own_file(db, user, fields["file_id"])
+    for field, value in fields.items():
+        setattr(template, field, value)
+    template.updated_at = utcnow()
+    db.add(template)
+    await db.commit()
+    await db.refresh(template)
+    return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
+
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
+    template = await _own(db, Template, "owner_id", user, template_id)
+    await db.delete(template)
+    await db.commit()
+
+
+# ══ agent knowledge ════════════════════════════════════════════════════
+#
+# Documents an agent can search, as opposed to project files, which are pushed
+# into every turn whole. The difference is size: a shelf too big to inject is
+# exactly the shelf worth searching.
+
+
+@router.get("/agents/{agent_id}/knowledge", response_model=list[FileOut])
+async def list_agent_knowledge(agent_id: str, user: CurrentUser, db: DbSession):
+    await _own(db, Agent, "owner_id", user, agent_id)
+    rows = (
+        await db.exec(
+            select(StoredFile)
+            .where(StoredFile.agent_id == agent_id, StoredFile.user_id == user.id)
+            .order_by(col(StoredFile.created_at).desc())
+        )
+    ).all()
+    return [FileOut.of(f) for f in rows]
+
+
+@router.post(
+    "/agents/{agent_id}/knowledge",
+    response_model=FileOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_agent_file(
+    agent_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+):
+    """An uploaded document, extracted and shelved."""
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    data = await file.read()
+    if len(data) > settings.max_upload_mb * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"file_too_large_{settings.max_upload_mb}mb",
+        )
+    stored = StoredFile(
+        user_id=user.id,
+        agent_id=agent_id,
+        name=file_service.safe_name(file.filename or "file"),
+        size=len(data),
+        mime=file.content_type or "",
+    )
+    stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
+    # Same as the project path: extraction failure is recorded, not raised. The
+    # row is what makes the failure visible in the list.
+    try:
+        stored.text = file_service.extract_text(stored.name, stored.mime, data)
+        stored.tokens = file_service.estimate_tokens(stored.text)
+    except Exception as exc:  # noqa: BLE001
+        log.info("extraction failed for %s: %s", stored.name, exc)
+        stored.error = str(exc)
+
+    db.add(stored)
+    await db.commit()
+    await db.refresh(stored)
+    await _index(db, agent, stored)
+    return FileOut.of(stored)
+
+
+@router.post(
+    "/agents/{agent_id}/knowledge/url",
+    response_model=FileOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_agent_url(
+    agent_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession
+):
+    """A page, read once and shelved as text.
+
+    A snapshot, not a subscription — the page can change and this row will not.
+    That is the honest behaviour for retrieval: an answer cites what was read,
+    and re-reading on every turn would make the same question answerable
+    differently on Tuesday for reasons nobody can see.
+    """
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    url = payload.url.strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_url")
+
+    backends = await settings_store.tools_config()
+    if not backends.fetch:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="fetch_unavailable"
+        )
+    text = await builtin_tools.scrape(backends.fetch, url)
+    if not text.strip():
+        # 502 rather than an empty row: a shelf entry with no text is a document
+        # the agent will report as present and can never quote.
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="page_unreadable")
+
+    stored = StoredFile(
+        user_id=user.id,
+        agent_id=agent_id,
+        name=_page_name(url),
+        size=len(text.encode()),
+        mime="text/markdown",
+        source_url=url,
+        text=text,
+        tokens=file_service.estimate_tokens(text),
+    )
+    db.add(stored)
+    await db.commit()
+    await db.refresh(stored)
+    await _index(db, agent, stored)
+    return FileOut.of(stored)
+
+
+async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
+    """Send one shelved document to the retrieval index.
+
+    After the commit and never blocking it: the row is the source of truth, so a
+    document that could not be embedded is still attached and still found
+    lexically. The outcome is stamped on the row, or the two states look alike.
+    """
+    if not stored.text.strip() or not await index_client.available():
+        return False
+    ok = await index_client.put_document(
+        collection=await _shelf_key(db, agent),
+        doc_id=stored.id,
+        name=stored.name,
+        text=stored.text,
+        source_url=stored.source_url,
+    )
+    if ok:
+        stored.indexed_at = utcnow()
+        db.add(stored)
+        await db.commit()
+        await db.refresh(stored)
+    return ok
+
+
+def _page_name(url: str) -> str:
+    """A readable name for a page: host plus the last path segment."""
+    stripped = re.sub(r"^https?://", "", url).rstrip("/")
+    host, _, path = stripped.partition("/")
+    tail = path.rsplit("/", 1)[-1] if path else ""
+    return file_service.safe_name(f"{host}{f'-{tail}' if tail else ''}"[:120] or "page")
+
+
+@router.post("/agents/{agent_id}/knowledge/reindex")
+async def reindex_agent_knowledge(
+    agent_id: str, user: CurrentUser, db: DbSession, force: bool = False
+) -> dict[str, Any]:
+    """Push this agent's documents into the retrieval index.
+
+    Only the uncovered ones by default. `force=true` re-sends everything, which
+    an embedding-model change needs — old vectors sit in a different space.
+
+    Returns counts rather than raising, so a partial run keeps what it did.
+    """
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    if not await index_client.available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="index_unavailable"
+        )
+    rows = (
+        await db.exec(
+            select(StoredFile).where(
+                StoredFile.agent_id == agent_id, StoredFile.user_id == user.id
+            )
+        )
+    ).all()
+    todo = [r for r in rows if r.text.strip() and (force or r.indexed_at is None)]
+    done = 0
+    for stored in todo:
+        if await _index(db, agent, stored):
+            done += 1
+    return {"total": len(rows), "attempted": len(todo), "indexed": done}
+
+
+@router.delete(
+    "/agents/{agent_id}/knowledge/{file_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_agent_knowledge(
+    agent_id: str, file_id: str, user: CurrentUser, db: DbSession
+):
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    stored = await db.get(StoredFile, file_id)
+    if stored is None or stored.user_id != user.id or stored.agent_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if stored.storage_key:
+        file_service.delete_blob(stored.storage_key)
+    await db.delete(stored)
+    await db.commit()
+    # A document removed from the shelf must stop being findable. Left behind,
+    # the agent would keep quoting a file its owner can no longer see.
+    if agent.index_key:
+        await index_client.forget_document(collection=agent.index_key, doc_id=file_id)

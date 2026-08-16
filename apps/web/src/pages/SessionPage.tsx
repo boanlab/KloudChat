@@ -9,7 +9,7 @@ import { ShareButton } from '@/components/share/ShareButton'
 import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
-import { Badge, Button } from '@/components/ui'
+import { Badge, Button, EmptyState } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
@@ -72,6 +72,7 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
     projects,
     agents,
     artifacts,
+    enabledKinds,
     setActiveSession,
     openSession,
     streaming,
@@ -79,9 +80,20 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
     openArtifact,
   } = useStore()
 
+  const navigate = useNavigate()
   const session = sessions.find((s) => s.id === sessionId) ?? null
   const kind: SessionKind = session?.kind ?? newKind ?? 'chat'
   const meta = kindMeta[kind]
+  /**
+   * A surface an administrator has switched off.
+   *
+   * The sidebar and the home screen already hide these, but the URL still
+   * works — a bookmark, a shared link, a browser autocomplete — and the screen
+   * that came up looked entirely normal. Typing into it did nothing at all:
+   * the server refuses to open the session, and the refusal surfaced as an
+   * unhandled rejection nobody could see.
+   */
+  const offHere = newKind !== undefined && !enabledKinds.includes(kind)
 
   useEffect(() => {
     setActiveSession(session?.id ?? null)
@@ -163,7 +175,18 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
 
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          {session && timeline.length > 0 ? (
+          {offHere ? (
+            <EmptyState
+              icon={<Icon size={18} />}
+              title={t('{kind} 기능이 꺼져 있습니다').replace('{kind}', t(meta.label))}
+              description={t('관리자가 이 워크스페이스에서 사용하지 않도록 설정했습니다. 필요하면 관리자에게 요청하세요.')}
+              action={
+                <Button variant="primary" onClick={() => navigate('/')}>
+                  {t('홈으로')}
+                </Button>
+              }
+            />
+          ) : session && timeline.length > 0 ? (
             <>
               <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">

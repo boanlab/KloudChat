@@ -147,7 +147,7 @@ test('사무직 — 보고서를 한글 문서로 받으면 한글이 여는 파
   test.setTimeout(180_000)
   await openNewestReport(page)
 
-  await page.getByRole('button', { name: '내보내기' }).click()
+  await page.getByRole('button', { name: '내보내기', exact: true }).click()
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: '한글 문서' }).click()
   const file = await download
@@ -178,7 +178,7 @@ test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 
     `# ${title}\n\n## 측정 절차\n\n아래 순서로 수행한다.\n\n1. 시료를 준비한다\n1. 온도를 25℃ 로 맞춘다\n1. 3회 반복 측정한다\n\n## 재시작 절차\n\n8. 여덟 번째 단계\n9. 아홉 번째 단계\n10. 열 번째 단계\n`,
   )
 
-  await page.getByRole('button', { name: '내보내기' }).click()
+  await page.getByRole('button', { name: '내보내기', exact: true }).click()
   const hwpxDownload = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: '한글 문서' }).click()
   const submitted = hwpxText(readFileSync((await (await hwpxDownload).path())!))
@@ -196,7 +196,7 @@ test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 
   // The Markdown export is the source, and is expected to stay the source: it
   // carries `1. 1. 1.`, which every Markdown reader renders as 1, 2, 3. Pinning
   // it here so nobody "fixes" the two to match.
-  await page.getByRole('button', { name: '내보내기' }).click()
+  await page.getByRole('button', { name: '내보내기', exact: true }).click()
   const mdDownload = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: '마크다운 원문' }).click()
   const md = readFileSync((await (await mdDownload).path())!, 'utf-8')

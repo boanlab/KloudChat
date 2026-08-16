@@ -142,6 +142,7 @@ function SessionRow({
           <button
             className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-line hover:text-fg"
             aria-label={t('메뉴')}
+            title={t('이 대화의 이름 바꾸기·고정·삭제')}
           >
             <MoreHorizontal size={14} />
           </button>
@@ -270,6 +271,7 @@ export function Sidebar() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('검색')}
+            aria-label={t('대화 빠른 검색')}
             className="h-8 bg-transparent pl-8 text-[13px]"
           />
         </div>

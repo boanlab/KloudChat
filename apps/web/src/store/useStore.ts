@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
 import { kindMeta } from '@/lib/kinds'
+import { errorMessage } from '@/lib/api'
 import {
   ApiError,
   UnauthorizedError,
@@ -113,6 +114,20 @@ interface State {
   // ── models — live against /api/models ─────────────────────────────────
   models: ModelInfo[]
   modelsLoading: boolean
+  /**
+   * Whether each collection has come back yet. `length === 0` means both an
+   * empty workspace and a request in flight; screens need to tell them apart.
+   */
+  workspaceLoading: boolean
+  artifactsLoading: boolean
+  sessionsLoading: boolean
+  /**
+   * Whether the last refresh failed. Distinct from loading: the screen keeps
+   * what it had, and has to say the list may be stale.
+   */
+  workspaceFailed: boolean
+  artifactsFailed: boolean
+  sessionsFailed: boolean
   /** False when the proxy did not answer; only adapter models are listed. */
   litellmAvailable: boolean
   loadModels: () => Promise<void>
@@ -214,6 +229,13 @@ interface State {
    *  on the user's behalf. */
   draft: string
   setDraft: (text: string) => void
+  /**
+   * Form file a picked template carries, handed to the composer. The gallery
+   * and the composer meet only here. Consumed once, or it re-attaches to every
+   * later turn.
+   */
+  pendingAttachment: FileRow | null
+  setPendingAttachment: (file: FileRow | null) => void
   /** Whether this instance has a Whisper backend. Drives the composer's mic. */
   dictationEnabled: boolean
   /** Service name and logo to render. An empty logo draws the default mark. */
@@ -238,6 +260,13 @@ interface State {
   // ── artifact panel ────────────────────────────────────────────────────
   openArtifactId: string | null
   openArtifact: (id: string | null) => void
+  /** A delete waiting out its undo window, if any. */
+  pendingDelete: { label: string; undo: () => void } | null
+  /** Why a media surface refused to start, for the surface to show. */
+  mediaError: string | null
+  clearMediaError: () => void
+  /** Replaces the store's copy with the server's, and hands it back. */
+  refreshArtifact: (id: string) => Promise<Artifact | null>
 
   // ── workspace — all live against /api ─────────────────────────────────
   /** One call after sign-in; each screen also refreshes its own slice. */
@@ -303,6 +332,14 @@ interface State {
  *  state. */
 let workspaceEpoch = 0
 const touchWorkspace = () => ++workspaceEpoch
+
+/**
+ * Which artifact fetch is current. Two loaders fill the same list —
+ * `loadArtifacts` and `loadWorkspace` — and without this the later *reply*
+ * wins over the later *request*, leaving a stale snapshot that only surfaces as
+ * a phantom edit conflict.
+ */
+let artifactsEpoch = 0
 
 const MODEL_STORAGE_KEY = 'kchat-models'
 
@@ -419,6 +456,8 @@ function reconcileDefaults(
 
 export const useStore = create<State>((set, get) => ({
   user: null,
+  pendingDelete: null,
+  mediaError: null,
   authenticated: false,
   authLoading: true,
   authError: null,
@@ -565,6 +604,12 @@ export const useStore = create<State>((set, get) => ({
   usersLoading: false,
   models: [],
   modelsLoading: false,
+  workspaceLoading: true,
+  artifactsLoading: true,
+  sessionsLoading: true,
+  workspaceFailed: false,
+  artifactsFailed: false,
+  sessionsFailed: false,
   litellmAvailable: true,
 
   sessions: [],
@@ -586,6 +631,7 @@ export const useStore = create<State>((set, get) => ({
     // Screens refetch on mount, and a mutation can land mid-flight. Applying a
     // snapshot taken before it would drop the row just created.
     const epoch = ++workspaceEpoch
+    const artifactEpoch = ++artifactsEpoch
     const results = await Promise.allSettled([
       projectsApi.list(),
       artifactsApi.list(),
@@ -599,9 +645,13 @@ export const useStore = create<State>((set, get) => ({
     // Something changed under us; that write already holds the truth.
     if (epoch !== workspaceEpoch) return
     set((s) => ({
+      workspaceLoading: false,
+      artifactsLoading: false,
+      // Any endpoint that did not come back leaves part of this screen stale.
+      workspaceFailed: results.some((r) => r.status === 'rejected'),
       projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
       artifacts:
-        artifacts.status === 'fulfilled'
+        artifacts.status === 'fulfilled' && artifactEpoch === artifactsEpoch
           ? artifacts.value.map(toArtifact)
           : s.artifacts,
       skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
@@ -709,12 +759,15 @@ export const useStore = create<State>((set, get) => ({
     try {
       const rows = await sessionsApi.list()
       set((s) => ({
+        sessionsLoading: false,
+        sessionsFailed: false,
         // The list response carries titles only, so an open transcript is kept.
         sessions: rows.map((row) =>
           toSession(row, s.sessions.find((c) => c.id === row.id)?.messages),
         ),
       }))
     } catch {
+      set({ sessionsLoading: false, sessionsFailed: true })
       /* offline: leave the sidebar as it is */
     }
   },
@@ -722,11 +775,26 @@ export const useStore = create<State>((set, get) => ({
   openSession: async (id) => {
     try {
       const row = await sessionsApi.get(id)
+      const session = toSession(row)
       set((s) => ({
         sessions: s.sessions.some((c) => c.id === id)
-          ? s.sessions.map((c) => (c.id === id ? toSession(row) : c))
-          : [toSession(row), ...s.sessions],
+          ? s.sessions.map((c) => (c.id === id ? session : c))
+          : [session, ...s.sessions],
       }))
+
+      /**
+       * Artifacts the transcript names by id. Every surface that shows one
+       * resolves the id against the store, so arriving by URL — reload, shared
+       * link, back button — has to fill it too.
+       */
+      const wanted = new Set<string>()
+      if (session.artifactId) wanted.add(session.artifactId)
+      for (const m of session.messages) for (const a of m.artifactIds ?? []) wanted.add(a)
+      const missing = [...wanted].filter((a) => !get().artifacts.some((x) => x.id === a))
+      if (missing.length === 0) return
+      const rows = await Promise.all(missing.map((a) => artifactsApi.get(a).catch(() => null)))
+      const found = rows.filter((r) => r !== null).map(toArtifact)
+      if (found.length) set((s) => ({ artifacts: [...found, ...s.artifacts] }))
     } catch {
       /* deleted or not ours — the page renders its empty state */
     }
@@ -853,8 +921,17 @@ export const useStore = create<State>((set, get) => ({
   generateVideo: async (sessionId, prompt, opts = {}) => {
     const { avOptions, modelByKind } = get()
     let id = sessionId
+    /**
+     * Opening the session can be refused — surface switched off, or no credit.
+     * Inside the `try`, or the rejection escapes and Enter does nothing.
+     */
     if (!id) {
-      id = await get().newSession('av', { projectId: opts.projectId ?? null })
+      try {
+        id = await get().newSession('av', { projectId: opts.projectId ?? null })
+      } catch (err) {
+        set({ mediaError: errorMessage(err, '영상 작업을 시작하지 못했습니다.') })
+        return
+      }
       opts.onSession?.(id)
     }
     try {
@@ -984,10 +1061,19 @@ export const useStore = create<State>((set, get) => ({
   generateImages: async (sessionId, prompt, opts = {}) => {
     const { imageOptions, modelByKind } = get()
     let id = sessionId
+    /**
+     * Opening the session can be refused — surface switched off, or no credit.
+     * Inside the `try`, or the rejection escapes and Enter does nothing.
+     */
     if (!id) {
       // Same shape as a chat turn from /new/:kind: the session exists before
       // anything is generated, so a slow model cannot strand the result.
-      id = await get().newSession('image', { projectId: opts.projectId ?? null })
+      try {
+        id = await get().newSession('image', { projectId: opts.projectId ?? null })
+      } catch (err) {
+        set({ mediaError: errorMessage(err, '이미지를 만들지 못했습니다.') })
+        return
+      }
       opts.onSession?.(id)
     }
     const jobId = uid('j')
@@ -1144,6 +1230,8 @@ export const useStore = create<State>((set, get) => ({
   setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
   draft: '',
   setDraft: (draft) => set({ draft }),
+  pendingAttachment: null,
+  setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
   dictationEnabled: false,
   brand: { name: 'KloudChat', logo: '' },
   refreshBrand: async () => {
@@ -1187,7 +1275,27 @@ export const useStore = create<State>((set, get) => ({
     })),
 
   openArtifactId: null,
-  openArtifact: (id) => set({ openArtifactId: id }),
+  /**
+   * Opens the panel on the current document. The store's copy may be from a
+   * late reply that landed on a fresher one; a refetch avoids editing text the
+   * server no longer holds.
+   */
+  clearMediaError: () => set({ mediaError: null }),
+
+  openArtifact: (id) => {
+    set({ openArtifactId: id })
+    if (id) void get().refreshArtifact(id)
+  },
+
+  refreshArtifact: async (id) => {
+    const row = await artifactsApi.get(id).catch(() => null)
+    // Offline or gone: the panel keeps what it had, and saving will refuse
+    // rather than overwrite something it cannot see.
+    if (!row) return null
+    const fresh = toArtifact(row)
+    set((s) => ({ artifacts: s.artifacts.map((a) => (a.id === id ? fresh : a)) }))
+    return fresh
+  },
 
   createProject: async (p) => {
     touchWorkspace()
@@ -1237,13 +1345,33 @@ export const useStore = create<State>((set, get) => ({
   },
 
   loadArtifacts: async () => {
+    const epoch = ++artifactsEpoch
     const rows = await artifactsApi.list().catch(() => null)
-    if (rows) set({ artifacts: rows.map(toArtifact) })
+    // A newer fetch has already answered; this one is history.
+    if (epoch !== artifactsEpoch) return
+    // Lowered either way: a failed fetch is still an answer, and leaving the
+    // flag up would spin forever in place of the empty state.
+    set((s) => ({
+      artifacts: rows ? rows.map(toArtifact) : s.artifacts,
+      artifactsLoading: false,
+      artifactsFailed: rows === null,
+    }))
   },
   deleteArtifact: async (id) => {
     touchWorkspace()
+    const removed = get().artifacts.find((x) => x.id === id)
     set((s) => ({ artifacts: s.artifacts.filter((a) => a.id !== id) }))
-    await artifactsApi.remove(id).catch(() => get().loadArtifacts())
+    if (!removed) return
+    const restore = () =>
+      set((s) => ({
+        artifacts: s.artifacts.some((x) => x.id === id) ? s.artifacts : [removed, ...s.artifacts],
+        pendingDelete: null,
+      }))
+    await holdDelete(set, get, {
+      label: nameOf(removed),
+      restore,
+      commit: () => artifactsApi.remove(id).catch(() => get().loadArtifacts()),
+    })
   },
 
   connectors: [],
@@ -1338,8 +1466,19 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteSkill: async (id) => {
     touchWorkspace()
+    const removed = get().skills.find((x) => x.id === id)
     set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }))
-    await skillsApi.remove(id).catch(() => get().loadWorkspace())
+    if (!removed) return
+    const restore = () =>
+      set((s) => ({
+        skills: s.skills.some((x) => x.id === id) ? s.skills : [removed, ...s.skills],
+        pendingDelete: null,
+      }))
+    await holdDelete(set, get, {
+      label: nameOf(removed),
+      restore,
+      commit: () => skillsApi.remove(id).catch(() => get().loadWorkspace()),
+    })
   },
 
   upsertMemory: async (m) => {
@@ -1363,8 +1502,19 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteMemory: async (id) => {
     touchWorkspace()
+    const removed = get().memories.find((x) => x.id === id)
     set((s) => ({ memories: s.memories.filter((m) => m.id !== id) }))
-    await memoryApi.remove(id).catch(() => get().loadWorkspace())
+    if (!removed) return
+    const restore = () =>
+      set((s) => ({
+        memories: s.memories.some((x) => x.id === id) ? s.memories : [removed, ...s.memories],
+        pendingDelete: null,
+      }))
+    await holdDelete(set, get, {
+      label: nameOf(removed),
+      restore,
+      commit: () => memoryApi.remove(id).catch(() => get().loadWorkspace()),
+    })
   },
   togglePinMemory: async (id) => {
     touchWorkspace()
@@ -1419,8 +1569,19 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteAgent: async (id) => {
     touchWorkspace()
+    const removed = get().agents.find((x) => x.id === id)
     set((s) => ({ agents: s.agents.filter((a) => a.id !== id) }))
-    await agentsApi.remove(id).catch(() => get().loadWorkspace())
+    if (!removed) return
+    const restore = () =>
+      set((s) => ({
+        agents: s.agents.some((x) => x.id === id) ? s.agents : [removed, ...s.agents],
+        pendingDelete: null,
+      }))
+    await holdDelete(set, get, {
+      label: nameOf(removed),
+      restore,
+      commit: () => agentsApi.remove(id).catch(() => get().loadWorkspace()),
+    })
   },
 
 
@@ -1474,6 +1635,77 @@ type Get = () => State
 /** The UI's step categories. Anything else is a tool call. */
 const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
 
+/**
+ * A stream that stops without closing. Every turn ends with a `usage` event, or
+ * an explicit error; a dropped connection sends neither and the loop falls out
+ * of `for await` with nothing to catch. Marks the turn as cut off.
+ */
+const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
+
+/**
+ * Delete held for a few seconds before it is sent. The row leaves the screen at
+ * once and undo cancels the call before anything is destroyed — no server-side
+ * retention needed.
+ *
+ * The window is short so nobody relies on it, and leaving the page flushes what
+ * is pending rather than dropping it.
+ */
+const UNDO_MS = 6_000
+
+/** Deletes whose requests have not been sent yet, so the page can flush them. */
+const pendingDeletes = new Set<() => void>()
+
+if (typeof window !== 'undefined') {
+  // Leaving with a delete still held would silently undo it — the row is back
+  // on the next load and nobody asked for that.
+  window.addEventListener('beforeunload', () => {
+    for (const flush of pendingDeletes) flush()
+    pendingDeletes.clear()
+  })
+}
+
+/** Whatever the row calls itself: artifacts have titles, the rest have names. */
+function nameOf(row: { title?: string; name?: string }): string {
+  return row.title ?? row.name ?? ''
+}
+
+type HeldDelete = { label: string; restore: () => void; commit: () => Promise<unknown> }
+
+/** Removes it from the screen now, sends the request in a few seconds. */
+async function holdDelete(
+  set: (partial: Partial<State> | ((s: State) => Partial<State>)) => void,
+  get: () => State,
+  { label, restore, commit }: HeldDelete,
+) {
+  let cancelled = false
+  const send = () => {
+    pendingDeletes.delete(send)
+    if (cancelled) return
+    void commit()
+  }
+  pendingDeletes.add(send)
+  const timer = window.setTimeout(send, UNDO_MS)
+
+  set({
+    pendingDelete: {
+      label,
+      undo: () => {
+        cancelled = true
+        window.clearTimeout(timer)
+        pendingDeletes.delete(send)
+        restore()
+      },
+    },
+  })
+
+  // The banner clears itself once the window has passed, whether or not this
+  // is still the delete it was showing.
+  window.setTimeout(() => {
+    if (get().pendingDelete?.label === label) set({ pendingDelete: null })
+  }, UNDO_MS)
+}
+
+
 function toStep(raw: Record<string, unknown>): Step {
   // `raw.type` is the stream event kind — always "step" — not `Step.type`, the
   // UI category that picks an icon. Only known categories are honoured;
@@ -1485,6 +1717,9 @@ function toStep(raw: Record<string, unknown>): Step {
     label: String(raw.label ?? ''),
     status: (raw.status as Step['status']) ?? 'done',
     detail: raw.detail as string | undefined,
+    // Carried through rather than dropped: a step that knows it is the third
+    // of seven is the only thing on the surface that knows how much is left.
+    progress: raw.progress as Step['progress'],
   }
 }
 
@@ -1742,6 +1977,9 @@ async function streamTurn(
   const live = get().user?.preferences.streamResponses !== false
   let buffered = ''
 
+  //: Whether the turn ended on purpose. See CUT_OFF.
+  let settled = false
+
   try {
     for await (const event of streamSession(
       sessionId,
@@ -1772,6 +2010,7 @@ async function streamTurn(
           })
           break
         case 'usage':
+          settled = true
           patch((m) => ({
             ...m,
             usage: {
@@ -1791,18 +2030,23 @@ async function streamTurn(
           break
         case 'error':
           // Content is left alone: a partial answer beats none.
+          settled = true
           patch((m) => ({ ...m, error: event.message }))
           break
       }
     }
   } catch (err) {
     // Abort is the stop button doing its job, not a failure.
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      settled = true
+    } else {
+      settled = true
       patch((m) => ({ ...m, error: '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.' }))
     }
   } finally {
     // Buffered text lands here, including on abort or error.
     if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
+    if (!settled) patch((m) => ({ ...m, error: CUT_OFF }))
     set({ streaming: false, abortStream: null })
     // Ordering, pinning, and the generated title all live server-side.
     void get().loadSessions()
@@ -1950,6 +2194,9 @@ async function streamReport(
 
   const controller = new AbortController()
   set({ abortStream: () => controller.abort() })
+  //: Whether the turn ended on purpose. See CUT_OFF.
+  let settled = false
+
   try {
     for await (const e of streamSession(sessionId, { content: text, model }, controller.signal)) {
       switch (e.type) {
@@ -1957,6 +2204,11 @@ async function streamReport(
         // request, which is a prompt rather than a title.
         case 'title':
           patchReport((a) => ({ ...a, title: e.title }))
+          break
+        // The shelf arrives before the first section, so the 출처 tab is
+        // populated by the time there is prose citing it.
+        case 'sources':
+          patchReport((a) => ({ ...a, sources: e.sources }))
           break
         case 'section':
           patchReport((a) => {
@@ -2001,9 +2253,11 @@ async function streamReport(
           }))
           break
         case 'usage':
+          settled = true
           chargeCredits(set, get, e.credits)
           break
         case 'error':
+          settled = true
           patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
           break
         case 'artifact':
@@ -2021,6 +2275,7 @@ async function streamReport(
       }
     }
   } catch (err) {
+    settled = true
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
@@ -2028,6 +2283,7 @@ async function streamReport(
       }))
     }
   } finally {
+    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
     set({ streaming: false, abortStream: null })
     void get().loadSessions()
   }
@@ -2080,6 +2336,9 @@ async function streamDeck(set: Set, get: Get, sessionId: string, text: string, m
 
   const controller = new AbortController()
   set({ abortStream: () => controller.abort() })
+  //: Whether the turn ended on purpose. See CUT_OFF.
+  let settled = false
+
   try {
     for await (const e of streamSession(sessionId, { content: text, model }, controller.signal)) {
       switch (e.type) {
@@ -2123,9 +2382,11 @@ async function streamDeck(set: Set, get: Get, sessionId: string, text: string, m
           }))
           break
         case 'usage':
+          settled = true
           chargeCredits(set, get, e.credits)
           break
         case 'error':
+          settled = true
           patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
           break
         case 'artifact':
@@ -2141,6 +2402,7 @@ async function streamDeck(set: Set, get: Get, sessionId: string, text: string, m
       }
     }
   } catch (err) {
+    settled = true
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
@@ -2148,6 +2410,7 @@ async function streamDeck(set: Set, get: Get, sessionId: string, text: string, m
       }))
     }
   } finally {
+    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
     set({ streaming: false, abortStream: null })
     void get().loadSessions()
   }

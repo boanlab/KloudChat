@@ -8,7 +8,9 @@ test('크레딧을 누르면 본인 사용량 화면으로 간다', async ({ pag
   await page.getByRole('button', { name: '이번 달 사용량' }).click()
   await expect(page).toHaveURL(/\/usage$/)
   await expect(page.getByRole('heading', { name: '사용량' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText('이번 달')).toBeVisible()
+  // Exact: the sidebar's own credit readout also begins "이번 달", and the
+  // loose match resolves to both the moment this page renders its card.
+  await expect(page.getByText('이번 달', { exact: true })).toBeVisible()
   // Its own figures, never the instance's — the admin view is a different screen.
   await expect(page.getByText(/최근 \d+일 동안/)).toBeVisible({ timeout: 20_000 })
 })

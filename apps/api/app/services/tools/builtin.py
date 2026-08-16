@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import index_client, knowledge, settings_store
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
 log = logging.getLogger(__name__)
@@ -79,6 +79,12 @@ async def _scrape(base_url: str, url: str) -> str:
         return ""
     data = payload.get("data") or payload
     return (data.get("markdown") or data.get("content") or "").strip()
+
+
+#: The scraper, for callers outside the tool loop. Ingesting a URL into an
+#: agent's shelf is the same fetch the `fetch_url` tool makes, and a second
+#: implementation would be a second set of timeouts and headers to keep in step.
+scrape = _scrape
 
 
 async def web_search(args: dict[str, Any]) -> ToolResult:
@@ -485,3 +491,99 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     tools.append(CREATE_ARTIFACT)
     tools.append(CREATE_CHART)
     return tools
+
+
+def knowledge_tool(
+    documents: list[tuple[str, str, str | None]], collection: str = ""
+) -> Tool:
+    """Search inside the documents attached to the agent running this turn.
+
+    Built per turn around a preloaded shelf rather than reaching for a database:
+    tools run inside the streaming loop, which holds no session of its own, and
+    a tool that opened one would be writing and reading against a turn that may
+    still fail.
+
+    Offered only when the agent has documents. A tool that always answers "이
+    에이전트에는 자료가 없습니다" teaches the model to stop calling it, and then
+    it is ignored on the agent that does have a shelf.
+    """
+    # Contents list per document. Filenames are often meaningless, and a model
+    # choosing tools by description needs to know what the shelf covers.
+    #
+    # Headings, not an excerpt: given a sample the model reads it as the
+    # material and rules the shelf out without searching.
+    def _outline(text: str, limit: int = 12) -> str:
+        seen: list[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("#"):
+                continue
+            heading = stripped.lstrip("#").strip()
+            if heading and heading not in seen:
+                seen.append(heading)
+            if len(seen) >= limit:
+                break
+        if not seen:
+            # No headings: fall back to the opening line, which at least names
+            # the subject in a document that has no structure to show.
+            first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+            seen = [first[:60]] if first else []
+        return f" — {' / '.join(seen)}" if seen else ""
+
+    listed = "; ".join(f"{name}{_outline(text)}" for name, text, _ in documents[:6])
+    more = "" if len(documents) <= 6 else f" 외 {len(documents) - 6}건"
+
+    async def run(args: dict[str, Any]) -> ToolResult:
+        query = str(args.get("query") or "").strip()
+        if not query:
+            return ToolResult(content="검색어가 비어 있습니다.", failed=True)
+        passages, ranked = knowledge.gather(documents, query)
+        # The vector half, when the shelf has one and the index answers. Merged
+        # rather than preferred: the index finds meaning and the scorer finds
+        # exact wording — a 조문 number or a figure comes back from the scorer
+        # and nowhere else.
+        if collection and ranked:
+            hits = await index_client.search(collection=collection, query=query)
+            if hits:
+                passages = knowledge.merge(hits, passages)
+        if not passages:
+            # Said plainly, and distinguished from "there is nothing here": the
+            # model should be able to tell "I looked and the shelf is silent on
+            # this" from "this agent has no material at all".
+            return ToolResult(
+                content=(
+                    f"자료 {len(documents)}건을 찾아봤지만 '{query}' 와 겹치는 대목이 "
+                    "없습니다. 자료에 없는 내용을 지어내지 말고, 자료에 없다고 답하세요."
+                ),
+                detail="해당 없음",
+            )
+        body = knowledge.render(passages)
+        # Said differently on purpose: "read all 3 documents" and "found 4
+        # passages" are different claims, and only the second one can have
+        # missed something.
+        detail = f"{len(passages)}개 대목" if ranked else f"자료 {len(passages)}건 전문"
+        return ToolResult(content=body, detail=detail)
+
+    return Tool(
+        name="search_knowledge",
+        description=(
+            "이 에이전트에 첨부된 자료 안에서 검색합니다. 붙어 있는 자료: "
+            f"{listed}{more}. "
+            "위 목록은 각 자료의 목차일 뿐 내용이 아닙니다. 목차만 보고 "
+            "'자료에 없다'고 판단하지 말고, 이 자료가 다룰 만한 주제이면 반드시 "
+            "먼저 이 도구를 부르세요. 기억에 의존해 답하지 마세요. 웹 검색이 아니라 "
+            "첨부 자료 전용입니다."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "찾을 내용. 문서에 쓰였을 법한 낱말로 적으세요.",
+                }
+            },
+            "required": ["query"],
+        },
+        run=run,
+        label="자료 찾는 중",
+    )

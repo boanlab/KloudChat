@@ -89,7 +89,11 @@ export function FeaturesSection({
       })}
 
       <div className="flex items-center gap-2">
-        <Button disabled={busy || !dirty} onClick={() => void save()}>
+        <Button
+          disabled={busy || !dirty}
+          title={!dirty ? t('바뀐 내용이 없습니다') : busy ? t('저장 중…') : undefined}
+          onClick={() => void save()}
+        >
           {t('저장')}
         </Button>
         <span className="text-[12px] text-muted">

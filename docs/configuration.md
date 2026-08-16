@@ -34,7 +34,7 @@ itself reads are in the second column.
 
 | `.env` | Container | Default | Notes |
 | --- | --- | --- | --- |
-| `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives all six feature endpoints by appending paths. |
+| `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives all six feature endpoints by appending paths. `/tools/index` is optional: without it, agent knowledge is searched lexically. |
 | `LITELLM_BASE_URL` | `LITELLM_BASE_URL` | derived | Only when LiteLLM is not behind the gateway. |
 | `LITELLM_MASTER_KEY` | `LITELLM_MASTER_KEY` | — | Never leaves the API process. Not returned by any route, including admin routes. |
 
@@ -47,6 +47,7 @@ The gateway derives these paths:
 <BACKEND_BASE_URL>/tools/exec       code execution
 <BACKEND_BASE_URL>/tools/research   deep research (MCP)
 <BACKEND_BASE_URL>/tools/stt        speech-to-text
+<BACKEND_BASE_URL>/tools/index      retrieval index for agent knowledge
 ```
 
 A feature with no address drops out of the tool list. It does not break

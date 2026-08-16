@@ -83,7 +83,10 @@ def _knowledge_block(files: list[StoredFile], header: str = "# 프로젝트 지�
         return ""
 
     budget = settings.file_context_chars
-    parts: list[str] = [header]
+    # Said once, under the heading: the text below *is* the file, already
+    # extracted. Without it a model with no file-reading tool answers that it
+    # cannot open attachments — with their contents in front of it.
+    parts: list[str] = [f"{header}\n아래는 이미 읽어 둔 파일 본문입니다. 그대로 참고하세요."]
     omitted: list[str] = []
     for stored in files:
         if budget <= 0:

@@ -45,6 +45,13 @@ function ProfileFields() {
           </Field>
           <Button
             disabled={!name.trim() || name === user?.name}
+            title={
+              !name.trim()
+                ? t('이름을 입력하세요')
+                : name === user?.name
+                  ? t('바뀐 내용이 없습니다')
+                  : undefined
+            }
             onClick={async () => {
               await updateProfile({ name: name.trim() })
               setSaved(true)
@@ -84,6 +91,7 @@ function ProfileFields() {
         <div className="flex items-center gap-2">
           <Button
             disabled={!pwReady || pwState.busy}
+            title={!pwReady ? t('현재 비밀번호와 새 비밀번호를 모두 입력하세요') : undefined}
             onClick={async () => {
               setPwState({ busy: true, error: null, done: false })
               try {

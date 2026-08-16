@@ -1,3 +1,4 @@
+import { errorMessage } from '@/lib/api'
 import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, Field, Input, Modal } from '@/components/ui'
@@ -139,7 +140,7 @@ export function KeysTab() {
                   try {
                     setIssued(await createApiKey(name.trim()))
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : t('발급에 실패했습니다.'))
+                    setError(errorMessage(err, t('발급에 실패했습니다.')))
                   } finally {
                     setBusy(false)
                   }

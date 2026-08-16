@@ -54,7 +54,7 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
 
   // Then the slides fill in. Waiting on the export button is waiting on the
   // last slide: it stays disabled while any slide is still empty.
-  const exportButton = page.getByRole('button', { name: '내보내기' })
+  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   await expect(exportButton).toBeEnabled({ timeout: 360_000 })
 
   const stored = await page.evaluate(async (fn) => {
@@ -77,10 +77,11 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
     // back.
   expect(slides[0].body ?? '').not.toContain('만들어줘')
 
-  // Only layouts with a renderer behind them. `chart` in particular would draw
-  // five hard-coded bars — invented numbers, on a slide, in front of a room.
+  // Only layouts with a renderer behind them in all three outputs — preview,
+  // .pptx and .pdf. `chart` in particular would draw five hard-coded bars:
+  // invented numbers, on a slide, in front of a room.
   for (const slide of slides) {
-    expect(['title', 'bullets', 'quote']).toContain(slide.layout)
+    expect(['title', 'bullets', 'quote', 'two-column']).toContain(slide.layout)
   }
   // Every non-cover slide actually says something.
   for (const slide of slides.slice(1)) {
@@ -115,11 +116,15 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   await signIn(page)
 
   await page.goto('/artifacts')
-  // The deck made by the test above, opened from its card on the artifacts
-  // screen: filter to decks, then open the newest one.
+  // Filter to decks, then open one *by name*. Position is not identity here:
+  // the gallery sorts by when a thing was last touched, so the card this test
+  // edits moves to the front — and the list settles in more than one paint, so
+  // "whichever is first right now" can be a different deck before and after.
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 20_000 })
+  const card = page.locator('button.aspect-video').first()
+  await expect(card).toBeVisible({ timeout: 20_000 })
+  await card.click()
+  await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({ timeout: 20_000 })
 
   const edited = `수정한 제목 ${Date.now()}`
   await page.getByRole('button', { name: '텍스트 수정' }).click()
@@ -127,6 +132,12 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   await page.getByLabel('발표 노트').fill('여기서는 이렇게 말한다')
   await page.getByRole('button', { name: '저장', exact: true }).click()
 
+  // Asserted before anything else: a refused save leaves the editor open, and
+  // both checks below pass anyway — the note is already on the stored slide
+  // from an earlier run, and the new title is sitting in the textarea. Without
+  // this the failure surfaces three steps later as "the card is missing".
+  await expect(page.getByText(/다른 곳에서 이미 수정/)).toHaveCount(0)
+  await expect(page.getByLabel('슬라이드 텍스트')).toHaveCount(0, { timeout: 20_000 })
   await expect(page.getByText('여기서는 이렇게 말한다')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(edited).first()).toBeVisible()
 
@@ -134,7 +145,10 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   // copy and calling that a save.
   await page.reload()
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  // The same deck, found by what it says rather than where it sits.
+  const again = page.locator('button.aspect-video').filter({ hasText: edited }).first()
+  await expect(again).toBeVisible({ timeout: 20_000 })
+  await again.click()
   await expect(page.getByText(edited).first()).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: '화면을 표시하지 못했습니다' })).toHaveCount(0)
 })

@@ -67,6 +67,16 @@ html,
 body,
 #root {
   height: 100%;
+  /**
+   * Mobile browsers grow and shrink their own chrome as you scroll, and the
+   * viewport they report does not follow. `dvh` is the unit that tracks what
+   * is actually visible, so the composer stays above the address bar instead
+   * of behind it. The `100%` above stays as the fallback.
+   *
+   * Not verified on a physical handset — no emulated width can show a browser
+   * hiding its own toolbar.
+   */
+  height: 100dvh;
 }
 
 body {
@@ -85,6 +95,22 @@ body {
 
 ::selection {
   background: var(--accent-soft);
+}
+
+/**
+ * One focus ring, in the accent colour, for everything.
+ *
+ * Not a fix for a missing ring — the browser already draws its own, and the
+ * audit finds nothing here either way. It is a consistency change: `Button`
+ * spells its ring out in the accent colour, so a link beside it drawing the
+ * platform's grey one made the same keyboard position look like two different
+ * kinds of thing. `:where()` keeps this at zero specificity, so anything that
+ * styles its own focus still wins.
+ */
+:where(a, button, [role='switch'], [role='tab'], [role='menuitem'], summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 * {
@@ -130,4 +156,89 @@ body {
 }
 .animate-blink {
   animation: kc-blink 1.1s ease-in-out infinite;
+}
+
+/* ── 인쇄 ────────────────────────────────────────────────────────────────
+   `window.print()` prints the window, and the window is the whole app. The
+   report renders a second, plain copy of itself into <body> (see
+   `PrintDocument`); here that copy takes over the page and the application
+   tree steps aside. Swapping which tree is *visible* — rather than trying to
+   pull the panel's document out of its scrolling ancestors — is what lets a
+   long report break across pages at all. */
+[data-print-doc] {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+  #root {
+    display: none;
+  }
+  [data-print-doc] {
+    display: block;
+    max-width: none;
+    font-size: 11pt;
+    line-height: 1.65;
+  }
+  [data-print-doc] h1 {
+    font-size: 19pt;
+    font-weight: 600;
+    margin-bottom: 1.2em;
+  }
+  [data-print-doc] h2 {
+    font-size: 13pt;
+    font-weight: 600;
+    margin: 1.6em 0 0.5em;
+    /* A heading alone at the foot of a page is the one break worth forbidding. */
+    break-after: avoid;
+  }
+  [data-print-doc] section {
+    break-inside: auto;
+  }
+  [data-print-doc] p,
+  [data-print-doc] li {
+    orphans: 2;
+    widows: 2;
+  }
+  [data-print-doc] ol,
+  [data-print-doc] ul {
+    padding-left: 1.4em;
+  }
+  [data-print-doc] ol {
+    list-style: decimal;
+  }
+  [data-print-doc] ul {
+    list-style: disc;
+  }
+  [data-print-doc] .print-url {
+    font-size: 9pt;
+    color: #444;
+    word-break: break-all;
+  }
+  [data-print-doc] a {
+    color: inherit;
+    text-decoration: none;
+  }
+  /* Tables and code keep their rules; anything that scrolled on screen has to
+     wrap on paper instead, because there is no sideways on a sheet. */
+  [data-print-doc] pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  /* Controls the renderer adds on its own. The print tree carries no buttons of
+     ours, but `Markdown` puts a copy affordance on every code block — so a
+     report with a code fence printed a "복사" button onto the paper. Anything
+     you cannot press does not belong on a sheet. */
+  [data-print-doc] button {
+    display: none;
+  }
 }

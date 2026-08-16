@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     code_interpreter_url: str = ""
     #: Root of the deep-research MCP endpoint. Actual calls append `/mcp`.
     deep_research_url: str = ""
+    #: Vector index for agent knowledge. Empty is supported: retrieval then runs
+    #: on the lexical scorer in `services/knowledge.py` alone, which needs no
+    #: backend at all.
+    index_url: str = ""
     #: OpenAI-compatible `/v1/audio/transcriptions`. Empty falls through to
     #: `stt_or_model`; dictation is hidden when neither is set.
     whisper_url: str = ""

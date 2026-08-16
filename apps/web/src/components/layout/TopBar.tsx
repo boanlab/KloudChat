@@ -10,7 +10,13 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
 
   return (
     <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur">
-      <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label={t('사이드바 토글')}>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleSidebar}
+        aria-label={t('사이드바 토글')}
+        title={t('사이드바를 접거나 폅니다')}
+      >
         <PanelLeft size={16} />
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-2">{left}</div>
@@ -27,7 +33,13 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           <Languages size={16} />
           <span className="text-[12px] font-medium">{lang === 'ko' ? 'EN' : '한'}</span>
         </Button>
-        <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t('테마 전환')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          aria-label={t('테마 전환')}
+          title={t('밝은 화면과 어두운 화면을 바꿉니다')}
+        >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </Button>
       </div>

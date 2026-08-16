@@ -69,6 +69,7 @@ _TOOL_FEATURES: list[tuple[str, str, str]] = [
     ("exec", "코드 실행", settings_store.TOOLS_EXEC_URL),
     ("research", "심층 조사", settings_store.TOOLS_RESEARCH_URL),
     ("stt", "음성 전사", settings_store.TOOLS_STT_URL),
+    ("index", "자료 검색", settings_store.TOOLS_INDEX_URL),
 ]
 
 #: Per-feature probe path. Each service exposes its health check differently.
@@ -78,6 +79,7 @@ _TOOL_PROBES: dict[str, str] = {
     "exec": "/health",
     "research": "/mcp",
     "stt": "/health",
+    "index": "/health",
 }
 
 
@@ -211,6 +213,7 @@ async def put_settings(
         ("tools_exec_url", settings_store.TOOLS_EXEC_URL),
         ("tools_research_url", settings_store.TOOLS_RESEARCH_URL),
         ("tools_stt_url", settings_store.TOOLS_STT_URL),
+        ("tools_index_url", settings_store.TOOLS_INDEX_URL),
         ("smtp_host", settings_store.SMTP_HOST),
         ("smtp_port", settings_store.SMTP_PORT),
         ("smtp_security", settings_store.SMTP_SECURITY),
@@ -455,7 +458,11 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
     leaked. The old key is deleted first, leaving no usable orphan.
     """
     user = await _load(db, user_id)
-    if not await litellm_service.health(quick=True):
+    # Full timeout, not the screen's quick probe. That one exists so a bad host
+    # cannot hold a settings *read* open; refusing a rotation the administrator
+    # just asked for because a liveness check took four seconds is a refusal the
+    # proxy did not make.
+    if not await litellm_service.health():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="litellm_unavailable"
         )

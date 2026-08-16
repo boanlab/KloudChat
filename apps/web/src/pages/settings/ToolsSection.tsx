@@ -23,6 +23,7 @@ const OVERRIDE_KEYS: Record<Feature['key'], string> = {
   exec: 'toolsExecUrl',
   research: 'toolsResearchUrl',
   stt: 'toolsSttUrl',
+  index: 'toolsIndexUrl',
 }
 
 const SOURCE_LABEL: Record<Feature['source'], string> = {
@@ -114,10 +115,12 @@ export function ToolsSection({
             value={backendUrl}
             onChange={(e) => setBackendUrl(e.target.value)}
             placeholder="http://backend-host:8080"
+            aria-label={t('도구 백엔드 주소')}
             spellCheck={false}
           />
           <Button
             disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
             onClick={() => save({ backendBaseUrl: backendUrl.trim() })}
           >
             {t('저장')}
@@ -127,7 +130,8 @@ export function ToolsSection({
 
       <div className="flex items-center justify-between">
         <p className="text-[13px] font-medium">{t('기능별 주소')}</p>
-        <Button variant="ghost" disabled={busy} onClick={testAll}>
+        <Button variant="ghost" disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined} onClick={testAll}>
           {t('전체 연결 테스트')}
         </Button>
       </div>
@@ -159,18 +163,21 @@ export function ToolsSection({
                     setOverrides((o) => ({ ...o, [feature.key]: e.target.value }))
                   }
                   placeholder={inherited ? feature.url : t('주소를 입력하세요')}
+                  aria-label={t('{name} 주소').replace('{name}', t(feature.label))}
                   spellCheck={false}
                 />
                 <Button
                   variant="ghost"
                   disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
                   onClick={() =>
                     save({ [OVERRIDE_KEYS[feature.key]]: (overrides[feature.key] ?? '').trim() })
                   }
                 >
                   {t('저장')}
                 </Button>
-                <Button variant="ghost" disabled={busy} onClick={() => testOne(feature.key)}>
+                <Button variant="ghost" disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined} onClick={() => testOne(feature.key)}>
                   {t('테스트')}
                 </Button>
               </div>

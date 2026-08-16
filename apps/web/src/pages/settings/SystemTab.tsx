@@ -6,6 +6,7 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { BrandingSection } from './BrandingSection'
 import { FeaturesSection } from './FeaturesSection'
+import { TemplatesSection } from './TemplatesSection'
 import { ToolsSection } from './ToolsSection'
 
 /**
@@ -101,6 +102,7 @@ export function SystemTab() {
         </div>
         <Button
           disabled={busy}
+          title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
           onClick={async () => {
             setBusy(true)
             setProbe(null)
@@ -227,6 +229,7 @@ export function SystemTab() {
         <Button
           variant="primary"
           disabled={busy}
+          title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
           onClick={async () => {
             setBusy(true)
             setError(null)
@@ -251,6 +254,7 @@ export function SystemTab() {
         </Button>
         <Button
           disabled={busy}
+          title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
           onClick={async () => {
             setBusy(true)
             try {
@@ -278,6 +282,15 @@ export function SystemTab() {
           {t('사용자에게 어떤 화면을 열어 둘지 정합니다.')}
         </p>
         <FeaturesSection settings={current} onSaved={() => load({ resetForm: true })} />
+      </div>
+
+      {/* ── 공용 템플릿 ─────────────────────────────────────────── */}
+      <div className="border-t border-line pt-5">
+        <h2 className="mb-1 text-sm font-medium">{t('공용 템플릿')}</h2>
+        <p className="mb-4 text-[13px] text-muted">
+          {t('기관 양식처럼 모두가 같은 형식으로 시작해야 하는 것을 한 번만 등록합니다.')}
+        </p>
+        <TemplatesSection />
       </div>
 
       {/* ── 브랜딩 ─────────────────────────────────────────────── */}
@@ -315,6 +328,7 @@ export function SystemTab() {
           </div>
           <Button
             disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
             onClick={async () => {
               setBusy(true)
               setMailProbe(null)
@@ -455,6 +469,7 @@ export function SystemTab() {
           <Button
             variant="primary"
             disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
             onClick={async () => {
               setBusy(true)
               setError(null)

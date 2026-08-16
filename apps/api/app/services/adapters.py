@@ -19,16 +19,13 @@ from __future__ import annotations
 
 from typing import Any
 
-#: The video-only registry.
+#: Video-only registry. Images and audio go over `/v1/chat/completions`, which
+#: `/model/info` describes; video is a pass-through to `/api/v1/videos`, which it
+#: does not.
 #:
-#: Images and audio go over `/v1/chat/completions`, which `/model/info`
-#: describes. Video is a pass-through to `/api/v1/videos`, which it does not —
-#: so without an entry here the picker shows nothing.
-#:
-#: Only models `videogen.submit` can call belong here. Prices vary by
-#: (resolution × audio × duration) and live in `videogen._RATES`, the same table
-#: the proxy is billed against. `credit_cost` is the cheapest per-second rate,
-#: for places with room for one number.
+#: Only models `videogen.submit` can call. Full prices live in `videogen._RATES`
+#: — the table the proxy bills against; `credit_cost` here is the cheapest
+#: per-second rate, for places with room for one number.
 ADAPTER_MODELS: list[dict[str, Any]] = [
     {
         "id": "google/veo-3.1-lite",
@@ -78,15 +75,13 @@ ADAPTER_MODELS: list[dict[str, Any]] = [
 
 # ── Corrections for models LiteLLM describes incorrectly ───────────────────
 #
-# Keyed on the reported `model_name` and merged over the `/model/info` row, so
-# only the wrong fields need listing.
+# Keyed on the reported `model_name`, merged over the `/model/info` row: only
+# the wrong fields need listing.
 #
-# For image models `credit_cost` is per generated image, not per token; the unit
-# is the usual one (1 credit = $0.00001).
-#
-# OpenRouter publishes no per-image price, so those are left empty rather than
-# estimated. An unpriced model drops out of the list and `GET /admin/settings`
-# reports it.
+# Image `credit_cost` is per generated image, not per token (1 credit =
+# $0.00001). OpenRouter publishes no per-image price, so those stay empty rather
+# than estimated — an unpriced model drops out of the list and
+# `GET /admin/settings` reports it.
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
     "nano-banana": {
         "label": "Nano Banana",

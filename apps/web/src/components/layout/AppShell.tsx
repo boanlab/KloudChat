@@ -5,6 +5,34 @@ import { useStore } from '@/store/useStore'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
 
+/**
+ * The few seconds after a delete, in which it has not happened.
+ *
+ * Sits in the shell rather than on each screen: the delete that needs undoing
+ * most is the one that navigated away from the thing it deleted.
+ */
+function UndoBar() {
+  const t = useT()
+  const pending = useStore((s) => s.pendingDelete)
+  if (!pending) return null
+  return (
+    <div
+      role="status"
+      className="animate-fade-up absolute bottom-4 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl border border-line bg-panel px-4 py-2.5 text-[13px] shadow-2xl"
+    >
+      <span className="min-w-0 truncate">
+        {t('{name} 삭제됨').replace('{name}', pending.label)}
+      </span>
+      <button
+        onClick={pending.undo}
+        className="shrink-0 font-medium text-accent hover:underline"
+      >
+        {t('실행 취소')}
+      </button>
+    </div>
+  )
+}
+
 export function AppShell() {
   const t = useT()
   const narrow = useNarrowLayout()
@@ -33,6 +61,7 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Outlet />
       </div>
+      <UndoBar />
     </div>
   )
 }

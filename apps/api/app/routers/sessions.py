@@ -248,6 +248,13 @@ async def generate_images(
                 # Prompt as typed, without the appended aspect and style phrases.
                 "prompt": payload.prompt,
                 "aspect": payload.aspect,
+                # What came back, beside what was asked for. The two disagree
+                # often enough — the ratio is a phrase in the prompt, not a
+                # parameter — that showing only the request is a claim the
+                # picture does not back up.
+                "actualAspect": image.aspect,
+                "width": image.width,
+                "height": image.height,
                 "style": payload.style,
                 "seed": 0,
                 "model": model["id"],
@@ -487,11 +494,40 @@ async def send_message(
     db.add(session)
     await db.commit()
 
+    # The running agent's own documents, loaded once for the turn. Text lives in
+    # the row, so this is the whole shelf and not a handle to fetch it later —
+    # the tool runs inside the stream, where there is no database session.
+    shelf: list[tuple[str, str, str | None]] = []
+    #: Names this agent's collection in the retrieval index. Empty when the
+    #: agent has no shelf yet, or when no index is configured — either way the
+    #: tool falls back to the lexical scorer alone.
+    shelf_key = ""
+    if session.agent_id:
+        agent_row = await db.get(WorkspaceAgent, session.agent_id)
+        shelf_key = (agent_row.index_key or "") if agent_row else ""
+        shelf = [
+            (row.name, row.text, row.source_url)
+            for row in (
+                await db.exec(
+                    select(StoredFile).where(
+                        StoredFile.agent_id == session.agent_id,
+                        StoredFile.user_id == user.id,
+                    )
+                )
+            ).all()
+            if row.text
+        ]
+
     # No tools for models without function calling: upstream 400 or invented calls.
     tools: list[Tool] = []
     if model.get("supportsTools"):
         tools = await build_tools(
-            db, user, web_search=payload.web_search, allowed=agent_tools or None
+            db,
+            user,
+            web_search=payload.web_search,
+            allowed=agent_tools or None,
+            knowledge=shelf,
+            knowledge_collection=shelf_key,
         )
 
     extra = await assemble(db, user, session, attachment_ids=payload.attachments)
@@ -532,6 +568,10 @@ async def send_message(
                 model=model,
                 request=content,
                 project_id=session.project_id,
+                # The same blocks the chat surface gets. Without this a report
+                # or a deck saw the request sentence alone — no project
+                # instructions, no memories, no attached form.
+                context="\n\n".join(extra),
             ),
             media_type="text/event-stream",
             headers={
@@ -550,6 +590,10 @@ async def send_message(
                 model=model,
                 request=content,
                 project_id=session.project_id,
+                # The same blocks the chat surface gets. Without this a report
+                # or a deck saw the request sentence alone — no project
+                # instructions, no memories, no attached form.
+                context="\n\n".join(extra),
             ),
             media_type="text/event-stream",
             headers={
@@ -982,6 +1026,7 @@ async def _run_deck(
     model: dict,
     request: str,
     project_id: str | None,
+    context: str = "",
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
 
@@ -992,7 +1037,9 @@ async def _run_deck(
     doc_title = ""
 
     try:
-        stream = deck_service.write(request=request, model=model["id"], api_key=api_key)
+        stream = deck_service.write(
+            request=request, model=model["id"], api_key=api_key, context=context
+        )
         async for event in stream:
             if event["type"] == "deck":
                 slides = event["slides"]
@@ -1066,6 +1113,7 @@ async def _run_report(
     model: dict,
     request: str,
     project_id: str | None,
+    context: str = "",
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it.
 
@@ -1077,13 +1125,22 @@ async def _run_report(
     failed = False
     #: Written by the outline step. Empty when the model gave no title.
     doc_title = ""
+    #: The shelf the sections cited from, kept so the artifact carries the same
+    #: numbering the prose refers to.
+    sources: list[dict] = []
 
     try:
-        stream = report_service.write(request=request, model=model["id"], api_key=api_key)
+        stream = report_service.write(
+            request=request, model=model["id"], api_key=api_key, context=context
+        )
         async for event in stream:
             if event["type"] == "report":
                 sections = event["sections"]
                 continue
+            if event["type"] == "sources":
+                sources = list(event.get("sources") or [])
+                # Forwarded too: the panel shows the shelf while the sections
+                # are still being written.
             if event["type"] == "title":
                 doc_title = str(event.get("title") or "").strip()
                 # Forwarded — until this arrives the panel heads the draft with
@@ -1130,7 +1187,7 @@ async def _run_report(
                             }
                             for s in sections
                         ],
-                        "sources": [],
+                        "sources": sources,
                         "citationStyle": "APA",
                         "wordCount": report_service.word_count(sections),
                     },

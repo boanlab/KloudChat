@@ -145,6 +145,7 @@ export function AdminGovernancePage() {
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       placeholder={t('예: 시험 부정행위')}
+                      aria-label={t('차단할 주제')}
                       className="max-w-xs"
                       onKeyDown={(e) => {
                         if (e.key !== 'Enter' || !category.trim()) return
@@ -156,6 +157,7 @@ export function AdminGovernancePage() {
                     />
                     <Button
                       disabled={!category.trim()}
+                      title={!category.trim() ? t('추가할 주제를 입력하세요') : undefined}
                       onClick={() => {
                         void apply({
                           blockedCategories: [...governance.blockedCategories, category.trim()],
@@ -178,6 +180,7 @@ export function AdminGovernancePage() {
                       type="number"
                       min={0}
                       defaultValue={governance.retentionDays}
+                      aria-label={t('보관 기간(일)')}
                       className="max-w-28"
                       onBlur={(e) => {
                         const days = Math.max(0, Number(e.target.value) || 0)

@@ -90,7 +90,7 @@ test('수치를 주고 차트를 부탁하면 차트 아티팩트가 생긴다',
 
   // The export menu is wired — all four items were decoration before.
   const csv = page.waitForEvent('download', { timeout: 30_000 })
-  await panel.getByRole('button', { name: '내보내기' }).click()
+  await panel.getByRole('button', { name: '내보내기', exact: true }).click()
   await page.getByRole('menuitem', { name: '데이터' }).click()
   const csvFile = await csv
   expect(csvFile.suggestedFilename()).toMatch(/\.csv$/)
@@ -100,7 +100,7 @@ test('수치를 주고 차트를 부탁하면 차트 아티팩트가 생긴다',
   )
 
   const svg = page.waitForEvent('download', { timeout: 30_000 })
-  await panel.getByRole('button', { name: '내보내기' }).click()
+  await panel.getByRole('button', { name: '내보내기', exact: true }).click()
   await page.getByRole('menuitem', { name: '벡터' }).click()
   const source = (await readFile(await (await svg).path())).toString('utf8')
   // The plot styles itself from CSS custom properties, which mean nothing once

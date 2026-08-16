@@ -63,12 +63,22 @@ export function SharedPage() {
     )
   }
 
-  const body =
+  const conversation =
     payload.kind === 'artifact'
-      ? renderArtifact(payload)
+      ? ''
       : payload.messages
           .map((m) => `**${m.role === 'user' ? t('질문') : t('답변')}**\n\n${m.content}`)
           .join('\n\n---\n\n')
+
+  // The result first, the conversation that produced it after. A shared deck
+  // opened to a one-line prompt and nothing else, which is the wrong way round:
+  // the recipient came for the document, not for how it was asked for.
+  const body =
+    payload.kind === 'artifact'
+      ? renderArtifact(payload)
+      : payload.artifact
+        ? `${renderArtifact(payload.artifact)}\n\n---\n\n## ${t('대화 기록')}\n\n${conversation}`
+        : conversation
 
   return (
     <div className="mx-auto min-h-dvh max-w-3xl px-6 py-10">
@@ -89,7 +99,7 @@ export function SharedPage() {
 }
 
 /** Artifacts are stored per kind; only the readable ones have a shape here. */
-function renderArtifact(payload: Extract<SharedPayload, { kind: 'artifact' }>): string {
+function renderArtifact(payload: { data: unknown }): string {
   const data = (payload.data ?? {}) as {
     sections?: { heading: string; content: string }[]
     slides?: { title: string; bullets?: string[]; body?: string; notes?: string }[]

@@ -6,7 +6,7 @@
  */
 
 import type {
-  Preferences, Message, ModelInfo, Session, SessionKind, Slide, Step, User } from '@/types'
+  Preferences, Message, ModelInfo, Session, SessionKind, Slide, Source, Step, User } from '@/types'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -29,6 +29,22 @@ export class ApiError extends Error {
     this.status = status
     this.detail = detail
   }
+}
+
+/**
+ * What to put on the screen when a call fails.
+ *
+ * A 4xx `detail` is written for the person who made the request — "이미 사용
+ * 중인 이메일입니다" is the answer they need. A 5xx one is written for whoever
+ * reads the logs, and putting it on screen hands somebody "upstream exploded"
+ * as if it were an instruction. Same for a network error, whose message is the
+ * browser's own English.
+ */
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.detail) {
+    return err.detail
+  }
+  return fallback
 }
 
 export class UnauthorizedError extends ApiError {
@@ -165,7 +181,7 @@ export interface SystemSettings {
      *  or the environment is supplying them. */
     backendBaseUrl: string
     features: {
-      key: 'search' | 'fetch' | 'exec' | 'research' | 'stt'
+      key: 'search' | 'fetch' | 'exec' | 'research' | 'stt' | 'index'
       label: string
       url: string
       /** `backend` means derived from the gateway address rather than typed
@@ -238,6 +254,7 @@ export const adminApi = {
     toolsExecUrl?: string
     toolsResearchUrl?: string
     toolsSttUrl?: string
+    toolsIndexUrl?: string
     smtpHost?: string
     smtpPort?: string
     smtpSecurity?: string
@@ -420,6 +437,13 @@ export type SharedPayload =
       title: string
       sessionKind: string
       messages: MessageRow[]
+      /** What the conversation produced, when it produced something. */
+      artifact: {
+        title: string
+        artifactKind: string
+        data: unknown
+        updatedAt: string
+      } | null
       updatedAt: string
     }
 
@@ -537,10 +561,16 @@ export interface FileRow {
   tokens: number
   projectId: string | null
   sessionId: string | null
+  /** Set when the file is an agent's searchable knowledge. */
+  agentId?: string | null
+  /** Set when the text was read from a page rather than uploaded. */
+  sourceUrl?: string | null
   /** First few hundred characters of the extracted text. */
   preview: string
   /** Set when extraction failed. The file still uploaded. */
   error: string | null
+  /** False when the vector index does not cover this document yet. */
+  indexed?: boolean
   createdAt: string
 }
 
@@ -603,8 +633,12 @@ export const artifactsApi = {
   get: (id: string) => call<ArtifactRow>(`/artifacts/${id}`),
   create: (payload: { kind: string; title?: string; data?: unknown; sessionId?: string | null }) =>
     call<ArtifactRow>('/artifacts', body(payload)),
-  update: (id: string, patch: { title?: string; data?: unknown; summary?: string }) =>
-    call<ArtifactRow>(`/artifacts/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  /** `expectedVersion` makes the write conditional; the server answers 409 if
+   *  somebody else got there first. */
+  update: (
+    id: string,
+    patch: { title?: string; data?: unknown; summary?: string; expectedVersion?: number },
+  ) => call<ArtifactRow>(`/artifacts/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/artifacts/${id}`, { method: 'DELETE' }),
   versions: (id: string) => call<ArtifactVersionRow[]>(`/artifacts/${id}/versions`),
   /** Checks one slide's claims against the web. Costs searches and a model call. */
@@ -634,6 +668,39 @@ export interface ArtifactRow {
   projectId: string | null
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * A starting point somebody added. Same fields as a built-in `Template` so the
+ * gallery can concatenate the two lists instead of branching on origin.
+ */
+export interface TemplateRow {
+  id: string
+  kind: SessionKind
+  group: string
+  title: string
+  description: string
+  fills: string[]
+  prompt: string
+  /** An uploaded form this template writes into, when there is one. */
+  fileId: string | null
+  fileName: string
+  fileTokens: number
+  fileError: string | null
+  /** Offered to every account. Administrators only. */
+  shared: boolean
+  /** Whether the caller may edit or remove it. */
+  mine: boolean
+  updatedAt: string
+}
+
+export const templatesApi = {
+  list: () => call<TemplateRow[]>('/templates'),
+  create: (payload: Omit<Partial<TemplateRow>, 'kind'> & { kind: SessionKind; title: string }) =>
+    call<TemplateRow>('/templates', body(payload)),
+  update: (id: string, patch: Partial<TemplateRow>) =>
+    call<TemplateRow>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
 export const skillsApi = {
@@ -689,6 +756,37 @@ export const agentsApi = {
   update: (id: string, patch: Partial<AgentRow>) =>
     call<AgentRow>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/agents/${id}`, { method: 'DELETE' }),
+
+  /**
+   * An agent's own documents, which it searches through the `search_knowledge`
+   * tool rather than having them pushed into every turn. Project files are the
+   * other shape: always present, capped by a character budget.
+   */
+  knowledge: {
+    list: (agentId: string) => call<FileRow[]>(`/agents/${agentId}/knowledge`),
+    upload: async (agentId: string, file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`${BASE_URL}/agents/${agentId}/knowledge`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+        body: form,
+      })
+      if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+      return (await res.json()) as FileRow
+    },
+    addUrl: (agentId: string, url: string) =>
+      call<FileRow>(`/agents/${agentId}/knowledge/url`, body({ url })),
+    remove: (agentId: string, fileId: string) =>
+      call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE' }),
+    /** `force` re-sends everything — what an embedding-model change needs. */
+    reindex: (agentId: string, force = false) =>
+      call<{ total: number; attempted: number; indexed: number }>(
+        `/agents/${agentId}/knowledge/reindex${force ? '?force=true' : ''}`,
+        { method: 'POST' },
+      ),
+  },
 }
 
 export interface AgentRow {
@@ -840,6 +938,8 @@ export type StreamEvent =
    */
   | { type: 'slide'; slide: Slide; done: boolean }
   | { type: 'title'; title: string }
+  /** The reference shelf a report's sections cite from, sent once, up front. */
+  | { type: 'sources'; sources: Source[] }
   | { type: 'artifact'; artifactId: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
   | { type: 'error'; message: string }

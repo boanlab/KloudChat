@@ -5,3 +5,7 @@ playwright-report/
 blob-report/
 .playwright/
 *.local
+
+# Discovery-spec output — regenerated on every run
+audit/
+shots/

@@ -3,10 +3,22 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Button, Card, EmptyState, Field, Input, Modal, PageHeader, Textarea } from '@/components/ui'
+import {
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  LoadingState,
+  Modal,
+  PageHeader,
+  ReloadNotice,
+  Textarea,
+} from '@/components/ui'
 import { relativeTime } from '@/lib/utils'
 import { PROJECT_EMOJIS } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
+import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
 
@@ -14,7 +26,7 @@ import { useT } from '@/lib/useT'
 export function ProjectsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const { projects, createProject, loadWorkspace } = useStore()
+  const { projects, createProject, loadWorkspace, workspaceLoading, workspaceFailed } = useStore()
 
   useEffect(() => {
     void loadWorkspace()
@@ -42,7 +54,11 @@ export function ProjectsPage() {
           }
         />
 
-        {projects.length === 0 ? (
+        {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
+
+        {workspaceLoading && projects.length === 0 ? (
+          <LoadingState />
+        ) : projects.length === 0 ? (
           <EmptyState
             icon={<Boxes size={18} />}
             title={t('아직 프로젝트가 없습니다')}
@@ -132,6 +148,7 @@ export function ProjectsPage() {
         <Field label={t('이름')}>
           <Input
             value={draft.name}
+            maxLength={NAME_LIMIT}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
             placeholder={t('예: 학위논문 실험')}
           />

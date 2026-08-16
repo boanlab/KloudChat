@@ -11,12 +11,24 @@ import {
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArtifactPreview, MediaPanel } from '@/components/artifacts/ArtifactPanel'
+import { PanelControls } from '@/components/artifacts/PanelControls'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
-import { Badge, Button, Card, EmptyState, Modal, PageHeader, Tabs } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  LoadingState,
+  Modal,
+  ReloadNotice,
+  PageHeader,
+  Tabs,
+} from '@/components/ui'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Artifact, ArtifactKind } from '@/types'
@@ -49,13 +61,19 @@ type Filter = ArtifactKind | 'all'
 export function ArtifactsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const { artifacts, deleteArtifact, projects, sessions, loadArtifacts } = useStore()
+  const { artifacts, deleteArtifact, projects, sessions, loadArtifacts, artifactsLoading, artifactsFailed, refreshArtifact } =
+    useStore()
 
   useEffect(() => {
     void loadArtifacts()
   }, [loadArtifacts])
   const [filter, setFilter] = useState<Filter>('all')
   const [preview, setPreview] = useState<Artifact | null>(null)
+  //: Set by the report panel when it opens an editor or focus mode. Both need
+  //: the room, and a dialog that cannot grow makes the control that asks for
+  //: it a button that does nothing.
+  const [widePreview, setWidePreview] = useState(false)
+  const [confirming, setConfirming] = useState<Artifact | null>(null)
 
   const visible = filter === 'all' ? artifacts : artifacts.filter((a) => a.kind === filter)
   const count = (k: ArtifactKind) => artifacts.filter((a) => a.kind === k).length
@@ -88,8 +106,12 @@ export function ArtifactsPage() {
           ]}
         />
 
+        {artifactsFailed && <ReloadNotice onRetry={() => void loadArtifacts()} />}
+
         <div className="pt-4">
-          {visible.length === 0 ? (
+          {artifactsLoading && artifacts.length === 0 ? (
+            <LoadingState />
+          ) : visible.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
               title={t('아직 아티팩트가 없습니다')}
@@ -104,7 +126,17 @@ export function ArtifactsPage() {
                 return (
                   <Card key={a.id} className="overflow-hidden">
                     <button
-                      onClick={() => setPreview(a)}
+                      // Named, because for a picture or a clip the thumbnail is
+                      // the whole button — no text inside it, so a screen
+                      // reader announced "button" and nothing else.
+                      aria-label={t('{name} 열기').replace('{name}', a.title)}
+                      // Opened on the server's copy, not the list's: two
+                      // loaders write that list and the later reply can be the
+                      // older one, which is invisible until an edit is refused.
+                      onClick={() => {
+                        setPreview(a)
+                        void refreshArtifact(a.id).then((fresh) => fresh && setPreview(fresh))
+                      }}
                       className="block aspect-video w-full overflow-hidden border-b border-line bg-elevated text-left"
                     >
                       {a.kind === 'image' || a.kind === 'audio' || a.kind === 'video' || a.kind === 'chart' ? (
@@ -128,7 +160,8 @@ export function ArtifactsPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={t('{name} 삭제').replace('{name}', a.title)}
-                          onClick={() => void deleteArtifact(a.id)}
+                          title={t('이 결과물을 삭제합니다')}
+                          onClick={() => setConfirming(a)}
                         >
                           <Trash2 size={14} />
                         </Button>
@@ -161,21 +194,43 @@ export function ArtifactsPage() {
         </div>
       </PageBody>
 
+      <ConfirmDialog
+        open={!!confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => confirming && void deleteArtifact(confirming.id)}
+        title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
+        description={t('되돌릴 수 없습니다. 버전 기록도 함께 사라집니다.')}
+      />
+
       <Modal
         open={!!preview}
-        onClose={() => setPreview(null)}
+        onClose={() => {
+          setPreview(null)
+          setWidePreview(false)
+        }}
         title={preview?.title ?? ''}
         description={preview ? `${t(kindLabel[preview.kind])} · v${preview.version}` : undefined}
-        width="max-w-4xl"
+        width={widePreview ? 'max-w-7xl' : 'max-w-4xl'}
       >
         {preview && (
-          <div className="h-[64vh] overflow-hidden rounded-xl border border-line">
+          <div className="flex h-[64vh] flex-col overflow-hidden rounded-xl border border-line">
+            {/* 보고서·슬라이드·차트는 자기 머리말에 이 버튼을 갖고 있다. 나머지
+                종류에는 머리말이 없어서, 넓혀 보는 일만 할 수 없었다. */}
+            {!(preview.kind === 'report' || preview.kind === 'deck' || preview.kind === 'chart') && (
+              <header className="flex shrink-0 justify-end border-b border-line px-2 py-1.5">
+                <PanelControls
+                  wide={widePreview}
+                  onToggleWide={() => setWidePreview(!widePreview)}
+                />
+              </header>
+            )}
+            <div className="min-h-0 flex-1 overflow-hidden">
             {preview.kind === 'report' ? (
-              <ReportPanel report={preview} />
+              <ReportPanel report={preview} onWideChange={setWidePreview} />
             ) : preview.kind === 'deck' ? (
-              <DeckPanel deck={preview} />
+              <DeckPanel deck={preview} onWideChange={setWidePreview} />
             ) : preview.kind === 'chart' ? (
-              <ChartPanel chart={preview} />
+              <ChartPanel chart={preview} onWideChange={setWidePreview} />
             ) : preview.kind === 'image' ||
               preview.kind === 'audio' ||
               preview.kind === 'video' ? (
@@ -185,6 +240,7 @@ export function ArtifactsPage() {
             ) : (
               <ArtifactPreview artifact={preview} />
             )}
+            </div>
           </div>
         )}
       </Modal>

@@ -1,12 +1,14 @@
 import { Bot, Download, Globe, Lock, Play, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Modal,
@@ -16,10 +18,13 @@ import {
   Textarea,
 } from '@/components/ui'
 import { kindMeta, kindOrder } from '@/lib/kinds'
+import { useStableOrder } from '@/lib/useStableOrder'
 import { cn, relativeTime, uid } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { Agent } from '@/types'
+import { errorMessage } from '@/lib/api'
+import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
 const allTools = ['read', 'write', 'bash', 'websearch', 'artifact', 'memory']
@@ -58,6 +63,10 @@ export function AgentsPage() {
   }, [loadWorkspace])
   const [draft, setDraft] = useState<Agent | null>(null)
   const [tab, setTab] = useState<'mine' | 'store'>('mine')
+  //: 삭제는 되돌릴 수 없고, 시스템 프롬프트는 누군가 써 둔 것이다.
+  const [confirming, setConfirming] = useState<Agent | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // The store is what makes one person's agent reusable by the workspace.
   const shared = agents.filter((a) => a.visibility === 'org')
@@ -67,10 +76,10 @@ export function AgentsPage() {
     [...models]
       .filter((m) => m.kinds.includes('chat'))
       .sort((a, b) => a.creditCost - b.creditCost)[0]?.id ?? ''
-  // Same reasoning as skills: newest first, so a fresh agent is on the first page.
-  const all = [...(tab === 'store' ? shared : agents)].sort(
-    (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
-  )
+  // Same reasoning as skills: newest first so a fresh agent is on the first
+  // page, then held in place so toggling one does not move it.
+  const ordered = useStableOrder(agents)
+  const all = tab === 'store' ? ordered.filter((a) => a.visibility === 'org') : ordered
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
 
   // Attached first, then matches; capped, with `skills.length` in the
@@ -192,7 +201,8 @@ export function AgentsPage() {
                         variant="ghost"
                         size="icon"
                         aria-label={t('{name} 삭제').replace('{name}', t(a.name))}
-                        onClick={() => void deleteAgent(a.id)}
+                        title={t('이 에이전트를 삭제합니다')}
+                        onClick={() => setConfirming(a)}
                       >
                         <Trash2 size={14} />
                       </Button>
@@ -226,9 +236,20 @@ export function AgentsPage() {
         <ShowMore hidden={hidden} onMore={more} />
       </PageBody>
 
+      <ConfirmDialog
+        open={!!confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => confirming && void deleteAgent(confirming.id)}
+        title={t('{name} 삭제').replace('{name}', t(confirming?.name ?? ''))}
+        description={t('되돌릴 수 없습니다. 이 에이전트로 하던 대화는 그대로 남습니다.')}
+      />
+
       <Modal
         open={!!draft}
-        onClose={() => setDraft(null)}
+        onClose={() => {
+          setDraft(null)
+          setSaveError(null)
+        }}
         title={agents.some((a) => a.id === draft?.id) ? t('에이전트 편집') : t('새 에이전트')}
         width="max-w-2xl"
         footer={
@@ -249,15 +270,25 @@ export function AgentsPage() {
             <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
             <Button
               variant="primary"
-              disabled={!draft?.name.trim()}
-              onClick={() => {
-                if (draft)
-                  upsertAgent({
+              disabled={saving || !draft?.name.trim()}
+              onClick={async () => {
+                if (!draft) return
+                setSaving(true)
+                setSaveError(null)
+                try {
+                  await upsertAgent({
                     ...draft,
                     slug: draft.slug || draft.name.toLowerCase().replace(/\s+/g, '-'),
                     updatedAt: new Date().toISOString(),
                   })
-                setDraft(null)
+                  setDraft(null)
+                } catch (err) {
+                  // The form keeps what was typed. Closing it and saying
+                  // nothing is how a system prompt somebody wrote disappears.
+                  setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+                } finally {
+                  setSaving(false)
+                }
               }}
             >
               {t('저장')}
@@ -267,10 +298,19 @@ export function AgentsPage() {
       >
         {draft && (
           <>
+            {saveError && (
+              <p
+                role="status"
+                className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+              >
+                {saveError}
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t('이름')}>
                 <Input
                   value={draft.name}
+                  maxLength={NAME_LIMIT}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   placeholder={t('예: 논문 리뷰어')}
                 />
@@ -363,6 +403,11 @@ export function AgentsPage() {
                 onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
               />
             </Field>
+
+            {/* Only for an agent that exists: the shelf hangs off its id. */}
+            <AgentKnowledge
+              agentId={agents.some((a) => a.id === draft.id) ? draft.id : null}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t('모델')}>

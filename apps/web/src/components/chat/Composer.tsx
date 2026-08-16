@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FileRow } from '@/lib/api'
-import { transcribe } from '@/lib/api'
+import { errorMessage, transcribe } from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,7 @@ import { useT } from '@/lib/useT'
 const placeholders: Record<SessionKind, string> = {
   chat: '무엇이든 물어보세요',
   report: '보고서 주제와 넣고 싶은 절을 적으세요',
-  slides: '발표 주제와 시간을 적으세요. 예: 자기지도 학습, 15분, 학부생 대상',
+  slides: '발표 주제와 시간을 적으세요',
   image: '만들고 싶은 이미지를 설명하세요',
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
 }
@@ -66,7 +66,7 @@ function OptionGroup<T extends string | number>({
       trigger={({ open }) => (
         <button
           className={cn(
-            'flex h-7 items-center gap-1.5 rounded-lg border border-line px-2 text-[12px] transition-colors',
+            'flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] transition-colors',
             open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
@@ -227,7 +227,7 @@ export function Composer({
         setValue((v) => (v ? `${v.replace(/\s*$/, '')} ${text}` : text))
         ref.current?.focus()
       } catch (err) {
-        setDictationError(err instanceof Error ? err.message : t('받아쓰지 못했습니다.'))
+        setDictationError(errorMessage(err, t('받아쓰지 못했습니다.')))
       } finally {
         setDictation('off')
       }
@@ -251,6 +251,19 @@ export function Composer({
   }, [draft, setDraft])
   /** Uploaded files, not names: the turn sends ids and the server reads the text. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
+  // A form a picked template brought with it. Taken once and cleared, so it
+  // attaches to the draft it arrived with and not to every turn after it.
+  const pendingAttachment = useStore((s) => s.pendingAttachment)
+  const setPendingAttachment = useStore((s) => s.setPendingAttachment)
+  useEffect(() => {
+    if (!pendingAttachment) return
+    setAttachments((current) =>
+      current.some((f) => f.id === pendingAttachment.id)
+        ? current
+        : [...current, pendingAttachment],
+    )
+    setPendingAttachment(null)
+  }, [pendingAttachment, setPendingAttachment])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [webSearch, setWebSearch] = useState(false)
@@ -281,6 +294,8 @@ export function Composer({
     generateVideo,
     avOptions,
     dictationEnabled,
+    mediaError,
+    clearMediaError,
   } = useStore()
 
   const project = projects.find((p) => p.id === projectId)
@@ -329,6 +344,7 @@ export function Composer({
   const submit = () => {
     const text = value.trim()
     if (!text || busy || unsupportedVideo) return
+    clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
     const attachmentLabels = attachments.map((f) => f.name)
     // Clear the composer first: the session is created server-side, so awaiting
@@ -373,7 +389,10 @@ export function Composer({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-      <div className="rounded-2xl border border-line bg-panel shadow-sm transition-colors focus-within:border-line-strong">
+      {/* 한 덩어리로 읽히는 입력 상자. 첨부·옵션·모델·전송이 모두 이 테두리
+          안에 있고, 바깥에는 아무 버튼도 두지 않는다 — 프롬프트를 쓰는 동안
+          눈이 갈 곳은 여기 하나면 된다. */}
+      <div className="rounded-3xl border border-line bg-panel shadow-sm transition-colors focus-within:border-line-strong">
         {(project || attachments.length > 0 || webSearch || (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {compareMode && kind === 'chat' && (
@@ -464,7 +483,11 @@ export function Composer({
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-relaxed text-fg placeholder:text-faint focus:outline-none"
         />
 
-        <div className="flex items-center gap-1 px-2 pb-2">
+        {/* Wraps rather than squeezing. On a phone this row is wider than the
+            screen, and flex answered that by shrinking the buttons — the
+            attachment control ended up 16px across, narrower than the icon
+            inside it. */}
+        <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
           <input
             ref={fileInput}
             type="file"
@@ -492,8 +515,9 @@ export function Composer({
           />
           <button
             onClick={() => fileInput.current?.click()}
-            className="grid size-8 place-items-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
+            className="grid size-9 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
             aria-label={t('첨부')}
+            title={t('파일을 올려 답변의 근거로 씁니다')}
           >
             <Paperclip size={16} />
           </button>
@@ -506,7 +530,7 @@ export function Composer({
                   // Icon-only, so it needs an accessible name.
                   aria-label={t('스킬')}
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-elevated',
+                    'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] transition-colors hover:bg-elevated',
                     activeSkills.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
                 >
@@ -538,7 +562,7 @@ export function Composer({
               trigger={() => (
                 <button
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-elevated',
+                    'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] transition-colors hover:bg-elevated',
                     compareMode ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
                   aria-label={t('모델 비교')}
@@ -578,7 +602,7 @@ export function Composer({
               onClick={() => setWebSearch((w) => !w)}
               aria-pressed={webSearch}
               className={cn(
-                'flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-elevated',
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] transition-colors hover:bg-elevated',
                 webSearch ? 'text-accent' : 'text-muted hover:text-fg',
               )}
               aria-label={t('웹 검색')}
@@ -597,7 +621,7 @@ export function Composer({
               title={dictation === 'recording' ? t('멈추고 받아쓰기') : t('말한 내용을 받아 적습니다')}
               disabled={dictation === 'working'}
               className={cn(
-                'flex h-8 items-center gap-1.5 rounded-lg px-2 transition-colors hover:bg-elevated',
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 transition-colors hover:bg-elevated',
                 dictation === 'recording' ? 'text-danger' : 'text-muted hover:text-fg',
                 dictation === 'working' && 'opacity-60',
               )}
@@ -618,7 +642,7 @@ export function Composer({
               trigger={() => (
                 <button
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-elevated',
+                    'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] transition-colors hover:bg-elevated',
                     activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
                   aria-label={t('커넥터')}
@@ -650,7 +674,10 @@ export function Composer({
             <Dropdown
               className="min-w-64"
               trigger={() => (
-                <button className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] text-muted transition-colors hover:bg-elevated hover:text-fg">
+                <button
+                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  title={t('에이전트를 골라 새 대화를 시작합니다')}
+                >
                   @
                 </button>
               )}
@@ -686,18 +713,39 @@ export function Composer({
               onClick={streaming ? stopStreaming : submit}
               disabled={!value.trim() && !streaming}
               className={cn(
-                'grid size-8 place-items-center rounded-lg transition-colors',
+                'grid size-9 place-items-center rounded-full transition-colors',
                 streaming
                   ? 'bg-elevated text-fg'
                   : 'bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-elevated disabled:text-faint',
               )}
               aria-label={streaming ? t('중지') : t('전송')}
+              title={
+                streaming
+                  ? t('생성을 멈춥니다')
+                  : !value.trim()
+                    ? t('보낼 내용을 먼저 입력하세요')
+                    : unsupportedVideo
+                      ? t('이 모델은 이 조합을 만들지 않습니다')
+                      : t('Enter 로도 보낼 수 있습니다')
+              }
             >
               {streaming ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
             </button>
           </div>
         </div>
       </div>
+      {mediaError && (
+        <p
+          role="status"
+          className="mt-2 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+        >
+          <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1">{mediaError}</span>
+          <button onClick={clearMediaError} aria-label={t('닫기')} className="shrink-0">
+            <X size={13} />
+          </button>
+        </p>
+      )}
       <p className="mt-2 text-center text-[11px] text-faint">
         {dictationError
           ? dictationError

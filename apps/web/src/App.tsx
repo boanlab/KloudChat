@@ -1,29 +1,39 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { kindOrder } from '@/lib/kinds'
-import { AdminGovernancePage } from '@/pages/AdminGovernancePage'
-import { AdminSystemPage } from '@/pages/AdminSystemPage'
-import { AdminUsagePage } from '@/pages/AdminUsagePage'
-import { AdminUsersPage } from '@/pages/AdminUsersPage'
-import { AgentSetupPage } from '@/pages/AgentSetupPage'
-import { AgentsPage } from '@/pages/AgentsPage'
-import { ArtifactsPage } from '@/pages/ArtifactsPage'
-import { ConnectorsPage } from '@/pages/ConnectorsPage'
-import { HistoryPage } from '@/pages/HistoryPage'
-import { MyUsagePage } from '@/pages/MyUsagePage'
-import { SharedPage } from '@/pages/SharedPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
-import { MemoryPage } from '@/pages/MemoryPage'
 import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
-import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
-import { ProjectsPage } from '@/pages/ProjectsPage'
 import { SessionPage } from '@/pages/SessionPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { SkillsPage } from '@/pages/SkillsPage'
 import { useStore } from '@/store/useStore'
+
+
+/**
+ * Screens fetched when somebody goes there.
+ *
+ * Chat, the session view and the login form are what a visit starts with;
+ * everything below is a place you navigate *to*, and bundling it all into the
+ * first request made signing in pay for the admin console. Kept as one list so
+ * it is obvious what is deferred and what is not.
+ */
+const AdminGovernancePage = lazy(() => import('@/pages/AdminGovernancePage').then((m) => ({ default: m.AdminGovernancePage })))
+const AdminSystemPage = lazy(() => import('@/pages/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })))
+const AdminUsagePage = lazy(() => import('@/pages/AdminUsagePage').then((m) => ({ default: m.AdminUsagePage })))
+const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
+const AgentSetupPage = lazy(() => import('@/pages/AgentSetupPage').then((m) => ({ default: m.AgentSetupPage })))
+const AgentsPage = lazy(() => import('@/pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
+const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
+const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage').then((m) => ({ default: m.ConnectorsPage })))
+const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
+const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })))
+const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ default: m.MyUsagePage })))
+const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })))
+const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
+const SkillsPage = lazy(() => import('@/pages/SkillsPage').then((m) => ({ default: m.SkillsPage })))
 
 /**
  * Every screen that requires an account.
@@ -32,25 +42,29 @@ import { useStore } from '@/store/useStore'
  * route has to pass through it: a share link. That URL *is* the permission,
  * and whoever holds it may well have no account on this instance.
  */
+/** The one waiting state: session check, and any screen still arriving. */
+function Spinner() {
+  return (
+    <div className="grid h-full place-items-center bg-bg text-faint">
+      <Loader2 size={20} className="animate-spin" />
+    </div>
+  )
+}
+
 function Authenticated() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
   const status = useStore((s) => s.user?.status)
 
-  if (authLoading) {
-    return (
-      <div className="grid h-full place-items-center bg-bg text-faint">
-        <Loader2 size={20} className="animate-spin" />
-      </div>
-    )
-  }
+  if (authLoading) return <Spinner />
 
   if (!authenticated) return <LoginPage />
   // Signup lands in `pending`; nothing is reachable until an admin approves.
   if (status !== 'active') return <PendingApprovalPage />
 
   return (
-    <Routes>
+    <Suspense fallback={<Spinner />}>
+      <Routes>
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
 
@@ -80,6 +94,7 @@ function Authenticated() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+    </Suspense>
   )
 }
 
@@ -95,11 +110,13 @@ export default function App() {
 
   return (
     <Router>
-      <Routes>
-        {/* Before the gate on purpose. See `Authenticated`. */}
-        <Route path="/share/:token" element={<SharedPage />} />
-        <Route path="*" element={<Authenticated />} />
-      </Routes>
+      <Suspense fallback={<Spinner />}>
+        <Routes>
+          {/* Before the gate on purpose. See `Authenticated`. */}
+          <Route path="/share/:token" element={<SharedPage />} />
+          <Route path="*" element={<Authenticated />} />
+        </Routes>
+      </Suspense>
     </Router>
   )
 }

@@ -107,8 +107,8 @@ export function AdminUsagePage() {
                     onClick={() => setDays(r)}
                     className={
                       days === r
-                        ? 'rounded-md bg-elevated px-2.5 py-1 text-[12px] font-medium'
-                        : 'px-2.5 py-1 text-[12px] text-muted hover:text-fg'
+                        ? 'min-w-11 rounded-md bg-elevated px-3 py-2 text-[12px] font-medium'
+                        : 'min-w-11 rounded-md px-3 py-2 text-[12px] text-muted hover:text-fg'
                     }
                   >
                     {t('{n}일').replace('{n}', String(r))}

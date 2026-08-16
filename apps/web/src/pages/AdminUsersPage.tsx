@@ -23,7 +23,7 @@ import {
   PageHeader,
   Tabs,
 } from '@/components/ui'
-import { adminApi } from '@/lib/api'
+import { adminApi, errorMessage } from '@/lib/api'
 import { cn, formatDate, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
@@ -96,6 +96,8 @@ export function AdminUsersPage() {
   const [draftCredits, setDraftCredits] = useState('')
   /** Ids with an in-flight mutation, so a row's buttons cannot be double-fired. */
   const [busy, setBusy] = useState<string[]>([])
+  /** Why the last action did not happen. Cleared when the next one starts. */
+  const [error, setError] = useState<string | null>(null)
   /** Served by the API. The fallback only shows before the fetch lands — if it
    *  ever became the real answer the dialog would quote a rate nothing applies. */
   const [economics, setEconomics] = useState({ perUsd: 100_000, budgetHeadroom: 0.2 })
@@ -113,11 +115,22 @@ export function AdminUsersPage() {
   const proxyBudget = (credits: number) =>
     `$${(Math.ceil((credits / economics.perUsd) * (1 + economics.budgetHeadroom) * 100) / 100).toFixed(2)}`
 
+  /**
+   * One row action, with its failure said out loud.
+   *
+   * Every button on this table goes through here — approve, suspend, rotate a
+   * key, delete. Without the catch a refusal from the server (the proxy is
+   * down, the account is gone) cleared the spinner and changed nothing, so the
+   * administrator read a rotation that never happened as one that had.
+   */
   const run = async (id: string, action: () => Promise<void>) => {
     if (busy.includes(id)) return
     setBusy((b) => [...b, id])
+    setError(null)
     try {
       await action()
+    } catch (err) {
+      setError(errorMessage(err, t('요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.')))
     } finally {
       setBusy((b) => b.filter((x) => x !== id))
     }
@@ -144,6 +157,15 @@ export function AdminUsersPage() {
           title={t('사용자 · 크레딧')}
           description={t('가입 승인과 월 크레딧 한도를 관리합니다. 한도는 매달 1일에 자동으로 리필되며, 남은 크레딧은 이월되지 않습니다.')}
         />
+
+        {error && (
+          <p
+            role="alert"
+            className="mb-4 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+          >
+            {error}
+          </p>
+        )}
 
         <div className="mb-5 grid gap-3 sm:grid-cols-4">
           {[
@@ -179,6 +201,7 @@ export function AdminUsersPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('이름 또는 이메일')}
+              aria-label={t('사용자 검색')}
               className="h-8 w-56 pl-8 text-[13px]"
             />
           </div>
@@ -329,6 +352,7 @@ export function AdminUsersPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={t('정지')}
+                          title={t('이 계정의 접속을 막습니다')}
                           disabled={busy.includes(u.id)}
                           onClick={() => void run(u.id, () => suspendUser(u.id))}
                         >
@@ -339,6 +363,7 @@ export function AdminUsersPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={t('정지 해제')}
+                          title={t('다시 접속할 수 있게 합니다')}
                           disabled={busy.includes(u.id)}
                           onClick={() => void run(u.id, () => reinstateUser(u.id))}
                         >

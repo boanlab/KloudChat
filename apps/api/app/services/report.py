@@ -13,6 +13,7 @@ nothing.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -31,6 +32,11 @@ log = logging.getLogger(__name__)
 _MIN_SECTIONS = 3
 _MAX_SECTIONS = 8
 
+#: Search hits kept as the reference shelf — enough to cite, few enough to fit
+#: in every section prompt.
+_SOURCES = 6
+_SEARCH_TIMEOUT = httpx.Timeout(12.0, connect=6.0)
+
 _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
 
 규칙:
@@ -39,6 +45,10 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - 섹션 {lo}~{hi}개.
 - 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다.
 - 섹션은 제목만. 내용은 쓰지 마라.
+- 요청이 한 단어여도 되묻지 마라. 주제만 주어졌으면 그 주제를 처음 접하는
+  사람에게 설명하는 글로 네가 알아서 목차를 세워라. 자료가 부족하다는 답은 하지 마라.
+- 참고할 자료에 양식·서식 문서가 있으면 그 문서의 항목 순서를 그대로 목차로 써라.
+  개수도 그 양식을 따르고, 일반적인 보고서 목차로 바꾸지 마라.
 
 JSON 객체로만 답하라.
 예: {{"title": "전이학습의 소량 데이터 효율성", "sections": ["요약", "배경", "방법", "결과", "한계", "결론"]}}
@@ -53,31 +63,64 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 앞 섹션에서 이미 쓴 내용:
 {written}
 
+참고 자료:
+{refs}
+
 규칙:
 - "{heading}" 에 해당하는 내용만 써라. 다른 섹션의 내용을 미리 쓰지 마라.
 - 제목 줄은 쓰지 마라. 본문만.
 - 마크다운을 쓰되 최상위 제목(#)은 쓰지 마라.
 - 앞에서 한 말을 되풀이하지 마라.
+- 참고 자료에서 가져온 사실은 그 자료의 번호를 문장 끝에 [1] 처럼 붙여라.
+  목록에 없는 번호는 절대 쓰지 마라. 참고 자료가 없으면 번호도 쓰지 마라.
 
 원래 요청: {request}"""
 
+#: Placeholder for an empty shelf. An empty block reads as withheld material and
+#: the model invents citations.
+_NO_REFS = "(없음. 번호 인용을 쓰지 마라.)"
+
+
+def _with_context(prompt: str, context: str) -> str:
+    """Workspace blocks in front of the instruction.
+
+    Blocks first, instruction last: a small model follows what it read last.
+    """
+    context = context.strip()
+    if not context:
+        return prompt
+    return f"# 참고할 자료\n\n{context}\n\n---\n\n{prompt}"
+
+
+#: Waits between retries of a rate-limited call, in seconds.
+_BACKOFF = (2.0, 6.0)
+
 
 async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> tuple[str, dict]:
-    """One non-streaming call. Returns `(text, usage)`."""
+    """One non-streaming call. Returns `(text, usage)`. Retries a 429.
+
+    One call per section against a shared limit; a transient refusal would leave
+    a hole in the document.
+    """
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
         headers={"Authorization": f"Bearer {api_key}"},
         timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
     ) as client:
-        response = await client.post(
-            "/v1/chat/completions",
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-            },
-        )
+        for attempt in range(len(_BACKOFF) + 1):
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                },
+            )
+            if response.status_code != 429 or attempt == len(_BACKOFF):
+                break
+            log.info("report call rate limited, retrying in %ss", _BACKOFF[attempt])
+            await asyncio.sleep(_BACKOFF[attempt])
         response.raise_for_status()
         payload = response.json()
 
@@ -126,11 +169,77 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
     return title, [line for line in lines if line][:_MAX_SECTIONS]
 
 
+def _publisher(url: str) -> str:
+    """Host without `www.` — what a reader recognises."""
+    host = re.sub(r"^https?://", "", url).split("/")[0]
+    return re.sub(r"^www\.", "", host)[:80]
+
+
+async def gather_sources(request: str) -> list[dict[str, Any]]:
+    """Reference shelf for one report, from the SearXNG the tools use.
+
+    `[]` on failure or with no search backend, which is why the citation rule in
+    the section prompt is conditional.
+    """
+    backends = await settings_store.tools_config()
+    if not backends.search:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=_SEARCH_TIMEOUT) as client:
+            response = await client.get(
+                f"{backends.search.rstrip('/')}/search",
+                params={"q": request[:300], "format": "json", "language": "ko"},
+            )
+            response.raise_for_status()
+            results = (response.json() or {}).get("results") or []
+    except (httpx.HTTPError, ValueError) as exc:
+        log.info("report source search failed: %s", exc)
+        return []
+
+    sources: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in results:
+        url = str(row.get("url") or "")
+        title = str(row.get("title") or "").strip()
+        if not url or not title:
+            continue
+        publisher = _publisher(url)
+        # One entry per site: duplicates crowd out coverage on a short shelf.
+        if publisher in seen:
+            continue
+        seen.add(publisher)
+        sources.append(
+            {
+                "id": f"src{len(sources)}_{uuid.uuid4().hex[:6]}",
+                "ordinal": len(sources) + 1,
+                "title": title[:200],
+                "publisher": publisher,
+                "url": url,
+                "origin": "web",
+                "originLabel": "웹 검색",
+                "quote": str(row.get("content") or "")[:300],
+            }
+        )
+        if len(sources) >= _SOURCES:
+            break
+    return sources
+
+
+def _refs_block(sources: list[dict[str, Any]]) -> str:
+    if not sources:
+        return _NO_REFS
+    return "\n".join(
+        f"[{s['ordinal']}] {s['title']} ({s['publisher']})\n{s.get('quote') or ''}"
+        for s in sources
+    )
+
+
 async def write(
     *,
     request: str,
     model: str,
     api_key: str,
+    context: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -142,7 +251,12 @@ async def write(
     try:
         text, spent = await _complete(
             model,
-            _OUTLINE_PROMPT.format(lo=_MIN_SECTIONS, hi=_MAX_SECTIONS, request=request[:2000]),
+            _with_context(
+                _OUTLINE_PROMPT.format(
+                    lo=_MIN_SECTIONS, hi=_MAX_SECTIONS, request=request[:2000]
+                ),
+                context,
+            ),
             api_key,
             400,
         )
@@ -176,6 +290,19 @@ async def write(
     if title:
         yield {"type": "title", "title": title[:200]}
 
+    # Before any section, so all of them cite from one shelf.
+    yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
+    sources = await gather_sources(request)
+    yield {
+        "type": "step",
+        "id": "sources",
+        "label": f"자료 {len(sources)}건" if sources else "참고할 자료 없음",
+        "status": "done",
+        "detail": " · ".join(str(s["publisher"]) for s in sources),
+    }
+    yield {"type": "sources", "sources": sources}
+    refs = _refs_block(sources)
+
     sections = [
         {"id": f"s{i}_{uuid.uuid4().hex[:6]}", "heading": h, "level": 1}
         for i, h in enumerate(headings)
@@ -194,25 +321,47 @@ async def write(
     written: list[str] = []
 
     for index, section in enumerate(sections):
-        label = f"{index + 1}/{len(sections)} {section['heading']}"
-        yield {"type": "step", "id": section["id"], "label": label, "status": "running"}
+        # The position lives in `progress`, not in the text: spelled into both,
+        # the surface renders "3/9 도입 (3/9)".
+        label = str(section["heading"])
+        # The outline lands before any section is written, so each step can say
+        # where it sits in it — which is the only figure that answers "how much
+        # of this is left" while the document builds.
+        progress = {"current": index + 1, "total": len(sections)}
+        yield {
+            "type": "step",
+            "id": section["id"],
+            "label": label,
+            "status": "running",
+            "progress": progress,
+        }
         try:
             body, spent = await _complete(
                 model,
-                _SECTION_PROMPT.format(
-                    heading=section["heading"],
-                    outline=outline_text,
-                    # Tail only: the whole document would crowd out the
-                    # instruction by section six.
-                    written="\n\n".join(written)[-4000:] or "(아직 없음)",
-                    request=request[:1500],
+                _with_context(
+                    _SECTION_PROMPT.format(
+                        heading=section["heading"],
+                        outline=outline_text,
+                        # Tail only: the whole document would crowd out the
+                        # instruction by section six.
+                        written="\n\n".join(written)[-4000:] or "(아직 없음)",
+                        refs=refs,
+                        request=request[:1500],
+                    ),
+                    context,
                 ),
                 api_key,
                 1200,
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("report section %r failed: %s", section["heading"], exc)
-            yield {"type": "step", "id": section["id"], "label": label, "status": "error"}
+            yield {
+                "type": "step",
+                "id": section["id"],
+                "label": label,
+                "status": "error",
+                "progress": progress,
+            }
             yield {
                 "type": "section",
                 "sectionId": section["id"],
@@ -227,7 +376,13 @@ async def write(
         usage["outputTokens"] += spent["outputTokens"]
         section["content"] = body
         written.append(f"## {section['heading']}\n{body}")
-        yield {"type": "step", "id": section["id"], "label": label, "status": "done"}
+        yield {
+            "type": "step",
+            "id": section["id"],
+            "label": label,
+            "status": "done",
+            "progress": progress,
+        }
         yield {
             "type": "section",
             "sectionId": section["id"],
@@ -249,6 +404,7 @@ async def rewrite_section(
     model: str,
     api_key: str,
     note: str = "",
+    sources: list[dict] | None = None,
 ) -> tuple[str, dict]:
     """Rewrites one section, with the rest of the document as context.
 
@@ -265,6 +421,9 @@ async def rewrite_section(
         heading=heading,
         outline=outline,
         written=written[-4000:] or "(아직 없음)",
+        # The document already carries numbered citations, so a rewrite without
+        # the shelf would renumber them against nothing.
+        refs=_refs_block(sources or []),
         request=request[:1500],
     )
     if note.strip():

@@ -24,6 +24,7 @@ from app.models.workspace import (
     Skill,
     SkillSource,
     StoredFile,
+    Template,
     Transport,
 )
 from app.schemas.auth import Wire
@@ -42,15 +43,23 @@ class FileOut(Wire):
     tokens: int
     project_id: str | None
     session_id: str | None
+    #: Set when the file is an agent's searchable knowledge.
+    agent_id: str | None = None
+    #: Set when the text was ingested from a page rather than uploaded.
+    source_url: str | None = None
     #: First few hundred characters, so the UI can show what was actually read.
     preview: str = ""
     error: str | None = None
+    #: False when the vector index does not cover this document. The panel says
+    #: so rather than leaving it to look the same as one that is covered.
+    indexed: bool = False
     created_at: datetime
 
     @classmethod
     def of(cls, f: StoredFile) -> FileOut:
         out = cls.model_validate(f, from_attributes=True)
         out.preview = f.text[:280]
+        out.indexed = f.indexed_at is not None
         return out
 
 
@@ -142,6 +151,15 @@ class ArtifactPatch(Wire):
     project_id: str | None = None
     #: One line describing the edit, kept with the superseded version.
     summary: str = ""
+    #: The version the editor was working from.
+    #:
+    #: A PATCH carries the whole document, so two people editing the same
+    #: report means the second save replaces the first person's paragraphs
+    #: with their own copy of the older text. Sent, the server refuses rather
+    #: than overwriting. Omitted, the write goes through as before — the
+    #: browser is not the only client, and a caller that has not been taught
+    #: to send it should not start failing.
+    expected_version: int | None = None
 
 
 class SlideFactCheck(Wire):
@@ -391,3 +409,66 @@ class ApiKeyOut(Wire):
         out = cls.model_validate(k, from_attributes=True)
         out.secret = None
         return out
+
+
+# ── templates ──────────────────────────────────────────────────────────
+class TemplateOut(Wire):
+    """A user's starting point, in the shape the gallery already renders.
+
+    Deliberately identical to the built-in `Template` interface in the frontend
+    plus `fileId` and `fileName`, so the gallery can concatenate the two lists
+    rather than branch on where a card came from.
+    """
+
+    id: str
+    kind: str
+    group: str
+    title: str
+    description: str
+    fills: JsonList = Field(default_factory=list)
+    prompt: str
+    file_id: str | None = None
+    #: Resolved by the router; the row holds only the id. Enough of the file to
+    #: render it as an attachment chip without a second round trip — the
+    #: composer shows a name, a token count and, when extraction failed, why.
+    file_name: str = ""
+    file_tokens: int = 0
+    file_error: str | None = None
+    #: Offered to every account rather than only its author.
+    shared: bool = False
+    #: Whether the caller may edit or remove it. False on somebody else's
+    #: shared template, which the gallery renders without a delete button.
+    mine: bool = True
+    updated_at: datetime
+
+    @classmethod
+    def of(
+        cls, t: Template, stored: StoredFile | None = None, *, owner_id: str | None = None
+    ) -> TemplateOut:
+        out = cls.model_validate(t, from_attributes=True)
+        out.fills = list(t.fills or [])
+        out.mine = owner_id is None or t.owner_id == owner_id
+        if stored is not None:
+            out.file_name = stored.name
+            out.file_tokens = stored.tokens
+            out.file_error = stored.error
+        return out
+
+
+class TemplateIn(Wire):
+    kind: str = Field(min_length=1, max_length=20)
+    group: str = Field(default="내 템플릿", max_length=40)
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=400)
+    fills: list[str] | None = None
+    prompt: str = Field(default="", max_length=8000)
+    file_id: str | None = None
+    #: Administrator-only. A non-administrator setting it is refused rather
+    #: than silently ignored.
+    shared: bool = False
+
+
+class KnowledgeUrl(Wire):
+    """A page to read into an agent's shelf."""
+
+    url: str = Field(min_length=8, max_length=2000)

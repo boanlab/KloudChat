@@ -59,7 +59,16 @@ async function newProject(page: Page, name: string, instructions: string) {
 
 test('대학원생 — 프로젝트 지식을 올리고 그 안에서만 아는 값을 답하게 한다', async ({ page }) => {
   const token = `RUN-${stamp().toUpperCase()}`
-  await newProject(page, `실험 ${stamp()}`, '답변은 반드시 "[연구]" 로 시작한다.')
+  // Spelled out with an example and the exceptions named. A one-line rule
+  // ("답변은 반드시 [연구] 로 시작한다") reaches the model intact but a small
+  // one obeys it about two turns in three — so a single assertion on it is a
+  // coin flip, and what fails is the suite rather than the product.
+  await newProject(
+    page,
+    `실험 ${stamp()}`,
+    '출력 형식 규칙: 모든 답변의 첫 글자는 반드시 "[연구]" 여야 한다. 인사, 짧은 답, ' +
+      '숫자만 있는 답에도 예외 없이 맨 앞에 붙인다. 예: "[연구] 값은 0.5 입니다."',
+  )
 
   await page.getByRole('tab', { name: /지식/ }).click()
   await page.getByLabel('지식 파일 선택').setInputFiles({
@@ -75,11 +84,15 @@ test('대학원생 — 프로젝트 지식을 올리고 그 안에서만 아는 
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible({ timeout: 20_000 })
   await useLocalModel(page)
-  // Small local models need telling to copy rather than paraphrase; otherwise
-  // the assertion is really testing the model's mood, not the retrieval.
+  // "Copy it" rather than "paraphrase it": a small model asked to summarise
+  // rounds the figure and the assertion then tests its mood, not retrieval.
+  //
+  // And nothing that reads as "only the number" — the project's standing
+  // instruction asks for a "[연구]" prefix, and a prompt that forbids anything
+  // besides the figure makes the two assertions below contradict each other.
   await page
     .getByLabel('프롬프트 입력')
-    .fill(`지식 파일에서 ${token} 행을 찾아 macro_f1 값을 숫자 그대로 한 번만 적어줘.`)
+    .fill(`지식 파일에서 ${token} 행의 macro_f1 값이 얼마야? 파일에 적힌 숫자를 그대로 옮겨 적어줘.`)
   await page.getByLabel('프롬프트 입력').press('Enter')
 
   // The number exists nowhere but the uploaded file.
@@ -151,9 +164,18 @@ test('연구직 — 한 번 기억시킨 사실을 다른 대화에서도 안다
         // card DOM.
     await page.goto('/memory')
     await page.getByRole('button', { name: `${name} 삭제` }).click({ timeout: 15_000 })
-        // Asserted on the card, not the token: the turn above asked for the
-        // token alone, so it becomes the conversation title and stays in the
-        // sidebar.
+    // The row leaves the screen at once and the request is held for the undo
+    // window, so waiting on the card only proves the screen. Waited on the
+    // response instead: a context closed inside that window leaves the memory
+    // on the instance, and a memory is `global` scope — it joins every later
+    // turn's prompt.
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/memory/') && r.request().method() === 'DELETE',
+        { timeout: 20_000 },
+      ),
+      page.getByRole('dialog').getByRole('button', { name: '삭제' }).click(),
+    ])
     await expect(page.getByRole('button', { name: `${name} 삭제` })).toHaveCount(0, {
       timeout: 10_000,
     })
@@ -167,12 +189,18 @@ test('영업직 — 만든 에이전트로 대화하면 그 지침이 적용된�
   await page.getByRole('button', { name: /새 에이전트|에이전트 만들기/ }).first().click()
   const agentName = `제안 도우미 ${stamp()}`
   await page.getByLabel(/이름/).first().fill(agentName)
+  // Spelled out with an example and the exceptions named. A one-line rule
+  // reaches the model intact but a small one obeys it about two turns in
+  // three, which makes a single assertion on it a coin flip.
   await page.getByLabel(/시스템 프롬프트|프롬프트/).first().fill(
-    '당신은 영업 제안 도우미입니다. 모든 답변을 반드시 "제안:" 으로 시작하세요.',
+    '당신은 영업 제안 도우미입니다. 출력 형식 규칙: 모든 답변의 첫 글자는 반드시 ' +
+      '"제안:" 이어야 합니다. 인사와 짧은 답에도 예외 없이 맨 앞에 붙입니다. ' +
+      '예: "제안: 안녕하세요."',
   )
   await page.getByRole('button', { name: '저장', exact: true }).last().click()
   await page.waitForTimeout(1_000)
 
+  try {
   await page.goto('/new/chat')
   // Choosing an agent starts a session with it; the prompt applies to every turn.
   // Substring matching would also hit the sidebar's account button, whose label
@@ -190,15 +218,18 @@ test('영업직 — 만든 에이전트로 대화하면 그 지침이 적용된�
   await page.getByLabel('프롬프트 입력').fill('안녕하세요')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page.getByText(/제안:/).first()).toBeVisible({ timeout: 150_000 })
-
-  // Made here, removed here. This test alone left forty-odd agents behind.
-  await page.goto('/agents')
-  await page.getByRole('button', { name: `${agentName} 삭제` }).first().click()
-  const confirm = page.getByRole('dialog')
-  if (await confirm.isVisible().catch(() => false)) {
-    await confirm.getByRole('button', { name: /^삭제$/ }).last().click().catch(() => {})
+  } finally {
+    // Removed even when the assertion above fails. Left behind, an agent with
+    // no description is what `starter.spec.ts` reports as a broken starter set
+    // — one flake then fails a test that has nothing to do with it.
+    await page.goto('/agents')
+    await page.getByRole('button', { name: `${agentName} 삭제` }).first().click()
+    const confirm = page.getByRole('dialog')
+    if (await confirm.isVisible().catch(() => false)) {
+      await confirm.getByRole('button', { name: /^삭제$/ }).last().click().catch(() => {})
+    }
+    await expect(page.getByText(agentName)).toHaveCount(0, { timeout: 15_000 })
   }
-  await expect(page.getByText(agentName)).toHaveCount(0, { timeout: 15_000 })
 })
 
 /* ── undergraduate: conversations accumulate in the sidebar and can be

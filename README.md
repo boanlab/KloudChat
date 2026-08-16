@@ -25,22 +25,29 @@ the unit of work rather than the conversation. It brings its own
 authentication, credit accounting and workspace, and delegates every model call
 and tool to a single backend URL you configure at runtime.
 
-Three decisions shape it.
+Four decisions shape it.
 
 **1. Output kinds are first-class.** Chat is not the only axis with everything
 else buried inside it. Five surfaces sit side by side: reports stream section
-by section, slides export as `.pptx`, audio and video report progress on job
-cards. All five share the same project context — instructions, knowledge files
-and memories.
+by section and cite the sources they searched, slides export as `.pptx` and
+`.pdf`, audio and video report progress on job cards. All five share the same
+project context — instructions, knowledge files and memories — and start from a
+template gallery you can add to.
 
-**2. External systems attach as MCP connectors.** The catalogue is short by
+**2. An agent can search its own documents.** Attach files or URLs to an agent
+and it looks them up through a tool when it needs background, rather than
+having everything pushed into every turn. Retrieval is lexical by default and
+adds vector search when the backend serves an embedding model — with neither,
+it still works. See [Architecture §8](docs/architecture.md).
+
+**3. External systems attach as MCP connectors.** The catalogue is short by
 design — a clock, YouTube transcription, a deep-research agent — because every
 enabled tool ships its schema on every turn and tool-choice degrades well
 before twenty of them. Any other MCP server is added by its own address, over
 stdio or HTTP. Permissions are per tool, write tools start off, and credentials
 stay on the server.
 
-**3. Authentication is ours; models and tools are one URL.** Users, credits and
+**4. Authentication is ours; models and tools are one URL.** Users, credits and
 sessions live in KloudChat's own Postgres. Models and tools all live in
 [`KloudChat-LLM`][backend] and are connected by pasting one gateway address
 into the admin screen. The browser only ever sees the KloudChat API.
@@ -65,7 +72,7 @@ first place.
 ┌─ KloudChat (this repository) ─┐        ┌─ KloudChat-LLM ─────────────────────┐
 │  kloudchat-web   :5173        │        │  gateway :8080                      │
 │  kloudchat-api   :8100        │──URL──▶│   /litellm  /tools/{search,fetch,   │
-│  kloudchat-db    :5433        │        │        exec,research,stt}           │
+│  kloudchat-db    :5433        │        │      exec,research,stt,index}       │
 │                               │        └─────────────────────────────────────┘
 │  /llm  ← coding agents        │
 └───────────────────────────────┘
@@ -110,7 +117,7 @@ accounts at all, so changing them later never resets an existing password.
 ### Connecting the backend
 
 In **Settings → System → Integrations**, paste the backend gateway address and
-save. The six feature endpoints are filled in automatically by appending their
+save. The feature endpoints are filled in automatically by appending their
 paths. Print the address from the backend:
 
 ```bash

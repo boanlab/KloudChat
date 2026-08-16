@@ -116,6 +116,14 @@ test('관리자가 승인하면 대기 화면이 스스로 넘어간다', async 
   await adminPage.goto('/')
   await fillAuthForm(adminPage, 'login', ADMIN)
   await adminPage.goto('/admin/users')
+  // Named, because the failure it replaces was a button that never appeared:
+  // on an instance where this account signed up after bootstrap it is a plain
+  // user, the admin screen never renders, and the timeout says nothing about
+  // why. `scripts/e2e-seed.sh` is what grants the role.
+  await expect(
+    adminPage.getByPlaceholder('이름 또는 이메일'),
+    `${ADMIN.email} 에 관리자 권한이 없습니다 — scripts/e2e-seed.sh 를 실행하세요`,
+  ).toBeVisible({ timeout: 15_000 })
   // Filtered: the table pages at forty rows, and a fresh signup does not sort
   // to the top of an instance that has been running for a while.
   await adminPage.getByPlaceholder('이름 또는 이메일').fill(USER.email)

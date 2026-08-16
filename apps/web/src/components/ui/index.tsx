@@ -45,7 +45,7 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors',
+        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         'disabled:pointer-events-none disabled:opacity-45',
         variants[variant],
@@ -70,7 +70,7 @@ export function ButtonLink({
   return (
     <a
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors',
+        'inline-flex shrink-0 items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         variants[variant],
         sizes[size],
@@ -130,18 +130,21 @@ export function Switch({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={cn(
-        // `p-0` is load-bearing: the knob is `absolute` with no `left`, so a
-        // button's default padding would position it from the content box
-        // rather than the track.
-        'relative h-5 w-9 shrink-0 rounded-full border-0 p-0 transition-colors',
-        checked ? 'bg-accent' : 'bg-line-strong',
+        // The button is the *hit area*, not the track. At 36×20 the track was
+        // the whole target, which is under a fingertip on the tablet these
+        // lists are read on — so the control grew to 44×36 and the track moved
+        // into `::before`, unchanged at 36×20.
+        'relative h-9 w-11 shrink-0 border-0 bg-transparent p-0',
+        "before:absolute before:top-1/2 before:left-1 before:h-5 before:w-9 before:-translate-y-1/2 before:rounded-full before:transition-colors before:content-['']",
+        checked ? 'before:bg-accent' : 'before:bg-line-strong',
       )}
     >
       <span
         className={cn(
-          // Anchored left, moved by transform. 36 wide, 16 knob, 2 inset →
-          // 16px of travel puts it 2px from the right edge.
-          'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+          // Track 36, knob 16, inset 2 → 16px of travel. Vertical position is
+          // `top`, never a transform: mixing translate axes collapses to
+          // `translate: -50%`, which CSS applies on x.
+          'absolute top-2.5 left-1.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
           checked ? 'translate-x-4' : 'translate-x-0',
         )}
       />
@@ -199,6 +202,11 @@ export function Card({
 
 /* ── Modal ──────────────────────────────────────────────────────────── */
 
+/** What the keyboard can land on. Shared by the focus trap and the restore. */
+const FOCUSABLE =
+  'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), ' +
+  'select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export function Modal({
   open,
   onClose,
@@ -217,11 +225,45 @@ export function Modal({
   width?: string
 }) {
   const t = useT()
+  const panelRef = useRef<HTMLDivElement>(null)
+  /** Whatever had focus when this opened, so it can be given back. */
+  const returnTo = useRef<HTMLElement | null>(null)
+
+  /**
+   * Focus trap and restore. `aria-modal` claims the rest of the page is inert;
+   * this is what makes it true for the keyboard.
+   */
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    returnTo.current = document.activeElement as HTMLElement | null
+    const panel = panelRef.current
+    const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
+    ;(first ?? panel)?.focus()
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !panel) return
+      const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (el) => el.offsetWidth > 0 || el.offsetHeight > 0,
+      )
+      if (items.length === 0) return
+      const edge = e.shiftKey ? items[0] : items[items.length - 1]
+      // Wrapping at the edges is what makes it a loop rather than an exit.
+      if (document.activeElement === edge || !panel.contains(document.activeElement)) {
+        e.preventDefault()
+        ;(e.shiftKey ? items[items.length - 1] : items[0]).focus()
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      // Back to the control that opened it — not to the top of the document,
+      // which is where the browser drops you when the focused node vanishes.
+      returnTo.current?.focus?.()
+    }
   }, [open, onClose])
 
   if (!open) return null
@@ -229,11 +271,15 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 py-[8vh]">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        // Focusable as a fallback: a dialog whose body is only text still has
+        // to be somewhere the keyboard can land.
+        tabIndex={-1}
         className={cn(
-          'animate-fade-up relative w-full rounded-2xl border border-line bg-panel shadow-2xl',
+          'animate-fade-up relative w-full rounded-2xl border border-line bg-panel shadow-2xl outline-none',
           width,
         )}
       >
@@ -254,6 +300,53 @@ export function Modal({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Confirmation before a destructive action. Nothing on the server restores what
+ * a card's delete removes, and that button sits beside a toggle.
+ *
+ * The name goes in the question: "Delete this?" is answered yes by everyone.
+ */
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+  title: string
+  description?: string
+  confirmLabel?: string
+}) {
+  const t = useT()
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      width="max-w-md"
+      footer={
+        <>
+          <Button onClick={onClose}>{t('취소')}</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              onConfirm()
+              onClose()
+            }}
+          >
+            {confirmLabel ?? t('삭제')}
+          </Button>
+        </>
+      }
+    />
   )
 }
 
@@ -307,12 +400,45 @@ export function Dropdown({
     if (open) measure()
   }, [open, measure])
 
+  /**
+   * Arrow-key navigation, as `role="menu"` promises. Down/Up walk the items,
+   * Home/End jump to the ends, Escape restores focus to the trigger.
+   */
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false)
     }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const items = () =>
+      [...(ref.current?.querySelectorAll<HTMLElement>('[role="menu"] button') ?? [])].filter(
+        (el) => el.offsetWidth > 0 || el.offsetHeight > 0,
+      )
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        // Back to the trigger, which is the only landmark the reader has.
+        ref.current?.querySelector<HTMLElement>('button')?.focus()
+        return
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+      const list = items()
+      if (list.length === 0) return
+      e.preventDefault()
+      const at = list.indexOf(document.activeElement as HTMLElement)
+      const next =
+        e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? list.length - 1
+            : e.key === 'ArrowDown'
+              ? at < 0
+                ? 0
+                : (at + 1) % list.length
+              : at <= 0
+                ? list.length - 1
+                : at - 1
+      list[next].focus()
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     // A resize while open changes which side fits.
@@ -325,7 +451,11 @@ export function Dropdown({
   }, [open, measure])
 
   return (
-    <div ref={ref} className="relative">
+    /* `shrink-0`: this wrapper is a flex item in every toolbar it sits in, and
+       without it the wrapper shrinks while the button inside keeps its own
+       `shrink-0` — so the label wraps one character per line and spills out of
+       the button, which is what a narrow artifact panel showed. */
+    <div ref={ref} className="relative shrink-0">
       {/* The trigger is whatever the caller rendered — usually a button — so the
           menu semantics are declared on the wrapper and the panel instead. */}
       <div
@@ -423,6 +553,44 @@ export function EmptyState({
         {description && <p className="max-w-sm text-[13px] text-muted">{description}</p>}
       </div>
       {action}
+    </div>
+  )
+}
+
+/**
+ * "Not here yet", as distinct from "not here". `length === 0` is equally true
+ * of a request that has not answered.
+ */
+export function LoadingState({ label }: { label?: string }) {
+  const t = useT()
+  return (
+    <div
+      role="status"
+      className="flex items-center justify-center gap-2 px-6 py-16 text-[13px] text-faint"
+    >
+      <span className="size-3 animate-spin rounded-full border-2 border-line-strong border-t-transparent" />
+      {label ?? t('불러오는 중…')}
+    </div>
+  )
+}
+
+/**
+ * Stale-data notice with a retry. A failed refresh keeps the list — an empty
+ * screen would be the worse lie — so the staleness has to be said.
+ */
+export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
+  const t = useT()
+  return (
+    <div
+      role="status"
+      className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-[13px] text-warn"
+    >
+      <span className="min-w-0 flex-1">
+        {t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')}
+      </span>
+      <Button size="sm" onClick={onRetry}>
+        {t('다시 시도')}
+      </Button>
     </div>
   )
 }

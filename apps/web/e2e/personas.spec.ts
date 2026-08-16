@@ -277,7 +277,7 @@ test.describe('페르소나 커버리지', () => {
               case 'off-docx':
               case 'res-export-pdf':
                 await openNewest(page, '보고서')
-                await page.getByRole('button', { name: '내보내기' }).click()
+                await page.getByRole('button', { name: '내보내기', exact: true }).click()
                 await probe(page.getByText(/Word|PDF/).first()).toBeVisible()
                 break
 
@@ -289,7 +289,7 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-pptx':
                 await openNewest(page, '슬라이드')
-                await page.getByRole('button', { name: '내보내기' }).click()
+                await page.getByRole('button', { name: '내보내기', exact: true }).click()
                 await probe(page.getByText('PowerPoint')).toBeVisible()
                 break
               case 'biz-notes':
@@ -303,7 +303,12 @@ test.describe('페르소나 커버리지', () => {
               case 'biz-share':
               case 'sal-share':
                 await openNewest(page, '슬라이드')
-                await probe(page.getByRole('button', { name: '공유' })).toBeVisible()
+                // Exact: `name` matches by substring, and three controls on
+                // this screen contain 공유 — the probe was failing on strict
+                // mode and recording a capability that is right there.
+                await probe(
+                  page.getByRole('button', { name: '공유', exact: true }),
+                ).toBeVisible()
                 break
 
               /* connectors */

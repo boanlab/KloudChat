@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Modal,
@@ -15,10 +16,13 @@ import {
   Textarea,
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
+import { useStableOrder } from '@/lib/useStableOrder'
 import { relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { Skill } from '@/types'
+import { errorMessage } from '@/lib/api'
+import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
 type Filter = 'all' | 'built-in' | 'workspace' | 'personal'
@@ -40,10 +44,15 @@ export function SkillsPage() {
   const [detail, setDetail] = useState<Skill | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
+  //: 저장이 거절돼도 아무 말이 없었다. 대화상자는 열린 채였지만 이유가 없어,
+  //: 남는 선택은 같은 버튼을 다시 누르는 것뿐이었다.
+  const [saveError, setSaveError] = useState<string | null>(null)
     /** The skill being written. `editing` holding an id means edit; null
      *  means create. */
   const [draft, setDraft] = useState({ name: '', description: '', whenToUse: '', body: '' })
   const [editing, setEditing] = useState<string | null>(null)
+  //: 지우기 전에 무엇을 지우는지 묻는다. 되돌릴 곳이 서버에 없다.
+  const [confirming, setConfirming] = useState<Skill | null>(null)
 
   const reset = () => {
     setDraft({ name: '', description: '', whenToUse: '', body: '' })
@@ -61,12 +70,13 @@ export function SkillsPage() {
     setCreating(true)
   }
 
-  // Newest first. With a paged list the ordering decides what exists as far as
-  // the user is concerned — a skill created a moment ago that sorts to position
-  // sixty is indistinguishable from one that failed to save.
-  const all = [...(filter === 'all' ? skills : skills.filter((s) => s.source === filter))].sort(
-    (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
-  )
+  // Newest first, and then held there. With a paged list the ordering decides
+  // what exists as far as the user is concerned — a skill created a moment ago
+  // that sorts to position sixty is indistinguishable from one that failed to
+  // save — but re-ranking on every write moved the card out from under the
+  // switch that had just been flipped.
+  const ordered = useStableOrder(skills)
+  const all = filter === 'all' ? ordered : ordered.filter((s) => s.source === filter)
   const { visible, hidden, more } = usePaged(all, [filter, skills.length])
 
   return (
@@ -129,7 +139,8 @@ export function SkillsPage() {
                   variant="ghost"
                   size="icon"
                   aria-label={t('{name} 삭제').replace('{name}', t(s.name))}
-                  onClick={() => void deleteSkill(s.id)}
+                  title={t('이 스킬을 삭제합니다')}
+                  onClick={() => setConfirming(s)}
                 >
                   <Trash2 size={14} />
                 </Button>
@@ -144,6 +155,14 @@ export function SkillsPage() {
         </div>
         <ShowMore hidden={hidden} onMore={more} />
       </PageBody>
+
+      <ConfirmDialog
+        open={!!confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => confirming && void deleteSkill(confirming.id)}
+        title={t('{name} 삭제').replace('{name}', t(confirming?.name ?? ''))}
+        description={t('되돌릴 수 없습니다. 이 스킬을 쓰던 대화는 그대로 남습니다.')}
+      />
 
       <Modal
         open={!!detail}
@@ -204,7 +223,10 @@ export function SkillsPage() {
 
       <Modal
         open={creating}
-        onClose={() => setCreating(false)}
+        onClose={() => {
+          setCreating(false)
+          setSaveError(null)
+        }}
         title={editing ? t('스킬 편집') : t('새 스킬')}
         description={t('스킬의 기본 정보를 채웁니다. 저장하면 워크스페이스에 등록됩니다.')}
         footer={
@@ -222,6 +244,7 @@ export function SkillsPage() {
               disabled={saving || !draft.name.trim()}
               onClick={async () => {
                 setSaving(true)
+                setSaveError(null)
                 try {
                   const current = editing ? skills.find((s) => s.id === editing) : undefined
                   // A blank id means "create" — the server assigns id and slug.
@@ -240,6 +263,8 @@ export function SkillsPage() {
                   })
                   setCreating(false)
                   reset()
+                } catch (err) {
+                  setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
                 } finally {
                   setSaving(false)
                 }
@@ -250,11 +275,23 @@ export function SkillsPage() {
           </>
         }
       >
+        {saveError && (
+          <p
+            role="status"
+            className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+          >
+            {saveError}
+          </p>
+        )}
         <Field label={t('이름')}>
           <Input
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             placeholder={t('예: 실험 로그 요약')}
+            // The server refuses anything longer. Offering the extra
+            // characters and then rejecting them is a round trip spent to say
+            // no to something the form could have declined to take.
+            maxLength={NAME_LIMIT}
           />
         </Field>
         <Field label={t('설명')}>

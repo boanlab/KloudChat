@@ -17,19 +17,27 @@ test.beforeEach(async ({ page }) => {
 const stamp = () => Date.now().toString(36).slice(-5)
 const dialog = (page: import('@playwright/test').Page) => page.getByRole('dialog')
 
-test('스킬을 카드에서 바로 지운다', async ({ page }) => {
+test('스킬은 카드에서 지우되, 지우기 전에 물어본다', async ({ page }) => {
   const tag = stamp()
   await page.goto('/skills')
   await page.getByRole('button', { name: '새 스킬' }).first().click()
   await dialog(page).getByLabel('이름').fill(`스킬${tag}`)
   await dialog(page).getByRole('button', { name: '만들기' }).click()
 
+  // Confirmation before deleting: nothing on the server restores a skill, and
+  // this button sits beside the toggle.
   await page.getByRole('button', { name: `스킬${tag} 삭제` }).click()
+  await expect(dialog(page).getByRole('heading', { name: `스킬${tag} 삭제` })).toBeVisible()
+  await dialog(page).getByRole('button', { name: '취소' }).click()
+  await expect(page.getByText(`스킬${tag}`).first()).toBeVisible()
+
+  await page.getByRole('button', { name: `스킬${tag} 삭제` }).click()
+  await dialog(page).getByRole('button', { name: '삭제' }).click()
   await page.goto('/skills')
   await expect(page.getByText(`스킬${tag}`)).toHaveCount(0, { timeout: 15_000 })
 })
 
-test('에이전트를 카드에서 바로 지운다', async ({ page }) => {
+test('에이전트는 카드에서 지우되, 지우기 전에 물어본다', async ({ page }) => {
   const tag = stamp()
   await page.goto('/agents')
   await page.getByRole('button', { name: '새 에이전트' }).first().click()
@@ -37,6 +45,8 @@ test('에이전트를 카드에서 바로 지운다', async ({ page }) => {
   await dialog(page).getByRole('button', { name: '저장' }).last().click()
 
   await page.getByRole('button', { name: `요원${tag} 삭제` }).click()
+  await expect(dialog(page).getByRole('heading', { name: `요원${tag} 삭제` })).toBeVisible()
+  await dialog(page).getByRole('button', { name: '삭제' }).click()
   await page.goto('/agents')
   await expect(page.getByText(`요원${tag}`)).toHaveCount(0, { timeout: 15_000 })
 })
@@ -109,6 +119,7 @@ test('아티팩트를 카드에서 지운다', async ({ page }) => {
   const before = await remove.count()
 
   await remove.first().click()
+  await dialog(page).getByRole('button', { name: '삭제' }).click()
   await page.goto('/artifacts')
   await expect(page.getByRole('button', { name: /삭제$/ })).toHaveCount(before - 1, {
     timeout: 15_000,

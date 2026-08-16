@@ -87,7 +87,7 @@ export function ModelPicker({
       trigger={({ open }) => (
         <button
           className={cn(
-            'flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium transition-colors',
+            'flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors',
             open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
@@ -130,6 +130,13 @@ function ModelMenu({
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
+  // Insertion order, so the catalogue's own ordering still decides which vendor
+  // comes first rather than the alphabet.
+  const groups = [...usable.reduce((map, m) => {
+    const vendor = m.vendor || m.provider
+    map.set(vendor, [...(map.get(vendor) ?? []), m])
+    return map
+  }, new Map<string, ModelInfo[]>())]
   return (
     <>
       <div className="px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
@@ -143,7 +150,17 @@ function ModelMenu({
           </span>
         </div>
       )}
-      {usable.map((m) => (
+      {groups.map(([vendor, rows]) => (
+        <div key={vendor}>
+          {/* Grouped by who built the model, not by routing slug. A flat list of
+              thirty names is read by scanning for a vendor anyway — "the Claude
+              one" is how the choice is actually made. */}
+          {groups.length > 1 && (
+            <div className="px-2.5 pt-2 pb-0.5 text-[10px] font-semibold tracking-wide text-faint uppercase">
+              {vendor}
+            </div>
+          )}
+          {rows.map((m) => (
         <button
           key={m.id}
           onClick={() => {
@@ -178,6 +195,8 @@ function ModelMenu({
             </span>
           </span>
         </button>
+          ))}
+        </div>
       ))}
     </>
   )

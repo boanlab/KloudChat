@@ -1,9 +1,8 @@
 /**
- * The workspace screens against a real backend.
- *
- * Where `personas.spec.ts` asks whether a capability exists, this asks whether
- * it **works**: does a project created here survive a reload, is an uploaded
- * file actually read, does a connector really start a server.
+ * The workspace screens against a real backend: does a project survive a
+ * reload, is an uploaded file actually read, does a connector start a server.
+ * `personas.spec.ts` asks whether the capability exists; this asks whether it
+ * works.
  *
  * Requires the API running. Run: npm run test:workspace
  */
@@ -20,12 +19,8 @@ test.beforeEach(async ({ page }) => {
 /** Unique per run so repeated runs never collide on a name. */
 const stamp = () => Math.random().toString(36).slice(2, 8)
 
-/**
- * Sends from `/new/chat` and waits for the session to exist.
- *
- * Pressing Enter and immediately asserting on the URL races the round trip that
- * creates the session — the navigation only happens once the server answers.
- */
+/** Sends from `/new/chat` and waits for the session: navigation follows the
+ *  round trip, so asserting on the URL immediately races it. */
 async function askFromNew(page: import('@playwright/test').Page, prompt: string) {
   await page.getByLabel('프롬프트 입력').fill(prompt)
   await Promise.all([
@@ -37,19 +32,24 @@ async function askFromNew(page: import('@playwright/test').Page, prompt: string)
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 }
 
+/** Removes what the tests created, so the suite can be pointed at a real
+ *  instance without filling its screens with debris. */
 /**
- * Removes what the tests created.
+ * Deletes a row and waits for the request, not just the screen.
  *
- * Left behind, the workspace screens fill with test debris and the admin table
- * pushes real accounts off the first page. A suite that dirties the instance
- * on every run is a suite nobody can point at a real instance.
+ * The row leaves at once and the call is held for the undo window, so a
+ * context closed in between leaves the row on the instance.
  */
 async function removeNamed(page: import('@playwright/test').Page, label: string) {
   await page.getByRole('button', { name: `${label} 삭제` }).first().click()
   const dialog = page.getByRole('dialog')
+  const sent = page
+    .waitForResponse((r) => r.request().method() === 'DELETE', { timeout: 20_000 })
+    .catch(() => null)
   if (await dialog.isVisible().catch(() => false)) {
     await dialog.getByRole('button', { name: /^삭제$/ }).last().click().catch(() => {})
   }
+  await sent
   await expect(page.getByText(label)).toHaveCount(0, { timeout: 15_000 })
 }
 
@@ -98,6 +98,10 @@ test('메모리를 만들면 새로고침 후에도 남는다', async ({ page })
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
   await page.reload()
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
+  // Memories are `global` scope, so one left behind joins every later turn's
+  // prompt — on a long-lived instance the suite ends up testing against its own
+  // debris.
+  await removeNamed(page, name)
 })
 
 test('에이전트를 만들면 새로고침 후에도 남는다', async ({ page }) => {
@@ -118,14 +122,9 @@ test('에이전트를 만들면 새로고침 후에도 남는다', async ({ page
 test('커넥터를 설치하면 MCP 서버가 실제로 도구를 보고한다', async ({ page }) => {
   await page.goto('/connectors')
 
-  // Ask the catalogue whether it is installed rather than looking for the
-  // word 시간 ("time") in the other tab — "22시간 전" ("22 hours ago") is on
-  // that screen too, and matching it made an uninstalled connector look
-  // installed.
-  //
-  // Scoped to the 시간 card, never `.first()`: the catalogue's first entry is
-  // whatever sorts first, lately Zotero, whose add button opens a credential
-  // modal whose backdrop then eats every later click.
+  // Asked of the catalogue, not by searching for 시간 elsewhere: "22시간 전"
+  // is on that screen too. Scoped to the 시간 card, never `.first()` — the
+  // first entry sorts arbitrarily and may open a credential modal.
   const mine = page.getByRole('tab', { name: /내 커넥터/ })
   await page.getByRole('tab', { name: /카탈로그/ }).click()
   const install = page

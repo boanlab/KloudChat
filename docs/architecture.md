@@ -38,8 +38,9 @@ browser ──── KloudChat API ──┬── backend gateway ───┬�
    │           │         │                      ├── /tools/fetch     document fetch
    │           │         │                      ├── /tools/exec      code execution
    │           │         │                      ├── /tools/research  deep research (MCP)
-   │           │         │                      └── /tools/stt       speech-to-text
-   │           ├── Postgres (pgvector)
+   │           │         │                      ├── /tools/stt       speech-to-text
+   │           │         │                      └── /tools/index     retrieval index (§8)
+   │           ├── Postgres
    │           ├── file store (local disk)
    │           └── MCP connectors (stdio · http)
    └── /api/files/…?t=… ← media is fetched by the element itself (§6)
@@ -110,20 +111,27 @@ reason.
 
 ## 5. Data model
 
-Twelve migrations under `alembic/versions/`. The principal tables:
+Sixteen migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
 - `sessions` · `messages` — conversation. `messages.usage` is JSONB
 - `credit_ledger` — the ledger
-- `projects` · `stored_files` · `artifacts` · `artifact_versions` · `skills` ·
+- `projects` · `files` · `artifacts` · `artifact_versions` · `skills` ·
   `memories` · `agents` · `connectors`
+- `templates` — starting points a user added, optionally carrying a form file
+  whose text is attached when the template is picked
 - `shares` — read-only links. The token is the permission, and revocation is a
   flag rather than a delete
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
 - `system_settings` — LiteLLM address and master key, SMTP. Database values
   override environment variables
+
+`files` carries the scope it belongs to: `project_id` for project knowledge,
+`session_id` for a one-off attachment, `agent_id` for an agent's searchable
+shelf. `source_url` marks text read from a page rather than uploaded, and
+`indexed_at` whether the vector index covers it.
 
 Artifacts outlive conversations: clearing history detaches them
 (`session_id = NULL`) rather than deleting them.
@@ -161,10 +169,18 @@ progress indicator honest.
 
 A failed section is marked and the rest continues.
 
-Slides use three layouts — `title`, `bullets`, `quote`. The frontend type
-permits six; the others have no renderer (`image`), render identically
-(`two-column`), or would draw invented numbers (`chart` is five hard-coded
-bars).
+Both receive the workspace blocks the chat surface gets — project
+instructions, memories, skills, and any file attached to the turn — so a
+request naming an uploaded form is written against that form.
+
+Reports search the web before writing and cite what they found; with no search
+backend the shelf is empty and the citation rule drops out of the prompts.
+
+Slides use four layouts — `title`, `bullets`, `quote`, `two-column` — each
+implemented in all three renderers (preview, `.pptx`, `.pdf`). The frontend type
+permits six; `image` has no producer and `chart` would draw invented numbers.
+The outline also picks the deck's accent from a fixed palette, and honours a
+slide count stated in the request up to 50.
 
 ### Sharing
 
@@ -175,8 +191,11 @@ Two scopes. `workspace` requires sign-in from any member of the instance;
 `link` opens to anyone holding the URL, which is the case where the recipient
 has no account here.
 
-The response contains **only the shared thing** — no owner name, no project, no
-neighbouring artifacts, no walkable ids. A revoked token and an unknown token
+A shared session carries the artifact it produced alongside its messages —
+resolved through the session's own `artifact_id`, so nothing else in the
+owner's workspace becomes reachable. The response contains **only the shared
+thing** — no owner name, no project, no neighbouring artifacts, no walkable
+ids. A revoked token and an unknown token
 give the same 404, because distinguishing them discloses somebody else's
 account.
 
@@ -253,9 +272,13 @@ default-length clip at twice the quoted price.
 
 ## 7. Context assembly
 
-What goes into one turn: the system prompt (per surface) → agent instructions →
-project instructions → project knowledge files → skills → relevant memories →
-attachments → conversation history.
+What goes into one turn, in order: the system prompt (per surface) → agent
+instructions → project instructions → memories → skills → files attached to
+this turn → project knowledge → tool rules → conversation history.
+
+Later blocks weigh more with a small model, so the order is load-bearing: the
+material a turn was given sits closest to the question, and the standing
+instructions that shape every turn sit furthest from it.
 
 Policy (`governance`) is applied **before anything reaches the model**. Blocks
 happen before the write, and PII masking happens before the write — masking
@@ -263,7 +286,44 @@ after sending leaves the original in the database.
 
 ---
 
-## 8. Frontend structure
+## 8. Agent knowledge and retrieval
+
+An agent can carry documents of its own: files uploaded to it, and pages read
+once from a URL and stored as text. They are `files` rows with `agent_id` set,
+so extraction, blob storage and token counting are the same as anywhere else.
+
+They are **searched, not injected**. Project knowledge goes into every turn
+whole inside a character budget; past that budget the block degrades to a list
+of filenames. An agent's shelf is reached through a `search_knowledge` tool
+instead, so retrieval happens when the model asks for it.
+
+Three tiers, chosen by size and by what is available:
+
+| Shelf | Behaviour |
+|---|---|
+| under 12,000 characters | returned whole, unranked — nothing to miss |
+| larger | vector hits merged with lexical hits |
+| no index configured, or it is down | lexical alone |
+
+`services/knowledge.py` is the lexical half: term containment plus character
+bigrams, which is what carries Korean, where whitespace tokens include
+particles. It matches words, so it cannot find 접근 통제 from "access control".
+
+`services/index_client.py` is the other half, calling `/tools/index` in
+KloudChat-LLM — pgvector beside the embedding model. Nothing there raises: a
+failed write is a boolean and a failed search is no passages, because the
+lexical path still answers. The index is derived and rebuildable from
+`files.text`; `indexed_at` records what it covers, and
+`POST /agents/{id}/knowledge/reindex` fills the gaps (`?force=true` re-sends
+everything, which an embedding-model change needs).
+
+**A collection name is the authorisation.** `agents.index_key` holds 32 bytes of
+urlsafe randomness, minted on first use and never derived from `agent_id`,
+which travels in URLs and API responses. Deleting an agent drops its collection.
+
+---
+
+## 9. Frontend structure
 
 ```
 apps/web/src/
@@ -280,7 +340,7 @@ still in flight — otherwise a late response overwrites the local write.
 
 ---
 
-## 9. Verification
+## 10. Verification
 
 ```bash
 bash scripts/smoke-test.sh           # auth, approval, rotation and suspension checks (non-destructive)
@@ -299,7 +359,7 @@ passes identically before and after a change is guarding nothing.
 
 ---
 
-## 10. Known limitations
+## 11. Known limitations
 
 - **The video playback spec generates a new clip on every run** (12,000
   credits). Exclude it with `--grep-invert` when iterating.

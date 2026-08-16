@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { ChartArtifact } from '@/types'
+import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
 import { useT } from '@/lib/useT'
 
 /** Every x across every series, in first-appearance order. */
@@ -353,8 +354,17 @@ function csvSource(chart: ChartArtifact): string {
   return `\ufeff${lines.join('\n')}\n`
 }
 
-export function ChartPanel({ chart }: { chart: ChartArtifact }) {
+export function ChartPanel({
+  chart,
+  onClose,
+  onWideChange,
+}: {
+  chart: ChartArtifact
+  onClose?: () => void
+  onWideChange?: (wide: boolean) => void
+}) {
   const t = useT()
+  const width = usePanelWidth(onWideChange)
   const [tab, setTab] = useState<'chart' | 'table'>('chart')
   const plot = useRef<HTMLDivElement>(null)
 
@@ -419,6 +429,9 @@ export function ChartPanel({ chart }: { chart: ChartArtifact }) {
             {t('데이터')}
           </MenuItem>
         </Dropdown>
+        {/* 차트 패널만 닫는 버튼이 없었다. 세션에서 열면 대화를 떠나기 전에는
+            치울 방법이 없었고, 그건 패널이 아니라 벽이다. */}
+        <PanelControls wide={width.wide} onToggleWide={width.toggle} onClose={onClose} />
       </header>
 
       <div className="flex gap-1 border-b border-line px-3 py-1.5">

@@ -1,12 +1,7 @@
 import { expect, type Page } from '@playwright/test'
 
-/**
- * The account shared by the UI coverage suites.
- *
- * On an empty database the first signup is an active administrator, which is
- * what the persona tests need because they walk into the admin screens. If the
- * account already exists, this takes the sign-in path instead.
- */
+/** Account shared by the UI suites. The first signup on an empty database is an
+ *  active administrator, which the persona tests need. */
 export const E2E_ADMIN = {
   email: 'e2e-personas@example.com',
   password: 'personas-playwright-pass',
@@ -32,13 +27,8 @@ async function submitAuthForm(page: Page, mode: 'login' | 'signup') {
   ])
 }
 
-/**
- * Signs in as the shared admin, creating it on first run.
- *
- * These specs run in parallel workers, so several can reach an empty database at
- * once: one signup wins and the others get 409. Retrying the login afterwards is
- * what makes the helper safe to call from every worker's `beforeEach`.
- */
+/** Signs in as the shared admin, creating it on first run. Retries the login
+ *  after a 409, so concurrent workers racing an empty database all succeed. */
 export async function signIn(page: Page) {
   await page.goto('/')
   const shell = page.getByRole('button', { name: '사이드바 토글' })
@@ -96,16 +86,10 @@ export async function gotoSurface(page: Page, kind: string) {
 }
 
 /**
- * The assistant's answer, scoped to the rendered paragraph.
- *
- * These tests make the model echo a token back verbatim — the only way to tell
- * what it remembered from what it already knew. But the conversation title is
- * generated from that same answer, so the token also appears in the sidebar
- * and the header. Unscoped, it matches in three places, and `.first()` picks
- * the sidebar title — which passes even when the model never answered.
- *
- * Answers are `<p>`, titles are `<span>` and user messages are `<div>`, so
- * scoping to the paragraph is enough.
+ * The assistant's answer, scoped to its `<p>`. Tests echo a token back to tell
+ * what the model remembered, and the conversation title is generated from that
+ * same answer — unscoped, the sidebar title matches even when the model never
+ * answered. Titles are `<span>`, user messages `<div>`.
  */
 export function answerText(page: Page, text: string | RegExp) {
   return page.locator('p').filter({ hasText: text }).first()

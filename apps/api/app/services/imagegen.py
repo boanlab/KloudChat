@@ -5,21 +5,25 @@ OpenRouter serves picture models on `chat/completions` with
 is a PNG — same client, billed from reported usage.
 
 **Aspect ratio and style have no parameters.** Both are folded into the prompt
-in words and honoured approximately, so the stored aspect is what was requested
-rather than a measurement of what came back.
+in words and honoured approximately — so what came back is measured rather than
+assumed, and the requested aspect is kept beside it. A 16:9 label over a square
+picture is the kind of small lie that makes a person stop trusting the panel.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import io
 import logging
 import re
 import uuid
 from dataclasses import dataclass
+from math import gcd
 from typing import Any
 
 import httpx
+from PIL import Image
 
 from app.services import files as file_service
 
@@ -49,6 +53,31 @@ class GeneratedImage:
     mime: str
     input_tokens: int
     output_tokens: int
+    #: Measured off the bytes, `0` when they could not be read.
+    width: int = 0
+    height: int = 0
+
+    @property
+    def aspect(self) -> str:
+        """The ratio actually produced, as `"16:9"`, or `""` when unmeasured."""
+        if not self.width or not self.height:
+            return ""
+        divisor = gcd(self.width, self.height)
+        return f"{self.width // divisor}:{self.height // divisor}"
+
+
+def _measure(data: bytes) -> tuple[int, int]:
+    """`(width, height)`, or `(0, 0)` for bytes Pillow cannot open.
+
+    Never raises: a picture that arrived is worth keeping even if it cannot be
+    measured, so this degrades to "unknown" rather than failing the generation.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            return int(image.width), int(image.height)
+    except Exception as exc:  # noqa: BLE001 — any decode failure means unknown
+        log.info("could not measure generated image: %s", exc)
+        return 0, 0
 
 
 def compose_prompt(prompt: str, *, aspect: str, style: str) -> str:
@@ -113,9 +142,12 @@ async def generate(
         raise ImageError("이미지를 만들지 못했습니다.")
     data, mime = _extract(choices[0].get("message") or {})
     usage = body.get("usage") or {}
+    width, height = _measure(data)
     return GeneratedImage(
         data=data,
         mime=mime,
+        width=width,
+        height=height,
         input_tokens=int(usage.get("prompt_tokens") or 0),
         # Billed as completion tokens. `image_tokens` is the same number broken
         # out, so counting both doubles the charge.
@@ -134,3 +166,4 @@ def store(user_id: str, image: GeneratedImage) -> tuple[str, str]:
 
 
 __all__ = ["GeneratedImage", "ImageError", "compose_prompt", "generate", "store"]
+

@@ -42,6 +42,7 @@ TOOLS_FETCH_URL = "tools.fetch_url"
 TOOLS_EXEC_URL = "tools.exec_url"
 TOOLS_RESEARCH_URL = "tools.research_url"
 TOOLS_STT_URL = "tools.stt_url"
+TOOLS_INDEX_URL = "tools.index_url"
 
 #: Paths appended to the backend address to derive each feature's address.
 _TOOL_PATHS: dict[str, str] = {
@@ -51,6 +52,7 @@ _TOOL_PATHS: dict[str, str] = {
     "exec": "/tools/exec",
     "research": "/tools/research",
     "stt": "/tools/stt",
+    "index": "/tools/index",
 }
 
 # ── branding ───────────────────────────────────────────────────────────
@@ -168,6 +170,9 @@ class ToolBackends:
     exec: str = ""
     research: str = ""
     stt: str = ""
+    #: Vector retrieval for agent knowledge. Empty is a supported deployment —
+    #: `search_knowledge` then answers from the lexical index alone.
+    index: str = ""
 
     def get(self, name: str) -> str:
         return getattr(self, name, "")
@@ -205,6 +210,7 @@ async def tools_config() -> ToolBackends:
         exec=resolve(TOOLS_EXEC_URL, "exec", env_settings.code_interpreter_url),
         research=resolve(TOOLS_RESEARCH_URL, "research", env_settings.deep_research_url),
         stt=resolve(TOOLS_STT_URL, "stt", env_settings.whisper_url),
+        index=resolve(TOOLS_INDEX_URL, "index", env_settings.index_url),
     )
 
 
