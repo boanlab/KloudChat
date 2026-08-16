@@ -1,5 +1,5 @@
 import { Bot, Download, Globe, Lock, Play, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { PageBody } from '@/components/layout/AppShell'
@@ -27,8 +27,6 @@ import { errorMessage } from '@/lib/api'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
-const allTools = ['read', 'write', 'bash', 'websearch', 'artifact', 'memory']
-
 const emptyAgent = (model: string): Agent => ({
   id: uid('ag'),
   name: '',
@@ -36,7 +34,9 @@ const emptyAgent = (model: string): Agent => ({
   description: '',
   model,
   systemPrompt: '',
-  tools: ['read'],
+  // New agents start with no tool or skill authority. The user can explicitly
+  // inherit their tools, or choose names from the server's real registry.
+  tools: [],
   skillIds: [],
   kinds: ['chat'],
   visibility: 'private',
@@ -48,14 +48,25 @@ const emptyAgent = (model: string): Agent => ({
   color: '#5b53e8',
   enabled: true,
   runs: 0,
+  hasKnowledge: false,
   updatedAt: new Date().toISOString(),
 })
 
 export function AgentsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const { agents, models, skills, upsertAgent, deleteAgent, forkAgent, newSession, loadWorkspace, user } =
-    useStore()
+  const {
+    agents,
+    models,
+    skills,
+    availableTools,
+    upsertAgent,
+    deleteAgent,
+    forkAgent,
+    newSession,
+    loadWorkspace,
+    user,
+  } = useStore()
   const [skillQuery, setSkillQuery] = useState('')
 
   useEffect(() => {
@@ -83,17 +94,40 @@ export function AgentsPage() {
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
 
   // Attached first, then matches; capped, with `skills.length` in the
-  // placeholder saying what is hidden.
-  const matchedSkills = skills.filter((s) =>
-    s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()),
-  )
+  // placeholder saying what is hidden. A disabled existing selection remains
+  // visible so it can be removed, but cannot be newly granted.
   const chosen = new Set(draft?.skillIds ?? [])
+  const matchedSkills = skills.filter(
+    (s) =>
+      (s.enabled || chosen.has(s.id)) &&
+      s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()),
+  )
   const rankedSkills = [
     ...matchedSkills.filter((s) => chosen.has(s.id)),
     ...matchedSkills.filter((s) => !chosen.has(s.id)),
   ]
   const visibleSkills = rankedSkills.slice(0, 24)
   const hiddenSkills = rankedSkills.length - visibleSkills.length
+  const toolOptions = [
+    ...availableTools,
+    ...(draft?.tools ?? [])
+      .filter((name) => !availableTools.some((tool) => tool.name === name))
+      .map((name) => ({ name, label: name, available: false })),
+  ]
+  const updateKnowledgeAvailability = useCallback(
+    (hasKnowledge: boolean) => {
+      setDraft((current) =>
+        current && current.hasKnowledge !== hasKnowledge
+          ? { ...current, hasKnowledge }
+          : current,
+      )
+      // Composer reads the saved agent from the workspace store, not this
+      // modal draft. Refresh after a shelf change so closing the modal does
+      // not leave `search_knowledge` falsely disabled.
+      void loadWorkspace()
+    },
+    [loadWorkspace],
+  )
 
   return (
     <>
@@ -171,9 +205,11 @@ export function AgentsPage() {
                 {/* 모델을 고정하지 않은 에이전트가 정상이다 — 화면의 기본 모델을 따른다 */}
                 <Badge>{models.find((m) => m.id === a.model)?.label ?? t('화면 기본 모델')}</Badge>
                 <Badge>temp {a.temperature}</Badge>
-                {a.tools.map((t) => (
+                {(a.tools ?? []).map((t) => (
                   <Badge key={t}>{t}</Badge>
                 ))}
+                {a.tools === null && <Badge>{t('사용자 도구 상속')}</Badge>}
+                {a.tools?.length === 0 && <Badge>{t('도구 없음')}</Badge>}
               </div>
 
               <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
@@ -312,7 +348,7 @@ export function AgentsPage() {
                   value={draft.name}
                   maxLength={NAME_LIMIT}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder={t('예: 논문 리뷰어')}
+                  placeholder={t('예: 기술 검토 도우미')}
                 />
               </Field>
               <Field label={t('슬러그')} hint={t('@슬러그로 호출합니다.')}>
@@ -407,6 +443,7 @@ export function AgentsPage() {
             {/* Only for an agent that exists: the shelf hangs off its id. */}
             <AgentKnowledge
               agentId={agents.some((a) => a.id === draft.id) ? draft.id : null}
+              onKnowledgeChange={updateKnowledgeAvailability}
             />
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -471,33 +508,105 @@ export function AgentsPage() {
             </Field>
 
             <Field label={t('도구 권한')}>
-              <div className="flex flex-wrap gap-1.5">
-                {allTools.map((t) => {
-                  const on = draft.tools.includes(t)
-                  return (
-                    <button
-                      key={t}
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          tools: on ? draft.tools.filter((x) => x !== t) : [...draft.tools, t],
-                        })
-                      }
-                      className={cn(
-                        'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
-                        on
-                          ? 'border-accent bg-accent-soft text-accent'
-                          : 'border-line text-muted hover:bg-elevated',
-                      )}
-                    >
-                      {t}
-                    </button>
-                  )
-                })}
+              <div className="mb-2 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, tools: null })}
+                  className={cn(
+                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    draft.tools === null
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted',
+                  )}
+                >
+                  {t('사용자 도구 상속')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, tools: draft.tools ?? [] })}
+                  className={cn(
+                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    draft.tools !== null
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted',
+                  )}
+                >
+                  {t('직접 선택')}
+                </button>
               </div>
+              {draft.tools !== null && (
+                <div className="flex flex-wrap gap-1.5">
+                  {toolOptions.map((tool) => {
+                    const on = draft.tools?.includes(tool.name) ?? false
+                    const runtimeAvailable =
+                      tool.name === 'search_knowledge' ? draft.hasKnowledge : tool.available
+                    return (
+                      <button
+                        key={tool.name}
+                        aria-pressed={on}
+                        disabled={!runtimeAvailable && !on}
+                        title={
+                          runtimeAvailable || on
+                            ? undefined
+                            : tool.name === 'search_knowledge'
+                              ? t('에이전트에 읽을 수 있는 지식 문서를 먼저 추가하세요.')
+                              : t('현재 사용할 수 없는 도구입니다.')
+                        }
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            tools: on
+                              ? (draft.tools ?? []).filter((name) => name !== tool.name)
+                              : [...(draft.tools ?? []), tool.name],
+                          })
+                        }
+                        className={cn(
+                          'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                          on
+                            ? 'border-accent bg-accent-soft text-accent'
+                            : runtimeAvailable
+                              ? 'border-line text-muted hover:bg-elevated'
+                              : 'cursor-not-allowed border-line text-faint opacity-60',
+                        )}
+                      >
+                        {tool.label}
+                        <span className="ml-1 font-mono text-[10px] text-faint">
+                          {tool.name}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </Field>
 
             <Field label={t('연결된 스킬')}>
+              <div className="mb-2 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, skillIds: null })}
+                  className={cn(
+                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    draft.skillIds === null
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted',
+                  )}
+                >
+                  {t('턴 선택 상속')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, skillIds: draft.skillIds ?? [] })}
+                  className={cn(
+                    'rounded-lg border px-2.5 py-1.5 text-[13px]',
+                    draft.skillIds !== null
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted',
+                  )}
+                >
+                  {t('허용 목록 지정')}
+                </button>
+              </div>
               {/* 전체를 나열하면 다섯 개일 때는 괜찮아도 예순 개면 못 쓴다.
                   선택된 것은 앞에 고정해, 검색이 이미 붙은 것을 가리지 않게 한다. */}
               <Input
@@ -506,32 +615,35 @@ export function AgentsPage() {
                 placeholder={t('스킬 검색 ({n}개)').replace('{n}', String(skills.length))}
                 className="mb-2 h-8 text-[13px]"
               />
-              <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
-                {visibleSkills.map((s) => {
-                  const on = draft.skillIds.includes(s.id)
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          skillIds: on
-                            ? draft.skillIds.filter((x) => x !== s.id)
-                            : [...draft.skillIds, s.id],
-                        })
-                      }
-                      className={cn(
-                        'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
-                        on
-                          ? 'border-accent bg-accent-soft text-accent'
-                          : 'border-line text-muted hover:bg-elevated',
-                      )}
-                    >
-                      {t(s.name)}
-                    </button>
-                  )
-                })}
-              </div>
+              {draft.skillIds !== null && (
+                <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+                  {visibleSkills.map((s) => {
+                    const on = draft.skillIds?.includes(s.id) ?? false
+                    return (
+                      <button
+                        key={s.id}
+                        aria-pressed={on}
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            skillIds: on
+                              ? (draft.skillIds ?? []).filter((x) => x !== s.id)
+                              : [...(draft.skillIds ?? []), s.id],
+                          })
+                        }
+                        className={cn(
+                          'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                          on
+                            ? 'border-accent bg-accent-soft text-accent'
+                            : 'border-line text-muted hover:bg-elevated',
+                        )}
+                      >
+                        {t(s.name)}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </Field>
           </>
         )}

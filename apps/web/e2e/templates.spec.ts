@@ -51,7 +51,7 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   await expect(again).toHaveCount(0, { timeout: 15_000 })
 
   // The built-ins are not deletable — they are not this person's to remove.
-  const shipped = page.getByRole('dialog').locator('div.group', { hasText: '과제 리포트' })
+  const shipped = page.getByRole('dialog').locator('div.group', { hasText: '업무·기술 보고서' })
   await expect(shipped.getByRole('button', { name: /삭제/ })).toHaveCount(0)
 })
 

@@ -140,6 +140,14 @@ export interface Step {
   detail?: string
   /** e.g. 3 of 5 sources read. Drives the inline counter. */
   progress?: { current: number; total: number }
+  /** Structured metadata for the per-turn skill timeline entry. */
+  skills?: {
+    id: string
+    name: string
+    catalogKey: string | null
+    estimatedTokens: number
+  }[]
+  estimatedTokens?: number
 }
 
 /** One model's answer inside a comparison turn. */
@@ -401,6 +409,14 @@ export interface Skill {
   slug: string
   description: string
   whenToUse: string
+  /** The exact procedure sent when this skill is selected for a turn. */
+  body: string
+  /** Stable key for shipped skills; absent for user-authored procedures. */
+  catalogKey: string | null
+  /** Registry names that must be available after the agent allowlist. */
+  requiredTools: string[]
+  /** Approximate prompt cost shown before activation. */
+  estimatedTokens: number
   source: 'built-in' | 'workspace' | 'personal'
   /** Which surfaces this skill applies to. */
   kinds: SessionKind[]
@@ -488,12 +504,22 @@ export interface Agent {
   description: string
   model: string
   systemPrompt: string
-  tools: string[]
-  skillIds: string[]
+  /** null inherits; [] denies all; values form a hard allowlist. */
+  tools: string[] | null
+  /** null inherits turn selection; [] denies all selected skills. */
+  skillIds: string[] | null
   kinds: SessionKind[]
   temperature: number
   color: string
   enabled: boolean
   runs: number
+  /** Whether this caller can build the agent-only `search_knowledge` tool. */
+  hasKnowledge: boolean
   updatedAt: string
+}
+
+export interface ToolCatalogEntry {
+  name: string
+  label: string
+  available: boolean
 }

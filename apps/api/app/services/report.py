@@ -24,7 +24,9 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.models.chat import SessionKind
 from app.services import settings_store
+from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
 
@@ -81,22 +83,16 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 _NO_REFS = "(없음. 번호 인용을 쓰지 마라.)"
 
 
-def _with_context(prompt: str, context: str) -> str:
-    """Workspace blocks in front of the instruction.
-
-    Blocks first, instruction last: a small model follows what it read last.
-    """
-    context = context.strip()
-    if not context:
-        return prompt
-    return f"# 참고할 자료\n\n{context}\n\n---\n\n{prompt}"
-
-
 #: Waits between retries of a rate-limited call, in seconds.
 _BACKOFF = (2.0, 6.0)
 
 
-async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> tuple[str, dict]:
+async def _complete(
+    model: str,
+    messages: list[dict[str, str]],
+    api_key: str,
+    max_tokens: int,
+) -> tuple[str, dict]:
     """One non-streaming call. Returns `(text, usage)`. Retries a 429.
 
     One call per section against a shared limit; a transient refusal would leave
@@ -113,7 +109,7 @@ async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> t
                 "/v1/chat/completions",
                 json={
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": messages,
                     "max_tokens": max_tokens,
                 },
             )
@@ -239,7 +235,8 @@ async def write(
     request: str,
     model: str,
     api_key: str,
-    context: str = "",
+    trusted_context: list[str] | None = None,
+    untrusted_context: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -251,11 +248,13 @@ async def write(
     try:
         text, spent = await _complete(
             model,
-            _with_context(
+            build_document_messages(
+                SessionKind.report,
                 _OUTLINE_PROMPT.format(
                     lo=_MIN_SECTIONS, hi=_MAX_SECTIONS, request=request[:2000]
                 ),
-                context,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
             ),
             api_key,
             400,
@@ -338,7 +337,8 @@ async def write(
         try:
             body, spent = await _complete(
                 model,
-                _with_context(
+                build_document_messages(
+                    SessionKind.report,
                     _SECTION_PROMPT.format(
                         heading=section["heading"],
                         outline=outline_text,
@@ -348,7 +348,8 @@ async def write(
                         refs=refs,
                         request=request[:1500],
                     ),
-                    context,
+                    trusted_context=trusted_context,
+                    untrusted_context=untrusted_context,
                 ),
                 api_key,
                 1200,
@@ -430,7 +431,12 @@ async def rewrite_section(
         # Last and labelled: an unlabelled sentence appended to a prompt reads
         # as part of the original request.
         prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
-    return await _complete(model, prompt, api_key, 1200)
+    return await _complete(
+        model,
+        build_document_messages(SessionKind.report, prompt),
+        api_key,
+        1200,
+    )
 
 
 def word_count(sections: list[dict]) -> int:

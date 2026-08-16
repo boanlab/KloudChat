@@ -1,5 +1,5 @@
 import { CircleAlert, FileText, Globe, Loader2, Paperclip, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { agentsApi, errorMessage, type FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
@@ -17,28 +17,45 @@ import { useT } from '@/lib/useT'
  * than pretend otherwise with a queue that uploads on save — and fails halfway,
  * leaving an agent that half-knows things — a new agent is told to save first.
  */
-export function AgentKnowledge({ agentId }: { agentId: string | null }) {
+export function AgentKnowledge({
+  agentId,
+  onKnowledgeChange,
+}: {
+  agentId: string | null
+  onKnowledgeChange?: (available: boolean) => void
+}) {
   const t = useT()
   const [rows, setRows] = useState<FileRow[]>([])
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState<'file' | 'url' | 'reindex' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const rowsRef = useRef<FileRow[]>([])
+
+  const replaceRows = useCallback(
+    (next: FileRow[]) => {
+      rowsRef.current = next
+      setRows(next)
+      onKnowledgeChange?.(next.some((row) => !row.error && row.tokens > 0))
+    },
+    [onKnowledgeChange],
+  )
 
   useEffect(() => {
     if (!agentId) {
+      rowsRef.current = []
       setRows([])
       return
     }
     let live = true
     void agentsApi.knowledge
       .list(agentId)
-      .then((r) => live && setRows(r))
+      .then((r) => live && replaceRows(r))
       .catch(() => undefined)
     return () => {
       live = false
     }
-  }, [agentId])
+  }, [agentId, replaceRows])
 
   if (!agentId) {
     return (
@@ -55,7 +72,7 @@ export function AgentKnowledge({ agentId }: { agentId: string | null }) {
     setError(null)
     try {
       const row = await agentsApi.knowledge.upload(agentId, picked)
-      setRows((r) => [row, ...r])
+      replaceRows([row, ...rowsRef.current])
     } catch (err) {
       setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
     } finally {
@@ -69,7 +86,7 @@ export function AgentKnowledge({ agentId }: { agentId: string | null }) {
     setError(null)
     try {
       const row = await agentsApi.knowledge.addUrl(agentId, url.trim())
-      setRows((r) => [row, ...r])
+      replaceRows([row, ...rowsRef.current])
       setUrl('')
     } catch (err) {
       setError(errorMessage(err, t('페이지를 읽지 못했습니다.')))
@@ -83,7 +100,7 @@ export function AgentKnowledge({ agentId }: { agentId: string | null }) {
     setError(null)
     try {
       await agentsApi.knowledge.reindex(agentId)
-      setRows(await agentsApi.knowledge.list(agentId))
+      replaceRows(await agentsApi.knowledge.list(agentId))
     } catch (err) {
       setError(errorMessage(err, t('색인하지 못했습니다.')))
     } finally {
@@ -92,11 +109,11 @@ export function AgentKnowledge({ agentId }: { agentId: string | null }) {
   }
 
   const remove = async (id: string) => {
-    setRows((r) => r.filter((f) => f.id !== id))
+    replaceRows(rowsRef.current.filter((f) => f.id !== id))
     try {
       await agentsApi.knowledge.remove(agentId, id)
     } catch {
-      setRows(await agentsApi.knowledge.list(agentId).catch(() => []))
+      replaceRows(await agentsApi.knowledge.list(agentId).catch(() => []))
     }
   }
 

@@ -225,7 +225,6 @@ const EN: Record<string, string> = {
   '선택 해제': 'Clear',
   '선택됨': 'Selected',
   '설명': 'Description',
-  '설치됨': 'Installed',
   '소리': 'Sound',
   '소스': 'Source',
   '수채화': 'Watercolour',
@@ -451,6 +450,27 @@ const EN: Record<string, string> = {
   '비교할 모델 (2~3개)': 'Models to compare (2–3)',
   '에이전트로 새 대화': 'New conversation with an agent',
   '이 화면에서 쓸 수 있는 스킬': 'Skills available on this surface',
+  '이번 요청에 적용할 스킬 (최대 3개)': 'Skills for this request (up to 3)',
+  '프로젝트 추천': 'Project suggestion',
+  '추천': 'Suggested',
+  '{name} 추천 해제': 'Remove {name} suggestion',
+  '추천 스킬 설정': 'Set suggested skills',
+  '입력창에서 먼저 보여 줄 스킬': 'Skills to show first in the composer',
+  '약 {n} 토큰': 'about {n} tokens',
+  '스킬 {n}개 적용': '{n} skills applied',
+  '이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.':
+    'Skills that require tools cannot run on this surface.',
+  '선택한 모델이 도구 호출을 지원하지 않습니다.':
+    'The selected model does not support tool calls.',
+  '에이전트가 필수 도구를 허용하지 않습니다: {tools}':
+    'The agent does not allow the required tools: {tools}',
+  '먼저 웹 검색을 켜야 합니다.': 'Turn on web search first.',
+  '필수 도구를 사용할 수 없습니다: {tools}': 'Required tools are unavailable: {tools}',
+  '최대 3개까지 선택할 수 있습니다.': 'You can select up to three.',
+  '에이전트에 읽을 수 있는 지식 문서를 먼저 추가하세요.':
+    'Add a readable knowledge document to this agent first.',
+  '현재 사용할 수 없는 도구입니다.': 'This tool is currently unavailable.',
+  '요청을 처리하지 못했습니다.': 'Could not process the request.',
   '프롬프트 입력': 'Prompt',
   '이번 달 크레딧': 'Credits this month',
   '이번 달 사용량': 'This month',
@@ -559,8 +579,8 @@ const EN: Record<string, string> = {
 
   // ── added by the screen-by-screen audit ─────────────────────────────
   '### 소제목': '### Subheading',
-  '1. 로그에서 epoch/loss/metric 열을 찾는다\n2. 최고 성능 지점을 표로 정리한다':
-    '1. Find the epoch/loss/metric columns in the log\n2. Put the best-performing point in a table',
+  '1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다':
+    '1. Check the inputs and decision criteria\n2. Separate results, evidence, and unverified items',
   '1k당 {in} / {out}': '{in} / {out} per 1k',
   '1k당 입력 {in} · 출력 {out}': 'Per 1k: {in} in · {out} out',
   '@슬러그로 호출합니다.': 'Called with @slug.',
@@ -691,7 +711,8 @@ const EN: Record<string, string> = {
     'A stored key is never shown back. Leave this blank to keep the current one.',
   '비밀번호 변경': 'Change password',
   '사내 서버나 직접 만든 서버를 등록합니다.': 'Register an internal server or one you built yourself.',
-  '사용자가 학습 로그 파일을 붙여넣고 요약을 요청할 때': 'When someone pastes a training log and asks for a summary',
+  '사용자가 의사결정 자료를 붙여넣고 리스크 검토를 요청할 때':
+    'When someone pastes decision material and asks for a risk review',
   '사이드바 닫기': 'Close sidebar',
   '새 API 키': 'New API key',
   '새 {kind}': 'New {kind}',
@@ -727,12 +748,12 @@ const EN: Record<string, string> = {
   '열 수 없는 링크입니다': 'This link cannot be opened',
   '영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.':
     'Lowercase letters and hyphens. Other memories link to it with [[name]].',
-  '예: 논문 리뷰어': 'e.g. Paper reviewer',
+  '예: 기술 검토 도우미': 'e.g. Technical review assistant',
   '예: 모든 코드는 PyTorch 2.x 기준으로 작성한다. 수식은 LaTeX로.':
     'e.g. Write all code against PyTorch 2.x. Equations in LaTeX.',
   '예: 분석 스크립트': 'e.g. Analysis script',
-  '예: 실험 로그 요약': 'e.g. Summarise experiment logs',
-  '예: 학위논문 실험': 'e.g. Thesis experiments',
+  '예: 배포 전 리스크 검토': 'e.g. Pre-release risk review',
+  '예: 제품 출시 준비': 'e.g. Product launch preparation',
   '예상 {n} 크레딧': '≈{n} credits',
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
@@ -800,6 +821,24 @@ const EN: Record<string, string> = {
   '텍스트 (노트 포함)': 'Text (with notes)',
   '특정 작업을 어떻게 처리할지 적어 둔 절차입니다. 관련된 요청이 오면 모델이 스스로 불러옵니다.':
     'A written procedure for handling one kind of task. The model reaches for it when a request matches.',
+  '설치해 둔 절차입니다. 입력창에서 이번 요청에 적용할 스킬을 최대 3개 고릅니다.':
+    'Installed procedures. Select up to three for each request in the composer.',
+  '{name} 설치 상태': '{name} installation status',
+  '설치됨': 'Installed',
+  '사용 중지': 'Unavailable',
+  '필수 도구': 'Required tools',
+  '선택한 도구가 현재 모델과 에이전트에 허용된 경우에만 이 스킬을 실행합니다.':
+    'This skill runs only when its tools are allowed by the current model and agent.',
+  '사용자 도구 상속': 'Inherit user tools',
+  '도구 없음': 'No tools',
+  '직접 선택': 'Choose tools',
+  '턴 선택 상속': 'Inherit turn selection',
+  '허용 목록 지정': 'Set allowlist',
+  '업무·기술 보고서': 'Business & technical report',
+  '목적과 독자를 정하고 근거와 다음 행동으로 맺는 문서':
+    'A document grounded in evidence, ending with clear next actions',
+  '목적': 'Purpose',
+  '독자': 'Audience',
   '프로젝트 정보': 'Project details',
   '프로젝트 지침': 'Project instructions',
   '프로젝트를 찾을 수 없습니다': 'Project not found',
@@ -859,7 +898,8 @@ const EN: Record<string, string> = {
   '각 응답 아래에 모델·토큰·크레딧을 표시합니다.': 'Puts the model, tokens and credits under each response.',
   '리포트 도우미': 'Report assistant',
   '리포트-도우미': 'report-assistant',
-  '과제 리포트를 구조부터 잡아 함께 씁니다.': 'Structures a coursework report and writes it with you.',
+  '업무·기술 보고서를 구조부터 잡아 근거 중심으로 작성합니다.':
+    'Structures evidence-based business and technical reports.',
   '회의록 정리': 'Meeting minutes',
   '회의록-정리': 'meeting-minutes',
   '회의 메모를 결정·조치·미결로 정리합니다.': 'Sorts meeting notes into decisions, actions and open items.',
@@ -872,6 +912,21 @@ const EN: Record<string, string> = {
   '원문 읽기 도우미': 'Close reading assistant',
   '원문-읽기-도우미': 'close-reading-assistant',
   '논문·기술 문서를 근거 중심으로 검토합니다.': 'Reviews papers and technical documents against their evidence.',
+  '계산·단위 검증': 'Calculation & unit verification',
+  '계산식과 단위, 분모, 기준 시점을 코드로 검산하고 근거를 남깁니다.':
+    'Checks formulas, units, denominators and baselines in code and records provenance.',
+  '답이나 문서의 수치가 의사결정 근거가 되거나 단위 변환이 포함될 때.':
+    'When figures drive a decision or require unit conversion.',
+  '의사결정 메모': 'Decision memo',
+  '대안과 판단 기준을 비교해 권고안, 리스크, 다음 행동으로 정리합니다.':
+    'Compares options and criteria, then states a recommendation, risks and next actions.',
+  '여러 선택지 중 하나를 결정하거나 승인받기 위한 짧은 문서를 만들 때.':
+    'When choosing among options or preparing a short approval memo.',
+  '독자별 리스크 검토': 'Audience-based risk review',
+  '같은 결과물을 경영·보안·비기술 이해관계자의 질문으로 검토합니다.':
+    'Reviews one deliverable through management, security and nontechnical lenses.',
+  '보고서·제안·발표를 배포하거나 의사결정자에게 올리기 직전.':
+    'Before distributing a report, proposal or presentation to decision-makers.',
   '공문 작성': 'Official correspondence',
   '공문-작성': 'official-correspondence',
   '대내외 공문과 결재 문서를 양식에 맞춰 씁니다.': 'Writes internal and external correspondence to the expected form.',

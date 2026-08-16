@@ -159,6 +159,8 @@ class CompareRequest(Wire):
     #: Two or three. One is an ordinary turn; more is a wall of columns and an
     #: unexpected bill.
     models: list[str] = Field(min_length=2, max_length=3)
+    #: Installed skills explicitly selected for this one comparison.
+    activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
 
 
 class ChooseVariant(Wire):
@@ -180,3 +182,6 @@ class SendMessage(Wire):
     #: The composer's toggle, off by default: searching changes the latency and
     #: the character of the answer.
     web_search: bool = False
+    #: Installed skills explicitly selected for this one turn. Empty means no
+    #: skill; installation alone never injects a procedure.
+    activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)

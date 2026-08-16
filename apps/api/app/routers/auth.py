@@ -198,6 +198,12 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(payload.password)
 
+    if user.status is UserStatus.active:
+        # Versioned, idempotent catalogue sync for accounts created before a
+        # shipped skill existed. It fills metadata and missing rows only; user
+        # edits are never overwritten.
+        await starter.sync_catalog(db, user.id)
+
     user.last_active_at = utcnow()
     db.add(user)
     await _audit(db, request, "login", user.id, target=email)
@@ -234,6 +240,8 @@ async def refresh(request: Request, response: Response, db: DbSession):
         if row.revoked_reason is RevokeReason.rotated and _within_grace(row):
             # Concurrent refresh: both clients hold the cookie legitimately, so
             # the loser gets its own successor rather than a burned chain.
+            if user.status is UserStatus.active:
+                await starter.sync_catalog(db, user.id)
             return await _issue_session(db, response, user, family_id=row.family_id)
 
         _clear_refresh_cookie(response)
@@ -249,6 +257,12 @@ async def refresh(request: Request, response: Response, db: DbSession):
         # Logged out, revoked or expired — ordinary end of session.
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session_ended")
 
+    if user.status is UserStatus.active:
+        # A browser can remain signed in indefinitely by rotating refresh
+        # tokens and never visit `/login`. Catalogue sync belongs in this same
+        # transaction as the successful rotation so those accounts receive new
+        # shipped skills too.
+        await starter.sync_catalog(db, user.id)
     row.revoked_at = utcnow()
     row.revoked_reason = RevokeReason.rotated
     db.add(row)

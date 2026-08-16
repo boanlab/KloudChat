@@ -150,7 +150,7 @@ export function ProjectsPage() {
             value={draft.name}
             maxLength={NAME_LIMIT}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-            placeholder={t('예: 학위논문 실험')}
+            placeholder={t('예: 제품 출시 준비')}
           />
         </Field>
         <Field label={t('설명')}>

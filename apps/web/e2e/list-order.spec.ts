@@ -15,7 +15,7 @@ async function order(page: Page): Promise<string[]> {
   const names = await page.getByRole('switch').evaluateAll((els) =>
     els.map((el) => el.getAttribute('aria-label') ?? ''),
   )
-  return names.filter((n) => n.endsWith('활성화'))
+  return names.filter((n) => n.endsWith('활성화') || n.endsWith('설치 상태'))
 }
 
 for (const [label, path] of [

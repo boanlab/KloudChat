@@ -22,6 +22,7 @@ import {
   skillsApi,
   streamComparison,
   streamSession,
+  toolsApi,
   usageApi,
 } from '@/lib/api'
 import type {
@@ -60,6 +61,7 @@ import type {
   Variant,
   Skill,
   Step,
+  ToolCatalogEntry,
   User,
 } from '@/types'
 import { uid } from '@/lib/utils'
@@ -70,6 +72,10 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
 const tr = (text: string) => translate(currentLang(), text)
 
 type Theme = 'light' | 'dark'
+
+/** A client refusal is returned before send/compare writes its first Message. */
+const isClientRefusal = (error: unknown): error is ApiError =>
+  error instanceof ApiError && error.status >= 400 && error.status < 500
 
 interface State {
   // ── auth (KloudChat's own, not LiteLLM's) — live against /api/auth ─────────
@@ -108,6 +114,7 @@ interface State {
   projects: Project[]
   artifacts: Artifact[]
   skills: Skill[]
+  availableTools: ToolCatalogEntry[]
   memories: MemoryEntry[]
   agents: Agent[]
 
@@ -160,6 +167,8 @@ interface State {
       attachments?: string[]
       /** Their names, so the optimistic bubble does not show raw ids. */
       attachmentNames?: string[]
+      /** Installed skills selected for this turn only. */
+      activatedSkillIds?: string[]
             /**
              * Called as soon as a session id exists. Waiting for the stream to
              * finish would lose the conversation on a refresh mid-answer.
@@ -560,6 +569,7 @@ export const useStore = create<State>((set, get) => ({
       projects: [],
       artifacts: [],
       skills: [],
+      availableTools: [],
       memories: [],
       agents: [],
       connectors: [],
@@ -617,6 +627,7 @@ export const useStore = create<State>((set, get) => ({
   projects: [],
   artifacts: [],
   skills: [],
+  availableTools: [],
   memories: [],
   agents: [],
   connectorCatalog: [],
@@ -640,8 +651,9 @@ export const useStore = create<State>((set, get) => ({
       agentsApi.list(),
       connectorsApi.list(),
       connectorsApi.catalog(),
+      toolsApi.list(),
     ])
-    const [projects, artifacts, skills, memories, agents, connectors, catalog] = results
+    const [projects, artifacts, skills, memories, agents, connectors, catalog, tools] = results
     // Something changed under us; that write already holds the truth.
     if (epoch !== workspaceEpoch) return
     set((s) => ({
@@ -655,6 +667,7 @@ export const useStore = create<State>((set, get) => ({
           ? artifacts.value.map(toArtifact)
           : s.artifacts,
       skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
+      availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
       memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
       agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
       connectors:
@@ -833,6 +846,12 @@ export const useStore = create<State>((set, get) => ({
   send: async (sessionId, kind, text, opts = {}) => {
     const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
     if (!sessionId) opts.onSession?.(id)
+    // Snapshot after a new empty session is created but before the optimistic
+    // turn. A 4xx means the API rejected before its first Message write, so
+    // every local bubble/artifact added for this attempt must be reversible.
+    const before = get().sessions.find((session) => session.id === id)
+    const beforeArtifactIds = new Set(get().artifacts.map((artifact) => artifact.id))
+    const beforeOpenArtifactId = get().openArtifactId
     const now = new Date().toISOString()
     // The conversation's own model wins; the surface default would undo the
     // in-session picker every turn.
@@ -859,47 +878,69 @@ export const useStore = create<State>((set, get) => ({
       ),
     }))
 
-    if (kind === 'report') {
-      await streamReport(set, get, id, text, model)
-      return id
-    }
+    const perform = async () => {
+      if (kind === 'report') {
+        await streamReport(set, get, id, text, model, opts.activatedSkillIds)
+        return id
+      }
 
-    if (kind === 'slides') {
-      await streamDeck(set, get, id, text, model)
-      return id
-    }
+      if (kind === 'slides') {
+        await streamDeck(set, get, id, text, model, opts.activatedSkillIds)
+        return id
+      }
 
-    if (kind === 'image') {
-      // The composer calls `generateImages` directly; this path only catches an
-      // image prompt routed through chat.
-      await get().generateImages(id, text, { projectId: opts.projectId ?? null })
-      return id
-    }
+      if (kind === 'image') {
+        // The composer calls `generateImages` directly; this path only catches an
+        // image prompt routed through chat.
+        await get().generateImages(id, text, { projectId: opts.projectId ?? null })
+        return id
+      }
 
-    if (kind !== 'chat') {
-      // Likewise: the composer calls `generateAudio`/`generateVideo` directly,
-      // since those are jobs rather than turns.
-      notBuiltYet(set, id, kind)
-      return id
-    }
+      if (kind !== 'chat') {
+        // Likewise: the composer calls `generateAudio`/`generateVideo` directly,
+        // since those are jobs rather than turns.
+        notBuiltYet(set, id, kind)
+        return id
+      }
 
-    if (get().streaming) return id
+      if (get().streaming) return id
 
-    if (kind === 'chat' && get().compareMode && get().compareModels.length >= 2) {
-      await runComparison(set, get, id, text)
-      return id
-    }
+      if (get().compareMode && get().compareModels.length >= 2) {
+        await runComparison(set, get, id, text, opts.activatedSkillIds)
+        return id
+      }
 
-    if (kind === 'chat') {
       await streamTurn(set, get, id, text, model, {
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
+        activatedSkillIds: opts.activatedSkillIds,
       })
       return id
     }
 
-    return id
+    try {
+      return await perform()
+    } catch (err) {
+      if (isClientRefusal(err) && before) {
+        set((state) => ({
+          // Keep the newly created, empty server session so the restored draft
+          // can be retried in place. Existing sessions return to their exact
+          // pre-attempt transcript, which prevents duplicate optimistic turns.
+          sessions: state.sessions.map((session) =>
+            session.id === id ? before : session,
+          ),
+          artifacts: state.artifacts.filter(
+            (artifact) =>
+              beforeArtifactIds.has(artifact.id) ||
+              artifact.sessionId !== id ||
+              !artifact.id.startsWith('a_'),
+          ),
+          openArtifactId: beforeOpenArtifactId,
+        }))
+      }
+      throw err
+    }
   },
 
   stopStreaming: () => get().abortStream?.(),
@@ -1454,6 +1495,7 @@ export const useStore = create<State>((set, get) => ({
       whenToUse: skill.whenToUse,
       body: (skill as Skill & { body?: string }).body ?? '',
       kinds: skill.kinds,
+      requiredTools: skill.requiredTools,
       enabled: skill.enabled,
     }
     const exists = get().skills.some((s) => s.id === skill.id)
@@ -1534,7 +1576,10 @@ export const useStore = create<State>((set, get) => ({
       model: a.model,
       systemPrompt: a.systemPrompt,
       tools: a.tools,
-      skillIds: a.skillIds,
+      skillIds:
+        a.skillIds === null
+          ? null
+          : a.skillIds.filter((id) => get().skills.some((skill) => skill.id === id)),
       kinds: a.kinds,
       temperature: a.temperature,
       color: a.color,
@@ -1720,7 +1765,39 @@ function toStep(raw: Record<string, unknown>): Step {
     // Carried through rather than dropped: a step that knows it is the third
     // of seven is the only thing on the surface that knows how much is left.
     progress: raw.progress as Step['progress'],
+    skills: raw.skills as Step['skills'],
+    estimatedTokens: raw.estimatedTokens as number | undefined,
   }
+}
+
+function appliedSkillsStep(event: {
+  skills: {
+    id: string
+    name: string
+    catalogKey: string | null
+    estimatedTokens: number
+  }[]
+  estimatedTokens: number
+}): Step {
+  return {
+    id: 'skills-applied',
+    type: 'thinking',
+    label: tr('스킬 {n}개 적용').replace('{n}', String(event.skills.length)),
+    status: 'done',
+    detail: `${event.skills.map((skill) => tr(skill.name)).join(' · ')} · ${tr('약 {n} 토큰').replace(
+      '{n}',
+      event.estimatedTokens.toLocaleString(),
+    )}`,
+    skills: event.skills,
+    estimatedTokens: event.estimatedTokens,
+  }
+}
+
+function upsertStep(steps: Step[] | undefined, step: Step): Step[] {
+  const current = steps ?? []
+  return current.some((item) => item.id === step.id)
+    ? current.map((item) => (item.id === step.id ? step : item))
+    : [...current, step]
 }
 
 function toMessage(raw: MessageRow): Message {
@@ -1847,6 +1924,10 @@ function toSkill(s: SkillRow): Skill {
     slug: s.slug,
     description: s.description,
     whenToUse: s.whenToUse,
+    body: s.body,
+    catalogKey: s.catalogKey,
+    requiredTools: s.requiredTools,
+    estimatedTokens: s.estimatedTokens,
     source: (s.source as Skill['source']) ?? 'personal',
     kinds: s.kinds as SessionKind[],
     enabled: s.enabled,
@@ -1889,6 +1970,7 @@ function toAgent(a: AgentRow): Agent {
     visibility: a.visibility as Agent['visibility'],
     installs: a.installs,
     runs: a.runs,
+    hasKnowledge: a.hasKnowledge,
     updatedAt: a.updatedAt,
   }
 }
@@ -1935,7 +2017,12 @@ async function streamTurn(
   sessionId: string,
   text: string,
   model: string,
-  opts: { webSearch?: boolean; attachments?: string[]; attachmentNames?: string[] } = {},
+  opts: {
+    webSearch?: boolean
+    attachments?: string[]
+    attachmentNames?: string[]
+    activatedSkillIds?: string[]
+  } = {},
 ) {
   const assistantId = uid('m')
   const controller = new AbortController()
@@ -1983,13 +2070,21 @@ async function streamTurn(
   try {
     for await (const event of streamSession(
       sessionId,
-      { content: text, webSearch: opts.webSearch, attachments: opts.attachments },
+      {
+        content: text,
+        webSearch: opts.webSearch,
+        attachments: opts.attachments,
+        activatedSkillIds: opts.activatedSkillIds,
+      },
       controller.signal,
     )) {
       switch (event.type) {
         case 'delta':
           if (live) patch((m) => ({ ...m, content: m.content + event.text }))
           else buffered += event.text
+          break
+        case 'skills_applied':
+          patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
         case 'artifact':
           // Load it and open the panel, as opening a session with an artifact
@@ -2039,6 +2134,12 @@ async function streamTurn(
     // Abort is the stop button doing its job, not a failure.
     if (err instanceof DOMException && err.name === 'AbortError') {
       settled = true
+    } else if (isClientRefusal(err)) {
+      settled = true
+      patch((m) => ({ ...m, error: errorMessage(err, tr('요청을 처리하지 못했습니다.')) }))
+      // HTTP refusal means the server did not store the turn. Let the
+      // composer restore its draft, attachments, and one-turn skill choice.
+      throw err
     } else {
       settled = true
       patch((m) => ({ ...m, error: '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.' }))
@@ -2059,7 +2160,13 @@ async function streamTurn(
  * The columns arrive interleaved on one connection, so the merged stream is
  * reduced here. Billing is counted by the server.
  */
-async function runComparison(set: Set, get: Get, sessionId: string, text: string) {
+async function runComparison(
+  set: Set,
+  get: Get,
+  sessionId: string,
+  text: string,
+  activatedSkillIds?: string[],
+) {
   const models = get().compareModels
   const assistantId = uid('m')
   const variants: Variant[] = models.map((model) => ({ model, content: '', status: 'streaming' }))
@@ -2104,7 +2211,11 @@ async function runComparison(set: Set, get: Get, sessionId: string, text: string
   const controller = new AbortController()
   set({ abortStream: () => controller.abort() })
   try {
-    for await (const e of streamComparison(sessionId, { content: text, models }, controller.signal)) {
+    for await (const e of streamComparison(
+      sessionId,
+      { content: text, models, activatedSkillIds },
+      controller.signal,
+    )) {
       if (e.type === 'variant') {
         const current = get()
           .sessions.find((c) => c.id === sessionId)
@@ -2122,12 +2233,18 @@ async function runComparison(set: Set, get: Get, sessionId: string, text: string
         })
       } else if (e.type === 'done') {
         chargeCredits(set, get, e.credits ?? 0)
+      } else if (e.type === 'skills_applied') {
+        patchMessage(set, sessionId, assistantId, (message) => ({
+          ...message,
+          steps: upsertStep(message.steps, appliedSkillsStep(e)),
+        }))
       }
     }
   } catch (err) {
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       for (const m of models) patch(m, { status: 'error' })
     }
+    if (isClientRefusal(err)) throw err
   } finally {
     set({ streaming: false, abortStream: null })
     void get().loadSessions()
@@ -2147,6 +2264,7 @@ async function streamReport(
   sessionId: string,
   text: string,
   model: string,
+  activatedSkillIds?: string[],
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -2198,8 +2316,18 @@ async function streamReport(
   let settled = false
 
   try {
-    for await (const e of streamSession(sessionId, { content: text, model }, controller.signal)) {
+    for await (const e of streamSession(
+      sessionId,
+      { content: text, model, activatedSkillIds },
+      controller.signal,
+    )) {
       switch (e.type) {
+        case 'skills_applied':
+          patchMessage(set, sessionId, assistantId, (message) => ({
+            ...message,
+            steps: upsertStep(message.steps, appliedSkillsStep(e)),
+          }))
+          break
         // The outline names the document; until then the draft carries the
         // request, which is a prompt rather than a title.
         case 'title':
@@ -2279,9 +2407,10 @@ async function streamReport(
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: '보고서를 만들지 못했습니다.',
+        error: errorMessage(err, '보고서를 만들지 못했습니다.'),
       }))
     }
+    if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
     set({ streaming: false, abortStream: null })
@@ -2293,7 +2422,14 @@ async function streamReport(
  * A slides turn. Slides fill into a local draft, which is replaced by the
  * server's copy when the turn ends.
  */
-async function streamDeck(set: Set, get: Get, sessionId: string, text: string, model: string) {
+async function streamDeck(
+  set: Set,
+  get: Get,
+  sessionId: string,
+  text: string,
+  model: string,
+  activatedSkillIds?: string[],
+) {
   const draftId = uid('a')
   const assistantId = uid('m')
   const now = new Date().toISOString()
@@ -2340,8 +2476,18 @@ async function streamDeck(set: Set, get: Get, sessionId: string, text: string, m
   let settled = false
 
   try {
-    for await (const e of streamSession(sessionId, { content: text, model }, controller.signal)) {
+    for await (const e of streamSession(
+      sessionId,
+      { content: text, model, activatedSkillIds },
+      controller.signal,
+    )) {
       switch (e.type) {
+        case 'skills_applied':
+          patchMessage(set, sessionId, assistantId, (message) => ({
+            ...message,
+            steps: upsertStep(message.steps, appliedSkillsStep(e)),
+          }))
+          break
         // The outline step names the deck. Until it lands the draft carries the
         // request itself, which is a prompt rather than a title.
         case 'title':
@@ -2406,9 +2552,10 @@ async function streamDeck(set: Set, get: Get, sessionId: string, text: string, m
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: '슬라이드를 만들지 못했습니다.',
+        error: errorMessage(err, '슬라이드를 만들지 못했습니다.'),
       }))
     }
+    if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
     set({ streaming: false, abortStream: null })

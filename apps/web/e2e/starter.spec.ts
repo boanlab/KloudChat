@@ -67,13 +67,13 @@ test('템플릿을 고르면 보내지 않고 입력창에 채워진다', async 
 
   await page.getByRole('button', { name: '템플릿에서 시작' }).click()
   // The card shows what you have to bring, not the prompt it will paste.
-  await expect(page.getByRole('dialog').getByText('과제 리포트')).toBeVisible()
-  await expect(page.getByRole('dialog').getByText('인용 형식', { exact: true })).toBeVisible()
-  await page.getByRole('dialog').getByText('과제 리포트').click()
+  await expect(page.getByRole('dialog').getByText('업무·기술 보고서')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText('독자', { exact: true })).toBeVisible()
+  await page.getByRole('dialog').getByText('업무·기술 보고서').click()
 
   // Filled, not sent. Every template stops where the person takes over, so
   // sending one delivered a sentence that ended at a colon.
   const box = page.getByLabel('프롬프트 입력')
-  await expect(box).toHaveValue(/주제: $/)
+  await expect(box).toHaveValue(/목적과 독자: $/)
   await expect(page).toHaveURL(/\/new\/report$/)
 })

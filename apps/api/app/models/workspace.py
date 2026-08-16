@@ -189,10 +189,11 @@ class SkillSource(StrEnum):
 
 
 class Skill(SQLModel, table=True):
-    """A named procedure injected into the system turn when enabled.
+    """An installed procedure that may be activated for one turn.
 
     `when_to_use` is its own column because it is what the model reads to decide
-    whether the skill applies.
+    whether the skill applies. `enabled` means installed/available; it never
+    means "inject this into every prompt".
     """
 
     __tablename__ = "skills"
@@ -205,8 +206,14 @@ class Skill(SQLModel, table=True):
     when_to_use: str = Field(default="")
     #: The procedure itself — the body of SKILL.md.
     body: str = Field(default="")
+    #: Stable identity for a shipped skill. Null for user-authored skills.
+    catalog_key: str | None = Field(default=None)
     source: SkillSource = Field(default=SkillSource.personal)
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Tool names that must survive the agent's hard allowlist for this skill.
+    required_tools: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Approximate prompt cost displayed before a user activates the skill.
+    estimated_tokens: int = Field(default=0)
     version: str = Field(default="1.0.0")
     enabled: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -258,8 +265,11 @@ class Agent(SQLModel, table=True):
     description: str = Field(default="")
     model: str = Field(default="")
     system_prompt: str = Field(default="")
-    #: Tool names this agent may call. Empty list means "everything available".
+    #: Tool names this agent may call. Null inherits the user's available tools;
+    #: an empty list denies every tool; a populated list is a hard allowlist.
     tools: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Same three-state contract as tools: null inherits turn selection, []
+    #: denies skills, and values form a hard allowlist.
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
     temperature: float = Field(default=0.7)

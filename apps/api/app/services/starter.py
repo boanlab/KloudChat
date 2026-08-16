@@ -13,10 +13,12 @@ Deliberately small: a list you can read rather than a catalogue you scroll past.
 from __future__ import annotations
 
 import re
+from math import ceil
 
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.models.user import User
 from app.models.workspace import Agent, Skill, SkillSource
 
 #: Agents reference skills by this key, rewritten to real ids once the rows
@@ -30,12 +32,15 @@ _SKILLS: list[dict] = [
             "제출용 글에서 인용 형식이 정해져 있을 때. 형식이 지정되지 않았으면 먼저 묻는다."
         ),
         "kinds": ["chat", "report", "slides"],
+        "version": "1.1.0",
         "body": """어떤 형식인지 먼저 확인한다. 지정이 없으면 묻고, 추측하지 않는다.
 
 - **본문 인용**과 **참고문헌 목록**을 함께 맞춘다. 하나만 고치면 형식이 어긋난다.
 - 저자·연도·제목·출처 중 **모르는 항목은 비워 두고 무엇이 없는지 적는다.** 지어낸
   서지 정보는 형식이 맞아도 인용이 아니다.
-- 원문을 확인하지 못한 자료는 "확인 필요" 로 표시한다.
+- 원문이나 제공된 검색 결과에서 확인한 자료만 "확인됨" 으로 적는다. 제목·URL만
+  본 자료와 원문을 읽은 자료를 구분하고, 확인하지 못한 자료는 "확인 필요" 로 표시한다.
+- 인용문은 원문과 대조하고, 요약은 원문이 실제로 그 주장을 뒷받침하는지 확인한다.
 - 같은 저자의 같은 해 자료가 둘이면 a·b 를 붙인다.""",
     },
     {
@@ -44,13 +49,62 @@ _SKILLS: list[dict] = [
         "description": "글에 등장하는 모든 숫자에 출처를 달고, 없는 것은 표시합니다.",
         "when_to_use": "보고서·발표처럼 수치가 남의 판단 근거가 되는 글을 쓸 때.",
         "kinds": ["chat", "report", "slides"],
+        "version": "1.1.0",
         "body": """수치는 근거가 붙어야 수치다.
 
 - 모든 숫자에 **어디서 왔는지**를 적는다 — 첨부 파일명, URL, 계산식 중 하나.
 - 근거가 없으면 **숫자를 쓰지 않는다.** "상당히", "대부분" 으로 바꾸거나 아예 뺀다.
   그럴듯한 자리에 그럴듯한 숫자를 넣는 것이 가장 흔한 실패다.
-- 직접 계산한 값은 계산식을 함께 남긴다.
+- 직접 계산한 값은 입력값·계산식·반올림 규칙을 함께 남긴다. 코드로 계산했다면 실행한
+  코드와 핵심 출력을 provenance 로 적고, 출처의 원자료와 계산 결과를 구분한다.
 - 단위와 기준 시점을 반드시 밝힌다. "40% 증가" 는 무엇 대비인지 없으면 뜻이 없다.""",
+    },
+    {
+        "key": "calculation-unit-check",
+        "name": "계산·단위 검증",
+        "description": "계산식과 단위, 분모, 기준 시점을 코드로 검산하고 근거를 남깁니다.",
+        "when_to_use": "답이나 문서의 수치가 의사결정 근거가 되거나 단위 변환이 포함될 때.",
+        "kinds": ["chat"],
+        "required_tools": ["execute_code"],
+        "body": """수치를 설명하기 전에 `execute_code` 로 실제 계산을 재현한다.
+
+1. 입력값마다 출처·단위·기준 시점을 적는다. 주어진 값과 가정한 값을 구분한다.
+2. 분모와 기준선이 무엇인지 먼저 확인한다. 0 또는 결측이면 계산을 중단하고 알린다.
+3. 변환식을 코드로 실행하고 중간값과 최종값을 출력한다.
+4. 퍼센트와 퍼센트포인트, 평균과 중앙값, 명목값과 실질값을 섞지 않는다.
+5. 답에는 입력값 → 식 → 결과 → 반올림 규칙 순서로 provenance 를 짧게 남긴다.
+
+도구를 실행하지 못했으면 검산했다고 쓰지 말고, 필요한 계산과 미검증 상태를 밝힌다.""",
+    },
+    {
+        "key": "decision-memo",
+        "name": "의사결정 메모",
+        "description": "대안과 판단 기준을 비교해 권고안, 리스크, 다음 행동으로 정리합니다.",
+        "when_to_use": "여러 선택지 중 하나를 결정하거나 승인받기 위한 짧은 문서를 만들 때.",
+        "kinds": ["chat", "report", "slides"],
+        "body": """결론을 숨기지 않는 의사결정 메모로 쓴다.
+
+1. 결정해야 할 질문과 결정 기한을 한 문장으로 적는다.
+2. 현실적인 대안 2~4개와 "현상 유지"를 같은 기준으로 비교한다.
+3. 기준별 근거와 불확실성을 구분하고, 근거 없는 점수는 만들지 않는다.
+4. 권고안을 먼저 밝힌 뒤 기대효과, 비용, 되돌리기 어려운 점을 적는다.
+5. 주요 리스크마다 완화책·담당·재검토 조건을 붙인다.
+6. 마지막은 승인할 항목과 즉시 실행할 다음 행동으로 끝낸다.""",
+    },
+    {
+        "key": "audience-risk-review",
+        "name": "독자별 리스크 검토",
+        "description": "같은 결과물을 경영·보안·비기술 이해관계자의 질문으로 검토합니다.",
+        "when_to_use": "보고서·제안·발표를 배포하거나 의사결정자에게 올리기 직전.",
+        "kinds": ["chat", "report", "slides"],
+        "body": """본문을 다시 쓰기 전에 독자별로 걸리는 지점을 찾는다.
+
+- **경영 관점:** 비용·효과·일정·책임자가 분명한가. 결정을 위해 빠진 정보는 무엇인가.
+- **보안·리스크 관점:** 데이터 경계, 권한, 실패 시 영향과 복구 방법이 적혀 있는가.
+- **비기술 독자 관점:** 전문용어 없이 핵심 결정과 영향을 이해할 수 있는가.
+
+각 지적은 `독자 / 문제 / 왜 중요한가 / 최소 수정안`으로 적는다. 문서에 없는 위험을
+사실처럼 단정하지 말고 확인 질문으로 표시한다. 치명적인 누락을 먼저, 문체는 마지막에 본다.""",
     },
     {
         "key": "official",
@@ -122,6 +176,25 @@ _SKILLS: list[dict] = [
     },
 ]
 
+# Exact procedures shipped before catalogue metadata existed. They are used
+# only to recognise an untouched v1 row: a user-edited body is never replaced.
+_LEGACY_CATALOG_BODIES = {
+    ("citation", "1.0.0"): """어떤 형식인지 먼저 확인한다. 지정이 없으면 묻고, 추측하지 않는다.
+
+- **본문 인용**과 **참고문헌 목록**을 함께 맞춘다. 하나만 고치면 형식이 어긋난다.
+- 저자·연도·제목·출처 중 **모르는 항목은 비워 두고 무엇이 없는지 적는다.** 지어낸
+  서지 정보는 형식이 맞아도 인용이 아니다.
+- 원문을 확인하지 못한 자료는 "확인 필요" 로 표시한다.
+- 같은 저자의 같은 해 자료가 둘이면 a·b 를 붙인다.""",
+    ("evidence", "1.0.0"): """수치는 근거가 붙어야 수치다.
+
+- 모든 숫자에 **어디서 왔는지**를 적는다 — 첨부 파일명, URL, 계산식 중 하나.
+- 근거가 없으면 **숫자를 쓰지 않는다.** "상당히", "대부분" 으로 바꾸거나 아예 뺀다.
+  그럴듯한 자리에 그럴듯한 숫자를 넣는 것이 가장 흔한 실패다.
+- 직접 계산한 값은 계산식을 함께 남긴다.
+- 단위와 기준 시점을 반드시 밝힌다. "40% 증가" 는 무엇 대비인지 없으면 뜻이 없다.""",
+}
+
 #: `skills` holds `_SKILLS` keys; the seeder swaps them for row ids.
 _AGENTS: list[dict] = [
     {
@@ -165,7 +238,7 @@ _AGENTS: list[dict] = [
             "- 상관을 인과로 쓰지 않는다."
         ),
         "kinds": ["chat", "report"],
-        "skills": ["evidence"],
+        "skills": ["evidence", "calculation-unit-check"],
         "tools": ["execute_code", "create_chart", "create_artifact"],
         "color": "#e8834a",
         "temperature": 0.2,
@@ -211,7 +284,12 @@ _AGENTS: list[dict] = [
             "- 확인되지 않은 성과 수치를 쓰지 않는다. 발표장에서 되묻히는 것이 그 숫자다."
         ),
         "kinds": ["chat", "slides"],
-        "skills": ["speaker-notes", "evidence"],
+        "skills": [
+            "speaker-notes",
+            "evidence",
+            "decision-memo",
+            "audience-risk-review",
+        ],
         "color": "#5b5bd6",
         "temperature": 0.5,
     },
@@ -242,23 +320,23 @@ _AGENTS: list[dict] = [
             "- 가정과 정의역을 먼저 밝힌다. 나눗셈이 있으면 분모가 0 이 되는 경우를 짚는다."
         ),
         "kinds": ["chat", "report"],
-        "skills": ["terms"],
+        "skills": ["terms", "calculation-unit-check"],
         "tools": ["execute_code", "create_artifact"],
         "color": "#e8834a",
         "temperature": 0.1,
     },
     {
         "name": "리포트 도우미",
-        "description": "과제 리포트를 구조부터 잡아 함께 씁니다.",
+        "description": "업무·기술 보고서를 구조부터 잡아 근거 중심으로 작성합니다.",
         "system_prompt": (
-            "너는 학부 과제 리포트를 돕는다. 대신 써 주는 것이 아니라 쓰게 돕는다.\n\n"
-            "- 먼저 **무엇을 주장할 글인지** 한 문장으로 정하게 한다. 그것 없이 목차를\n"
-            "  먼저 만들면 항목만 늘어난다.\n"
+            "너는 업무·기술 보고서 작성을 돕는다. 읽는 사람이 판단하고 행동할 수 있게 쓴다.\n\n"
+            "- 먼저 **보고 목적과 독자, 필요한 결정**을 한 문장으로 정한다. 그것 없이\n"
+            "  목차를 먼저 만들면 항목만 늘어난다.\n"
             "- 인용 없이 단정하는 문장을 발견하면 표시한다.\n"
-            "- 제출 형식(분량·인용 양식·마감)을 모르면 묻는다."
+            "- 분량·양식·기한을 모르면 묻고, 담당자와 다음 행동을 결론에 남긴다."
         ),
         "kinds": ["chat", "report"],
-        "skills": ["citation", "evidence"],
+        "skills": ["citation", "evidence", "decision-memo", "audience-risk-review"],
         "color": "#2ea88a",
         "temperature": 0.5,
     },
@@ -270,25 +348,79 @@ def _slug(name: str) -> str:
     return base[:60] or "item"
 
 
-async def seed(db: AsyncSession, user_id: str) -> int:
-    """Gives one account its starting agents and skills.
+def _estimated_tokens(spec: dict) -> int:
+    """Cheap, stable estimate for the selector; exact tokenisation is model-specific."""
+    text = f"{spec.get('when_to_use', '')}\n{spec.get('body', '')}".strip()
+    return max(1, ceil(len(text) / 3.5)) if text else 0
 
-    Idempotent by name, so a re-run neither duplicates rows nor overwrites
-    edits. The caller commits.
-    """
-    existing = (
-        await db.exec(select(func.count()).select_from(Agent).where(Agent.owner_id == user_id))
-    ).one()
-    if existing:
-        return 0
 
-    taken = set(
-        (await db.exec(select(Skill.name).where(col(Skill.owner_id) == user_id))).all()
+def estimate_tokens(when_to_use: str, body: str, description: str = "") -> int:
+    return _estimated_tokens(
+        {"when_to_use": when_to_use, "body": body or description}
     )
 
+
+# Before `catalog_key` existed, shipped rows still had deterministic slugs.
+# This one-time map upgrades those rows without claiming a personal skill that
+# merely happens to share a display name.
+_LEGACY_CATALOG_KEYS = {
+    _slug(spec["name"]): spec["key"] for spec in _SKILLS
+}
+
+
+async def seed(
+    db: AsyncSession, user_id: str, *, include_agents: bool = True
+) -> int:
+    """Gives one account its starting agents and skills.
+
+    Idempotent by stable catalogue key and version. Missing catalogue rows and
+    metadata are filled, while user-edited procedures are never overwritten.
+    The caller commits.
+    """
+    # Serialise syncs for one account. Two browser logins can arrive together;
+    # without the row lock both see a missing key and one loses to the unique
+    # index, turning an otherwise valid login into a 500.
+    await db.exec(select(User.id).where(User.id == user_id).with_for_update())
+    existing_agents = (
+        await db.exec(select(func.count()).select_from(Agent).where(Agent.owner_id == user_id))
+    ).one()
+    existing_skills = list(
+        (await db.exec(select(Skill).where(col(Skill.owner_id) == user_id))).all()
+    )
+    by_catalog = {s.catalog_key: s for s in existing_skills if s.catalog_key}
+    legacy_builtins = {
+        _LEGACY_CATALOG_KEYS[s.slug]: s
+        for s in existing_skills
+        if s.source == SkillSource.built_in and s.slug in _LEGACY_CATALOG_KEYS
+    }
+
     ids: dict[str, str] = {}
+    made = 0
     for spec in _SKILLS:
-        if spec["name"] in taken:
+        key = spec["key"]
+        skill = by_catalog.get(key) or legacy_builtins.get(key)
+        if skill is not None:
+            # Metadata can be filled safely without touching a procedure the
+            # account may have edited. An exact untouched v1 body can receive a
+            # strengthened catalogue procedure; custom bodies retain their
+            # original version instead of pretending they were upgraded.
+            skill.catalog_key = key
+            if skill.required_tools is None:
+                skill.required_tools = list(spec.get("required_tools", []))
+            previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
+            upgraded = bool(
+                previous
+                and skill.body.strip() == previous.strip()
+            )
+            if upgraded:
+                skill.body = spec["body"]
+                skill.version = spec.get("version", "1.0.0")
+            if upgraded or not skill.estimated_tokens:
+                skill.estimated_tokens = estimate_tokens(
+                    skill.when_to_use, skill.body, skill.description
+                )
+            db.add(skill)
+            ids[key] = skill.id
             continue
         skill = Skill(
             owner_id=user_id,
@@ -297,15 +429,25 @@ async def seed(db: AsyncSession, user_id: str) -> int:
             description=spec["description"],
             when_to_use=spec["when_to_use"],
             body=spec["body"],
+            catalog_key=key,
             kinds=spec["kinds"],
+            required_tools=spec.get("required_tools", []),
+            estimated_tokens=_estimated_tokens(spec),
+            version=spec.get("version", "1.0.0"),
             # Marked built-in, so the screen can tell a starting point from
             # something the user wrote.
             source=SkillSource.built_in,
         )
         db.add(skill)
-        ids[spec["key"]] = skill.id
+        ids[key] = skill.id
+        made += 1
 
-    made = 0
+    # Existing-account catalogue sync never recreates agents, including when a
+    # user intentionally deleted every starter agent. Signup and approval pass
+    # the default flag and still receive the initial set once.
+    if not include_agents or existing_agents:
+        return made
+
     for spec in _AGENTS:
         agent = Agent(
             owner_id=user_id,
@@ -326,4 +468,19 @@ async def seed(db: AsyncSession, user_id: str) -> int:
     return made
 
 
-__all__ = ["seed"]
+async def sync_catalog(db: AsyncSession, user_id: str) -> int:
+    """Install/backfill shipped skills without changing the user's agents."""
+    return await seed(db, user_id, include_agents=False)
+
+
+def runtime_metadata(skill: Skill) -> dict:
+    """Persisted runtime contract with a safe estimate for legacy rows."""
+    return {
+        "catalog_key": skill.catalog_key,
+        "required_tools": list(skill.required_tools or []),
+        "estimated_tokens": skill.estimated_tokens
+        or estimate_tokens(skill.when_to_use, skill.body, skill.description),
+    }
+
+
+__all__ = ["estimate_tokens", "runtime_metadata", "seed", "sync_catalog"]
