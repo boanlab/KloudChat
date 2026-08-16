@@ -30,6 +30,10 @@
   --success: #0a7048;
   --warn: #8a5300;
   --danger: #b4322a;
+
+  --elevation-1: 0 1px 2px rgb(16 24 48 / 0.06);
+  --elevation-2: 0 4px 12px rgb(16 24 48 / 0.08);
+  --elevation-3: 0 12px 30px rgb(16 24 48 / 0.14);
 }
 
 .dark {
@@ -51,6 +55,12 @@
   --success: #4fbf8c;
   --warn: #e0a44a;
   --danger: #f0736a;
+
+  /* Depth on a dark ground comes from the shadow being darker than the
+     surface, which needs far more opacity than the same step in light. */
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.3);
+  --elevation-2: 0 4px 14px rgb(0 0 0 / 0.38);
+  --elevation-3: 0 14px 36px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
@@ -71,9 +81,47 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Pretendard',
-    'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-sans: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  /**
+   * The type scale, which is Tailwind's names over this app's sizes. A dense
+   * workspace reads a step smaller than Tailwind's defaults throughout — body
+   * text here is 13px, not 16px — so the defaults were never used and 438
+   * arbitrary values grew in their place.
+   *
+   * Line heights are unitless so each step keeps its own ratio: tighter as the
+   * text gets larger, looser at the sizes used for metadata.
+   */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 1.4;
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.75rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.8125rem;
+  --text-base--line-height: 1.55;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.6;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.5;
+
+  /**
+   * Radius and elevation by role rather than by size, so the choice at a call
+   * site is "what is this" and not "how round". Role names also keep these
+   * clear of Tailwind's own `rounded-md`/`shadow-lg`, which the tree still
+   * uses for the few cases that are genuinely about size.
+   */
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-panel: 1rem;
+
+  --shadow-raised: var(--elevation-1);
+  --shadow-overlay: var(--elevation-2);
+  --shadow-float: var(--elevation-3);
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html,
