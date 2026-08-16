@@ -62,6 +62,11 @@ export interface ModelInfo {
   vendor: string
   /** LiteLLM routing provider (`hosted_vllm`, `openrouter`, …). */
   provider: string
+  /** Explicit proxy declaration. Missing metadata is unknown, never inferred
+   * from a model id or provider name. */
+  dataBoundary: 'self_hosted' | 'hybrid' | 'external' | 'unknown'
+  strictLocal: boolean
+  privacyOnly: boolean
   modality: Modality
   /** Video only: credits per second, keyed `<resolution>:<sound|silent>`. */
   creditPerSecond?: Record<string, number>
@@ -124,6 +129,31 @@ export interface Preferences {
   autoMemory: boolean
   /** The model · token · credit line under each answer. */
   showUsage: boolean
+  privacyDefaultAction: PrivacyAction | 'ask'
+}
+
+export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'
+
+export interface PrivacyRouting {
+  requestedModels: string[]
+  routedModels: string[]
+  effectiveModels: string[]
+  actualModels: string[]
+  actualModel?: string
+  action: PrivacyAction | 'strict_local' | 'none'
+  dataBoundary: ModelInfo['dataBoundary'] | 'mixed'
+  modelRoutes?: {
+    routedModel: string
+    actualModel: string | null
+    dataBoundary: ModelInfo['dataBoundary']
+  }[]
+  detectorVersion?: string
+  policyVersion?: string
+  findingCounts?: { category: string; source: string; count: number }[]
+  compareCollapsed?: boolean
+  toolOutputMasked?: number
+  toolOutputFindings?: { category: string; source: string; count: number }[]
+  initialAction?: PrivacyAction | 'strict_local' | 'none'
 }
 
 export type Role = 'user' | 'assistant' | 'system'
@@ -153,6 +183,9 @@ export interface Step {
 /** One model's answer inside a comparison turn. */
 export interface Variant {
   model: string
+  routedModel?: string
+  actualModel?: string
+  dataBoundary?: ModelInfo['dataBoundary']
   content: string
   status: 'streaming' | 'done' | 'error'
   usage?: { inputTokens: number; outputTokens: number; credits: number }
@@ -168,6 +201,7 @@ export interface Message {
   variants?: Variant[]
   createdAt: string
   model?: string
+  routing?: PrivacyRouting
   steps?: Step[]
   artifactIds?: string[]
   attachments?: { name: string; size: string; type: string }[]

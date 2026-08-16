@@ -83,6 +83,10 @@ class Message(SQLModel, table=True):
     #: ordinary turn, which is every turn that did not go through /compare.
     variants: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
+    #: Requested/effective model and privacy action. Contains no prompt text or
+    #: detected value, and is safe to return with the transcript.
+    routing: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+
     model: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 

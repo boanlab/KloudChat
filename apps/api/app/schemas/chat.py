@@ -18,6 +18,7 @@ class MessageOut(Wire):
     usage: dict | None = None
     variants: list | None = None
     model: str | None = None
+    routing: dict | None = None
     created_at: datetime
 
     @classmethod
@@ -161,6 +162,11 @@ class CompareRequest(Wire):
     models: list[str] = Field(min_length=2, max_length=3)
     #: Installed skills explicitly selected for this one comparison.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    attachments: list[str] | None = None
+    privacy_action: Literal[
+        "route_strict_local", "mask_external", "send_raw_external"
+    ] | None = None
+    privacy_decision_token: str | None = Field(default=None, max_length=4000)
 
 
 class ChooseVariant(Wire):
@@ -185,3 +191,7 @@ class SendMessage(Wire):
     #: Installed skills explicitly selected for this one turn. Empty means no
     #: skill; installation alone never injects a procedure.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    privacy_action: Literal[
+        "route_strict_local", "mask_external", "send_raw_external"
+    ] | None = None
+    privacy_decision_token: str | None = Field(default=None, max_length=4000)

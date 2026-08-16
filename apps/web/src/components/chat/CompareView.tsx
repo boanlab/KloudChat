@@ -51,6 +51,22 @@ export function CompareView({
               <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
                 {info?.label ?? v.model}
               </span>
+              {v.dataBoundary && (
+                <Badge tone={v.dataBoundary === 'self_hosted' ? 'success' : 'warn'}>
+                  {v.dataBoundary === 'self_hosted'
+                    ? 'self-hosted'
+                    : v.dataBoundary === 'hybrid'
+                      ? t('외부 전환 가능')
+                      : v.dataBoundary === 'external'
+                        ? t('외부 제공')
+                        : t('경계 미확인')}
+                </Badge>
+              )}
+              {v.actualModel && v.actualModel !== (v.routedModel ?? v.model) && (
+                <Badge className="max-w-32 truncate" title={v.actualModel}>
+                  {t('실행')}: {v.actualModel}
+                </Badge>
+              )}
               {v.status === 'streaming' && (
                 <Loader2 size={12} className="shrink-0 animate-spin text-accent" />
               )}

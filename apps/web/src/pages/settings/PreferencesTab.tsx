@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui'
+import { authConfig } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { Preferences } from '@/types'
@@ -14,7 +16,15 @@ export function PreferencesTab() {
   const t = useT()
   const { models, modelByKind, setModel, user, updateProfile } = useStore()
   const prefs = user?.preferences
+  const [allowRawExternal, setAllowRawExternal] = useState<boolean | null>(null)
   const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
+
+  useEffect(() => {
+    void authConfig
+      .get()
+      .then((config) => setAllowRawExternal(config.privacy.allowUserRawExternal))
+      .catch(() => setAllowRawExternal(null))
+  }, [])
 
   return (
     <div className="space-y-8">
@@ -50,6 +60,39 @@ export function PreferencesTab() {
             )
           })}
         </div>
+      </section>
+
+      <section className="space-y-3 border-t border-line pt-6">
+        <div>
+          <h2 className="text-[13px] font-semibold">{t('개인정보가 감지된 요청')}</h2>
+          <p className="text-xs text-muted">
+            {t('외부 모델로 전송하기 전에 서버가 전체 대화 맥락을 검사하고 이 동작을 적용합니다.')}
+          </p>
+        </div>
+        <label className="block max-w-xl space-y-1.5">
+          <span className="text-[13px] font-medium">{t('기본 처리 방법')}</span>
+          <select
+            value={
+              prefs?.privacyDefaultAction === 'send_raw_external' && allowRawExternal === false
+                ? 'ask'
+                : (prefs?.privacyDefaultAction ?? 'ask')
+            }
+            onChange={(event) =>
+              set({ privacyDefaultAction: event.target.value as Preferences['privacyDefaultAction'] })
+            }
+            className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm focus:border-accent focus:outline-none"
+          >
+            <option value="ask">{t('매번 확인')}</option>
+            <option value="route_strict_local">{t('strict-local 모델로 전환')}</option>
+            <option value="mask_external">{t('개인정보를 가린 뒤 기존 모델 사용')}</option>
+            {allowRawExternal === true && (
+              <option value="send_raw_external">{t('원문을 외부 모델로 전송')}</option>
+            )}
+          </select>
+          <span className="block text-xs text-faint">
+            {t('모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
+          </span>
+        </label>
       </section>
 
       <section className="space-y-3 border-t border-line pt-6">

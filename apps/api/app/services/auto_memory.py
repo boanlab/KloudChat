@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 
 import httpx
 from sqlmodel import select
@@ -97,6 +98,9 @@ async def extract(
     assistant_message: str,
     api_key: str,
     model: str,
+    masker: Callable[[str], tuple[str, int]] | None = None,
+    strict_local: bool = False,
+    redact_logging: bool = False,
 ) -> int:
     """Writes any new facts and returns how many. Caller commits."""
     if not user_message.strip() or not assistant_message.strip():
@@ -105,27 +109,45 @@ async def extract(
     existing = (await db.exec(select(Memory).where(Memory.user_id == user.id))).all()
     if len(existing) >= _MAX_TOTAL:
         # Past this size the store stops helping and needs pruning by hand.
-        log.info("auto-memory skipped for %s: %d memories already", user.email, len(existing))
+        log.info("auto-memory skipped for user %s: %d memories already", user.id, len(existing))
         return 0
     seen = [(_norm(m.body or m.name), _shingles(m.body or m.name)) for m in existing]
 
     base, _ = await settings_store.litellm_config()
     # Newest first — the prompt has room for a few dozen.
     recent = sorted(existing, key=lambda m: m.updated_at, reverse=True)[:40]
+    sensitive = redact_logging
+
+    def protected(value: str) -> str:
+        nonlocal sensitive
+        if masker is None:
+            return value
+        value, count = masker(value)
+        sensitive = sensitive or bool(count)
+        return value
+
+    known_values = [protected(m.body or m.name) for m in recent]
     known = (
-        "\n[이미 알고 있는 사실]\n" + "\n".join(f"- {m.body or m.name}" for m in recent) + "\n"
-        if recent
+        "\n[이미 알고 있는 사실]\n" + "\n".join(f"- {value}" for value in known_values) + "\n"
+        if known_values
         else ""
     )
     prompt = _PROMPT % {
-        "user": user_message[:2000],
-        "assistant": assistant_message[:2000],
+        "user": protected(user_message)[:2000],
+        "assistant": protected(assistant_message)[:2000],
         "known": known,
     }
     try:
         async with httpx.AsyncClient(
             base_url=base.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                **(
+                    {"x-litellm-enable-message-redaction": "true"}
+                    if sensitive
+                    else {}
+                ),
+            },
             timeout=settings.title_timeout_sec,
         ) as client:
             response = await client.post(
@@ -135,6 +157,7 @@ async def extract(
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                     "max_tokens": 300,
+                    **({"disable_fallbacks": True} if strict_local else {}),
                 },
             )
             response.raise_for_status()
@@ -158,8 +181,8 @@ async def extract(
     for item in items[:_MAX_PER_TURN]:
         if not isinstance(item, dict):
             continue
-        name = str(item.get("name") or "").strip()[:80]
-        body = str(item.get("body") or "").strip()[:500]
+        name = protected(str(item.get("name") or "").strip())[:80]
+        body = protected(str(item.get("body") or "").strip())[:500]
         if not name or not body or _is_duplicate(body, seen):
             continue
         seen.append((_norm(body), _shingles(body)))

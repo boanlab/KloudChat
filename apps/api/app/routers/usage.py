@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import Integer, cast, func
 from sqlmodel import col, select
 
@@ -22,6 +22,7 @@ from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, 
 from app.schemas.admin import GovernanceIn
 from app.services import governance, settings_store
 from app.services import litellm as litellm_service
+from app.services import models as model_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 #: The same numbers scoped to the caller. Its own router, so a forgotten admin
@@ -367,6 +368,7 @@ async def audit_log(
             "action": r.action,
             "target": r.target,
             "detail": r.detail,
+            "metadata": r.event_metadata,
             "ip": r.ip,
             "severity": r.severity,
         }
@@ -378,8 +380,21 @@ async def audit_log(
 async def get_governance(admin: AdminUser, db: DbSession):
     policy = await db.get(Governance, "default")
     policy = policy or Governance()
+    catalogue = await model_service.list_models()
+    configured_safe_ids = set(policy.privacy_safe_model_ids or [])
+    ordered_safe_ids = [
+        model["id"]
+        for model in catalogue["models"]
+        if model["id"] in configured_safe_ids
+        and model.get("dataBoundary") == "self_hosted"
+        and model.get("strictLocal") is True
+        and "chat" in model.get("kinds", [])
+    ]
     return {
         "piiMasking": policy.pii_masking,
+        "externalDataGuard": policy.external_data_guard,
+        "allowUserRawExternal": policy.allow_user_raw_external,
+        "privacySafeModelIds": ordered_safe_ids,
         "intentFilter": policy.intent_filter,
         "blockedCategories": list(policy.blocked_categories or []),
         "retentionDays": policy.retention_days,
@@ -397,8 +412,54 @@ async def put_governance(
     """
     policy = await db.get(Governance, "default") or Governance(id="default")
     patch = payload.model_dump(exclude_unset=True)
+    if "privacy_safe_model_ids" in patch:
+        catalogue = await model_service.list_models()
+        strict_order = [
+            model["id"]
+            for model in catalogue["models"]
+            if model.get("dataBoundary") == "self_hosted"
+            and model.get("strictLocal") is True
+            and "chat" in model.get("kinds", [])
+        ]
+        strict_ids = set(strict_order)
+        requested = list(dict.fromkeys(patch["privacy_safe_model_ids"] or []))
+        invalid = [model_id for model_id in requested if model_id not in strict_ids]
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="privacy_safe_models_must_be_strict_local",
+            )
+        requested_set = set(requested)
+        patch["privacy_safe_model_ids"] = [
+            model_id for model_id in strict_order if model_id in requested_set
+        ]
+    if patch.get("pii_masking", policy.pii_masking):
+        # The legacy policy has no raw-delivery exception. Persist the effective
+        # upper bound so turning legacy masking off later cannot resurrect a
+        # stale allowance without another explicit administrator action.
+        patch["allow_user_raw_external"] = False
     for field, value in patch.items():
         setattr(policy, field, value)
+
+    invalidated_raw_preferences = 0
+    if (
+        "pii_masking" in patch or "allow_user_raw_external" in patch
+    ) and (policy.pii_masking or not policy.allow_user_raw_external):
+        preference_users = (
+            await db.exec(
+                select(User).where(
+                    User.preferences["privacy_default_action"].astext
+                    == "send_raw_external"
+                )
+            )
+        ).all()
+        for preference_user in preference_users:
+            preference_user.preferences = {
+                **(preference_user.preferences or {}),
+                "privacy_default_action": "ask",
+            }
+            db.add(preference_user)
+        invalidated_raw_preferences = len(preference_users)
     policy.updated_at = utcnow()
     policy.updated_by = admin.id
     db.add(policy)
@@ -408,6 +469,10 @@ async def put_governance(
             action="governance.update",
             target="정책",
             detail=", ".join(sorted(patch)),
+            event_metadata={
+                "rawPreferencesInvalidated": invalidated_raw_preferences,
+                "policyVersion": governance.POLICY_VERSION,
+            },
             ip=client_ip(request),
         )
     )
@@ -416,4 +481,8 @@ async def put_governance(
 
     cleared = await governance.sweep_expired(db)
     await db.commit()
-    return {"ok": True, "clearedMessages": cleared}
+    return {
+        "ok": True,
+        "clearedMessages": cleared,
+        "invalidatedPrivacyPreferences": invalidated_raw_preferences,
+    }

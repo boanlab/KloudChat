@@ -96,7 +96,8 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
             continue
         env = mcp.substitute(
             await catalog.resolve_env(connector.env),
-            user_id=user.id, user_email=user.email,
+            user_id=user.id,
+            user_email=user.email,
         )
         out.append(
             Tool(
@@ -109,7 +110,9 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
                 source=connector.slug,
             )
         )
-    return out
+    # Database row order is not an API contract.  A stable definition order is
+    # required because the privacy decision token hashes the exact tool list.
+    return sorted(out, key=lambda tool: tool.name)
 
 
 async def build_tools(
@@ -120,6 +123,8 @@ async def build_tools(
     allowed: list[str] | None = None,
     knowledge: list[tuple[str, str, str | None]] | None = None,
     knowledge_collection: str = "",
+    include_connectors: bool = True,
+    strict_local: bool = False,
 ) -> list[Tool]:
     """The turn's tool list.
 
@@ -131,15 +136,25 @@ async def build_tools(
     `knowledge` is the running agent's own documents and follows that same hard
     allowlist under its real registry name, `search_knowledge`.
     """
-    tools = await available_builtins(web_search)
+    if strict_local:
+        # Do not even resolve connector credentials or network-tool backend
+        # settings on a privacy route.  These are the only built-ins whose
+        # current runners stay in this API process; knowledge is added below
+        # with vector retrieval forcibly disabled.
+        tools = [CREATE_ARTIFACT, CREATE_CHART]
+        include_connectors = False
+        knowledge_collection = ""
+    else:
+        tools = await available_builtins(web_search)
     seen = {t.name for t in tools}
 
-    for tool in await connector_tools(db, user):
-        if tool.name in seen:
-            log.warning("connector tool %s shadows a built-in; ignored", tool.name)
-            continue
-        seen.add(tool.name)
-        tools.append(tool)
+    if include_connectors:
+        for tool in await connector_tools(db, user):
+            if tool.name in seen:
+                log.warning("connector tool %s shadows a built-in; ignored", tool.name)
+                continue
+            seen.add(tool.name)
+            tools.append(tool)
 
     if allowed is not None:
         keep = set(allowed)

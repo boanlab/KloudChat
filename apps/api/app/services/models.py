@@ -50,6 +50,7 @@ def unpriced() -> dict[str, str]:
     """Models hidden for want of a price, newest catalogue first."""
     return dict(_unpriced)
 
+
 # LiteLLM `mode` → (KloudChat modality, selectable surfaces). Anything unlisted is
 # infrastructure and never reaches the picker.
 _MODE_MAP: dict[str, tuple[str, list[str]]] = {
@@ -112,8 +113,25 @@ def _vendor(model_id: str, provider: str) -> str:
     # No id hint: fall back to the routing provider rather than inventing one.
     return _VENDORS.get(provider, (provider or "기타").replace("_", " ").title())
 
+
 _CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 _CACHE_TTL_SEC = 30.0
+
+_DATA_BOUNDARIES = {"self_hosted", "hybrid", "external"}
+
+
+def _data_boundary(info: dict[str, Any]) -> tuple[str, bool, bool]:
+    """Returns the proxy-declared data boundary and privacy flags.
+
+    Model ids, providers and API-base heuristics are deliberately ignored: a
+    ``local/*`` alias may still fall back to OpenRouter. Missing or malformed
+    metadata is therefore ``unknown`` and never eligible as a safe route.
+    """
+    raw = info.get("kchat_data_boundary")
+    boundary = raw if isinstance(raw, str) and raw in _DATA_BOUNDARIES else "unknown"
+    strict = boundary == "self_hosted" and info.get("kchat_strict_local") is True
+    privacy_only = strict and info.get("kchat_privacy_only") is True
+    return boundary, strict, privacy_only
 
 
 def _credits(usd: float) -> int:
@@ -204,9 +222,9 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         # Same unit as chat: OpenRouter's picture models charge output tokens,
         # and the turn is settled from reported token counts.
         # `output_cost_per_image` is zero for all of them.
-        credit_cost = _credits(
-            float(info.get("output_cost_per_image") or 0)
-        ) or _credits(float(info.get("output_cost_per_token") or 0) * 1000)
+        credit_cost = _credits(float(info.get("output_cost_per_image") or 0)) or _credits(
+            float(info.get("output_cost_per_token") or 0) * 1000
+        )
     else:
         # All three audio pricing shapes: per character (TTS), per output token
         # (GPT Audio), flat per clip (Lyria). Reading one leaves the others at
@@ -250,12 +268,16 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
     # for callers that lay them out themselves.
     name = override.get("label") or _label(model_id)
     vendor = override.get("vendor") or _vendor(model_id, provider)
+    data_boundary, strict_local, privacy_only = _data_boundary(info)
     return {
         "id": model_id,
         "label": f"{vendor} · {name}",
         "name": name,
         "vendor": vendor,
         "provider": provider,
+        "dataBoundary": data_boundary,
+        "strictLocal": strict_local,
+        "privacyOnly": privacy_only,
         "modality": modality,
         "kinds": kinds,
         # Per-image and per-call prices. `creditCost` is per 1k output tokens
@@ -301,6 +323,9 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "name": m["label"],
             "vendor": _vendor(m["id"], m["provider"]),
             "provider": m["provider"],
+            "dataBoundary": "external",
+            "strictLocal": False,
+            "privacyOnly": False,
             "modality": m["modality"],
             "kinds": m["kinds"],
             "creditCost": m["credit_cost"],
@@ -317,7 +342,6 @@ def _adapter_entries() -> list[dict[str, Any]]:
         }
         for m in ADAPTER_MODELS
     ]
-
 
 
 def _video_rates(model_id: str) -> dict[str, int]:
@@ -390,6 +414,25 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     }
     _CACHE.update(at=now, value=result)
     return result
+
+
+async def list_models_for_egress() -> dict[str, Any]:
+    """Returns a live catalogue suitable for privacy and routing decisions.
+
+    The ordinary 30-second catalogue is a display/performance cache. A strict
+    alias can be remapped to an external deployment during that window, so an
+    outbound request must refresh `/model/info`. If the gateway cannot answer,
+    an empty catalogue fails the turn closed instead of trusting either the
+    stale cache or adapter entries for a privacy decision.
+    """
+    catalogue = await list_models(force=True)
+    if catalogue.get("litellmAvailable") is not True:
+        return {
+            **catalogue,
+            "models": [],
+            "defaultChatModel": "",
+        }
+    return catalogue
 
 
 def invalidate_cache() -> None:

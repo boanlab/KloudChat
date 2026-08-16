@@ -304,6 +304,175 @@ test('선택한 스킬과 예상 토큰이 skills_applied 타임라인에 남는
   await expect(page.getByText('모의 응답입니다.')).toBeVisible()
 })
 
+test('개인정보 결정 재시도가 선택 스킬을 보존하고 두 SSE를 모두 표시한다', async ({ page }) => {
+  await mockSkillWorkspace(page)
+  await page.unroute(sessionsCollection)
+  const fakeId = 'abababababababababababababababab'
+  const session = {
+    id: fakeId,
+    kind: 'chat',
+    title: '',
+    projectId: null,
+    agentId: null,
+    model: 'mock/tool-model',
+    artifactId: null,
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
+    messages: null,
+    preview: null,
+    messageCount: 0,
+  }
+  const sent: Record<string, unknown>[] = []
+
+  await page.route(sessionsCollection, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: [session] })
+      return
+    }
+    await route.fulfill({ status: 201, json: session })
+  })
+  await page.route('**/api/sessions/*/messages', async (route) => {
+    const payload = route.request().postDataJSON() as Record<string, unknown>
+    sent.push(payload)
+    if (payload.privacyAction !== 'mask_external') {
+      await route.fulfill({
+        status: 409,
+        json: {
+          code: 'privacy_decision_required',
+          findings: [{ category: 'email', source: 'skills', count: 1 }],
+          requestedModels: ['mock/tool-model'],
+          safeModels: [],
+          allowedActions: ['mask_external', 'edit', 'cancel'],
+          decisionToken: 'skill-bound-decision',
+          detectorVersion: 'privacy-detector-v1',
+          policyVersion: 'external-data-guard-v1',
+        },
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
+      body:
+        `data: ${JSON.stringify({
+          type: 'privacy_route',
+          requestedModels: ['mock/tool-model'],
+          effectiveModels: ['mock/tool-model'],
+          action: 'mask_external',
+          dataBoundary: 'external',
+        })}\n\n` +
+        `data: ${JSON.stringify({
+          type: 'skills_applied',
+          skills: [
+            {
+              id: catalogue[2].id,
+              name: '의사결정 메모',
+              catalogKey: 'decision-memo',
+              estimatedTokens: 123,
+            },
+          ],
+          estimatedTokens: 123,
+        })}\n\n` +
+        `data: ${JSON.stringify({ type: 'delta', text: '보호된 응답' })}\n\n` +
+        `data: ${JSON.stringify({
+          type: 'usage',
+          inputTokens: 1,
+          outputTokens: 1,
+          credits: 0,
+        })}\n\n` +
+        `data: ${JSON.stringify({ type: 'done' })}\n\n`,
+    })
+  })
+
+  await page.goto('/new/chat')
+  await selectSkill(page, '의사결정 메모')
+  const composer = page.getByLabel('프롬프트 입력')
+  await composer.fill('contact person@example.com')
+  await composer.press('Enter')
+
+  const modal = page.getByRole('dialog', { name: '개인정보가 포함된 요청입니다' })
+  await expect(modal).toBeVisible()
+  await modal.getByRole('button', { name: '가린 뒤 기존 모델 사용' }).click()
+
+  await expect(page.getByRole('button').filter({ hasText: '스킬 1개 적용' })).toBeVisible()
+  expect(sent).toHaveLength(2)
+  for (const payload of sent) {
+    expect(payload.activatedSkillIds).toEqual([catalogue[2].id])
+  }
+  expect(sent[1]).toMatchObject({
+    privacyAction: 'mask_external',
+    privacyDecisionToken: 'skill-bound-decision',
+  })
+})
+
+test('늦은 409는 새 초안에서 고른 스킬을 덮어쓰지 않는다', async ({ page }) => {
+  await mockSkillWorkspace(page)
+  await page.unroute(sessionsCollection)
+  const fakeId = 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd'
+  const session = {
+    id: fakeId,
+    kind: 'chat',
+    title: '',
+    projectId: null,
+    agentId: null,
+    model: 'mock/tool-model',
+    artifactId: null,
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
+    messages: null,
+    preview: null,
+    messageCount: 0,
+  }
+  await page.route(sessionsCollection, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: [session] })
+      return
+    }
+    await route.fulfill({ status: 201, json: session })
+  })
+
+  let requestStarted = false
+  let releaseDecision: (() => void) | undefined
+  const gate = new Promise<void>((resolve) => {
+    releaseDecision = resolve
+  })
+  await page.route('**/api/sessions/*/messages', async (route) => {
+    requestStarted = true
+    await gate
+    await route.fulfill({
+      status: 409,
+      json: {
+        code: 'privacy_decision_required',
+        findings: [{ category: 'email', source: 'current_input', count: 1 }],
+        requestedModels: ['mock/tool-model'],
+        safeModels: [],
+        allowedActions: ['mask_external', 'edit', 'cancel'],
+        decisionToken: 'late-skill-decision',
+        detectorVersion: 'privacy-detector-v1',
+        policyVersion: 'external-data-guard-v1',
+      },
+    })
+  })
+
+  await page.goto('/new/chat')
+  await selectSkill(page, '초안 구조화')
+  const composer = page.getByLabel('프롬프트 입력')
+  await composer.fill('old person@example.com')
+  await composer.press('Enter')
+  await expect.poll(() => requestStarted).toBe(true)
+
+  await selectSkill(page, '의사결정 메모')
+  releaseDecision?.()
+  const modal = page.getByRole('dialog', { name: '개인정보가 포함된 요청입니다' })
+  await expect(modal).toBeVisible()
+  await modal.getByRole('button', { name: '편집으로 돌아가기' }).click()
+
+  await expect(page.getByRole('button', { name: '의사결정 메모 제거' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '초안 구조화 제거' })).toHaveCount(0)
+})
+
 test('422로 거절된 턴은 입력 상태를 복원하고 재시도해도 한 번만 남는다', async ({ page }) => {
   await mockSkillWorkspace(page)
   await page.unroute(sessionsCollection)

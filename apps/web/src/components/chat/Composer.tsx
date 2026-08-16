@@ -9,19 +9,20 @@ import {
   Mic,
   MicOff,
   Plus,
+  ShieldCheck,
   Sparkles,
   Square,
   TriangleAlert,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { FileRow } from '@/lib/api'
-import { errorMessage, transcribe } from '@/lib/api'
+import type { FileRow, PrivacyDecision } from '@/lib/api'
+import { errorMessage, PrivacyDecisionError, transcribe } from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
-import { Badge, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
+import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { SessionKind, Skill } from '@/types'
+import type { PrivacyAction, SessionKind, Skill } from '@/types'
 import { ModelPicker } from './ModelPicker'
 import { useT } from '@/lib/useT'
 
@@ -45,6 +46,39 @@ const AUDIO_KINDS = ['narration', 'music'] as const
 const AUDIO_KIND_LABEL: Record<(typeof AUDIO_KINDS)[number], string> = {
   narration: '내레이션',
   music: '음악',
+}
+
+type PendingPrivacy = {
+  decision: PrivacyDecision
+  sessionId: string | null
+  text: string
+  attachments: FileRow[]
+  activatedSkillIds: string[]
+  webSearch: boolean
+  restoreToken: number
+}
+
+const FINDING_LABEL: Record<string, string> = {
+  email: '이메일',
+  phone: '전화번호',
+  government_id: '주민 식별번호',
+  payment_card: '결제카드',
+  ip_address: 'IP 주소',
+  api_key: 'API 키',
+  jwt: 'JWT',
+  private_key: '개인키',
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  current_input: '현재 요청',
+  conversation_history: '대화 기록',
+  attachments: '첨부 파일',
+  project_instructions: '프로젝트 지침',
+  project_knowledge: '프로젝트 자료',
+  memory: '메모리',
+  agent: '에이전트 지침',
+  skills: '스킬',
+  tool_definitions: '도구 정의',
 }
 
 /** Compact chip-style selector used by the image and a/v option bars. */
@@ -187,6 +221,11 @@ export function Composer({
 }) {
   const t = useT()
   const [value, setValue] = useState('')
+  const liveValue = useRef(value)
+  liveValue.current = value
+  const restoreSequence = useRef(0)
+  const activeRestoreToken = useRef<number | null>(null)
+  const preserveComposerForSession = useRef<string | null>(null)
   //: idle → 'recording' while the mic is open, 'working' while Whisper reads it.
   const [dictation, setDictation] = useState<'off' | 'recording' | 'working'>('off')
   const [dictationError, setDictationError] = useState<string | null>(null)
@@ -224,7 +263,12 @@ export function Composer({
       setDictation('working')
       try {
         const text = await transcribe(new Blob(chunks, { type: rec.mimeType }))
-        setValue((v) => (v ? `${v.replace(/\s*$/, '')} ${text}` : text))
+        setValue((v) => {
+          const next = v ? `${v.replace(/\s*$/, '')} ${text}` : text
+          activeRestoreToken.current = null
+          liveValue.current = next
+          return next
+        })
         ref.current?.focus()
       } catch (err) {
         setDictationError(errorMessage(err, t('받아쓰지 못했습니다.')))
@@ -241,6 +285,8 @@ export function Composer({
   // over.
   useEffect(() => {
     if (!draft) return
+    activeRestoreToken.current = null
+    liveValue.current = draft
     setValue(draft)
     setDraft('')
     const el = ref.current
@@ -251,24 +297,42 @@ export function Composer({
   }, [draft, setDraft])
   /** Uploaded files, not names: the turn sends ids and the server reads the text. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
+  const liveAttachments = useRef(attachments)
+  liveAttachments.current = attachments
+  const [pendingPrivacy, setPendingPrivacy] = useState<PendingPrivacy | null>(null)
+  const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
+  const [privacyRetrying, setPrivacyRetrying] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it. Taken once and cleared, so it
   // attaches to the draft it arrived with and not to every turn after it.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   useEffect(() => {
     if (!pendingAttachment) return
-    setAttachments((current) =>
-      current.some((f) => f.id === pendingAttachment.id)
+    activeRestoreToken.current = null
+    setAttachments((current) => {
+      const next = current.some((f) => f.id === pendingAttachment.id)
         ? current
-        : [...current, pendingAttachment],
-    )
+        : [...current, pendingAttachment]
+      liveAttachments.current = next
+      return next
+    })
     setPendingAttachment(null)
   }, [pendingAttachment, setPendingAttachment])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [webSearch, setWebSearch] = useState(false)
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
-  useEffect(() => setActivatedSkillIds([]), [sessionId, kind])
+  const liveActivatedSkillIds = useRef(activatedSkillIds)
+  liveActivatedSkillIds.current = activatedSkillIds
+  useEffect(() => {
+    if (sessionId && preserveComposerForSession.current === sessionId) {
+      preserveComposerForSession.current = null
+      return
+    }
+    liveActivatedSkillIds.current = []
+    setActivatedSkillIds([])
+  }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   const {
@@ -302,7 +366,8 @@ export function Composer({
   } = useStore()
 
   const project = projects.find((p) => p.id === projectId)
-  const session = sessions.find((candidate) => candidate.id === sessionId)
+  const effectiveSessionId = sessionId ?? reusableSessionId
+  const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
   const model = models.find(
     (candidate) => candidate.id === (session?.model || modelByKind[kind]),
@@ -391,6 +456,97 @@ export function Composer({
   )
   const busy = isMedia ? jobRunning : streaming
 
+  const deliverChat = async (
+    targetSessionId: string | null,
+    text: string,
+    files: FileRow[],
+    search: boolean,
+    skillIds: string[],
+    action?: PrivacyAction,
+    decisionToken?: string,
+    restoreToken?: number,
+  ) => {
+    setChatError(null)
+    const resolvedSessionId = targetSessionId ?? reusableSessionId
+    let attemptedSessionId = resolvedSessionId
+    try {
+      const acceptedSessionId = await send(resolvedSessionId, 'chat', text, {
+        projectId,
+        webSearch: search,
+        attachments: files.map((file) => file.id),
+        attachmentNames: files.map((file) => file.name),
+        activatedSkillIds: skillIds,
+        privacyAction: action,
+        privacyDecisionToken: decisionToken,
+        onSession: (id) => {
+          attemptedSessionId = id
+          preserveComposerForSession.current = id
+          navigate(`/s/${id}`, { replace: true })
+        },
+      })
+      if (!sessionId) navigate(`/s/${acceptedSessionId}`, { replace: true })
+      activeRestoreToken.current = null
+      setReusableSessionId(null)
+      setPendingPrivacy(null)
+    } catch (error) {
+      if (error instanceof PrivacyDecisionError) {
+        const decisionSessionId = error.sessionId ?? resolvedSessionId
+        setReusableSessionId(decisionSessionId)
+        setPendingPrivacy({
+          decision: error.decision,
+          sessionId: decisionSessionId,
+          text,
+          attachments: files,
+          activatedSkillIds: skillIds,
+          webSearch: search,
+          restoreToken: restoreToken ?? ++restoreSequence.current,
+        })
+        return
+      }
+      // Submit clears the composer optimistically. Restore this failed request
+      // only while it is still empty; a newer draft or attachment selection
+      // always wins over a late network failure.
+      if (
+        restoreToken !== undefined &&
+        activeRestoreToken.current === restoreToken &&
+        !liveValue.current &&
+        liveAttachments.current.length === 0 &&
+        liveActivatedSkillIds.current.length === 0
+      ) {
+        activeRestoreToken.current = null
+        liveValue.current = text
+        liveAttachments.current = files
+        liveActivatedSkillIds.current = skillIds
+        setValue(text)
+        setAttachments(files)
+        setActivatedSkillIds(skillIds)
+        requestAnimationFrame(() => ref.current?.focus())
+      }
+      setReusableSessionId((current) => current ?? attemptedSessionId)
+      setChatError(errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
+      throw error
+    }
+  }
+
+  const dismissPrivacyDecision = () => {
+    if (!pendingPrivacy || privacyRetrying) return
+    // The response can arrive after the user has already started another
+    // draft. Only the submission that still owns the cleared composer may put
+    // its text and files back; a newer edit/upload deliberately revokes that
+    // ownership in the handlers above.
+    if (activeRestoreToken.current === pendingPrivacy.restoreToken) {
+      activeRestoreToken.current = null
+      liveValue.current = pendingPrivacy.text
+      liveAttachments.current = pendingPrivacy.attachments
+      liveActivatedSkillIds.current = pendingPrivacy.activatedSkillIds
+      setValue(pendingPrivacy.text)
+      setAttachments(pendingPrivacy.attachments)
+      setActivatedSkillIds(pendingPrivacy.activatedSkillIds)
+    }
+    setReusableSessionId(pendingPrivacy.sessionId)
+    setPendingPrivacy(null)
+  }
+
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -406,10 +562,17 @@ export function Composer({
     const attachmentLabels = attachments.map((f) => f.name)
     const sentAttachments = attachments
     const sentSkillIds = activeSkills.map((skill) => skill.id)
+    setChatError(null)
+    const restoreToken = ++restoreSequence.current
+    activeRestoreToken.current = kind === 'chat' ? restoreToken : null
     // Clear the composer first: the session is created server-side, so awaiting
     // the round trip would leave the sent text sitting in the box.
+    liveValue.current = ''
+    liveAttachments.current = []
+    liveActivatedSkillIds.current = []
     setValue('')
     setAttachments([])
+    setActivatedSkillIds([])
     if (kind === 'av' && avOptions.mode === 'video') {
       // A ticket, not an answer: the clip takes minutes and the job row
       // outlives this request, so the card carries it.
@@ -436,6 +599,19 @@ export function Composer({
       })
       return
     }
+    if (kind === 'chat') {
+      void deliverChat(
+        sessionId ?? reusableSessionId,
+        text,
+        sentAttachments,
+        webSearch,
+        sentSkillIds,
+        undefined,
+        undefined,
+        restoreToken,
+      ).catch(() => undefined)
+      return
+    }
     void send(sessionId, kind, text, {
       projectId,
       webSearch,
@@ -443,9 +619,11 @@ export function Composer({
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
       // Sending from /new/:kind creates a session; the URL has to follow it.
-      onSession: (id) => navigate(`/s/${id}`, { replace: true }),
+      onSession: (id) => {
+        preserveComposerForSession.current = id
+        navigate(`/s/${id}`, { replace: true })
+      },
     })
-      .then(() => setActivatedSkillIds([]))
       .catch(() => {
         // A policy/permission refusal happens before the server stores the
         // turn. Restore the exact draft instead of making the user reconstruct
@@ -453,7 +631,11 @@ export function Composer({
         // newer draft typed while the request was in flight.
         setValue((current) => current || text)
         setAttachments((current) => (current.length > 0 ? current : sentAttachments))
-        setActivatedSkillIds((current) => (current.length > 0 ? current : sentSkillIds))
+        setActivatedSkillIds((current) => {
+          const next = current.length > 0 ? current : sentSkillIds
+          liveActivatedSkillIds.current = next
+          return next
+        })
       })
   }
 
@@ -495,9 +677,14 @@ export function Composer({
                 {skill.name}
                 <button
                   type="button"
-                  onClick={() =>
-                    setActivatedSkillIds((ids) => ids.filter((id) => id !== skill.id))
-                  }
+                  onClick={() => {
+                    activeRestoreToken.current = null
+                    const next = activeSkills
+                      .filter((candidate) => candidate.id !== skill.id)
+                      .map((candidate) => candidate.id)
+                    liveActivatedSkillIds.current = next
+                    setActivatedSkillIds(next)
+                  }}
                   aria-label={t('{name} 제거').replace('{name}', skill.name)}
                   className="ml-0.5 text-faint hover:text-fg"
                 >
@@ -522,7 +709,14 @@ export function Composer({
                 {f.name}
                 {f.error && <TriangleAlert size={10} />}
                 <button
-                  onClick={() => setAttachments((a) => a.filter((x) => x.id !== f.id))}
+                  onClick={() =>
+                    setAttachments((current) => {
+                      activeRestoreToken.current = null
+                      const next = current.filter((item) => item.id !== f.id)
+                      liveAttachments.current = next
+                      return next
+                    })
+                  }
                   className="text-faint hover:text-fg"
                   aria-label={t('{name} 제거').replace('{name}', f.name)}
                 >
@@ -561,7 +755,11 @@ export function Composer({
           autoFocus={autoFocus}
           rows={1}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            activeRestoreToken.current = null
+            liveValue.current = e.target.value
+            setValue(e.target.value)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -596,7 +794,14 @@ export function Composer({
                     projectId: projectId ?? undefined,
                     sessionId: sessionId ?? undefined,
                   }).catch(() => null)
-                  if (row) setAttachments((a) => [...a, row])
+                  if (row) {
+                    setAttachments((current) => {
+                      activeRestoreToken.current = null
+                      const next = [...current, row]
+                      liveAttachments.current = next
+                      return next
+                    })
+                  }
                 }
               } finally {
                 setUploading(false)
@@ -653,13 +858,16 @@ export function Composer({
                                   s.estimatedTokens.toLocaleString(),
                                 )
                     }
-                    onClick={() =>
-                      setActivatedSkillIds(
-                        selected
-                          ? activeSkills.filter((skill) => skill.id !== s.id).map((skill) => skill.id)
-                          : [...activeSkills.map((skill) => skill.id), s.id],
-                      )
-                    }
+                    onClick={() => {
+                      activeRestoreToken.current = null
+                      const next = selected
+                        ? activeSkills
+                            .filter((skill) => skill.id !== s.id)
+                            .map((skill) => skill.id)
+                        : [...activeSkills.map((skill) => skill.id), s.id]
+                      liveActivatedSkillIds.current = next
+                      setActivatedSkillIds(next)
+                    }}
                   >
                     {s.name}
                   </MenuItem>
@@ -707,7 +915,27 @@ export function Composer({
                     hint={compareModels.includes(m.id) ? '✓' : `${m.creditCost}`}
                     onClick={() => toggleCompareModel(m.id)}
                   >
-                    {m.label}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{m.label}</span>
+                      {m.strictLocal ? (
+                        <Badge tone="success">
+                          <ShieldCheck size={10} />
+                          strict-local
+                        </Badge>
+                      ) : (
+                        <Badge tone="warn">
+                          {t(
+                            m.dataBoundary === 'hybrid'
+                              ? '외부 전환 가능'
+                              : m.dataBoundary === 'external'
+                                ? '외부 제공'
+                                : m.dataBoundary === 'self_hosted'
+                                  ? 'self-hosted · strict 미확인'
+                                  : '경계 미확인',
+                          )}
+                        </Badge>
+                      )}
+                    </span>
                   </MenuItem>
                 ))}
             </Dropdown>
@@ -821,7 +1049,7 @@ export function Composer({
             {!(compareMode && kind === 'chat') && (
               <ModelPicker
                 kind={kind}
-                sessionId={sessionId}
+                sessionId={sessionId ?? reusableSessionId}
                 modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
               />
             )}
@@ -862,6 +1090,18 @@ export function Composer({
           </button>
         </p>
       )}
+      {chatError && !pendingPrivacy && (
+        <p
+          role="alert"
+          className="mt-2 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+        >
+          <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1">{chatError}</span>
+          <button onClick={() => setChatError(null)} aria-label={t('닫기')} className="shrink-0">
+            <X size={13} />
+          </button>
+        </p>
+      )}
       <p className="mt-2 text-center text-[11px] text-faint">
         {dictationError
           ? dictationError
@@ -881,6 +1121,119 @@ export function Composer({
                     ? t('Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
                     : t('Enter 전송, Shift+Enter 줄바꿈')}
       </p>
+
+      <Modal
+        open={pendingPrivacy !== null}
+        onClose={dismissPrivacyDecision}
+        title={t('개인정보가 포함된 요청입니다')}
+        description={t('외부 모델로 보내기 전에 처리 방법을 선택하세요. 탐지된 실제 값은 표시하거나 기록하지 않습니다.')}
+        width="max-w-xl"
+        footer={
+          <Button
+            disabled={privacyRetrying}
+            onClick={dismissPrivacyDecision}
+          >
+            {t('편집으로 돌아가기')}
+          </Button>
+        }
+      >
+        {pendingPrivacy && (
+          <>
+            {chatError && (
+              <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-[12px] text-danger">
+                {chatError}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-1.5" aria-label={t('탐지된 개인정보 범주')}>
+              {pendingPrivacy.decision.findings.map((finding) => (
+                <Badge key={`${finding.source}:${finding.category}`} tone="warn">
+                  {t(SOURCE_LABEL[finding.source] ?? finding.source)} ·{' '}
+                  {t(FINDING_LABEL[finding.category] ?? finding.category)} {finding.count}
+                </Badge>
+              ))}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
+                <Button
+                  variant="primary"
+                  disabled={privacyRetrying}
+                  onClick={() => {
+                    setPrivacyRetrying(true)
+                    void deliverChat(
+                      pendingPrivacy.sessionId,
+                      pendingPrivacy.text,
+                      pendingPrivacy.attachments,
+                      false,
+                      pendingPrivacy.activatedSkillIds,
+                      'route_strict_local',
+                      pendingPrivacy.decision.decisionToken,
+                      pendingPrivacy.restoreToken,
+                    )
+                      .catch(() => undefined)
+                      .finally(() => setPrivacyRetrying(false))
+                  }}
+                >
+                  {t('안전한 로컬 모델로 전환')}
+                </Button>
+              )}
+              <Button
+                disabled={privacyRetrying}
+                onClick={() => {
+                  setPrivacyRetrying(true)
+                  void deliverChat(
+                    pendingPrivacy.sessionId,
+                    pendingPrivacy.text,
+                    pendingPrivacy.attachments,
+                    pendingPrivacy.webSearch,
+                    pendingPrivacy.activatedSkillIds,
+                    'mask_external',
+                    pendingPrivacy.decision.decisionToken,
+                    pendingPrivacy.restoreToken,
+                  )
+                    .catch(() => undefined)
+                    .finally(() => setPrivacyRetrying(false))
+                }}
+              >
+                {t('가린 뒤 기존 모델 사용')}
+              </Button>
+              {pendingPrivacy.decision.allowedActions.includes('send_raw_external') && (
+                <Button
+                  variant="danger"
+                  disabled={privacyRetrying}
+                  onClick={() => {
+                    setPrivacyRetrying(true)
+                    void deliverChat(
+                      pendingPrivacy.sessionId,
+                      pendingPrivacy.text,
+                      pendingPrivacy.attachments,
+                      pendingPrivacy.webSearch,
+                      pendingPrivacy.activatedSkillIds,
+                      'send_raw_external',
+                      pendingPrivacy.decision.decisionToken,
+                      pendingPrivacy.restoreToken,
+                    )
+                      .catch(() => undefined)
+                      .finally(() => setPrivacyRetrying(false))
+                  }}
+                >
+                  {t('원문을 외부 모델로 전송')}
+                </Button>
+              )}
+            </div>
+            {pendingPrivacy.decision.requestedModels.length > 1 &&
+              pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
+                <p className="text-[12px] text-muted">
+                  {t('모델 비교는 아직 시작되지 않았습니다. 안전 모델을 선택하면 비교 대신 strict-local 모델 1개로 실행합니다.')}
+                </p>
+              )}
+            {pendingPrivacy.decision.safeModels.length === 0 && (
+              <p className="text-[12px] text-warn">
+                {t('관리자가 설정한 strict-local 모델이 없어 마스킹하거나 내용을 편집해야 합니다.')}
+              </p>
+            )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

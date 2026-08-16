@@ -20,6 +20,23 @@ class Governance(SQLModel, table=True):
     pii_masking: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
+    #: Inspect the complete chat envelope before it is sent to an external or
+    #: hybrid model.
+    external_data_guard: bool = Field(
+        default=True, sa_column=Column(Boolean, nullable=False, server_default=text("true"))
+    )
+    #: An upper bound, not a default. Users cannot choose raw external delivery
+    #: unless the administrator explicitly permits it.
+    allow_user_raw_external: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
+    )
+    #: Strict-local model ids. Every use is revalidated and prioritized in the
+    #: live catalogue's visible order, so stale ids cannot become an external
+    #: route and hidden click order cannot change routing.
+    privacy_safe_model_ids: list = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    )
     #: Refuse prompts whose intent falls in `blocked_categories`.
     intent_filter: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))

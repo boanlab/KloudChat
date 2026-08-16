@@ -4,6 +4,7 @@ import { kindMeta } from '@/lib/kinds'
 import { errorMessage } from '@/lib/api'
 import {
   ApiError,
+  PrivacyDecisionError,
   UnauthorizedError,
   adminApi,
   agentsApi,
@@ -54,6 +55,7 @@ import type {
   ProjectFile,
   Session,
   Preferences,
+  PrivacyAction,
   DeckArtifact,
   ReportArtifact,
   ReportSection,
@@ -169,6 +171,8 @@ interface State {
       attachmentNames?: string[]
       /** Installed skills selected for this turn only. */
       activatedSkillIds?: string[]
+      privacyAction?: PrivacyAction
+      privacyDecisionToken?: string
             /**
              * Called as soon as a session id exists. Waiting for the stream to
              * finish would lose the conversation on a refresh mid-answer.
@@ -462,6 +466,16 @@ function reconcileDefaults(
   return next
 }
 
+function reconcileCompareModels(current: string[], available: ModelInfo[]): string[] {
+  const chatIds = available.filter((model) => model.kinds.includes('chat')).map((model) => model.id)
+  const valid = current.filter((id, index) => chatIds.includes(id) && current.indexOf(id) === index)
+  for (const id of chatIds) {
+    if (valid.length >= 2) break
+    if (!valid.includes(id)) valid.push(id)
+  }
+  return valid.slice(0, 3)
+}
+
 
 export const useStore = create<State>((set, get) => ({
   user: null,
@@ -724,6 +738,7 @@ export const useStore = create<State>((set, get) => ({
         litellmAvailable,
         modelsLoading: false,
         modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel),
+        compareModels: reconcileCompareModels(s.compareModels, live),
       }))
     } catch {
       // Leave whatever is already loaded; the picker keeps working offline.
@@ -845,7 +860,12 @@ export const useStore = create<State>((set, get) => ({
    */
   send: async (sessionId, kind, text, opts = {}) => {
     const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
-    if (!sessionId) opts.onSession?.(id)
+    // A chat can be refused before it becomes a turn. Keep the originating
+    // composer visible until the first SSE event; non-chat surfaces navigate
+    // as soon as their session exists.
+    const acceptSession = () => opts.onSession?.(id)
+    if (kind !== 'chat') acceptSession()
+
     // Snapshot after a new empty session is created but before the optimistic
     // turn. A 4xx means the API rejected before its first Message write, so
     // every local bubble/artifact added for this attempt must be reversible.
@@ -906,7 +926,14 @@ export const useStore = create<State>((set, get) => ({
       if (get().streaming) return id
 
       if (get().compareMode && get().compareModels.length >= 2) {
-        await runComparison(set, get, id, text, opts.activatedSkillIds)
+        await runComparison(set, get, id, text, {
+          activatedSkillIds: opts.activatedSkillIds,
+          attachments: opts.attachments,
+          attachmentNames: opts.attachmentNames,
+          privacyAction: opts.privacyAction,
+          privacyDecisionToken: opts.privacyDecisionToken,
+          onAccepted: acceptSession,
+        })
         return id
       }
 
@@ -915,6 +942,9 @@ export const useStore = create<State>((set, get) => ({
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
         activatedSkillIds: opts.activatedSkillIds,
+        privacyAction: opts.privacyAction,
+        privacyDecisionToken: opts.privacyDecisionToken,
+        onAccepted: acceptSession,
       })
       return id
     }
@@ -922,6 +952,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       return await perform()
     } catch (err) {
+      if (err instanceof PrivacyDecisionError) err.sessionId = id
       if (isClientRefusal(err) && before) {
         set((state) => ({
           // Keep the newly created, empty server session so the restored draft
@@ -938,6 +969,10 @@ export const useStore = create<State>((set, get) => ({
           ),
           openArtifactId: beforeOpenArtifactId,
         }))
+      } else if (kind === 'chat') {
+        // Ordinary failures still leave the created session reachable; they are
+        // not policy decisions and may already have server-side output.
+        acceptSession()
       }
       throw err
     }
@@ -1224,7 +1259,7 @@ export const useStore = create<State>((set, get) => ({
     })),
 
   compareMode: false,
-  compareModels: ['claude-opus-5', 'gpt-4o'],
+  compareModels: [],
   toggleCompareMode: () => set((s) => ({ compareMode: !s.compareMode })),
   toggleCompareModel: (id) =>
     set((s) => {
@@ -1807,6 +1842,7 @@ function toMessage(raw: MessageRow): Message {
     content: raw.content,
     createdAt: raw.createdAt,
     model: raw.model ?? undefined,
+    routing: raw.routing ?? undefined,
     steps: raw.steps?.map((s) => toStep(s as Record<string, unknown>)),
     attachments: raw.attachments?.map((a) =>
       typeof a === 'string'
@@ -1818,6 +1854,9 @@ function toMessage(raw: MessageRow): Message {
     // rebuild them.
     variants: raw.variants?.map((v) => ({
       model: v.model,
+      routedModel: v.routedModel,
+      actualModel: v.actualModel,
+      dataBoundary: v.dataBoundary,
       content: v.content,
       status: v.error ? ('error' as const) : ('done' as const),
       chosen: v.chosen ?? false,
@@ -1924,12 +1963,15 @@ function toSkill(s: SkillRow): Skill {
     slug: s.slug,
     description: s.description,
     whenToUse: s.whenToUse,
-    body: s.body,
-    catalogKey: s.catalogKey,
-    requiredTools: s.requiredTools,
-    estimatedTokens: s.estimatedTokens,
+    body: s.body ?? '',
+    catalogKey: s.catalogKey ?? null,
+    // During a rolling deployment the web bundle can briefly see a pre-0018
+    // API row. Treat absent catalogue metadata as the least-capable legacy
+    // shape instead of crashing the whole composer.
+    requiredTools: s.requiredTools ?? [],
+    estimatedTokens: s.estimatedTokens ?? 0,
     source: (s.source as Skill['source']) ?? 'personal',
-    kinds: s.kinds as SessionKind[],
+    kinds: (s.kinds ?? []) as SessionKind[],
     enabled: s.enabled,
     version: s.version,
     files: ['SKILL.md'],
@@ -2022,6 +2064,9 @@ async function streamTurn(
     attachments?: string[]
     attachmentNames?: string[]
     activatedSkillIds?: string[]
+    privacyAction?: PrivacyAction
+    privacyDecisionToken?: string
+    onAccepted?: () => void
   } = {},
 ) {
   const assistantId = uid('m')
@@ -2066,6 +2111,7 @@ async function streamTurn(
 
   //: Whether the turn ended on purpose. See CUT_OFF.
   let settled = false
+  let accepted = false
 
   try {
     for await (const event of streamSession(
@@ -2075,10 +2121,38 @@ async function streamTurn(
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         activatedSkillIds: opts.activatedSkillIds,
+        privacyAction: opts.privacyAction,
+        privacyDecisionToken: opts.privacyDecisionToken,
       },
       controller.signal,
     )) {
+      if (!accepted) {
+        accepted = true
+        opts.onAccepted?.()
+      }
       switch (event.type) {
+        case 'privacy_route':
+          patch((m) => ({
+            ...m,
+            model:
+              'actualModel' in event && event.actualModel
+                ? event.actualModel
+                : 'effectiveModels' in event
+                  ? event.effectiveModels[0]
+                  : m.model,
+            routing:
+              'effectiveModels' in event
+                ? event
+                : m.routing
+                  ? {
+                      ...m.routing,
+                      initialAction: m.routing.initialAction ?? m.routing.action,
+                      action: event.action,
+                      toolOutputMasked: event.count,
+                    }
+                  : m.routing,
+          }))
+          break
         case 'delta':
           if (live) patch((m) => ({ ...m, content: m.content + event.text }))
           else buffered += event.text
@@ -2132,7 +2206,17 @@ async function streamTurn(
     }
   } catch (err) {
     // Abort is the stop button doing its job, not a failure.
-    if (err instanceof DOMException && err.name === 'AbortError') {
+    if (err instanceof PrivacyDecisionError) {
+      settled = true
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId
+            ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) }
+            : c,
+        ),
+      }))
+      throw err
+    } else if (err instanceof DOMException && err.name === 'AbortError') {
       settled = true
     } else if (isClientRefusal(err)) {
       settled = true
@@ -2143,6 +2227,7 @@ async function streamTurn(
     } else {
       settled = true
       patch((m) => ({ ...m, error: '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.' }))
+      throw err
     }
   } finally {
     // Buffered text lands here, including on abort or error.
@@ -2165,7 +2250,14 @@ async function runComparison(
   get: Get,
   sessionId: string,
   text: string,
-  activatedSkillIds?: string[],
+  opts: {
+    activatedSkillIds?: string[]
+    attachments?: string[]
+    attachmentNames?: string[]
+    privacyAction?: PrivacyAction
+    privacyDecisionToken?: string
+    onAccepted?: () => void
+  } = {},
 ) {
   const models = get().compareModels
   const assistantId = uid('m')
@@ -2210,13 +2302,60 @@ async function runComparison(
 
   const controller = new AbortController()
   set({ abortStream: () => controller.abort() })
+  let accepted = false
   try {
     for await (const e of streamComparison(
       sessionId,
-      { content: text, models, activatedSkillIds },
+      {
+        content: text,
+        models,
+        activatedSkillIds: opts.activatedSkillIds,
+        attachments: opts.attachments,
+        privacyAction: opts.privacyAction,
+        privacyDecisionToken: opts.privacyDecisionToken,
+      },
       controller.signal,
     )) {
-      if (e.type === 'variant') {
+      if (!accepted) {
+        accepted = true
+        opts.onAccepted?.()
+      }
+      if (e.type === 'privacy_route') {
+        if ('effectiveModels' in e) {
+          set((s) => ({
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) =>
+                      m.id === assistantId
+                        ? {
+                            ...m,
+                            routing: e,
+                            variants: e.effectiveModels.map((model) => {
+                              const existing = m.variants?.find((v) => v.model === model)
+                              const route = e.modelRoutes?.find(
+                                (candidate) => candidate.routedModel === model,
+                              )
+                              return {
+                                model,
+                                content: existing?.content ?? '',
+                                status: existing?.status ?? ('streaming' as const),
+                                usage: existing?.usage,
+                                routedModel: model,
+                                actualModel: route?.actualModel ?? existing?.actualModel,
+                                dataBoundary: route?.dataBoundary ?? existing?.dataBoundary,
+                              }
+                            }),
+                          }
+                        : m,
+                    ),
+                  }
+                : c,
+            ),
+          }))
+        }
+      } else if (e.type === 'variant') {
         const current = get()
           .sessions.find((c) => c.id === sessionId)
           ?.messages.find((m) => m.id === assistantId)
@@ -2224,6 +2363,8 @@ async function runComparison(
         patch(e.model, { content: (current?.content ?? '') + e.text })
       } else if (e.type === 'variant_done') {
         patch(e.model, {
+          routedModel: e.routedModel ?? e.model,
+          actualModel: e.actualModel,
           status: e.error ? 'error' : 'done',
           usage: {
             inputTokens: e.inputTokens,
@@ -2241,8 +2382,19 @@ async function runComparison(
       }
     }
   } catch (err) {
+    if (err instanceof PrivacyDecisionError) {
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId
+            ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) }
+            : c,
+        ),
+      }))
+      throw err
+    }
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       for (const m of models) patch(m, { status: 'error' })
+      throw err
     }
     if (isClientRefusal(err)) throw err
   } finally {

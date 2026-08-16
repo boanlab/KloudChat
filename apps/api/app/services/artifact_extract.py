@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
+from typing import Any
 
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -138,6 +140,27 @@ def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:
     return (kind, title, json.dumps(data, sort_keys=True, ensure_ascii=False))
 
 
+def _mask_text_values(
+    value: Any, masker: Callable[[str], tuple[str, int]]
+) -> Any:
+    """Returns a detached copy with every persisted string masked.
+
+    Artifact payloads contain more than a top-level title and body: chart
+    series, table labels and future tool metadata are nested dictionaries and
+    lists. Rebuilding the full tree avoids both a shallow-mask escape and
+    mutating ``ToolContext.pending_artifacts`` after the agent loop.
+    """
+    if isinstance(value, str):
+        return masker(value)[0]
+    if isinstance(value, dict):
+        return {key: _mask_text_values(item, masker) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_mask_text_values(item, masker) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_mask_text_values(item, masker) for item in value)
+    return value
+
+
 async def store_requested(
     db: AsyncSession,
     *,
@@ -145,6 +168,7 @@ async def store_requested(
     session_id: str,
     project_id: str | None,
     requests: list[dict],
+    masker: Callable[[str], tuple[str, int]] | None = None,
 ) -> str | None:
     """Stores artifacts the model asked for with `create_artifact`.
 
@@ -156,13 +180,22 @@ async def store_requested(
     if not requests:
         return None
 
+    # Mask at the persistence boundary, not in the tool. The same tool request
+    # must stay raw while a strict-local model is using it inside the current
+    # turn, but no protected textual field may survive into an Artifact row.
+    safe_requests = (
+        [_mask_text_values(request, masker) for request in requests]
+        if masker is not None
+        else requests
+    )
+
     existing = (
         await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))
     ).all()
     seen = {_identity(a.kind.value, a.title, a.data or {}) for a in existing}
 
     last: Artifact | None = None
-    for request in requests:
+    for request in safe_requests:
         identity = _identity(request["kind"], request["title"], request["data"])
         if identity in seen:
             continue

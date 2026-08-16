@@ -479,7 +479,7 @@ def _request(path: str = "/") -> Request:
 def _model(model_id: str) -> dict:
     return {
         "id": model_id,
-        "kinds": ["chat"],
+        "kinds": ["chat", "report", "slides"],
         "supportsTools": False,
         "creditCost": 1,
         "inputCreditCost": 1,
@@ -506,8 +506,8 @@ def _patch_route_services(monkeypatch, upstream: dict[str, int]) -> None:
         upstream["calls"] += 1
         return "http://unused", "unused"
 
-    monkeypatch.setattr(sessions_router.governance, "current", policy)
-    monkeypatch.setattr(sessions_router.model_service, "list_models", models)
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", policy)
+    monkeypatch.setattr(sessions_router.model_service, "list_models_for_egress", models)
     monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
     monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
 
