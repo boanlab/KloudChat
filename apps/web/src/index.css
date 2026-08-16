@@ -171,6 +171,27 @@ body {
   animation: kc-blink 1.1s ease-in-out infinite;
 }
 
+/**
+ * Everything above animates, and none of it asked first. A reader who has set
+ * "reduce motion" is telling the platform that movement costs them something —
+ * for vestibular disorders it is nausea, not preference.
+ *
+ * Reduced, not removed: the durations collapse rather than the rules being
+ * dropped, so anything that reads a computed transition still gets one, and
+ * `transitionend` still fires. The spinner stops at a frame; what says
+ * "loading" is `LoadingState`'s text and its `role="status"`, not the spin.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── 인쇄 ────────────────────────────────────────────────────────────────
    `window.print()` prints the window, and the window is the whole app. The
    report renders a second, plain copy of itself into <body> (see
