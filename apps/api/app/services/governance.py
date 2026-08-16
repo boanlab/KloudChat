@@ -100,7 +100,6 @@ _IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 _IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
 _LEGACY_RRN = re.compile(r"\b\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-[1-4]\d{6}\b")
 _LEGACY_CARD = re.compile(r"\b(?:\d{4}[- ]){3}\d{4}\b")
-_LEGACY_EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 _SECRETS: list[tuple[str, re.Pattern[str]]] = [
     ("api_key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
     ("api_key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
@@ -214,13 +213,21 @@ def _email_spans(text: str) -> Iterator[tuple[int, int]]:
     Starting a backtracking regex with an unbounded local-part character class
     makes a string such as ``"%" * n`` retry the same suffix at every offset.
     Anchoring each candidate on its ``@`` means each adjacent segment is
-    visited at most twice, including inputs containing many ``@`` characters.
+    visited a constant number of times, including inputs containing many
+    ``@`` characters.
     """
+    resume = 0
     at = text.find("@")
     while at >= 0:
-        start = at
-        while start > 0 and text[start - 1] in _EMAIL_LOCAL:
-            start -= 1
+        segment_start = at
+        while segment_start > 0 and text[segment_start - 1] in _EMAIL_LOCAL:
+            segment_start -= 1
+
+        start = max(segment_start, resume)
+        while start < at and start > 0 and (
+            _is_word_character(text[start - 1]) or text[start - 1] in ".+-"
+        ):
+            start += 1
 
         end = at + 1
         while end < len(text) and text[end] in _EMAIL_DOMAIN:
@@ -232,16 +239,6 @@ def _email_spans(text: str) -> Iterator[tuple[int, int]]:
         leading_boundary = start == 0 or not (
             _is_word_character(text[start - 1]) or text[start - 1] in ".+-"
         )
-        if not leading_boundary:
-            # ``%`` is legal inside the local part but was intentionally not
-            # part of the old regex's negative look-behind. Preserve that
-            # behaviour: ``α%person@example.com`` must still detect the valid
-            # suffix after ``%`` without retrying every character.
-            restart = text.find("%", start, at)
-            if restart >= 0:
-                start = restart + 1
-                local = text[start:at]
-                leading_boundary = bool(local)
         trailing_boundary = end == len(text) or not (
             _is_word_character(text[end]) or text[end] in ".-"
         )
@@ -255,6 +252,68 @@ def _email_spans(text: str) -> Iterator[tuple[int, int]]:
             and trailing_boundary
         ):
             yield start, end
+            # ``re.finditer`` resumes after its previous match. Carrying the
+            # same cursor matters when two addresses touch: a later ``@`` may
+            # otherwise choose a local part that overlaps the first match and
+            # disappear in the detector's global overlap sweep.
+            resume = end
+
+        at = text.find("@", at + 1)
+
+
+def _is_legacy_local_character(value: str) -> bool:
+    return _is_word_character(value) or value in ".+-"
+
+
+def _is_legacy_domain_character(value: str) -> bool:
+    return _is_word_character(value) or value in ".-"
+
+
+def _legacy_email_spans(text: str) -> Iterator[tuple[int, int]]:
+    r"""Implement ``\b[\w.+-]+@[\w-]+\.[\w.-]+\b`` without backtracking.
+
+    The compatibility policy intentionally accepts Unicode word characters and
+    broad domain suffixes. Candidates are anchored on ``@``; the nearest left
+    word boundary and the first domain dot reproduce that contract while each
+    segment between two ``@`` characters is visited only a constant number of
+    times.
+    """
+    resume = 0
+    at = text.find("@")
+    while at >= 0:
+        segment_start = at
+        while segment_start > 0 and _is_legacy_local_character(text[segment_start - 1]):
+            segment_start -= 1
+
+        start = max(segment_start, resume)
+        while start < at:
+            previous_is_word = start > 0 and _is_word_character(text[start - 1])
+            if previous_is_word != _is_word_character(text[start]):
+                break
+            start += 1
+
+        domain_head_end = at + 1
+        while domain_head_end < len(text) and (
+            _is_word_character(text[domain_head_end]) or text[domain_head_end] == "-"
+        ):
+            domain_head_end += 1
+
+        suffix_start = domain_head_end + 1
+        scan_end = suffix_start
+        if domain_head_end < len(text) and text[domain_head_end] == ".":
+            while scan_end < len(text) and _is_legacy_domain_character(text[scan_end]):
+                scan_end += 1
+
+        # A trailing ``\b`` after this character class can only settle after a
+        # word character. Greedy regex backtracking merely trims final dots and
+        # hyphens; do that once from the right instead.
+        end = scan_end
+        while end > suffix_start and not _is_word_character(text[end - 1]):
+            end -= 1
+
+        if start < at and domain_head_end > at + 1 and end > suffix_start:
+            yield start, end
+            resume = end
 
         at = text.find("@", at + 1)
 
@@ -400,11 +459,12 @@ def _legacy_detections(text: str) -> list[_Detection]:
     for category, pattern in (
         ("government_id", _LEGACY_RRN),
         ("payment_card", _LEGACY_CARD),
-        ("email", _LEGACY_EMAIL),
     ):
         for match in pattern.finditer(text):
             item = _Detection(category, _LABELS[category], match.start(), match.end())
             candidates.append(item)
+    for start, end in _legacy_email_spans(text):
+        candidates.append(_Detection("email", _LABELS["email"], start, end))
     accepted: list[_Detection] = []
     covered_until = -1
     for item in sorted(candidates, key=lambda d: (d.start, -(d.end - d.start), d.category)):

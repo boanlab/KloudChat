@@ -96,6 +96,35 @@ def test_legacy_mask_preserves_the_preexisting_broad_rules() -> None:
     assert "person@example.x" not in masked
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "사용자.이름@도메인.한국",
+        "prefix/.person@example.x",
+        "person@example.x.",
+        "person@-.example",
+    ],
+)
+def test_legacy_email_scan_preserves_broad_unicode_and_boundary_rules(value: str) -> None:
+    masked, count = governance.mask_legacy(value)
+
+    assert count == 1
+    assert value.rstrip(".") not in masked
+    assert "[이메일]" in masked
+
+
+def test_legacy_email_scan_resists_punctuation_repetition() -> None:
+    text = "a." * 50_000
+    started = time.monotonic()
+
+    assert governance.mask_legacy(text) == (text, 0)
+    assert time.monotonic() - started < 2.0
+
+
+def test_legacy_email_scan_resumes_after_an_adjacent_match() -> None:
+    assert governance.mask_legacy("a@b.co+@d.ef") == ("[이메일][이메일]", 2)
+
+
 def test_detector_handles_long_clean_input_in_linear_time() -> None:
     text = ("ordinary project notes and order 1234-5678. " * 10_000).strip()
     started = time.monotonic()
