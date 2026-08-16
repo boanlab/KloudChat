@@ -184,8 +184,11 @@ class SkillOut(Wire):
     description: str
     when_to_use: str
     body: str
+    catalog_key: str | None = None
     source: SkillSource
     kinds: JsonList = Field(default_factory=list)
+    required_tools: JsonList = Field(default_factory=list)
+    estimated_tokens: int = 0
     version: str
     enabled: bool
     updated_at: datetime
@@ -194,6 +197,7 @@ class SkillOut(Wire):
     def of(cls, s: Skill) -> SkillOut:
         out = cls.model_validate(s, from_attributes=True)
         out.kinds = list(s.kinds or [])
+        out.required_tools = list(s.required_tools or [])
         return out
 
 
@@ -203,6 +207,7 @@ class SkillIn(Wire):
     when_to_use: str = ""
     body: str = ""
     kinds: list[str] | None = None
+    required_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
 
 
@@ -243,8 +248,8 @@ class AgentOut(Wire):
     description: str
     model: str
     system_prompt: str
-    tools: JsonList = Field(default_factory=list)
-    skill_ids: JsonList = Field(default_factory=list)
+    tools: list[str] | None = None
+    skill_ids: list[str] | None = None
     kinds: JsonList = Field(default_factory=list)
     temperature: float
     color: str
@@ -252,6 +257,9 @@ class AgentOut(Wire):
     visibility: AgentVisibility
     installs: int
     runs: int
+    #: Runtime-only: the caller has readable text on this agent's shelf, so
+    #: `search_knowledge` can actually be built for a chat turn.
+    has_knowledge: bool = False
     #: Who made it. The store mixes other people's agents with your own, and
     #: without this the edit button's outcome is unknowable until it 403s.
     owner_id: str
@@ -259,11 +267,14 @@ class AgentOut(Wire):
     updated_at: datetime
 
     @classmethod
-    def of(cls, a: Agent, owner_name: str = "") -> AgentOut:
+    def of(
+        cls, a: Agent, owner_name: str = "", *, has_knowledge: bool = False
+    ) -> AgentOut:
         out = cls.model_validate(a, from_attributes=True)
         out.owner_name = owner_name
-        out.tools = list(a.tools or [])
-        out.skill_ids = list(a.skill_ids or [])
+        out.has_knowledge = has_knowledge
+        out.tools = None if a.tools is None else list(a.tools)
+        out.skill_ids = None if a.skill_ids is None else list(a.skill_ids)
         out.kinds = list(a.kinds or [])
         return out
 
@@ -273,13 +284,21 @@ class AgentIn(Wire):
     description: str = ""
     model: str = ""
     system_prompt: str = ""
-    tools: list[str] | None = None
-    skill_ids: list[str] | None = None
+    # Omitted on create means least privilege. Explicit null is the backwards-
+    # compatible "inherit" state for existing integrations.
+    tools: list[str] | None = Field(default_factory=list)
+    skill_ids: list[str] | None = Field(default_factory=list)
     kinds: list[str] | None = None
     temperature: float = Field(default=0.7, ge=0, le=2)
     color: str = "#5b53e8"
     enabled: bool = True
     visibility: AgentVisibility = AgentVisibility.private
+
+
+class ToolCatalogOut(Wire):
+    name: str
+    label: str
+    available: bool = True
 
 
 # ── shares ─────────────────────────────────────────────────────────────

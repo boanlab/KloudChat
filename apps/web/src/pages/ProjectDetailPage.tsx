@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, FileText, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Brain, FileText, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -78,6 +78,9 @@ export function ProjectDetailPage() {
 
   const projectSessions = sessions.filter((c) => c.projectId === project.id)
   const projectSkills = skills.filter((s) => project.skillIds.includes(s.id))
+  const validProjectSkillIds = project.skillIds.filter((id) =>
+    skills.some((skill) => skill.id === id && skill.enabled),
+  )
   const projectMemories = memories.filter((m) => m.scope === project.id)
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
 
@@ -367,14 +370,53 @@ export function ProjectDetailPage() {
                     <p className="text-xs text-muted">{s.description}</p>
                   </div>
                   <Badge tone={s.enabled ? 'success' : 'neutral'}>
-                    {s.enabled ? t('활성') : t('비활성')}
+                    {s.enabled ? t('추천') : t('사용 중지')}
                   </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('{name} 추천 해제').replace('{name}', s.name)}
+                    onClick={() =>
+                      void updateProject(project.id, {
+                        skillIds: validProjectSkillIds.filter((id) => id !== s.id),
+                      })
+                    }
+                  >
+                    <X size={13} />
+                  </Button>
                 </Card>
               ))}
-              <Button size="sm" onClick={() => navigate('/skills')}>
-                <Plus size={14} />
-                {t('스킬 연결')}
-              </Button>
+              <Dropdown
+                className="min-w-72"
+                trigger={() => (
+                  <Button size="sm">
+                    <Plus size={14} />
+                    {t('추천 스킬 설정')}
+                  </Button>
+                )}
+              >
+                <MenuLabel>{t('입력창에서 먼저 보여 줄 스킬')}</MenuLabel>
+                {skills
+                  .filter((skill) => skill.enabled)
+                  .map((skill) => {
+                    const selected = validProjectSkillIds.includes(skill.id)
+                    return (
+                      <MenuItem
+                        key={skill.id}
+                        hint={selected ? '✓' : undefined}
+                        onClick={() =>
+                          void updateProject(project.id, {
+                            skillIds: selected
+                              ? validProjectSkillIds.filter((id) => id !== skill.id)
+                              : [...validProjectSkillIds, skill.id],
+                          })
+                        }
+                      >
+                        {skill.name}
+                      </MenuItem>
+                    )
+                  })}
+              </Dropdown>
             </div>
           )}
 

@@ -30,7 +30,9 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.models.chat import SessionKind
 from app.services import settings_store
+from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
 
@@ -138,17 +140,6 @@ JSON 객체로만 답하라.
 원래 요청: {request}"""
 
 
-def _with_context(prompt: str, context: str) -> str:
-    """Workspace blocks in front of the instruction.
-
-    Blocks first, instruction last: a small model follows what it read last.
-    """
-    context = context.strip()
-    if not context:
-        return prompt
-    return f"# 참고할 자료\n\n{context}\n\n---\n\n{prompt}"
-
-
 class DeckError(RuntimeError):
     """The message is written for the person who asked."""
 
@@ -157,7 +148,12 @@ class DeckError(RuntimeError):
 _BACKOFF = (2.0, 6.0)
 
 
-async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> tuple[str, dict]:
+async def _complete(
+    model: str,
+    messages: list[dict[str, str]],
+    api_key: str,
+    max_tokens: int,
+) -> tuple[str, dict]:
     """One non-streaming call. Returns `(text, usage)`. Retries a 429.
 
     A deck is dozens of calls in a row, the request most likely to meet a shared
@@ -174,7 +170,7 @@ async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> t
                 "/v1/chat/completions",
                 json={
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": messages,
                     "max_tokens": max_tokens,
                 },
             )
@@ -317,7 +313,8 @@ async def write(
     request: str,
     model: str,
     api_key: str,
-    context: str = "",
+    trusted_context: list[str] | None = None,
+    untrusted_context: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `slide`, a final `deck` and one `usage` event.
 
@@ -332,14 +329,16 @@ async def write(
     try:
         text, spent = await _complete(
             model,
-            _with_context(
+            build_document_messages(
+                SessionKind.slides,
                 _OUTLINE_PROMPT.format(
                     lo=wanted or _MIN_SLIDES,
                     hi=wanted or _DEFAULT_MAX,
                     themes=" / ".join(_THEMES),
                     request=request[:2000],
                 ),
-                context,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
             ),
             api_key,
             # Scaled with the slide count: a fixed ceiling truncates the JSON
@@ -431,7 +430,8 @@ async def write(
         try:
             body, spent = await _complete(
                 model,
-                _with_context(
+                build_document_messages(
+                    SessionKind.slides,
                     template.format(
                         heading=slide["title"],
                         outline=outline_text,
@@ -442,7 +442,8 @@ async def write(
                         count="6~8" if slide["layout"] == "two-column" else "3~5",
                         request=request[:1500],
                     ),
-                    context,
+                    trusted_context=trusted_context,
+                    untrusted_context=untrusted_context,
                 ),
                 api_key,
                 600,

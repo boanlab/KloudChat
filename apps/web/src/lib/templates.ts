@@ -25,11 +25,12 @@ export const templates: Template[] = [
   {
     id: 't_essay',
     kind: 'report',
-    group: '학업',
-    title: '과제 리포트',
-    description: '주장 하나를 세우고 근거로 받치는 글',
-    fills: ['주제', '인용 형식', '분량'],
-    prompt: '이 주제로 리포트를 써야 한다. 인용 형식과 분량은 아래에 적었다.\n\n주제: ',
+    group: '업무',
+    title: '업무·기술 보고서',
+    description: '목적과 독자를 정하고 근거와 다음 행동으로 맺는 문서',
+    fills: ['목적', '독자', '분량'],
+    prompt:
+      '업무·기술 보고서가 필요하다. 확인되지 않은 수치는 쓰지 말고 결론에 다음 행동을 적어 줘.\n\n목적과 독자: ',
   },
   {
     id: 't_lab',

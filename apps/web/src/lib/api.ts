@@ -720,11 +720,24 @@ export interface SkillRow {
   description: string
   whenToUse: string
   body: string
+  catalogKey: string | null
   source: string
   kinds: string[]
+  requiredTools: string[]
+  estimatedTokens: number
   version: string
   enabled: boolean
   updatedAt: string
+}
+
+export interface ToolCatalogRow {
+  name: string
+  label: string
+  available: boolean
+}
+
+export const toolsApi = {
+  list: () => call<ToolCatalogRow[]>('/tools'),
 }
 
 export const memoryApi = {
@@ -799,8 +812,8 @@ export interface AgentRow {
   description: string
   model: string
   systemPrompt: string
-  tools: string[]
-  skillIds: string[]
+  tools: string[] | null
+  skillIds: string[] | null
   kinds: string[]
   temperature: number
   color: string
@@ -808,6 +821,8 @@ export interface AgentRow {
   visibility: string
   installs: number
   runs: number
+  /** True only when this caller has readable documents on this agent's shelf. */
+  hasKnowledge: boolean
   updatedAt: string
 }
 
@@ -930,6 +945,11 @@ export const jobsApi = {
 export type StreamEvent =
   | { type: 'step'; id: string; label: string; status: Step['status']; detail?: string }
   | { type: 'delta'; text: string }
+  | {
+      type: 'skills_applied'
+      skills: { id: string; name: string; catalogKey: string | null; estimatedTokens: number }[]
+      estimatedTokens: number
+    }
   | { type: 'section'; sectionId: string; heading: string; content: string; done: boolean }
   /**
    * A deck's slides, announced empty by the outline pass and filled in one at a
@@ -968,6 +988,7 @@ export async function* streamSession(
     attachments?: string[]
     webSearch?: boolean
     model?: string
+    activatedSkillIds?: string[]
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
@@ -980,7 +1001,7 @@ export async function* streamSession(
  */
 export async function* streamComparison(
   sessionId: string,
-  payload: { content: string; models: string[] },
+  payload: { content: string; models: string[]; activatedSkillIds?: string[] },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   yield* postStream(`/sessions/${sessionId}/compare`, payload, signal)

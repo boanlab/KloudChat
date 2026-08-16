@@ -21,7 +21,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { SessionKind } from '@/types'
+import type { SessionKind, Skill } from '@/types'
 import { ModelPicker } from './ModelPicker'
 import { useT } from '@/lib/useT'
 
@@ -267,6 +267,8 @@ export function Composer({
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [webSearch, setWebSearch] = useState(false)
+  const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
+  useEffect(() => setActivatedSkillIds([]), [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   const {
@@ -274,6 +276,8 @@ export function Composer({
     stopStreaming,
     streaming,
     skills,
+    availableTools,
+    sessions,
     projects,
     agents,
     connectors,
@@ -288,7 +292,6 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
-    toggleSkill,
     generateImages,
     generateAudio,
     generateVideo,
@@ -299,8 +302,63 @@ export function Composer({
   } = useStore()
 
   const project = projects.find((p) => p.id === projectId)
-  const usableSkills = skills.filter((s) => s.kinds.length === 0 || s.kinds.includes(kind))
-  const activeSkills = usableSkills.filter((s) => s.enabled)
+  const session = sessions.find((candidate) => candidate.id === sessionId)
+  const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
+  const model = models.find(
+    (candidate) => candidate.id === (session?.model || modelByKind[kind]),
+  )
+  const agentSkillAllowlist = sessionAgent?.skillIds
+  const agentToolAllowlist = sessionAgent?.tools
+  const recommended = new Set(project?.skillIds ?? [])
+  const usableSkills = skills
+    .filter(
+      (skill) =>
+        skill.enabled &&
+        (skill.kinds.length === 0 || skill.kinds.includes(kind)) &&
+        (agentSkillAllowlist === undefined ||
+          agentSkillAllowlist === null ||
+          agentSkillAllowlist.includes(skill.id)),
+    )
+    .sort((left, right) => Number(recommended.has(right.id)) - Number(recommended.has(left.id)))
+
+  const skillUnavailableReason = (skill: Skill): string | null => {
+    if (skill.requiredTools.length === 0) return null
+    if (kind !== 'chat' || compareMode) {
+      return t('이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.')
+    }
+    if (!model?.supportsTools) {
+      return t('선택한 모델이 도구 호출을 지원하지 않습니다.')
+    }
+    if (agentToolAllowlist !== undefined && agentToolAllowlist !== null) {
+      const denied = skill.requiredTools.filter((name) => !agentToolAllowlist.includes(name))
+      if (denied.length > 0) {
+        return t('에이전트가 필수 도구를 허용하지 않습니다: {tools}').replace(
+          '{tools}',
+          denied.join(', '),
+        )
+      }
+    }
+    if (skill.requiredTools.includes('web_search') && !webSearch) {
+      return t('먼저 웹 검색을 켜야 합니다.')
+    }
+    const unavailable = skill.requiredTools.filter((name) => {
+      if (name === 'search_knowledge') return !sessionAgent?.hasKnowledge
+      return !availableTools.some((tool) => tool.name === name && tool.available)
+    })
+    return unavailable.length > 0
+      ? t('필수 도구를 사용할 수 없습니다: {tools}').replace(
+          '{tools}',
+          unavailable.join(', '),
+        )
+      : null
+  }
+  const activeSkills = activatedSkillIds
+    .map((id) => usableSkills.find((skill) => skill.id === id))
+    .filter(
+      (skill): skill is Skill =>
+        skill !== undefined && skillUnavailableReason(skill) === null,
+    )
+    .slice(0, 3)
   // Empty `kinds` means every surface, the same rule skills and tool
   // allowlists use.
   const usableAgents = agents.filter(
@@ -311,7 +369,6 @@ export function Composer({
   )
   const activeConnectors = usableConnectors.filter((c) => c.enabled && c.status === 'connected')
   const isMedia = kind === 'image' || kind === 'av'
-  const model = models.find((m) => m.id === modelByKind[kind])
   // Per picture, per second by (resolution, sound), or per call — never
   // `creditCost`, which is per 1k output tokens and reads as a fraction of the
   // real price on these surfaces.
@@ -347,6 +404,8 @@ export function Composer({
     clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
     const attachmentLabels = attachments.map((f) => f.name)
+    const sentAttachments = attachments
+    const sentSkillIds = activeSkills.map((skill) => skill.id)
     // Clear the composer first: the session is created server-side, so awaiting
     // the round trip would leave the sent text sitting in the box.
     setValue('')
@@ -382,9 +441,20 @@ export function Composer({
       webSearch,
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
+      activatedSkillIds: sentSkillIds,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => navigate(`/s/${id}`, { replace: true }),
     })
+      .then(() => setActivatedSkillIds([]))
+      .catch(() => {
+        // A policy/permission refusal happens before the server stores the
+        // turn. Restore the exact draft instead of making the user reconstruct
+        // the sentence, uploads, and one-turn skill choice. Do not overwrite a
+        // newer draft typed while the request was in flight.
+        setValue((current) => current || text)
+        setAttachments((current) => (current.length > 0 ? current : sentAttachments))
+        setActivatedSkillIds((current) => (current.length > 0 ? current : sentSkillIds))
+      })
   }
 
   return (
@@ -393,7 +463,11 @@ export function Composer({
           안에 있고, 바깥에는 아무 버튼도 두지 않는다 — 프롬프트를 쓰는 동안
           눈이 갈 곳은 여기 하나면 된다. */}
       <div className="rounded-3xl border border-line bg-panel shadow-sm transition-colors focus-within:border-line-strong">
-        {(project || attachments.length > 0 || webSearch || (compareMode && kind === 'chat')) && (
+        {(project ||
+          attachments.length > 0 ||
+          webSearch ||
+          activeSkills.length > 0 ||
+          (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {compareMode && kind === 'chat' && (
               <Badge tone="accent">
@@ -415,6 +489,22 @@ export function Composer({
                 {project.emoji} {project.name}
               </Badge>
             )}
+            {activeSkills.map((skill) => (
+              <Badge key={skill.id} tone="accent">
+                <Sparkles size={11} />
+                {skill.name}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActivatedSkillIds((ids) => ids.filter((id) => id !== skill.id))
+                  }
+                  aria-label={t('{name} 제거').replace('{name}', skill.name)}
+                  className="ml-0.5 text-faint hover:text-fg"
+                >
+                  <X size={10} />
+                </button>
+              </Badge>
+            ))}
             {attachments.map((f) => (
               <span
                 key={f.id}
@@ -539,16 +629,42 @@ export function Composer({
                 </button>
               )}
             >
-              <MenuLabel>{t('이 화면에서 쓸 수 있는 스킬')}</MenuLabel>
-              {usableSkills.map((s) => (
-                <MenuItem
-                  key={s.id}
-                  hint={s.enabled ? t('켜짐') : t('꺼짐')}
-                  onClick={() => void toggleSkill(s.id)}
-                >
-                  {s.name}
-                </MenuItem>
-              ))}
+              <MenuLabel>{t('이번 요청에 적용할 스킬 (최대 3개)')}</MenuLabel>
+              {usableSkills.map((s) => {
+                const selected = activeSkills.some((skill) => skill.id === s.id)
+                const unavailable = skillUnavailableReason(s)
+                const limitReached = !selected && activeSkills.length >= 3
+                return (
+                  <MenuItem
+                    key={s.id}
+                    checked={selected}
+                    disabled={!!unavailable || limitReached}
+                    hint={
+                      selected
+                        ? '✓'
+                        : unavailable
+                          ? unavailable
+                          : limitReached
+                            ? t('최대 3개까지 선택할 수 있습니다.')
+                            : recommended.has(s.id)
+                              ? t('프로젝트 추천')
+                              : t('약 {n} 토큰').replace(
+                                  '{n}',
+                                  s.estimatedTokens.toLocaleString(),
+                                )
+                    }
+                    onClick={() =>
+                      setActivatedSkillIds(
+                        selected
+                          ? activeSkills.filter((skill) => skill.id !== s.id).map((skill) => skill.id)
+                          : [...activeSkills.map((skill) => skill.id), s.id],
+                      )
+                    }
+                  >
+                    {s.name}
+                  </MenuItem>
+                )
+              })}
               <MenuSeparator />
               <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/skills')}>
                 {t('스킬 관리')}

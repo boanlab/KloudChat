@@ -20,7 +20,15 @@ from app.models.workspace import Connector, ConnectorStatus, ConnectorTool
 from app.services import mcp
 from app.services.tools import catalog
 from app.services.tools.base import Tool, ToolResult
-from app.services.tools.builtin import available_builtins, knowledge_tool
+from app.services.tools.builtin import (
+    CREATE_ARTIFACT,
+    CREATE_CHART,
+    EXECUTE_CODE,
+    FETCH_URL,
+    WEB_SEARCH,
+    available_builtins,
+    knowledge_tool,
+)
 
 log = logging.getLogger(__name__)
 
@@ -115,14 +123,13 @@ async def build_tools(
 ) -> list[Tool]:
     """The turn's tool list.
 
-    `allowed` is an agent's allowlist. An empty or absent list means "everything
-    this user has"; a populated one is a hard filter, so an agent built for one
-    job cannot quietly reach a connector its author never considered.
+    `allowed` is an agent's three-state allowlist. `None` inherits everything
+    this user has, `[]` denies every tool, and a populated list is a hard
+    filter, so an agent built for one job cannot quietly reach a connector its
+    author never considered.
 
-    `knowledge` is the running agent's own documents. It is exempt from the
-    allowlist: the shelf belongs to this agent, was attached by whoever built
-    it, and an allowlist written before the shelf existed would silently switch
-    it off.
+    `knowledge` is the running agent's own documents and follows that same hard
+    allowlist under its real registry name, `search_knowledge`.
     """
     tools = await available_builtins(web_search)
     seen = {t.name for t in tools}
@@ -134,9 +141,59 @@ async def build_tools(
         seen.add(tool.name)
         tools.append(tool)
 
-    if allowed:
+    if allowed is not None:
         keep = set(allowed)
         tools = [t for t in tools if t.name in keep]
-    if knowledge:
+    if knowledge and (allowed is None or "search_knowledge" in allowed):
         tools.append(knowledge_tool(knowledge, knowledge_collection))
     return tools
+
+
+async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
+    """The real tool names an agent or shipped skill may reference.
+
+    Uses the same builders as execution, so the UI cannot offer historical
+    placeholder names that the turn loop will never resolve. Knowledge search
+    is listed separately because it exists only once an agent has a shelf.
+    """
+    available = {tool.name: tool for tool in await build_tools(db, user, web_search=True)}
+    known: dict[str, tuple[str, bool]] = {
+        tool.name: (tool.label or tool.name, tool.name in available)
+        for tool in (WEB_SEARCH, FETCH_URL, EXECUTE_CODE, CREATE_ARTIFACT, CREATE_CHART)
+    }
+
+    # Registered connector names stay valid while a server is disconnected;
+    # availability is checked again at execution time.
+    connectors = (
+        await db.exec(
+            select(Connector).where(
+                Connector.owner_id == user.id,
+                Connector.installed == True,  # noqa: E712
+            )
+        )
+    ).all()
+    if connectors:
+        connector_rows = (
+            await db.exec(
+                select(ConnectorTool).where(
+                    ConnectorTool.connector_id.in_([item.id for item in connectors])  # type: ignore[attr-defined]
+                )
+            )
+        ).all()
+        by_id = {item.id: item for item in connectors}
+        for row in connector_rows:
+            connector = by_id.get(row.connector_id)
+            if connector is None:
+                continue
+            name = qualified(connector.slug, row.name)
+            known[name] = (_label_for(connector, row.name), name in available)
+
+    # This catalogue has user scope, while knowledge search is created for one
+    # concrete agent only when that agent has readable shelf documents. It is
+    # a valid registry name but cannot truthfully be advertised as globally
+    # available; AgentOut.has_knowledge supplies the missing runtime condition.
+    known["search_knowledge"] = ("에이전트 지식이 있을 때 검색", False)
+    return [
+        {"name": name, "label": label, "available": is_available}
+        for name, (label, is_available) in known.items()
+    ]

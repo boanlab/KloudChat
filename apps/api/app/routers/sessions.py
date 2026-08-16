@@ -24,7 +24,7 @@ from app.core.deps import CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession, Message, Role, SessionKind
 from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent as WorkspaceAgent
-from app.models.workspace import Artifact, ArtifactKind, StoredFile
+from app.models.workspace import AgentVisibility, Artifact, ArtifactKind, Project, StoredFile
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
@@ -52,7 +52,7 @@ from app.services.context import build_messages
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools.base import Tool, ToolContext
 from app.services.tools.registry import build_tools
-from app.services.workspace_context import agent_settings, assemble
+from app.services.workspace_context import WorkspaceContextError, agent_settings, assemble
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -73,6 +73,65 @@ async def _history(db: DbSession, session_id: str) -> list[Message]:
         .order_by(col(Message.created_at), col(Message.id))
     )
     return list(result.all())
+
+
+def _raise_workspace_error(exc: WorkspaceContextError) -> None:
+    code = str(exc)
+    missing = code in {"agent_not_found", "project_not_found", "attachment_not_found"}
+    raise HTTPException(
+        status_code=(
+            status.HTTP_404_NOT_FOUND
+            if missing
+            else status.HTTP_422_UNPROCESSABLE_CONTENT
+        ),
+        detail=code,
+    ) from exc
+
+
+async def _validate_session_links(
+    db: DbSession,
+    user: User,
+    kind: SessionKind,
+    *,
+    project_id: str | None,
+    agent_id: str | None,
+) -> None:
+    if project_id:
+        project = await db.get(Project, project_id)
+        if project is None or project.user_id != user.id:
+            raise HTTPException(status_code=404, detail="project_not_found")
+    if agent_id:
+        agent = await db.get(WorkspaceAgent, agent_id)
+        allowed = agent is not None and (
+            agent.owner_id == user.id or agent.visibility == AgentVisibility.org
+        )
+        if not allowed:
+            raise HTTPException(status_code=404, detail="agent_not_found")
+        if not agent.enabled:
+            raise HTTPException(status_code=422, detail="agent_disabled")
+        if agent.kinds and kind.value not in agent.kinds:
+            raise HTTPException(status_code=422, detail="agent_kind_mismatch")
+
+
+def _skill_step(event: dict | None) -> dict | None:
+    if not event:
+        return None
+    names = [str(skill.get("name") or "") for skill in event.get("skills") or []]
+    return {
+        "id": "skills-applied",
+        "type": "thinking",
+        "label": f"스킬 {len(names)}개 적용",
+        "status": "done",
+        # Keep the structured contract in message JSONB as well as the SSE.
+        # The timeline uses label/detail today; audit or future clients do not
+        # have to parse those display strings to recover what ran.
+        "skills": list(event.get("skills") or []),
+        "estimatedTokens": int(event.get("estimatedTokens") or 0),
+        "detail": (
+            " · ".join(names)
+            + f" · 약 {int(event.get('estimatedTokens') or 0):,} 토큰"
+        ),
+    }
 
 
 @router.get("", response_model=list[SessionOut])
@@ -138,6 +197,13 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="이 기능은 사용할 수 없습니다."
         )
+    await _validate_session_links(
+        db,
+        user,
+        payload.kind,
+        project_id=payload.project_id,
+        agent_id=payload.agent_id,
+    )
     session = ChatSession(
         user_id=user.id,
         kind=payload.kind,
@@ -156,7 +222,16 @@ async def patch_session(
     session_id: str, payload: SessionPatch, user: CurrentUser, db: DbSession
 ):
     session = await _owned(db, user, session_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "project_id" in changes:
+        await _validate_session_links(
+            db,
+            user,
+            session.kind,
+            project_id=changes["project_id"],
+            agent_id=session.agent_id,
+        )
+    for field, value in changes.items():
         setattr(session, field, value)
     session.updated_at = utcnow()
     db.add(session)
@@ -437,7 +512,10 @@ async def send_message(
     catalogue = await model_service.list_models()
     # Model precedence: turn override → session → agent. The agent supplies a
     # default, not a lock.
-    agent_model, agent_tools = await agent_settings(db, session)
+    try:
+        agent_model, agent_tools = await agent_settings(db, user, session)
+    except WorkspaceContextError as exc:
+        _raise_workspace_error(exc)
     model_id = payload.model or session.model or agent_model
     model = model_service.find(catalogue["models"], model_id) if model_id else None
     if model is None:
@@ -479,21 +557,6 @@ async def send_message(
             stored.session_id = session.id
             db.add(stored)
 
-    user_message = Message(
-        session_id=session.id,
-        role=Role.user,
-        content=content,
-        attachments=attachment_meta,
-    )
-    db.add(user_message)
-    session.model = model["id"]
-    session.updated_at = utcnow()
-    if not session.title:
-        # Provisional title, replaced once the first turn completes.
-        session.title = content.strip()[:40]
-    db.add(session)
-    await db.commit()
-
     # The running agent's own documents, loaded once for the turn. Text lives in
     # the row, so this is the whole shelf and not a handle to fetch it later —
     # the tool runs inside the stream, where there is no database session.
@@ -525,12 +588,29 @@ async def send_message(
             db,
             user,
             web_search=payload.web_search,
-            allowed=agent_tools or None,
+            allowed=agent_tools,
             knowledge=shelf,
             knowledge_collection=shelf_key,
         )
 
-    extra = await assemble(db, user, session, attachment_ids=payload.attachments)
+    try:
+        workspace = await assemble(
+            db,
+            user,
+            session,
+            attachment_ids=payload.attachments,
+            activated_skill_ids=payload.activated_skill_ids,
+            # Report and deck writers do not run the chat tool loop. A skill
+            # requiring a tool must therefore be refused on those surfaces,
+            # even if that tool is configured for ordinary chat turns.
+            available_tool_names=(
+                {tool.name for tool in tools}
+                if session.kind is SessionKind.chat
+                else set()
+            ),
+        )
+    except WorkspaceContextError as exc:
+        _raise_workspace_error(exc)
     wire_history = [{"role": m.role.value, "content": m.content} for m in history]
     wire_history.append({"role": "user", "content": content})
     messages = build_messages(
@@ -540,15 +620,31 @@ async def send_message(
         web_search=payload.web_search,
         # An agent allowlist may have removed the tool the toggle enabled.
         web_search_available=any(t.name == "web_search" for t in tools),
-        extra=extra,
+        extra=workspace.trusted,
+        untrusted_context=workspace.untrusted,
     )
 
+    # All references, skill permissions, required tools, and workspace links
+    # have been validated. Only now is the user turn made durable.
+    db.add(
+        Message(
+            session_id=session.id,
+            role=Role.user,
+            content=content,
+            attachments=attachment_meta,
+        )
+    )
+    session.model = model["id"]
+    session.updated_at = utcnow()
+    if not session.title:
+        session.title = content.strip()[:40]
+    db.add(session)
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
         if agent_row is not None:
             agent_row.runs += 1
             db.add(agent_row)
-            await db.commit()
+    await db.commit()
 
     # Resolved per turn while a DB session is open. Also issues the key to an
     # account provisioned during a proxy outage.
@@ -571,7 +667,9 @@ async def send_message(
                 # The same blocks the chat surface gets. Without this a report
                 # or a deck saw the request sentence alone — no project
                 # instructions, no memories, no attached form.
-                context="\n\n".join(extra),
+                trusted_context=workspace.trusted,
+                untrusted_context=workspace.untrusted,
+                skills_event=workspace.skills_event(),
             ),
             media_type="text/event-stream",
             headers={
@@ -593,7 +691,9 @@ async def send_message(
                 # The same blocks the chat surface gets. Without this a report
                 # or a deck saw the request sentence alone — no project
                 # instructions, no memories, no attached form.
-                context="\n\n".join(extra),
+                trusted_context=workspace.trusted,
+                untrusted_context=workspace.untrusted,
+                skills_event=workspace.skills_event(),
             ),
             media_type="text/event-stream",
             headers={
@@ -614,6 +714,7 @@ async def send_message(
             tools=tools,
             first_user_message=content,
             is_first_turn=is_first_turn,
+            skills_event=workspace.skills_event(),
         ),
         media_type="text/event-stream",
         headers={
@@ -636,6 +737,7 @@ async def _run_turn(
     tools: list[Tool],
     first_user_message: str,
     is_first_turn: bool,
+    skills_event: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -643,11 +745,14 @@ async def _run_turn(
     StreamingResponse.
     """
     text_parts: list[str] = []
-    steps: list[dict] = []
+    initial_skill_step = _skill_step(skills_event)
+    steps: list[dict] = [initial_skill_step] if initial_skill_step else []
     usage = {"inputTokens": 0, "outputTokens": 0}
     failed: str | None = None
 
     ctx = ToolContext(user_id=user_id, session_id=session_id, api_key=api_key)
+    if skills_event:
+        yield chat_service.sse(skills_event)
     try:
         async for event in agent_service.run_turn(model["id"], messages, tools, ctx):
             if event["type"] == "delta":
@@ -766,6 +871,18 @@ async def compare_models(
             await _audit_policy(user, request, "pii.masked", f"{masked}건")
 
     history = await _history(db, session.id)
+    try:
+        workspace = await assemble(
+            db,
+            user,
+            session,
+            activated_skill_ids=payload.activated_skill_ids,
+            # Comparison intentionally exposes no tools. A skill that requires
+            # one is refused before any column starts or any charge is made.
+            available_tool_names=set(),
+        )
+    except WorkspaceContextError as exc:
+        _raise_workspace_error(exc)
     db.add(Message(session_id=session.id, role=Role.user, content=content))
     session.updated_at = utcnow()
     if not session.title:
@@ -781,7 +898,14 @@ async def compare_models(
 
     wire = [{"role": m.role.value, "content": m.content} for m in history]
     wire.append({"role": "user", "content": content})
-    messages = build_messages(session.kind, wire, with_tools=False, web_search=False)
+    messages = build_messages(
+        session.kind,
+        wire,
+        with_tools=False,
+        web_search=False,
+        extra=workspace.trusted,
+        untrusted_context=workspace.untrusted,
+    )
 
     return StreamingResponse(
         _run_comparison(
@@ -790,6 +914,7 @@ async def compare_models(
             session_id=session.id,
             models=chosen,
             messages=messages,
+            skills_event=workspace.skills_event(),
         ),
         media_type="text/event-stream",
         headers={
@@ -807,6 +932,7 @@ async def _run_comparison(
     session_id: str,
     models: list[dict],
     messages: list[dict],
+    skills_event: dict | None = None,
 ) -> AsyncIterator[str]:
     """Fans out, merges the streams, then settles every column in one transaction.
 
@@ -858,6 +984,8 @@ async def _run_comparison(
 
     task = asyncio.create_task(drive())
     try:
+        if skills_event:
+            yield chat_service.sse(skills_event)
         while (event := await queue.get()) is not None:
             yield chat_service.sse(event)
     finally:
@@ -890,6 +1018,7 @@ async def _run_comparison(
                 content=chosen["content"] if chosen else "",
                 variants=variants,
                 usage={"credits": total},
+                steps=[_skill_step(skills_event)] if skills_event else None,
             )
         )
         settled = await db.get(User, user_id)
@@ -1026,7 +1155,9 @@ async def _run_deck(
     model: dict,
     request: str,
     project_id: str | None,
-    context: str = "",
+    trusted_context: list[str] | None = None,
+    untrusted_context: list[str] | None = None,
+    skills_event: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
 
@@ -1036,9 +1167,15 @@ async def _run_deck(
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
 
+    if skills_event:
+        yield chat_service.sse(skills_event)
     try:
         stream = deck_service.write(
-            request=request, model=model["id"], api_key=api_key, context=context
+            request=request,
+            model=model["id"],
+            api_key=api_key,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
         )
         async for event in stream:
             if event["type"] == "deck":
@@ -1092,6 +1229,7 @@ async def _run_deck(
                         content=f"{len(written)}장짜리 슬라이드를 만들었습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
+                        steps=[_skill_step(skills_event)] if skills_event else None,
                     )
                 )
                 settle(db, user, credits, reason="deck.generate", session_id=session_id)
@@ -1113,7 +1251,9 @@ async def _run_report(
     model: dict,
     request: str,
     project_id: str | None,
-    context: str = "",
+    trusted_context: list[str] | None = None,
+    untrusted_context: list[str] | None = None,
+    skills_event: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it.
 
@@ -1129,9 +1269,15 @@ async def _run_report(
     #: numbering the prose refers to.
     sources: list[dict] = []
 
+    if skills_event:
+        yield chat_service.sse(skills_event)
     try:
         stream = report_service.write(
-            request=request, model=model["id"], api_key=api_key, context=context
+            request=request,
+            model=model["id"],
+            api_key=api_key,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
         )
         async for event in stream:
             if event["type"] == "report":
@@ -1206,6 +1352,7 @@ async def _run_report(
                         content=f"{len(written)}개 섹션으로 보고서를 작성했습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
+                        steps=[_skill_step(skills_event)] if skills_event else None,
                     )
                 )
                 settle(db, user, credits, reason="report.generate", session_id=session_id)

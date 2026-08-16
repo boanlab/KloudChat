@@ -491,24 +491,35 @@ export function MenuItem({
   danger,
   icon,
   hint,
+  disabled,
+  checked,
 }: {
   children: ReactNode
   onClick?: () => void
   danger?: boolean
   icon?: ReactNode
   hint?: ReactNode
+  disabled?: boolean
+  /** Turns an ordinary menu command into an accessible toggle item. */
+  checked?: boolean
 }) {
   const { close } = useContext(MenuCtx)
   return (
     <button
-      role="menuitem"
+      role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+      aria-checked={checked}
+      disabled={disabled}
       onClick={() => {
         onClick?.()
         close()
       }}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors',
-        danger ? 'text-danger hover:bg-danger/10' : 'text-fg hover:bg-elevated',
+        disabled
+          ? 'cursor-not-allowed text-faint opacity-60'
+          : danger
+            ? 'text-danger hover:bg-danger/10'
+            : 'text-fg hover:bg-elevated',
       )}
     >
       {icon && <span className="shrink-0 text-muted">{icon}</span>}

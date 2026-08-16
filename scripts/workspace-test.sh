@@ -64,7 +64,7 @@ curl -s -o /dev/null -X POST "$API/skills/$SKID/toggle" -H "$A"
 
 echo "== memories =="
 curl -s -o "$J/m.json" -X POST "$API/memory" -H "$A" -H "$JSON" \
-  -d '{"name":"소속","description":"사용자 소속","type":"user","body":"예시대학교 소프트웨어학과 소속이다.","pinned":true}'
+  -d '{"name":"소속","description":"사용자 소속","type":"user","body":"예시조직 연구개발팀 소속이다.","pinned":true}'
 MID=$(jq_ "$J/m.json" "d['id']")
 chk "create"     "$(jq_ "$J/m.json" "d['pinned']")" "True"
 chk "pin toggle" "$(curl -s -X POST "$API/memory/$MID/pin" -H "$A" | python3 -c 'import json,sys;print(json.load(sys.stdin)["pinned"])')" "False"

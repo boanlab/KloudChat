@@ -17,7 +17,7 @@ import {
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { useStableOrder } from '@/lib/useStableOrder'
-import { relativeTime } from '@/lib/utils'
+import { cn, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { Skill } from '@/types'
@@ -35,7 +35,8 @@ const sourceLabel: Record<Skill['source'], string> = {
 
 export function SkillsPage() {
   const t = useT()
-  const { skills, toggleSkill, upsertSkill, deleteSkill, loadWorkspace } = useStore()
+  const { skills, availableTools, toggleSkill, upsertSkill, deleteSkill, loadWorkspace } =
+    useStore()
 
   useEffect(() => {
     void loadWorkspace()
@@ -49,13 +50,25 @@ export function SkillsPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
     /** The skill being written. `editing` holding an id means edit; null
      *  means create. */
-  const [draft, setDraft] = useState({ name: '', description: '', whenToUse: '', body: '' })
+  const [draft, setDraft] = useState({
+    name: '',
+    description: '',
+    whenToUse: '',
+    body: '',
+    requiredTools: [] as string[],
+  })
   const [editing, setEditing] = useState<string | null>(null)
   //: 지우기 전에 무엇을 지우는지 묻는다. 되돌릴 곳이 서버에 없다.
   const [confirming, setConfirming] = useState<Skill | null>(null)
+  const toolOptions = [
+    ...availableTools,
+    ...draft.requiredTools
+      .filter((name) => !availableTools.some((tool) => tool.name === name))
+      .map((name) => ({ name, label: name, available: false })),
+  ]
 
   const reset = () => {
-    setDraft({ name: '', description: '', whenToUse: '', body: '' })
+    setDraft({ name: '', description: '', whenToUse: '', body: '', requiredTools: [] })
     setEditing(null)
   }
   const startEdit = (s: Skill) => {
@@ -63,7 +76,8 @@ export function SkillsPage() {
       name: s.name,
       description: s.description,
       whenToUse: s.whenToUse,
-      body: (s as Skill & { body?: string }).body ?? '',
+      body: s.body,
+      requiredTools: s.requiredTools,
     })
     setEditing(s.id)
     setDetail(null)
@@ -85,7 +99,7 @@ export function SkillsPage() {
       <PageBody>
         <PageHeader
           title={t('스킬')}
-          description={t('특정 작업을 어떻게 처리할지 적어 둔 절차입니다. 관련된 요청이 오면 모델이 스스로 불러옵니다.')}
+          description={t('설치해 둔 절차입니다. 입력창에서 이번 요청에 적용할 스킬을 최대 3개 고릅니다.')}
           action={
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={16} />
@@ -148,7 +162,7 @@ export function SkillsPage() {
               <Switch
                 checked={s.enabled}
                 onChange={() => toggleSkill(s.id)}
-                label={t('{name} 활성화').replace('{name}', t(s.name))}
+                label={t('{name} 설치 상태').replace('{name}', t(s.name))}
               />
             </Card>
           ))}
@@ -197,9 +211,20 @@ export function SkillsPage() {
               <Badge>{t(sourceLabel[detail.source])}</Badge>
               <Badge>v{detail.version}</Badge>
               <Badge tone={detail.enabled ? 'success' : 'neutral'}>
-                {detail.enabled ? t('활성') : t('비활성')}
+                {detail.enabled ? t('설치됨') : t('사용 중지')}
               </Badge>
+              <Badge>{t('약 {n} 토큰').replace('{n}', detail.estimatedTokens.toLocaleString())}</Badge>
             </div>
+            {detail.requiredTools.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[13px] font-medium">{t('필수 도구')}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.requiredTools.map((tool) => (
+                    <Badge key={tool}>{tool}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <p className="mb-1.5 text-[13px] font-medium">{t('사용 시점')}</p>
               <p className="rounded-lg border border-line bg-elevated px-3 py-2 text-[13px] text-muted">
@@ -254,10 +279,12 @@ export function SkillsPage() {
                     id: editing ?? '',
                     slug: current?.slug ?? '',
                     source: current?.source ?? 'personal',
+                    catalogKey: current?.catalogKey ?? null,
                     kinds: current?.kinds ?? ['chat', 'report', 'slides'],
                     enabled: current?.enabled ?? true,
                     version: current?.version ?? '1.0.0',
                     files: current?.files ?? ['SKILL.md'],
+                    estimatedTokens: current?.estimatedTokens ?? 0,
                     updatedAt: new Date().toISOString(),
                     ...draft,
                   })
@@ -287,7 +314,7 @@ export function SkillsPage() {
           <Input
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            placeholder={t('예: 실험 로그 요약')}
+            placeholder={t('예: 배포 전 리스크 검토')}
             // The server refuses anything longer. Offering the extra
             // characters and then rejecting them is a round trip spent to say
             // no to something the form could have declined to take.
@@ -309,7 +336,7 @@ export function SkillsPage() {
             rows={2}
             value={draft.whenToUse}
             onChange={(e) => setDraft({ ...draft, whenToUse: e.target.value })}
-            placeholder={t('사용자가 학습 로그 파일을 붙여넣고 요약을 요청할 때')}
+            placeholder={t('사용자가 의사결정 자료를 붙여넣고 리스크 검토를 요청할 때')}
           />
         </Field>
         <Field label={t('절차')} hint={t('모델이 그대로 따를 단계입니다.')}>
@@ -317,8 +344,41 @@ export function SkillsPage() {
             rows={5}
             value={draft.body}
             onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-            placeholder={t('1. 로그에서 epoch/loss/metric 열을 찾는다\n2. 최고 성능 지점을 표로 정리한다')}
+            placeholder={t('1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다')}
           />
+        </Field>
+        <Field
+          label={t('필수 도구')}
+          hint={t('선택한 도구가 현재 모델과 에이전트에 허용된 경우에만 이 스킬을 실행합니다.')}
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {toolOptions.map((tool) => {
+              const on = draft.requiredTools.includes(tool.name)
+              return (
+                <button
+                  type="button"
+                  key={tool.name}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      requiredTools: on
+                        ? draft.requiredTools.filter((name) => name !== tool.name)
+                        : [...draft.requiredTools, tool.name],
+                    })
+                  }
+                  className={cn(
+                    'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                    on
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted hover:bg-elevated',
+                  )}
+                >
+                  {tool.label}
+                  <span className="ml-1 font-mono text-[10px] text-faint">{tool.name}</span>
+                </button>
+              )
+            })}
+          </div>
         </Field>
       </Modal>
     </>

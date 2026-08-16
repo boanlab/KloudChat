@@ -51,9 +51,17 @@ from app.schemas.workspace import (
     SlideFactCheck,
     TemplateIn,
     TemplateOut,
+    ToolCatalogOut,
 )
 from app.services import deck as deck_service
-from app.services import deck_export, factcheck, index_client, report_export, settings_store
+from app.services import (
+    deck_export,
+    factcheck,
+    index_client,
+    report_export,
+    settings_store,
+    starter,
+)
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
@@ -61,6 +69,7 @@ from app.services import report as report_service
 from app.services import transcribe as transcribe_service
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools import builtin as builtin_tools
+from app.services.tools import registry as tool_registry
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["workspace"])
@@ -79,6 +88,56 @@ async def _own(db: DbSession, model, owner_field: str, user: User, item_id: str)
     if row is None or getattr(row, owner_field) != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return row
+
+
+async def _validate_skill_ids(
+    db: DbSession,
+    user: User,
+    skill_ids: list[str] | None,
+    *,
+    grandfathered: set[str] | None = None,
+) -> None:
+    """Every reference is installed, owned, and unique.
+
+    Project links are suggestions and agent links are permissions, but neither
+    may become a cross-account object reference.
+    """
+    if skill_ids is None:
+        return
+    if len(skill_ids) != len(set(skill_ids)):
+        raise HTTPException(status_code=422, detail="duplicate_skill_ids")
+    if not skill_ids:
+        return
+    rows = (
+        await db.exec(
+            select(Skill).where(
+                Skill.owner_id == user.id,
+                col(Skill.id).in_(skill_ids),
+                Skill.enabled == True,  # noqa: E712
+            )
+        )
+    ).all()
+    valid = {row.id for row in rows}
+    invalid = set(skill_ids) - valid - (grandfathered or set())
+    if invalid:
+        raise HTTPException(status_code=422, detail="invalid_skill_ids")
+
+
+async def _validate_tool_names(
+    db: DbSession,
+    user: User,
+    names: list[str] | None,
+    *,
+    grandfathered: set[str] | None = None,
+) -> None:
+    if names is None:
+        return
+    if len(names) != len(set(names)):
+        raise HTTPException(status_code=422, detail="duplicate_tool_names")
+    known = {str(row["name"]) for row in await tool_registry.tool_catalog(db, user)}
+    unknown = sorted(set(names) - known - (grandfathered or set()))
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"unknown_tools:{','.join(unknown)}")
 
 
 # ══ projects ═══════════════════════════════════════════════════════════
@@ -112,6 +171,7 @@ async def list_projects(user: CurrentUser, db: DbSession):
 
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 async def create_project(payload: ProjectIn, user: CurrentUser, db: DbSession):
+    await _validate_skill_ids(db, user, payload.skill_ids)
     project = Project(user_id=user.id, **payload.model_dump())
     db.add(project)
     await db.commit()
@@ -129,7 +189,15 @@ async def patch_project(
     project_id: str, payload: ProjectPatch, user: CurrentUser, db: DbSession
 ):
     project = await _own(db, Project, "user_id", user, project_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "skill_ids" in changes:
+        await _validate_skill_ids(
+            db,
+            user,
+            changes["skill_ids"],
+            grandfathered=set(project.skill_ids or []),
+        )
+    for field, value in changes.items():
         setattr(project, field, value)
     project.updated_at = utcnow()
     db.add(project)
@@ -572,9 +640,23 @@ async def list_skills(user: CurrentUser, db: DbSession):
     return [SkillOut.of(s) for s in rows]
 
 
+@router.get("/tools", response_model=list[ToolCatalogOut])
+async def list_tool_catalog(user: CurrentUser, db: DbSession):
+    return [ToolCatalogOut(**row) for row in await tool_registry.tool_catalog(db, user)]
+
+
 @router.post("/skills", response_model=SkillOut, status_code=status.HTTP_201_CREATED)
 async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
-    skill = Skill(owner_id=user.id, slug=_slug(payload.name), **payload.model_dump())
+    await _validate_tool_names(db, user, payload.required_tools)
+    values = payload.model_dump()
+    skill = Skill(
+        owner_id=user.id,
+        slug=_slug(payload.name),
+        estimated_tokens=starter.estimate_tokens(
+            payload.when_to_use, payload.body, payload.description
+        ),
+        **values,
+    )
     db.add(skill)
     await db.commit()
     await db.refresh(skill)
@@ -584,9 +666,20 @@ async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
 @router.patch("/skills/{skill_id}", response_model=SkillOut)
 async def patch_skill(skill_id: str, payload: SkillIn, user: CurrentUser, db: DbSession):
     skill = await _own(db, Skill, "owner_id", user, skill_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "required_tools" in changes:
+        await _validate_tool_names(
+            db,
+            user,
+            changes["required_tools"],
+            grandfathered=set(skill.required_tools or []),
+        )
+    for field, value in changes.items():
         setattr(skill, field, value)
     skill.slug = _slug(skill.name)
+    skill.estimated_tokens = starter.estimate_tokens(
+        skill.when_to_use, skill.body, skill.description
+    )
     skill.updated_at = utcnow()
     db.add(skill)
     await db.commit()
@@ -667,6 +760,21 @@ async def delete_memory(memory_id: str, user: CurrentUser, db: DbSession):
 # ══ agents ═════════════════════════════════════════════════════════════
 
 
+async def _agent_has_knowledge(db: DbSession, user_id: str, agent_id: str) -> bool:
+    row = (
+        await db.exec(
+            select(StoredFile.id)
+            .where(
+                StoredFile.user_id == user_id,
+                StoredFile.agent_id == agent_id,
+                col(StoredFile.text) != "",
+            )
+            .limit(1)
+        )
+    ).first()
+    return row is not None
+
+
 @router.get("/agents", response_model=list[AgentOut])
 async def list_agents(user: CurrentUser, db: DbSession):
     # Own agents plus anything shared with the workspace.
@@ -684,29 +792,74 @@ async def list_agents(user: CurrentUser, db: DbSession):
         u.id: u.name
         for u in (await db.exec(select(User).where(col(User.id).in_(owner_ids)))).all()
     }
-    return [AgentOut.of(a, owner_name=names.get(a.owner_id, "")) for a in rows]
+    # Knowledge search is turn-local and only receives files readable by the
+    # caller. A shared agent's owner's shelf is intentionally not implied by
+    # the agent row, so it remains unavailable until the agent is copied and
+    # given the caller's own documents.
+    readable_shelves = set(
+        (
+            await db.exec(
+                select(StoredFile.agent_id).where(
+                    StoredFile.user_id == user.id,
+                    col(StoredFile.agent_id).in_([agent.id for agent in rows]),
+                    col(StoredFile.text) != "",
+                )
+            )
+        ).all()
+    )
+    return [
+        AgentOut.of(
+            agent,
+            owner_name=names.get(agent.owner_id, ""),
+            has_knowledge=agent.id in readable_shelves,
+        )
+        for agent in rows
+    ]
 
 
 @router.post("/agents", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
+    await _validate_skill_ids(db, user, payload.skill_ids)
+    await _validate_tool_names(db, user, payload.tools)
     agent = Agent(owner_id=user.id, slug=_slug(payload.name), **payload.model_dump())
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
-    return AgentOut.of(agent)
+    return AgentOut.of(
+        agent,
+        has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+    )
 
 
 @router.patch("/agents/{agent_id}", response_model=AgentOut)
 async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: DbSession):
     agent = await _own(db, Agent, "owner_id", user, agent_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "skill_ids" in changes:
+        await _validate_skill_ids(
+            db,
+            user,
+            changes["skill_ids"],
+            grandfathered=set(agent.skill_ids or []),
+        )
+    if "tools" in changes:
+        await _validate_tool_names(
+            db,
+            user,
+            changes["tools"],
+            grandfathered=set(agent.tools or []),
+        )
+    for field, value in changes.items():
         setattr(agent, field, value)
     agent.slug = _slug(agent.name)
     agent.updated_at = utcnow()
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
-    return AgentOut.of(agent)
+    return AgentOut.of(
+        agent,
+        has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+    )
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
