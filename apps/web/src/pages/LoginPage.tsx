@@ -1,7 +1,8 @@
-import { ArrowRight, CircleCheck, Loader2, Moon, Sun, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CircleCheck, Loader2, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { Brand } from '@/components/layout/Brand'
+import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { applyBrand } from '@/lib/brand'
 import { ApiError, authConfig } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
@@ -30,7 +31,7 @@ const UNKNOWN_ERROR = '요청을 처리하지 못했습니다. 잠시 후 다시
 
 export function LoginPage() {
   const t = useT()
-  const { login, signup, theme, toggleTheme, authError, bootstrap } = useStore()
+  const { login, signup, authError, bootstrap } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   //: A mailed link lands here with `?token=`. No router exists while signed
   //: out, so this page reads the query itself.
@@ -165,15 +166,7 @@ export function LoginPage() {
 
       {/* ── form column ──────────────────────────────────────────── */}
       <div className="relative flex flex-1 items-center justify-center p-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          aria-label={t('테마 전환')}
-          className="absolute top-5 right-5"
-        >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        </Button>
+        <ThemeToggle className="absolute top-5 right-5" />
 
         <div className="w-full max-w-sm">
           {/* 좁은 화면에서는 브랜드 열이 접히므로 폼 위에 한 번 더 그린다 */}

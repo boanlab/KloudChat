@@ -1,7 +1,8 @@
-import { Ban, Clock, LogOut, Mail, Moon, RefreshCw, Sun } from 'lucide-react'
+import { Ban, Clock, LogOut, Mail, RefreshCw } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button, Card } from '@/components/ui'
 import { formatDate } from '@/lib/utils'
+import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -12,7 +13,7 @@ import { useT } from '@/lib/useT'
  */
 export function PendingApprovalPage() {
   const t = useT()
-  const { user, logout, theme, toggleTheme, refreshMe } = useStore()
+  const { user, logout, refreshMe } = useStore()
   const suspended = user?.status === 'suspended'
 
   // Approval happens in another browser, on someone else's schedule. Polling is
@@ -26,15 +27,7 @@ export function PendingApprovalPage() {
 
   return (
     <div className="relative flex h-full items-center justify-center bg-bg p-6 text-fg">
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={toggleTheme}
-        aria-label={t('테마 전환')}
-        className="absolute top-5 right-5"
-      >
-        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-      </Button>
+      <ThemeToggle className="absolute top-5 right-5" />
 
       <div className="w-full max-w-md text-center">
         <div

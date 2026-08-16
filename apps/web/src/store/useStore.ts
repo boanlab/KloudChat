@@ -73,7 +73,7 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
  *  reach the screen are translated here. */
 const tr = (text: string) => translate(currentLang(), text)
 
-type Theme = 'light' | 'dark'
+type Theme = 'light' | 'dark' | 'system'
 
 /** A client refusal is returned before send/compare writes its first Message. */
 const isClientRefusal = (error: unknown): error is ApiError =>
@@ -367,15 +367,30 @@ const initialModelByKind: Record<SessionKind, string> = (() => {
   }
 })()
 
-const initialTheme: Theme =
-  (localStorage.getItem('kchat-theme') as Theme | null) ??
-  (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+/**
+ * `system` is the default and the state a reader can get back to. Storing the
+ * resolved colour instead — which is what happened before — silently opted the
+ * app out of the OS setting the first time the toggle was pressed, with no way
+ * back short of clearing site data.
+ */
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+const initialTheme: Theme = (localStorage.getItem('kchat-theme') as Theme | null) ?? 'system'
+
+let currentTheme: Theme = initialTheme
 
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('dark', theme === 'dark')
+  currentTheme = theme
+  const dark = theme === 'system' ? darkQuery.matches : theme === 'dark'
+  document.documentElement.classList.toggle('dark', dark)
   localStorage.setItem('kchat-theme', theme)
 }
 applyTheme(initialTheme)
+
+// Following the system means following it after load too, not only at it.
+darkQuery.addEventListener('change', () => {
+  if (currentTheme === 'system') applyTheme('system')
+})
 
 // Start in Korean when the browser says Korean; English otherwise.
 const initialLang: Lang =
@@ -608,7 +623,8 @@ export const useStore = create<State>((set, get) => ({
 
   theme: initialTheme,
   toggleTheme: () => {
-    const next: Theme = get().theme === 'dark' ? 'light' : 'dark'
+    const order: Theme[] = ['system', 'light', 'dark']
+    const next = order[(order.indexOf(get().theme) + 1) % order.length]
     applyTheme(next)
     set({ theme: next })
   },
