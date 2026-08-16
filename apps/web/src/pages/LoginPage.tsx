@@ -299,7 +299,7 @@ export function LoginPage() {
                 key={t.id}
                 onClick={() => setMode(t.id)}
                 className={`flex-1 rounded-control px-3 py-1.5 text-base font-medium transition-colors ${
-                  mode === t.id ? 'bg-panel text-fg shadow-sm' : 'text-muted hover:text-fg'
+                  mode === t.id ? 'bg-panel text-fg shadow-raised' : 'text-muted hover:text-fg'
                 }`}
               >
                 {t.label}

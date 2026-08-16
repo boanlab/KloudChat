@@ -644,7 +644,7 @@ export function Composer({
       {/* 한 덩어리로 읽히는 입력 상자. 첨부·옵션·모델·전송이 모두 이 테두리
           안에 있고, 바깥에는 아무 버튼도 두지 않는다 — 프롬프트를 쓰는 동안
           눈이 갈 곳은 여기 하나면 된다. */}
-      <div className="rounded-3xl border border-line bg-panel shadow-sm transition-colors focus-within:border-line-strong">
+      <div className="rounded-3xl border border-line bg-panel shadow-raised transition-colors focus-within:border-line-strong">
         {(project ||
           attachments.length > 0 ||
           webSearch ||

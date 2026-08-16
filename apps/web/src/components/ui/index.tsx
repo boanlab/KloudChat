@@ -148,7 +148,7 @@ export function Switch({
           // Track 36, knob 16, inset 2 → 16px of travel. Vertical position is
           // `top`, never a transform: mixing translate axes collapses to
           // `translate: -50%`, which CSS applies on x.
-          'absolute top-2.5 left-1.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+          'absolute top-2.5 left-1.5 h-4 w-4 rounded-full bg-white shadow-raised transition-transform',
           checked ? 'translate-x-4' : 'translate-x-0',
         )}
       />
@@ -290,7 +290,7 @@ export function Modal({
         // to be somewhere the keyboard can land.
         tabIndex={-1}
         className={cn(
-          'animate-fade-up relative w-full rounded-panel border border-line bg-panel shadow-2xl outline-none',
+          'animate-fade-up relative w-full rounded-panel border border-line bg-panel shadow-float outline-none',
           width,
         )}
       >
@@ -482,7 +482,7 @@ export function Dropdown({
             role="menu"
             style={{ maxHeight: placement.maxHeight || undefined }}
             className={cn(
-              'animate-fade-up absolute z-40 min-w-52 overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-xl',
+              'animate-fade-up absolute z-40 min-w-52 overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
               placement.up ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
               align === 'right' ? 'right-0' : 'left-0',
               className,

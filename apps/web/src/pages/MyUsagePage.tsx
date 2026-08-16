@@ -51,7 +51,7 @@ export function MyUsagePage() {
               onClick={() => setDays(r)}
               className={cn(
                 'min-w-11 rounded-control px-3 py-2 text-base transition-colors',
-                days === r ? 'bg-panel font-medium text-fg shadow-sm' : 'text-muted hover:text-fg',
+                days === r ? 'bg-panel font-medium text-fg shadow-raised' : 'text-muted hover:text-fg',
               )}
             >
               {t('{n}일').replace('{n}', String(r))}

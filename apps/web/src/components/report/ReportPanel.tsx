@@ -411,7 +411,7 @@ export function ReportPanel({
       <nav
         className={cn(
           'w-52 shrink-0 flex-col border-r border-line bg-panel',
-          tocOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-xl' : 'hidden lg:flex',
+          tocOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden lg:flex',
         )}
       >
         <div className="border-b border-line px-3 py-2.5">
@@ -550,7 +550,7 @@ export function ReportPanel({
           {picked && (
             <div
               ref={handleRef}
-              className="animate-fade-up absolute z-30 flex items-center gap-1 rounded-card border border-line bg-panel p-1 shadow-xl"
+              className="animate-fade-up absolute z-30 flex items-center gap-1 rounded-card border border-line bg-panel p-1 shadow-overlay"
               style={{ top: picked.top, left: picked.left }}
               // The bubble is a tool for the selection; a click that clears it
               // before the handler runs is a click that does nothing.

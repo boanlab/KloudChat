@@ -229,7 +229,7 @@ function PresentMode({
         </button>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">
-        <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-2xl">
+        <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
           <SlideView slide={slide} scale={2.4} />
         </div>
       </div>
@@ -514,7 +514,7 @@ export function DeckPanel({
         <nav
           className={cn(
             'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
-            railOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-xl' : 'hidden lg:flex',
+            railOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden lg:flex',
           )}
         >
           <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1.5">
@@ -599,7 +599,7 @@ export function DeckPanel({
               </button>
               <div
                 ref={stage.ref}
-                className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-sm"
+                className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-raised"
               >
                 {slide ? (
                   <SlideView slide={slide} scale={stage.scale} />

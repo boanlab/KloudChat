@@ -18,7 +18,7 @@ function UndoBar() {
   return (
     <div
       role="status"
-      className="animate-fade-up absolute bottom-4 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-card border border-line bg-panel px-4 py-2.5 text-base shadow-2xl"
+      className="animate-fade-up absolute bottom-4 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-card border border-line bg-panel px-4 py-2.5 text-base shadow-float"
     >
       <span className="min-w-0 truncate">
         {t('{name} 삭제됨').replace('{name}', pending.label)}
@@ -55,7 +55,7 @@ export function AppShell() {
           onClick={toggleSidebar}
         />
       )}
-      <div className={narrow ? 'absolute inset-y-0 left-0 z-40 shadow-2xl' : 'contents'}>
+      <div className={narrow ? 'absolute inset-y-0 left-0 z-40 shadow-float' : 'contents'}>
         <Sidebar />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
