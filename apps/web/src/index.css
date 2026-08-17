@@ -2,42 +2,65 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/**
+ * Four surface levels, distinct in both themes: `--bg` is the page, `--panel`
+ * the card on it, `--elevated` the raised or hovered state of that card, and
+ * `--sidebar` the navigation column. `--panel` and `--elevated` used to be the
+ * same white, which made every `hover:bg-elevated` a no-op in light mode.
+ *
+ * Text tokens clear WCAG AA (4.5:1) against all four surfaces in both themes;
+ * the tightest pairing is `--faint` on `--sidebar` at 4.77:1.
+ */
 :root {
-  --bg: #f7f7f5;
+  color-scheme: light;
+
+  --bg: #f4f6fb;
   --panel: #ffffff;
-  --elevated: #ffffff;
-  --sidebar: #f0efec;
-  --border: #e3e1db;
-  --border-strong: #cfccc3;
-  --fg: #1e1d1b;
-  --muted: #6f6c65;
-  --faint: #9c9890;
-  --accent: #5b53e8;
-  --accent-hover: #4b43d8;
+  --elevated: #ebeff8;
+  --sidebar: #e7ecf6;
+  --border: #d9dfec;
+  --border-strong: #b6c0d4;
+  --fg: #161a24;
+  --muted: #3d4657;
+  --faint: #5d6780;
+  --accent: #2a54e4;
+  --accent-hover: #1c3fc4;
   --accent-fg: #ffffff;
-  --accent-soft: #ece9ff;
-  --success: #0e8a5f;
-  --warn: #b4780a;
-  --danger: #c0392b;
+  --accent-soft: #e3eafd;
+  --success: #0a7048;
+  --warn: #8a5300;
+  --danger: #b4322a;
+
+  --elevation-1: 0 1px 2px rgb(16 24 48 / 0.06);
+  --elevation-2: 0 4px 12px rgb(16 24 48 / 0.08);
+  --elevation-3: 0 12px 30px rgb(16 24 48 / 0.14);
 }
 
 .dark {
-  --bg: #191817;
-  --panel: #201f1e;
-  --elevated: #282725;
-  --sidebar: #141413;
-  --border: #33322f;
-  --border-strong: #46443f;
-  --fg: #edeceb;
-  --muted: #a3a09a;
-  --faint: #6f6c66;
-  --accent: #8079ff;
-  --accent-hover: #918bff;
-  --accent-fg: #14131f;
-  --accent-soft: #2a2740;
-  --success: #37c48d;
-  --warn: #e0a33a;
-  --danger: #f0776a;
+  color-scheme: dark;
+
+  --bg: #0f1116;
+  --panel: #181b23;
+  --elevated: #232833;
+  --sidebar: #13151c;
+  --border: #2a303d;
+  --border-strong: #3d4554;
+  --fg: #ebeef5;
+  --muted: #b6bfce;
+  --faint: #8a93a7;
+  --accent: #7e9cff;
+  --accent-hover: #9ab1ff;
+  --accent-fg: #0f1116;
+  --accent-soft: #1f2a47;
+  --success: #4fbf8c;
+  --warn: #e0a44a;
+  --danger: #f0736a;
+
+  /* Depth on a dark ground comes from the shadow being darker than the
+     surface, which needs far more opacity than the same step in light. */
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.3);
+  --elevation-2: 0 4px 14px rgb(0 0 0 / 0.38);
+  --elevation-3: 0 14px 36px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
@@ -58,9 +81,47 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Pretendard',
-    'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  --font-sans: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  /**
+   * The type scale, which is Tailwind's names over this app's sizes. A dense
+   * workspace reads a step smaller than Tailwind's defaults throughout — body
+   * text here is 13px, not 16px — so the defaults were never used and 438
+   * arbitrary values grew in their place.
+   *
+   * Line heights are unitless so each step keeps its own ratio: tighter as the
+   * text gets larger, looser at the sizes used for metadata.
+   */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 1.4;
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.75rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.8125rem;
+  --text-base--line-height: 1.55;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.6;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.5;
+
+  /**
+   * Radius and elevation by role rather than by size, so the choice at a call
+   * site is "what is this" and not "how round". Role names also keep these
+   * clear of Tailwind's own `rounded-md`/`shadow-lg`, which the tree still
+   * uses for the few cases that are genuinely about size.
+   */
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-panel: 1rem;
+
+  --shadow-raised: var(--elevation-1);
+  --shadow-overlay: var(--elevation-2);
+  --shadow-float: var(--elevation-3);
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html,
@@ -156,6 +217,27 @@ body {
 }
 .animate-blink {
   animation: kc-blink 1.1s ease-in-out infinite;
+}
+
+/**
+ * Everything above animates, and none of it asked first. A reader who has set
+ * "reduce motion" is telling the platform that movement costs them something —
+ * for vestibular disorders it is nausea, not preference.
+ *
+ * Reduced, not removed: the durations collapse rather than the rules being
+ * dropped, so anything that reads a computed transition still gets one, and
+ * `transitionend` still fires. The spinner stops at a frame; what says
+ * "loading" is `LoadingState`'s text and its `role="status"`, not the spin.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ── 인쇄 ────────────────────────────────────────────────────────────────

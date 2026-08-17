@@ -30,8 +30,8 @@ export function PreferencesTab() {
     <div className="space-y-8">
       <section className="space-y-3">
         <div>
-          <h2 className="text-[13px] font-semibold">{t('기본 모델')}</h2>
-          <p className="text-xs text-muted">{t('화면별로 처음 선택되는 모델입니다.')}</p>
+          <h2 className="text-base font-semibold">{t('기본 모델')}</h2>
+          <p className="text-sm text-muted">{t('화면별로 처음 선택되는 모델입니다.')}</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {kindOrder.map((kind) => {
@@ -40,14 +40,14 @@ export function PreferencesTab() {
             const usable = models.filter((m) => m.kinds.includes(kind))
             return (
               <label key={kind} className="block space-y-1.5">
-                <span className="flex items-center gap-1.5 text-[13px] font-medium">
+                <span className="flex items-center gap-1.5 text-base font-medium">
                   <Icon size={13} style={{ color: meta.color }} />
                   {t(meta.label)}
                 </span>
                 <select
                   value={modelByKind[kind]}
                   onChange={(e) => setModel(kind, e.target.value)}
-                  className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm focus:border-accent focus:outline-none"
+                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
                   {usable.length === 0 && <option value="">{t('사용 가능한 모델 없음')}</option>}
                   {usable.map((m) => (
@@ -64,13 +64,13 @@ export function PreferencesTab() {
 
       <section className="space-y-3 border-t border-line pt-6">
         <div>
-          <h2 className="text-[13px] font-semibold">{t('개인정보가 감지된 요청')}</h2>
-          <p className="text-xs text-muted">
+          <h2 className="text-base font-semibold">{t('개인정보가 감지된 요청')}</h2>
+          <p className="text-sm text-muted">
             {t('외부 모델로 전송하기 전에 서버가 전체 대화 맥락을 검사하고 이 동작을 적용합니다.')}
           </p>
         </div>
         <label className="block max-w-xl space-y-1.5">
-          <span className="text-[13px] font-medium">{t('기본 처리 방법')}</span>
+          <span className="text-base font-medium">{t('기본 처리 방법')}</span>
           <select
             value={
               prefs?.privacyDefaultAction === 'send_raw_external' && allowRawExternal === false
@@ -80,7 +80,7 @@ export function PreferencesTab() {
             onChange={(event) =>
               set({ privacyDefaultAction: event.target.value as Preferences['privacyDefaultAction'] })
             }
-            className="h-9 w-full rounded-lg border border-line bg-panel px-3 text-sm focus:border-accent focus:outline-none"
+            className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
           >
             <option value="ask">{t('매번 확인')}</option>
             <option value="route_strict_local">{t('strict-local 모델로 전환')}</option>
@@ -89,14 +89,14 @@ export function PreferencesTab() {
               <option value="send_raw_external">{t('원문을 외부 모델로 전송')}</option>
             )}
           </select>
-          <span className="block text-xs text-faint">
+          <span className="block text-sm text-faint">
             {t('모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
           </span>
         </label>
       </section>
 
       <section className="space-y-3 border-t border-line pt-6">
-        <h2 className="text-[13px] font-semibold">{t('동작')}</h2>
+        <h2 className="text-base font-semibold">{t('동작')}</h2>
         {[
           {
             label: '응답 스트리밍',
@@ -119,13 +119,13 @@ export function PreferencesTab() {
         ].map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-[13px] font-medium">{t(row.label)}</p>
-              <p className="text-xs text-muted">{t(row.desc)}</p>
+              <p className="text-base font-medium">{t(row.label)}</p>
+              <p className="text-sm text-muted">{t(row.desc)}</p>
             </div>
             <Switch checked={row.value} onChange={row.set} label={t(row.label)} />
           </div>
         ))}
-        <p className="pt-1 text-[11px] text-faint">
+        <p className="pt-1 text-xs text-faint">
           {t('계정에 저장되므로 다른 기기에서도 같게 적용됩니다.')}
         </p>
       </section>

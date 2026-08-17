@@ -17,22 +17,22 @@ function CodeBlock({ children, className }: { children: ReactNode; className?: s
   const text = String(children).replace(/\n$/, '')
 
   return (
-    <div className="group relative my-3 overflow-hidden rounded-xl border border-line bg-elevated">
+    <div className="group relative my-3 overflow-hidden rounded-card border border-line bg-elevated">
       <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
-        <span className="font-mono text-[11px] text-faint">{lang ?? 'text'}</span>
+        <span className="font-mono text-xs text-faint">{lang ?? 'text'}</span>
         <button
           onClick={async () => {
             if (!(await copyText(text))) return
             setCopied(true)
             setTimeout(() => setCopied(false), 1400)
           }}
-          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-line hover:text-fg"
+          className="flex items-center gap-1 rounded-control px-1.5 py-0.5 text-xs text-muted transition-colors hover:bg-line hover:text-fg"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? t('복사됨') : t('복사')}
         </button>
       </div>
-      <pre className="overflow-x-auto px-3 py-2.5 text-[13px] leading-relaxed">
+      <pre className="overflow-x-auto px-3 py-2.5 text-base leading-relaxed">
         <code className="font-mono">{text}</code>
       </pre>
     </div>
@@ -64,7 +64,7 @@ function normaliseMath(text: string): string {
 
 export function MarkdownBody({ children, className }: { children: string; className?: string }) {
   return (
-    <div className={cn('text-[15px] leading-[1.7] break-words', className)}>
+    <div className={cn('text-md leading-[1.7] break-words', className)}>
       <ReactMarkdown
       // CommonMark will not close `**` when the closing marker sits between a
       // bracket and a Korean particle — "**지식의 전이(Knowledge Transfer)**이다"
@@ -77,7 +77,7 @@ export function MarkdownBody({ children, className }: { children: string; classN
           h1: ({ children }) => <h1 className="mt-5 mb-2 text-xl font-semibold">{children}</h1>,
           h2: ({ children }) => <h2 className="mt-5 mb-2 text-lg font-semibold">{children}</h2>,
           h3: ({ children }) => (
-            <h3 className="mt-4 mb-1.5 text-[15px] font-semibold">{children}</h3>
+            <h3 className="mt-4 mb-1.5 text-md font-semibold">{children}</h3>
           ),
           ul: ({ children }) => (
             <ul className="my-2.5 list-disc space-y-1 pl-5 marker:text-faint">{children}</ul>
@@ -109,8 +109,8 @@ export function MarkdownBody({ children, className }: { children: string; classN
           ),
           hr: () => <hr className="my-4 border-line" />,
           table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-line">
-              <table className="w-full border-collapse text-[13px]">{children}</table>
+            <div className="my-3 overflow-x-auto rounded-card border border-line">
+              <table className="w-full border-collapse text-base">{children}</table>
             </div>
           ),
           thead: ({ children }) => <thead className="bg-elevated">{children}</thead>,
@@ -125,7 +125,7 @@ export function MarkdownBody({ children, className }: { children: string; classN
             if (isBlock) return <CodeBlock className={className}>{children}</CodeBlock>
             return (
               <code
-                className="rounded-md border border-line bg-elevated px-1 py-0.5 font-mono text-[0.86em]"
+                className="rounded-control border border-line bg-elevated px-1 py-0.5 font-mono text-[0.86em]"
                 {...props}
               >
                 {children}

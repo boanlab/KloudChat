@@ -59,7 +59,7 @@ function ProfileFields() {
           >
             {t('저장')}
           </Button>
-          {saved && <span className="pb-2 text-[12px] text-success">{t('저장됨')}</span>}
+          {saved && <span className="pb-2 text-sm text-success">{t('저장됨')}</span>}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
@@ -114,13 +114,13 @@ function ProfileFields() {
             {pwState.busy ? t('변경 중…') : t('비밀번호 변경')}
           </Button>
           {pwState.done && (
-            <span className="text-[12px] text-success">
+            <span className="text-sm text-success">
               {t('변경했습니다. 다른 기기의 로그인은 모두 해제되었습니다.')}
             </span>
           )}
-          {pwState.error && <span className="text-[12px] text-danger">{pwState.error}</span>}
+          {pwState.error && <span className="text-sm text-danger">{pwState.error}</span>}
           {pw.next.length > 0 && pw.next !== pw.confirm && (
-            <span className="text-[12px] text-warn">{t('새 비밀번호가 일치하지 않습니다.')}</span>
+            <span className="text-sm text-warn">{t('새 비밀번호가 일치하지 않습니다.')}</span>
           )}
         </div>
     </div>
@@ -138,14 +138,14 @@ export function ProfileTab() {
     <div className="space-y-6">
       <Card className="flex flex-wrap items-center gap-3.5 p-4">
         <span
-          className="grid size-11 shrink-0 place-items-center rounded-full text-base font-semibold text-white"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-md font-semibold text-white"
           style={{ background: user?.avatarColor }}
         >
           {user?.name?.[0]}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{user?.name}</p>
-          <p className="text-[13px] text-muted">{user?.email}</p>
+          <p className="text-base font-medium">{user?.name}</p>
+          <p className="text-base text-muted">{user?.email}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {user?.role === 'admin' && (
               <Badge tone="accent">
@@ -158,9 +158,9 @@ export function ProfileTab() {
           </div>
         </div>
         <div className="text-right">
-          <p className="text-[11px] text-faint">{t('남은 크레딧')}</p>
+          <p className="text-xs text-faint">{t('남은 크레딧')}</p>
           <p className="text-lg font-semibold tabular-nums">{remaining.toLocaleString()}</p>
-          <p className="text-[11px] text-faint">/ {t('{n} 월').replace('{n}', user?.monthlyCredits.toLocaleString() ?? '0')}</p>
+          <p className="text-xs text-faint">/ {t('{n} 월').replace('{n}', user?.monthlyCredits.toLocaleString() ?? '0')}</p>
         </div>
       </Card>
 
@@ -171,7 +171,7 @@ export function ProfileTab() {
             style={{ width: `${Math.min(pct, 100)}%` }}
           />
         </div>
-        <p className="mt-1.5 text-[11px] text-faint">
+        <p className="mt-1.5 text-xs text-faint">
           {t('{date}에 {n} 크레딧으로 리필됩니다. 남은 크레딧은 이월되지 않습니다. 한도 변경은 관리자에게 문의하세요.')
             .replace('{date}', user ? formatDate(user.cycleResetsAt) : '')
             .replace('{n}', user?.monthlyCredits.toLocaleString() ?? '0')}

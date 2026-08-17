@@ -35,14 +35,14 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     return (
       <div className="grid h-full place-items-center bg-bg p-6 text-fg">
         <div className="w-full max-w-md text-center">
-          <div className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-danger/10 text-danger">
+          <div className="mx-auto mb-4 grid size-12 place-items-center rounded-panel bg-danger/10 text-danger">
             <TriangleAlert size={22} />
           </div>
           <h1 className="text-lg font-semibold tracking-tight">{tr('화면을 표시하지 못했습니다')}</h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          <p className="mt-2 text-base leading-relaxed text-muted">
             {tr('대화 내용은 서버에 그대로 저장되어 있습니다. 아래에서 다시 시도하거나 다른 화면으로 이동하세요.')}
           </p>
-          <pre className="mt-4 max-h-40 overflow-auto rounded-lg border border-line bg-elevated px-3 py-2 text-left font-mono text-[11px] break-words whitespace-pre-wrap text-muted">
+          <pre className="mt-4 max-h-40 overflow-auto rounded-control border border-line bg-elevated px-3 py-2 text-left font-mono text-xs break-words whitespace-pre-wrap text-muted">
             {error.message}
           </pre>
           <div className="mt-5 flex justify-center gap-2">

@@ -41,7 +41,7 @@ export function ProjectsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('프로젝트')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('프로젝트')}</span>} />
       <PageBody>
         <PageHeader
           title={t('프로젝트')}
@@ -79,13 +79,13 @@ export function ProjectsPage() {
                 className="cursor-pointer p-4 transition-colors hover:border-line-strong hover:bg-elevated"
               >
                 <div className="flex items-start gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-elevated text-lg">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-card bg-elevated text-lg">
                     {p.emoji}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{p.name}</p>
-                    <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{p.description}</p>
-                    <div className="mt-3 flex items-center gap-3 text-[11px] text-faint">
+                    <p className="truncate text-base font-medium">{p.name}</p>
+                    <p className="mt-0.5 line-clamp-2 text-base text-muted">{p.description}</p>
+                    <div className="mt-3 flex items-center gap-3 text-xs text-faint">
                       <span className="flex items-center gap-1">
                         <MessageSquare size={11} />
                         {p.sessionIds.length}
@@ -136,7 +136,7 @@ export function ProjectsPage() {
               <button
                 key={e}
                 onClick={() => setDraft((d) => ({ ...d, emoji: e }))}
-                className={`grid size-9 place-items-center rounded-lg border text-lg transition-colors ${
+                className={`grid size-9 place-items-center rounded-control border text-lg transition-colors ${
                   draft.emoji === e ? 'border-accent bg-accent-soft' : 'border-line hover:bg-elevated'
                 }`}
               >

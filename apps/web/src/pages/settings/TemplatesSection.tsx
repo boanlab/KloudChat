@@ -62,7 +62,7 @@ export function TemplatesSection() {
   return (
     <section aria-label={t('공용 템플릿')} className="space-y-3">
       {shared.length === 0 ? (
-        <p className="text-[13px] text-faint">
+        <p className="text-base text-faint">
           {t('아직 공용 템플릿이 없습니다. 추가하면 모든 사용자의 템플릿 목록에 함께 보입니다.')}
         </p>
       ) : (
@@ -70,12 +70,12 @@ export function TemplatesSection() {
           {shared.map((row) => (
             <li
               key={row.id}
-              className="flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[13px]"
+              className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
             >
               <LayoutTemplate size={13} className="shrink-0 text-faint" />
               <span className="min-w-0 flex-1 truncate">{row.title}</span>
               {row.fileName && (
-                <span className="flex shrink-0 items-center gap-1 text-[11px] text-accent">
+                <span className="flex shrink-0 items-center gap-1 text-xs text-accent">
                   <Paperclip size={10} />
                   {row.fileName}
                 </span>

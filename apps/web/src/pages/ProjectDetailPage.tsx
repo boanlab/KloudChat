@@ -90,7 +90,7 @@ export function ProjectDetailPage() {
         left={
           <button
             onClick={() => navigate('/projects')}
-            className="flex items-center gap-1.5 text-[13px] text-muted hover:text-fg"
+            className="flex items-center gap-1.5 text-base text-muted hover:text-fg"
           >
             <ArrowLeft size={14} />
             {t('프로젝트')}
@@ -193,7 +193,7 @@ export function ProjectDetailPage() {
                       key={e}
                       onClick={() => setEditing({ ...editing, emoji: e })}
                       className={cn(
-                        'grid size-9 place-items-center rounded-lg border text-lg transition-colors',
+                        'grid size-9 place-items-center rounded-control border text-lg transition-colors',
                         editing.emoji === e
                           ? 'border-accent bg-accent-soft'
                           : 'border-line hover:bg-elevated',
@@ -223,8 +223,8 @@ export function ProjectDetailPage() {
         <Card className="mb-6 p-4">
           <div className="mb-2 flex items-center justify-between">
             <div>
-              <p className="text-[13px] font-medium">{t('프로젝트 지침')}</p>
-              <p className="text-xs text-muted">
+              <p className="text-base font-medium">{t('프로젝트 지침')}</p>
+              <p className="text-sm text-muted">
                 {t('이 프로젝트의 모든 대화에 시스템 프롬프트로 함께 전달됩니다.')}
               </p>
             </div>
@@ -280,12 +280,12 @@ export function ProjectDetailPage() {
                       <div className="flex items-center gap-3">
                         <KindIcon size={15} className="shrink-0" style={{ color: meta.color }} />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-medium">{c.title}</p>
-                          <p className="mt-0.5 truncate text-xs text-muted">
+                          <p className="truncate text-base font-medium">{c.title}</p>
+                          <p className="mt-0.5 truncate text-sm text-muted">
                             {c.messages.at(-1)?.content.slice(0, 90) ?? t('내용 없음')}
                           </p>
                         </div>
-                        <span className="shrink-0 text-[11px] text-faint">
+                        <span className="shrink-0 text-xs text-faint">
                           {relativeTime(c.updatedAt)}
                         </span>
                       </div>
@@ -297,10 +297,10 @@ export function ProjectDetailPage() {
 
           {tab === 'knowledge' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl border border-dashed border-line-strong px-4 py-3">
+              <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
                 <div>
-                  <p className="text-[13px] font-medium">{t('참고 파일')}</p>
-                  <p className="text-xs text-muted">
+                  <p className="text-base font-medium">{t('참고 파일')}</p>
+                  <p className="text-sm text-muted">
                     {t('총 {n} 토큰').replace('{n}', formatTokens(totalTokens))} · {t('컨텍스트의 약')}{' '}
                     {Math.round((totalTokens / 200_000) * 100)}%
                   </p>
@@ -341,8 +341,8 @@ export function ProjectDetailPage() {
                   <Card key={f.id} className="flex items-center gap-3 px-4 py-2.5">
                     <FileText size={15} className="shrink-0 text-faint" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px]">{f.name}</span>
-                      <span className="block text-[11px] text-faint">
+                      <span className="block truncate text-base">{f.name}</span>
+                      <span className="block text-xs text-faint">
                         {f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
                       </span>
                     </span>
@@ -366,8 +366,8 @@ export function ProjectDetailPage() {
                 <Card key={s.id} className="flex items-start gap-3 px-4 py-3">
                   <Sparkles size={15} className="mt-0.5 shrink-0 text-accent" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium">{s.name}</p>
-                    <p className="text-xs text-muted">{s.description}</p>
+                    <p className="text-base font-medium">{s.name}</p>
+                    <p className="text-sm text-muted">{s.description}</p>
                   </div>
                   <Badge tone={s.enabled ? 'success' : 'neutral'}>
                     {s.enabled ? t('추천') : t('사용 중지')}
@@ -432,10 +432,10 @@ export function ProjectDetailPage() {
                 {projectMemories.map((m) => (
                   <Card key={m.id} className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-[12px] text-accent">{m.name}</span>
+                      <span className="font-mono text-sm text-accent">{m.name}</span>
                       <Badge>{m.type}</Badge>
                     </div>
-                    <p className="mt-1 text-[13px] text-muted">{m.description}</p>
+                    <p className="mt-1 text-base text-muted">{m.description}</p>
                   </Card>
                 ))}
               </div>

@@ -40,7 +40,7 @@ function NavSection({
       <button
         onClick={toggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-1 px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-faint uppercase transition-colors hover:text-muted"
+        className="flex w-full items-center gap-1 px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase transition-colors hover:text-muted"
       >
         <ChevronRight
           size={11}
@@ -113,7 +113,7 @@ function SessionRow({
             setEditing(false)
           }
         }}
-        className="w-full rounded-lg border border-accent bg-panel px-2.5 py-1.5 text-[13px] outline-none"
+        className="w-full rounded-control border border-accent bg-panel px-2.5 py-1.5 text-base outline-none"
       />
     )
   }
@@ -121,7 +121,7 @@ function SessionRow({
   return (
     <div
       className={cn(
-        'group relative flex items-center rounded-lg text-[13px] transition-colors',
+        'group relative flex items-center rounded-control text-base transition-colors',
         active ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
@@ -140,7 +140,7 @@ function SessionRow({
         align="right"
         trigger={() => (
           <button
-            className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-line hover:text-fg"
+            className="mr-1 grid size-6 shrink-0 place-items-center rounded-control text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-line hover:text-fg"
             aria-label={t('메뉴')}
             title={t('이 대화의 이름 바꾸기·고정·삭제')}
           >
@@ -246,7 +246,7 @@ export function Sidebar() {
               to={`/new/${kind}`}
               className={({ isActive }) =>
                 cn(
-                  'group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                  'group flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
                   isActive
                     ? 'bg-elevated font-medium text-fg'
                     : 'text-muted hover:bg-elevated hover:text-fg',
@@ -272,7 +272,7 @@ export function Sidebar() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('검색')}
             aria-label={t('대화 빠른 검색')}
-            className="h-8 bg-transparent pl-8 text-[13px]"
+            className="h-8 bg-transparent pl-8 text-base"
           />
         </div>
       </div>
@@ -285,7 +285,7 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
                 isActive
                   ? 'bg-elevated font-medium text-fg'
                   : 'text-muted hover:bg-elevated hover:text-fg',
@@ -308,7 +308,7 @@ export function Sidebar() {
       <div className="mt-1 min-h-0 flex-1 overflow-y-auto border-t border-line px-3 py-2">
         {pinned.length > 0 && (
           <section className="mb-3">
-            <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
+            <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
               {t('고정됨')}
             </p>
             <div className="space-y-0.5">{pinned.map(renderRow)}</div>
@@ -316,7 +316,7 @@ export function Sidebar() {
         )}
         {groups.map((g) => (
           <section key={g.label} className="mb-3">
-            <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-faint uppercase">
+            <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
               {t(g.label)}
             </p>
             <div className="space-y-0.5">{g.items.map(renderRow)}</div>
@@ -325,13 +325,13 @@ export function Sidebar() {
         {hidden > 0 && (
           <button
             onClick={() => setShown((n) => n + PAGE)}
-            className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:bg-elevated hover:text-fg"
+            className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
           >
             {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
           </button>
         )}
         {filtered.length === 0 && (
-          <p className="px-2.5 py-6 text-center text-[13px] text-faint">{t('검색 결과가 없습니다')}</p>
+          <p className="px-2.5 py-6 text-center text-base text-faint">{t('검색 결과가 없습니다')}</p>
         )}
       </div>
 
@@ -340,9 +340,9 @@ export function Sidebar() {
         <button
           aria-label={t('이번 달 사용량')}
           onClick={() => navigate('/usage')}
-          className="mb-1 block w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-elevated"
+          className="mb-1 block w-full rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
         >
-          <span className="flex items-center justify-between text-[11px]">
+          <span className="flex items-center justify-between text-xs">
             <span className="text-faint">{t('이번 달 크레딧')}</span>
             <span className="tabular-nums text-muted">
               {(total - used).toLocaleString()} {t('남음')}
@@ -363,16 +363,16 @@ export function Sidebar() {
           align="left"
           className="min-w-56"
           trigger={() => (
-            <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-elevated">
+            <button className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated">
               <span
-                className="grid size-7 shrink-0 place-items-center rounded-full text-[12px] font-semibold text-white"
+                className="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white"
                 style={{ background: user?.avatarColor }}
               >
                 {user?.name?.[0] ?? 'U'}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium">{user?.name}</span>
-                <span className="block truncate text-[11px] text-faint">{user?.email}</span>
+                <span className="block truncate text-base font-medium">{user?.name}</span>
+                <span className="block truncate text-xs text-faint">{user?.email}</span>
               </span>
               {/* The queue, on the button that opens the menu holding it. Without
                   this the only signal was inside the menu nobody had a reason to
@@ -380,7 +380,7 @@ export function Sidebar() {
               {user?.role === 'admin' && pendingUsers > 0 && (
                 <span
                   aria-label={t('승인 대기 {n}건').replace('{n}', String(pendingUsers))}
-                  className="shrink-0 rounded-md bg-warn/15 px-1.5 text-[11px] font-medium text-warn"
+                  className="shrink-0 rounded-control bg-warn/15 px-1.5 text-xs font-medium text-warn"
                 >
                   {pendingUsers}
                 </span>

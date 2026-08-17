@@ -60,8 +60,8 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
           ) : (
             <>
               <AudioLines size={18} className="shrink-0 text-accent" />
-              <span className="min-w-0 flex-1 truncate text-[12px]">{artifact.title}</span>
-              <span className="shrink-0 text-[11px] text-faint">
+              <span className="min-w-0 flex-1 truncate text-sm">{artifact.title}</span>
+              <span className="shrink-0 text-xs text-faint">
               {t('{n}초').replace('{n}', String(artifact.durationSec))}
             </span>
             </>
@@ -79,7 +79,7 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
       )
     case 'report':
       return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-[13px] leading-relaxed">
+        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
           <code className="font-mono">
             {artifact.sections.map((s) => `## ${s.heading}\n${s.content}`).join('\n\n')}
           </code>
@@ -87,7 +87,7 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
       )
     case 'deck':
       return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-[13px] leading-relaxed">
+        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
           <code className="font-mono">
             {artifact.slides.map((s, i) => `${i + 1}. ${s.title}`).join('\n')}
           </code>
@@ -97,7 +97,7 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
       return <ChartThumb chart={artifact} />
     default:
       return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-[13px] leading-relaxed">
+        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
           <code className="font-mono">{artifact.content}</code>
         </pre>
       )
@@ -123,7 +123,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
               key={t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                'flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors',
+                'flex items-center gap-1.5 rounded-control px-2 py-1 text-sm transition-colors',
                 tab === t.id ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
               )}
             >
@@ -137,7 +137,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
         {tab === 'preview' && artifact.kind === 'html' ? (
           <ArtifactPreview artifact={artifact} />
         ) : (
-          <pre className="h-full overflow-auto bg-elevated px-4 py-3 text-[13px] leading-relaxed">
+          <pre className="h-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
             <code className="font-mono">{artifact.content}</code>
           </pre>
         )}
@@ -244,7 +244,7 @@ export function MediaPanel({
       )}
       <dl className="space-y-2.5 px-4 py-4">
         {meta.map(([k, v]) => (
-          <div key={k} className="flex gap-3 text-[13px]">
+          <div key={k} className="flex gap-3 text-base">
             <dt className="w-16 shrink-0 text-faint">{k}</dt>
             <dd className="min-w-0 flex-1 break-words">{v}</dd>
           </div>
@@ -255,8 +255,8 @@ export function MediaPanel({
           it and ask again, as listening to the whole thing. */}
       {artifact.kind === 'audio' && artifact.transcript && (
         <section className="border-t border-line px-4 py-4">
-          <h3 className="mb-2 text-[12px] font-medium text-faint">{t('대본')}</h3>
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap">
+          <h3 className="mb-2 text-sm font-medium text-faint">{t('대본')}</h3>
+          <p className="text-base leading-relaxed whitespace-pre-wrap">
             {artifact.transcript}
           </p>
           <TranscriptCopy text={artifact.transcript} />
@@ -406,8 +406,8 @@ export function ArtifactPanel() {
       {!selfChrome && (
         <header className="flex items-center gap-2 border-b border-line px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium">{artifact.title}</p>
-            <p className="text-[11px] text-faint">
+            <p className="truncate text-base font-medium">{artifact.title}</p>
+            <p className="text-xs text-faint">
               v{artifact.version} · {t('{when} 수정').replace('{when}', relativeTime(artifact.updatedAt))}
             </p>
           </div>

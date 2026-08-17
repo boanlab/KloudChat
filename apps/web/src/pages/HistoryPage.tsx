@@ -76,10 +76,10 @@ export function HistoryPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('대화 기록')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('대화 기록')}</span>} />
       <PageBody>
       <h1 className="text-2xl font-semibold tracking-tight">{t('대화 기록')}</h1>
-      <p className="mt-1 text-[13px] text-muted">
+      <p className="mt-1 text-base text-muted">
         {t('대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없습니다. 대화에서 만든 아티팩트는 아티팩트 화면에 그대로 남습니다.').replace(
           '{n}',
           String(sessions.length),
@@ -128,7 +128,7 @@ export function HistoryPage() {
       </div>
 
       {done !== null && (
-        <p className="mt-3 rounded-lg border border-line bg-elevated px-3 py-2 text-[13px] text-muted">
+        <p className="mt-3 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
           {done}개의 대화를 삭제했습니다.
         </p>
       )}
@@ -164,10 +164,10 @@ export function HistoryPage() {
                   className="min-w-0 flex-1 text-left"
                   onClick={() => navigate(`/s/${s.id}`)}
                 >
-                  <span className="block truncate text-[13px] font-medium">
+                  <span className="block truncate text-base font-medium">
                     {s.title || t('제목 없는 대화')}
                   </span>
-                  <span className="text-[11px] text-faint">{relativeTime(s.updatedAt)}</span>
+                  <span className="text-xs text-faint">{relativeTime(s.updatedAt)}</span>
                 </button>
                 <Badge>{t(meta?.label ?? s.kind)}</Badge>
               </Card>
@@ -182,7 +182,7 @@ export function HistoryPage() {
         title={t('모든 대화를 삭제할까요?')}
         description={t('대화 {n}개와 그 안의 모든 메시지가 사라집니다.').replace('{n}', String(sessions.length))}
       >
-        <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3 py-2.5 text-[13px] text-danger">
+        <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {/* Says what survives as well as what goes. "삭제" that also silently
               took the reports would be the wrong kind of surprise. */}

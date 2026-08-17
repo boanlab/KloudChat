@@ -41,14 +41,14 @@ export function CompareView({
           <div
             key={v.model}
             className={cn(
-              'flex min-w-0 flex-col rounded-xl border transition-colors',
+              'flex min-w-0 flex-col rounded-card border transition-colors',
               v.chosen ? 'border-accent bg-accent-soft/30' : 'border-line bg-panel',
               dimmed && 'opacity-55',
             )}
           >
             <header className="flex items-center gap-1.5 border-b border-line px-3 py-2">
               <Cpu size={13} className="shrink-0 text-faint" />
-              <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
                 {info?.label ?? v.model}
               </span>
               {v.dataBoundary && (
@@ -80,22 +80,22 @@ export function CompareView({
 
             <div className="min-w-0 flex-1 px-3 py-2.5">
               {v.content ? (
-                <Markdown className="text-[14px]">{v.content}</Markdown>
+                <Markdown className="text-base">{v.content}</Markdown>
               ) : (
-                <p className="animate-blink text-[13px] text-faint">{t('응답 대기 중…')}</p>
+                <p className="animate-blink text-base text-faint">{t('응답 대기 중…')}</p>
               )}
             </div>
 
             <footer className="flex items-center gap-2 border-t border-line px-3 py-2">
               {v.usage ? (
-                <span className="text-[11px] text-faint">
+                <span className="text-xs text-faint">
                   {t('{n} 크레딧').replace('{n}', String(v.usage.credits))}
                   {v.usage.credits === cheapest && variants.length > 1 && (
                     <span className="ml-1 text-success">· {t('최저')}</span>
                   )}
                 </span>
               ) : (
-                <span className="text-[11px] text-faint">{t('집계 중')}</span>
+                <span className="text-xs text-faint">{t('집계 중')}</span>
               )}
               <Button
                 size="sm"

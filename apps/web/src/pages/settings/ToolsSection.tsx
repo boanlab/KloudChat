@@ -99,8 +99,8 @@ export function ToolsSection({
       <Card className="flex flex-wrap items-center gap-3 p-4">
         <Plug size={18} className="text-muted" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{t('기능 서버')}</p>
-          <p className="text-[13px] text-muted">
+          <p className="text-base font-medium">{t('기능 서버')}</p>
+          <p className="text-base text-muted">
             {t('주소 하나만 입력하면 아래 기능이 모두 연결됩니다.')}
           </p>
         </div>
@@ -129,7 +129,7 @@ export function ToolsSection({
       </Field>
 
       <div className="flex items-center justify-between">
-        <p className="text-[13px] font-medium">{t('기능별 주소')}</p>
+        <p className="text-base font-medium">{t('기능별 주소')}</p>
         <Button variant="ghost" disabled={busy}
             title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined} onClick={testAll}>
           {t('전체 연결 테스트')}
@@ -141,13 +141,13 @@ export function ToolsSection({
           const probe = probes[feature.key]
           const inherited = feature.source !== 'database'
           return (
-            <div key={feature.key} className="rounded-lg border border-border p-3">
+            <div key={feature.key} className="rounded-control border border-border p-3">
               <div className="mb-2 flex items-center gap-2">
-                <span className="text-[13px] font-medium">{t(feature.label)}</span>
+                <span className="text-base font-medium">{t(feature.label)}</span>
                 <Badge>{t(SOURCE_LABEL[feature.source])}</Badge>
                 {probe && (
                   <span
-                    className={`ml-auto flex items-center gap-1 text-[12px] ${
+                    className={`ml-auto flex items-center gap-1 text-sm ${
                       probe.ok ? 'text-success' : 'text-danger'
                     }`}
                   >
@@ -186,7 +186,7 @@ export function ToolsSection({
         })}
       </div>
 
-      <p className="text-[12px] text-muted">
+      <p className="text-sm text-muted">
         {t('기능별 칸을 비우면 위 서버 주소를 따릅니다. 연결되지 않은 기능은 대화에서 쓸 수 없고, 나머지 기능은 그대로 동작합니다.')}
       </p>
     </div>

@@ -95,7 +95,7 @@ export function SkillsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('스킬')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('스킬')}</span>} />
       <PageBody>
         <PageHeader
           title={t('스킬')}
@@ -122,7 +122,7 @@ export function SkillsPage() {
         <div className="space-y-2 pt-4">
           {visible.map((s) => (
             <Card key={s.id} className="flex items-start gap-3 p-4">
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
                 <Sparkles size={15} />
               </span>
               <button
@@ -130,8 +130,8 @@ export function SkillsPage() {
                 className="min-w-0 flex-1 cursor-pointer text-left"
               >
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{t(s.name)}</span>
-                  <span className="font-mono text-[11px] text-faint">{s.slug}</span>
+                  <span className="text-base font-medium">{t(s.name)}</span>
+                  <span className="font-mono text-xs text-faint">{s.slug}</span>
                   <Badge>{t(sourceLabel[s.source])}</Badge>
                   <Badge>v{s.version}</Badge>
                   {s.kinds.map((k) => (
@@ -140,8 +140,8 @@ export function SkillsPage() {
                     </Badge>
                   ))}
                 </span>
-                <span className="mt-1 block text-[13px] text-muted">{t(s.description)}</span>
-                <span className="mt-1.5 block text-[11px] text-faint">
+                <span className="mt-1 block text-base text-muted">{t(s.description)}</span>
+                <span className="mt-1.5 block text-xs text-faint">
                   {t('사용 시점')}: {t(s.whenToUse)} · {t('{when} 수정').replace('{when}', relativeTime(s.updatedAt))}
                 </span>
               </button>
@@ -217,7 +217,7 @@ export function SkillsPage() {
             </div>
             {detail.requiredTools.length > 0 && (
               <div>
-                <p className="mb-1.5 text-[13px] font-medium">{t('필수 도구')}</p>
+                <p className="mb-1.5 text-base font-medium">{t('필수 도구')}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {detail.requiredTools.map((tool) => (
                     <Badge key={tool}>{tool}</Badge>
@@ -226,16 +226,16 @@ export function SkillsPage() {
               </div>
             )}
             <div>
-              <p className="mb-1.5 text-[13px] font-medium">{t('사용 시점')}</p>
-              <p className="rounded-lg border border-line bg-elevated px-3 py-2 text-[13px] text-muted">
+              <p className="mb-1.5 text-base font-medium">{t('사용 시점')}</p>
+              <p className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
                 {t(detail.whenToUse)}
               </p>
             </div>
             <div>
-              <p className="mb-1.5 text-[13px] font-medium">{t('번들 파일')}</p>
-              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-line">
+              <p className="mb-1.5 text-base font-medium">{t('번들 파일')}</p>
+              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
                 {detail.files.map((f) => (
-                  <div key={f} className="flex items-center gap-2 px-3 py-2 text-[13px]">
+                  <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
                     <FileCode2 size={14} className="text-faint" />
                     <span className="font-mono">{f}</span>
                   </div>
@@ -305,7 +305,7 @@ export function SkillsPage() {
         {saveError && (
           <p
             role="status"
-            className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[13px] text-danger"
+            className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
           >
             {saveError}
           </p>
@@ -367,14 +367,14 @@ export function SkillsPage() {
                     })
                   }
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors',
+                    'rounded-control border px-2.5 py-1.5 text-base transition-colors',
                     on
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted hover:bg-elevated',
                   )}
                 >
                   {tool.label}
-                  <span className="ml-1 font-mono text-[10px] text-faint">{tool.name}</span>
+                  <span className="ml-1 font-mono text-2xs text-faint">{tool.name}</span>
                 </button>
               )
             })}

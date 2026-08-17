@@ -1,11 +1,12 @@
-import { Languages, Moon, PanelLeft, Sun } from 'lucide-react'
+import { Languages, PanelLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
+import { ThemeToggle } from './ThemeToggle'
 
 export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode }) {
-  const { toggleSidebar, theme, toggleTheme, lang, toggleLang } = useStore()
+  const { toggleSidebar, lang, toggleLang } = useStore()
   const t = useT()
 
   return (
@@ -31,17 +32,9 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           title={t('언어 전환')}
         >
           <Languages size={16} />
-          <span className="text-[12px] font-medium">{lang === 'ko' ? 'EN' : '한'}</span>
+          <span className="text-sm font-medium">{lang === 'ko' ? 'EN' : '한'}</span>
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          aria-label={t('테마 전환')}
-          title={t('밝은 화면과 어두운 화면을 바꿉니다')}
-        >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        </Button>
+        <ThemeToggle />
       </div>
     </header>
   )

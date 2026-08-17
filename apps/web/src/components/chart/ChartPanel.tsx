@@ -83,7 +83,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
 
   if (keys.length === 0) {
     return (
-      <div className="grid h-40 place-items-center text-[13px] text-faint">
+      <div className="grid h-40 place-items-center text-base text-faint">
         {t('그릴 수 있는 값이 없습니다')}
       </div>
     )
@@ -282,7 +282,7 @@ export function ChartThumb({ chart }: { chart: ChartArtifact }) {
       <Plot chart={chart} interactive={false} />
       <div className="mt-1 flex flex-wrap gap-2.5">
         {chart.series.map((s) => (
-          <span key={s.name} className="flex items-center gap-1 text-[10px] text-muted">
+          <span key={s.name} className="flex items-center gap-1 text-2xs text-muted">
             <span className="size-2 rounded-sm" style={{ background: s.color }} />
             {s.name}
           </span>
@@ -405,7 +405,7 @@ export function ChartPanel({
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-2 border-b border-line px-4 py-2.5">
         <BarChart3 size={15} className="shrink-0 text-accent" />
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{chart.title}</p>
+        <p className="min-w-0 flex-1 truncate text-base font-medium">{chart.title}</p>
         <Badge>v{chart.version}</Badge>
         <Dropdown
           align="right"
@@ -445,7 +445,7 @@ export function ChartPanel({
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              'flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors',
+              'flex items-center gap-1.5 rounded-control px-2 py-1 text-sm transition-colors',
               tab === t.id ? 'bg-elevated text-fg' : 'text-muted hover:text-fg',
             )}
           >
@@ -462,15 +462,15 @@ export function ChartPanel({
             and no file was ever produced. */}
         <div className={cn(tab === 'chart' ? '' : 'hidden')}>
             <Plot chart={chart} interactive={tab === 'chart'} />
-            {chart.caption && <p className="mt-3 text-[13px] text-muted">{chart.caption}</p>}
+            {chart.caption && <p className="mt-3 text-base text-muted">{chart.caption}</p>}
             {/* 축 이름은 축에 그려지므로 여기서는 출처만 */}
             {chart.sourceFile && (
-              <p className="mt-2 text-[11px] text-faint">출처 {chart.sourceFile}</p>
+              <p className="mt-2 text-xs text-faint">출처 {chart.sourceFile}</p>
             )}
         </div>
         <div className={cn(tab === 'table' ? '' : 'hidden')}>
-          <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="w-full border-collapse text-[13px]">
+          <div className="overflow-x-auto rounded-card border border-line">
+            <table className="w-full border-collapse text-base">
               <thead className="bg-elevated">
                 <tr>
                   {chart.table.columns.map((c) => (

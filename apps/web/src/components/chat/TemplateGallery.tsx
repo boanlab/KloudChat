@@ -135,7 +135,7 @@ export function TemplateGallery({
                   key={g}
                   onClick={() => setGroup(g)}
                   className={cn(
-                    'rounded-lg border px-2.5 py-1 text-[13px] transition-colors',
+                    'rounded-control border px-2.5 py-1 text-base transition-colors',
                     group === g
                       ? 'border-accent bg-accent-soft text-accent'
                       : 'border-line text-muted hover:bg-elevated',
@@ -168,24 +168,24 @@ export function TemplateGallery({
                       // template does not inherit the last one's form.
                       setPendingAttachment(item.form ?? null)
                     }}
-                    className="w-full rounded-xl border border-line bg-panel p-3.5 text-left transition-colors hover:border-accent hover:bg-elevated"
+                    className="w-full rounded-card border border-line bg-panel p-3.5 text-left transition-colors hover:border-accent hover:bg-elevated"
                   >
-                    <p className="pr-6 text-[13px] font-medium">
+                    <p className="pr-6 text-base font-medium">
                       {item.title}
                       {/* Whose it is, because only one of the two can be
                           deleted and the button appears on hover. */}
                       {item.shared && (
-                        <span className="ml-1.5 align-middle text-[11px] font-normal text-faint">
+                        <span className="ml-1.5 align-middle text-xs font-normal text-faint">
                           {t('공용')}
                         </span>
                       )}
                     </p>
-                    <p className="mt-1 text-[12px] text-muted">{item.description}</p>
+                    <p className="mt-1 text-sm text-muted">{item.description}</p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-1">
                       {item.fills.map((f) => (
                         <span
                           key={f}
-                          className="rounded-md bg-elevated px-1.5 py-0.5 text-[11px] text-faint transition-colors group-hover:bg-panel"
+                          className="rounded-control bg-elevated px-1.5 py-0.5 text-xs text-faint transition-colors group-hover:bg-panel"
                         >
                           {f}
                         </span>
@@ -194,7 +194,7 @@ export function TemplateGallery({
                           a document behaves differently from one that does not,
                           and that has to be visible before it is chosen. */}
                       {item.form && (
-                        <span className="flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent">
+                        <span className="flex items-center gap-1 rounded-control bg-accent-soft px-1.5 py-0.5 text-xs text-accent">
                           <Paperclip size={9} />
                           {item.form.name}
                         </span>
@@ -305,7 +305,7 @@ export function TemplateForm({
                 key={k}
                 onClick={() => setSurface(k)}
                 className={cn(
-                  'rounded-lg border px-2.5 py-1 text-[13px] transition-colors',
+                  'rounded-control border px-2.5 py-1 text-base transition-colors',
                   surface === k
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-elevated',
@@ -354,7 +354,7 @@ export function TemplateForm({
       </Field>
       <Field label={t('양식 파일')} hint={t('올리면 그 양식에 맞춰 씁니다. 선택 사항입니다')}>
         {file ? (
-          <div className="flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-[13px]">
+          <div className="flex items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-base">
             <Paperclip size={13} className="shrink-0 text-accent" />
             <span className="min-w-0 flex-1 truncate">{file.name}</span>
             <Button
@@ -370,7 +370,7 @@ export function TemplateForm({
           <input
             type="file"
             aria-label={t('양식 파일')}
-            className="block w-full text-[13px] file:mr-3 file:rounded-lg file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-[13px]"
+            className="block w-full text-base file:mr-3 file:rounded-control file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-base"
             onChange={(e) => {
               const picked = e.target.files?.[0]
               if (picked) void attach(picked)
@@ -378,7 +378,7 @@ export function TemplateForm({
           />
         )}
       </Field>
-      {error && <p className="text-[13px] text-danger">{error}</p>}
+      {error && <p className="text-base text-danger">{error}</p>}
       <div className="flex gap-2">
         <Button variant="primary" disabled={busy || !title.trim()} onClick={() => void save()}>
           {busy && <Loader2 size={13} className="animate-spin" />}

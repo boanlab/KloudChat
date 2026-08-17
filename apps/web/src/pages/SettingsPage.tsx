@@ -33,7 +33,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-[13px] font-medium">{t('설정')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('설정')}</span>} />
       <PageBody>
         <PageHeader
           title={t('설정')}
@@ -60,7 +60,7 @@ export function SettingsPage() {
               role="tab"
               className={({ isActive }) =>
                 cn(
-                  '-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                  '-mb-px border-b-2 px-3 py-2 text-base font-medium transition-colors',
                   isActive
                     ? 'border-accent text-fg'
                     : 'border-transparent text-muted hover:text-fg',
