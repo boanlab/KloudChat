@@ -4,8 +4,8 @@ import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
-import { Badge, Button, ButtonLink } from '@/components/ui'
-import { fileUrl } from '@/lib/api'
+import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
+import { downloadArtifact, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { useStore } from '@/store/useStore'
@@ -105,40 +105,72 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
 }
 
 /**
- * The file itself, saved to disk.
+ * The formats an HTML artifact can leave in.
  *
- * This is also the PDF path. There is no rendering engine on the server — see
- * `services/design_templates.py` — and the seeds carry `@media print` rules,
- * so the export is: save the file, open it, print it. The document is *not*
- * opened in a tab from here: a `blob:` URL inherits this origin, and model-
- * written markup is not something to run inside it, however thoroughly it was
- * stripped on the way in.
+ * `.html` is the artifact itself — the faithful copy, and the one whose print
+ * rules turn into a PDF in the reader's own browser. The rest are the server
+ * reading the markup back into slides or sections and handing them to the
+ * exporters this product already had, so a deck opens in PowerPoint as
+ * editable slides rather than as a picture of one.
+ *
+ * The file is never opened in a tab from here: a `blob:` URL inherits this
+ * origin, and model-written markup is not something to run inside it however
+ * thoroughly it was stripped on the way in.
  */
-function DownloadHtml({ artifact }: { artifact: CodeArtifact }) {
+function PageExport({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
-  const save = () => {
-    const blob = new Blob([artifact.content], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${(artifact.title || 'document').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60)}.html`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    // Revoked on the next tick: revoking synchronously can beat the download
-    // in Safari, which reads the blob after the click returns.
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+  const templates = useStore((s) => s.designTemplates)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  // Same rule the server follows: the template says which kind it is, and a
+  // template that stopped existing leaves the markup to say so.
+  const template = templates.find((row) => row.id === artifact.templateId)
+  const isDeck = template ? template.kind === 'deck' : artifact.content.includes('class="slide')
+
+  const save = async (format: 'pptx' | 'docx' | 'pdf' | 'hwpx' | 'md' | 'html') => {
+    setBusy(format)
+    try {
+      await downloadArtifact(artifact.id, format, artifact.title || 'document')
+    } finally {
+      setBusy(null)
+    }
   }
+
   return (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={save}
-      title={t('브라우저에서 열어 인쇄하면 PDF 로 저장됩니다')}
+    <Dropdown
+      align="right"
+      trigger={() => (
+        <Button variant="secondary" size="sm" disabled={busy !== null}>
+          <Download size={13} />
+          {t('내보내기')}
+        </Button>
+      )}
     >
-      <Download size={13} />
-      {t('HTML 내려받기')}
-    </Button>
+      <MenuLabel>{t('형식 선택')}</MenuLabel>
+      {isDeck ? (
+        <MenuItem hint="PPTX" onClick={() => void save('pptx')}>
+          PowerPoint
+        </MenuItem>
+      ) : (
+        <MenuItem hint="DOCX" onClick={() => void save('docx')}>
+          {t('Word 문서')}
+        </MenuItem>
+      )}
+      <MenuItem hint="PDF" onClick={() => void save('pdf')}>
+        PDF
+      </MenuItem>
+      {!isDeck && (
+        <MenuItem hint="HWPX" onClick={() => void save('hwpx')}>
+          {t('한글 문서')}
+        </MenuItem>
+      )}
+      <MenuItem hint="HTML" onClick={() => void save('html')}>
+        {t('원본 HTML')}
+      </MenuItem>
+      <MenuItem hint="MD" onClick={() => void save('md')}>
+        {t('텍스트')}
+      </MenuItem>
+    </Dropdown>
   )
 }
 
@@ -170,7 +202,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
             </button>
           ))}
           <span className="flex-1" />
-          <DownloadHtml artifact={artifact} />
+          <PageExport artifact={artifact} />
         </div>
       )}
       <div className="min-h-0 flex-1">

@@ -3,6 +3,20 @@ import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
 /**
+ * The names in a zip's central directory, without pulling in a zip library.
+ * Same reader as `slides.spec.ts` — only the names are needed.
+ */
+function zipNames(buffer: Buffer): string[] {
+  const names: string[] = []
+  for (let i = 0; i < buffer.length - 4; i++) {
+    if (buffer.readUInt32LE(i) !== 0x02014b50) continue // central directory header
+    const length = buffer.readUInt16LE(i + 28)
+    names.push(buffer.toString('utf8', i + 46, i + 46 + length))
+  }
+  return names
+}
+
+/**
  * The rendering catalogue, from the card to the file.
  *
  * A design template is a shape rather than a sentence: picking one replaces
@@ -118,8 +132,8 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   // blocks are still being written — and reading the stored artifact then
   // aborts the stream that would have saved it.
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
-  const download = page.getByRole('button', { name: 'HTML 내려받기' })
-  await expect(download).toBeVisible({ timeout: 20_000 })
+  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
+  await expect(exportButton).toBeVisible({ timeout: 20_000 })
 
   await shot(page, '03-deck-rendered')
 
@@ -138,12 +152,29 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   // Every block landed inside a styled section rather than loose in the body.
   expect((html.match(/<section class="slide/g) ?? []).length).toBeGreaterThanOrEqual(4)
 
-  // ── 4. …and the file is the artifact ────────────────────────────────
-  const saved = page.waitForEvent('download', { timeout: 60_000 })
-  await download.click()
-  const file = await saved
-  expect(file.suggestedFilename()).toMatch(/\.html$/)
-  expect(await readFile(await file.path(), 'utf8')).toContain('<section class="slide cover">')
+  // ── 4. The file is the artifact… ────────────────────────────────────
+  const savedHtml = page.waitForEvent('download', { timeout: 60_000 })
+  await exportButton.click()
+  await page.getByRole('menuitem', { name: '원본 HTML' }).click()
+  const htmlFile = await savedHtml
+  expect(htmlFile.suggestedFilename()).toMatch(/\.html$/)
+  expect(await readFile(await htmlFile.path(), 'utf8')).toContain(
+    '<section class="slide cover">',
+  )
+
+  // ── …and PowerPoint gets the same deck as editable slides ───────────
+  // Read back out of the markup by `page_export`, so this is the assertion
+  // that the conversion produced one slide part per section rather than a
+  // single page with the whole file poured onto it.
+  const savedPptx = page.waitForEvent('download', { timeout: 60_000 })
+  await exportButton.click()
+  await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
+  const pptxFile = await savedPptx
+  expect(pptxFile.suggestedFilename()).toMatch(/\.pptx$/)
+  const parts = zipNames(await readFile(await pptxFile.path()))
+  expect(parts.filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))).toHaveLength(
+    stored.data.blocks.length,
+  )
 
   // ── 5. Taking the shape off reaches the row that holds it ───────────
   // The turn made the choice sticky, so a chip that only disappeared locally
@@ -181,7 +212,7 @@ test('문서 디자인은 문서 조판으로 나온다', async ({ page }) => {
   const sessionId = page.url().split('/s/')[1]
 
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
-  await expect(page.getByRole('button', { name: 'HTML 내려받기' })).toBeVisible({
+  await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({
     timeout: 20_000,
   })
 

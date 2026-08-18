@@ -421,7 +421,7 @@ export const keysApi = {
  */
 export async function downloadArtifact(
   id: string,
-  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md',
+  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html',
   title: string,
 ) {
   const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {

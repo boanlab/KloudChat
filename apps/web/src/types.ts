@@ -432,6 +432,10 @@ export interface CodeArtifact extends ArtifactBase {
   kind: 'code' | 'html'
   language?: string
   content: string
+  /** Set when this was written into a rendering template. */
+  templateId?: string
+  /** The plan behind the file — what is in it, without parsing the markup. */
+  blocks?: { title: string; layout: string }[]
 }
 
 export type Artifact =

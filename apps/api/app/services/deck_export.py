@@ -44,6 +44,12 @@ _FACES = {
 _INK = RGBColor(0x1A, 0x1A, 0x1A)
 _MUTED = RGBColor(0x66, 0x66, 0x66)
 
+#: The dark deck's ground and its two neutrals. Not tokens: the design system
+#: chooses colours for a document, and a projected slide inverts them.
+_DARK_BG = RGBColor(0x0E, 0x11, 0x16)
+_DARK_INK = RGBColor(0xF5, 0xF6, 0xF7)
+_DARK_MUTED = RGBColor(0x9A, 0xA0, 0xA6)
+
 #: The greys this file drew before design systems existed. Kept as the literal
 #: fallbacks rather than folded into `design.DEFAULT_TOKENS`: a deck with no
 #: design system has to export byte for byte what it exported yesterday, and
@@ -107,6 +113,20 @@ def _textbox(slide, *, left: float, top: float, width: float, height: float):
     return frame
 
 
+def _columns_of(data: dict, bullets: list[str], layout: str) -> list[list[str]]:
+    """The lists to lay side by side.
+
+    An HTML deck read back by `page_export` knows which column each line was
+    in and says so; a JSON deck only has one list, and halving it is the best
+    guess available. Preferring the explicit answer keeps a two-column slide
+    from being re-divided in the wrong place on its way to a file.
+    """
+    given = [list(c) for c in (data.get("columns") or []) if c]
+    if layout == "two-column" and len(given) >= 2:
+        return given
+    return _split_columns(bullets) if layout == "two-column" else [bullets]
+
+
 def _split_columns(bullets: list[str]) -> list[list[str]]:
     """A list in two columns, reading top-to-bottom then across.
 
@@ -120,7 +140,13 @@ def _split_columns(bullets: list[str]) -> list[list[str]]:
     return [bullets[:half], bullets[half:]]
 
 
-def to_pptx(title: str, slides: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
+def to_pptx(
+    title: str,
+    slides: list[dict],
+    *,
+    tokens: dict[str, str] | None = None,
+    dark: bool = False,
+) -> bytes:
     """The deck as a PowerPoint file.
 
     Blank layout, not the built-in title/content ones: those carry placeholder
@@ -134,6 +160,11 @@ def to_pptx(title: str, slides: list[dict], *, tokens: dict[str, str] | None = N
     faces = _FACES[style["font"]] if style else _FACES["gothic"]
     ink = _rgb(style["ink"]) if style else _INK
     muted = _rgb(style["muted"]) if style else _MUTED
+    if dark:
+        # A deck written for a room with the lights down. The design system's
+        # ink is a colour for paper; on this ground it would be unreadable, so
+        # the two neutrals swap rather than being taken from the tokens.
+        ink, muted = _DARK_INK, _DARK_MUTED
 
     def paint(run, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
         _font(run, size=size, bold=bold, colour=colour or ink, faces=faces)
@@ -145,6 +176,9 @@ def to_pptx(title: str, slides: list[dict], *, tokens: dict[str, str] | None = N
 
     for index, data in enumerate(slides):
         slide = presentation.slides.add_slide(blank)
+        if dark:
+            slide.background.fill.solid()
+            slide.background.fill.fore_color.rgb = _DARK_BG
         accent = _rgb(data.get("accent"))
         layout = data.get("layout") or "bullets"
 
@@ -164,6 +198,7 @@ def to_pptx(title: str, slides: list[dict], *, tokens: dict[str, str] | None = N
         heading = str(data.get("title") or "")
         body = str(data.get("body") or "")
         bullets = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
+        rows = [[str(cell) for cell in row] for row in (data.get("rows") or []) if row]
 
         if layout == "title" and index == 0:
             frame = _textbox(slide, left=72, top=190, width=_W - 144, height=160)
@@ -194,11 +229,34 @@ def to_pptx(title: str, slides: list[dict], *, tokens: dict[str, str] | None = N
             run.text = heading
             paint(run, size=26, bold=True)
 
-            if bullets:
+            if rows:
+                # A real table, not bullets that used to be one: this layout
+                # exists because an HTML deck can carry one, and flattening it
+                # into lines is the difference between a comparison somebody
+                # can read and a list they have to reconstruct.
+                shape = slide.shapes.add_table(
+                    len(rows),
+                    max(len(row) for row in rows),
+                    Emu(int(72 * _EMU_PER_PT)),
+                    Emu(int(150 * _EMU_PER_PT)),
+                    Emu(int((_W - 144) * _EMU_PER_PT)),
+                    Emu(int(min(_H - 220, 34 * len(rows)) * _EMU_PER_PT)),
+                )
+                table = shape.table
+                for r, row in enumerate(rows):
+                    for c, text in enumerate(row):
+                        if c >= len(table.columns):
+                            continue
+                        cell = table.cell(r, c)
+                        cell.text = ""
+                        run = cell.text_frame.paragraphs[0].add_run()
+                        run.text = text
+                        paint(run, size=14, bold=r == 0, colour=accent if r == 0 else ink)
+            elif bullets:
                 # Two boxes side by side rather than one wide one — PowerPoint
                 # has no column flow, so the split has to be geometry. Matches
                 # the preview's `columnCount: 2` and the .pdf below.
-                columns = _split_columns(bullets) if layout == "two-column" else [bullets]
+                columns = _columns_of(data, bullets, layout)
                 span = (_W - 144 - (24 * (len(columns) - 1))) / len(columns)
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
@@ -294,6 +352,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         heading = str(data.get("title") or "")
         body = str(data.get("body") or "")
         bullets = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
+        rows = [[str(cell) for cell in row] for row in (data.get("rows") or []) if row]
 
         pdf.setFillColorRGB(1, 1, 1)
         pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
@@ -333,10 +392,28 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 y -= 34
             y -= 24
 
-            if bullets:
+            if rows:
+                # Ruled rather than boxed: a printed grid of thin lines closes
+                # up at projector distance, and the rule under the header is
+                # what actually separates the labels from the values.
+                width = (_W - 144) / max(len(row) for row in rows)
+                for row_index, row in enumerate(rows):
+                    pdf.setFillColorRGB(*(accent if row_index == 0 else ink))
+                    pdf.setFont(font, 15)
+                    for cell_index, cell in enumerate(row):
+                        text = _wrap(cell, font, 15, width - 12)
+                        pdf.drawString(72 + cell_index * width, y, text[0] if text else "")
+                    if row_index == 0:
+                        pdf.setStrokeColorRGB(*accent)
+                        pdf.setLineWidth(1)
+                        pdf.line(72, y - 8, _W - 72, y - 8)
+                    y -= 30
+                    if y < 60:
+                        break
+            elif bullets:
                 # Same split as the .pptx, so the printout and the projected
                 # deck put the same items in the same places.
-                columns = _split_columns(bullets) if layout == "two-column" else [bullets]
+                columns = _columns_of(data, bullets, layout)
                 size = 16 if len(columns) > 1 else 18
                 step = 22 if len(columns) > 1 else 26
                 span = (_W - 144 - 24 * (len(columns) - 1)) / len(columns)

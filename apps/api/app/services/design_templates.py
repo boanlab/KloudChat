@@ -105,6 +105,10 @@ class DesignTemplate:
     example_prompt: str
     #: Appended to the generation prompt. Never shown to the reader.
     instructions: str
+    #: Whether this template's slides are laid on a dark ground. Carried into
+    #: the `.pptx`, which is for presenting; the `.pdf` stays light because it
+    #: is for paper, exactly as the seed's own print rules decide.
+    dark: bool
     #: `image` templates only: the English clause folded into the picture
     #: prompt. Separate from `instructions`, which is Korean prose for the
     #: writing surfaces — a picture model reads neither well nor at that
@@ -163,6 +167,7 @@ def _load() -> dict[str, DesignTemplate]:
             example_prompt_en=str(meta.get("example_prompt_en") or ""),
             instructions=_read(folder, "instructions.md"),
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
+            dark=bool(meta.get("dark")),
             seed=_read(folder, "seed.html"),
             sample=_read(folder, "sample.html"),
             layouts=tuple(str(x) for x in (meta.get("layouts") or ["cover", "section"])),

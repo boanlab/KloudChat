@@ -63,6 +63,7 @@ from app.services import (
     design_templates,
     factcheck,
     index_client,
+    page_export,
     report_export,
     settings_store,
     starter,
@@ -946,22 +947,114 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
 
 
+def _export_page(artifact: Artifact, format: str) -> Response:
+    """An HTML artifact as a file somebody can hand on.
+
+    The `.html` is the faithful copy — it is the artifact. The other formats
+    are `page_export` reading the markup back into the shapes the existing
+    exporters draw, which is what a rendering engine would otherwise be for.
+    A deck therefore opens in PowerPoint as editable slides in the right order
+    with the right accent, laid out by this product's own deck renderer rather
+    than by its template's stylesheet. That trade is the point: fidelity lives
+    in the `.html`, editability lives here.
+
+    Which formats are offered follows the template the artifact was written
+    into — a document has no slides and a deck has no `.hwpx`.
+    """
+    data = artifact.data or {}
+    content = str(data.get("content") or "")
+    tokens = data.get("design") or None
+    title = artifact.title or "문서"
+    stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "page"
+
+    if format == "html":
+        return _attachment(content.encode(), "text/html; charset=utf-8", stem, "html")
+
+    template = design_templates.get(str(data.get("templateId") or ""))
+    # A template can stop existing across an upgrade; the markup still says
+    # which kind it is, and the file has to keep exporting either way.
+    is_deck = template.kind == "deck" if template else 'class="slide' in content
+
+    if is_deck:
+        slides = page_export.to_slides(
+            content, accent=str((tokens or {}).get("accent") or "")
+        )
+        if format == "md":
+            return _attachment(
+                deck_service.to_markdown(title, slides).encode(),
+                "text/markdown; charset=utf-8",
+                stem,
+                "md",
+            )
+        if format == "pdf":
+            return _attachment(
+                deck_export.to_pdf(title, slides, tokens=tokens), "application/pdf", stem, "pdf"
+            )
+        if format in ("pptx", "docx"):
+            # `docx` is the endpoint default, so a deck exported without an
+            # explicit format lands on the presentation rather than 400-ing.
+            return _attachment(
+                deck_export.to_pptx(
+                    title, slides, tokens=tokens, dark=bool(template and template.dark)
+                ),
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                stem,
+                "pptx",
+            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
+
+    sections = page_export.to_sections(content)
+    if format == "md":
+        body, media, suffix = (
+            report_service.to_markdown(title, sections).encode(),
+            "text/markdown; charset=utf-8",
+            "md",
+        )
+    elif format == "pdf":
+        body, media, suffix = (
+            report_export.to_pdf(title, sections, tokens=tokens),
+            "application/pdf",
+            "pdf",
+        )
+    elif format == "hwpx":
+        body, media, suffix = (
+            report_export.to_hwpx(title, sections, tokens=tokens),
+            "application/hwp+zip",
+            "hwpx",
+        )
+    elif format == "docx":
+        body, media, suffix = (
+            report_export.to_docx(title, sections, tokens=tokens),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "docx",
+        )
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
+    return _attachment(body, media, stem, suffix)
+
+
 @router.get("/artifacts/{artifact_id}/export")
 async def export_artifact(
     artifact_id: str, user: CurrentUser, db: DbSession, format: str = "docx"
 ):
-    """A report or a deck as a file.
+    """A report, a deck, or an HTML artifact as a file.
 
-    Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`.
+    Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or
+    `md`. An artifact written into a rendering template takes `html` — the
+    file itself — plus whichever of the two sets matches the template it came
+    from.
 
     Built from what is stored, so the download matches the panel rather than
     re-running the model.
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
-    if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck):
+    if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable"
         )
+
+    if artifact.kind is ArtifactKind.html:
+        return _export_page(artifact, format)
 
     if artifact.kind is ArtifactKind.deck:
         return _export_deck(artifact, format)

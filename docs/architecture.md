@@ -222,9 +222,33 @@ open-design's, and one that cannot run model-written JavaScript in a browser.
 **Print is the export.** There is no headless browser in this image — see
 `report_export`, which chose reportlab over an HTML engine — so every seed
 carries `@media print` rules that put one slide or section on one page. The
-panel offers the `.html` file; the PDF comes from the reader's own print
-dialogue. The file is deliberately not opened in a tab from the app: a `blob:`
-URL inherits this origin.
+`.html` file is the faithful copy, and printing it in a browser is how it
+becomes a PDF. The file is deliberately not opened in a tab from the app: a
+`blob:` URL inherits this origin.
+
+The other formats come from `services/page_export.py`, which reads the markup
+back with the standard library's `HTMLParser`. That is possible because
+`assemble` wrote it out of a closed vocabulary, so the structure is known
+rather than guessed: each `<section>` becomes a slide or a section, keeping its
+heading, its lines, which column each line was in, and its table rows. A deck
+then goes through `deck_export` to `.pptx` and `.pdf`, a document through
+`report_export` to `.docx`, `.pdf` and `.hwpx`.
+
+What that conversion buys is **editability, not fidelity**. The deck opens in
+PowerPoint as real slides in the right order with the design system's accent
+and face, laid out by this product's own deck renderer — not by the template's
+stylesheet, which needs a browser. Two things were added to `deck_export` to
+carry it: a `table` layout, because flattening a table into bullets leaves the
+reader to reassemble it, and an explicit `columns` field, because an HTML deck
+knows which column each line was in and halving a merged list would put the
+wrong items on the wrong side. A JSON deck, which has neither, still halves its
+own list exactly as before.
+
+A template marked `dark` presents on a dark ground, and its `.pptx` follows —
+the design system's ink is a colour chosen for paper and would be unreadable
+there, so the two neutrals swap. The `.pdf` stays light, which is the same
+decision that seed's own print rules already make: a projector and a printer
+want opposite things.
 
 Image templates produce no artifact of their own. They contribute an English
 `prompt_suffix` to `imagegen.compose_prompt`, ordered after the style chip and

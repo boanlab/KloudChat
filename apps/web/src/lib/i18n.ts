@@ -1124,6 +1124,8 @@ const EN: Record<string, string> = {
   '{name} 디자인 해제': 'Clear the {name} design',
   'HTML 내려받기': 'Download HTML',
   '브라우저에서 열어 인쇄하면 PDF 로 저장됩니다': 'Open it in a browser and print to save a PDF',
+  '원본 HTML': 'Original HTML',
+  '텍스트': 'Text',
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
   // ── 디자인 시스템 ───────────────────────────────────────────────
   '디자인': 'Design',
