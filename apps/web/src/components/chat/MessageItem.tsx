@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { ArtifactKind, Message } from '@/types'
+import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
 import { StepTimeline } from './StepTimeline'
@@ -46,6 +46,52 @@ const artifactLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
 }
 
+function costRouteLabel(
+  route: CostRouting,
+  models: ModelInfo[],
+  t: (text: string) => string,
+): string {
+  const requested = models.find((model) => model.id === route.requestedModel)?.label ?? route.requestedModel
+  const selected =
+    models.find((model) => model.id === (route.executedModel ?? route.selectedModel))?.label ??
+    route.executedModel ??
+    route.selectedModel
+  if (route.decision === 'routed') {
+    const saved = route.estimatedCreditsSaved
+      ? ` · ${t('예상 {n} 크레딧 절약').replace('{n}', route.estimatedCreditsSaved.toLocaleString())}`
+      : ''
+    return `${t('Auto 절약')} · ${requested} → ${selected}${saved}`
+  }
+  if (route.decision === 'classifier_unavailable') {
+    return t('Auto · 분류기를 사용할 수 없어 품질 모델 유지')
+  }
+  if (route.decision === 'bypassed') {
+    if (route.reasonCode === 'privacy_detected') {
+      return t('Auto · 개인정보 감지로 난이도 판정 생략')
+    }
+    if (route.reasonCode === 'unsupported_turn') {
+      return t('Auto · 기능 사용으로 품질 모델 유지')
+    }
+    if (route.reasonCode === 'disabled') {
+      return t('Auto · 관리 정책이 꺼져 품질 모델 유지')
+    }
+    if (route.reasonCode === 'no_economy_model' || route.reasonCode === 'no_economy_models') {
+      return t('Auto · 사용할 절약 모델이 없어 품질 모델 유지')
+    }
+    return t('Auto · 난이도 판정을 생략하고 품질 모델 유지')
+  }
+  if (route.reasonCode === 'high_complexity') {
+    return t('Auto · 복잡한 요청으로 품질 모델 유지')
+  }
+  if (route.reasonCode === 'input_too_long') {
+    return t('Auto · 긴 대화이므로 품질 모델 유지')
+  }
+  if (route.reasonCode === 'no_economy_model' || route.reasonCode === 'no_economy_models') {
+    return t('Auto · 사용할 절약 모델이 없어 품질 모델 유지')
+  }
+  return t('Auto · 확실하지 않아 품질 모델 유지')
+}
+
 export function MessageItem({
   message,
   sessionId,
@@ -64,7 +110,8 @@ export function MessageItem({
       message.routing.actualModel !== message.routing.requestedModels[0],
   )
   const showRouting = Boolean(
-    message.routing && (message.routing.action !== 'none' || actualModelChanged),
+    message.routing &&
+      (message.routing.action !== 'none' || actualModelChanged || message.routing.costRouting),
   )
   const messageBoundary =
     model?.dataBoundary ??
@@ -125,6 +172,16 @@ export function MessageItem({
       <div className="min-w-0 flex-1">
         {message.routing && showRouting && (
           <div className="mb-2 flex flex-wrap gap-1.5">
+            {message.routing.costRouting && (
+              <Badge
+                tone={
+                  message.routing.costRouting.decision === 'routed' ? 'success' : 'warn'
+                }
+                title={`${t('요청 모델')}: ${message.routing.costRouting.requestedModel} · ${t('실행 모델')}: ${message.routing.costRouting.executedModel ?? message.routing.costRouting.selectedModel}`}
+              >
+                {costRouteLabel(message.routing.costRouting, models, t)}
+              </Badge>
+            )}
             {message.routing.action !== 'none' &&
               message.routing.initialAction === 'send_raw_external' &&
               message.routing.action !== 'send_raw_external' && (
@@ -161,11 +218,13 @@ export function MessageItem({
                 )}
               </Badge>
             ) : null}
-            {actualModelChanged && message.routing.actualModel && (
+            {actualModelChanged &&
+              !message.routing.costRouting &&
+              message.routing.actualModel && (
               <Badge title={message.routing.actualModel}>
                 {t('실제 실행 모델')}: {message.routing.actualModel}
               </Badge>
-            )}
+              )}
           </div>
         )}
         {message.steps && message.steps.length > 0 && (

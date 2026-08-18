@@ -74,6 +74,9 @@ class GovernanceIn(Wire):
     external_data_guard: bool | None = None
     allow_user_raw_external: bool | None = None
     privacy_safe_model_ids: list[str] | None = Field(default=None, max_length=20)
+    adaptive_routing_enabled: bool | None = None
+    adaptive_classifier_model_id: str | None = Field(default=None, max_length=200)
+    adaptive_economy_model_ids: list[str] | None = Field(default=None, max_length=3)
     intent_filter: bool | None = None
     blocked_categories: list[str] | None = None
     #: 0 keeps everything. Anything above it clears bodies older than that.

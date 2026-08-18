@@ -24,7 +24,7 @@ from sqlmodel import col, delete, select
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.deps import CurrentUser, DbSession, client_ip
-from app.models.chat import ChatSession, Message, Role, SessionKind
+from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
 from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent as WorkspaceAgent
 from app.models.workspace import AgentVisibility, Artifact, ArtifactKind, Project, StoredFile
@@ -43,8 +43,15 @@ from app.schemas.chat import (
     snippet,
 )
 from app.schemas.workspace import ArtifactOut
+from app.services import (
+    adaptive_routing,
+    artifact_extract,
+    audiogen,
+    governance,
+    imagegen,
+    settings_store,
+)
 from app.services import agent as agent_service
-from app.services import artifact_extract, audiogen, governance, imagegen, settings_store
 from app.services import auto_memory as auto_memory_service
 from app.services import chat as chat_service
 from app.services import deck as deck_service
@@ -194,6 +201,185 @@ def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dic
         for model in catalogue
         if kind in model.get("kinds", []) and (not allowed or model.get("id") in allowed)
     ]
+
+
+def _cost_routing(
+    *,
+    decision: str,
+    reason_code: str,
+    requested_model: dict,
+    selected_model: dict,
+    classifier_model: str | None = None,
+    classification: adaptive_routing.Classification | None = None,
+) -> dict[str, Any]:
+    route: dict[str, Any] = {
+        "mode": "auto",
+        "decision": decision,
+        "reasonCode": reason_code,
+        "requestedModel": requested_model["id"],
+        "selectedModel": selected_model["id"],
+        "classifierVersion": adaptive_routing.CLASSIFIER_VERSION,
+    }
+    if classifier_model:
+        route["classifierModel"] = classifier_model
+    if classification is not None:
+        route.update(
+            {
+                "complexity": classification.complexity,
+                "confidence": classification.confidence,
+                "classifierInputTokens": classification.input_tokens,
+                "classifierOutputTokens": classification.output_tokens,
+            }
+        )
+    return route
+
+
+async def _resolve_cost_routing(
+    *,
+    db: DbSession,
+    user: User,
+    policy,
+    catalogue: list[dict],
+    quality_model: dict,
+    history: list[Message],
+    content: str,
+    context_tokens: int,
+    requires_tools: bool,
+    unsupported_reason: str | None,
+) -> tuple[dict, dict[str, Any]]:
+    """Returns an Auto turn's effective model and value-free route metadata."""
+    if not policy.adaptive_routing_enabled:
+        return quality_model, _cost_routing(
+            decision="bypassed",
+            reason_code="disabled",
+            requested_model=quality_model,
+            selected_model=quality_model,
+        )
+    if unsupported_reason:
+        return quality_model, _cost_routing(
+            decision="bypassed",
+            reason_code=unsupported_reason,
+            requested_model=quality_model,
+            selected_model=quality_model,
+        )
+
+    allowed = set(user.allowed_models or [])
+    classifier_id = str(policy.adaptive_classifier_model_id or "")
+    classifier_model = model_service.find(catalogue, classifier_id)
+    if not adaptive_routing.classifier_is_usable(
+        classifier_model, allowed_model_ids=allowed
+    ):
+        return quality_model, _cost_routing(
+            decision="classifier_unavailable",
+            reason_code="classifier_unavailable",
+            requested_model=quality_model,
+            selected_model=quality_model,
+            classifier_model=classifier_id or None,
+        )
+
+    candidates = adaptive_routing.economy_candidates(
+        catalogue,
+        list(policy.adaptive_economy_model_ids or [])[:3],
+        quality_model=quality_model,
+        allowed_model_ids=allowed,
+        context_tokens=context_tokens,
+        requires_tools=requires_tools,
+    )
+    if not candidates:
+        return quality_model, _cost_routing(
+            decision="kept_quality",
+            reason_code="no_economy_model",
+            requested_model=quality_model,
+            selected_model=quality_model,
+            classifier_model=classifier_id,
+        )
+
+    classifier_input = adaptive_routing.classifier_context(history, content)
+    if classifier_input is None:
+        return quality_model, _cost_routing(
+            decision="kept_quality",
+            reason_code="input_too_long",
+            requested_model=quality_model,
+            selected_model=quality_model,
+            classifier_model=classifier_id,
+        )
+
+    # Never call this path through ``credentials_for``: that helper may fall
+    # back to the master key. Auto classification is optional and therefore
+    # requires the user's already-issued, account-scoped virtual key.
+    api_key = litellm_service.user_key(user) or await litellm_service.ensure_key(user)
+    if not api_key:
+        return quality_model, _cost_routing(
+            decision="classifier_unavailable",
+            reason_code="classifier_key_unavailable",
+            requested_model=quality_model,
+            selected_model=quality_model,
+            classifier_model=classifier_id,
+        )
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    classification = await adaptive_routing.classify(
+        model_id=classifier_id,
+        context=classifier_input,
+        user_id=user.id,
+        api_key=api_key,
+    )
+    if classification is None:
+        return quality_model, _cost_routing(
+            decision="classifier_unavailable",
+            reason_code="classifier_unavailable",
+            requested_model=quality_model,
+            selected_model=quality_model,
+            classifier_model=classifier_id,
+        )
+    if (
+        classification.complexity != "low"
+        or classification.confidence < adaptive_routing.MIN_LOW_CONFIDENCE
+    ):
+        if classification.complexity == "high":
+            reason = "high_complexity"
+        elif classification.complexity == "uncertain":
+            reason = "uncertain"
+        else:
+            reason = "low_confidence"
+        return quality_model, _cost_routing(
+            decision="kept_quality",
+            reason_code=reason,
+            requested_model=quality_model,
+            selected_model=quality_model,
+            classifier_model=classifier_id,
+            classification=classification,
+        )
+
+    selected = candidates[0]
+    return selected, _cost_routing(
+        decision="routed",
+        reason_code="low_complexity",
+        requested_model=quality_model,
+        selected_model=selected,
+        classifier_model=classifier_id,
+        classification=classification,
+    )
+
+
+def _apply_effective_model(routing: dict[str, Any], model: dict) -> dict[str, Any]:
+    """Updates privacy routing after a clean Auto decision."""
+    model_id = model["id"]
+    return {
+        **routing,
+        "routedModels": [model_id],
+        "effectiveModels": [model_id],
+        "actualModels": [],
+        "dataBoundary": model.get("dataBoundary") or "unknown",
+        "modelRoutes": [
+            {
+                "routedModel": model_id,
+                "actualModel": None,
+                "dataBoundary": model.get("dataBoundary") or "unknown",
+            }
+        ],
+    }
 
 
 def _privacy_sources(
@@ -446,7 +632,10 @@ def _raise_workspace_error(exc: WorkspaceContextError) -> None:
         status_code=(
             status.HTTP_404_NOT_FOUND
             if missing
-            else status.HTTP_422_UNPROCESSABLE_CONTENT
+            # 422 is stable across Starlette releases; the named constant was
+            # renamed from ENTITY to CONTENT and each side warns or breaks on
+            # a different supported version.
+            else 422
         ),
         detail=code,
     ) from exc
@@ -607,12 +796,23 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         project_id=payload.project_id,
         agent_id=payload.agent_id,
     )
+    if payload.routing_mode is RoutingMode.auto and payload.kind is not SessionKind.chat:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="auto_routing_chat_only",
+        )
+    if payload.model == "auto":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="auto_is_not_a_model_id",
+        )
     session = ChatSession(
         user_id=user.id,
         kind=payload.kind,
         project_id=payload.project_id,
         agent_id=payload.agent_id,
         model=payload.model or "",
+        routing_mode=payload.routing_mode,
     )
     db.add(session)
     await db.commit()
@@ -624,6 +824,20 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
 async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
     changes = payload.model_dump(exclude_unset=True)
+    if changes.get("model") == "auto":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="auto_is_not_a_model_id",
+        )
+    if changes.get("routing_mode") is RoutingMode.auto and session.kind is not SessionKind.chat:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="auto_routing_chat_only",
+        )
+    # A direct real-model selection is manual unless the caller explicitly
+    # updates the quality ceiling and asks to keep Auto in the same patch.
+    if "model" in changes and "routing_mode" not in changes:
+        changes["routing_mode"] = RoutingMode.manual
     if "project_id" in changes:
         await _validate_session_links(
             db,
@@ -886,6 +1100,11 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="surface_not_implemented"
         )
+    auto_turn = bool(
+        session.kind is SessionKind.chat
+        and session.routing_mode == RoutingMode.auto
+        and payload.model is None
+    )
 
     # Policy before any write, billing entry, virtual-key issue or model call.
     policy = await _require_egress_policy()
@@ -905,7 +1124,7 @@ async def send_message(
         agent_model, agent_tools = await agent_settings(db, user, session)
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
-    model_id = payload.model or session.model or agent_model
+    model_id = session.model if auto_turn else payload.model or session.model or agent_model
     model = model_service.find(catalogue_models, model_id) if model_id else None
     if payload.model and (model is None or session.kind.value not in model.get("kinds", [])):
         raise HTTPException(
@@ -917,6 +1136,13 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="model_not_allowed",
+        )
+    if auto_turn and model not in usable:
+        # Auto is a ceiling, not permission to replace a stale/denied quality
+        # model with whichever cheap model happens to be first today.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="auto_quality_model_required",
         )
     if model not in usable:
         model = None
@@ -981,6 +1207,13 @@ async def send_message(
     strict_candidate_available = requested_is_strict or any(
         model.get("id") in set(policy.privacy_safe_model_ids or []) and _strict_model(model)
         for model in catalogue_models
+    ) or (
+        auto_turn
+        and any(
+            model.get("id") in set(policy.adaptive_economy_model_ids or [])
+            and _strict_model(model)
+            for model in catalogue_models
+        )
     )
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         if not requested_is_strict:
@@ -1034,6 +1267,14 @@ async def send_message(
         privacy_sources = _privacy_sources(content, history, workspace.blocks)
         if requested_tools:
             privacy_sources["tool_definitions"] = _tool_definition_source(requested_tools)
+        # Auto always performs the deterministic full-envelope scan before a
+        # classifier, key operation or model call, even when the organisation
+        # has disabled the optional external-data decision UI.
+        auto_preflight_findings = (
+            governance.findings(privacy_sources, legacy=policy.pii_masking)
+            if auto_turn
+            else []
+        )
         resolved = await _resolve_privacy(
             user=user,
             session=session,
@@ -1054,6 +1295,41 @@ async def send_message(
             )
             return resolved
         privacy_resolution = resolved
+        if auto_turn:
+            if auto_preflight_findings:
+                cost_routing = _cost_routing(
+                    decision="bypassed",
+                    reason_code="privacy_detected",
+                    requested_model=requested_model,
+                    selected_model=resolved.models[0],
+                )
+            else:
+                unsupported = bool(
+                    payload.attachments
+                    or payload.web_search
+                    or payload.activated_skill_ids
+                    or session.agent_id
+                    or session.project_id
+                )
+                context_parts = [content, *outbound_history]
+                context_parts.extend(block.text for block in workspace.blocks)
+                if requested_tools:
+                    context_parts.append(_tool_definition_source(requested_tools))
+                routed_model, cost_routing = await _resolve_cost_routing(
+                    db=db,
+                    user=user,
+                    policy=policy,
+                    catalogue=catalogue_models,
+                    quality_model=requested_model,
+                    history=history,
+                    content=content,
+                    context_tokens=adaptive_routing.estimated_context_tokens(context_parts),
+                    requires_tools=bool(requested_tools),
+                    unsupported_reason="unsupported_turn" if unsupported else None,
+                )
+                resolved.models = [routed_model]
+                resolved.routing = _apply_effective_model(resolved.routing, routed_model)
+            resolved.routing = {**resolved.routing, "costRouting": cost_routing}
         model = resolved.models[0]
         strict_local = resolved.strict_local
         # A model that did not support tools at request time cannot gain new
@@ -1184,6 +1460,23 @@ async def send_message(
         )
         privacy_audit_id = privacy_audit.id
         db.add(privacy_audit)
+    routing_audit_id: str | None = None
+    cost_route = (
+        privacy_resolution.routing.get("costRouting")
+        if privacy_resolution and privacy_resolution.routing
+        else None
+    )
+    if cost_route:
+        routing_audit = AuditEvent(
+            actor_id=user.id,
+            action="routing.auto",
+            target=session.id,
+            detail=adaptive_routing.CLASSIFIER_VERSION,
+            event_metadata=dict(cost_route),
+            ip=client_ip(request),
+        )
+        routing_audit_id = routing_audit.id
+        db.add(routing_audit)
     if agent_row is not None:
         agent_row.runs += 1
         db.add(agent_row)
@@ -1279,6 +1572,8 @@ async def send_message(
             is_first_turn=is_first_turn,
             skills_event=skills_event,
             routing=privacy_resolution.routing if privacy_resolution else None,
+            quality_model=requested_model if cost_route else None,
+            disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
             # Guarded organisations mask every persisted model-generated
             # string, even when the inbound envelope was clean: a provider or
             # tool can introduce a new email/key in its response.
@@ -1294,6 +1589,7 @@ async def send_message(
             legacy_masking=policy.pii_masking,
             protect_enrichment=policy.pii_masking or policy.external_data_guard,
             privacy_audit_id=privacy_audit_id,
+            routing_audit_id=routing_audit_id,
         ),
         media_type="text/event-stream",
         headers={
@@ -1319,11 +1615,14 @@ async def _run_turn(
     is_first_turn: bool,
     skills_event: dict | None = None,
     routing: dict | None = None,
+    quality_model: dict | None = None,
+    disable_fallbacks: bool = False,
     mask_at_rest: bool = False,
     sanitize_tool_output: bool = False,
     legacy_masking: bool = False,
     protect_enrichment: bool = False,
     privacy_audit_id: str | None = None,
+    routing_audit_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -1342,6 +1641,7 @@ async def _run_turn(
     ctx = ToolContext(user_id=user_id, session_id=session_id, api_key=api_key)
     masker = governance.mask_legacy if legacy_masking else governance.mask
     strict_local = _strict_model(model)
+    cost_routing = dict((routing or {}).get("costRouting") or {}) or None
 
     def classify_tool_output(value: str) -> list[dict[str, Any]]:
         return [
@@ -1356,6 +1656,8 @@ async def _run_turn(
         # First event: the browser can update its model badge before any answer
         # token, and a new-session composer can navigate without losing a 409.
         yield chat_service.sse({"type": "privacy_route", **routing})
+    if cost_routing:
+        yield chat_service.sse({"type": "model_route", **cost_routing})
     if skills_event:
         yield chat_service.sse(skills_event)
     try:
@@ -1369,6 +1671,7 @@ async def _run_turn(
             sanitize_step_detail=masker if protect_enrichment else None,
             classify_tool_output=classify_tool_output if protect_enrichment else None,
             strict_local=strict_local,
+            disable_fallbacks=disable_fallbacks,
             redact_logging=mask_at_rest,
         ):
             if event["type"] == "delta":
@@ -1388,6 +1691,11 @@ async def _run_turn(
                     actual_model,
                 )
                 yield chat_service.sse({"type": "privacy_route", **routing})
+                if cost_routing:
+                    cost_routing = {**cost_routing, "executedModel": actual_model}
+                    routing = {**(routing or {}), "costRouting": cost_routing}
+                    # Do not leak the agent loop's partial provider-route shape.
+                    yield chat_service.sse({"type": "model_route", **cost_routing})
                 continue
             elif event["type"] == "privacy_route" and event.get("source") == "tool_output":
                 count = int(event.get("count") or 0)
@@ -1431,16 +1739,30 @@ async def _run_turn(
     stored_content = masker(content)[0] if mask_at_rest or tool_output_findings else content
     protect_persistence = mask_at_rest or bool(tool_output_findings)
     stored_steps = _mask_text_tree(steps, masker) if protect_persistence else steps
-    stored_routing = _mask_text_tree(routing, masker) if protect_persistence else routing
     stored_actual_model = masker(actual_model)[0] if protect_persistence else actual_model
     credits = (
         0 if not content else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     )
+    if cost_routing:
+        cost_routing = {**cost_routing, "executedModel": actual_model}
+        if content and quality_model is not None and cost_routing.get("decision") == "routed":
+            quality_credits = charge_for_tokens(
+                quality_model,
+                usage["inputTokens"],
+                usage["outputTokens"],
+            )
+            cost_routing["estimatedCreditsSaved"] = max(0, quality_credits - credits)
+        routing = {**(routing or {}), "costRouting": cost_routing}
+    stored_routing = _mask_text_tree(routing, masker) if protect_persistence else routing
 
     new_artifact: str | None = None
     title: str | None = None
     if is_first_turn and stored_content and not failed:
-        enrichment_model = model["id"] if strict_local else settings.title_model or model["id"]
+        enrichment_model = (
+            model["id"]
+            if strict_local or disable_fallbacks
+            else settings.title_model or model["id"]
+        )
         title = await chat_service.generate_title(
             enrichment_model,
             first_user_message,
@@ -1448,6 +1770,7 @@ async def _run_turn(
             api_key,
             masker=masker if protect_enrichment else None,
             strict_local=strict_local,
+            disable_fallbacks=disable_fallbacks,
             redact_logging=mask_at_rest or bool(tool_output_findings),
         )
 
@@ -1479,6 +1802,11 @@ async def _run_turn(
                         **(stored_routing or {}),
                     }
                     db.add(privacy_audit)
+            if routing_audit_id:
+                routing_audit = await db.get(AuditEvent, routing_audit_id)
+                if routing_audit is not None:
+                    routing_audit.event_metadata = dict(cost_routing or {})
+                    db.add(routing_audit)
             session.updated_at = utcnow()
             db.add(session)
             if tool_output_findings:
@@ -1527,12 +1855,15 @@ async def _run_turn(
             requested_artifacts=ctx.pending_artifacts,
             protect_privacy=protect_enrichment,
             strict_local=strict_local,
+            disable_fallbacks=disable_fallbacks,
             redact_logging=mask_at_rest or bool(tool_output_findings),
             legacy_masking=legacy_masking,
         )
 
     if new_artifact:
         yield chat_service.sse({"type": "artifact", "artifactId": new_artifact})
+    if cost_routing:
+        yield chat_service.sse({"type": "model_route", **cost_routing})
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     if title:
         yield chat_service.sse({"type": "title", "title": title})
@@ -1929,6 +2260,7 @@ async def _enrich(
     requested_artifacts: list[dict] | None = None,
     protect_privacy: bool = False,
     strict_local: bool = False,
+    disable_fallbacks: bool = False,
     redact_logging: bool = False,
     legacy_masking: bool = False,
 ) -> str | None:
@@ -1976,7 +2308,9 @@ async def _enrich(
         if auto_memory:
             try:
                 enrichment_model = (
-                    model["id"] if strict_local else settings.title_model or model["id"]
+                    model["id"]
+                    if strict_local or disable_fallbacks
+                    else settings.title_model or model["id"]
                 )
                 written = await auto_memory_service.extract(
                     db,
@@ -1987,6 +2321,7 @@ async def _enrich(
                     model=enrichment_model,
                     masker=privacy_masker,
                     strict_local=strict_local,
+                    disable_fallbacks=disable_fallbacks,
                     redact_logging=redact_logging,
                 )
                 if written:

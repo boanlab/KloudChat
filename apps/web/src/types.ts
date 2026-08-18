@@ -100,6 +100,7 @@ export interface ModelInfo {
  * card, and the surface produces an `audio` or `video` artifact by mode.
  */
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
+export type RoutingMode = 'manual' | 'auto'
 
 export interface Session {
   id: string
@@ -108,6 +109,9 @@ export interface Session {
   projectId: string | null
   agentId: string | null
   model: string
+  /** `auto` keeps `model` as the quality ceiling and may choose a cheaper
+   *  model for eligible, low-complexity chat turns. */
+  routingMode: RoutingMode
   createdAt: string
   updatedAt: string
   pinned: boolean
@@ -134,6 +138,22 @@ export interface Preferences {
 
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'
 
+export interface CostRouting {
+  mode: 'auto'
+  decision: 'routed' | 'kept_quality' | 'bypassed' | 'classifier_unavailable'
+  reasonCode: string
+  requestedModel: string
+  selectedModel: string
+  executedModel?: string
+  classifierVersion: string
+  complexity?: 'low' | 'high' | 'uncertain'
+  confidence?: number
+  classifierModel?: string
+  classifierInputTokens?: number
+  classifierOutputTokens?: number
+  estimatedCreditsSaved?: number
+}
+
 export interface PrivacyRouting {
   requestedModels: string[]
   routedModels: string[]
@@ -154,6 +174,7 @@ export interface PrivacyRouting {
   toolOutputMasked?: number
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
+  costRouting?: CostRouting
 }
 
 export type Role = 'user' | 'assistant' | 'system'

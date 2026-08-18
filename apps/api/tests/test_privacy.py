@@ -1177,6 +1177,175 @@ async def test_chat_409_precedes_message_write_credit_and_upstream(monkeypatch) 
 
 
 @pytest.mark.asyncio
+async def test_auto_privacy_refusal_precedes_classifier_key_and_write(monkeypatch) -> None:
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(
+        user_id=user.id,
+        model="external/quality",
+        routing_mode=sessions_router.RoutingMode.auto,
+    )
+    quality = {**_external_model("external/quality"), "inputCreditCost": 10}
+    classifier = {
+        **_external_model("strict-local/classifier"),
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "privacyOnly": True,
+        "inputCreditCost": 0,
+        "creditCost": 0,
+        "contextWindow": 32_000,
+    }
+    economy = {
+        **_external_model("external/economy"),
+        "inputCreditCost": 1,
+        "contextWindow": 32_000,
+    }
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[quality, classifier, economy],
+        blocks=[_block("memory", "workspace owner owner@example.com")],
+    )
+
+    async def policy(*_args, **_kwargs):
+        return Governance(
+            external_data_guard=True,
+            adaptive_routing_enabled=True,
+            adaptive_classifier_model_id=classifier["id"],
+            adaptive_economy_model_ids=[economy["id"]],
+        )
+
+    async def forbidden(*_args, **_kwargs):
+        pytest.fail("classifier or key issuance ran before privacy refusal")
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", policy)
+    monkeypatch.setattr(sessions_router.adaptive_routing, "classify", forbidden)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", forbidden)
+    db = _NoWriteDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean current input"),
+        _request(),
+        user,
+        db,
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 409
+    assert db.added == []
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_auto_no_candidate_skips_classifier_and_key(monkeypatch) -> None:
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(
+        user_id=user.id,
+        model="external/quality",
+        routing_mode=sessions_router.RoutingMode.auto,
+    )
+    quality = {
+        **_external_model("external/quality"),
+        "inputCreditCost": 1,
+        "contextWindow": 32_000,
+    }
+    classifier = {
+        **_external_model("strict-local/classifier"),
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "privacyOnly": True,
+        "inputCreditCost": 0,
+        "creditCost": 0,
+        "contextWindow": 32_000,
+    }
+    # Equal in both directions, so this is not a saving candidate.
+    economy = {
+        **_external_model("external/not-cheaper"),
+        "inputCreditCost": 1,
+        "creditCost": 1,
+        "contextWindow": 32_000,
+    }
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[quality, classifier, economy],
+        blocks=[],
+    )
+
+    async def policy(*_args, **_kwargs):
+        return Governance(
+            external_data_guard=True,
+            adaptive_routing_enabled=True,
+            adaptive_classifier_model_id=classifier["id"],
+            adaptive_economy_model_ids=[economy["id"]],
+        )
+
+    async def forbidden(*_args, **_kwargs):
+        pytest.fail("no-candidate Auto turn called classifier or issued a key")
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", policy)
+    monkeypatch.setattr(sessions_router.adaptive_routing, "classify", forbidden)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", forbidden)
+    monkeypatch.setattr(
+        sessions_router.litellm_service,
+        "user_key",
+        lambda *_args: pytest.fail("no-candidate Auto turn read a key"),
+    )
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: False)
+    db = _NoWriteDb()
+
+    with pytest.raises(Exception) as caught:
+        await sessions_router.send_message(
+            session.id,
+            SendMessage(content="clean"),
+            _request(),
+            user,
+            db,
+        )
+
+    assert getattr(caught.value, "detail", None) == "insufficient_credits"
+    assert db.added == []
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_auto_requires_persisted_quality_model_instead_of_agent_fallback(
+    monkeypatch,
+) -> None:
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(
+        user_id=user.id,
+        model="",
+        agent_id="agent-1",
+        routing_mode=sessions_router.RoutingMode.auto,
+    )
+    agent_model = _external_model("external/agent-default")
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[agent_model],
+        blocks=[],
+    )
+
+    async def settings(*_args, **_kwargs):
+        return agent_model["id"], []
+
+    monkeypatch.setattr(sessions_router, "agent_settings", settings)
+
+    with pytest.raises(Exception) as caught:
+        await sessions_router.send_message(
+            session.id,
+            SendMessage(content="clean"),
+            _request(),
+            user,
+            _NoWriteDb(),
+        )
+
+    assert getattr(caught.value, "status_code", None) == 409
+    assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+
+
+@pytest.mark.asyncio
 async def test_tool_schema_is_preflighted_and_mask_retry_sends_only_clean_snapshot(
     monkeypatch,
 ) -> None:

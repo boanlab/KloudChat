@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     # Long: a tool-using turn on a local 122b runs for minutes.
     chat_timeout_sec: float = 900.0
     title_timeout_sec: float = 20.0
+    #: Fail-open-to-quality ceiling for the small strict-local complexity call.
+    auto_routing_classifier_timeout_sec: float = 8.0
     # Per-tool ceiling. Deep research and headless rendering take minutes;
     # `max_tool_hops` is what bounds the turn.
     tool_timeout_sec: float = 300.0

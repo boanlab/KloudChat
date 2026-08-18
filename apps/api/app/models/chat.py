@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Index
+from sqlalchemy import Column, DateTime, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -37,6 +37,11 @@ class SessionKind(StrEnum):
     av = "av"
 
 
+class RoutingMode(StrEnum):
+    manual = "manual"
+    auto = "auto"
+
+
 class Role(StrEnum):
     user = "user"
     assistant = "assistant"
@@ -59,6 +64,12 @@ class ChatSession(SQLModel, table=True):
     project_id: str | None = Field(default=None)
     agent_id: str | None = Field(default=None)
     model: str = Field(default="")
+    #: ``model`` always remains the real quality model. Auto routing is a
+    #: separate mode so a virtual picker entry can never leak to LiteLLM.
+    routing_mode: RoutingMode = Field(
+        default=RoutingMode.manual,
+        sa_column=Column(String, nullable=False, default=RoutingMode.manual.value),
+    )
     artifact_id: str | None = Field(default=None)
     pinned: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
@@ -91,4 +102,4 @@ class Message(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
-__all__ = ["ChatSession", "Message", "Role", "SessionKind"]
+__all__ = ["ChatSession", "Message", "Role", "RoutingMode", "SessionKind"]

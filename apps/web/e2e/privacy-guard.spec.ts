@@ -213,7 +213,7 @@ test('model changes after a decision update the hidden reusable session', async 
   await page.getByRole('button', { name: /External Two/ }).click()
 
   await expect.poll(() => patches.length).toBe(1)
-  expect(patches[0]).toEqual({ model: 'external/two' })
+  expect(patches[0]).toEqual({ model: 'external/two', routingMode: 'manual' })
 })
 
 test('a late privacy decision never overwrites a newer draft or attachment', async ({ page }) => {

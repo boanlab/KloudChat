@@ -329,6 +329,30 @@ this release. Reports, slides, media generation and the `/llm` compatibility
 API keep their existing always-mask behaviour where it was already supported;
 they do not present the new decision flow.
 
+### Auto cost routing
+
+Auto is a session mode, not a model alias. `sessions.model` always stores the
+last real model the person selected as the quality ceiling; the separate
+`routing_mode` field says whether an eligible turn may use an economy model.
+This prevents a synthetic `auto` id from reaching LiteLLM and keeps manual
+model selection authoritative.
+
+Privacy inspection runs before classification. If the assembled envelope has
+a finding, Auto performs no key issuance or model call and the existing privacy
+decision owns the turn. A clean, ordinary chat turn may be classified by a
+live, zero-cost strict-local model using the caller's virtual key, redacted
+LiteLLM logging and `disable_fallbacks`. Only a high-confidence low-complexity
+JSON verdict can select an economy model; every timeout, malformed response or
+uncertain state keeps the quality ceiling.
+
+Economy candidates are administrator-ordered and revalidated against the live
+catalogue, caller allowlist, context window, data boundary and both token
+prices. `hybrid`, `unknown` and `privacyOnly` models are excluded. The chosen
+answer call also disables fallback, so a failed economy route cannot cause a
+second, hidden premium charge. Message routing stores the quality, selected and
+actual models plus enum-only decision metadata; classifier prompts and free-form
+model reasoning are never persisted.
+
 ---
 
 ## 8. Agent knowledge and retrieval

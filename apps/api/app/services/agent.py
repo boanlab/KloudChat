@@ -120,6 +120,7 @@ async def _stream_once(
     *,
     tool_definitions: list[dict[str, Any]] | None = None,
     strict_local: bool = False,
+    disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Yields `('delta', text)` while streaming, then `('done', _Accumulator)`."""
@@ -133,7 +134,7 @@ async def _stream_once(
     if tools:
         payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
         payload["tool_choice"] = "auto"
-    if strict_local:
+    if strict_local or disable_fallbacks:
         # Defence in depth. The strict alias has no fallback in KloudChat-LLM;
         # this also asks LiteLLM's router not to fall back for this request.
         payload["disable_fallbacks"] = True
@@ -210,6 +211,7 @@ async def run_turn(
     sanitize_step_detail: Callable[[str], tuple[str, int]] | None = None,
     classify_tool_output: Callable[[str], list[dict[str, Any]]] | None = None,
     strict_local: bool = False,
+    disable_fallbacks: bool = False,
     redact_logging: bool = False,
     tool_definitions: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
@@ -237,6 +239,8 @@ async def run_turn(
             "strict_local": strict_local,
             "redact_logging": redact_next_request,
         }
+        if disable_fallbacks:
+            stream_kwargs["disable_fallbacks"] = True
         # Tests and third-party extensions that call ``run_turn`` directly can
         # keep the legacy conversion path.  Production passes the preflighted
         # snapshot so every hop sends byte-for-byte equivalent definitions.

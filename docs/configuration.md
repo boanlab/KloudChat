@@ -71,6 +71,30 @@ anything else.
 | `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `1000000` | Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 1,000,000 ≈ $10/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.6-35b` | Falls back to the surface's cheapest model when absent from the catalogue. |
 
+### Auto cost routing
+
+Auto routing is off until an administrator completes **Admin → System → Model
+routing**. It requires:
+
+- one live model declared by LiteLLM as `self_hosted` and `strictLocal`, with
+  zero input and output credit cost, for classification;
+- one to three ordered economy models declared as either `self_hosted` or
+  `external`, with known prices and no `privacyOnly` flag.
+
+`hybrid` and `unknown` models are deliberately not economy candidates. A
+local-looking alias can fall back to an external provider, so its advertised
+zero cost is not sufficient evidence that the turn is cheaper. The classifier
+may be `privacyOnly`; answer models may not, which keeps privacy capacity
+reserved for protected traffic.
+
+Auto is an explicit, per-conversation choice. The selected real model remains
+the quality ceiling and a new conversation starts in manual mode. It applies
+only to ordinary chat without attachments, web search, selected skills,
+agents, projects or comparison. A classifier outage or uncertain verdict keeps
+the quality model. Once a cheaper answer model is selected, its call disables
+LiteLLM fallback and an error is shown instead of silently retrying the premium
+model.
+
 ### Transport
 
 | `.env` | Container | Default | Notes |

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from app.models.chat import ChatSession, Message, Role, SessionKind
+from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
 from app.schemas.auth import Wire
 
 
@@ -109,6 +109,7 @@ class SessionOut(Wire):
     project_id: str | None
     agent_id: str | None
     model: str
+    routing_mode: RoutingMode
     artifact_id: str | None
     pinned: bool
     created_at: datetime
@@ -153,6 +154,7 @@ class SessionCreate(Wire):
     project_id: str | None = None
     agent_id: str | None = None
     model: str | None = None
+    routing_mode: RoutingMode = RoutingMode.manual
 
 
 class CompareRequest(Wire):
@@ -177,6 +179,7 @@ class SessionPatch(Wire):
     title: str | None = Field(default=None, max_length=200)
     pinned: bool | None = None
     model: str | None = None
+    routing_mode: RoutingMode | None = None
     project_id: str | None = None
 
 
