@@ -48,6 +48,9 @@ async function shot(page: Page, name: string) {
  * signal, and without it a screenshot catches two empty boxes.
  */
 async function openGallery(page: Page, ids: string[]) {
+  // Reopened within one test on the a/v surface, where four templates share
+  // the gallery — the responses are cached after the first open, so only the
+  // click is guaranteed to be observable.
   const previews = Promise.all(
     ids.map((id) =>
       page.waitForResponse((r) => r.url().includes(`/design-templates/${id}/preview`), {
@@ -56,7 +59,9 @@ async function openGallery(page: Page, ids: string[]) {
     ),
   )
   await page.getByRole('button', { name: '디자인 고르기' }).click()
-  await previews
+  // Not fatal: a gallery opened a second time in one test serves its previews
+  // from the browser's cache, and a cache hit is not a network response.
+  await previews.catch(() => undefined)
   // The response is not the paint. Nothing observable sits between them
   // through a sandboxed frame, so this is a settle rather than a wait on
   // state — it only affects what the screenshot shows.
@@ -226,6 +231,57 @@ test('문서 디자인은 문서 조판으로 나온다', async ({ page }) => {
   expect(html).toContain('break-inside: avoid')
   // A document, not a deck — the slide vocabulary belongs to the other seed.
   expect(html).not.toContain('class="slide')
+})
+
+test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵션까지 맞춰 준다', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+
+  // ── image: blanks become a sentence, and the chips follow ───────────
+  await page.goto('/new/image')
+  const imageGallery = await openGallery(page, ['image-poster', 'image-cover'])
+  const poster = imageGallery.locator('div.group', { hasText: '포스터' })
+  await expect(poster).toBeVisible({ timeout: 20_000 })
+
+  // Every blank starts filled, so the card is usable without typing.
+  await expect(poster.getByLabel('무엇을')).toHaveValue('학과 연구 성과 발표회')
+  await poster.getByLabel('무엇을').fill('연구실 개방 행사')
+  await poster.getByLabel('분위기').selectOption('밝고 활기찬')
+  await shot(page, '08-image-blanks')
+  await poster.getByRole('button', { name: '이 디자인으로 시작' }).click()
+
+  // The sentence arrives filled in — and still editable, which is the whole
+  // reason it goes to the composer rather than straight to the model.
+  const composer = page.getByLabel('프롬프트 입력')
+  await expect(composer).toHaveValue(/연구실 개방 행사/)
+  await expect(composer).toHaveValue(/밝고 활기찬/)
+  await expect(composer).not.toHaveValue(/\{/)
+  // Picking a shape and then setting its aspect by hand would be asking twice.
+  await expect(page.getByRole('button', { name: '비율 9:16' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '스타일 일러스트' })).toBeVisible()
+
+  // ── video: the same, plus the settings that surface has ─────────────
+  await page.goto('/new/av')
+  const avGallery = await openGallery(page, ['video-product', 'video-opening'])
+  const opener = avGallery.locator('div.group', { hasText: '발표 오프닝' })
+  await expect(opener).toBeVisible({ timeout: 20_000 })
+  await opener.getByLabel('움직임').selectOption('가볍게 떠다니는 입자')
+  await shot(page, '09-video-blanks')
+  await opener.getByRole('button', { name: '이 디자인으로 시작' }).click()
+
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/가볍게 떠다니는 입자/)
+  await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '종류 영상' })).toBeVisible()
+  await expect(page.getByText('발표 오프닝', { exact: true })).toBeVisible()
+
+  // ── audio: picking one switches the surface's mode ──────────────────
+  const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
+  const bed = audioGallery.locator('div.group', { hasText: '배경 음악' })
+  await bed.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/잔잔하고 따뜻한/)
+  // A music template on the video mode would generate the wrong thing.
+  await expect(page.getByRole('button', { name: '유형 음악' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '종류 오디오' })).toBeVisible()
 })
 
 test('이미지 디자인은 프롬프트를 다듬을 뿐 세션의 템플릿이 되지 않는다', async ({ page }) => {

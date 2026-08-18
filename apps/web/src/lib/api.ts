@@ -817,6 +817,18 @@ export const designsApi = {
  * Read-only: the catalogue ships inside the API image. What a person writes
  * for themselves is a prompt template, which has a table.
  */
+/** One blank in a media template's prompt, written `{name}` in the sentence. */
+export interface DesignArgumentRow {
+  name: string
+  label: string
+  labelEn: string
+  default: string
+  defaultEn: string
+  /** A closed list renders as a picker; empty renders as a text field. */
+  options: string[]
+  optionsEn: string[]
+}
+
 export interface DesignTemplateRow {
   id: string
   /** `deck` · `document` · `image` */
@@ -836,7 +848,31 @@ export interface DesignTemplateRow {
   categoryEn: string
   fillsEn: string[]
   examplePromptEn: string
+  /** Blanks to fill before the sentence reaches the composer. */
+  arguments: DesignArgumentRow[]
+  /**
+   * Composer settings this template implies — aspect, duration, voice. Keys
+   * match the option stores: `aspect`, `style`, `count` for image; `mode`,
+   * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
+   */
+  defaults: Record<string, string | number | boolean>
   hasPreview: boolean
+}
+
+/** One argument's text in the language on screen. */
+export function argumentText(argument: DesignArgumentRow, english: boolean) {
+  return {
+    label: (english && argument.labelEn) || argument.label,
+    initial: (english && argument.defaultEn) || argument.default,
+    options: english && argument.optionsEn.length ? argument.optionsEn : argument.options,
+  }
+}
+
+/** The sentence with its blanks filled. A blank left empty drops out. */
+export function fillPrompt(prompt: string, values: Record<string, string>) {
+  return prompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    name in values ? values[name] : whole,
+  )
 }
 
 /** One card's text in the language on screen, falling back rather than blanking. */

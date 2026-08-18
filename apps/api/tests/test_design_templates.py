@@ -27,17 +27,36 @@ from app.services import imagegen, page
 
 
 def test_every_kind_is_offered_on_a_surface():
-    assert {t.kind for t in dt.all_templates()} == {"deck", "document", "image"}
+    assert {t.kind for t in dt.all_templates()} == {
+        "deck",
+        "document",
+        "image",
+        "video",
+        "audio",
+    }
     assert {t.id for t in dt.for_surface(SessionKind.slides)} == {"deck-editorial", "deck-signal"}
     assert {t.id for t in dt.for_surface(SessionKind.report)} == {"doc-report", "doc-brief"}
     assert {t.id for t in dt.for_surface(SessionKind.image)} == {"image-poster", "image-cover"}
+    # Audio and video share the one surface, as they do everywhere else.
+    assert {t.id for t in dt.for_surface(SessionKind.av)} == {
+        "video-product",
+        "video-opening",
+        "audio-narration",
+        "audio-bed",
+    }
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_a_shipped_template_is_complete(template):
     assert template.name and template.description and template.category
     assert template.example_prompt.strip()
-    assert template.instructions.strip()
+    # Instructions are what `page.write` composes into a writing turn. A media
+    # template has no such turn — its whole expertise is the prompt and the
+    # suffix — so requiring a file nothing reads would only invite drift.
+    if template.kind in dt.HTML_KINDS:
+        assert template.instructions.strip()
+    else:
+        assert not template.instructions
     # Both halves of the card, or an English UI shows a Korean one.
     assert template.name_en and template.description_en and template.category_en
     assert template.example_prompt_en.strip()
@@ -52,6 +71,36 @@ def test_a_seed_carries_no_script(template):
     """`sandbox=""` blocks it anyway; the file is also downloaded and opened."""
     assert "<script" not in template.seed.lower()
     assert "onclick" not in template.seed.lower()
+
+
+@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
+def test_every_blank_is_one_the_prompt_actually_has(template):
+    """A blank nobody substitutes is a `{name}` printed into the sentence."""
+    for argument in template.arguments:
+        assert f"{{{argument.name}}}" in template.example_prompt, argument.name
+        assert f"{{{argument.name}}}" in template.example_prompt_en, argument.name
+        assert argument.label and argument.label_en
+        assert argument.default and argument.default_en
+        # A picker's options are a closed list; both sides have to line up or
+        # one language silently offers fewer choices.
+        assert len(argument.options) == len(argument.options_en)
+        assert not argument.options or argument.default in argument.options
+
+
+@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
+def test_a_prompt_has_no_blank_without_an_argument_behind_it(template):
+    named = {a.name for a in template.arguments}
+    for placeholder in re.findall(r"\{([a-z_]+)\}", template.example_prompt):
+        assert placeholder in named, placeholder
+
+
+@pytest.mark.parametrize(
+    "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
+)
+def test_a_writing_arguments_are_only_for_media(template):
+    """A deck's brief is a sentence somebody writes, not a form they fill."""
+    assert not template.arguments
+    assert not template.defaults
 
 
 @pytest.mark.parametrize(
@@ -72,12 +121,28 @@ def test_the_preview_is_the_seed_rather_than_a_second_file(template):
     assert template.sample.strip().split("\n")[0][:40] in html
 
 
-def test_image_templates_carry_a_prompt_clause_and_writing_ones_do_not():
+def test_only_image_templates_hide_a_clause_from_the_composer():
+    """Guardrails stay invisible; a brief stays visible.
+
+    An image template's `no lettering, no logos` is true of every picture it
+    makes and would be noise in the composer. A video or audio template has no
+    such standing rule — its whole prompt is the brief, and the brief belongs
+    where the person can read and edit it.
+    """
     for template in dt.all_templates():
         if template.kind == "image":
             assert template.prompt_suffix.strip(), template.id
         else:
             assert not template.prompt_suffix, template.id
+
+
+def test_media_templates_carry_the_settings_they_imply():
+    """Picking a shape and then setting its aspect by hand is asking twice."""
+    assert dt.get("video-product").defaults["aspect"] == "16:9"
+    assert dt.get("video-opening").defaults["resolution"] == "1080p"
+    assert dt.get("audio-narration").defaults["audioKind"] == "narration"
+    assert dt.get("audio-bed").defaults["audioKind"] == "music"
+    assert dt.get("image-poster").defaults["aspect"] == "9:16"
 
 
 # ── what the model is allowed to contribute ────────────────────────────
@@ -399,3 +464,28 @@ def test_the_session_routes_are_still_mounted():
         if "PATCH" in getattr(route, "methods", set())
     }
     assert "/sessions/{session_id}" in patchable
+
+
+def test_a_plan_is_salvaged_out_of_malformed_json():
+    """One dropped quote should not cost the whole call.
+
+    Observed: a small model answered `{"title: "…"` — legible to anybody
+    reading it, and `json.loads` refuses it. The outline is already paid for.
+    """
+    mangled = (
+        '{"title": "학과 서버 교체", "blocks": ['
+        '{"title": "학과 서버 교체", "layout": "cover"}, '
+        '{"title: "이행 리스크", "layout": "section"}, '
+        '{"title": "다음 행동", "layout": "section"}]'
+    )
+    title, blocks = page._parse_outline(mangled, dt.get("doc-brief"))
+
+    assert title == "학과 서버 교체"
+    assert [b["title"] for b in blocks] == ["학과 서버 교체", "이행 리스크", "다음 행동"]
+    assert [b["layout"] for b in blocks] == ["cover", "section", "section"]
+
+
+def test_nothing_is_salvaged_from_prose():
+    """Salvage must not invent a plan out of an answer that refused to make one."""
+    title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-brief"))
+    assert not blocks and not title

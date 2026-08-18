@@ -151,13 +151,34 @@ def requested_blocks(request: str) -> int | None:
     return max(_MIN_BLOCKS, min(asked, _MAX_BLOCKS)) if asked > 0 else None
 
 
+#: `{"title": "…", "layout": "…"}` even when a quote is missing from a key.
+#: Small models drop one often enough that the difference is a whole turn:
+#: the call is already paid for, and the plan inside it is legible to a human
+#: reading the log — so it should be legible here too.
+_SALVAGE = re.compile(
+    r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S
+)
+
+
+def _salvaged(text: str) -> dict[str, Any]:
+    """A plan pulled out of malformed JSON, or `{}`."""
+    blocks = [
+        {"title": title.strip(), "layout": layout.strip()}
+        for title, layout in _SALVAGE.findall(text)
+    ]
+    if not blocks:
+        return {}
+    outer = re.search(r'"title"\s*:\s*"([^"]+)"', text)
+    return {"title": outer.group(1) if outer else blocks[0]["title"], "blocks": blocks}
+
+
 def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[str, str]]]:
     """`(title, blocks)`, with unknown layouts coerced to the first body one.
 
     Coerced rather than dropped: losing the block loses what it was going to
     say, while losing the layout only loses how it would have looked.
     """
-    data = _json_object(text)
+    data = _json_object(text) or _salvaged(text)
     title = str(data.get("title") or "").strip()
     fallback = template.layouts[1] if len(template.layouts) > 1 else template.layouts[0]
     blocks: list[dict[str, str]] = []

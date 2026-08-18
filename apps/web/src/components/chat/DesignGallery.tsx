@@ -2,16 +2,83 @@ import { LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Modal } from '@/components/ui'
 import {
+  argumentText,
   designTemplatePreviewUrl,
   designTemplatesApi,
+  fillPrompt,
   templateText,
   type DesignTemplateRow,
 } from '@/lib/api'
+import { Input } from '@/components/ui'
 import { currentLang } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
+
+/**
+ * The blanks a media template leaves, and the button that fills them in.
+ *
+ * The filled sentence goes to the composer rather than to the model: on these
+ * surfaces the prompt is the entire input, so a template that sent something
+ * the person never read would be one they could not correct. Every value here
+ * starts at the template's own default, so the card is usable without typing
+ * anything — which is the point of a starting sentence.
+ */
+function Blanks({
+  row,
+  english,
+  prompt,
+  onPick,
+}: {
+  row: DesignTemplateRow
+  english: boolean
+  prompt: string
+  onPick: (row: DesignTemplateRow, filled: string) => void
+}) {
+  const t = useT()
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(row.arguments.map((a) => [a.name, argumentText(a, english).initial])),
+  )
+  return (
+    <div className="space-y-2">
+      {row.arguments.map((argument) => {
+        const { label, options } = argumentText(argument, english)
+        const value = values[argument.name] ?? ''
+        const set = (next: string) => setValues((v) => ({ ...v, [argument.name]: next }))
+        return (
+          <label key={argument.name} className="block space-y-1">
+            <span className="text-xs text-muted">{label}</span>
+            {options.length > 0 ? (
+              <select
+                aria-label={label}
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
+              >
+                {options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                aria-label={label}
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                className="h-8 text-sm"
+              />
+            )}
+          </label>
+        )
+      })}
+      <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values))}>
+        {t('이 디자인으로 시작')}
+      </Button>
+    </div>
+  )
+}
 
 /**
  * Shapes the answer can come out in.
@@ -32,6 +99,8 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
   const [category, setCategory] = useState<string | 'all'>('all')
   const setDraft = useStore((s) => s.setDraft)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
+  const setImageOptions = useStore((s) => s.setImageOptions)
+  const setAvOptions = useStore((s) => s.setAvOptions)
   const cached = useStore((s) => s.designTemplates)
 
   // The store's copy is what the workspace load already fetched; the request
@@ -63,9 +132,43 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
     return null
   }
 
-  const pick = (row: DesignTemplateRow, examplePrompt: string) => {
+  /**
+   * The chips a template implies, set from its own metadata.
+   *
+   * Only the keys it names: a template that says nothing about duration
+   * leaves whatever the person last chose, rather than resetting it to a
+   * default they did not ask for.
+   */
+  const applyDefaults = (row: DesignTemplateRow) => {
+    const d = row.defaults ?? {}
+    if (row.kind === 'image') {
+      setImageOptions({
+        ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
+        ...(typeof d.style === 'string' ? { style: d.style } : {}),
+        ...(typeof d.count === 'number' ? { count: d.count } : {}),
+      })
+      return
+    }
+    if (row.kind === 'video' || row.kind === 'audio') {
+      setAvOptions({
+        mode: row.kind === 'audio' ? 'audio' : 'video',
+        ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
+        ...(typeof d.seconds === 'number' ? { durationSec: d.seconds } : {}),
+        ...(d.resolution === '720p' || d.resolution === '1080p'
+          ? { resolution: d.resolution }
+          : {}),
+        ...(typeof d.audio === 'boolean' ? { withAudio: d.audio } : {}),
+        ...(d.audioKind === 'narration' || d.audioKind === 'music'
+          ? { audioKind: d.audioKind }
+          : {}),
+      })
+    }
+  }
+
+  const pick = (row: DesignTemplateRow, prompt: string) => {
     setPendingTemplate(row)
-    setDraft(examplePrompt)
+    setDraft(prompt)
+    applyDefaults(row)
     setOpen(false)
   }
 
@@ -130,21 +233,27 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
                   <Badge>{text.category}</Badge>
                 </div>
                 <p className="text-sm text-muted">{text.description}</p>
-                {text.fills.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {text.fills.map((fill) => (
-                      <span
-                        key={fill}
-                        className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
-                      >
-                        {fill}
-                      </span>
-                    ))}
-                  </div>
+                {row.arguments.length > 0 ? (
+                  <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={pick} />
+                ) : (
+                  <>
+                    {text.fills.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {text.fills.map((fill) => (
+                          <span
+                            key={fill}
+                            className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
+                          >
+                            {fill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <Button size="sm" onClick={() => pick(row, text.examplePrompt)}>
+                      {t('이 디자인으로 시작')}
+                    </Button>
+                  </>
                 )}
-                <Button size="sm" onClick={() => pick(row, text.examplePrompt)}>
-                  {t('이 디자인으로 시작')}
-                </Button>
               </div>
             </div>
           ))}

@@ -40,8 +40,14 @@ Alongside the prompt gallery there is a **rendering catalogue**: shapes the
 answer comes out in. Picking one replaces the surface's built-in track — a
 slides session writes a single-file HTML deck, a report session writes a laid
 out document — and the model fills a fixed vocabulary of blocks rather than
-writing layout. The files carry print rules, so a PDF is one print dialogue
-away, and they carry no script at all.
+writing layout. Those files carry no script and do carry print rules, and they
+convert back out to `.pptx`, `.docx`, `.pdf` and `.hwpx` without a rendering
+engine, because the markup came out of a closed vocabulary in the first place.
+
+On the media surfaces the same catalogue holds prompt templates: a sentence
+with blanks, a small form to fill them, and the settings that shape implies —
+aspect, duration, voice — applied when you pick it. The finished sentence lands
+in the composer, where it is still yours to change.
 
 **2. An agent can search its own documents.** Attach files or URLs to an agent
 and it looks them up through a tool when it needs background, rather than

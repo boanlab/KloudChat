@@ -523,6 +523,18 @@ class DesignSystemOut(Wire):
         return out
 
 
+class DesignArgumentOut(Wire):
+    """One blank in a media template's prompt, in both languages."""
+
+    name: str
+    label: str
+    label_en: str = ""
+    default: str = ""
+    default_en: str = ""
+    options: JsonList = Field(default_factory=list)
+    options_en: JsonList = Field(default_factory=list)
+
+
 class DesignTemplateOut(Wire):
     """One entry of the rendering catalogue.
 
@@ -546,6 +558,12 @@ class DesignTemplateOut(Wire):
     category_en: str = ""
     fills_en: JsonList = Field(default_factory=list)
     example_prompt_en: str = ""
+    #: Blanks in `example_prompt`, written `{name}`. Filled in the gallery and
+    #: substituted before the sentence reaches the composer, where the person
+    #: can still read and change every word of it.
+    arguments: list[DesignArgumentOut] = Field(default_factory=list)
+    #: Composer settings this template implies — aspect, duration, voice.
+    defaults: dict[str, Any] = Field(default_factory=dict)
     #: `True` when `/design-templates/{id}/preview` has something to render.
     has_preview: bool = True
 
@@ -565,6 +583,19 @@ class DesignTemplateOut(Wire):
             category_en=t.category_en,
             fills_en=list(t.fills_en),
             example_prompt_en=t.example_prompt_en,
+            arguments=[
+                DesignArgumentOut(
+                    name=a.name,
+                    label=a.label,
+                    label_en=a.label_en,
+                    default=a.default,
+                    default_en=a.default_en,
+                    options=list(a.options),
+                    options_en=list(a.options_en),
+                )
+                for a in t.arguments
+            ],
+            defaults=dict(t.defaults),
             has_preview=bool(t.seed and t.sample),
         )
 

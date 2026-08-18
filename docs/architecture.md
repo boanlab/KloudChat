@@ -205,7 +205,14 @@ sections. The choice is stored on the session, so a follow-up turn keeps the
 shape without resending it.
 
 The pass structure is the same as the other two tracks — one outline call, then
-one call per block — but **the model never writes layout**. It is given the
+one call per block. An outline that will not parse is salvaged with a regex
+before the turn is abandoned: a small model drops a quote often enough that the
+difference is a whole paid-for call, and a plan legible to somebody reading the
+log should be legible to the code reading it. What cannot be salvaged is
+logged with what the model actually said, because a refusal and a malformed
+answer are otherwise the same silence.
+
+**The model never writes layout.** It is given the
 block's layout name and returns the *inside* of that block; `design_templates.
 assemble` puts it inside the markup the seed styles, and `sanitise` reduces it
 to a fixed tag vocabulary first. Script elements, event handlers, remote
@@ -250,12 +257,31 @@ there, so the two neutrals swap. The `.pdf` stays light, which is the same
 decision that seed's own print rules already make: a projector and a printer
 want opposite things.
 
-Image templates produce no artifact of their own. They contribute an English
-`prompt_suffix` to `imagegen.compose_prompt`, ordered after the style chip and
-before the project's design system.
+**Media templates are prompt templates.** Image, video and audio produce no
+document, so what a template gives them is the sentence itself: an
+`example_prompt` with blanks written `{name}`, and an `[[arguments]]` entry per
+blank carrying a label, a default and — where the answer is a closed set — the
+options. The gallery renders those as a small form, substitutes them, and puts
+the finished sentence **in the composer**. On these surfaces the prompt is the
+entire input, so a template that sent something the person never read would be
+one they could not correct.
+
+A `[defaults]` table carries the settings the shape implies — aspect, duration,
+resolution, voice, whether the clip has sound — and picking the card sets those
+chips. Only the keys it names: a template silent about duration leaves whatever
+was last chosen rather than resetting it.
+
+Image templates additionally carry an English `prompt_suffix`, folded into
+`imagegen.compose_prompt` after the style chip and before the project's design
+system. That is the one thing kept out of the composer, and the rule is:
+**guardrails invisible, brief visible.** `no lettering, no logos` is true of
+every picture that template makes and would be noise in a sentence somebody is
+editing. Video and audio templates have no such standing rule and therefore no
+suffix — their whole expertise is in the prompt.
 
 `GET /design-templates` lists the catalogue with both a Korean and an English
-half, and the client picks by language. `GET /design-templates/{id}/preview`
+half — names, descriptions, example prompts, argument labels and their option
+lists — and the client picks by language. `GET /design-templates/{id}/preview`
 renders the seed around its own sample and is **unauthenticated**, like the
 branding logo: the body is a constant that ships in this image, an iframe `src`
 cannot carry an Authorization header, and `current_viewer`'s `?t=` escape hatch

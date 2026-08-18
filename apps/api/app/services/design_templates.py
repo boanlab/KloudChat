@@ -49,6 +49,9 @@ SURFACE: dict[str, SessionKind] = {
     "deck": SessionKind.slides,
     "document": SessionKind.report,
     "image": SessionKind.image,
+    # Audio and video share one surface, as they do everywhere else here.
+    "video": SessionKind.av,
+    "audio": SessionKind.av,
 }
 
 #: Kinds that produce an HTML artifact. `image` templates only shape a prompt.
@@ -82,6 +85,26 @@ _URL_ATTR = re.compile(r"\s+(href|src)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I
 
 
 @dataclass(frozen=True, slots=True)
+class Argument:
+    """One blank in a media template's prompt.
+
+    The prompt these fill is the *whole* input on an image or video surface, so
+    it is filled in the composer where the person can still read and edit it —
+    a template that sent something they never saw would be a template they
+    could not correct.
+    """
+
+    name: str
+    label: str
+    label_en: str
+    default: str
+    default_en: str
+    #: A closed list renders as a picker; empty renders as a text field.
+    options: tuple[str, ...]
+    options_en: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DesignTemplate:
     id: str
     kind: str
@@ -109,6 +132,13 @@ class DesignTemplate:
     #: the `.pptx`, which is for presenting; the `.pdf` stays light because it
     #: is for paper, exactly as the seed's own print rules decide.
     dark: bool
+    #: Blanks in `example_prompt`, written `{name}`. Media templates only:
+    #: a deck's brief is a sentence somebody writes, not a form they fill.
+    arguments: tuple[Argument, ...]
+    #: Composer settings this template implies — aspect, duration, voice. The
+    #: catalogue entry knows the shape it is for; making the person set them
+    #: again after picking it is asking twice.
+    defaults: dict[str, Any]
     #: `image` templates only: the English clause folded into the picture
     #: prompt. Separate from `instructions`, which is Korean prose for the
     #: writing surfaces — a picture model reads neither well nor at that
@@ -168,6 +198,20 @@ def _load() -> dict[str, DesignTemplate]:
             instructions=_read(folder, "instructions.md"),
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
             dark=bool(meta.get("dark")),
+            arguments=tuple(
+                Argument(
+                    name=str(arg.get("name") or ""),
+                    label=str(arg.get("label") or ""),
+                    label_en=str(arg.get("label_en") or ""),
+                    default=str(arg.get("default") or ""),
+                    default_en=str(arg.get("default_en") or ""),
+                    options=tuple(str(o) for o in (arg.get("options") or [])),
+                    options_en=tuple(str(o) for o in (arg.get("options_en") or [])),
+                )
+                for arg in (meta.get("arguments") or [])
+                if arg.get("name")
+            ),
+            defaults=dict(meta.get("defaults") or {}),
             seed=_read(folder, "seed.html"),
             sample=_read(folder, "sample.html"),
             layouts=tuple(str(x) for x in (meta.get("layouts") or ["cover", "section"])),
@@ -290,6 +334,7 @@ def _escape(text: str) -> str:
 __all__ = [
     "HTML_KINDS",
     "SURFACE",
+    "Argument",
     "DesignTemplate",
     "all_templates",
     "assemble",
