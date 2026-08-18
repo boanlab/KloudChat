@@ -46,6 +46,8 @@ Return exactly one JSON object and no markdown:
 Use low only for short factual answers, basic rewriting/formatting, or elementary
 calculation. Use high for specialised expertise, multi-step reasoning, code design,
 long synthesis, safety-sensitive advice, or when conversation context is essential.
+The payload may include qualityModelTools. Those tools are NOT available after an
+economy-model route. Use low only when the request can be answered without them.
 Use uncertain whenever the intent or required quality is unclear. reasonCode must be
 one of simple_factual, simple_transform, simple_calculation, multi_step_reasoning,
 specialized_analysis, ambiguous_request."""
@@ -60,47 +62,25 @@ class Classification:
     output_tokens: int
 
 
-def _role(value: Any) -> str:
-    if isinstance(value, dict):
-        return str(value.get("role") or "")
-    role = getattr(value, "role", None)
-    return str(getattr(role, "value", role) or "")
+def classifier_context(
+    messages: list[dict[str, str]],
+    tool_definitions: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Serializes the complete answer-model-visible message envelope.
 
-
-def _content(value: Any) -> str:
-    if isinstance(value, dict):
-        return str(value.get("content") or "")
-    return str(getattr(value, "content", "") or "")
-
-
-def classifier_context(history: list[Any], current: str) -> str | None:
-    """Current input plus the last two completed user/assistant exchanges.
-
-    An incomplete trailing user message is excluded. We refuse instead of
-    truncating once the bounded classifier view exceeds 8k characters: hidden
-    truncation is exactly how a follow-up such as "continue" gets misrouted.
+    The classifier must not see a recent-history summary while the answer model
+    sees older constraints or global memory. We therefore keep every system,
+    reference, history and current-input message, and refuse Auto instead of
+    truncating when that exact envelope exceeds the conservative 8k bound.
+    Tool definitions are included in the same bound so a complex capability is
+    never hidden from the decision. They are labelled as quality-model-only:
+    routed economy calls intentionally receive no tools, which prevents a later
+    tool result from invalidating the candidate's context-window check.
     """
-    exchanges: list[tuple[str, str]] = []
-    pending_user: str | None = None
-    for message in history:
-        role = _role(message)
-        body = _content(message)
-        if role == "user":
-            pending_user = body
-        elif role == "assistant" and pending_user is not None:
-            exchanges.append((pending_user, body))
-            pending_user = None
-
-    transcript: list[dict[str, str]] = []
-    for user_text, assistant_text in exchanges[-2:]:
-        transcript.extend(
-            [
-                {"role": "user", "content": user_text},
-                {"role": "assistant", "content": assistant_text},
-            ]
-        )
-    transcript.append({"role": "user", "content": current})
-    encoded = json.dumps({"conversation": transcript}, ensure_ascii=False, separators=(",", ":"))
+    payload: dict[str, Any] = {"messages": messages}
+    if tool_definitions:
+        payload["qualityModelTools"] = tool_definitions
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return encoded if len(encoded) <= MAX_CLASSIFIER_CHARS else None
 
 

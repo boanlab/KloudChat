@@ -203,6 +203,23 @@ def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dic
     ]
 
 
+def _find_auto_quality_model(models: list[dict], model_id: str | None) -> dict | None:
+    """Finds an answer model; privacy-only capacity is classifier-only."""
+    model = model_service.find(models, model_id or "")
+    return model if model is not None and model.get("privacyOnly") is not True else None
+
+
+async def _require_auto_quality_model(user: User, model_id: str | None) -> None:
+    """Requires Auto's quality ceiling to be live, allowed and chat-capable."""
+    catalogue = await model_service.list_models_for_egress()
+    usable = _allowed_models(user, catalogue.get("models", []), kind=SessionKind.chat.value)
+    if _find_auto_quality_model(usable, model_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="auto_quality_model_required",
+        )
+
+
 def _cost_routing(
     *,
     decision: str,
@@ -241,10 +258,9 @@ async def _resolve_cost_routing(
     policy,
     catalogue: list[dict],
     quality_model: dict,
-    history: list[Message],
-    content: str,
+    classifier_messages: list[dict[str, str]],
+    classifier_tool_definitions: list[dict[str, Any]],
     context_tokens: int,
-    requires_tools: bool,
     unsupported_reason: str | None,
 ) -> tuple[dict, dict[str, Any]]:
     """Returns an Auto turn's effective model and value-free route metadata."""
@@ -283,7 +299,9 @@ async def _resolve_cost_routing(
         quality_model=quality_model,
         allowed_model_ids=allowed,
         context_tokens=context_tokens,
-        requires_tools=requires_tools,
+        # A routed economy call deliberately receives no tools. This prevents
+        # an unbounded tool result from invalidating the preflight context fit.
+        requires_tools=False,
     )
     if not candidates:
         return quality_model, _cost_routing(
@@ -294,7 +312,10 @@ async def _resolve_cost_routing(
             classifier_model=classifier_id,
         )
 
-    classifier_input = adaptive_routing.classifier_context(history, content)
+    classifier_input = adaptive_routing.classifier_context(
+        classifier_messages,
+        classifier_tool_definitions,
+    )
     if classifier_input is None:
         return quality_model, _cost_routing(
             decision="kept_quality",
@@ -796,7 +817,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         project_id=payload.project_id,
         agent_id=payload.agent_id,
     )
-    if payload.routing_mode is RoutingMode.auto and payload.kind is not SessionKind.chat:
+    if payload.routing_mode == RoutingMode.auto and payload.kind is not SessionKind.chat:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -806,6 +827,8 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_is_not_a_model_id",
         )
+    if payload.routing_mode == RoutingMode.auto:
+        await _require_auto_quality_model(user, payload.model)
     session = ChatSession(
         user_id=user.id,
         kind=payload.kind,
@@ -829,7 +852,7 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_is_not_a_model_id",
         )
-    if changes.get("routing_mode") is RoutingMode.auto and session.kind is not SessionKind.chat:
+    if changes.get("routing_mode") == RoutingMode.auto and session.kind is not SessionKind.chat:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -838,6 +861,11 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
     # updates the quality ceiling and asks to keep Auto in the same patch.
     if "model" in changes and "routing_mode" not in changes:
         changes["routing_mode"] = RoutingMode.manual
+    # Validate the effective post-patch state, including an unrelated update
+    # to a session that is already Auto. A model-only patch becomes manual
+    # above and intentionally keeps the historical manual-session contract.
+    if changes.get("routing_mode", session.routing_mode) == RoutingMode.auto:
+        await _require_auto_quality_model(user, changes.get("model", session.model))
     if "project_id" in changes:
         await _validate_session_links(
             db,
@@ -1137,9 +1165,10 @@ async def send_message(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="model_not_allowed",
         )
-    if auto_turn and model not in usable:
+    if auto_turn and _find_auto_quality_model(usable, model_id) is None:
         # Auto is a ceiling, not permission to replace a stale/denied quality
-        # model with whichever cheap model happens to be first today.
+        # model (or classifier-only capacity) with whichever cheap model
+        # happens to be first today.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="auto_quality_model_required",
@@ -1295,40 +1324,16 @@ async def send_message(
             )
             return resolved
         privacy_resolution = resolved
-        if auto_turn:
-            if auto_preflight_findings:
-                cost_routing = _cost_routing(
-                    decision="bypassed",
-                    reason_code="privacy_detected",
-                    requested_model=requested_model,
-                    selected_model=resolved.models[0],
-                )
-            else:
-                unsupported = bool(
-                    payload.attachments
-                    or payload.web_search
-                    or payload.activated_skill_ids
-                    or session.agent_id
-                    or session.project_id
-                )
-                context_parts = [content, *outbound_history]
-                context_parts.extend(block.text for block in workspace.blocks)
-                if requested_tools:
-                    context_parts.append(_tool_definition_source(requested_tools))
-                routed_model, cost_routing = await _resolve_cost_routing(
-                    db=db,
-                    user=user,
-                    policy=policy,
-                    catalogue=catalogue_models,
-                    quality_model=requested_model,
-                    history=history,
-                    content=content,
-                    context_tokens=adaptive_routing.estimated_context_tokens(context_parts),
-                    requires_tools=bool(requested_tools),
-                    unsupported_reason="unsupported_turn" if unsupported else None,
-                )
-                resolved.models = [routed_model]
-                resolved.routing = _apply_effective_model(resolved.routing, routed_model)
+        if auto_turn and auto_preflight_findings:
+            # Privacy owns this turn. Do not send the original envelope to the
+            # complexity classifier even when the selected privacy action is
+            # masking or a strict-local route.
+            cost_routing = _cost_routing(
+                decision="bypassed",
+                reason_code="privacy_detected",
+                requested_model=requested_model,
+                selected_model=resolved.models[0],
+            )
             resolved.routing = {**resolved.routing, "costRouting": cost_routing}
         model = resolved.models[0]
         strict_local = resolved.strict_local
@@ -1419,6 +1424,75 @@ async def send_message(
         # just like an attachment filename.
         skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
 
+    strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
+    effective_web_search = payload.web_search and not strict_local
+    wire_history = [
+        {"role": message.role.value, "content": body}
+        for message, body in zip(history, outbound_history, strict=True)
+    ]
+    wire_history.append({"role": "user", "content": content})
+    messages = build_messages(
+        session.kind,
+        wire_history,
+        with_tools=bool(tools),
+        web_search=effective_web_search,
+        # An agent allowlist may have removed the tool the toggle enabled.
+        web_search_available=any(t.name == "web_search" for t in tools),
+        extra=trusted_context,
+        untrusted_context=untrusted_context,
+    )
+
+    if auto_turn and not auto_preflight_findings:
+        unsupported = bool(
+            payload.attachments
+            or payload.web_search
+            or payload.activated_skill_ids
+            or session.agent_id
+            or session.project_id
+        )
+        # Economy turns are intentionally tool-free. The classifier sees the
+        # complete quality-model envelope and exact tool definitions, but its
+        # prompt says those tools will not exist after a route. This preserves
+        # Auto for ordinary tool-capable models without letting a later tool
+        # result overflow the candidate context window checked here.
+        economy_messages = build_messages(
+            session.kind,
+            wire_history,
+            with_tools=False,
+            web_search=False,
+            extra=trusted_context,
+            untrusted_context=untrusted_context,
+        )
+        routed_model, cost_routing = await _resolve_cost_routing(
+            db=db,
+            user=user,
+            policy=policy,
+            catalogue=catalogue_models,
+            quality_model=requested_model,
+            classifier_messages=messages,
+            classifier_tool_definitions=tool_definitions,
+            context_tokens=adaptive_routing.estimated_context_tokens(
+                [
+                    json.dumps(
+                        economy_messages,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                ]
+            ),
+            unsupported_reason="unsupported_turn" if unsupported else None,
+        )
+        resolved.models = [routed_model]
+        resolved.routing = _apply_effective_model(resolved.routing, routed_model)
+        resolved.routing = {**resolved.routing, "costRouting": cost_routing}
+        privacy_resolution = resolved
+        model = routed_model
+        if cost_routing.get("decision") == "routed":
+            tools = []
+            tool_definitions = []
+            messages = economy_messages
+        strict_local = resolved.strict_local
+
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -1436,9 +1510,12 @@ async def send_message(
         routing=privacy_resolution.routing if privacy_resolution else None,
     )
     db.add(user_message)
-    # A strict privacy route is a turn-only override. The conversation remains
-    # on the model the user requested for its next (possibly clean) turn.
-    session.model = requested_model["id"]
+    # A strict privacy route and SendMessage.model are turn-only overrides. An
+    # Auto session's persisted model is its quality ceiling, changed through
+    # PATCH rather than by a one-off message request. Preserve the historical
+    # manual-session behaviour for clients that still select a model per turn.
+    if session.routing_mode != RoutingMode.auto or payload.model is None:
+        session.model = requested_model["id"]
     session.updated_at = utcnow()
     if not session.title:
         # Provisional title, replaced once the first turn completes.
@@ -1481,25 +1558,6 @@ async def send_message(
         agent_row.runs += 1
         db.add(agent_row)
     await db.commit()
-
-    strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
-    effective_web_search = payload.web_search and not strict_local
-
-    wire_history = [
-        {"role": message.role.value, "content": body}
-        for message, body in zip(history, outbound_history, strict=True)
-    ]
-    wire_history.append({"role": "user", "content": content})
-    messages = build_messages(
-        session.kind,
-        wire_history,
-        with_tools=bool(tools),
-        web_search=effective_web_search,
-        # An agent allowlist may have removed the tool the toggle enabled.
-        web_search_available=any(t.name == "web_search" for t in tools),
-        extra=trusted_context,
-        untrusted_context=untrusted_context,
-    )
 
     # Resolved per turn while a DB session is open. Also issues the key to an
     # account provisioned during a proxy outage.

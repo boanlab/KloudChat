@@ -138,6 +138,7 @@ const EN: Record<string, string> = {
   'Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.':
     'Could not enable Auto. Please try again shortly.',
   '요청 모델': 'Requested model',
+  '선택 모델': 'Selected model',
   '실행 모델': 'Executed model',
   '{name} 우선순위 올리기': 'Move {name} up',
   '{name} 우선순위 내리기': 'Move {name} down',

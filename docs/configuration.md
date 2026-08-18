@@ -91,9 +91,12 @@ Auto is an explicit, per-conversation choice. The selected real model remains
 the quality ceiling and a new conversation starts in manual mode. It applies
 only to ordinary chat without attachments, web search, selected skills,
 agents, projects or comparison. A classifier outage or uncertain verdict keeps
-the quality model. Once a cheaper answer model is selected, its call disables
-LiteLLM fallback and an error is shown instead of silently retrying the premium
-model.
+the quality model. Classification includes the complete answer-visible message
+envelope and tool definitions; if that bounded payload exceeds 8,000 characters,
+Auto keeps the quality model instead of truncating context. Once a cheaper
+answer model is selected, the answer runs without tools and disables LiteLLM
+fallback, so a later tool result cannot overflow the smaller context window and
+an error is shown instead of silently retrying the premium model.
 
 ### Transport
 

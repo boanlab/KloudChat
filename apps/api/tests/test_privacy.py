@@ -1309,6 +1309,121 @@ async def test_auto_no_candidate_skips_classifier_and_key(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
+    monkeypatch,
+) -> None:
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(
+        user_id=user.id,
+        model="external/quality",
+        routing_mode=sessions_router.RoutingMode.auto,
+    )
+    quality = {
+        **_external_model("external/quality"),
+        "inputCreditCost": 10,
+        "creditCost": 20,
+        "contextWindow": 64_000,
+        "supportsTools": True,
+    }
+    classifier = {
+        **_external_model("strict-local/classifier"),
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "privacyOnly": True,
+        "inputCreditCost": 0,
+        "creditCost": 0,
+        "contextWindow": 32_000,
+    }
+    economy = {
+        **_external_model("external/economy"),
+        "inputCreditCost": 1,
+        "creditCost": 2,
+        "contextWindow": 4_096,
+        "supportsTools": False,
+    }
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[quality, classifier, economy],
+        blocks=[_block("memory", "global memory requiring specialised analysis")],
+    )
+
+    async def policy(*_args, **_kwargs):
+        return Governance(
+            external_data_guard=True,
+            adaptive_routing_enabled=True,
+            adaptive_classifier_model_id=classifier["id"],
+            adaptive_economy_model_ids=[economy["id"]],
+        )
+
+    async def runner(_arguments):
+        return ToolResult(content="x" * 100_000)
+
+    exposed = Tool(
+        name="large_result_tool",
+        label="Large result tool",
+        description="May return a result larger than a small model context window",
+        parameters={"type": "object", "properties": {}},
+        run=runner,
+    )
+
+    async def tools(*_args, **_kwargs):
+        return [exposed]
+
+    classifier_envelope: dict = {}
+
+    async def classify(**kwargs):
+        classifier_envelope.update(json.loads(kwargs["context"]))
+        return sessions_router.adaptive_routing.Classification(
+            "low", 0.99, "simple_factual", 30, 4
+        )
+
+    captured: dict = {}
+
+    async def stream(**kwargs):
+        captured.update(kwargs)
+        yield sessions_router.chat_service.sse({"type": "done"})
+
+    async def ensure_key(*_args, **_kwargs):
+        return "virtual-key"
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "virtual-key"
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", policy)
+    monkeypatch.setattr(sessions_router, "build_tools", tools)
+    monkeypatch.setattr(sessions_router.adaptive_routing, "classify", classify)
+    monkeypatch.setattr(sessions_router.litellm_service, "user_key", lambda _user: "virtual-key")
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router, "_run_turn", stream)
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="What is two plus two?"),
+        _request(),
+        user,
+        AcceptedDb(),
+    )
+    _ = [chunk async for chunk in response.body_iterator]
+
+    assert classifier_envelope["qualityModelTools"][0]["function"]["name"] == exposed.name
+    assert "global memory requiring specialised analysis" in json.dumps(
+        classifier_envelope["messages"], ensure_ascii=False
+    )
+    assert captured["model"]["id"] == economy["id"]
+    assert captured["tools"] == []
+    assert captured["tool_definitions"] == []
+    assert captured["disable_fallbacks"] is True
+    assert "도구 사용 규칙" not in captured["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
 async def test_auto_requires_persisted_quality_model_instead_of_agent_fallback(
     monkeypatch,
 ) -> None:
@@ -1343,6 +1458,110 @@ async def test_auto_requires_persisted_quality_model_instead_of_agent_fallback(
 
     assert getattr(caught.value, "status_code", None) == 409
     assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+
+
+@pytest.mark.asyncio
+async def test_auto_rejects_privacy_only_quality_model_at_send(monkeypatch) -> None:
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    reserved = {
+        **_external_model("strict-local/classifier-only"),
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "privacyOnly": True,
+    }
+    session = ChatSession(
+        user_id=user.id,
+        model=reserved["id"],
+        routing_mode=sessions_router.RoutingMode.auto,
+    )
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[reserved],
+        blocks=[],
+    )
+
+    with pytest.raises(Exception) as caught:
+        await sessions_router.send_message(
+            session.id,
+            SendMessage(content="ordinary answer request"),
+            _request(),
+            user,
+            _NoWriteDb(),
+        )
+
+    assert getattr(caught.value, "status_code", None) == 409
+    assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+
+
+@pytest.mark.asyncio
+async def test_auto_turn_model_override_does_not_replace_quality_ceiling(
+    monkeypatch,
+) -> None:
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    quality = _external_model("external/quality-a")
+    one_turn = _external_model("external/one-turn-b")
+    session = ChatSession(
+        user_id=user.id,
+        model=quality["id"],
+        routing_mode=sessions_router.RoutingMode.auto,
+    )
+    # The database column is String, so production hydration may yield the raw
+    # value even though the model annotation is RoutingMode.
+    session.routing_mode = sessions_router.RoutingMode.auto.value
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[quality, one_turn],
+        blocks=[],
+    )
+
+    executed: list[str] = []
+
+    async def stream(**kwargs):
+        executed.append(kwargs["model"]["id"])
+        yield sessions_router.chat_service.sse({"type": "done"})
+
+    async def ensure_key(*_args, **_kwargs):
+        return "virtual-key"
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "virtual-key"
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "_run_turn", stream)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="run once with B", model=one_turn["id"]),
+        _request(),
+        user,
+        db,
+    )
+    _ = [chunk async for chunk in response.body_iterator]
+
+    assert executed == [one_turn["id"]]
+    assert session.model == quality["id"]
+    assert session.routing_mode == sessions_router.RoutingMode.auto
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="use Auto quality ceiling again"),
+        _request(),
+        user,
+        db,
+    )
+    _ = [chunk async for chunk in response.body_iterator]
+
+    assert executed == [one_turn["id"], quality["id"]]
+    assert session.model == quality["id"]
 
 
 @pytest.mark.asyncio

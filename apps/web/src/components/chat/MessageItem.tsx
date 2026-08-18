@@ -46,21 +46,12 @@ const artifactLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
 }
 
-function costRouteLabel(
+function costRouteDecisionLabel(
   route: CostRouting,
-  models: ModelInfo[],
   t: (text: string) => string,
 ): string {
-  const requested = models.find((model) => model.id === route.requestedModel)?.label ?? route.requestedModel
-  const selected =
-    models.find((model) => model.id === (route.executedModel ?? route.selectedModel))?.label ??
-    route.executedModel ??
-    route.selectedModel
   if (route.decision === 'routed') {
-    const saved = route.estimatedCreditsSaved
-      ? ` · ${t('예상 {n} 크레딧 절약').replace('{n}', route.estimatedCreditsSaved.toLocaleString())}`
-      : ''
-    return `${t('Auto 절약')} · ${requested} → ${selected}${saved}`
+    return t('Auto 절약')
   }
   if (route.decision === 'classifier_unavailable') {
     return t('Auto · 분류기를 사용할 수 없어 품질 모델 유지')
@@ -90,6 +81,50 @@ function costRouteLabel(
     return t('Auto · 사용할 절약 모델이 없어 품질 모델 유지')
   }
   return t('Auto · 확실하지 않아 품질 모델 유지')
+}
+
+function modelPresentation(
+  id: string | undefined,
+  models: ModelInfo[],
+  t: (text: string) => string,
+): { label: string; detail: string } {
+  if (!id) {
+    const pending = t('확인 중…')
+    return { label: pending, detail: pending }
+  }
+  const label = models.find((model) => model.id === id)?.label ?? id
+  return {
+    label,
+    detail: label === id ? id : `${label} (${id})`,
+  }
+}
+
+function costRoutePresentation(
+  route: CostRouting,
+  models: ModelInfo[],
+  t: (text: string) => string,
+): { label: string; title: string } {
+  const requested = modelPresentation(route.requestedModel, models, t)
+  const selected = modelPresentation(route.selectedModel, models, t)
+  const executed = modelPresentation(route.executedModel, models, t)
+  const decision = costRouteDecisionLabel(route, t)
+  const saved = route.estimatedCreditsSaved
+    ? ` · ${t('예상 {n} 크레딧 절약').replace('{n}', route.estimatedCreditsSaved.toLocaleString())}`
+    : ''
+  const visibleModels = [
+    `${t('요청 모델')}: ${requested.label}`,
+    `${t('선택 모델')}: ${selected.label}`,
+    `${t('실행 모델')}: ${executed.label}`,
+  ].join(' · ')
+  const detailedModels = [
+    `${t('요청 모델')}: ${requested.detail}`,
+    `${t('선택 모델')}: ${selected.detail}`,
+    `${t('실행 모델')}: ${executed.detail}`,
+  ].join(' · ')
+  return {
+    label: `${decision} · ${visibleModels}${saved}`,
+    title: detailedModels,
+  }
 }
 
 export function MessageItem({
@@ -160,6 +195,8 @@ export function MessageItem({
     )
   }
 
+  const costRoute = message.routing?.costRouting
+  const costRouteDisplay = costRoute ? costRoutePresentation(costRoute, models, t) : null
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
@@ -172,14 +209,12 @@ export function MessageItem({
       <div className="min-w-0 flex-1">
         {message.routing && showRouting && (
           <div className="mb-2 flex flex-wrap gap-1.5">
-            {message.routing.costRouting && (
+            {costRoute && costRouteDisplay && (
               <Badge
-                tone={
-                  message.routing.costRouting.decision === 'routed' ? 'success' : 'warn'
-                }
-                title={`${t('요청 모델')}: ${message.routing.costRouting.requestedModel} · ${t('실행 모델')}: ${message.routing.costRouting.executedModel ?? message.routing.costRouting.selectedModel}`}
+                tone={costRoute.decision === 'routed' ? 'success' : 'warn'}
+                title={costRouteDisplay.title}
               >
-                {costRouteLabel(message.routing.costRouting, models, t)}
+                {costRouteDisplay.label}
               </Badge>
             )}
             {message.routing.action !== 'none' &&

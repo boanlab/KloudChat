@@ -341,17 +341,20 @@ Privacy inspection runs before classification. If the assembled envelope has
 a finding, Auto performs no key issuance or model call and the existing privacy
 decision owns the turn. A clean, ordinary chat turn may be classified by a
 live, zero-cost strict-local model using the caller's virtual key, redacted
-LiteLLM logging and `disable_fallbacks`. Only a high-confidence low-complexity
-JSON verdict can select an economy model; every timeout, malformed response or
-uncertain state keeps the quality ceiling.
+LiteLLM logging and `disable_fallbacks`. The classifier receives the complete
+answer-visible messages and quality-model tool schema snapshot. If that payload
+exceeds 8,000 characters, it is not truncated and the quality ceiling is kept.
+Only a high-confidence low-complexity JSON verdict can select an economy model;
+every timeout, malformed response or uncertain state keeps the quality ceiling.
 
 Economy candidates are administrator-ordered and revalidated against the live
 catalogue, caller allowlist, context window, data boundary and both token
 prices. `hybrid`, `unknown` and `privacyOnly` models are excluded. The chosen
-answer call also disables fallback, so a failed economy route cannot cause a
-second, hidden premium charge. Message routing stores the quality, selected and
-actual models plus enum-only decision metadata; classifier prompts and free-form
-model reasoning are never persisted.
+answer call receives no tools and also disables fallback, so an unbounded tool
+result cannot invalidate the checked context fit and a failed economy route
+cannot cause a second, hidden premium charge. Message routing stores the
+quality, selected and actual models plus enum-only decision metadata; classifier
+prompts and free-form model reasoning are never persisted.
 
 ---
 

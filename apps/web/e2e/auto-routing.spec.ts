@@ -274,6 +274,8 @@ async function mockApp(
       routeDecision === 'routed'
         ? '4'
         : '제약 조건을 우선순위·비용·리스크로 나눠 장기 전략을 수립하겠습니다.'
+    const executedModel =
+      routeDecision === 'routed' ? 'openrouter/economy-a' : 'external/premium'
     const costRouting = {
       mode: 'auto',
       decision: routeDecision,
@@ -281,8 +283,7 @@ async function mockApp(
       requestedModel: 'external/premium',
       selectedModel:
         routeDecision === 'routed' ? 'external/economy-a' : 'external/premium',
-      executedModel:
-        routeDecision === 'routed' ? 'external/economy-a' : 'external/premium',
+      executedModel,
       classifierVersion: 'adaptive-router-v1',
       complexity: routeDecision === 'routed' ? 'low' : 'high',
       confidence: 0.98,
@@ -409,12 +410,23 @@ test('새 대화에서 Auto는 실모델과 함께 한 번만 생성되고 라�
   await page.getByRole('button', { name: 'draft.txt 제거' }).click()
   await page.getByLabel('프롬프트 입력').fill('2 더하기 2는?')
   await page.getByLabel('프롬프트 입력').press('Enter')
-  await expect(page.getByText(/Auto 절약.*Premium.*Economy A.*39/)).toBeVisible()
+  const routeBadge = page.getByText(
+    /Auto 절약.*요청 모델.*Premium.*선택 모델.*Economy A.*실행 모델.*openrouter\/economy-a.*39/,
+  )
+  await expect(routeBadge).toBeVisible()
+  await expect(routeBadge).toHaveAttribute(
+    'title',
+    '요청 모델: Mock · Premium (external/premium) · 선택 모델: Mock · Economy A (external/economy-a) · 실행 모델: openrouter/economy-a',
+  )
   await captureAutoRouting(page, 'simple-request-routed.png')
   // Routing transparency is independent of the user's hidden usage footer.
   await expect(page.getByText(/3 in.*1 out/)).toHaveCount(0)
   await page.reload()
-  await expect(page.getByText(/Auto 절약.*Premium.*Economy A.*39/)).toBeVisible()
+  await expect(routeBadge).toBeVisible()
+  await expect(routeBadge).toHaveAttribute(
+    'title',
+    '요청 모델: Mock · Premium (external/premium) · 선택 모델: Mock · Economy A (external/economy-a) · 실행 모델: openrouter/economy-a',
+  )
 
   await page.goto('/new/chat')
   await page.getByLabel('프롬프트 입력').fill('새 대화는 manual')

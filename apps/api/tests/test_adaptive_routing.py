@@ -5,14 +5,16 @@ import json
 import pytest
 from starlette.requests import Request
 
-from app.models.chat import ChatSession, Message, RoutingMode
+from app.models.chat import ChatSession, Message, RoutingMode, SessionKind
 from app.models.governance import Governance
 from app.models.user import AuditEvent, User, UserRole
 from app.routers import models as models_router
 from app.routers import sessions as sessions_router
 from app.routers import usage as usage_router
 from app.schemas.admin import GovernanceIn
+from app.schemas.chat import SessionCreate, SessionPatch
 from app.services import adaptive_routing
+from app.services.context import build_messages
 
 
 def _model(
@@ -56,30 +58,72 @@ def _event(chunk: str) -> dict:
     return json.loads(chunk.removeprefix("data: ").strip())
 
 
-def test_classifier_context_uses_only_last_two_complete_exchanges() -> None:
+class _SessionWriteDb:
+    def __init__(self) -> None:
+        self.added: list[object] = []
+        self.commits = 0
+
+    def add(self, value: object) -> None:
+        self.added.append(value)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def refresh(self, _value: object) -> None:
+        return None
+
+
+def test_classifier_context_keeps_complete_answer_envelope_and_tool_snapshot() -> None:
     history = [
-        {"role": "user", "content": "old-user"},
-        {"role": "assistant", "content": "old-assistant"},
+        {"role": "user", "content": "old complex architecture constraint"},
+        {"role": "assistant", "content": "old analysis"},
         {"role": "user", "content": "second-user"},
         {"role": "assistant", "content": "second-assistant"},
         {"role": "user", "content": "third-user"},
         {"role": "assistant", "content": "third-assistant"},
-        {"role": "user", "content": "incomplete-user"},
+        {"role": "user", "content": "current"},
+    ]
+    messages = build_messages(
+        SessionKind.chat,
+        history,
+        untrusted_context=["global memory requiring specialised analysis"],
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "large_result_tool",
+                "description": "May return a large result",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
     ]
 
-    encoded = adaptive_routing.classifier_context(history, "current")
+    encoded = adaptive_routing.classifier_context(messages, tools)
 
     assert encoded is not None
-    assert "old-user" not in encoded
-    assert "incomplete-user" not in encoded
-    assert [row["content"] for row in json.loads(encoded)["conversation"]] == [
-        "second-user",
-        "second-assistant",
-        "third-user",
-        "third-assistant",
-        "current",
+    payload = json.loads(encoded)
+    assert payload["messages"] == messages
+    assert payload["qualityModelTools"] == tools
+    assert "old complex architecture constraint" in encoded
+    assert "global memory requiring specialised analysis" in encoded
+    assert (
+        adaptive_routing.classifier_context(
+            [{"role": "user", "content": "x" * adaptive_routing.MAX_CLASSIFIER_CHARS}]
+        )
+        is None
+    )
+    huge_tool = [
+        {
+            "type": "function",
+            "function": {
+                "name": "huge",
+                "description": "x" * adaptive_routing.MAX_CLASSIFIER_CHARS,
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
     ]
-    assert adaptive_routing.classifier_context([], "x" * 8_001) is None
+    assert adaptive_routing.classifier_context(messages[:1], huge_tool) is None
 
 
 def test_context_estimate_does_not_treat_korean_like_ascii() -> None:
@@ -87,6 +131,155 @@ def test_context_estimate_does_not_treat_korean_like_ascii() -> None:
     assert adaptive_routing.estimated_context_tokens(["가" * 24_000]) == 72_000
     high_entropy = "".join(chr(33 + index % 94) for index in range(24_000))
     assert adaptive_routing.estimated_context_tokens([high_entropy]) == 24_000
+
+
+@pytest.mark.asyncio
+async def test_create_auto_requires_live_user_allowed_quality_model(monkeypatch) -> None:
+    quality = _model("quality")
+    blocked = _model("blocked")
+    reserved = _model("classifier-only", privacy_only=True)
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        allowed_models=[quality["id"], reserved["id"]],
+    )
+
+    async def enabled_kinds():
+        return {SessionKind.chat.value}
+
+    async def validate_links(*_args, **_kwargs):
+        return None
+
+    async def catalogue():
+        return {"models": [quality, blocked, reserved], "litellmAvailable": True}
+
+    monkeypatch.setattr(sessions_router.settings_store, "enabled_kinds", enabled_kinds)
+    monkeypatch.setattr(sessions_router, "_validate_session_links", validate_links)
+    monkeypatch.setattr(
+        sessions_router.model_service,
+        "list_models_for_egress",
+        catalogue,
+    )
+
+    db = _SessionWriteDb()
+    for invalid_model in (None, "gone", blocked["id"], reserved["id"]):
+        with pytest.raises(Exception) as caught:
+            await sessions_router.create_session(
+                SessionCreate(
+                    kind=SessionKind.chat,
+                    model=invalid_model,
+                    routing_mode=RoutingMode.auto,
+                ),
+                user,
+                db,
+            )
+        assert getattr(caught.value, "status_code", None) == 409
+        assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+
+    assert db.added == []
+    assert db.commits == 0
+
+    created = await sessions_router.create_session(
+        SessionCreate(
+            kind=SessionKind.chat,
+            model=quality["id"],
+            routing_mode=RoutingMode.auto,
+        ),
+        user,
+        db,
+    )
+
+    assert created.model == quality["id"]
+    assert created.routing_mode is RoutingMode.auto
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_patch_auto_validates_current_and_proposed_quality_model(monkeypatch) -> None:
+    quality = _model("quality")
+    blocked = _model("blocked")
+    reserved = _model("classifier-only", privacy_only=True)
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        allowed_models=[quality["id"], reserved["id"]],
+    )
+    session = ChatSession(
+        user_id=user.id,
+        model=quality["id"],
+        routing_mode=RoutingMode.manual,
+    )
+
+    async def owned(*_args, **_kwargs):
+        return session
+
+    async def catalogue():
+        return {"models": [quality, blocked, reserved], "litellmAvailable": True}
+
+    monkeypatch.setattr(sessions_router, "_owned", owned)
+    monkeypatch.setattr(
+        sessions_router.model_service,
+        "list_models_for_egress",
+        catalogue,
+    )
+    db = _SessionWriteDb()
+
+    for invalid_current in ("", "gone"):
+        session.model = invalid_current
+        with pytest.raises(Exception) as caught:
+            await sessions_router.patch_session(
+                session.id,
+                SessionPatch(routing_mode=RoutingMode.auto),
+                user,
+                db,
+            )
+        assert getattr(caught.value, "status_code", None) == 409
+        assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+
+    session.model = quality["id"]
+    for invalid_proposed in (blocked["id"], reserved["id"]):
+        with pytest.raises(Exception) as caught:
+            await sessions_router.patch_session(
+                session.id,
+                SessionPatch(model=invalid_proposed, routing_mode=RoutingMode.auto),
+                user,
+                db,
+            )
+        assert getattr(caught.value, "status_code", None) == 409
+        assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+    assert session.model == quality["id"]
+    assert session.routing_mode is RoutingMode.manual
+    assert db.added == []
+    assert db.commits == 0
+
+    patched = await sessions_router.patch_session(
+        session.id,
+        SessionPatch(model=quality["id"], routing_mode=RoutingMode.auto),
+        user,
+        db,
+    )
+
+    assert patched.model == quality["id"]
+    assert patched.routing_mode is RoutingMode.auto
+    assert db.commits == 1
+
+    # SQLAlchemy's String column may hydrate this field as the raw value. An
+    # unrelated patch must still validate the existing Auto quality ceiling.
+    session.routing_mode = RoutingMode.auto.value
+    session.model = "gone"
+    with pytest.raises(Exception) as caught:
+        await sessions_router.patch_session(
+            session.id,
+            SessionPatch(title="rename only"),
+            user,
+            db,
+        )
+    assert getattr(caught.value, "status_code", None) == 409
+    assert getattr(caught.value, "detail", None) == "auto_quality_model_required"
+    assert session.title == ""
+    assert db.commits == 1
 
 
 def test_economy_candidates_fail_closed_and_keep_admin_order() -> None:
@@ -362,8 +555,19 @@ async def test_resolve_cost_routing_routes_only_high_confidence_low(monkeypatch)
         def is_modified(self, _value):
             return False
 
+    classifier_messages = build_messages(
+        SessionKind.chat,
+        [
+            {"role": "user", "content": "old complex constraint"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "hello"},
+        ],
+        untrusted_context=["global memory"],
+    )
+
     async def classify(**kwargs):
         assert kwargs["api_key"] == "virtual-key"
+        assert json.loads(kwargs["context"])["messages"] == classifier_messages
         return adaptive_routing.Classification("low", 0.9, "simple_factual", 12, 4)
 
     monkeypatch.setattr(sessions_router.litellm_service, "user_key", lambda _user: "virtual-key")
@@ -375,10 +579,9 @@ async def test_resolve_cost_routing_routes_only_high_confidence_low(monkeypatch)
         policy=policy,
         catalogue=[quality, classifier, economy],
         quality_model=quality,
-        history=[],
-        content="hello",
+        classifier_messages=classifier_messages,
+        classifier_tool_definitions=[],
         context_tokens=100,
-        requires_tools=False,
         unsupported_reason=None,
     )
 
@@ -396,6 +599,57 @@ async def test_resolve_cost_routing_routes_only_high_confidence_low(monkeypatch)
         "classifierInputTokens": 12,
         "classifierOutputTokens": 4,
     }
+
+
+@pytest.mark.asyncio
+async def test_complete_classifier_envelope_over_limit_keeps_quality_before_key(
+    monkeypatch,
+) -> None:
+    quality = _model("quality", input_cost=10, output_cost=20)
+    classifier = _model(
+        "classifier",
+        boundary="self_hosted",
+        input_cost=0,
+        output_cost=0,
+        strict=True,
+        privacy_only=True,
+    )
+    economy = _model("economy", input_cost=1, output_cost=2)
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    policy = Governance(
+        adaptive_routing_enabled=True,
+        adaptive_classifier_model_id=classifier["id"],
+        adaptive_economy_model_ids=[economy["id"]],
+    )
+
+    class Db:
+        def is_modified(self, _value):
+            return False
+
+    def forbidden_key(_user):
+        pytest.fail("oversized complete envelope reached virtual-key resolution")
+
+    monkeypatch.setattr(sessions_router.litellm_service, "user_key", forbidden_key)
+    selected, route = await sessions_router._resolve_cost_routing(
+        db=Db(),
+        user=user,
+        policy=policy,
+        catalogue=[quality, classifier, economy],
+        quality_model=quality,
+        classifier_messages=[
+            {
+                "role": "user",
+                "content": "x" * adaptive_routing.MAX_CLASSIFIER_CHARS,
+            }
+        ],
+        classifier_tool_definitions=[],
+        context_tokens=100,
+        unsupported_reason=None,
+    )
+
+    assert selected["id"] == quality["id"]
+    assert route["decision"] == "kept_quality"
+    assert route["reasonCode"] == "input_too_long"
 
 
 @pytest.mark.asyncio
