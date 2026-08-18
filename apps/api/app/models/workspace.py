@@ -44,6 +44,49 @@ class Project(SQLModel, table=True):
     #: Prepended to every turn in this project. The whole point of a project.
     instructions: str = Field(default="")
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: The look everything this project produces wears. Null means the surface
+    #: defaults stand — the model picks the deck accent and the exporters use
+    #: their own fonts, exactly as before design systems existed.
+    design_system_id: str | None = Field(default=None, foreign_key="design_systems.id")
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class DesignSystem(SQLModel, table=True):
+    """One look, shared by every surface a project produces.
+
+    Split in two on purpose.
+
+    `tokens` is what the **renderers** read — four values that all three
+    exporters (`.pptx`, `.pdf`, `.hwpx`) and the browser preview can each
+    express. Anything a renderer cannot draw does not belong here: a token that
+    only survives to PowerPoint is a preview that lies.
+
+    `body` is what the **model** reads, and it is capped short. A design system
+    is the rule several projects share; anything longer than a few lines is that
+    one project's instructions, which already have a field of their own.
+
+    `image_style` is separate from `body` because it leaves in a different
+    language — image prompts are composed in English phrases alongside
+    `imagegen._STYLE_PHRASE`, and Korean prose dropped into one is noise.
+    """
+
+    __tablename__ = "design_systems"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    owner_id: str = Field(foreign_key="users.id", index=True)
+    name: str
+    description: str = Field(default="")
+    #: `{accent, ink, muted, font}`. Normalised on write by `services.design`.
+    tokens: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Voice, vocabulary, things not to write. Reaches the model as one block.
+    body: str = Field(default="")
+    #: English phrase appended to every image prompt in this project.
+    image_style: str = Field(default="")
+    #: Which brand-agnostic craft rules to carry — keys of `design.CRAFT`.
+    craft: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Offered to every account. Administrator-only, like `Template.shared`.
+    shared: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -440,6 +483,7 @@ __all__ = [
     "ConnectorCredential",
     "ConnectorStatus",
     "ConnectorTool",
+    "DesignSystem",
     "Memory",
     "MemoryType",
     "Project",

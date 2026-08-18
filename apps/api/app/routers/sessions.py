@@ -55,6 +55,7 @@ from app.services import agent as agent_service
 from app.services import auto_memory as auto_memory_service
 from app.services import chat as chat_service
 from app.services import deck as deck_service
+from app.services import design as design_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import report as report_service
@@ -67,6 +68,7 @@ from app.services.workspace_context import (
     WorkspaceContextError,
     agent_settings,
     assemble,
+    design_for,
 )
 
 log = logging.getLogger(__name__)
@@ -415,6 +417,7 @@ def _privacy_sources(
     source_kinds = {
         "agent.instructions": "agent",
         "project.instructions": "project_instructions",
+        "project.design": "project_design",
         "attachment": "attachments",
         "project.knowledge": "project_knowledge",
         "memory": "memory",
@@ -921,7 +924,12 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
-    composed = imagegen.compose_prompt(payload.prompt, aspect=payload.aspect, style=payload.style)
+    composed = imagegen.compose_prompt(
+        payload.prompt,
+        aspect=payload.aspect,
+        style=payload.style,
+        design=design_service.image_clause(await design_for(db, user, session)),
+    )
 
     made: list[Artifact] = []
     charged = 0
@@ -1582,6 +1590,7 @@ async def send_message(
                 # instructions, no memories, no attached form.
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
+                design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
             ),
             media_type="text/event-stream",
@@ -1606,6 +1615,7 @@ async def send_message(
                 # instructions, no memories, no attached form.
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
+                design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
             ),
             media_type="text/event-stream",
@@ -2436,6 +2446,7 @@ async def _run_deck(
     project_id: str | None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
@@ -2455,6 +2466,7 @@ async def _run_deck(
             api_key=api_key,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
+            tokens=design_tokens,
         )
         async for event in stream:
             if event["type"] == "deck":
@@ -2491,6 +2503,11 @@ async def _run_deck(
                     data={
                         "kind": "deck",
                         "theme": "기본",
+                        # Copied onto the artifact rather than looked up at
+                        # export time: the accent already works this way, and a
+                        # deck presented last month should not repaint itself
+                        # because the project changed its design system since.
+                        **({"design": design_tokens} if design_tokens else {}),
                         # Every slide, including unwritten ones — a gap stays
                         # visible so it can be fixed.
                         "slides": slides,
@@ -2532,6 +2549,7 @@ async def _run_report(
     project_id: str | None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it.
@@ -2613,6 +2631,9 @@ async def _run_report(
                             for s in sections
                         ],
                         "sources": sources,
+                        # Same snapshot rule as the deck: the exporters read
+                        # this, not the project the report came from.
+                        **({"design": design_tokens} if design_tokens else {}),
                         "citationStyle": "APA",
                         "wordCount": report_service.word_count(sections),
                     },

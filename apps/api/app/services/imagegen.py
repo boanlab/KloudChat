@@ -80,15 +80,23 @@ def _measure(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
-def compose_prompt(prompt: str, *, aspect: str, style: str) -> str:
+def compose_prompt(prompt: str, *, aspect: str, style: str, design: str = "") -> str:
     """The request as the model will read it.
 
     Separate from the caller so the stored prompt stays what the person typed.
+
+    `design` is the project's design system as a phrase — see
+    `services.design.image_clause`. It follows the style chip rather than
+    leading it: the chip is this picture's instruction and the design system is
+    the standing one, and the later phrase is the one a picture model tends to
+    honour when the two disagree.
     """
     parts = [prompt.strip()]
     phrase = _STYLE_PHRASE.get(style)
     if phrase:
         parts.append(phrase)
+    if design.strip():
+        parts.append(design.strip())
     if aspect and aspect != "1:1":
         parts.append(f"aspect ratio {aspect}")
     return ". ".join(p for p in parts if p)

@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import or_
-from sqlmodel import col, delete, select
+from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
@@ -24,6 +24,7 @@ from app.models.workspace import (
     Artifact,
     ArtifactKind,
     ArtifactVersion,
+    DesignSystem,
     Memory,
     Project,
     Skill,
@@ -38,6 +39,8 @@ from app.schemas.workspace import (
     ArtifactPatch,
     ArtifactRestore,
     ArtifactVersionOut,
+    DesignSystemIn,
+    DesignSystemOut,
     FileOut,
     KnowledgeUrl,
     MemoryIn,
@@ -62,6 +65,7 @@ from app.services import (
     settings_store,
     starter,
 )
+from app.services import design as design_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
@@ -143,6 +147,21 @@ async def _validate_tool_names(
 # ══ projects ═══════════════════════════════════════════════════════════
 
 
+async def _validate_design_system_id(db: DbSession, user: User, design_id: str | None) -> None:
+    """The look must be one the caller can actually see.
+
+    An id from another account would otherwise attach that account's design to
+    this project — readable through every artifact it produces afterwards.
+    """
+    if design_id is None:
+        return
+    row = await db.get(DesignSystem, design_id)
+    if row is None or (row.owner_id != user.id and not row.shared):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_system_not_found"
+        )
+
+
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
     files = (
         await db.exec(
@@ -172,6 +191,7 @@ async def list_projects(user: CurrentUser, db: DbSession):
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 async def create_project(payload: ProjectIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
+    await _validate_design_system_id(db, user, payload.design_system_id)
     project = Project(user_id=user.id, **payload.model_dump())
     db.add(project)
     await db.commit()
@@ -197,6 +217,8 @@ async def patch_project(
             changes["skill_ids"],
             grandfathered=set(project.skill_ids or []),
         )
+    if "design_system_id" in changes:
+        await _validate_design_system_id(db, user, changes["design_system_id"])
     for field, value in changes.items():
         setattr(project, field, value)
     project.updated_at = utcnow()
@@ -893,6 +915,9 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
     layout discarded.
     """
     slides = list((artifact.data or {}).get("slides") or [])
+    # The design system as it stood when the deck was written. `None` when it
+    # was written without one, which is what keeps those exports unchanged.
+    tokens = (artifact.data or {}).get("design") or None
     title = artifact.title or "슬라이드"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "deck"
 
@@ -904,12 +929,14 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
             "md",
         )
     if format == "pdf":
-        return _attachment(deck_export.to_pdf(title, slides), "application/pdf", stem, "pdf")
+        return _attachment(
+            deck_export.to_pdf(title, slides, tokens=tokens), "application/pdf", stem, "pdf"
+        )
     if format in ("pptx", "docx"):
         # `docx` is the endpoint default, so a deck exported without an explicit
         # format lands here rather than 400-ing.
         return _attachment(
-            deck_export.to_pptx(title, slides),
+            deck_export.to_pptx(title, slides, tokens=tokens),
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             stem,
             "pptx",
@@ -938,6 +965,7 @@ async def export_artifact(
         return _export_deck(artifact, format)
 
     sections = list((artifact.data or {}).get("sections") or [])
+    tokens = (artifact.data or {}).get("design") or None
     title = artifact.title or "보고서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "report"
 
@@ -946,16 +974,16 @@ async def export_artifact(
         media = "text/markdown; charset=utf-8"
         suffix = "md"
     elif format == "pdf":
-        body = report_export.to_pdf(title, sections)
+        body = report_export.to_pdf(title, sections, tokens=tokens)
         media = "application/pdf"
         suffix = "pdf"
     elif format == "docx":
-        body = report_export.to_docx(title, sections)
+        body = report_export.to_docx(title, sections, tokens=tokens)
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
     elif format == "hwpx":
         # Same sections and structure — see report_export.to_hwpx.
-        body = report_export.to_hwpx(title, sections)
+        body = report_export.to_hwpx(title, sections, tokens=tokens)
         media = "application/hwp+zip"
         suffix = "hwpx"
     else:
@@ -1085,6 +1113,80 @@ async def patch_template(
 async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
     template = await _own(db, Template, "owner_id", user, template_id)
     await db.delete(template)
+    await db.commit()
+
+
+# ══ design systems ═════════════════════════════════════════════════════
+#
+# Same ownership shape as templates: mine, plus whatever an administrator
+# shared with the instance. A project points at one; everything that project
+# produces reads it.
+
+
+@router.get("/designs", response_model=list[DesignSystemOut])
+async def list_designs(user: CurrentUser, db: DbSession):
+    rows = (
+        await db.exec(
+            select(DesignSystem)
+            .where(or_(DesignSystem.owner_id == user.id, col(DesignSystem.shared).is_(True)))
+            .order_by(col(DesignSystem.shared).desc(), col(DesignSystem.created_at))
+        )
+    ).all()
+    return [DesignSystemOut.of(d, owner_id=user.id) for d in rows]
+
+
+@router.post("/designs", response_model=DesignSystemOut, status_code=status.HTTP_201_CREATED)
+async def create_design(payload: DesignSystemIn, user: CurrentUser, db: DbSession):
+    data = payload.model_dump()
+    _may_share(user, bool(data.get("shared")))
+    # Normalised on the way in, so a renderer never has to defend itself
+    # against a colour that is not a colour.
+    data["tokens"] = design_service.normalise_tokens(data.get("tokens"))
+    data["craft"] = design_service.craft_keys(data.get("craft"))
+    row = DesignSystem(owner_id=user.id, **data)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return DesignSystemOut.of(row, owner_id=user.id)
+
+
+@router.patch("/designs/{design_id}", response_model=DesignSystemOut)
+async def patch_design(
+    design_id: str, payload: DesignSystemIn, user: CurrentUser, db: DbSession
+):
+    row = await _own(db, DesignSystem, "owner_id", user, design_id)
+    fields = payload.model_dump(exclude_unset=True)
+    if "shared" in fields:
+        _may_share(user, bool(fields["shared"]))
+    if "tokens" in fields:
+        fields["tokens"] = design_service.normalise_tokens(fields["tokens"])
+    if "craft" in fields:
+        fields["craft"] = design_service.craft_keys(fields["craft"])
+    for field, value in fields.items():
+        setattr(row, field, value)
+    row.updated_at = utcnow()
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return DesignSystemOut.of(row, owner_id=user.id)
+
+
+@router.delete("/designs/{design_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
+    """Removes the look. Projects wearing it fall back to the defaults.
+
+    The projects are detached rather than deleted, because a look is a
+    decoration and a project is work. Done here rather than left to the
+    `ON DELETE SET NULL` in migration 0020 so the rows this request already
+    loaded agree with the database it returns to.
+    """
+    row = await _own(db, DesignSystem, "owner_id", user, design_id)
+    await db.exec(
+        update(Project)
+        .where(col(Project.design_system_id) == row.id)
+        .values(design_system_id=None)
+    )
+    await db.delete(row)
     await db.commit()
 
 

@@ -111,7 +111,7 @@ reason.
 
 ## 5. Data model
 
-Sixteen migrations under `alembic/versions/`. The principal tables:
+Twenty migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
@@ -121,6 +121,9 @@ Sixteen migrations under `alembic/versions/`. The principal tables:
   `memories` · `agents` · `connectors`
 - `templates` — starting points a user added, optionally carrying a form file
   whose text is attached when the template is picked
+- `design_systems` — the look a project's output wears. `projects.design_system_id`
+  is nullable and null by default, and `ON DELETE SET NULL`: removing a look
+  costs the projects their look, not the projects
 - `shares` — read-only links. The token is the permission, and revocation is a
   flag rather than a delete
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
@@ -179,8 +182,39 @@ backend the shelf is empty and the citation rule drops out of the prompts.
 Slides use four layouts — `title`, `bullets`, `quote`, `two-column` — each
 implemented in all three renderers (preview, `.pptx`, `.pdf`). The frontend type
 permits six; `image` has no producer and `chart` would draw invented numbers.
-The outline also picks the deck's accent from a fixed palette, and honours a
-slide count stated in the request up to 50.
+The outline also picks the deck's accent from a fixed palette — unless the
+project wears a design system, in which case the palette rule is dropped from
+the prompt entirely and the accent arrives from the project. A slide count
+stated in the request is honoured up to 50.
+
+### Design systems
+
+One look, read by every surface that produces a document. Split in two, and the
+split is the whole design:
+
+**`tokens`** — `accent`, `ink`, `muted`, `font` — is what the *renderers* draw
+with. Four values, because `.pptx`, `.pdf`, `.hwpx` and the browser preview can
+each express all four; a fifth that only PowerPoint could draw would make the
+preview lie, which is the one property the three deck renderers guarantee.
+
+**`body`** is what the *model* reads, and it is capped at 400 characters.
+Colours are not in it for the text surfaces: a model writing report prose
+cannot act on `#7a1f3d`, and a hex code in a system prompt is spend with no
+effect. Image is the exception — there the colour is the instruction, so it
+travels as an English phrase (`design.image_clause`) appended to the prompt
+beside the style chip.
+
+`craft` names brand-agnostic rules the design system opts into, filtered per
+surface: a rule about heading depth reaches a report and not a chat turn.
+
+The tokens are **copied onto the artifact** when it is made, and the exporters
+read them from there. A deck presented last month does not repaint itself
+because the project changed its design system since — the same rule the
+per-slide accent already followed.
+
+A project with no design system produces exactly what it produced before this
+existed, down to the greys in the PDF. That is the property the export tests
+pin.
 
 ### Sharing
 
@@ -246,6 +280,12 @@ should. Opinions are not extracted.
 
 ### Images and audio
 
+Image generation is a single upstream call with a prompt rather than a turn
+with a system message, so it never goes through `assemble`. It resolves the
+project's design system on its own (`workspace_context.design_for`) — without
+that, the one surface whose entire output is a look was the one surface the
+look did not reach.
+
 Both call OpenRouter through LiteLLM via `chat/completions`. Audio **requires
 `stream: true`**, and streaming yields only `pcm16`, which a 44-byte RIFF header
 turns into a WAV. Without `stream_options.include_usage` the stream carries no
@@ -273,8 +313,12 @@ default-length clip at twice the quoted price.
 ## 7. Context assembly
 
 What goes into one turn, in order: the system prompt (per surface) → agent
-instructions → project instructions → memories → skills → files attached to
-this turn → project knowledge → tool rules → conversation history.
+instructions → project instructions → design system → memories → skills → files
+attached to this turn → project knowledge → tool rules → conversation history.
+
+The design block sits after the project's own instructions and before the
+skills: the look is a property of the project, and a skill switched on for this
+turn is the more specific instruction, so it comes later and wins.
 
 Later blocks weigh more with a small model, so the order is load-bearing: the
 material a turn was given sits closest to the question, and the standing

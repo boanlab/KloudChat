@@ -13,13 +13,14 @@ import io
 import re
 import zipfile
 
+from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
-from app.services import fonts
+from app.services import design, fonts
 
 
 def _markdown_to_lines(text: str) -> list[tuple[str, str, str]]:
@@ -67,15 +68,27 @@ def _strip_inline(text: str) -> str:
     return text.replace("`", "")
 
 
-def to_docx(title: str, sections: list[dict]) -> bytes:
+def to_docx(title: str, sections: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     from docx import Document
-    from docx.shared import Inches, Pt
+    from docx.shared import Inches, Pt, RGBColor
+
+    style = design.normalise_tokens(tokens) if tokens else None
+    #: Colour only. The face stays Word's own: this document is written to be
+    #: edited, and a run-level typeface would override whatever the reviewer's
+    #: template sets, in every paragraph, unremovably.
+    accent = RGBColor.from_string(style["accent"].lstrip("#").upper()) if style else None
+
+    def recolour(heading) -> None:
+        if accent is None:
+            return
+        for run in heading.runs:
+            run.font.color.rgb = accent
 
     document = Document()
-    document.add_heading(title, level=0)
+    recolour(document.add_heading(title, level=0))
 
     for section in sections:
-        document.add_heading(section.get("heading") or "", level=1)
+        recolour(document.add_heading(section.get("heading") or "", level=1))
         for kind, text, marker in _markdown_to_lines(section.get("content") or ""):
             clean = _strip_inline(text)
             if kind == "heading":
@@ -98,20 +111,27 @@ def to_docx(title: str, sections: list[dict]) -> bytes:
     return buffer.getvalue()
 
 
-def to_pdf(title: str, sections: list[dict]) -> bytes:
+def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     # Serif for print, and embedded: reportlab's bundled CID font is not, and a
     # reader without the Adobe-Korea1 CMaps draws blank where Korean was.
     # See services/fonts.py.
-    korean = fonts.korean("serif")
+    #
+    # Serif stays the default when no design system names a face — this is the
+    # submission format, and the deck's Gothic would be a change of document.
+    style = design.normalise_tokens(tokens) if tokens else None
+    korean = fonts.korean(style["font"] if style else "serif")
+    # Absent a design system the headings stay black, exactly as before.
+    heading_colour = {"textColor": HexColor(style["accent"])} if style else {}
 
     base = getSampleStyleSheet()
     styles = {
         "title": ParagraphStyle(
-            "t", parent=base["Title"], fontName=korean, fontSize=20, leading=26
+            "t", parent=base["Title"], fontName=korean, fontSize=20, leading=26,
+            **heading_colour,
         ),
         "h1": ParagraphStyle(
             "h1", parent=base["Heading1"], fontName=korean, fontSize=14, leading=20,
-            spaceBefore=14, spaceAfter=6,
+            spaceBefore=14, spaceAfter=6, **heading_colour,
         ),
         "h2": ParagraphStyle(
             "h2", parent=base["Heading2"], fontName=korean, fontSize=12, leading=17,
@@ -258,11 +278,18 @@ _HWPX_PARA_SHAPES = (
 _HWPX_LINE_SPACING = 160
 
 
-def _hwpx_char_properties() -> str:
+#: Character-shape ids the accent may colour: the document title and the
+#: section headings. Body text stays black — a report is read, and coloured
+#: paragraphs are what makes a submission look like a brochure.
+_HWPX_ACCENT_SHAPES = (2, 3)
+
+
+def _hwpx_char_properties(accent: str | None = None) -> str:
     items = []
     for cid, height, bold in _HWPX_CHAR_SHAPES:
+        colour = accent if (accent and cid in _HWPX_ACCENT_SHAPES) else "#000000"
         items.append(
-            f'   <hh:charPr id="{cid}" height="{height}" textColor="#000000"'
+            f'   <hh:charPr id="{cid}" height="{height}" textColor="{colour}"'
             ' shadeColor="none" useFontSpace="0" useKerning="0">\n'
             '    <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>\n'
             '    <hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>\n'
@@ -328,7 +355,7 @@ def _hwpx_para(text: str, para_pr: int, char_pr: int = 0) -> str:
     )
 
 
-def to_hwpx(title: str, sections: list[dict]) -> bytes:
+def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     """The same document `to_docx` writes, as OWPML.
 
     Structure only — headings, paragraphs and bullets. Bullets are emitted as
@@ -336,6 +363,7 @@ def to_hwpx(title: str, sections: list[dict]) -> bytes:
     numbering lives in the header's `numberings` table and referencing one
     incorrectly makes Hancom refuse the file, which is a bad trade for a dot.
     """
+    style = design.normalise_tokens(tokens) if tokens else None
     # (paraPr, charPr) pairs from the tables above: title / h1 / h2 / body / bullet.
     body: list[str] = [_hwpx_para(title, 0, 2)]
     for section in sections:
@@ -382,7 +410,7 @@ def to_hwpx(title: str, sections: list[dict]) -> bytes:
         archive.writestr(
             "Contents/header.xml",
             _HWPX_HEADER.format(
-                char_properties=_hwpx_char_properties(),
+                char_properties=_hwpx_char_properties(style["accent"] if style else None),
                 para_properties=_hwpx_para_properties(),
             ),
         )

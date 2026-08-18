@@ -32,7 +32,9 @@ else buried inside it. Five surfaces sit side by side: reports stream section
 by section and cite the sources they searched, slides export as `.pptx` and
 `.pdf`, audio and video report progress on job cards. All five share the same
 project context — instructions, knowledge files and memories — and start from a
-template gallery you can add to.
+template gallery you can add to. A project can also wear a design system, so
+its deck, its report and its cover image come out in one colour and one
+typeface instead of three.
 
 **2. An agent can search its own documents.** Attach files or URLs to an agent
 and it looks them up through a tool when it needs background, rather than

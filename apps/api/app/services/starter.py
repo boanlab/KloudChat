@@ -19,7 +19,7 @@ from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.user import User
-from app.models.workspace import Agent, Skill, SkillSource
+from app.models.workspace import Agent, DesignSystem, Skill, SkillSource
 
 #: Agents reference skills by this key, rewritten to real ids once the rows
 #: exist — a seeder slug would point at nothing on the first edit.
@@ -343,6 +343,41 @@ _AGENTS: list[dict] = [
 ]
 
 
+#: The looks an account starts with. Three, and each shows a different shape:
+#: tokens with no prose, a document face, a presentation face. A design system
+#: is not a catalogue to scroll — the point is that the first one is easy to
+#: copy and edit, not that one of these is right.
+#:
+#: No catalogue key: these are seeded once, by name, and never re-synced. A
+#: look somebody deleted should stay deleted.
+_DESIGNS: list[dict] = [
+    {
+        "name": "기본",
+        "description": "지금까지의 기본값 그대로. 색과 서체만 고정합니다.",
+        "tokens": {"accent": "#5b5bd6", "ink": "#1a1a1a", "muted": "#666666", "font": "gothic"},
+        "body": "",
+        "image_style": "clean uncluttered composition, generous whitespace",
+        "craft": ["restraint"],
+    },
+    {
+        "name": "문서용 명조",
+        "description": "보고서와 공문에 맞춘 먹빛 명조. 인쇄해도 읽힙니다.",
+        "tokens": {"accent": "#334155", "ink": "#111827", "muted": "#6b7280", "font": "serif"},
+        "body": "제목은 명사구로 쓴다. 한 문장에 한 사실만 담고, 수식어를 덜어낸다.",
+        "image_style": "muted documentary photography, low saturation, natural light",
+        "craft": ["restraint", "typography"],
+    },
+    {
+        "name": "발표용 청록",
+        "description": "슬라이드와 표지 이미지를 같은 청록으로 묶습니다.",
+        "tokens": {"accent": "#0f766e", "ink": "#0f172a", "muted": "#64748b", "font": "gothic"},
+        "body": "청중이 소리 내어 읽을 문장으로 쓴다. 한 장에 주장 하나.",
+        "image_style": "bold high-contrast graphic, large negative space, teal accent",
+        "craft": ["restraint"],
+    },
+]
+
+
 def _slug(name: str) -> str:
     base = re.sub(r"[^\w가-힣]+", "-", name.strip().lower()).strip("-")
     return base[:60] or "item"
@@ -447,6 +482,18 @@ async def seed(
     # the default flag and still receive the initial set once.
     if not include_agents or existing_agents:
         return made
+
+    # Same rule for looks, and for the same reason: a design system deleted on
+    # purpose must not reappear at the next login.
+    existing_designs = (
+        await db.exec(
+            select(func.count()).select_from(DesignSystem).where(DesignSystem.owner_id == user_id)
+        )
+    ).one()
+    if not existing_designs:
+        for spec in _DESIGNS:
+            db.add(DesignSystem(owner_id=user_id, **spec))
+            made += 1
 
     for spec in _AGENTS:
         agent = Agent(

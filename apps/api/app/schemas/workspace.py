@@ -16,6 +16,7 @@ from app.models.workspace import (
     Connector,
     ConnectorStatus,
     ConnectorTool,
+    DesignSystem,
     Memory,
     MemoryType,
     Project,
@@ -28,6 +29,7 @@ from app.models.workspace import (
     Transport,
 )
 from app.schemas.auth import Wire
+from app.services import design as design_service
 
 #: JSONB list columns are nullable in the database, but the wire contract is a
 #: list either way — absorbed here rather than in every `of()` and consumer.
@@ -71,6 +73,7 @@ class ProjectOut(Wire):
     emoji: str
     instructions: str
     skill_ids: JsonList = Field(default_factory=list)
+    design_system_id: str | None = None
     files: list[FileOut] = Field(default_factory=list)
     session_ids: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -96,6 +99,7 @@ class ProjectIn(Wire):
     emoji: str = "📁"
     instructions: str = ""
     skill_ids: list[str] | None = None
+    design_system_id: str | None = None
 
 
 class ProjectPatch(Wire):
@@ -104,6 +108,9 @@ class ProjectPatch(Wire):
     emoji: str | None = None
     instructions: str | None = None
     skill_ids: list[str] | None = None
+    #: Explicit null clears it, so `exclude_unset` is what separates "no design
+    #: system" from "leave the design system alone".
+    design_system_id: str | None = None
 
 
 # ── artifacts ──────────────────────────────────────────────────────────
@@ -484,6 +491,47 @@ class TemplateIn(Wire):
     file_id: str | None = None
     #: Administrator-only. A non-administrator setting it is refused rather
     #: than silently ignored.
+    shared: bool = False
+
+
+class DesignSystemOut(Wire):
+    """A look, in the shape both the project picker and the editor render.
+
+    `tokens` is always complete — a caller should never have to know which of
+    the four the row happened to store.
+    """
+
+    id: str
+    name: str
+    description: str
+    tokens: dict[str, str] = Field(default_factory=dict)
+    body: str
+    image_style: str
+    craft: JsonList = Field(default_factory=list)
+    #: Offered to every account. Administrators only.
+    shared: bool = False
+    #: Whether the caller may edit or remove it.
+    mine: bool = True
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, d: DesignSystem, *, owner_id: str | None = None) -> DesignSystemOut:
+        out = cls.model_validate(d, from_attributes=True)
+        out.tokens = design_service.tokens_of(d)
+        out.craft = design_service.craft_keys(d.craft)
+        out.mine = owner_id is None or d.owner_id == owner_id
+        return out
+
+
+class DesignSystemIn(Wire):
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=200)
+    tokens: dict[str, str] | None = None
+    #: Capped rather than free — see `models.workspace.DesignSystem`.
+    body: str = Field(default="", max_length=design_service.MAX_BODY)
+    image_style: str = Field(default="", max_length=design_service.MAX_IMAGE_STYLE)
+    craft: list[str] | None = None
+    #: Administrator-only, refused rather than ignored. Same rule as templates.
     shared: bool = False
 
 

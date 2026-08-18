@@ -446,6 +446,8 @@ export interface Project {
   files: ProjectFile[]
   sessionIds: string[]
   skillIds: string[]
+  /** The design system this project's output wears. Null is the default look. */
+  designSystemId: string | null
   updatedAt: string
 }
 

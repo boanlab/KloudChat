@@ -25,7 +25,7 @@ from pptx.util import Emu, Pt
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
-from app.services import fonts
+from app.services import design, fonts
 
 #: 16:9 in points — EMU/12700, and reportlab's default unit. Drives both
 #: exporters.
@@ -33,13 +33,23 @@ _W, _H = 960.0, 540.0
 _EMU_PER_PT = 12700
 
 #: Korean is laid out with the *East Asian* font, which python-pptx does not
-#: set — see `_font`. Malgun Gothic (맑은 고딕) is present on any Windows that
-#: would open this; elsewhere the theme font applies.
-_LATIN_FONT = "Segoe UI"
-_EA_FONT = "맑은 고딕"
+#: set — see `_font`. Both pairs are present on any Windows that would open
+#: this; elsewhere the theme font applies. Keyed by `design.FONTS`, so a design
+#: system's face survives into PowerPoint rather than stopping at the preview.
+_FACES = {
+    "gothic": ("Segoe UI", "맑은 고딕"),
+    "serif": ("Georgia", "바탕"),
+}
 
 _INK = RGBColor(0x1A, 0x1A, 0x1A)
 _MUTED = RGBColor(0x66, 0x66, 0x66)
+
+#: The greys this file drew before design systems existed. Kept as the literal
+#: fallbacks rather than folded into `design.DEFAULT_TOKENS`: a deck with no
+#: design system has to export byte for byte what it exported yesterday, and
+#: `#1a1a1a` is not exactly `(0.1, 0.1, 0.1)`.
+_PDF_INK = (0.1, 0.1, 0.1)
+_PDF_MUTED = (0.4, 0.4, 0.4)
 
 
 def _rgb(value: str | None) -> RGBColor:
@@ -61,19 +71,27 @@ def _hex_floats(value: str | None) -> tuple[float, float, float]:
     return colour[0] / 255, colour[1] / 255, colour[2] / 255
 
 
-def _font(run, *, size: int, bold: bool = False, colour: RGBColor = _INK) -> None:
+def _font(
+    run,
+    *,
+    size: int,
+    bold: bool = False,
+    colour: RGBColor = _INK,
+    faces: tuple[str, str] = _FACES["gothic"],
+) -> None:
     """Sets a run's font, including the East Asian typeface.
 
     `font.name` writes only `a:latin`, while PowerPoint picks Hangul from
     `a:ea` — which is most of the text here.
     """
+    latin, east_asian = faces
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.color.rgb = colour
-    run.font.name = _LATIN_FONT
+    run.font.name = latin
     properties = run.font._rPr
     for tag in ("a:ea", "a:cs"):
-        element = properties.makeelement(qn(tag), {"typeface": _EA_FONT})
+        element = properties.makeelement(qn(tag), {"typeface": east_asian})
         properties.append(element)
 
 
@@ -102,12 +120,24 @@ def _split_columns(bullets: list[str]) -> list[list[str]]:
     return [bullets[:half], bullets[half:]]
 
 
-def to_pptx(title: str, slides: list[dict]) -> bytes:
+def to_pptx(title: str, slides: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     """The deck as a PowerPoint file.
 
     Blank layout, not the built-in title/content ones: those carry placeholder
     prompts that show in the outline pane and in any empty slide.
+
+    `tokens` is the design system the deck was written under, copied onto the
+    artifact when it was made. Absent, the file is exactly what it was before
+    design systems existed.
     """
+    style = design.normalise_tokens(tokens) if tokens else None
+    faces = _FACES[style["font"]] if style else _FACES["gothic"]
+    ink = _rgb(style["ink"]) if style else _INK
+    muted = _rgb(style["muted"]) if style else _MUTED
+
+    def paint(run, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
+        _font(run, size=size, bold=bold, colour=colour or ink, faces=faces)
+
     presentation = Presentation()
     presentation.slide_width = Emu(int(_W * _EMU_PER_PT))
     presentation.slide_height = Emu(int(_H * _EMU_PER_PT))
@@ -137,32 +167,32 @@ def to_pptx(title: str, slides: list[dict]) -> bytes:
 
         if layout == "title" and index == 0:
             frame = _textbox(slide, left=72, top=190, width=_W - 144, height=160)
-            _font(frame.paragraphs[0].add_run(), size=40, bold=True)
+            paint(frame.paragraphs[0].add_run(), size=40, bold=True)
             frame.paragraphs[0].runs[0].text = heading or title
             if body:
                 paragraph = frame.add_paragraph()
                 paragraph.space_before = Pt(14)
                 run = paragraph.add_run()
                 run.text = body
-                _font(run, size=15, colour=_MUTED)
+                paint(run, size=15, colour=muted)
         elif layout == "quote":
             frame = _textbox(slide, left=90, top=170, width=_W - 180, height=200)
             paragraph = frame.paragraphs[0]
             paragraph.alignment = PP_ALIGN.LEFT
             run = paragraph.add_run()
             run.text = f"“{body}”" if body else heading
-            _font(run, size=30, bold=True, colour=accent)
+            paint(run, size=30, bold=True, colour=accent)
             if body and heading:
                 caption = frame.add_paragraph()
                 caption.space_before = Pt(16)
                 run = caption.add_run()
                 run.text = heading
-                _font(run, size=13, colour=_MUTED)
+                paint(run, size=13, colour=muted)
         else:
             frame = _textbox(slide, left=72, top=64, width=_W - 144, height=60)
             run = frame.paragraphs[0].add_run()
             run.text = heading
-            _font(run, size=26, bold=True)
+            paint(run, size=26, bold=True)
 
             if bullets:
                 # Two boxes side by side rather than one wide one — PowerPoint
@@ -185,22 +215,22 @@ def to_pptx(title: str, slides: list[dict]) -> bytes:
                         paragraph.space_after = Pt(12)
                         marker = paragraph.add_run()
                         marker.text = "• "
-                        _font(marker, size=18, bold=True, colour=accent)
+                        paint(marker, size=18, bold=True, colour=accent)
                         run = paragraph.add_run()
                         run.text = text
-                        _font(run, size=16 if len(columns) > 1 else 18)
+                        paint(run, size=16 if len(columns) > 1 else 18)
             elif body:
                 paragraph_frame = _textbox(slide, left=72, top=150, width=_W - 144, height=_H - 210)
                 run = paragraph_frame.paragraphs[0].add_run()
                 run.text = body
-                _font(run, size=16, colour=_MUTED)
+                paint(run, size=16, colour=muted)
 
         # Slide number, bottom right — what the room refers to in a question.
         number = _textbox(slide, left=_W - 110, top=_H - 46, width=60, height=26)
         number.paragraphs[0].alignment = PP_ALIGN.RIGHT
         run = number.paragraphs[0].add_run()
         run.text = str(index + 1)
-        _font(run, size=11, colour=_MUTED)
+        paint(run, size=11, colour=muted)
 
         notes = str(data.get("notes") or "").strip()
         if notes:
@@ -241,13 +271,19 @@ def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
     return lines
 
 
-def to_pdf(title: str, slides: list[dict]) -> bytes:
+def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     """The deck as a PDF, one slide per page.
 
     For projecting, so it is deliberately the presentation and not the notes:
     what is on the page is what the room sees.
+
+    Same rule as `to_pptx`: with no design system this draws what it always
+    drew, down to the greys.
     """
-    font = fonts.korean("gothic")
+    style = design.normalise_tokens(tokens) if tokens else None
+    font = fonts.korean(style["font"] if style else "gothic")
+    ink = _hex_floats(style["ink"]) if style else _PDF_INK
+    muted = _hex_floats(style["muted"]) if style else _PDF_MUTED
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(_W, _H))
     pdf.setTitle(title)
@@ -265,14 +301,14 @@ def to_pdf(title: str, slides: list[dict]) -> bytes:
         pdf.rect(0, 0, 9, _H, stroke=0, fill=1)
 
         if layout == "title" and index == 0:
-            pdf.setFillColorRGB(0.1, 0.1, 0.1)
+            pdf.setFillColorRGB(*ink)
             pdf.setFont(font, 40)
             y = _H / 2 + 20
             for line in _wrap(heading or title, font, 40, _W - 144):
                 pdf.drawString(72, y, line)
                 y -= 50
             if body:
-                pdf.setFillColorRGB(0.4, 0.4, 0.4)
+                pdf.setFillColorRGB(*muted)
                 pdf.setFont(font, 15)
                 for line in _wrap(body, font, 15, _W - 144)[:2]:
                     pdf.drawString(72, y - 6, line)
@@ -285,11 +321,11 @@ def to_pdf(title: str, slides: list[dict]) -> bytes:
                 pdf.drawString(90, y, line)
                 y -= 40
             if body and heading:
-                pdf.setFillColorRGB(0.4, 0.4, 0.4)
+                pdf.setFillColorRGB(*muted)
                 pdf.setFont(font, 13)
                 pdf.drawString(90, y - 8, heading)
         else:
-            pdf.setFillColorRGB(0.1, 0.1, 0.1)
+            pdf.setFillColorRGB(*ink)
             pdf.setFont(font, 26)
             y = _H - 96
             for line in _wrap(heading, font, 26, _W - 144):
@@ -313,17 +349,20 @@ def to_pdf(title: str, slides: list[dict]) -> bytes:
                         pdf.setFillColorRGB(*accent)
                         pdf.setFont(font, size)
                         pdf.drawString(left + 4, y, "•")
-                        pdf.setFillColorRGB(0.1, 0.1, 0.1)
+                        pdf.setFillColorRGB(*ink)
                         for offset, line in enumerate(wrapped):
                             pdf.drawString(left + 26, y - offset * step, line)
                         y -= step * len(wrapped) + 14
             elif body:
-                pdf.setFillColorRGB(0.33, 0.33, 0.33)
+                pdf.setFillColorRGB(*muted)
                 pdf.setFont(font, 16)
                 for line in _wrap(body, font, 16, _W - 144):
                     pdf.drawString(72, y, line)
                     y -= 24
 
+        # Furniture rather than content, so it keeps its own light grey instead
+        # of taking the design's muted tone: a page number in brand colour
+        # reads as something to look at.
         pdf.setFillColorRGB(0.55, 0.55, 0.55)
         pdf.setFont(font, 11)
         pdf.drawRightString(_W - 50, 30, str(index + 1))

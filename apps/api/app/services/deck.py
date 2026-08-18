@@ -52,6 +52,14 @@ _LAYOUTS = ("title", "bullets", "quote", "two-column")
 #: .pptx and the .pdf read from the same field, so they cannot drift apart.
 _ACCENT = "#5b5bd6"
 
+#: The palette rule, asked only when nothing has already decided the colour.
+#: With a design system attached the accent arrives from the project, and
+#: leaving the rule in would spend tokens on an answer that is then discarded —
+#: worse, it would show the model a choice it does not have.
+_THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중에서만 골라라:
+  {themes}
+"""
+
 #: Accent palette the outline picks from by name. Curated rather than free hex:
 #: each is dark enough to carry white text and to print.
 _THEMES = {
@@ -79,9 +87,7 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   있을 때만 "quote" 를 써라. quote 는 전체에서 최대 2장.
 - 항목이 6개 이상으로 많거나 둘을 나란히 견주는 장이면 layout 에
   "two-column" 을 써라. 같은 장이 계속 이어지면 발표가 지루해진다.
-- theme 은 주제에 맞는 색 이름 하나다. 다음 중에서만 골라라:
-  {themes}
-- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
+{theme_rule}- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
   하나의 발표가 되어야 한다.
 - 내용은 쓰지 마라. 제목과 layout 만.
 - 요청이 한 단어여도 되묻지 마라. 주제만 주어졌으면 그 주제를 처음 접하는
@@ -93,8 +99,7 @@ JSON 객체로만 답하라.
 예:
 {{"title": "전이학습의 소량 데이터 효율성",
   "subtitle": "의료 영상 연구자를 위한 30분 개요",
-  "theme": "청록",
-  "slides": [{{"title": "전이학습의 소량 데이터 효율성", "layout": "title"}},
+  {theme_example}"slides": [{{"title": "전이학습의 소량 데이터 효율성", "layout": "title"}},
              {{"title": "왜 데이터가 부족한가", "layout": "bullets"}},
              {{"title": "사전학습과 미세조정 비교", "layout": "two-column"}}]}}
 
@@ -315,15 +320,22 @@ async def write(
     api_key: str,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    tokens: dict[str, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `slide`, a final `deck` and one `usage` event.
 
     The caller owns persistence, billing and the artifact — this only writes.
     A slide that fails is marked and the rest continues, because eight slides
     and a gap is worth more than nothing.
+
+    `tokens` is the project's design system, when it wears one. Its accent
+    replaces the model's colour choice outright rather than being offered as a
+    default: a deck that is nearly the project's colour is worse than one that
+    is plainly not.
     """
     usage = {"inputTokens": 0, "outputTokens": 0}
     wanted = requested_slides(request)
+    fixed_accent = (tokens or {}).get("accent") or ""
 
     yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
     try:
@@ -334,7 +346,10 @@ async def write(
                 _OUTLINE_PROMPT.format(
                     lo=wanted or _MIN_SLIDES,
                     hi=wanted or _DEFAULT_MAX,
-                    themes=" / ".join(_THEMES),
+                    theme_rule=(
+                        "" if fixed_accent else _THEME_RULE.format(themes=" / ".join(_THEMES))
+                    ),
+                    theme_example="" if fixed_accent else '"theme": "청록",\n  ',
                     request=request[:2000],
                 ),
                 trusted_context=trusted_context,
@@ -355,7 +370,7 @@ async def write(
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
     title, subtitle, plan = _parse_outline(text)
-    accent = _theme_accent(text)
+    accent = fixed_accent or _theme_accent(text)
     # Only an empty outline is a failure; a short one is a narrow topic.
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}

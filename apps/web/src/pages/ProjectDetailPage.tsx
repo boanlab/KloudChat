@@ -33,6 +33,7 @@ export function ProjectDetailPage() {
     projects,
     sessions,
     skills,
+    designs,
     memories,
     updateProject,
     deleteProject,
@@ -82,6 +83,9 @@ export function ProjectDetailPage() {
     skills.some((skill) => skill.id === id && skill.enabled),
   )
   const projectMemories = memories.filter((m) => m.scope === project.id)
+  // A design system the account lost access to leaves the select on its first
+  // entry; the project keeps the id until somebody changes it.
+  const selectedDesign = designs.find((d) => d.id === project.designSystemId)
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
 
   return (
@@ -249,6 +253,44 @@ export function ProjectDetailPage() {
               setDirty(true)
             }}
           />
+        </Card>
+
+        <Card className="space-y-3 p-4">
+          <div>
+            <p className="text-base font-medium">{t('디자인')}</p>
+            {/* Named, because the alternative is a picker whose effect nobody
+                can predict: this changes three surfaces and leaves two alone. */}
+            <p className="text-sm text-muted">
+              {t('슬라이드 색과 서체, 보고서 표지, 이미지 스타일에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedDesign && (
+              <span
+                aria-hidden
+                className="size-5 shrink-0 rounded-control border border-line"
+                style={{ background: selectedDesign.tokens.accent }}
+              />
+            )}
+            <select
+              aria-label={t('디자인')}
+              value={project.designSystemId ?? ''}
+              onChange={(e) =>
+                void updateProject(project.id, { designSystemId: e.target.value || null })
+              }
+              className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+            >
+              <option value="">{t('사용 안 함 — 기본 모양')}</option>
+              {designs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedDesign?.description && (
+            <p className="text-sm text-faint">{selectedDesign.description}</p>
+          )}
         </Card>
 
         <Tabs<Tab>

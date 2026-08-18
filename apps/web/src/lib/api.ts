@@ -667,6 +667,8 @@ export interface ProjectRow {
   emoji: string
   instructions: string
   skillIds: string[]
+  /** The design system everything in this project wears. Null is the default look. */
+  designSystemId: string | null
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
@@ -759,6 +761,41 @@ export const templatesApi = {
   update: (id: string, patch: Partial<TemplateRow>) =>
     call<TemplateRow>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
+}
+
+/** The four values every renderer reads. Always complete on the wire. */
+export interface DesignTokens {
+  accent: string
+  ink: string
+  muted: string
+  font: 'gothic' | 'serif'
+}
+
+export interface DesignRow {
+  id: string
+  name: string
+  description: string
+  tokens: DesignTokens
+  /** Voice and vocabulary, capped short — it reaches the model on every turn. */
+  body: string
+  /** English phrase appended to this project's image prompts. */
+  imageStyle: string
+  /** Craft rule keys — see the API's `services/design.py`. */
+  craft: string[]
+  /** Offered to every account. Administrators only. */
+  shared: boolean
+  /** Whether the caller may edit or remove it. */
+  mine: boolean
+  updatedAt: string
+}
+
+export const designsApi = {
+  list: () => call<DesignRow[]>('/designs'),
+  create: (payload: Partial<DesignRow> & { name: string }) =>
+    call<DesignRow>('/designs', body(payload)),
+  update: (id: string, patch: Partial<DesignRow>) =>
+    call<DesignRow>(`/designs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
 
 export const skillsApi = {

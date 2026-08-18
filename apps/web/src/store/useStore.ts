@@ -13,6 +13,7 @@ import {
   authConfig,
   auth,
   connectorsApi,
+  designsApi,
   keysApi,
   filesApi,
   memoryApi,
@@ -34,6 +35,7 @@ import type {
   GovernancePolicy,
   CatalogEntry,
   ConnectorRow,
+  DesignRow,
   JobRow,
   FileRow,
   MemoryRow,
@@ -147,6 +149,8 @@ interface State {
   projects: Project[]
   artifacts: Artifact[]
   skills: Skill[]
+  /** Looks this account can attach to a project: its own, plus shared ones. */
+  designs: DesignRow[]
   availableTools: ToolCatalogEntry[]
   memories: MemoryEntry[]
   agents: Agent[]
@@ -638,6 +642,7 @@ export const useStore = create<State>((set, get) => ({
       projects: [],
       artifacts: [],
       skills: [],
+      designs: [],
       availableTools: [],
       memories: [],
       agents: [],
@@ -704,6 +709,7 @@ export const useStore = create<State>((set, get) => ({
   projects: [],
   artifacts: [],
   skills: [],
+  designs: [],
   availableTools: [],
   memories: [],
   agents: [],
@@ -724,13 +730,15 @@ export const useStore = create<State>((set, get) => ({
       projectsApi.list(),
       artifactsApi.list(),
       skillsApi.list(),
+      designsApi.list(),
       memoryApi.list(),
       agentsApi.list(),
       connectorsApi.list(),
       connectorsApi.catalog(),
       toolsApi.list(),
     ])
-    const [projects, artifacts, skills, memories, agents, connectors, catalog, tools] = results
+    const [projects, artifacts, skills, designs, memories, agents, connectors, catalog, tools] =
+      results
     // Something changed under us; that write already holds the truth.
     if (epoch !== workspaceEpoch) return
     set((s) => ({
@@ -744,6 +752,7 @@ export const useStore = create<State>((set, get) => ({
           ? artifacts.value.map(toArtifact)
           : s.artifacts,
       skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
+      designs: designs.status === 'fulfilled' ? designs.value : s.designs,
       availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
       memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
       agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
@@ -2037,6 +2046,7 @@ function toProject(p: ProjectRow): Project {
     files: p.files.map(toProjectFile),
     sessionIds: p.sessionIds,
     skillIds: p.skillIds,
+    designSystemId: p.designSystemId ?? null,
     updatedAt: p.updatedAt,
   }
 }

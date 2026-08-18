@@ -16,7 +16,16 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings
 from app.models.chat import ChatSession
 from app.models.user import User
-from app.models.workspace import Agent, AgentVisibility, Memory, Project, Skill, StoredFile
+from app.models.workspace import (
+    Agent,
+    AgentVisibility,
+    DesignSystem,
+    Memory,
+    Project,
+    Skill,
+    StoredFile,
+)
+from app.services import design as design_service
 from app.services import starter
 
 MAX_ACTIVE_SKILLS = 3
@@ -53,6 +62,10 @@ class AppliedSkill:
 class WorkspaceContext:
     blocks: tuple[ContextBlock, ...]
     applied_skills: tuple[AppliedSkill, ...]
+    #: The project's design tokens, or `None` when it wears no design system.
+    #: `None` rather than the defaults, because the difference is what the deck
+    #: outline consults: with no design system the model still picks the accent.
+    design_tokens: dict[str, str] | None = None
 
     @property
     def trusted(self) -> list[str]:
@@ -101,6 +114,23 @@ async def _load_agent(
     if agent.kinds and session.kind.value not in agent.kinds:
         raise WorkspaceContextError("agent_kind_mismatch")
     return agent
+
+
+async def _load_design_system(
+    db: AsyncSession, user: User, project: Project | None
+) -> DesignSystem | None:
+    """The look this project wears, if it still exists and is still visible.
+
+    A shared design system that an administrator later un-shared drops out
+    rather than raising: it is decoration, and refusing the turn over it would
+    make somebody else's edit break this person's work.
+    """
+    if project is None or not project.design_system_id:
+        return None
+    row = await db.get(DesignSystem, project.design_system_id)
+    if row is None or (row.owner_id != user.id and not row.shared):
+        return None
+    return row
 
 
 async def _load_project(
@@ -284,6 +314,7 @@ async def assemble(
     """Build one authorised context without auto-activating installed skills."""
     agent = await _load_agent(db, user, session)
     project = await _load_project(db, user, session)
+    design = await _load_design_system(db, user, project)
     instructions, knowledge = await _project_blocks(db, user, project)
     memories = await _memory_block(db, user, project)
     resolved = await _resolve_skills(
@@ -300,6 +331,11 @@ async def assemble(
         blocks.append(ContextBlock("agent.instructions", text, True))
     if instructions:
         blocks.append(ContextBlock("project.instructions", instructions, True))
+    # After the project's own instructions and before the skills: the design is
+    # a property of the project, and a skill the user switched on for this turn
+    # is the more specific instruction, so it comes later and wins.
+    if design_block := design_service.prompt_block(design, session.kind):
+        blocks.append(ContextBlock("project.design", design_block, True))
     blocks.extend(_skill_blocks(resolved))
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
@@ -342,7 +378,24 @@ async def assemble(
         )
         for skill, metadata in resolved
     )
-    return WorkspaceContext(tuple(blocks), applied)
+    return WorkspaceContext(
+        tuple(blocks),
+        applied,
+        design_service.tokens_of(design) if design is not None else None,
+    )
+
+
+async def design_for(
+    db: AsyncSession, user: User, session: ChatSession
+) -> DesignSystem | None:
+    """The design system behind one session, for surfaces that assemble no context.
+
+    Image generation is a single upstream call with a prompt, not a turn with a
+    system message, so it never goes through `assemble`. Without this the one
+    surface whose whole output is a look was the one surface the look did not
+    reach.
+    """
+    return await _load_design_system(db, user, await _load_project(db, user, session))
 
 
 async def agent_settings(
@@ -364,4 +417,5 @@ __all__ = [
     "WorkspaceContextError",
     "agent_settings",
     "assemble",
+    "design_for",
 ]
