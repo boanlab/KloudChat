@@ -1114,6 +1114,43 @@ const EN: Record<string, string> = {
   '도구 백엔드 주소': 'Tool backend URL',
   '{name} 주소': '{name} URL',
   '이 결과물을 삭제합니다': 'Delete this artifact',
+
+  // ── 디자인 시스템 ───────────────────────────────────────────────
+  '디자인': 'Design',
+  '디자인 시스템': 'Design systems',
+  '디자인 추가': 'Add a design',
+  '슬라이드 색과 서체, 보고서 표지, 이미지 스타일에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
+    'Applies to slide colour and type, report covers and image style. Audio and video are unaffected.',
+  '사용 안 함 — 기본 모양': 'None — the default look',
+  '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
+    'Attach one to a project and its slides, reports and images come out in the same colour and type.',
+  '아직 디자인이 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.':
+    'No designs yet. Make one and you can pick it on a project.',
+  '한 줄 설명': 'One-line description',
+  '예: 학과 공식 문서': 'e.g. Department standard document',
+  '강조색': 'Accent',
+  '본문색': 'Body',
+  '보조색': 'Secondary',
+  '{label} 색상 코드': '{label} colour code',
+  '서체': 'Typeface',
+  '고딕 — 발표·화면': 'Gothic — slides and screen',
+  '명조 — 보고서·인쇄': 'Serif — reports and print',
+  '내보내는 파일에 실제로 쓰이는 두 가지입니다.': 'The two faces the exported files actually use.',
+  '문체 규율': 'Voice',
+  '이 프로젝트의 모든 턴에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.':
+    'Sent with every turn in the project. Anything longer belongs in the project instructions.',
+  '예: 제목은 명사구로 쓴다. 한 문장에 한 사실만 담는다.': 'e.g. Write headings as noun phrases. One fact per sentence.',
+  '이미지 스타일': 'Image style',
+  '이미지 프롬프트 뒤에 그대로 붙습니다. 영어로 적는 편이 잘 통합니다.':
+    'Appended to image prompts verbatim. English tends to work better.',
+  '함께 적용할 규칙': 'Rules to carry with it',
+  '군더더기 덜기': 'Cut the filler',
+  '이모지와 채움말을 빼고, 채울 내용이 없으면 분량을 줄입니다.':
+    'Drops emoji and filler words, and shortens rather than padding when there is nothing to say.',
+  '글의 결 맞추기': 'Keep one texture',
+  '강조 방법과 제목 단계를 문서 안에서 하나로 유지합니다.':
+    'Keeps emphasis and heading depth consistent through the document.',
+  '모든 사용자에게 제공': 'Offer to every account',
   '이 스킬을 삭제합니다': 'Delete this skill',
   '이 에이전트를 삭제합니다': 'Delete this agent',
   '고정하면 모든 대화에 먼저 전달됩니다': 'Pinned memories go into every conversation',

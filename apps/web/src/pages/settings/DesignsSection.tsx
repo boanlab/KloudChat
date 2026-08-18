@@ -63,7 +63,14 @@ function Swatch({
           onChange={(e) => onChange(e.target.value)}
           className="h-9 w-12 shrink-0 cursor-pointer rounded-control border border-line bg-panel p-1"
         />
-        <Input value={value} onChange={(e) => onChange(e.target.value)} />
+        {/* The picker and the code are two views of one value. The code field
+            carries its own name because a `<label>` binds to the first control
+            inside it, which is the picker — leaving this one unaddressable. */}
+        <Input
+          aria-label={t('{label} 색상 코드').replace('{label}', t(label))}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
       </span>
     </Field>
   )
