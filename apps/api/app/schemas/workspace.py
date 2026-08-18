@@ -523,6 +523,52 @@ class DesignSystemOut(Wire):
         return out
 
 
+class DesignTemplateOut(Wire):
+    """One entry of the rendering catalogue.
+
+    Deliberately the same shape the prompt-template gallery already renders —
+    title, description, what you have to bring, a starting sentence — plus the
+    two things only this catalogue has: which surface it belongs to, and
+    whether it has a preview to show.
+    """
+
+    id: str
+    kind: str
+    surface: str
+    name: str
+    description: str
+    category: str
+    fills: JsonList = Field(default_factory=list)
+    example_prompt: str
+    #: The English half of the same card. Both sides travel; the client picks.
+    name_en: str = ""
+    description_en: str = ""
+    category_en: str = ""
+    fills_en: JsonList = Field(default_factory=list)
+    example_prompt_en: str = ""
+    #: `True` when `/design-templates/{id}/preview` has something to render.
+    has_preview: bool = True
+
+    @classmethod
+    def of(cls, t: object) -> DesignTemplateOut:
+        return cls(
+            id=t.id,
+            kind=t.kind,
+            surface=t.surface.value,
+            name=t.name,
+            description=t.description,
+            category=t.category,
+            fills=list(t.fills),
+            example_prompt=t.example_prompt,
+            name_en=t.name_en,
+            description_en=t.description_en,
+            category_en=t.category_en,
+            fills_en=list(t.fills_en),
+            example_prompt_en=t.example_prompt_en,
+            has_preview=bool(t.seed and t.sample),
+        )
+
+
 class DesignSystemIn(Wire):
     name: str = Field(min_length=1, max_length=60)
     description: str = Field(default="", max_length=200)

@@ -1,0 +1,90 @@
+<!doctype html>
+<!--
+  KloudChat document seed — report.
+
+  A4 portrait, a cover page of its own, then continuous body. Unlike the deck
+  seeds this does not snap: a document is read by scrolling, and the print
+  rules only force the cover onto its own page.
+
+  No script. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --bg: #ffffff;
+    --paper: #ffffff;
+    --border: color-mix(in srgb, var(--ink) 14%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: color-mix(in srgb, var(--ink) 5%, #fff);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 4.5rem 3.5rem 6rem;
+    background: var(--paper);
+    min-height: 100vh;
+  }
+  .cover {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 2.5rem;
+    margin-bottom: 3rem;
+  }
+  .cover h1 {
+    margin: 0 0 0.6rem;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .cover .lead { margin: 0; color: var(--muted); font-size: 1.05rem; }
+  section { margin: 0 0 2.6rem; }
+  h2 {
+    margin: 0 0 0.8rem;
+    font-size: 1.35rem;
+    letter-spacing: -0.01em;
+    padding-left: 0.7rem;
+    border-left: 4px solid var(--accent);
+  }
+  h3 { margin: 1.6rem 0 0.4rem; font-size: 1.05rem; color: var(--muted); }
+  p { margin: 0 0 0.9rem; text-align: justify; text-wrap: pretty; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin: 0 0 0.35rem; }
+  li::marker { color: var(--accent); }
+  blockquote {
+    margin: 1.2rem 0; padding: 0.6rem 1.1rem;
+    border-left: 3px solid var(--rule); color: var(--muted);
+  }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem; }
+  th, td { padding: 0.5em 0.7em; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--accent); }
+  small { color: var(--muted); }
+
+  @page { size: A4 portrait; margin: 20mm 18mm; }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
+    .cover { page-break-after: always; break-after: page; padding-bottom: 40vh; }
+    h2 { page-break-after: avoid; break-after: avoid; }
+    section { page-break-inside: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

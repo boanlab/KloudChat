@@ -6,6 +6,7 @@ import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer } from '@/components/chat/Composer'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
+import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
@@ -56,8 +57,9 @@ function Intro({ kind }: { kind: SessionKind }) {
           </button>
         ))}
       </div>
-      <div className="mt-4 flex justify-center">
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
         <TemplateGallery kind={kind} onPick={setDraft} />
+        <DesignGallery kind={kind} />
       </div>
     </div>
   )

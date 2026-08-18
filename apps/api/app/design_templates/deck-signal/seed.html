@@ -1,0 +1,103 @@
+<!doctype html>
+<!--
+  KloudChat deck seed — signal.
+
+  A dark room deck: high contrast, fewer words, the accent doing the pointing.
+  Same contract as the editorial seed — no script, scroll-snap navigation,
+  one slide per printed page. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --bg: #0e1116;
+    --surface: #161b22;
+    --paper: #f5f6f7;
+    --border: rgba(255,255,255,0.10);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--paper);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    scroll-snap-type: y mandatory;
+    overflow-y: auto;
+    height: 100vh;
+  }
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8vh 8vw 10vh;
+    position: relative;
+  }
+  .num {
+    position: absolute; right: 8vw; bottom: 4vh;
+    font-size: 0.75rem; color: rgba(255,255,255,0.35); letter-spacing: 0.12em;
+  }
+  h2 {
+    margin: 0 0 0.6em;
+    font-size: clamp(1.7rem, 4vw, 3rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  h2::after {
+    content: ""; display: block; width: 2.4rem; height: 3px;
+    margin-top: 0.5em; background: var(--accent);
+  }
+  h3 { margin: 1.2em 0 0.3em; font-size: 0.95rem; letter-spacing: 0.06em;
+       text-transform: uppercase; color: var(--accent); }
+  p { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+      color: rgba(245,246,247,0.82); text-wrap: pretty; }
+  ul, ol { margin: 0; padding-left: 1em; }
+  li { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.7vw, 1.35rem); }
+  li::marker { color: var(--accent); }
+  strong { color: #fff; font-weight: 650; }
+  blockquote { margin: 0; font-size: clamp(1.6rem, 3.6vw, 2.6rem); line-height: 1.25;
+               text-wrap: balance; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th, td { padding: 0.55em 0.7em; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--accent); font-weight: 600; }
+
+  .slide.cover { background: linear-gradient(180deg, var(--surface), var(--bg)); }
+  .slide.cover h2 { font-size: clamp(2.1rem, 5.5vw, 4rem); }
+  .slide.cover h2::after { display: none; }
+  .slide.cover .lead { color: rgba(245,246,247,0.6); max-width: 44ch; }
+
+  .slide.quote { background: var(--surface); }
+  .slide.quote h2 { font-size: 0.85rem; font-weight: 600; letter-spacing: 0.1em;
+                    text-transform: uppercase; color: rgba(245,246,247,0.45);
+                    margin-bottom: 1.4em; }
+  .slide.quote h2::after { display: none; }
+  .slide.quote blockquote { color: var(--accent); }
+
+  .slide.split .cols { display: grid; gap: 2.5rem; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 720px) { .slide.split .cols { grid-template-columns: 1fr; } }
+
+  @page { size: A4 landscape; margin: 10mm; }
+  @media print {
+    /* Printers do not lay ink on the dark; the deck inverts for paper. */
+    body { background: #fff; color: #111; height: auto; overflow: visible; }
+    .slide, .slide.cover, .slide.quote { background: #fff; min-height: auto; height: auto;
+      page-break-after: always; break-after: page; padding: 8mm 10mm; }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    p { color: #333; }
+    strong { color: #000; }
+    .num { position: static; margin-top: 1.5em; color: #666; }
+  }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

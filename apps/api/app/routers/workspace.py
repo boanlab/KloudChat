@@ -41,6 +41,7 @@ from app.schemas.workspace import (
     ArtifactVersionOut,
     DesignSystemIn,
     DesignSystemOut,
+    DesignTemplateOut,
     FileOut,
     KnowledgeUrl,
     MemoryIn,
@@ -59,6 +60,7 @@ from app.schemas.workspace import (
 from app.services import deck as deck_service
 from app.services import (
     deck_export,
+    design_templates,
     factcheck,
     index_client,
     report_export,
@@ -1188,6 +1190,55 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
     )
     await db.delete(row)
     await db.commit()
+
+
+# ══ design templates ═══════════════════════════════════════════════════
+#
+# The rendering catalogue: shapes the model writes into. Ships inside the
+# image rather than living in a table, so these are read-only — the thing a
+# user writes for themselves is a prompt template, which does have one.
+
+
+@router.get("/design-templates", response_model=list[DesignTemplateOut])
+async def list_design_templates(user: CurrentUser, surface: str | None = None):
+    """Every rendering template, or those for one surface."""
+    rows = design_templates.all_templates()
+    if surface:
+        rows = [t for t in rows if t.surface.value == surface]
+    return [DesignTemplateOut.of(t) for t in rows]
+
+
+@router.get("/design-templates/{template_id}/preview")
+async def preview_design_template(template_id: str):
+    """This template's own shape, filled with its sample.
+
+    Served as a document rather than as a string in JSON because the gallery
+    renders it in a sandboxed iframe, which needs a URL.
+
+    **Unauthenticated, like the branding logo.** The body is a constant that
+    ships in this image and is the same for every account — there is no user
+    data in it to protect. An iframe `src` cannot carry an Authorization
+    header, and the `?t=` escape hatch `current_viewer` provides puts a live
+    access token into the proxy's access log. Paying that for a static asset
+    would buy nothing.
+
+    The client still sandboxes the frame; the headers here keep the document
+    inert on its own terms.
+    """
+    template = design_templates.get(template_id)
+    if template is None or not template.seed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
+    return Response(
+        content=design_templates.preview(template),
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "public, max-age=300",
+        },
+    )
 
 
 # ══ agent knowledge ════════════════════════════════════════════════════

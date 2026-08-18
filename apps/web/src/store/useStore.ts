@@ -14,6 +14,7 @@ import {
   auth,
   connectorsApi,
   designsApi,
+  designTemplatesApi,
   keysApi,
   filesApi,
   memoryApi,
@@ -36,6 +37,7 @@ import type {
   CatalogEntry,
   ConnectorRow,
   DesignRow,
+  DesignTemplateRow,
   JobRow,
   FileRow,
   MemoryRow,
@@ -59,6 +61,7 @@ import type {
   Session,
   Preferences,
   PrivacyAction,
+  CodeArtifact,
   DeckArtifact,
   ReportArtifact,
   ReportSection,
@@ -151,6 +154,8 @@ interface State {
   skills: Skill[]
   /** Looks this account can attach to a project: its own, plus shared ones. */
   designs: DesignRow[]
+  /** Shapes the answer can come out in. Ships with the server; read-only. */
+  designTemplates: DesignTemplateRow[]
   availableTools: ToolCatalogEntry[]
   memories: MemoryEntry[]
   agents: Agent[]
@@ -213,6 +218,12 @@ interface State {
       attachmentNames?: string[]
       /** Installed skills selected for this turn only. */
       activatedSkillIds?: string[]
+      /**
+       * A rendering template picked in the gallery. Sent with the turn rather
+       * than saved first: the session may not exist yet when it is chosen, and
+       * the server makes it sticky from there.
+       */
+      renderTemplateId?: string
       privacyAction?: PrivacyAction
       privacyDecisionToken?: string
             /**
@@ -224,6 +235,14 @@ interface State {
   ) => Promise<string>
   stopStreaming: () => void
   renameSession: (id: string, title: string) => Promise<void>
+  /**
+   * Puts a rendering template on a session, or takes it off.
+   *
+   * The turn makes it sticky server-side, so clearing the chip has to reach
+   * the row as well — otherwise the next turn keeps writing into a shape the
+   * composer no longer shows.
+   */
+  setSessionTemplate: (id: string, templateId: string | null) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   /** Bulk removal from the history screen. Returns how many the server removed. */
   deleteSessions: (payload: { ids?: string[]; all?: boolean }) => Promise<number>
@@ -293,6 +312,13 @@ interface State {
    */
   pendingAttachment: FileRow | null
   setPendingAttachment: (file: FileRow | null) => void
+  /**
+   * Rendering template picked in the gallery, waiting for the turn that will
+   * use it. Held here rather than on the session because the session may not
+   * exist yet — the server makes it sticky once the first turn arrives.
+   */
+  pendingTemplate: DesignTemplateRow | null
+  setPendingTemplate: (template: DesignTemplateRow | null) => void
   /** Whether this instance has a Whisper backend. Drives the composer's mic. */
   dictationEnabled: boolean
   /** Service name and logo to render. An empty logo draws the default mark. */
@@ -643,6 +669,7 @@ export const useStore = create<State>((set, get) => ({
       artifacts: [],
       skills: [],
       designs: [],
+      designTemplates: [],
       availableTools: [],
       memories: [],
       agents: [],
@@ -710,6 +737,7 @@ export const useStore = create<State>((set, get) => ({
   artifacts: [],
   skills: [],
   designs: [],
+  designTemplates: [],
   availableTools: [],
   memories: [],
   agents: [],
@@ -731,14 +759,25 @@ export const useStore = create<State>((set, get) => ({
       artifactsApi.list(),
       skillsApi.list(),
       designsApi.list(),
+      designTemplatesApi.list(),
       memoryApi.list(),
       agentsApi.list(),
       connectorsApi.list(),
       connectorsApi.catalog(),
       toolsApi.list(),
     ])
-    const [projects, artifacts, skills, designs, memories, agents, connectors, catalog, tools] =
-      results
+    const [
+      projects,
+      artifacts,
+      skills,
+      designs,
+      designTemplates,
+      memories,
+      agents,
+      connectors,
+      catalog,
+      tools,
+    ] = results
     // Something changed under us; that write already holds the truth.
     if (epoch !== workspaceEpoch) return
     set((s) => ({
@@ -753,6 +792,8 @@ export const useStore = create<State>((set, get) => ({
           : s.artifacts,
       skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
       designs: designs.status === 'fulfilled' ? designs.value : s.designs,
+      designTemplates:
+        designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
       availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
       memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
       agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
@@ -1030,6 +1071,26 @@ export const useStore = create<State>((set, get) => ({
     }))
 
     const perform = async () => {
+      // A rendering template replaces the surface's built-in track, exactly as
+      // it does on the server — the events are `block`/`page`, not
+      // `section`/`slide`, so the runner has to match.
+      const usesTemplate = Boolean(
+        opts.renderTemplateId ??
+          get().sessions.find((session) => session.id === id)?.renderTemplateId,
+      )
+      if (usesTemplate && (kind === 'report' || kind === 'slides')) {
+        await streamPage(
+          set,
+          get,
+          id,
+          text,
+          model,
+          opts.activatedSkillIds,
+          opts.renderTemplateId,
+        )
+        return id
+      }
+
       if (kind === 'report') {
         await streamReport(set, get, id, text, model, opts.activatedSkillIds)
         return id
@@ -1112,6 +1173,19 @@ export const useStore = create<State>((set, get) => ({
   stopStreaming: () => get().abortStream?.(),
 
   // Optimistic, then persisted.
+  setSessionTemplate: async (id, templateId) => {
+    set((s) => ({
+      sessions: s.sessions.map((c) =>
+        c.id === id ? { ...c, renderTemplateId: templateId } : c,
+      ),
+    }))
+    // `''` is what clears it: `null` on the wire is indistinguishable from a
+    // patch that never mentioned the field.
+    await sessionsApi
+      .update(id, { renderTemplateId: templateId ?? '' })
+      .catch(() => get().loadSessions())
+  },
+
   renameSession: async (id, title) => {
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, title } : c)) }))
     await sessionsApi.update(id, { title }).catch(() => get().loadSessions())
@@ -1316,6 +1390,12 @@ export const useStore = create<State>((set, get) => ({
         aspect: imageOptions.aspect,
         style: imageOptions.style,
         count: imageOptions.count,
+        // An image template is spent on the picture it shaped, not kept on the
+        // session: unlike a deck or a document there is no file whose shape it
+        // has to keep matching.
+        templateId: get().pendingTemplate?.kind === 'image'
+          ? get().pendingTemplate?.id
+          : undefined,
       })
       set((s) => ({
         artifacts: [...rows.map(toArtifact), ...s.artifacts],
@@ -1439,6 +1519,8 @@ export const useStore = create<State>((set, get) => ({
   setDraft: (draft) => set({ draft }),
   pendingAttachment: null,
   setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
+  pendingTemplate: null,
+  setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   dictationEnabled: false,
   brand: { name: 'KloudChat', logo: '' },
   refreshBrand: async () => {
@@ -2008,6 +2090,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     model: raw.model,
     routingMode: raw.routingMode ?? 'manual',
     artifactId: raw.artifactId,
+    renderTemplateId: raw.renderTemplateId ?? null,
     pinned: raw.pinned,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
@@ -2725,6 +2808,160 @@ async function streamReport(
     void get().loadSessions()
   }
 }
+
+/**
+ * A turn that writes into a rendering template.
+ *
+ * The draft is an `html` artifact from the first event, so the panel shows the
+ * template's own shape filling in rather than a blank frame — the blocks
+ * arrive one at a time and are stitched into a preview until the server sends
+ * the real file.
+ */
+async function streamPage(
+  set: Set,
+  get: Get,
+  sessionId: string,
+  text: string,
+  model: string,
+  activatedSkillIds?: string[],
+  renderTemplateId?: string,
+) {
+  const draftId = uid('a')
+  const assistantId = uid('m')
+  const now = new Date().toISOString()
+
+  const draft: Artifact = {
+    id: draftId,
+    kind: 'html',
+    title: text.slice(0, 60),
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    sessionId,
+    projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
+    language: 'html',
+    content: '',
+  }
+
+  set((s) => ({
+    streaming: true,
+    artifacts: [draft, ...s.artifacts],
+    openArtifactId: draftId,
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            artifactId: draftId,
+            messages: [
+              ...c.messages,
+              { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
+            ],
+          }
+        : c,
+    ),
+  }))
+
+  const patchPage = (fn: (a: CodeArtifact) => CodeArtifact) =>
+    set((s) => ({
+      artifacts: s.artifacts.map((a) => (a.id === draftId && a.kind === 'html' ? fn(a) : a)),
+    }))
+
+  // What has been written so far, in order. Kept beside the artifact rather
+  // than parsed back out of its markup: the finished file is the server's, and
+  // this is only the scaffold that stands until it arrives.
+  const written = new Map<string, string>()
+  const order: string[] = []
+
+  const controller = new AbortController()
+  set({ abortStream: () => controller.abort() })
+  let settled = false
+
+  try {
+    for await (const e of streamSession(
+      sessionId,
+      { content: text, model, activatedSkillIds, renderTemplateId },
+      controller.signal,
+    )) {
+      switch (e.type) {
+        case 'skills_applied':
+          patchMessage(set, sessionId, assistantId, (message) => ({
+            ...message,
+            steps: upsertStep(message.steps, appliedSkillsStep(e)),
+          }))
+          break
+        case 'title':
+          patchPage((a) => ({ ...a, title: e.title }))
+          break
+        case 'block': {
+          if (!order.includes(e.block.title)) order.push(e.block.title)
+          written.set(e.block.title, e.block.html)
+          // A plain scaffold, not the template's CSS: pretending to be the
+          // finished design while the blocks are still arriving would make the
+          // real file look like a change of mind when it lands.
+          const body = order
+            .map((title) => {
+              const html = written.get(title) ?? ''
+              return `<section><h2>${escapeHtml(title)}</h2>${html || '<p class="pending">…</p>'}</section>`
+            })
+            .join('\n')
+          patchPage((a) => ({ ...a, content: draftDocument(body) }))
+          break
+        }
+        case 'page':
+          patchPage((a) => ({ ...a, content: e.html }))
+          break
+        case 'step':
+          patchMessage(set, sessionId, assistantId, (m) => ({
+            ...m,
+            steps: upsertStep(m.steps, toStep(e as unknown as Record<string, unknown>)),
+          }))
+          break
+        case 'usage':
+          settled = true
+          chargeCredits(set, get, e.credits)
+          break
+        case 'error':
+          settled = true
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
+          break
+        case 'artifact':
+          await get().loadArtifacts()
+          set((s) => ({
+            artifacts: s.artifacts.filter((a) => a.id !== draftId),
+            openArtifactId: e.artifactId,
+            sessions: s.sessions.map((c) =>
+              c.id === sessionId ? { ...c, artifactId: e.artifactId } : c,
+            ),
+          }))
+          break
+      }
+    }
+  } catch (err) {
+    settled = true
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      patchMessage(set, sessionId, assistantId, (m) => ({
+        ...m,
+        error: errorMessage(err, tr('문서를 만들지 못했습니다.')),
+      }))
+    }
+    if (isClientRefusal(err)) throw err
+  } finally {
+    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
+    set({ streaming: false, abortStream: null })
+    void get().loadSessions()
+  }
+}
+
+const escapeHtml = (text: string) =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/** The holding page a template turn shows while its blocks are still arriving. */
+const draftDocument = (body: string) =>
+  `<!doctype html><html lang="ko"><head><meta charset="utf-8" />` +
+  `<style>body{margin:0;padding:2rem 2.4rem;font-family:system-ui,sans-serif;` +
+  `line-height:1.6;color:#1a1a1a}section{margin:0 0 1.6rem}` +
+  `h2{font-size:1.1rem;margin:0 0 .4rem}.pending{color:#9aa0a6}</style>` +
+  `</head><body>${body}</body></html>`
 
 /**
  * A slides turn. Slides fill into a local draft, which is replaced by the

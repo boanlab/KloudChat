@@ -1,0 +1,72 @@
+<!doctype html>
+<!--
+  KloudChat document seed — one-pager.
+
+  Everything on one page, so the print rules forbid the page breaks the report
+  seed forces. Sections are cards in a two-column grid that collapses on a
+  narrow panel and prints as one column.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --paper: #ffffff;
+    --border: color-mix(in srgb, var(--ink) 12%, transparent);
+    --tint: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: color-mix(in srgb, var(--ink) 5%, #fff);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 54rem; margin: 0 auto; padding: 3rem 2.5rem 4rem; background: var(--paper); }
+  .cover { margin-bottom: 2rem; }
+  .cover h1 {
+    margin: 0 0 0.4rem; font-size: clamp(1.6rem, 3.4vw, 2.2rem);
+    line-height: 1.2; letter-spacing: -0.02em; text-wrap: balance;
+  }
+  .cover .lead { margin: 0; color: var(--muted); }
+  .cover::after { content: ""; display: block; width: 3rem; height: 4px;
+                  background: var(--accent); margin-top: 1rem; }
+  .grid { display: grid; gap: 1.1rem; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  section {
+    background: var(--tint); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.1rem 1.3rem;
+  }
+  h2 { margin: 0 0 0.5rem; font-size: 1rem; letter-spacing: 0.02em; color: var(--accent); }
+  h3 { margin: 0.9rem 0 0.3rem; font-size: 0.9rem; color: var(--muted); }
+  p { margin: 0 0 0.6rem; font-size: 0.95rem; text-wrap: pretty; }
+  ul, ol { margin: 0; padding-left: 1.1rem; }
+  li { margin: 0 0 0.3rem; font-size: 0.95rem; }
+  li::marker { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { padding: 0.35em 0.5em; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  blockquote { margin: 0.6rem 0; padding-left: 0.8rem;
+               border-left: 3px solid var(--accent); color: var(--muted); }
+
+  @page { size: A4 portrait; margin: 14mm; }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; margin: 0; padding: 0; }
+    /* One page is the point of a one-pager: nothing may break onto a second. */
+    .grid { grid-template-columns: 1fr 1fr; gap: 6mm; }
+    section { break-inside: avoid; page-break-inside: avoid; background: #fff; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

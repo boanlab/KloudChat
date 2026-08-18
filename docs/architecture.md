@@ -111,7 +111,7 @@ reason.
 
 ## 5. Data model
 
-Twenty migrations under `alembic/versions/`. The principal tables:
+Twenty-one migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
@@ -124,6 +124,9 @@ Twenty migrations under `alembic/versions/`. The principal tables:
 - `design_systems` — the look a project's output wears. `projects.design_system_id`
   is nullable and null by default, and `ON DELETE SET NULL`: removing a look
   costs the projects their look, not the projects
+- `sessions.render_template_id` — the rendering template a session writes into.
+  A plain string, not a foreign key: the catalogue ships inside the API image,
+  and an id that disappears in an upgrade degrades to "no template"
 - `shares` — read-only links. The token is the permission, and revocation is a
   flag rather than a delete
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
@@ -186,6 +189,53 @@ The outline also picks the deck's accent from a fixed palette — unless the
 project wears a design system, in which case the palette rule is dropped from
 the prompt entirely and the accent arrives from the project. A slide count
 stated in the request is honoured up to 50.
+
+### Design templates
+
+The rendering catalogue: shapes the model writes into, as opposed to the
+prompt templates a person writes for themselves. Six ship inside the API image
+under `app/design_templates/<id>/` — two decks, two documents, two image
+recipes — each a `template.toml`, an `instructions.md`, a `seed.html` and a
+`sample.html`.
+
+Picking one **replaces the surface's built-in track**. A slides session with
+`render_template_id` set produces an `html` artifact through `services/page.py`
+instead of a JSON deck, and a report session produces one instead of markdown
+sections. The choice is stored on the session, so a follow-up turn keeps the
+shape without resending it.
+
+The pass structure is the same as the other two tracks — one outline call, then
+one call per block — but **the model never writes layout**. It is given the
+block's layout name and returns the *inside* of that block; `design_templates.
+assemble` puts it inside the markup the seed styles, and `sanitise` reduces it
+to a fixed tag vocabulary first. Script elements, event handlers, remote
+`src`/`href`, and `h1`/`h2` are removed with their contents: the first three
+because the file is downloaded and opened outside the sandbox, the last because
+the wrapper already wrote that heading and a second one prints the title twice.
+
+Two constraints shape every seed:
+
+**No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates
+by CSS scroll-snap rather than a keyboard runtime. That is a smaller deck than
+open-design's, and one that cannot run model-written JavaScript in a browser.
+
+**Print is the export.** There is no headless browser in this image — see
+`report_export`, which chose reportlab over an HTML engine — so every seed
+carries `@media print` rules that put one slide or section on one page. The
+panel offers the `.html` file; the PDF comes from the reader's own print
+dialogue. The file is deliberately not opened in a tab from the app: a `blob:`
+URL inherits this origin.
+
+Image templates produce no artifact of their own. They contribute an English
+`prompt_suffix` to `imagegen.compose_prompt`, ordered after the style chip and
+before the project's design system.
+
+`GET /design-templates` lists the catalogue with both a Korean and an English
+half, and the client picks by language. `GET /design-templates/{id}/preview`
+renders the seed around its own sample and is **unauthenticated**, like the
+branding logo: the body is a constant that ships in this image, an iframe `src`
+cannot carry an Authorization header, and `current_viewer`'s `?t=` escape hatch
+would put a live access token in the proxy log for a static asset.
 
 ### Design systems
 

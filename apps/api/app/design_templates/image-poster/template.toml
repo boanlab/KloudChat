@@ -1,0 +1,17 @@
+kind = "image"
+name = "포스터"
+description = "한 장으로 시선을 잡는 그림. 글자는 넣지 않고 여백을 남깁니다"
+category = "홍보"
+fills = ["무엇을 알리는지", "분위기"]
+example_prompt = "행사 포스터에 쓸 그림을 만들어 줘. 글자는 넣지 말고, 제목을 얹을 자리를 위쪽에 비워 줘.\n\n알리려는 것: "
+layouts = ["cover"]
+prompt_suffix = "poster composition, one dominant subject, clear space at the top for a title, printed paper texture, no text, no lettering, no logos"
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Poster"
+description_en = "One image that carries a room. No lettering, space left for a title"
+category_en = "Promotion"
+fills_en = ["What it announces", "Mood"]
+example_prompt_en = "Make artwork for an event poster. No lettering, and leave the top clear for a title.\n\nWhat it announces: "

@@ -71,6 +71,12 @@ class ChatSession(SQLModel, table=True):
         sa_column=Column(String, nullable=False, default=RoutingMode.manual.value),
     )
     artifact_id: str | None = Field(default=None)
+    #: The rendering template this session writes into, when one was picked.
+    #: A plain string rather than a foreign key: the catalogue ships inside the
+    #: image, so there is no row to point at, and an id that stops existing
+    #: after an upgrade has to degrade to "no template" rather than to a
+    #: session that will not load.
+    render_template_id: str | None = Field(default=None)
     pinned: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))

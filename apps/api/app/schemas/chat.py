@@ -37,6 +37,10 @@ class ImageRequest(Wire):
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
+    #: An `image` design template. It shapes the prompt rather than producing a
+    #: file, so unlike the deck and document templates nothing is stored under
+    #: its name — the picture is the whole output.
+    template_id: str | None = Field(default=None, max_length=60)
     #: Up to four. Each is a separate upstream call and a separate charge.
     count: int = Field(default=1, ge=1, le=4)
 
@@ -111,6 +115,8 @@ class SessionOut(Wire):
     model: str
     routing_mode: RoutingMode
     artifact_id: str | None
+    #: The rendering template this session writes into, if one was picked.
+    render_template_id: str | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime
@@ -181,6 +187,7 @@ class SessionPatch(Wire):
     model: str | None = None
     routing_mode: RoutingMode | None = None
     project_id: str | None = None
+    render_template_id: str | None = Field(default=None, max_length=60)
 
     @field_validator("routing_mode", mode="before")
     @classmethod
@@ -203,6 +210,10 @@ class SendMessage(Wire):
     #: Installed skills explicitly selected for this one turn. Empty means no
     #: skill; installation alone never injects a procedure.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    #: A rendering template from `/design-templates`. Sticky: it is stored on
+    #: the session, so a follow-up turn keeps the shape without resending it.
+    #: `""` clears it, which is how somebody goes back to the built-in track.
+    render_template_id: str | None = Field(default=None, max_length=60)
     privacy_action: Literal[
         "route_strict_local", "mask_external", "send_raw_external"
     ] | None = None

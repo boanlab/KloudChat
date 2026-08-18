@@ -4,6 +4,7 @@ import {
   Columns2,
   Gauge,
   Globe,
+  LayoutGrid,
   Paperclip,
   Plug,
   Loader2,
@@ -18,7 +19,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
-import { errorMessage, PrivacyDecisionError, transcribe } from '@/lib/api'
+import { errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -308,6 +310,10 @@ export function Composer({
   // A form a picked template brought with it. Taken once and cleared, so it
   // attaches to the draft it arrived with and not to every turn after it.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
+  const pendingTemplate = useStore((s) => s.pendingTemplate)
+  const setPendingTemplate = useStore((s) => s.setPendingTemplate)
+  const designTemplates = useStore((s) => s.designTemplates)
+  const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   useEffect(() => {
     if (!pendingAttachment) return
@@ -372,6 +378,16 @@ export function Composer({
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
+  /**
+   * The rendering template this turn will use: the one just picked, or the one
+   * the session is already wearing. Derived rather than mirrored into state —
+   * the server is what makes the choice sticky, and a copy of it here would be
+   * one more thing that can disagree with the document being produced.
+   */
+  const shownTemplate =
+    (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
+    designTemplates.find((row) => row.id === session?.renderTemplateId) ??
+    null
   const model = models.find(
     (candidate) => candidate.id === (session?.model || modelByKind[kind]),
   )
@@ -637,6 +653,10 @@ export function Composer({
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
+      // Only the writing surfaces take one; an image template is applied by
+      // `generateImages` on its own path above.
+      renderTemplateId:
+        shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         preserveComposerForSession.current = id
@@ -670,6 +690,7 @@ export function Composer({
           activeSkills.length > 0 ||
           autoBypassPreview ||
           autoPausedForCompare ||
+          (pendingTemplate && pendingTemplate.surface === kind) ||
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (
@@ -702,6 +723,30 @@ export function Composer({
               <Badge tone="accent">
                 <Boxes size={11} />
                 {project.emoji} {project.name}
+              </Badge>
+            )}
+            {shownTemplate && (
+              <Badge tone="accent">
+                <LayoutGrid size={11} />
+                {templateText(shownTemplate, currentLang() === 'en').name}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingTemplate(null)
+                    // Sticky server-side once a turn has used it, so clearing
+                    // the chip has to clear the row too.
+                    if (session?.renderTemplateId) {
+                      void setSessionTemplate(session.id, null)
+                    }
+                  }}
+                  aria-label={t('{name} 디자인 해제').replace(
+                    '{name}',
+                    templateText(shownTemplate, currentLang() === 'en').name,
+                  )}
+                  className="ml-0.5 text-faint hover:text-fg"
+                >
+                  <X size={10} />
+                </button>
               </Badge>
             )}
             {activeSkills.map((skill) => (

@@ -1,0 +1,48 @@
+<!doctype html>
+<!--
+  KloudChat image-template card.
+
+  An image template shapes a prompt; it produces no HTML artifact. What the
+  gallery shows is therefore the recipe, not a picture — showing a sample
+  image here would advertise a result this template cannot promise, since the
+  picture comes from the model and the project's design system.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --border: color-mix(in srgb, var(--ink) 12%, transparent);
+    --tint: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #fff; color: var(--ink); font-family: var(--font-body);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+    padding: 1.6rem 1.8rem;
+  }
+  h1 { margin: 0 0 0.2rem; font-size: 1.15rem; letter-spacing: -0.01em; }
+  .lead { margin: 0 0 1.2rem; color: var(--muted); font-size: 0.9rem; }
+  .swatch { display: flex; gap: 0.4rem; margin-bottom: 1.2rem; }
+  .swatch span { width: 2.4rem; height: 2.4rem; border-radius: 6px; border: 1px solid var(--border); }
+  section { border: 1px solid var(--border); border-radius: 10px;
+            padding: 0.9rem 1.1rem; margin-bottom: 0.7rem; background: var(--tint); }
+  h2 { margin: 0 0 0.4rem; font-size: 0.8rem; letter-spacing: 0.06em;
+       text-transform: uppercase; color: var(--accent); }
+  p { margin: 0 0 0.4rem; font-size: 0.92rem; }
+  ul { margin: 0; padding-left: 1.1rem; }
+  li { margin: 0 0 0.25rem; font-size: 0.92rem; }
+  li::marker { color: var(--accent); }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
+         background: #fff; border: 1px solid var(--border); border-radius: 4px;
+         padding: 0.05rem 0.3rem; }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

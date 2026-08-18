@@ -557,6 +557,8 @@ export interface SessionRow {
   model: string
   routingMode: Session['routingMode']
   artifactId: string | null
+  /** The rendering template this session writes into, if one was picked. */
+  renderTemplateId: string | null
   pinned: boolean
   createdAt: string
   updatedAt: string
@@ -584,7 +586,15 @@ export const sessionsApi = {
    *  PNG, so there is nothing to poll. */
   images: (
     sessionId: string,
-    payload: { prompt: string; model?: string; aspect: string; style: string; count: number },
+    payload: {
+      prompt: string
+      model?: string
+      aspect: string
+      style: string
+      count: number
+      /** An `image` design template. Shapes the prompt; produces no file of its own. */
+      templateId?: string
+    },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
   audio: (
@@ -600,7 +610,10 @@ export const sessionsApi = {
   }) => call<SessionRow>('/sessions', body(payload)),
   update: (
     id: string,
-    patch: Partial<Pick<Session, 'title' | 'pinned' | 'model' | 'routingMode'>>,
+    patch: Partial<Pick<Session, 'title' | 'pinned' | 'model' | 'routingMode'>> & {
+      /** A rendering template id, or `''` to take the template off. */
+      renderTemplateId?: string
+    },
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/sessions/${id}`, { method: 'DELETE' }),
@@ -797,6 +810,59 @@ export const designsApi = {
     call<DesignRow>(`/designs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
+
+/**
+ * A shape the answer comes out in, rather than a sentence it starts from.
+ *
+ * Read-only: the catalogue ships inside the API image. What a person writes
+ * for themselves is a prompt template, which has a table.
+ */
+export interface DesignTemplateRow {
+  id: string
+  /** `deck` · `document` · `image` */
+  kind: string
+  /** The surface it is offered on — `slides`, `report` or `image`. */
+  surface: SessionKind
+  name: string
+  description: string
+  category: string
+  /** What you have to bring, shown as chips before you commit. */
+  fills: string[]
+  /** Ends mid-sentence, where the person takes over. */
+  examplePrompt: string
+  /** The English half of the same card; empty falls back to the Korean. */
+  nameEn: string
+  descriptionEn: string
+  categoryEn: string
+  fillsEn: string[]
+  examplePromptEn: string
+  hasPreview: boolean
+}
+
+/** One card's text in the language on screen, falling back rather than blanking. */
+export function templateText(row: DesignTemplateRow, english: boolean) {
+  return {
+    name: (english && row.nameEn) || row.name,
+    description: (english && row.descriptionEn) || row.description,
+    category: (english && row.categoryEn) || row.category,
+    fills: english && row.fillsEn.length ? row.fillsEn : row.fills,
+    examplePrompt: (english && row.examplePromptEn) || row.examplePrompt,
+  }
+}
+
+export const designTemplatesApi = {
+  list: (surface?: SessionKind) =>
+    call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
+}
+
+/**
+ * The preview document for a template card.
+ *
+ * Unauthenticated on purpose — see the route's docstring. It is rendered in a
+ * sandboxed iframe, so it never runs script even though nothing in it does.
+ */
+export const designTemplatePreviewUrl = (id: string) =>
+  `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
 
 export const skillsApi = {
   list: () => call<SkillRow[]>('/skills'),
@@ -1052,6 +1118,14 @@ export type StreamEvent =
    * when a quote slide comes back without a usable line.
    */
   | { type: 'slide'; slide: Slide; done: boolean }
+  /**
+   * One block of an HTML artifact — a slide of a design-template deck, a
+   * section of a design-template document. Announced empty by the outline
+   * pass, then resent whole once written, the same way slides are.
+   */
+  | { type: 'block'; block: { title: string; layout: string; html: string }; done: boolean }
+  /** The finished single file. Arrives once, after the last block. */
+  | { type: 'page'; html: string; blocks: { title: string; layout: string }[]; templateId: string }
   | { type: 'title'; title: string }
   /** The reference shelf a report's sections cite from, sent once, up front. */
   | { type: 'sources'; sources: Source[] }
@@ -1089,6 +1163,8 @@ export async function* streamSession(
     webSearch?: boolean
     model?: string
     activatedSkillIds?: string[]
+    /** A rendering template. Sticky on the session; `''` clears it. */
+    renderTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
   },

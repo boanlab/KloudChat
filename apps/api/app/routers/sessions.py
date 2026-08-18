@@ -47,6 +47,7 @@ from app.services import (
     adaptive_routing,
     artifact_extract,
     audiogen,
+    design_templates,
     governance,
     imagegen,
     settings_store,
@@ -58,6 +59,7 @@ from app.services import deck as deck_service
 from app.services import design as design_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import page as page_service
 from app.services import report as report_service
 from app.services.context import build_messages
 from app.services.credits import charge_for_tokens, has_headroom, settle
@@ -846,6 +848,30 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     return SessionOut.of(session, [])
 
 
+def _resolved_template_id(requested: str | None, kind: SessionKind) -> str | None:
+    """A rendering template id this surface can actually use, or `None`.
+
+    `""` and `None` both mean "no template" — the first is somebody clearing
+    the choice, the second is a payload that did not mention it, and only the
+    caller can tell those apart. An id that does not resolve is refused rather
+    than dropped: a turn that quietly falls back to the built-in track produces
+    a document in the wrong shape and bills for it.
+    """
+    if not requested:
+        return None
+    chosen = design_templates.get(requested)
+    if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
+    if chosen.surface is not kind:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="design_template_surface_mismatch",
+        )
+    return chosen.id
+
+
 @router.patch("/{session_id}", response_model=SessionOut)
 async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
@@ -869,6 +895,10 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
     # above and intentionally keeps the historical manual-session contract.
     if changes.get("routing_mode", session.routing_mode) == RoutingMode.auto:
         await _require_auto_quality_model(user, changes.get("model", session.model))
+    if "render_template_id" in changes:
+        changes["render_template_id"] = _resolved_template_id(
+            changes["render_template_id"], session.kind
+        )
     if "project_id" in changes:
         await _validate_session_links(
             db,
@@ -924,10 +954,16 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
+    picture_template = design_templates.get(payload.template_id)
+    if payload.template_id and (picture_template is None or picture_template.kind != "image"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
     composed = imagegen.compose_prompt(
         payload.prompt,
         aspect=payload.aspect,
         style=payload.style,
+        template=picture_template.prompt_suffix if picture_template else "",
         design=design_service.image_clause(await design_for(db, user, session)),
     )
 
@@ -1141,6 +1177,14 @@ async def send_message(
         and session.routing_mode == RoutingMode.auto
         and payload.model is None
     )
+
+    # Refused rather than ignored, and before any write: a turn that silently
+    # falls back to the built-in track produces a document in the wrong shape
+    # and bills for it.
+    if payload.render_template_id is not None:
+        session.render_template_id = _resolved_template_id(
+            payload.render_template_id, session.kind
+        )
 
     # Policy before any write, billing entry, virtual-key issue or model call.
     policy = await _require_egress_policy()
@@ -1525,6 +1569,8 @@ async def send_message(
     if session.routing_mode != RoutingMode.auto or payload.model is None:
         session.model = requested_model["id"]
     session.updated_at = utcnow()
+    # `session.render_template_id` was resolved at the top of this handler; the
+    # assignment lands with the rest of the turn rather than in its own commit.
     if not session.title:
         # Provisional title, replaced once the first turn completes.
         session.title = stored_content.strip()[:40]
@@ -1576,6 +1622,34 @@ async def send_message(
     _, api_key = await litellm_service.credentials_for(user)
 
     is_first_turn = len(history) == 0
+
+    # A rendering template replaces the surface's built-in track. Resolved
+    # before either of them, because picking one is a choice about what comes
+    # out, not a hint the generator may take or leave.
+    render_template = design_templates.get(session.render_template_id)
+    if render_template is not None:
+        return StreamingResponse(
+            _run_page(
+                user_id=user.id,
+                api_key=api_key,
+                session_id=session.id,
+                model=model,
+                request=content,
+                project_id=session.project_id,
+                template=render_template,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                design_tokens=workspace.design_tokens,
+                skills_event=skills_event,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     if session.kind is SessionKind.report:
         return StreamingResponse(
             _run_report(
@@ -2434,6 +2508,116 @@ async def _audit_policy(
             )
         )
         await db.commit()
+
+
+async def _run_page(
+    *,
+    user_id: str,
+    api_key: str,
+    session_id: str,
+    model: dict,
+    request: str,
+    project_id: str | None,
+    template: design_templates.DesignTemplate,
+    trusted_context: list[str] | None = None,
+    untrusted_context: list[str] | None = None,
+    design_tokens: dict[str, str] | None = None,
+    skills_event: dict | None = None,
+) -> AsyncIterator[str]:
+    """Drives one HTML artifact to completion and settles it.
+
+    Same contract as `_run_deck` and `_run_report`: the page is an artifact,
+    not a chat message. What differs is that the whole file is the output, so
+    a half-written page is still stored — the blocks that failed are simply
+    absent from it, which is what the reader sees and can ask to fix.
+    """
+    blocks: list[dict] = []
+    html = ""
+    usage = {"inputTokens": 0, "outputTokens": 0}
+    doc_title = ""
+
+    if skills_event:
+        yield chat_service.sse(skills_event)
+    try:
+        stream = page_service.write(
+            request=request,
+            model=model["id"],
+            api_key=api_key,
+            template=template,
+            tokens=design_tokens,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
+        )
+        async for event in stream:
+            if event["type"] == "page":
+                html = event["html"]
+                blocks = event["blocks"]
+                continue
+            if event["type"] == "title":
+                doc_title = str(event.get("title") or "").strip()
+            if event["type"] == "usage":
+                usage = {k: v for k, v in event.items() if k != "type"}
+                continue
+            yield chat_service.sse(event)
+    except Exception:  # noqa: BLE001 — the turn must still settle
+        log.exception("page generation crashed for session %s", session_id)
+        yield chat_service.sse({"type": "error", "message": "문서를 만들지 못했습니다."})
+
+    written = page_service.filled(blocks)
+    credits = (
+        0 if not written else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    )
+
+    artifact_id: str | None = None
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        user = await db.get(User, user_id)
+        if session is not None and user is not None:
+            title = (doc_title or session.title or request.strip()[:60] or template.name)[:200]
+            if written and html:
+                artifact = Artifact(
+                    user_id=user_id,
+                    session_id=session_id,
+                    project_id=project_id,
+                    kind=ArtifactKind.html,
+                    title=title,
+                    data={
+                        "kind": "html",
+                        "language": "html",
+                        "content": html,
+                        "templateId": template.id,
+                        # The plan, so the panel can list what is in the file
+                        # without parsing it back out of the markup.
+                        "blocks": [
+                            {"title": b["title"], "layout": b["layout"]} for b in blocks
+                        ],
+                        **({"design": design_tokens} if design_tokens else {}),
+                    },
+                )
+                db.add(artifact)
+                await db.flush()
+                artifact_id = artifact.id
+                session.artifact_id = artifact_id
+
+                db.add(
+                    Message(
+                        session_id=session_id,
+                        role=Role.assistant,
+                        content=f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
+                        usage={**usage, "credits": credits},
+                        model=model["id"],
+                        steps=[_skill_step(skills_event)] if skills_event else None,
+                    )
+                )
+                settle(db, user, credits, reason="page.generate", session_id=session_id)
+            session.updated_at = utcnow()
+            db.add(session)
+            await db.commit()
+
+    if artifact_id:
+        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "done"})
 
 
 async def _run_deck(

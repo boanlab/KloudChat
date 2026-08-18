@@ -1,0 +1,20 @@
+kind = "deck"
+name = "편집형 덱"
+description = "여백을 넓게 쓰고 한 장에 한 가지만 말하는 밝은 발표 자료"
+category = "발표"
+fills = ["주제", "청중", "발표 시간"]
+example_prompt = "연구실 세미나에서 30분 동안 발표할 자료를 만들어 줘. 청중은 이 주제를 처음 접하는 대학원생이야.\n\n주제: "
+layouts = ["cover", "bullets", "quote", "split", "table"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Editorial deck"
+description_en = "Generous white space, one idea per slide, on a light ground"
+category_en = "Presentation"
+fills_en = ["Topic", "Audience", "Length"]
+example_prompt_en = "Make a 30-minute talk for a lab seminar. The audience is meeting this topic for the first time.\n\nTopic: "
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

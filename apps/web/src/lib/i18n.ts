@@ -1115,6 +1115,16 @@ const EN: Record<string, string> = {
   '{name} 주소': '{name} URL',
   '이 결과물을 삭제합니다': 'Delete this artifact',
 
+
+  // ── 디자인 템플릿 ───────────────────────────────────────────────
+  '디자인 고르기': 'Pick a design',
+  '고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.':
+    'Picking one puts its example into the composer. The sentence is yours to change.',
+  '이 디자인으로 시작': 'Start with this',
+  '{name} 디자인 해제': 'Clear the {name} design',
+  'HTML 내려받기': 'Download HTML',
+  '브라우저에서 열어 인쇄하면 PDF 로 저장됩니다': 'Open it in a browser and print to save a PDF',
+  '문서를 만들지 못했습니다.': 'The document could not be produced.',
   // ── 디자인 시스템 ───────────────────────────────────────────────
   '디자인': 'Design',
   '디자인 시스템': 'Design systems',

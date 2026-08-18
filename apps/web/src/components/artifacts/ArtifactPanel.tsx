@@ -9,7 +9,7 @@ import { fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { useStore } from '@/store/useStore'
-import type { Artifact } from '@/types'
+import type { Artifact, CodeArtifact } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
@@ -104,6 +104,44 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
   }
 }
 
+/**
+ * The file itself, saved to disk.
+ *
+ * This is also the PDF path. There is no rendering engine on the server — see
+ * `services/design_templates.py` — and the seeds carry `@media print` rules,
+ * so the export is: save the file, open it, print it. The document is *not*
+ * opened in a tab from here: a `blob:` URL inherits this origin, and model-
+ * written markup is not something to run inside it, however thoroughly it was
+ * stripped on the way in.
+ */
+function DownloadHtml({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const save = () => {
+    const blob = new Blob([artifact.content], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${(artifact.title || 'document').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60)}.html`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // Revoked on the next tick: revoking synchronously can beat the download
+    // in Safari, which reads the blob after the click returns.
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      onClick={save}
+      title={t('브라우저에서 열어 인쇄하면 PDF 로 저장됩니다')}
+    >
+      <Download size={13} />
+      {t('HTML 내려받기')}
+    </Button>
+  )
+}
+
 function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
   const t = useT()
   const [tab, setTab] = useState<'preview' | 'source'>(
@@ -112,7 +150,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {artifact.kind === 'html' && (
-        <div className="flex gap-1 border-b border-line px-3 py-1.5">
+        <div className="flex items-center gap-1 border-b border-line px-3 py-1.5">
           {(
             [
               { id: 'preview', label: t('미리보기'), icon: Eye },
@@ -131,6 +169,8 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
               {t.label}
             </button>
           ))}
+          <span className="flex-1" />
+          <DownloadHtml artifact={artifact} />
         </div>
       )}
       <div className="min-h-0 flex-1">

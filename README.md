@@ -36,6 +36,13 @@ template gallery you can add to. A project can also wear a design system, so
 its deck, its report and its cover image come out in one colour and one
 typeface instead of three.
 
+Alongside the prompt gallery there is a **rendering catalogue**: shapes the
+answer comes out in. Picking one replaces the surface's built-in track — a
+slides session writes a single-file HTML deck, a report session writes a laid
+out document — and the model fills a fixed vocabulary of blocks rather than
+writing layout. The files carry print rules, so a PDF is one print dialogue
+away, and they carry no script at all.
+
 **2. An agent can search its own documents.** Attach files or URLs to an agent
 and it looks them up through a tool when it needs background, rather than
 having everything pushed into every turn. Retrieval is lexical by default and

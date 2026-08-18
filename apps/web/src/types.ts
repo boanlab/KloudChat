@@ -124,6 +124,14 @@ export interface Session {
   messageCount: number
   /** Artifact this session is currently producing, if any. */
   artifactId: string | null
+  /**
+   * The rendering template this session writes into.
+   *
+   * Sticky: picked once, it shapes every turn until it is cleared, the way the
+   * model choice does. Null means the surface's built-in track — markdown
+   * sections for a report, JSON slides for a deck.
+   */
+  renderTemplateId: string | null
 }
 
 export interface Preferences {
