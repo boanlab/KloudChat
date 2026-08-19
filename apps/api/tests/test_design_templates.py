@@ -123,6 +123,20 @@ def test_a_seed_styles_every_tag_a_block_may_reach_for(template):
         assert re.search(rf"(?:^|[\s,]){tag}\s*[{{,]", template.seed, re.M), tag
 
 
+@pytest.mark.parametrize(
+    "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
+)
+def test_a_picture_cannot_grow_past_the_page_it_is_on(template):
+    """A portrait picture at full width is twice the height of a slide.
+
+    Measured before this rule: a 600×1200 image took a `deck-editorial` slide
+    from 100vh to 2154px, which stops scroll-snap landing on slide boundaries
+    and puts one slide across two printed pages. Width is the obvious
+    constraint and the wrong one; height is what has to be capped.
+    """
+    assert re.search(r"figure img \{[^}]*max-height", template.seed), template.id
+
+
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_no_seed_justifies_korean(template):
     """`keep-all` breaks Korean at spaces, and a Korean line has few of them.
@@ -664,3 +678,48 @@ def test_inline_presentation_is_dropped_but_class_survives():
     """
     kept = dt.sanitise('<p class="lead" style="color:#f0f">표지 한 줄</p>')
     assert kept == '<p class="lead">표지 한 줄</p>'
+
+
+def test_a_rewrite_keeps_the_picture_and_not_the_described_figure():
+    """A rewrite is about the words, and the model cannot write a picture.
+
+    Without this, asking for better wording on a block would silently delete
+    the illustration somebody put in it. A figure written *in words* is a
+    different thing: the model can write that again, and keeping it would
+    leave the block saying it twice.
+    """
+    block = "<ul><li>보유 42대</li></ul>" + dt.figure(
+        mime="image/png", data_b64=_PIXEL, alt="자물쇠", caption="그림 1"
+    )
+    kept = dt.pictures_in(block)
+    assert kept.startswith("<figure>") and f"base64,{_PIXEL}" in kept
+    assert "<figcaption>그림 1</figcaption>" in kept
+    assert dt.pictures_in("<figure><p>표 1 설명</p><figcaption>설명</figcaption></figure>") == ""
+
+
+def test_a_cover_that_came_back_empty_is_still_a_cover():
+    """The title page is structural; the block that fills it is not.
+
+    A cover call that returns nothing used to drop the whole `<section>`, and
+    the document opened on a body slide — no title page, and the exports key
+    off slide one being the cover.
+    """
+    template = dt.get("deck-editorial")
+    html = dt.assemble(
+        template,
+        [
+            {"title": "연구실 장비 점검", "layout": "cover", "html": ""},
+            {"title": "현황", "layout": "bullets", "html": "<ul><li>보유 42대</li></ul>"},
+        ],
+    )
+    assert html.startswith('<section class="slide cover">')
+    assert "연구실 장비 점검" in html
+    # A body block that failed is still left out.
+    gapped = dt.assemble(
+        template,
+        [
+            {"title": "표지", "layout": "cover", "html": "<p class='lead'>한 줄</p>"},
+            {"title": "빈 장", "layout": "bullets", "html": ""},
+        ],
+    )
+    assert "빈 장" not in gapped

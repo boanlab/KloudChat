@@ -71,7 +71,7 @@ export function OutlineModelSection() {
       <div className="border-t border-line pt-4">
         <Field
           label={t('구성에 쓸 모델')}
-          hint={t('비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다.')}
+          hint={t('비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다. 개인정보 때문에 strict-local 로 보낸 대화, 그리고 본문 모델보다 데이터 경계가 넓은 경우에는 이 설정이 적용되지 않습니다.')}
         >
           <select
             aria-label={t('구성에 쓸 모델')}

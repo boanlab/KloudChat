@@ -204,9 +204,16 @@ stated in the request is honoured up to 50.
 **The outline can run on a different model.** `governance.outline_model_id`
 names one; empty — the default everywhere — plans with the surface's own model.
 It applies to all three writing tracks and only to the planning call, which is
-one call per document however many blocks follow it. The id is validated when
-it is saved and again per turn against the account's own catalogue; anything
-unusable falls back to the writing model rather than failing the turn.
+one call per document however many blocks follow it.
+
+The outline carries the same request and the same context the body does, so it
+is subject to everything the body is: the id is checked when it is saved, and
+again per turn against this account's allowlist, this surface, and the boundary
+the turn was decided on. A turn privacy routed to a strict-local model gets no
+planner at all — that route exists so the text does not leave — and a planner
+may never be less contained than the writer, or a field on the admin screen
+would quietly widen the egress of every document. Anything that fails falls
+back to the writing model rather than failing the turn.
 
 ### Design templates
 

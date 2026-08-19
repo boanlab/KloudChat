@@ -199,8 +199,10 @@
   hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
   /* A picture is a data URI the server embedded; nothing here fetches from
      outside a sandboxed artifact. */
-  figure { margin: 1.2rem 0; }
-  figure img { display: block; width: 100%; height: auto; }
+  figure { margin: 1.2rem 0; break-inside: avoid; }
+  /* A page scrolls, so width is the constraint — but a picture taller than the
+     paper still breaks across two pages with nothing on the second. */
+  figure img { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; }
   figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
   @page { size: A4 portrait; margin: 18mm 16mm; }

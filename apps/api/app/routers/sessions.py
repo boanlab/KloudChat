@@ -208,6 +208,54 @@ def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dic
     ]
 
 
+#: How far a model's answers travel, lowest first. `hybrid` sits with the
+#: external ones because it may fall back to them mid-turn, and `unknown` with
+#: them because a boundary nobody could establish is not a boundary.
+_BOUNDARY_RANK = {"self_hosted": 0, "hybrid": 1, "external": 1, "unknown": 1}
+
+
+def _widens_boundary(candidate: dict, chosen: dict) -> bool:
+    """True when `candidate` would send further than `chosen` already does.
+
+    Used for the outline model, which is the one call in a document a policy
+    row can redirect. The person picked the writer, or privacy did; neither
+    should be undone by a setting on another screen.
+    """
+    if _BOUNDARY_RANK.get(str(candidate.get("dataBoundary")), 1) > _BOUNDARY_RANK.get(
+        str(chosen.get("dataBoundary")), 1
+    ):
+        return True
+    # Strict-local is a stronger claim than self-hosted: no external fallback
+    # exists for it at all.
+    return bool(chosen.get("strictLocal")) and not candidate.get("strictLocal")
+
+
+def _planner_model(
+    wanted: str | None,
+    *,
+    user: User,
+    catalogue: list[dict],
+    kind: str,
+    writer: dict,
+    strict_local: bool,
+) -> str:
+    """The id the outline call should use, or `""` for "same as the writer".
+
+    A whole function for one policy field because everything it has to refuse
+    is easy to forget: the account's allowlist, the surface, a turn privacy
+    routed inward, and a boundary the writer does not already have. The outline
+    carries the same request and context the body does, so a setting on the
+    admin screen must not widen where any of it goes.
+    """
+    if not wanted or strict_local:
+        return ""
+    planner = model_service.find(_allowed_models(user, catalogue, kind=kind), str(wanted))
+    if planner is None or _widens_boundary(planner, writer):
+        log.info("outline model %s unusable here", wanted)
+        return ""
+    return str(planner["id"])
+
+
 def _find_auto_quality_model(models: list[dict], model_id: str | None) -> dict | None:
     """Finds an answer model; privacy-only capacity is classifier-only."""
     model = model_service.find(models, model_id or "")
@@ -1627,18 +1675,25 @@ async def send_message(
     # A rendering template replaces the surface's built-in track. Resolved
     # before either of them, because picking one is a choice about what comes
     # out, not a hint the generator may take or leave.
-    # The planner, when an administrator has named one. Resolved against the
-    # same catalogue the writer came from and against this account's own
-    # permissions — a policy row is not a licence to use a model the person
-    # cannot. Anything unresolvable falls back to the writing model, because a
-    # document that plans itself slightly worse beats a turn that fails.
-    outline_model = ""
-    if policy.outline_model_id:
-        planner = model_service.find(catalogue_models, str(policy.outline_model_id))
-        if planner and session.kind.value in planner.get("kinds", []):
-            outline_model = planner["id"]
-        else:
-            log.info("outline model %s unusable here", policy.outline_model_id)
+    # The planner, when an administrator has named one.
+    #
+    # The outline call carries the same request and the same context the body
+    # does, so it is subject to everything the body is subject to: this
+    # account's allowlist, this surface, and the boundary the turn was decided
+    # on. A turn that privacy routed to a strict-local model does not get a
+    # planner at all — that route exists precisely so the text does not leave —
+    # and a planner may never be less contained than the writer, or naming one
+    # would quietly widen every document's egress. Anything that fails these
+    # falls back to the writing model: a document planned slightly worse beats
+    # a turn that fails, and beats one that leaks.
+    outline_model = _planner_model(
+        policy.outline_model_id,
+        user=user,
+        catalogue=catalogue_models,
+        kind=session.kind.value,
+        writer=model,
+        strict_local=strict_local,
+    )
 
     render_template = design_templates.get(session.render_template_id)
     if render_template is not None:

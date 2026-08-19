@@ -805,7 +805,12 @@ async def rewrite_block(
             summary=f"{blocks[payload.index].get('title')} 다시 씀",
         )
     )
-    blocks[payload.index]["html"] = fragment
+    # A rewrite is about the words. The model cannot write a picture, so
+    # anything embedded in this block would disappear on the way through —
+    # which is a silent deletion of somebody else's work, not a rewrite.
+    blocks[payload.index]["html"] = fragment + design_templates.pictures_in(
+        blocks[payload.index].get("html") or ""
+    )
     data["blocks"] = blocks
     data["content"] = design_templates.render(
         template,

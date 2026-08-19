@@ -343,7 +343,12 @@ def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
     rest: list[str] = []
     for index, block in enumerate(blocks, start=1):
         body = block.get("html") or ""
-        if not body:
+        # A body block that came back empty is left out — the document shows a
+        # gap where a section failed, which is what the reader can act on. The
+        # cover is not a gap: its wrapper carries the title the outline already
+        # decided, so an empty one still makes the title page it promised, and
+        # dropping it would leave a deck whose first slide is a body slide.
+        if not body and block.get("layout") != "cover":
             continue
         markup = (template.wrap_cover if block.get("layout") == "cover" else template.wrap_block)
         markup = (
@@ -385,6 +390,26 @@ def figure(*, mime: str, data_b64: str, alt: str = "", caption: str = "") -> str
     return body + "</figure>"
 
 
+#: A `<figure>` that carries an embedded picture rather than a described one.
+#: Non-greedy, and anchored on the whole element, because what is being kept is
+#: the picture *and* its caption.
+_PICTURE = re.compile(
+    r"<figure\b[^>]*>(?:(?!</figure>).)*?src=\"data:image/.*?</figure>", re.S | re.I
+)
+
+
+def pictures_in(fragment: str) -> str:
+    """The embedded pictures of a block, as markup, in the order they appear.
+
+    A rewrite replaces a block with what the model wrote, and the model cannot
+    write a picture — so without this, asking for better wording on a block
+    silently deletes the illustration somebody put there. A figure the model
+    wrote *in words* is not kept: that one it can write again, and keeping it
+    would leave the document saying the same thing twice.
+    """
+    return "".join(_PICTURE.findall(fragment))
+
+
 def escape(text: str) -> str:
     """Text into markup. Public because the router builds a `<figcaption>`."""
     return (
@@ -401,6 +426,7 @@ __all__ = [
     "assemble",
     "escape",
     "figure",
+    "pictures_in",
     "for_surface",
     "get",
     "preview",
