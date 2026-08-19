@@ -31,6 +31,7 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
+from app.services import outline as plan_rules
 from app.services import settings_store
 from app.services.context import build_document_messages
 
@@ -83,10 +84,11 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   누구에게 무엇을 말하는지 적어라. 요청 문장을 그대로 옮기지 마라.
 - 슬라이드 {lo}~{hi}장.
 - 첫 장은 반드시 layout "title" 이고, 그 장의 제목은 발표 제목과 같게 하라.
-- 나머지 장의 layout 은 "bullets" 를 기본으로 쓰고, 한 문장으로 강조할 대목이
-  있을 때만 "quote" 를 써라. quote 는 전체에서 최대 2장.
-- 항목이 6개 이상으로 많거나 둘을 나란히 견주는 장이면 layout 에
-  "two-column" 을 써라. 같은 장이 계속 이어지면 발표가 지루해진다.
+- 나머지 장은 말할 내용에 맞는 layout 을 골라라. 항목을 나열하면 "bullets",
+  둘을 나란히 견주거나 항목이 6개 이상이면 "two-column", 한 문장으로 남길
+  대목이면 "quote". quote 는 전체에서 최대 2장.
+- 같은 layout 을 세 장 연속으로 쓰지 마라. 표지를 뺀 나머지에서 최소 세 가지를
+  써라. 한 가지로 끌고 간 발표는 넘겨도 넘긴 것 같지 않다.
 {theme_rule}- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
   하나의 발표가 되어야 한다.
 - 내용은 쓰지 마라. 제목과 layout 만.
@@ -337,9 +339,8 @@ async def write(
     wanted = requested_slides(request)
     fixed_accent = (tokens or {}).get("accent") or ""
 
-    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
-    try:
-        text, spent = await _complete(
+    async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
+        return await _complete(
             model,
             build_document_messages(
                 SessionKind.slides,
@@ -351,7 +352,8 @@ async def write(
                     ),
                     theme_example="" if fixed_accent else '"theme": "청록",\n  ',
                     request=request[:2000],
-                ),
+                )
+                + nudge,
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
             ),
@@ -360,6 +362,10 @@ async def write(
             # on a long deck and the parse fails.
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
         )
+
+    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
+    try:
+        text, spent = await ask()
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("deck outline failed: %s", exc)
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -371,6 +377,32 @@ async def write(
     usage["outputTokens"] += spent["outputTokens"]
     title, subtitle, plan = _parse_outline(text)
     accent = fixed_accent or _theme_accent(text)
+
+    # Four layouts on offer, and the answer is usually `bullets` all the way
+    # down. One more call, naming the ones it skipped, is the cheapest place
+    # to fix that — the slides themselves have not been written yet.
+    missing = plan_rules.flat_layouts(plan, _LAYOUTS[1:]) if plan else []
+    if missing:
+        log.info("deck outline flat, unused: %s", ",".join(missing))
+        try:
+            retry_text, retry_spent = await ask(
+                "\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
+                "다음 layout 을 최소 한 번씩 쓰고, 같은 layout 을 세 장 연속으로 쓰지 마라: "
+                + " / ".join(missing)
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline retry failed: %s", exc)
+        else:
+            usage["inputTokens"] += retry_spent["inputTokens"]
+            usage["outputTokens"] += retry_spent["outputTokens"]
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            if retry_plan and not plan_rules.flat_layouts(retry_plan, _LAYOUTS[1:]):
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text) or accent
+            else:
+                log.info("deck outline still flat, keeping the first")
     # Only an empty outline is a failure; a short one is a narrow topic.
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}

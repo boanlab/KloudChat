@@ -175,6 +175,17 @@ progress indicator honest.
 
 A failed section is marked and the rest continues.
 
+**The plan is checked before anything is written.** A small model reaches for
+the first layout it is offered and stays there: measured over the decks this
+instance had already produced, `bullets` was 77% of every body slide and 101 of
+128 decks ran three or more identical slides in a row. `services/outline.py`
+holds the rule both tracks use — no run of three, and at least three of the
+offered layouts (or as many as exist) — and a plan that fails it is asked for
+once more, naming exactly the layouts it skipped. The second answer is kept
+only if it is less flat, so the worst case is one extra outline call and the
+plan it started with. Nothing is coerced: a layout assigned to a heading it
+does not suit would be a worse slide than a repeated one.
+
 Both receive the workspace blocks the chat surface gets — project
 instructions, memories, skills, and any file attached to the turn — so a
 request naming an uploaded form is written against that form.

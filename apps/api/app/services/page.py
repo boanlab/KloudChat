@@ -30,6 +30,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
+from app.services import outline as plan_rules
 from app.services import settings_store
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -56,6 +57,9 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 {noun}의 제목과 구성을 만�
 - {unit} {lo}~{hi}개.
 - 첫 {unit}은 반드시 layout "cover" 이고, 그 제목은 전체 제목과 같게 하라.
 - layout 은 다음 중에서만 골라라: {layouts}
+- 한 가지 layout 으로 끌고 가지 마라. 같은 layout 을 세 {unit} 연속으로 쓰지 말고,
+  cover 를 뺀 나머지 중 최소 세 가지(있는 만큼)를 써라. 견주는 자리에는 표나 두 단,
+  한 문장으로 남길 자리에는 인용을 쓴다.
 - 각 {unit}의 제목은 거기서 말할 내용을 가리키는 짧은 구절로. 순서대로 읽으면
   하나가 되어야 한다.
 - 내용은 쓰지 마라. 제목과 layout 만.
@@ -228,9 +232,8 @@ async def write(
     wanted = requested_blocks(request)
     surface = template.surface
 
-    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
-    try:
-        text, spent = await _complete(
+    async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
+        return await _complete(
             model,
             build_document_messages(
                 surface,
@@ -242,13 +245,18 @@ async def write(
                     layouts=" / ".join(template.layouts),
                     second=template.layouts[1] if len(template.layouts) > 1 else "section",
                     request=request[:2000],
-                ),
+                )
+                + nudge,
                 trusted_context=[*(trusted_context or []), template.instructions],
                 untrusted_context=untrusted_context,
             ),
             api_key,
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
         )
+
+    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
+    try:
+        text, spent = await ask()
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("page outline failed: %s", exc)
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -259,6 +267,31 @@ async def write(
     usage["inputTokens"] += spent["inputTokens"]
     usage["outputTokens"] += spent["outputTokens"]
     title, plan = _parse_outline(text, template)
+
+    # A flat plan is the one thing a small model gets wrong that costs nothing
+    # to notice and one call to fix: the seed styles five layouts, and a deck
+    # that uses one of them is the seed's fault only in the sense that nobody
+    # asked for the others. Asked once more, naming exactly what is missing —
+    # and the second answer is kept only if it is actually less flat.
+    missing = plan_rules.flat_layouts(plan, template.layouts[1:]) if plan else []
+    if missing:
+        log.info("page outline flat for %s, unused: %s", template.id, ",".join(missing))
+        try:
+            retry_text, retry_spent = await ask(
+                f"\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
+                f"다음 layout 을 최소 한 번씩 쓰고, 같은 layout 을 세 {unit} 연속으로 쓰지 마라: "
+                + " / ".join(missing)
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("page outline retry failed: %s", exc)
+        else:
+            usage["inputTokens"] += retry_spent["inputTokens"]
+            usage["outputTokens"] += retry_spent["outputTokens"]
+            retry_title, retry_plan = _parse_outline(retry_text, template)
+            if retry_plan and not plan_rules.flat_layouts(retry_plan, template.layouts[1:]):
+                title, plan = retry_title or title, retry_plan
+            else:
+                log.info("page outline still flat for %s, keeping the first", template.id)
     if not plan:
         # The one failure that used to leave nothing behind: the call
         # succeeded, so there is no exception, and the turn ends with no
