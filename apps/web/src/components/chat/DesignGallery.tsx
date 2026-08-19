@@ -206,8 +206,12 @@ export function DesignGalleryModal({
               key={row.id}
               className="group overflow-hidden rounded-card border border-line bg-panel transition-colors hover:border-line-strong"
             >
+              {/* 500 × 0.42 = 210. The frame is sized to its own scaled height
+                  rather than to a round number, so the card shows the whole
+                  first slide — a template that puts its title low was being
+                  cropped into what looked like a blank card. */}
               {row.hasPreview && (
-                <div className="pointer-events-none h-40 overflow-hidden border-b border-line bg-white">
+                <div className="pointer-events-none h-[210px] overflow-hidden border-b border-line bg-white">
                   {/* Scaled down rather than cropped: a card should show the
                       whole shape, and a 400px-wide slice of a slide is not a
                       preview of it. */}
