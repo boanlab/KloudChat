@@ -6,6 +6,7 @@ import {
   Download,
   ExternalLink,
   Grid2x2,
+  ImagePlus,
   Loader2,
   Play,
   Presentation,
@@ -18,11 +19,13 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/components/ui'
+import { Badge, Button, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, FactCheck, Slide } from '@/types'
+import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
+import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
 const verdictMeta = {
@@ -121,6 +124,10 @@ function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
       ) : (
         <div className="flex flex-1 flex-col" style={{ paddingLeft: px(16) }}>
           <h3 style={{ fontSize: px(19), fontWeight: 700, marginBottom: px(12) }}>{slide.title}</h3>
+          {/* Words left, picture right — the geometry `deck_export` uses, so
+              the preview and the .pptx put them in the same places. */}
+          <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
+          <div className="flex min-w-0 flex-1 flex-col">
           {slide.bullets && (
             <ul
               style={{
@@ -148,12 +155,143 @@ function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
             </p>
           )}
           {/* 아직 안 쓰인 장. 빈 흰 화면이면 다 만들어진 것처럼 보인다 */}
-          {pending && (
+          {pending && !slide.image && (
             <p style={{ fontSize: px(12), color: '#aaa', marginTop: px(6) }}>{t('쓰는 중…')}</p>
           )}
+          </div>
+          {slide.image?.src && (
+            <div
+              className="flex shrink-0 flex-col justify-center"
+              style={{ width: pending ? '100%' : '42%' }}
+            >
+              <img
+                src={slide.image.src}
+                alt={slide.image.caption || t('그림')}
+                className="max-h-full w-full object-contain"
+              />
+              {slide.image.caption && (
+                <p style={{ fontSize: px(10), color: '#666', marginTop: px(4) }}>
+                  {slide.image.caption}
+                </p>
+              )}
+            </div>
+          )}
+          </div>
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Putting a picture on a slide of a JSON deck.
+ *
+ * The same path an HTML document has, on the track that never was HTML: the
+ * picture was made on the image surface and the server embeds it as a `data:`
+ * URI, so the deck stays one thing that previews, presents and exports with
+ * the picture in it.
+ */
+function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [caption, setCaption] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const artifacts = useStore((s) => s.artifacts)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+
+  // The picture somebody made while writing this deck is almost always the one
+  // they want, so its own session comes first.
+  const pictures = artifacts
+    .filter((a) => a.kind === 'image')
+    .sort((a, b) => {
+      const mine =
+        Number(b.sessionId === deck.sessionId) - Number(a.sessionId === deck.sessionId)
+      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
+    })
+    .slice(0, 24)
+
+  if (pictures.length === 0) return null
+
+  const insert = async () => {
+    if (!picked) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.addSlideImage(deck.id, slide.id, picked, caption.trim())
+      await refreshArtifact(deck.id)
+      await loadArtifacts()
+      setOpen(false)
+      setPicked(null)
+      setCaption('')
+    } catch (err) {
+      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setPicked(null)
+          setCaption('')
+          setError(null)
+          setOpen(true)
+        }}
+      >
+        <ImagePlus size={13} />
+        {slide.image ? t('그림 바꾸기') : t('그림 넣기')}
+      </Button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={t('{name} 에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
+        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        footer={
+          <>
+            <Button onClick={() => setOpen(false)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
+              {busy ? t('넣는 중…') : t('넣기')}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
+          {pictures.map((picture) => (
+            <button
+              key={picture.id}
+              onClick={() => setPicked(picture.id)}
+              aria-label={picture.title}
+              aria-pressed={picked === picture.id}
+              className={cn(
+                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
+                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
+              )}
+            >
+              <ArtifactPreview artifact={picture} />
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <Input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            aria-label={t('설명')}
+            placeholder={t('그림 아래에 붙일 설명 (선택)')}
+          />
+        </div>
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
   )
 }
 
@@ -654,9 +792,12 @@ export function DeckPanel({
                       </Button>
                     </>
                   ) : (
-                    <Button variant="ghost" size="sm" onClick={() => void startEditing()} disabled={writing}>
-                      {t('텍스트 수정')}
-                    </Button>
+                    <>
+                      <SlidePicture deck={deck} slide={slide} />
+                      <Button variant="ghost" size="sm" onClick={() => void startEditing()} disabled={writing}>
+                        {t('텍스트 수정')}
+                      </Button>
+                    </>
                   )}
                 </div>
 

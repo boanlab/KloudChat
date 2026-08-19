@@ -285,6 +285,14 @@ A picture that has stopped being one — truncated bytes, a format a library
 refuses — costs its own illustration and nothing else: every renderer catches
 it, logs it and finishes the file.
 
+**The JSON deck track has the same path.** `POST /artifacts/{id}/slides/image`
+puts one on a slide by id. Its slides are rows in a JSONB column rather than
+markup, so the picture is stored as the `data:` URI itself and the renderers
+accept either shape — decoded bytes from the HTML reader, or the address from
+a deck. The preview draws it where the exporters do, so what the panel shows
+is what the room sees. `services/pictures.py` owns the one rule underneath all
+of it: raster only, embedded only, never fetched.
+
 Two constraints shape every seed:
 
 **No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates

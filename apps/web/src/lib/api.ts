@@ -753,6 +753,9 @@ export const artifactsApi = {
    */
   addBlockImage: (id: string, index: number, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/image`, body({ index, artifactId, caption })),
+  /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
+  addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
   critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */

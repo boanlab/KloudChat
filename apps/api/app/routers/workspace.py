@@ -59,6 +59,7 @@ from app.schemas.workspace import (
     SkillIn,
     SkillOut,
     SlideFactCheck,
+    SlideImage,
     TemplateIn,
     TemplateOut,
     ToolCatalogOut,
@@ -72,6 +73,7 @@ from app.services import (
     index_client,
     lint,
     page_export,
+    pictures,
     report_export,
     settings_store,
     starter,
@@ -671,9 +673,85 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
 #: document stops being something a panel opens quickly.
 _MAX_EMBED_BYTES = 3 * 1024 * 1024
 
-#: Raster only. `image/svg+xml` is a document that can carry script, and this
-#: file is opened outside the sandbox every time somebody downloads it.
-_EMBEDDABLE = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+async def _picture_bytes(db: DbSession, user: User, artifact_id: str) -> tuple[str, bytes]:
+    """The bytes behind an `image` artifact, or an HTTPException saying why not.
+
+    Shared by the two ways a picture gets into a document — a block of an HTML
+    page and a slide of a JSON deck — because the checks are the same ones:
+    the caller owns it, it is a picture, it is a format that can be drawn, and
+    it is small enough to live inside a document.
+    """
+    picture = await _own(db, Artifact, "user_id", user, artifact_id)
+    if picture.kind is not ArtifactKind.image:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_an_image")
+    # `src` is this server's own download URL for the blob: /api/files/{id}/content
+    match = re.search(r"/files/([0-9a-f]{32})/content", str((picture.data or {}).get("src") or ""))
+    stored = await db.get(StoredFile, match.group(1)) if match else None
+    if stored is None or stored.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="image_file_missing")
+    mime = (stored.mime or "").lower() or "image/png"
+    if mime not in pictures.EMBEDDABLE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_not_embeddable"
+        )
+    try:
+        blob = file_service.read_blob(stored.storage_key)
+    except OSError as exc:
+        log.warning("image blob unreadable for %s: %s", stored.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="image_file_missing"
+        ) from exc
+    if len(blob) > _MAX_EMBED_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_too_large"
+        )
+    return mime, blob
+
+
+@router.post("/artifacts/{artifact_id}/slides/image", response_model=ArtifactOut)
+async def add_slide_image(
+    artifact_id: str, payload: SlideImage, user: CurrentUser, db: DbSession
+):
+    """Puts a picture this workspace already made on one slide of a JSON deck.
+
+    The same path the HTML track has, on the track that has no HTML: a deck's
+    slides are JSON, so the picture is stored as the `data:` URI itself rather
+    than as bytes, and the preview, the `.pptx` and the `.pdf` all draw it
+    from there. No model call, and snapshotted, so it is one click from undone.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.deck:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
+
+    data = dict(artifact.data or {})
+    slides = [dict(s) for s in (data.get("slides") or [])]
+    target = next((s for s in slides if s.get("id") == payload.slide_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
+
+    mime, blob = await _picture_bytes(db, user, payload.artifact_id)
+    target["image"] = {
+        "src": pictures.encode(mime, blob),
+        "caption": payload.caption.strip(),
+    }
+
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=artifact.version,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=f"{target.get('title') or ''} 에 그림 넣음",
+        )
+    )
+    data["slides"] = slides
+    artifact.data = data
+    artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
 
 
 @router.post("/artifacts/{artifact_id}/blocks/image", response_model=ArtifactOut)
@@ -710,36 +788,15 @@ async def add_block_image(
             status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable"
         )
 
-    picture = await _own(db, Artifact, "user_id", user, payload.artifact_id)
-    if picture.kind is not ArtifactKind.image:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_an_image")
-    # `src` is this server's own download URL for the blob: /api/files/{id}/content
-    match = re.search(r"/files/([0-9a-f]{32})/content", str((picture.data or {}).get("src") or ""))
-    stored = await db.get(StoredFile, match.group(1)) if match else None
-    if stored is None or stored.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="image_file_missing")
-    mime = (stored.mime or "").lower() or "image/png"
-    if mime not in _EMBEDDABLE:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_not_embeddable"
-        )
-    try:
-        blob = file_service.read_blob(stored.storage_key)
-    except OSError as exc:
-        log.warning("image blob unreadable for %s: %s", stored.id, exc)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="image_file_missing"
-        ) from exc
-    if len(blob) > _MAX_EMBED_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_too_large"
-        )
+    mime, blob = await _picture_bytes(db, user, payload.artifact_id)
 
     caption = payload.caption.strip()
     markup = design_templates.figure(
         mime=mime,
         data_b64=base64.b64encode(blob).decode("ascii"),
-        alt=caption or picture.title or "그림",
+        # A caption when there is one; otherwise something a screen reader can
+        # say, because the picture's own title is not in this document.
+        alt=caption or "그림",
         caption=caption,
     )
 

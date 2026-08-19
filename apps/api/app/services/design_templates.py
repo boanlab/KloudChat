@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models.chat import SessionKind
+from app.services import pictures
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 
@@ -89,22 +90,6 @@ _EVENT_ATTR = re.compile(r"\s+on[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I
 #: names its own seed styles, such as `lead` and `cols`.
 _STYLE_ATTR = re.compile(r"\s+style\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 _URL_ATTR = re.compile(r"\s+(href|src)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
-
-#: The one `src` that survives: a raster picture already inside the file.
-#:
-#: An artifact is opened outside the sandbox and shared by link, so a `src`
-#: that fetches anything is a request made on the reader's behalf from a
-#: document they did not write. A `data:` URI fetches nothing. Raster only —
-#: `image/svg+xml` is a document that can carry script, which is the thing
-#: this whole file exists to keep out.
-#:
-#: Nothing the model writes can pass this: base64 of a real picture is not
-#: something a language model emits. It is here for the bytes the server
-#: embeds on the reader's own instruction.
-_EMBEDDED_IMAGE = re.compile(
-    r"^data:image/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$", re.I
-)
-
 
 @dataclass(frozen=True, slots=True)
 class Argument:
@@ -294,7 +279,7 @@ def sanitise(fragment: str) -> str:
         if match.group(1).lower() != "src":
             return ""
         value = match.group(2).strip().strip("\"'")
-        return match.group(0) if _EMBEDDED_IMAGE.match(value) else ""
+        return match.group(0) if pictures.is_embedded(value) else ""
 
     text = _URL_ATTR.sub(address, text)
 
@@ -384,7 +369,7 @@ def figure(*, mime: str, data_b64: str, alt: str = "", caption: str = "") -> str
     `<figcaption>` are what the seeds have rules for, and the `data:` URI is
     the only address `sanitise` lets through.
     """
-    body = f'<figure><img src="data:{mime};base64,{data_b64}" alt="{escape(alt)}" />'
+    body = f'<figure><img src="{pictures.data_uri(mime, data_b64)}" alt="{escape(alt)}" />'
     if caption:
         body += f"<figcaption>{escape(caption)}</figcaption>"
     return body + "</figure>"

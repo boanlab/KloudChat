@@ -20,36 +20,14 @@ removed by `design_templates.sanitise` before it was stored.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import re
 from html.parser import HTMLParser
 from typing import Any
 
+from app.services import pictures
+
 #: Block containers whose text is collected separately.
 _TEXT_TAGS = {"h2", "h3", "p", "li", "blockquote", "th", "td"}
-
-#: A picture inside an artifact is a `data:` URI — `design_templates.sanitise`
-#: allows no other kind — so it is already the bytes, and no fetch is involved
-#: in reading one back out.
-_DATA_URI = re.compile(r"^data:(image/(?:png|jpeg|jpg|gif|webp));base64,(.+)$", re.S | re.I)
-
-
-def decode_picture(src: str) -> tuple[str, bytes] | None:
-    """`(mime, bytes)` for an embedded picture, or `None` for anything else.
-
-    Anything else includes a remote address, which cannot appear in a stored
-    artifact and must not be fetched if it somehow does.
-    """
-    match = _DATA_URI.match((src or "").strip())
-    if not match:
-        return None
-    try:
-        return match.group(1).lower().replace("jpg", "jpeg"), base64.b64decode(
-            re.sub(r"\s+", "", match.group(2)), validate=True
-        )
-    except (binascii.Error, ValueError):
-        return None
 
 #: Rendered by `deck_export`, keyed by the layout class the seed uses.
 _DECK_LAYOUT = {
@@ -106,7 +84,7 @@ class _Reader(HTMLParser):
         if self._block is None:
             return
         if tag == "img":
-            picture = decode_picture(dict(attrs).get("src") or "")
+            picture = pictures.decode(dict(attrs).get("src") or "")
             if picture:
                 self._block["images"].append(
                     {"mime": picture[0], "data": picture[1], "caption": ""}
@@ -320,4 +298,4 @@ def to_sections(html: str) -> list[dict[str, Any]]:
     return sections
 
 
-__all__ = ["decode_picture", "read", "to_sections", "to_slides"]
+__all__ = ["read", "to_sections", "to_slides"]

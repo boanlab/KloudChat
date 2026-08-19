@@ -15,7 +15,7 @@ import zlib
 
 import pytest
 
-from app.services import deck_export, page_export, report_export
+from app.services import deck_export, page_export, pictures, report_export
 from app.services import design_templates as dt
 
 TOKENS = {"accent": "#5b5bd6", "ink": "#111111", "muted": "#666666", "font": "gothic"}
@@ -78,9 +78,10 @@ def test_the_reader_finds_the_picture_and_its_caption():
 
 def test_a_remote_address_is_never_read_back():
     """It cannot be stored, and if it somehow is, nothing fetches it."""
-    assert page_export.decode_picture("https://example.test/p.png") is None
-    assert page_export.decode_picture("data:image/svg+xml;base64,PHN2Zz4=") is None
-    assert page_export.decode_picture("data:image/png;base64,!!!not base64!!!") is None
+    assert pictures.decode("https://example.test/p.png") is None
+    assert pictures.decode("data:image/svg+xml;base64,PHN2Zz4=") is None
+    assert pictures.decode("data:image/png;base64,!!!not base64!!!") is None
+    assert pictures.decode(pictures.encode("image/png", b"\x89PNG")) == ("image/png", b"\x89PNG")
 
 
 def test_the_pptx_carries_the_picture():
@@ -182,3 +183,52 @@ def test_a_picture_that_is_not_one_does_not_take_the_export_down(broken):
     assert report_export.to_docx("t", sections, tokens=TOKENS)[:2] == b"PK"
     assert report_export.to_pdf("t", sections, tokens=TOKENS)[:4] == b"%PDF"
     assert report_export.to_hwpx("t", sections, tokens=TOKENS)[:2] == b"PK"
+
+
+# ── the JSON deck track ────────────────────────────────────────────────
+#
+# A deck that was never HTML keeps its slides as JSON, so a picture on one is
+# the `data:` URI itself. Both renderers read either shape.
+
+
+def test_a_json_deck_slide_carries_a_picture_as_its_own_address():
+    slides = [
+        {"id": "s0", "layout": "title", "title": "표지", "body": "한 줄"},
+        {
+            "id": "s1",
+            "layout": "bullets",
+            "title": "그림 있는 장",
+            "bullets": ["보유 42대"],
+            "image": {
+                "src": pictures.encode("image/png", base64.b64decode(_PNG)),
+                "caption": "그림 1. 시험",
+            },
+        },
+    ]
+    archive = zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("t", slides, tokens=TOKENS)))
+    media = [name for name in archive.namelist() if name.startswith("ppt/media/")]
+    assert media
+    assert archive.read(media[0])[:8] == b"\x89PNG\r\n\x1a\n"
+
+    with_picture = deck_export.to_pdf("t", slides, tokens=TOKENS)
+    slides[1].pop("image")
+    assert with_picture.count(b"/Image") > deck_export.to_pdf(
+        "t", slides, tokens=TOKENS
+    ).count(b"/Image")
+
+
+def test_a_slide_picture_that_is_not_an_address_is_ignored():
+    """A remote one cannot be stored, and nothing fetches it if it appears."""
+    slides = [
+        {"id": "s0", "layout": "bullets", "title": "가", "bullets": ["나"], "image": {}},
+        {
+            "id": "s1",
+            "layout": "bullets",
+            "title": "다",
+            "bullets": ["라"],
+            "image": {"src": "https://example.test/p.png"},
+        },
+    ]
+    assert deck_export.to_pptx("t", slides, tokens=TOKENS)[:2] == b"PK"
+    archive = zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("t", slides, tokens=TOKENS)))
+    assert not [name for name in archive.namelist() if name.startswith("ppt/media/")]

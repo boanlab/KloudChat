@@ -242,6 +242,18 @@ class SlideFactCheck(Wire):
     slide_id: str
 
 
+class SlideImage(Wire):
+    """A picture this workspace already made, put on one slide of a JSON deck.
+
+    By slide id rather than by position: a deck's slides carry ids and a
+    person may reorder them between choosing and sending.
+    """
+
+    slide_id: str = Field(min_length=1, max_length=64)
+    artifact_id: str = Field(min_length=1, max_length=64)
+    caption: str = Field(default="", max_length=200)
+
+
 class BlockImage(Wire):
     """A picture this workspace already made, put into one block of a page.
 

@@ -420,6 +420,12 @@ export interface Slide {
   notes?: string
   accent?: string
   factCheck?: FactCheck
+  /**
+   * A picture made on the image surface, embedded rather than linked — the
+   * `src` is a `data:` URI, which is what makes the deck one file that prints
+   * and exports with the picture in it.
+   */
+  image?: { src: string; caption?: string }
 }
 
 export interface DeckArtifact extends ArtifactBase {
