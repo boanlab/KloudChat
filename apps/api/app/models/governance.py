@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -34,6 +34,21 @@ class Governance(SQLModel, table=True):
     #: live catalogue's visible order, so stale ids cannot become an external
     #: route and hidden click order cannot change routing.
     privacy_safe_model_ids: list = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    )
+    #: Optional, explicit cost optimisation. Existing and new installations
+    #: remain manual until an administrator finishes and enables the policy.
+    adaptive_routing_enabled: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
+    )
+    #: Must resolve to a live, zero-priced strict-local chat model at runtime.
+    adaptive_classifier_model_id: str | None = Field(
+        default=None, sa_column=Column(String, nullable=True)
+    )
+    #: Ordered economy candidates. Runtime validation is repeated for every
+    #: turn because catalogue price, boundary and account permissions can move.
+    adaptive_economy_model_ids: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )

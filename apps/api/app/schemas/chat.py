@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
-from app.models.chat import ChatSession, Message, Role, SessionKind
+from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
 from app.schemas.auth import Wire
 
 
@@ -109,6 +109,7 @@ class SessionOut(Wire):
     project_id: str | None
     agent_id: str | None
     model: str
+    routing_mode: RoutingMode
     artifact_id: str | None
     pinned: bool
     created_at: datetime
@@ -153,6 +154,7 @@ class SessionCreate(Wire):
     project_id: str | None = None
     agent_id: str | None = None
     model: str | None = None
+    routing_mode: RoutingMode = RoutingMode.manual
 
 
 class CompareRequest(Wire):
@@ -177,7 +179,17 @@ class SessionPatch(Wire):
     title: str | None = Field(default=None, max_length=200)
     pinned: bool | None = None
     model: str | None = None
+    routing_mode: RoutingMode | None = None
     project_id: str | None = None
+
+    @field_validator("routing_mode", mode="before")
+    @classmethod
+    def routing_mode_cannot_be_null(cls, value):
+        # Omitted means "leave unchanged"; explicit null would otherwise be
+        # assigned to the non-null database column and surface as a 500.
+        if value is None:
+            raise ValueError("routing_mode_must_not_be_null")
+        return value
 
 
 class SendMessage(Wire):

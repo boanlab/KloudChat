@@ -191,6 +191,7 @@ async def generate_title(
     *,
     masker: Callable[[str], tuple[str, int]] | None = None,
     strict_local: bool = False,
+    disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> str | None:
     """One short non-streaming call. Best effort — a session with no title is a
@@ -228,7 +229,11 @@ async def generate_title(
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                     "max_tokens": 40,
-                    **({"disable_fallbacks": True} if strict_local else {}),
+                    **(
+                        {"disable_fallbacks": True}
+                        if strict_local or disable_fallbacks
+                        else {}
+                    ),
                 },
             )
             response.raise_for_status()

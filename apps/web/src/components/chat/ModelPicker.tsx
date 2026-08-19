@@ -1,4 +1,15 @@
-import { Check, ChevronDown, Cpu, Eye, Plug, ShieldCheck, TriangleAlert, Wrench } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  Cpu,
+  Eye,
+  Gauge,
+  Plug,
+  ShieldCheck,
+  TriangleAlert,
+  Wrench,
+} from 'lucide-react'
+import { useState } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -46,6 +57,8 @@ export function ModelPicker({
   sessionId,
   compact = false,
   modality,
+  onEnableAuto,
+  onBusyChange,
 }: {
   kind: SessionKind
   /** When set, the picker reads and writes *this conversation's* model. */
@@ -56,10 +69,24 @@ export function ModelPicker({
      * `kinds` alone would offer speech models where a video is being made.
      */
   modality?: ModelInfo['modality']
+  /** On a fresh `/new/chat`, the composer creates a real session first. */
+  onEnableAuto?: () => void | Promise<void>
+  /** Prevents a turn from racing the session PATCH/creation behind a choice. */
+  onBusyChange?: (busy: boolean) => void
 }) {
   const t = useT()
-  const { models, modelByKind, setModel, setSessionModel, sessions, modelsLoading, litellmAvailable } =
-    useStore()
+  const [selectionPending, setSelectionPending] = useState(false)
+  const {
+    models,
+    modelByKind,
+    setModel,
+    setSessionModel,
+    setSessionRoutingMode,
+    sessions,
+    modelsLoading,
+    litellmAvailable,
+    autoRouting,
+  } = useStore()
   const session = sessionId ? sessions.find((s) => s.id === sessionId) : undefined
   const usable = models.filter(
     (m) => m.kinds.includes(kind) && (!modality || m.modality === modality),
@@ -69,6 +96,18 @@ export function ModelPicker({
     // would name the wrong one on an old thread.
   const currentId = session?.model || modelByKind[kind]
   const active = usable.find((m) => m.id === currentId) ?? usable[0]
+  const autoActive = kind === 'chat' && session?.routingMode === 'auto'
+  const persistSelection = async (action: () => void | Promise<void>) => {
+    if (selectionPending) return
+    setSelectionPending(true)
+    onBusyChange?.(true)
+    try {
+      await action()
+    } finally {
+      setSelectionPending(false)
+      onBusyChange?.(false)
+    }
+  }
 
   if (!active) {
     // An empty picker and a broken proxy look identical otherwise.
@@ -83,16 +122,21 @@ export function ModelPicker({
   return (
     <Dropdown
       align="right"
-      className="min-w-[340px]"
+      className="w-[calc(100vw-2rem)] max-w-[340px] min-w-0 sm:w-auto sm:min-w-[340px]"
       trigger={({ open }) => (
         <button
+          type="button"
+          disabled={selectionPending}
+          aria-busy={selectionPending}
           className={cn(
             'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base font-medium transition-colors',
             open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
-          <Cpu size={14} />
-          <span className="max-w-[200px] truncate">{active.label}</span>
+          {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
+          <span className="max-w-[220px] truncate">
+            {autoActive ? `${t('Auto · 비용 절약')} · ${active.label}` : active.label}
+          </span>
           {!compact && <ChevronDown size={14} className="text-faint" />}
         </button>
       )}
@@ -100,13 +144,25 @@ export function ModelPicker({
       <ModelMenu
         usable={usable}
         active={active}
+        autoActive={autoActive}
+        autoRouting={autoRouting}
+        showAuto={kind === 'chat'}
         litellmAvailable={litellmAvailable}
+        selectionPending={selectionPending}
+        onAuto={() => {
+          return persistSelection(() => {
+            if (onEnableAuto) return onEnableAuto()
+            if (sessionId) return setSessionRoutingMode(sessionId, 'auto')
+          })
+        }}
         onPick={(id) => {
           // Keyed off the id given, not off finding its row: the sidebar list
           // can lag behind the URL, and a change would land on the surface
           // default instead of the conversation.
-          if (sessionId) void setSessionModel(sessionId, id)
-          else setModel(kind, id)
+          return persistSelection(() => {
+            if (sessionId) return setSessionModel(sessionId, id)
+            setModel(kind, id)
+          })
         }}
       />
     </Dropdown>
@@ -120,13 +176,23 @@ export function ModelPicker({
 function ModelMenu({
   usable,
   active,
+  autoActive,
+  autoRouting,
+  showAuto,
   litellmAvailable,
+  selectionPending,
+  onAuto,
   onPick,
 }: {
   usable: ModelInfo[]
   active: ModelInfo
+  autoActive: boolean
+  autoRouting: ReturnType<typeof useStore.getState>['autoRouting']
+  showAuto: boolean
   litellmAvailable: boolean
-  onPick: (id: string) => void
+  selectionPending: boolean
+  onAuto: () => void | Promise<void>
+  onPick: (id: string) => void | Promise<void>
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
@@ -137,10 +203,49 @@ function ModelMenu({
     map.set(vendor, [...(map.get(vendor) ?? []), m])
     return map
   }, new Map<string, ModelInfo[]>())]
+  const autoReason =
+    autoRouting.reason === 'classifier_unavailable'
+      ? t('strict-local 분류 모델을 사용할 수 없습니다.')
+      : autoRouting.reason === 'no_economy_models'
+        ? t('사용 가능한 절약 모델이 없습니다.')
+        : t('관리자가 Auto 비용 절약을 켜지 않았습니다.')
   return (
     <>
+      {showAuto && (
+        <div className="border-b border-line p-1.5">
+          <button
+            type="button"
+            disabled={!autoRouting.available || selectionPending}
+            onClick={() => {
+              void onAuto()
+              closeMenu()
+            }}
+            className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <span className="mt-0.5 w-4 shrink-0 text-accent">
+              {autoActive ? <Check size={14} /> : <Gauge size={14} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className="text-base font-semibold">{t('Auto · 비용 절약')}</span>
+                <Badge tone={autoRouting.available ? 'success' : 'neutral'}>
+                  {autoRouting.available ? t('사용 가능') : t('사용 불가')}
+                </Badge>
+              </span>
+              <span className="mt-0.5 block text-sm text-muted">
+                {autoRouting.available
+                  ? t('간단한 질문은 관리자가 지정한 절약 모델로 보내고, 복잡하면 현재 모델을 유지합니다.')
+                  : autoReason}
+              </span>
+              <span className="mt-1 block truncate text-xs text-faint">
+                {t('품질 모델')}: {active.label}
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-        {t('모델')}
+        {showAuto ? t('모델 직접 선택') : t('모델')}
       </div>
       {!litellmAvailable && (
         <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
@@ -163,13 +268,15 @@ function ModelMenu({
           {rows.map((m) => (
         <button
           key={m.id}
+          type="button"
           onClick={() => {
-            onPick(m.id)
+            void onPick(m.id)
             // Choosing ends the interaction: left open, the panel covers the
             // composer and the next trigger click reads as "close".
             closeMenu()
           }}
-          className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated"
+          disabled={selectionPending}
+          className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
         >
           <span className="mt-0.5 w-4 shrink-0 text-accent">
             {m.id === active.id && <Check size={14} />}

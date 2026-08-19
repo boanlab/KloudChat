@@ -38,6 +38,7 @@ import type {
   FileRow,
   MemoryRow,
   MessageRow,
+  ModelCatalogue,
   ProjectRow,
   SessionRow,
   SkillRow,
@@ -78,6 +79,36 @@ type Theme = 'light' | 'dark' | 'system'
 /** A client refusal is returned before send/compare writes its first Message. */
 const isClientRefusal = (error: unknown): error is ApiError =>
   error instanceof ApiError && error.status >= 400 && error.status < 500
+
+/**
+ * Model and routing-mode changes are persisted separately from a message send.
+ * Keep them ordered per conversation and make sends wait for the latest PATCH,
+ * otherwise a quick Enter after choosing Auto can reach the server while the
+ * conversation is still manual.
+ */
+const sessionPersistence = new Map<string, Promise<void>>()
+
+function queueSessionPersistence(sessionId: string, persist: () => Promise<void>): Promise<void> {
+  const previous = sessionPersistence.get(sessionId) ?? Promise.resolve()
+  const queued = previous.catch(() => undefined).then(persist)
+  sessionPersistence.set(sessionId, queued)
+  const cleanup = () => {
+    if (sessionPersistence.get(sessionId) === queued) sessionPersistence.delete(sessionId)
+  }
+  void queued.then(cleanup, cleanup)
+  return queued
+}
+
+async function waitForSessionPersistence(sessionId: string): Promise<void> {
+  // Another picker action can be queued while the previous PATCH is in flight.
+  // Continue until the promise observed is still the last one for this session.
+  while (true) {
+    const pending = sessionPersistence.get(sessionId)
+    if (!pending) return
+    await pending
+    if (sessionPersistence.get(sessionId) === pending) return
+  }
+}
 
 interface State {
   // ── auth (KloudChat's own, not LiteLLM's) — live against /api/auth ─────────
@@ -139,6 +170,7 @@ interface State {
   sessionsFailed: boolean
   /** False when the proxy did not answer; only adapter models are listed. */
   litellmAvailable: boolean
+  autoRouting: ModelCatalogue['autoRouting']
   loadModels: () => Promise<void>
 
   // ── session / generation ──────────────────────────────────────────────
@@ -149,13 +181,19 @@ interface State {
   setModel: (kind: SessionKind, id: string) => void
   /** Changes one conversation's model. The surface default is left alone. */
   setSessionModel: (sessionId: string, modelId: string) => Promise<void>
+  /** Auto is stored as a session mode, never as a synthetic model id. */
+  setSessionRoutingMode: (sessionId: string, mode: Session['routingMode']) => Promise<void>
   setActiveSession: (id: string | null) => void
   /** Sidebar list. Titles only — transcripts arrive with `openSession`. */
   loadSessions: () => Promise<void>
   openSession: (id: string) => Promise<void>
   newSession: (
     kind: SessionKind,
-    opts?: { projectId?: string | null; agentId?: string | null },
+    opts?: {
+      projectId?: string | null
+      agentId?: string | null
+      routingMode?: Session['routingMode']
+    },
   ) => Promise<string>
   send: (
     sessionId: string | null,
@@ -233,6 +271,8 @@ interface State {
   governance: GovernancePolicy | null
   loadGovernance: () => Promise<void>
   setGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
+  /** Confirmed save for forms that must distinguish failure from success. */
+  saveGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
 
   // ── image / audio-video ───────────────────────────────────────────────
   imageOptions: { aspect: string; style: string; count: number }
@@ -651,6 +691,13 @@ export const useStore = create<State>((set, get) => ({
   artifactsFailed: false,
   sessionsFailed: false,
   litellmAvailable: true,
+  autoRouting: {
+    enabled: false,
+    available: false,
+    reason: 'disabled',
+    classifierModelId: null,
+    economyModelIds: [],
+  },
 
   sessions: [],
   jobs: [],
@@ -740,6 +787,11 @@ export const useStore = create<State>((set, get) => ({
     await get().loadGovernance()
     return result?.clearedMessages ?? 0
   },
+  saveGovernance: async (patch) => {
+    const result = await usageApi.setGovernance(patch)
+    await get().loadGovernance()
+    return result.clearedMessages
+  },
   loadAudit: async () => {
     const rows = await usageApi.audit(200).catch(() => null)
     if (rows) set({ audit: rows })
@@ -748,10 +800,18 @@ export const useStore = create<State>((set, get) => ({
   loadModels: async () => {
     set({ modelsLoading: true })
     try {
-      const { models: live, litellmAvailable, defaultChatModel } = await modelsApi.list()
+      const { models: live, litellmAvailable, defaultChatModel, autoRouting } =
+        await modelsApi.list()
       set((s) => ({
         models: live,
         litellmAvailable,
+        autoRouting: autoRouting ?? {
+          enabled: false,
+          available: false,
+          reason: 'disabled',
+          classifierModelId: null,
+          economyModelIds: [],
+        },
         modelsLoading: false,
         modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel),
         compareModels: reconcileCompareModels(s.compareModels, live),
@@ -784,11 +844,52 @@ export const useStore = create<State>((set, get) => ({
       return { modelByKind: next }
     }),
   setSessionModel: async (sessionId, modelId) => {
+    const previous = get().sessions.find((session) => session.id === sessionId)
     set((s) => ({
-      sessions: s.sessions.map((c) => (c.id === sessionId ? { ...c, model: modelId } : c)),
+      sessions: s.sessions.map((c) =>
+        c.id === sessionId ? { ...c, model: modelId, routingMode: 'manual' } : c,
+      ),
     }))
-    {
-      await sessionsApi.update(sessionId, { model: modelId }).catch(() => get().loadSessions())
+    try {
+      await queueSessionPersistence(sessionId, () =>
+        sessionsApi
+          .update(sessionId, { model: modelId, routingMode: 'manual' })
+          .then(() => undefined),
+      )
+    } catch {
+      const current = get().sessions.find((session) => session.id === sessionId)
+      if (previous && current?.model === modelId && current.routingMode === 'manual') {
+        set((s) => ({
+          sessions: s.sessions.map((session) =>
+            session.id === sessionId ? previous : session,
+          ),
+        }))
+      }
+      void get().loadSessions()
+    }
+  },
+  setSessionRoutingMode: async (sessionId, mode) => {
+    const previous = get().sessions.find((session) => session.id === sessionId)?.routingMode
+    set((s) => ({
+      sessions: s.sessions.map((session) =>
+        session.id === sessionId ? { ...session, routingMode: mode } : session,
+      ),
+    }))
+    try {
+      await queueSessionPersistence(sessionId, () =>
+        sessionsApi.update(sessionId, { routingMode: mode }).then(() => undefined),
+      )
+    } catch (error) {
+      const current = get().sessions.find((session) => session.id === sessionId)
+      if (previous && current?.routingMode === mode) {
+        set((s) => ({
+          sessions: s.sessions.map((session) =>
+            session.id === sessionId ? { ...session, routingMode: previous } : session,
+          ),
+        }))
+      }
+      void get().loadSessions()
+      throw error
     }
   },
   setActiveSession: (id) => {
@@ -844,7 +945,10 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  newSession: async (kind, { projectId = null, agentId = null } = {}) => {
+  newSession: async (
+    kind,
+    { projectId = null, agentId = null, routingMode = 'manual' } = {},
+  ) => {
     // Writes projects[].sessionIds, so an earlier workspace snapshot would drop
     // the new chat back out of its project.
     touchWorkspace()
@@ -853,6 +957,7 @@ export const useStore = create<State>((set, get) => ({
       projectId,
       agentId,
       model: get().modelByKind[kind],
+      routingMode,
     })
     const session = toSession(row, [])
     set((s) => ({
@@ -876,6 +981,7 @@ export const useStore = create<State>((set, get) => ({
    */
   send: async (sessionId, kind, text, opts = {}) => {
     const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
+    await waitForSessionPersistence(id)
     // A chat can be refused before it becomes a turn. Keep the originating
     // composer visible until the first SSE event; non-chat surfaces navigate
     // as soon as their session exists.
@@ -1891,6 +1997,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     projectId: raw.projectId,
     agentId: raw.agentId,
     model: raw.model,
+    routingMode: raw.routingMode ?? 'manual',
     artifactId: raw.artifactId,
     pinned: raw.pinned,
     createdAt: raw.createdAt,
@@ -2158,7 +2265,7 @@ async function streamTurn(
                   : m.model,
             routing:
               'effectiveModels' in event
-                ? event
+                ? { ...event, costRouting: m.routing?.costRouting ?? event.costRouting }
                 : m.routing
                   ? {
                       ...m.routing,
@@ -2169,6 +2276,29 @@ async function streamTurn(
                   : m.routing,
           }))
           break
+        case 'model_route': {
+          // Provider routing also uses this name internally. Only the public
+          // adaptive-routing event carries this complete, user-facing shape.
+          if (!event.decision || !event.requestedModel || !event.selectedModel) break
+          const { type: _type, ...costRouting } = event
+          patch((m) => ({
+            ...m,
+            model: event.executedModel ?? event.selectedModel,
+            routing: m.routing
+              ? { ...m.routing, costRouting }
+              : {
+                  requestedModels: [event.requestedModel],
+                  routedModels: [event.selectedModel],
+                  effectiveModels: [event.selectedModel],
+                  actualModels: event.executedModel ? [event.executedModel] : [],
+                  actualModel: event.executedModel,
+                  action: 'none',
+                  dataBoundary: 'unknown',
+                  costRouting,
+                },
+          }))
+          break
+        }
         case 'delta':
           if (live) patch((m) => ({ ...m, content: m.content + event.text }))
           else buffered += event.text

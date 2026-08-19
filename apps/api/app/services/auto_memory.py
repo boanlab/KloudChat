@@ -100,6 +100,7 @@ async def extract(
     model: str,
     masker: Callable[[str], tuple[str, int]] | None = None,
     strict_local: bool = False,
+    disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> int:
     """Writes any new facts and returns how many. Caller commits."""
@@ -157,7 +158,11 @@ async def extract(
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                     "max_tokens": 300,
-                    **({"disable_fallbacks": True} if strict_local else {}),
+                    **(
+                        {"disable_fallbacks": True}
+                        if strict_local or disable_fallbacks
+                        else {}
+                    ),
                 },
             )
             response.raise_for_status()

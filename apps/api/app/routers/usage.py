@@ -20,7 +20,7 @@ from app.models.chat import ChatSession, Message, Role
 from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
-from app.services import governance, settings_store
+from app.services import adaptive_routing, governance, settings_store
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 
@@ -395,6 +395,9 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "externalDataGuard": policy.external_data_guard,
         "allowUserRawExternal": policy.allow_user_raw_external,
         "privacySafeModelIds": ordered_safe_ids,
+        "adaptiveRoutingEnabled": policy.adaptive_routing_enabled,
+        "adaptiveClassifierModelId": policy.adaptive_classifier_model_id,
+        "adaptiveEconomyModelIds": list(policy.adaptive_economy_model_ids or []),
         "intentFilter": policy.intent_filter,
         "blockedCategories": list(policy.blocked_categories or []),
         "retentionDays": policy.retention_days,
@@ -433,6 +436,65 @@ async def put_governance(
         patch["privacy_safe_model_ids"] = [
             model_id for model_id in strict_order if model_id in requested_set
         ]
+    if {
+        "adaptive_routing_enabled",
+        "adaptive_classifier_model_id",
+        "adaptive_economy_model_ids",
+    } & patch.keys():
+        catalogue = await model_service.list_models_for_egress()
+        models = catalogue["models"]
+        by_id = {model["id"]: model for model in models}
+
+        if patch.get("adaptive_classifier_model_id") == "":
+            patch["adaptive_classifier_model_id"] = None
+        if "adaptive_economy_model_ids" in patch:
+            economy_ids = list(patch["adaptive_economy_model_ids"] or [])
+            patch["adaptive_economy_model_ids"] = economy_ids
+
+        enabled = patch.get("adaptive_routing_enabled", policy.adaptive_routing_enabled)
+        classifier_id = patch.get(
+            "adaptive_classifier_model_id", policy.adaptive_classifier_model_id
+        )
+        economy_ids = list(
+            patch.get("adaptive_economy_model_ids", policy.adaptive_economy_model_ids) or []
+        )
+        if enabled and not classifier_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_classifier_required",
+            )
+        if enabled and not economy_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_economy_models_required",
+            )
+        if enabled and len(economy_ids) > 3:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_economy_models_max_three",
+            )
+        if enabled and len(economy_ids) != len(set(economy_ids)):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_economy_models_must_be_distinct",
+            )
+        if enabled and not adaptive_routing.classifier_is_usable(
+            by_id.get(classifier_id or ""), allowed_model_ids=set()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_classifier_must_be_zero_cost_strict_local",
+            )
+        if enabled and any(
+            not adaptive_routing.economy_is_baseline_usable(
+                by_id.get(model_id), allowed_model_ids=set()
+            )
+            for model_id in economy_ids
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_economy_models_invalid",
+            )
     if patch.get("pii_masking", policy.pii_masking):
         # The legacy policy has no raw-delivery exception. Persist the effective
         # upper bound so turning legacy masking off later cannot resurrect a

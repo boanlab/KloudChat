@@ -66,6 +66,14 @@ Credits are an administrator-assigned monthly allowance that refills. There is
 no top-up, no refund and no rollover, and failed jobs are never charged in the
 first place.
 
+For ordinary chat, an administrator can also offer **Auto cost routing**. The
+person keeps a real model as the conversation's quality ceiling and explicitly
+selects Auto for that conversation. A zero-cost, strict-local classifier routes
+only high-confidence simple turns to an administrator-approved cheaper model;
+complex, ambiguous, privacy-sensitive turns and requests that explicitly use
+attachments, web search, skills, agents or projects keep the quality model. The
+requested, selected and actually executed models remain visible on the answer.
+
 ## Deployment shape
 
 ```

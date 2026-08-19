@@ -2,6 +2,7 @@ import {
   ArrowUp,
   Boxes,
   Columns2,
+  Gauge,
   Globe,
   Paperclip,
   Plug,
@@ -302,6 +303,7 @@ export function Composer({
   const [pendingPrivacy, setPendingPrivacy] = useState<PendingPrivacy | null>(null)
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
+  const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it. Taken once and cleared, so it
   // attaches to the draft it arrived with and not to every turn after it.
@@ -356,6 +358,7 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
+    setSessionRoutingMode,
     generateImages,
     generateAudio,
     generateVideo,
@@ -424,6 +427,17 @@ export function Composer({
         skill !== undefined && skillUnavailableReason(skill) === null,
     )
     .slice(0, 3)
+  const autoBypassPreview =
+    session?.routingMode === 'auto' &&
+    Boolean(
+      project ||
+        sessionAgent ||
+        attachments.length > 0 ||
+        webSearch ||
+        activeSkills.length > 0,
+    )
+  const autoPausedForCompare =
+    session?.routingMode === 'auto' && compareMode && kind === 'chat'
   // Empty `kinds` means every surface, the same rule skills and tool
   // allowlists use.
   const usableAgents = agents.filter(
@@ -523,7 +537,12 @@ export function Composer({
         requestAnimationFrame(() => ref.current?.focus())
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
-      setChatError(errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
+      const detail = errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.'))
+      setChatError(
+        detail === 'auto_quality_model_required'
+          ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
+          : detail,
+      )
       throw error
     }
   }
@@ -556,7 +575,7 @@ export function Composer({
 
   const submit = () => {
     const text = value.trim()
-    if (!text || busy || unsupportedVideo) return
+    if (!text || busy || modelSelectionPending || unsupportedVideo) return
     clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
     const attachmentLabels = attachments.map((f) => f.name)
@@ -649,8 +668,22 @@ export function Composer({
           attachments.length > 0 ||
           webSearch ||
           activeSkills.length > 0 ||
+          autoBypassPreview ||
+          autoPausedForCompare ||
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
+            {autoBypassPreview && (
+              <Badge tone="warn">
+                <Gauge size={11} />
+                {t('Auto · 이번 요청은 기능 사용으로 품질 모델 유지')}
+              </Badge>
+            )}
+            {autoPausedForCompare && (
+              <Badge tone="warn">
+                <Gauge size={11} />
+                {t('Auto 일시 중지 · 비교할 모델을 직접 실행')}
+              </Badge>
+            )}
             {compareMode && kind === 'chat' && (
               <Badge tone="accent">
                 <Columns2 size={11} />
@@ -1051,11 +1084,30 @@ export function Composer({
                 kind={kind}
                 sessionId={sessionId ?? reusableSessionId}
                 modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
+                onEnableAuto={async () => {
+                  setChatError(null)
+                  try {
+                    let id = sessionId ?? reusableSessionId
+                    if (!id) {
+                      id = await newSession(kind, { projectId, routingMode: 'auto' })
+                      preserveComposerForSession.current = id
+                      setReusableSessionId(id)
+                      navigate(`/s/${id}`, { replace: true })
+                    } else {
+                      await setSessionRoutingMode(id, 'auto')
+                    }
+                  } catch (error) {
+                    setChatError(
+                      errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+                    )
+                  }
+                }}
+                onBusyChange={setModelSelectionPending}
               />
             )}
             <button
               onClick={streaming ? stopStreaming : submit}
-              disabled={!value.trim() && !streaming}
+              disabled={(!value.trim() && !streaming) || modelSelectionPending}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',
                 streaming
@@ -1066,6 +1118,8 @@ export function Composer({
               title={
                 streaming
                   ? t('생성을 멈춥니다')
+                  : modelSelectionPending
+                    ? t('모델 설정 저장 중…')
                   : !value.trim()
                     ? t('보낼 내용을 먼저 입력하세요')
                     : unsupportedVideo

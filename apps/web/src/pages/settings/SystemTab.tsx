@@ -8,6 +8,7 @@ import { BrandingSection } from './BrandingSection'
 import { FeaturesSection } from './FeaturesSection'
 import { TemplatesSection } from './TemplatesSection'
 import { ToolsSection } from './ToolsSection'
+import { AutoRoutingSection } from './AutoRoutingSection'
 
 /**
  * Proxy configuration, editable without a redeploy.
@@ -274,6 +275,15 @@ export function SystemTab() {
       <p className="text-xs text-faint">
         {t('키는 암호화해 서버에만 보관하며, 저장한 뒤에는 화면에 표시하지 않습니다. 저장하면 곧바로 적용됩니다.')}
       </p>
+
+      {/* ── Auto 비용 절약 라우팅 ─────────────────────────────── */}
+      <div className="border-t border-line pt-5">
+        <h2 className="mb-1 text-base font-medium">{t('모델 자동 라우팅')}</h2>
+        <p className="mb-4 text-base text-muted">
+          {t('질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.')}
+        </p>
+        <AutoRoutingSection />
+      </div>
 
       {/* ── 사용할 기능 ─────────────────────────────────────────── */}
       <div className="border-t border-line pt-5">

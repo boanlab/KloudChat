@@ -72,6 +72,77 @@ const EN: Record<string, string> = {
     'A surface that is off disappears from the menu and refuses new work. Existing records stay.',
   'AI 에이전트 연동': 'Agent setup',
 
+  // ── Auto cost routing ──────────────────────────────────────────────
+  'Auto · 비용 절약': 'Auto · Save credits',
+  'Auto 비용 절약 라우팅': 'Auto cost-saving routing',
+  '모델 자동 라우팅': 'Automatic model routing',
+  '질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.':
+    'Match the model to the question and avoid unnecessary premium-model calls.',
+  '간단한 일반 채팅만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.':
+    'Route only simple, ordinary chats through the configured economy models. Complex or unsupported requests keep the model chosen by the user.',
+  '난이도 분류 모델': 'Complexity classifier',
+  '외부 전환이 없는 무료 strict-local 모델만 사용할 수 있습니다.':
+    'Only free strict-local models with no external failover can be used.',
+  '분류 모델 선택': 'Choose a classifier',
+  '절약 모델 추가': 'Add economy model',
+  '최대 3개까지 추가할 수 있으며 위에서부터 사용 가능 여부를 확인합니다.':
+    'Add up to three. Availability is checked from top to bottom.',
+  '최대 3개를 선택했습니다': 'Three models selected',
+  '절약 모델 선택': 'Choose an economy model',
+  '절약 모델 우선순위': 'Economy model priority',
+  '선택한 절약 모델이 없습니다.': 'No economy model selected.',
+  '현재 사용할 수 있는 무료 strict-local 분류 모델이 없습니다. 설정을 켜도 Auto를 제공하지 않습니다.':
+    'No free strict-local classifier is currently available. Auto will remain unavailable even if enabled.',
+  '라우팅 설정 저장': 'Save routing settings',
+  '분류 모델과 절약 모델을 한 개 이상 선택하세요.':
+    'Choose a classifier and at least one economy model.',
+  '현재 사용자에게 제공할 수 있는 Auto 경로가 없습니다.':
+    'There is currently no Auto route available to users.',
+  '라우팅 설정을 저장하지 못했습니다.': 'Could not save routing settings.',
+  'strict-local 분류 모델을 사용할 수 없습니다.':
+    'The strict-local classifier is unavailable.',
+  '사용 가능한 절약 모델이 없습니다.': 'No economy model is available.',
+  '관리자가 Auto 비용 절약을 켜지 않았습니다.':
+    'An administrator has not enabled Auto cost saving.',
+  '사용 가능': 'Available',
+  '사용 불가': 'Unavailable',
+  '현재 사용 불가': 'Currently unavailable',
+  '간단한 질문은 관리자가 지정한 절약 모델로 보내고, 복잡하면 현재 모델을 유지합니다.':
+    'Simple questions use an administrator-selected economy model; complex questions keep the current model.',
+  '품질 모델': 'Quality model',
+  '모델 직접 선택': 'Choose a model directly',
+  'Auto · 이번 요청은 기능 사용으로 품질 모델 유지':
+    'Auto · Keeping the quality model because this request uses extra features',
+  'Auto 절약': 'Auto saving',
+  '예상 {n} 크레딧 절약': 'About {n} credits saved',
+  'Auto · 분류기를 사용할 수 없어 품질 모델 유지':
+    'Auto · Classifier unavailable, keeping the quality model',
+  'Auto · 개인정보 감지로 난이도 판정 생략':
+    'Auto classification skipped because personal data was detected',
+  'Auto · 기능 사용으로 품질 모델 유지':
+    'Auto · Extra features used, keeping the quality model',
+  'Auto · 관리 정책이 꺼져 품질 모델 유지':
+    'Auto · Administrator policy is off, keeping the quality model',
+  'Auto · 사용할 절약 모델이 없어 품질 모델 유지':
+    'Auto · No eligible economy model, keeping the quality model',
+  'Auto · 난이도 판정을 생략하고 품질 모델 유지':
+    'Auto · Classification skipped, keeping the quality model',
+  'Auto · 복잡한 요청으로 품질 모델 유지':
+    'Auto · Complex request, keeping the quality model',
+  'Auto · 긴 대화이므로 품질 모델 유지':
+    'Auto · Long conversation, keeping the quality model',
+  'Auto · 확실하지 않아 품질 모델 유지':
+    'Auto · Uncertain classification, keeping the quality model',
+  'Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.':
+    'Choose the quality model for Auto again. Your draft and attachments are preserved.',
+  'Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.':
+    'Could not enable Auto. Please try again shortly.',
+  '요청 모델': 'Requested model',
+  '선택 모델': 'Selected model',
+  '실행 모델': 'Executed model',
+  '{name} 우선순위 올리기': 'Move {name} up',
+  '{name} 우선순위 내리기': 'Move {name} down',
+
   // ── branding ────────────────────────────────────────────────────────
   '브랜딩': 'Branding',
   '미리보기': 'Preview',

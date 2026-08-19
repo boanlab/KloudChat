@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { ArtifactKind, Message } from '@/types'
+import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
 import { StepTimeline } from './StepTimeline'
@@ -46,6 +46,87 @@ const artifactLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
 }
 
+function costRouteDecisionLabel(
+  route: CostRouting,
+  t: (text: string) => string,
+): string {
+  if (route.decision === 'routed') {
+    return t('Auto 절약')
+  }
+  if (route.decision === 'classifier_unavailable') {
+    return t('Auto · 분류기를 사용할 수 없어 품질 모델 유지')
+  }
+  if (route.decision === 'bypassed') {
+    if (route.reasonCode === 'privacy_detected') {
+      return t('Auto · 개인정보 감지로 난이도 판정 생략')
+    }
+    if (route.reasonCode === 'unsupported_turn') {
+      return t('Auto · 기능 사용으로 품질 모델 유지')
+    }
+    if (route.reasonCode === 'disabled') {
+      return t('Auto · 관리 정책이 꺼져 품질 모델 유지')
+    }
+    if (route.reasonCode === 'no_economy_model' || route.reasonCode === 'no_economy_models') {
+      return t('Auto · 사용할 절약 모델이 없어 품질 모델 유지')
+    }
+    return t('Auto · 난이도 판정을 생략하고 품질 모델 유지')
+  }
+  if (route.reasonCode === 'high_complexity') {
+    return t('Auto · 복잡한 요청으로 품질 모델 유지')
+  }
+  if (route.reasonCode === 'input_too_long') {
+    return t('Auto · 긴 대화이므로 품질 모델 유지')
+  }
+  if (route.reasonCode === 'no_economy_model' || route.reasonCode === 'no_economy_models') {
+    return t('Auto · 사용할 절약 모델이 없어 품질 모델 유지')
+  }
+  return t('Auto · 확실하지 않아 품질 모델 유지')
+}
+
+function modelPresentation(
+  id: string | undefined,
+  models: ModelInfo[],
+  t: (text: string) => string,
+): { label: string; detail: string } {
+  if (!id) {
+    const pending = t('확인 중…')
+    return { label: pending, detail: pending }
+  }
+  const label = models.find((model) => model.id === id)?.label ?? id
+  return {
+    label,
+    detail: label === id ? id : `${label} (${id})`,
+  }
+}
+
+function costRoutePresentation(
+  route: CostRouting,
+  models: ModelInfo[],
+  t: (text: string) => string,
+): { label: string; title: string } {
+  const requested = modelPresentation(route.requestedModel, models, t)
+  const selected = modelPresentation(route.selectedModel, models, t)
+  const executed = modelPresentation(route.executedModel, models, t)
+  const decision = costRouteDecisionLabel(route, t)
+  const saved = route.estimatedCreditsSaved
+    ? ` · ${t('예상 {n} 크레딧 절약').replace('{n}', route.estimatedCreditsSaved.toLocaleString())}`
+    : ''
+  const visibleModels = [
+    `${t('요청 모델')}: ${requested.label}`,
+    `${t('선택 모델')}: ${selected.label}`,
+    `${t('실행 모델')}: ${executed.label}`,
+  ].join(' · ')
+  const detailedModels = [
+    `${t('요청 모델')}: ${requested.detail}`,
+    `${t('선택 모델')}: ${selected.detail}`,
+    `${t('실행 모델')}: ${executed.detail}`,
+  ].join(' · ')
+  return {
+    label: `${decision} · ${visibleModels}${saved}`,
+    title: detailedModels,
+  }
+}
+
 export function MessageItem({
   message,
   sessionId,
@@ -64,7 +145,8 @@ export function MessageItem({
       message.routing.actualModel !== message.routing.requestedModels[0],
   )
   const showRouting = Boolean(
-    message.routing && (message.routing.action !== 'none' || actualModelChanged),
+    message.routing &&
+      (message.routing.action !== 'none' || actualModelChanged || message.routing.costRouting),
   )
   const messageBoundary =
     model?.dataBoundary ??
@@ -113,6 +195,8 @@ export function MessageItem({
     )
   }
 
+  const costRoute = message.routing?.costRouting
+  const costRouteDisplay = costRoute ? costRoutePresentation(costRoute, models, t) : null
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
@@ -125,6 +209,14 @@ export function MessageItem({
       <div className="min-w-0 flex-1">
         {message.routing && showRouting && (
           <div className="mb-2 flex flex-wrap gap-1.5">
+            {costRoute && costRouteDisplay && (
+              <Badge
+                tone={costRoute.decision === 'routed' ? 'success' : 'warn'}
+                title={costRouteDisplay.title}
+              >
+                {costRouteDisplay.label}
+              </Badge>
+            )}
             {message.routing.action !== 'none' &&
               message.routing.initialAction === 'send_raw_external' &&
               message.routing.action !== 'send_raw_external' && (
@@ -161,11 +253,13 @@ export function MessageItem({
                 )}
               </Badge>
             ) : null}
-            {actualModelChanged && message.routing.actualModel && (
+            {actualModelChanged &&
+              !message.routing.costRouting &&
+              message.routing.actualModel && (
               <Badge title={message.routing.actualModel}>
                 {t('실제 실행 모델')}: {message.routing.actualModel}
               </Badge>
-            )}
+              )}
           </div>
         )}
         {message.steps && message.steps.length > 0 && (

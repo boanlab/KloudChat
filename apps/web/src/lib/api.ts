@@ -11,6 +11,7 @@ import type {
   ModelInfo,
   PrivacyAction,
   PrivacyRouting,
+  CostRouting,
   Session,
   SessionKind,
   Slide,
@@ -166,6 +167,13 @@ export interface ModelCatalogue {
   /** Model used when the user has not chosen one. Empty when it is not in
    *  the catalogue. */
   defaultChatModel?: string
+  autoRouting: {
+    enabled: boolean
+    available: boolean
+    reason: 'disabled' | 'classifier_unavailable' | 'no_economy_models' | null
+    classifierModelId: string | null
+    economyModelIds: string[]
+  }
 }
 
 export const modelsApi = {
@@ -385,6 +393,9 @@ export interface GovernancePolicy {
   blockedCategories: string[]
   /** 0 keeps everything; anything above clears message bodies older than that. */
   retentionDays: number
+  adaptiveRoutingEnabled: boolean
+  adaptiveClassifierModelId: string | null
+  adaptiveEconomyModelIds: string[]
 }
 
 export interface ApiKeyRow {
@@ -544,6 +555,7 @@ export interface SessionRow {
   projectId: string | null
   agentId: string | null
   model: string
+  routingMode: Session['routingMode']
   artifactId: string | null
   pinned: boolean
   createdAt: string
@@ -584,8 +596,12 @@ export const sessionsApi = {
     projectId?: string | null
     agentId?: string | null
     model?: string | null
+    routingMode?: Session['routingMode']
   }) => call<SessionRow>('/sessions', body(payload)),
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'pinned' | 'model'>>) =>
+  update: (
+    id: string,
+    patch: Partial<Pick<Session, 'title' | 'pinned' | 'model' | 'routingMode'>>,
+  ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/sessions/${id}`, { method: 'DELETE' }),
 }
@@ -1007,6 +1023,7 @@ export type StreamEvent =
   | { type: 'error'; message: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
+  | ({ type: 'model_route' } & CostRouting)
   /** Model comparison: one column's text, then that column's final bill. */
   | { type: 'variant'; model: string; text: string; actualModel?: string }
   | {
@@ -1080,19 +1097,24 @@ async function* postStream(
   // A refused turn (no credits, unbuilt surface) answers with JSON, not a
   // stream. Surfacing it as an ApiError keeps the caller's error path uniform.
   if (!res.ok) {
+    let detail: string | null = null
     if (res.status === 409) {
       try {
-        const payload = (await res.json()) as PrivacyDecision
-        if (payload.code === 'privacy_decision_required') {
-          throw new PrivacyDecisionError(payload)
+        const payload = (await res.json()) as PrivacyDecision & { detail?: unknown }
+        if (payload.code === 'privacy_decision_required') throw new PrivacyDecisionError(payload)
+        if (typeof payload.detail === 'string') detail = payload.detail
+        else if (Array.isArray(payload.detail)) {
+          detail = (payload.detail[0] as { msg?: string } | undefined)?.msg ?? 'invalid_request'
         }
       } catch (error) {
         if (error instanceof PrivacyDecisionError) throw error
       }
     }
-    const detail = await readDetail(res)
-    if (res.status === 401) throw new UnauthorizedError(detail)
-    throw new ApiError(res.status, detail)
+    // A 409 body was consumed above; reading it twice loses the useful code
+    // and turns `auto_quality_model_required` into the generic `http_409`.
+    const resolved = detail ?? (res.status === 409 ? `http_${res.status}` : await readDetail(res))
+    if (res.status === 401) throw new UnauthorizedError(resolved)
+    throw new ApiError(res.status, resolved)
   }
   if (!res.body) throw new Error('no response body')
 
