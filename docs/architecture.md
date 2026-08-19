@@ -111,7 +111,7 @@ reason.
 
 ## 5. Data model
 
-Twenty-one migrations under `alembic/versions/`. The principal tables:
+Twenty-two migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`

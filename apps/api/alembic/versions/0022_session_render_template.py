@@ -10,8 +10,8 @@ Not a foreign key: the catalogue ships inside the API image rather than in a
 table, and an id that disappears in an upgrade must degrade to "no template"
 rather than to a session that will not load.
 
-Revision ID: 0021
-Revises: 0020
+Revision ID: 0022
+Revises: 0021
 Create Date: 2026-08-18
 """
 
@@ -22,8 +22,8 @@ import sqlmodel
 
 from alembic import op
 
-revision: str = "0021"
-down_revision: str | None = "0020"
+revision: str = "0022"
+down_revision: str | None = "0021"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

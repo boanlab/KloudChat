@@ -1582,7 +1582,7 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
 
     The projects are detached rather than deleted, because a look is a
     decoration and a project is work. Done here rather than left to the
-    `ON DELETE SET NULL` in migration 0020 so the rows this request already
+    `ON DELETE SET NULL` in migration 0021 so the rows this request already
     loaded agree with the database it returns to.
     """
     row = await _own(db, DesignSystem, "owner_id", user, design_id)
