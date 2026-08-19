@@ -184,15 +184,15 @@ def test_a_json_deck_still_halves_its_own_list():
     assert columns == [["가", "나", "다"], ["라", "마", "바"]]
 
 
-@pytest.mark.parametrize("template_id", ["deck-editorial", "deck-signal"])
-def test_both_deck_templates_convert(template_id):
+@pytest.mark.parametrize("template_id", [t.id for t in dt.all_templates() if t.kind == "deck"])
+def test_every_deck_template_converts(template_id):
     slides = page_export.to_slides(_deck_html(template_id))
     assert len(slides) == len(_DECK_BLOCKS)
     assert deck_export.to_pptx("t", slides, tokens=_TOKENS)[:2] == b"PK"
     assert deck_export.to_pdf("t", slides, tokens=_TOKENS)[:4] == b"%PDF"
 
 
-@pytest.mark.parametrize("template_id", ["doc-report", "doc-brief"])
+@pytest.mark.parametrize("template_id", ["doc-report", "doc-brief", "doc-notice", "doc-minutes"])
 def test_both_document_templates_reach_every_report_format(template_id):
     sections = page_export.to_sections(_doc_html(template_id))
     assert report_export.to_docx("t", sections, tokens=_TOKENS)[:2] == b"PK"

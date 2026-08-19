@@ -1,0 +1,207 @@
+<!doctype html>
+<!--
+  KloudChat document seed — minutes.
+
+  A record rather than an argument. The masthead names the meeting and puts
+  일시·장소·참석 in a right-hand column, so the facts that date the document
+  sit apart from the sentence that explains it. Sections are numbered by a CSS
+  counter, which is what lets somebody write "3항" in the next mail and be
+  understood.
+
+  Decisions and action items are lists set as ruled rows: a `<strong>` line
+  for what was settled, and a `<small>` line pushed right for who owes it by
+  when. Scanning the right edge for your own name is what a reader actually
+  does with minutes, and bullets do not give them an edge to scan.
+
+  The masthead stays on the first printed page instead of taking one of its
+  own — the report seed breaks after its cover because a report is read from
+  the front, while minutes are filed and cited, and a title sheet in front of
+  two pages of rows is a page nobody reads.
+
+  No script. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --paper: #ffffff;
+    --border: color-mix(in srgb, var(--ink) 13%, transparent);
+    --tint: color-mix(in srgb, var(--accent) 10%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: color-mix(in srgb, var(--ink) 5%, #fff);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.7;
+    /* Korean breaks at the word, not inside it; the long ASCII token that
+       keep-all would push past the margin still breaks. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 3rem 5rem;
+    background: var(--paper);
+    min-height: 100vh;
+    counter-reset: agenda;
+  }
+
+  /* ── masthead ────────────────────────────────────────────────────── */
+  .cover {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 2.5rem;
+    align-items: start;
+    padding-bottom: 1.3rem;
+    margin-bottom: 2.4rem;
+    border-bottom: 3px solid var(--accent);
+  }
+  /* Everything the model writes stacks in the left column. Only the meta list
+     is lifted out, so a paragraph it adds cannot land in the margin. */
+  .cover > * { grid-column: 1; }
+  .cover h1 {
+    margin: 0 0 0.45rem;
+    font-size: clamp(1.55rem, 3.6vw, 2.3rem);
+    line-height: 1.22;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .cover .lead { margin: 0; color: var(--muted); font-size: 1rem; }
+  .cover .meta {
+    grid-column: 2;
+    /* Spanning the title and the line under it rather than sitting in the
+       first row: a four-line meta block in a one-line row would stretch that
+       row and drop the lead half a page below the title it belongs to. */
+    grid-row: 1 / span 2;
+    align-self: start;
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0 0.9rem 0 0;
+    border-right: 2px solid var(--accent);
+    min-width: 8.5rem;
+    text-align: right;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .cover .meta li { margin: 0 0 0.55rem; }
+  .cover .meta li:last-child { margin-bottom: 0; }
+  .cover .meta strong {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+
+  /* ── numbered sections ───────────────────────────────────────────── */
+  section { margin: 0 0 2.1rem; counter-increment: agenda; }
+  h2 {
+    position: relative;
+    margin: 0 0 0.7rem;
+    padding-left: 2.3rem;
+    font-size: 1.18rem;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  h2::before {
+    content: counter(agenda);
+    position: absolute;
+    left: 0;
+    top: 0.08em;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 4px;
+    background: var(--tint);
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.7rem;
+    text-align: center;
+  }
+  h3 { margin: 1.4rem 0 0.4rem; font-size: 0.95rem; letter-spacing: 0.02em; color: var(--muted); }
+  p { margin: 0 0 0.8rem; text-wrap: pretty; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.2rem; }
+  li { margin: 0 0 0.35rem; }
+  li::marker { color: var(--accent); }
+  strong { font-weight: 650; }
+  small { color: var(--muted); }
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.4rem 1rem;
+    border-left: 3px solid var(--rule);
+    color: var(--muted);
+  }
+
+  /* ── decisions and action items ──────────────────────────────────── */
+  .rows {
+    list-style: none;
+    margin: 0.3rem 0 1.3rem;
+    padding: 0;
+    border-top: 2px solid var(--accent);
+  }
+  .rows > li {
+    margin: 0;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+    text-wrap: pretty;
+  }
+  /* The settled sentence leads the row; the rest of the `<li>` explains it. */
+  .rows > li > strong { display: block; font-weight: 650; }
+  .rows > li > small {
+    display: block;
+    margin-top: 0.25rem;
+    text-align: right;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 0.4rem 0 1.2rem; font-size: 0.92rem; }
+  th, td { padding: 0.5em 0.7em; border-bottom: 1px solid var(--border);
+           text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--accent); }
+
+  /* A panel this narrow has no second column to give away. */
+  @media (max-width: 720px) {
+    .page { padding: 2.2rem 1.4rem 3rem; }
+    .cover { grid-template-columns: 1fr; }
+    .cover .meta {
+      grid-column: 1;
+      grid-row: auto;
+      margin-top: 1.1rem;
+      padding: 0 0 0 0.9rem;
+      border-right: 0;
+      border-left: 2px solid var(--accent);
+      text-align: left;
+    }
+    .rows > li > small { text-align: left; }
+  }
+
+  @page { size: A4 portrait; margin: 18mm 16mm; }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
+    /* The masthead is page one's header rather than a page of its own. */
+    .cover { page-break-after: avoid; break-after: avoid; }
+    h2 { page-break-after: avoid; break-after: avoid; }
+    /* A row split across the fold loses the half that says whose it is. */
+    .rows > li { page-break-inside: avoid; break-inside: avoid; }
+    section { page-break-inside: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

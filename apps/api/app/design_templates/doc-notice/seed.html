@@ -1,0 +1,184 @@
+<!doctype html>
+<!--
+  KloudChat document seed — notice.
+
+  A 공문 read as one column: a centred head that says who it is for, clauses
+  numbered "1." down the page, and the 붙임 list at the foot. The numbering is
+  a CSS counter because the writer only ever sends the words inside a clause —
+  a number typed into the text would be wrong the moment a clause moves.
+
+  The last clause is styled as the 붙임 by position rather than by a class,
+  since a class is not among the things the writer may send.
+
+  Colour is spent twice: the rule under the title and the clause numerals.
+  A notice gets photocopied, and what survives a monochrome copier is the
+  numbering and the rules, not the hue.
+
+  Nothing here executes. Artifacts render in a `sandbox=""` iframe, so the
+  whole shape is CSS. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --paper: #ffffff;
+    --rule: color-mix(in srgb, var(--ink) 26%, transparent);
+    --hairline: color-mix(in srgb, var(--ink) 13%, transparent);
+    --wash: color-mix(in srgb, var(--ink) 4%, transparent);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: color-mix(in srgb, var(--ink) 5%, #fff);
+    color: var(--ink);
+    font-family: var(--font-body);
+    /* Set for the serif face, which the design system may pick here: 명조 at
+       body size closes up without this much leading. */
+    line-height: 1.85;
+    /* 한글은 단어 가운데서 끊기면 읽는 속도가 떨어진다. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-font-smoothing: antialiased;
+    counter-reset: clause;
+  }
+  .page {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 6vw, 4.5rem) clamp(1.25rem, 5vw, 3.5rem) 5rem;
+    background: var(--paper);
+    min-height: 100vh;
+  }
+
+  /* ── head ──────────────────────────────────────────────────────── */
+  .cover { text-align: center; margin-bottom: clamp(1.8rem, 4vw, 2.8rem); }
+  .cover h1 {
+    margin: 0;
+    padding-bottom: 0.7rem;
+    border-bottom: 3px double var(--accent);
+    font-size: clamp(1.45rem, 4.2vw, 2.15rem);
+    font-weight: 700;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+  .cover p { margin: 1rem 0 0; color: var(--muted); font-size: 0.98rem; text-wrap: pretty; }
+  /* 수신·시행·담당. A grid rather than a table layout so the label column is
+     as wide as the longest label and no wider, and so it can stack. */
+  .cover table {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 1rem;
+    width: 100%;
+    margin: 1.5rem 0 0;
+    text-align: left;
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+  .cover thead, .cover tbody, .cover tr { display: contents; }
+  /* The head's cells are ruled underneath only; the boxed rules below belong
+     to a schedule table, not to a list of who this is for. */
+  .cover th, .cover td {
+    padding: 0.4rem 0;
+    border: 0;
+    border-bottom: 1px solid var(--hairline);
+    background: transparent;
+  }
+  .cover th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  /* Under 720px the two columns would squeeze a 20자 수신 line into 8; stack
+     the label over its value instead. */
+  @media (max-width: 720px) {
+    .cover table { grid-template-columns: 1fr; }
+    .cover th { padding: 0.5rem 0 0; border-bottom: 0; }
+    .cover td { padding: 0 0 0.5rem; }
+  }
+
+  /* ── clauses ───────────────────────────────────────────────────── */
+  section { counter-increment: clause; margin: 0 0 1.9rem; }
+  section h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.08rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  section h2::before {
+    content: counter(clause) ". ";
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  /* The body of a clause hangs under its number, as it does on paper. */
+  section > :not(h2) { margin-left: clamp(0.9rem, 3vw, 1.4rem); }
+  h3 { margin: 1.2rem 0 0.35rem; font-size: 1rem; font-weight: 600; color: var(--muted); }
+  p { margin: 0 0 0.8rem; text-wrap: pretty; }
+  section > :last-child { margin-bottom: 0; }
+  ul, ol { margin: 0 0 0.9rem; padding-left: 1.3rem; }
+  li { margin: 0 0 0.25rem; }
+  /* 가·나·다 under a numbered clause, and a dash where the order does not
+     matter: both are the convention on paper, and a browser that knows
+     neither falls back to numbers and discs. */
+  ol { list-style-type: hangul; }
+  ul { list-style-type: "- "; }
+  li::marker { color: var(--muted); }
+  strong { font-weight: 700; }
+  blockquote {
+    margin: 0.9rem 0; padding: 0.1rem 0 0.1rem 0.9rem;
+    border-left: 2px solid var(--rule); color: var(--muted); font-size: 0.95rem;
+  }
+  /* Ruled all round: a notice's table is usually a schedule somebody reads
+     across, and an underline-only table loses the column on a photocopy. */
+  table { width: 100%; border-collapse: collapse; margin: 0.4rem 0 1rem; font-size: 0.94rem; }
+  th, td { padding: 0.45em 0.6em; border: 1px solid var(--hairline); text-align: left; }
+  th { background: var(--wash); font-weight: 600; }
+  small { display: block; margin-top: 0.7rem; color: var(--muted); font-size: 0.86rem; }
+
+  /* ── 붙임 ──────────────────────────────────────────────────────── */
+  /* The attachments are the last clause. `:not(:first-of-type)` keeps a
+     notice that ended up with a single clause from being read as one. */
+  section:last-of-type:not(:first-of-type) {
+    counter-increment: none;
+    margin-top: 2.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--rule);
+  }
+  section:last-of-type:not(:first-of-type) h2 {
+    font-size: 0.98rem;
+    letter-spacing: 0.06em;
+  }
+  section:last-of-type:not(:first-of-type) h2::before { content: none; }
+  /* Attachments are counted 1, 2, 3 — they are enclosures, not sub-items. */
+  section:last-of-type:not(:first-of-type) ol { list-style: decimal; }
+  section:last-of-type:not(:first-of-type) li { margin-bottom: 0.1rem; }
+
+  /* ── print: one column, no cover page ──────────────────────────── */
+  @page { size: A4 portrait; margin: 22mm 20mm; }
+  @media print {
+    /* Screen wants air; paper has a fixed height, and a notice that spills its
+       붙임 onto a second sheet is a notice somebody staples. Everything below
+       is the same layout, set tighter. */
+    body { background: #fff; line-height: 1.7; }
+    .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
+    /* Unlike a report, the head is not a title page: it belongs on the same
+       sheet as the first clause, the way a notice is read. */
+    .cover { margin-bottom: 8mm; break-after: auto; page-break-after: auto; }
+    section { margin-bottom: 1.4rem; break-inside: auto; page-break-inside: auto; }
+    h2, h3 { break-after: avoid; page-break-after: avoid; }
+    tr, li { break-inside: avoid; page-break-inside: avoid; }
+    /* 붙임 split over two sheets stops being a list you can check what you
+       received against. */
+    section:last-of-type:not(:first-of-type) {
+      margin-top: 1.6rem;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    th { background: transparent; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

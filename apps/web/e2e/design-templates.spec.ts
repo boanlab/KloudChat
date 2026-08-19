@@ -139,8 +139,10 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   // The preview is the seed rendered around its sample, served as a document.
   // Fetched rather than read through the frame: `sandbox=""` makes the frame
   // opaque to the test for the same reason it makes it safe.
-  // Every card is that template's own seed, filled with its own sample.
-  await expect(gallery.locator('iframe')).toHaveCount(2)
+  // Every card is that template's own seed, filled with its own sample. Counted
+  // against the cards rather than a number written here: the catalogue gains
+  // templates, and a count in a test only teaches everybody to bump it.
+  await expect(gallery.locator('iframe')).toHaveCount(await gallery.locator('div.group').count())
   await shot(page, '01-deck-gallery')
 
   const previewUrl = await card.locator('iframe').getAttribute('src')

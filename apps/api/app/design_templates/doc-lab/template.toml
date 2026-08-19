@@ -1,0 +1,20 @@
+kind = "document"
+name = "실험 노트"
+description = "목적·방법·결과·한계를 절로 나눠, 다른 사람이 그대로 다시 할 수 있게 남기는 기록"
+category = "연구"
+fills = ["무엇을 측정했는지", "장비와 조건", "기간"]
+example_prompt = "실험 노트로 정리해 줘. 방법은 다른 사람이 그대로 다시 할 수 있을 만큼 자세히 쓰고, 마지막에 이 결과로 말할 수 없는 것을 남겨 줘.\n\n측정한 것과 조건: "
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Lab note"
+description_en = "Purpose, method, results, limits — written so somebody else can repeat it"
+category_en = "Research"
+fills_en = ["What was measured", "Equipment and conditions", "Period"]
+example_prompt_en = "Write this up as a lab note. Give the method in enough detail to repeat, and end with what these results cannot say.\n\nWhat was measured, and under what conditions: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

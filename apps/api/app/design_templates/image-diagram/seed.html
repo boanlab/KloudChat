@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  KloudChat image-template card: 개념도.
+
+  An image template shapes a prompt and produces no HTML artifact, so there is
+  nothing generated for the gallery to show. What it shows instead is the
+  recipe: the order the sentence is written in, and the lines this template
+  will not cross. A sample picture here would promise a result that depends on
+  the picture model and on the project's design system, and this file knows
+  neither.
+
+  The card is read in a ~400px panel and again on a full page, so its one grid
+  collapses rather than shrinking and its display size comes from clamp(). It
+  carries no behaviour and therefore nothing to run: it renders inside a
+  sandbox="" frame where nothing executes, and it is also downloaded and
+  opened outside one.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --border: color-mix(in srgb, var(--ink) 12%, transparent);
+    --tint: color-mix(in srgb, var(--accent) 8%, transparent);
+    /* One ratio for every size on the card, so a narrow panel and a printed
+       page shrink together instead of one heading at a time. */
+    --t-title: clamp(1.05rem, 0.9rem + 0.7vw, 1.45rem);
+    --t-body: 0.92rem;
+    --t-label: 0.75rem;
+    --gap: 0.7rem;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #fff; color: var(--ink); font-family: var(--font-body);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+    padding: clamp(1.2rem, 1rem + 1.4vw, 2rem);
+  }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+  h1 { margin: 0 0 0.2rem; font-size: var(--t-title); letter-spacing: -0.015em; }
+  /* The lead is body size and reads as a lead by colour alone: a half-step
+     down from the body would be a size nobody can tell from it. */
+  .lead { margin: 0 0 1.2rem; color: var(--muted); font-size: var(--t-body); }
+  /* The project's accent at the three strengths a structure drawing needs:
+     the connector, the plane it joins, the ground behind both. */
+  .swatch { display: flex; gap: 0.4rem; margin-bottom: 1.2rem; }
+  .swatch span { width: 2.4rem; height: 2.4rem; border-radius: 6px; border: 1px solid var(--border); }
+  section { border: 1px solid var(--border); border-radius: 10px;
+            padding: 0.9rem 1.1rem; margin-bottom: var(--gap); background: var(--tint); }
+  h2 { margin: 0 0 0.4rem; font-size: var(--t-label); letter-spacing: 0.06em;
+       text-transform: uppercase; color: var(--accent); }
+  p { margin: 0 0 0.4rem; font-size: var(--t-body); }
+  p:last-child { margin-bottom: 0; }
+  ul { margin: 0; padding-left: 1.1rem; }
+  li { margin: 0 0 0.25rem; font-size: var(--t-body); }
+  li:last-child { margin-bottom: 0; }
+  li::marker { color: var(--accent); }
+  /* Monospace runs large at the same size, so this is an optical match to
+     the body rather than a fourth step. */
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
+         background: #fff; border: 1px solid var(--border); border-radius: 4px;
+         padding: 0.05rem 0.3rem; }
+  /* What this template keeps and what it drops are one decision, so they are
+     read side by side wherever there is room for two columns. */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap);
+          margin-bottom: var(--gap); }
+  .pair section { margin-bottom: 0; }
+  .pair .drop { background: #fff; }
+  .pair .drop h2 { color: var(--muted); }
+  .pair .drop li::marker { color: var(--muted); }
+  @media (max-width: 720px) { .pair { grid-template-columns: 1fr; } }
+
+  /* The recipe is one page and has to stay one page: a rule split across a
+     sheet break is a rule somebody reads half of. */
+  @page { size: A4 portrait; margin: 16mm; }
+  @media print {
+    body { padding: 0; }
+    h1 { break-after: avoid; }
+    section, .pair { break-inside: avoid; }
+    code { border-color: #999; }
+  }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

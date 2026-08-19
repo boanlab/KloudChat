@@ -193,10 +193,19 @@ stated in the request is honoured up to 50.
 ### Design templates
 
 The rendering catalogue: shapes the model writes into, as opposed to the
-prompt templates a person writes for themselves. Six ship inside the API image
-under `app/design_templates/<id>/` — two decks, two documents, two image
-recipes — each a `template.toml`, an `instructions.md`, a `seed.html` and a
-`sample.html`.
+prompt templates a person writes for themselves. They ship inside the API image
+under `app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
+`sample.html` always, plus the `instructions.md` and `checklist.md` a writing
+turn reads — which the media recipes, having no writing turn, do without.
+
+What ships is a small set chosen for the people this product has — decks for a
+seminar, a lecture and a proposal; documents for a report, a one-pager, minutes,
+a lab notebook and a notice; prompt recipes for posters, covers, diagrams, clips
+and narration. **None of it is ported.** OpenDesign's own catalogue runs to a
+hundred entries whose seeds carry keyboard runtimes and parent-relative assets,
+neither of which survives a `sandbox=""` iframe; these were written against the
+constraints this product actually has. The number is meant to stay readable —
+a list somebody reads, not a catalogue they scroll past.
 
 Picking one **replaces the surface's built-in track**. A slides session with
 `render_template_id` set produces an `html` artifact through `services/page.py`

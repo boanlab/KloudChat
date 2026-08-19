@@ -26,24 +26,33 @@ from app.services import imagegen, page
 # ── the shipped catalogue ──────────────────────────────────────────────
 
 
-def test_every_kind_is_offered_on_a_surface():
-    assert {t.kind for t in dt.all_templates()} == {
-        "deck",
-        "document",
-        "image",
-        "video",
-        "audio",
-    }
-    assert {t.id for t in dt.for_surface(SessionKind.slides)} == {"deck-editorial", "deck-signal"}
-    assert {t.id for t in dt.for_surface(SessionKind.report)} == {"doc-report", "doc-brief"}
-    assert {t.id for t in dt.for_surface(SessionKind.image)} == {"image-poster", "image-cover"}
-    # Audio and video share the one surface, as they do everywhere else.
-    assert {t.id for t in dt.for_surface(SessionKind.av)} == {
-        "video-product",
-        "video-opening",
-        "audio-narration",
-        "audio-bed",
-    }
+#: What an id begins with, per kind. A convention the loader does not enforce,
+#: kept because a folder listing is where the catalogue is actually browsed
+#: while it is being written.
+_PREFIX = {
+    "deck": "deck-",
+    "document": "doc-",
+    "image": "image-",
+    "video": "video-",
+    "audio": "audio-",
+}
+
+
+def test_every_surface_that_can_be_shaped_has_something_to_offer():
+    """A property, not an inventory.
+
+    Listing the ids here would mean editing this test every time a template is
+    added, which teaches everybody to edit it without reading it. What has to
+    hold is that no surface is left with an empty gallery behind its button.
+    """
+    for surface in set(dt.SURFACE.values()):
+        assert dt.for_surface(surface), surface
+
+
+@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
+def test_a_template_lands_on_the_surface_its_kind_names(template):
+    assert template.surface is dt.SURFACE[template.kind]
+    assert template.id.startswith(_PREFIX[template.kind]), template.id
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
@@ -64,6 +73,20 @@ def test_a_shipped_template_is_complete(template):
     # advertising a shape nobody can see.
     assert template.seed and template.sample
     assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
+
+
+def test_the_categories_group_the_catalogue_the_same_way_in_both_languages():
+    """The chip row is a filter, so a category is a grouping key, not a label.
+
+    Two templates that share 발표 have to share whatever the English side calls
+    it: otherwise the same gallery offers one chip in Korean and three in
+    English, and picking one hides templates that the other language keeps.
+    """
+    seen: dict[str, str] = {}
+    for template in dt.all_templates():
+        assert seen.setdefault(template.category, template.category_en) == template.category_en, (
+            f"{template.id}: {template.category} is {seen[template.category]} elsewhere"
+        )
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)

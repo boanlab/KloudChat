@@ -1,0 +1,207 @@
+<!doctype html>
+<!--
+  KloudChat document seed — lab note.
+
+  The shape is the order of the work: 목적 → 방법 → 결과 → 한계, written so a
+  reader can run it again. Sections are numbered by a CSS counter rather than
+  by the wrapper, because the cover is block one and a method step labelled
+  "02" would be counting the wrong thing.
+
+  Each section's heading sits in a margin column beside its body, the way a
+  bench notebook is annotated, and readings are set in a fixed-width face so a
+  column of numbers can be compared down its edge.
+
+  Print collapses that margin column to one column: a grid that fragments
+  across pages is not something to trust when the print dialogue *is* the PDF
+  exporter.
+
+  Nothing here executes: artifacts render in a `sandbox=""` iframe, so the
+  whole shell is CSS. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --paper: #ffffff;
+    --border: color-mix(in srgb, var(--ink) 13%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 35%, transparent);
+    --tint: color-mix(in srgb, var(--accent) 6%, transparent);
+    /* Readings only line up in a fixed-width face. `--font-mono` is not one of
+       the four values the design system sends, so it is read with a fallback
+       rather than assumed. */
+    --mono: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: color-mix(in srgb, var(--ink) 5%, #fff);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+  .page {
+    max-width: 52rem;
+    margin: 0 auto;
+    padding: 0 3rem 5rem;
+    background: var(--paper);
+    min-height: 100vh;
+    counter-reset: entry;
+  }
+
+  /* ── cover: the run header ─────────────────────────────────────────
+     Title, the one thing this note set out to find out, and the facts a
+     reader needs before the method makes sense. */
+  .cover { border-top: 6px solid var(--accent); padding: 2.4rem 0 2.2rem; }
+  .cover h1 {
+    margin: 0 0 0.7rem;
+    font-size: clamp(1.75rem, 4.2vw, 2.45rem);
+    line-height: 1.22;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  /* `.lead` is what the exporters read, but a cover paragraph is the lead
+     whether or not the model remembered to say so. */
+  .cover p, .cover .lead {
+    margin: 0 0 1.5rem;
+    max-width: 44ch;
+    color: var(--muted);
+    font-size: 1.02rem;
+  }
+  .cover table { width: auto; margin: 0; border-top: 1px solid var(--border); font-size: 0.88rem; }
+  .cover td { padding: 0.42em 1.8em 0.42em 0; border-bottom: 1px solid var(--border); }
+  .cover td:first-child { color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
+  /* A label list, not a reading: values stay left, where the eye starts. */
+  .cover td + td { font-family: var(--mono); text-align: left; }
+
+  /* ── a section ─────────────────────────────────────────────────────── */
+  .page > section {
+    counter-increment: entry;
+    display: grid;
+    grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
+    gap: 0 1.9rem;
+    border-top: 1px solid var(--border);
+    margin-top: 1.9rem;
+    padding-top: 1.7rem;
+  }
+  .page > section > * { grid-column: 2; }
+  .page > section > :last-child { margin-bottom: 0; }
+  .page > section > h2 {
+    grid-column: 1;
+    align-self: start;
+    margin: 0;
+    font-size: 1.02rem;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .page > section > h2::before {
+    content: counter(entry, decimal-leading-zero);
+    display: block;
+    margin-bottom: 0.35rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+
+  h3 { margin: 1.5rem 0 0.4rem; font-size: 0.93rem; letter-spacing: 0.02em; color: var(--muted); }
+  p { margin: 0 0 0.85rem; text-wrap: pretty; }
+  ul, ol { margin: 0 0 0.9rem; padding-left: 1.3rem; }
+  li { margin: 0 0 0.4rem; }
+  li::marker { color: var(--accent); }
+  /* An ordered list here is a procedure somebody follows step by step, so its
+     numbers take the same face as the readings they produce. */
+  ol > li::marker { font-family: var(--mono); font-size: 0.9em; }
+  strong { font-weight: 650; }
+  blockquote {
+    margin: 1.1rem 0; padding: 0.1rem 0 0.1rem 1rem;
+    border-left: 3px solid var(--rule); color: var(--muted);
+  }
+
+  /* ── readings ──────────────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 1.1rem 0 0.5rem; font-size: 0.92rem; }
+  th, td { padding: 0.45em 0.65em; text-align: left; vertical-align: top; }
+  th {
+    font-size: 0.82rem; font-weight: 600; color: var(--muted);
+    border-bottom: 2px solid var(--accent);
+  }
+  td { border-bottom: 1px solid var(--border); }
+  /* A reading table is item-then-values: the first cell names the row and the
+     rest are numbers. Numbers compare only when they share a face, a digit
+     width and an edge, and the column name has to sit over that same edge. */
+  thead th + th, tbody td + td { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody td + td { font-family: var(--mono); }
+
+  /* ── figures and captions ──────────────────────────────────────────
+     A caption cannot carry a class of its own — the model writes the inside
+     of a block, and the seed styles only what it can already see — so the
+     caption is the `small` that follows the thing it describes. */
+  small { color: var(--muted); font-size: 0.83rem; }
+  table + small, figure + small, figcaption {
+    display: block;
+    margin: 0 0 1.3rem;
+    max-width: 54ch;
+    font-size: 0.83rem;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  table + small strong, figure + small strong, figcaption strong {
+    font-family: var(--mono); font-weight: 600; color: var(--accent);
+  }
+  /* Nothing loads from outside a sandboxed artifact, so a figure here is a
+     described one: the readings, the setup, or the shape of the curve in
+     words, kept in a box the eye can skip to. */
+  figure {
+    margin: 1.2rem 0 0.5rem; padding: 1rem 1.1rem;
+    background: var(--tint);
+    border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 6px;
+  }
+  figure > :last-child { margin-bottom: 0; }
+  figcaption { margin: 0.7rem 0 0; }
+
+  /* ── narrow panel ──────────────────────────────────────────────────── */
+  @media (max-width: 720px) {
+    .page { padding: 0 1.4rem 3rem; }
+    .page > section { grid-template-columns: minmax(0, 1fr); }
+    .page > section > *, .page > section > h2 { grid-column: 1; }
+    .page > section > h2 { margin-bottom: 0.8rem; }
+    .page > section > h2::before { display: inline; margin-right: 0.5rem; }
+    /* A four-column reading table is wider than the preview panel. Scrolling
+       it keeps the columns aligned; reflowing them would not. */
+    table { display: block; overflow-x: auto; }
+  }
+
+  /* ── print: A4 portrait, cover on its own page ─────────────────────── */
+  @page { size: A4 portrait; margin: 20mm 18mm; }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
+    .cover { padding-bottom: 30vh; page-break-after: always; break-after: page; }
+    .page > section { display: block; margin-top: 1.4rem; padding-top: 1.4rem; }
+    .page > section > h2 { margin-bottom: 0.6rem; page-break-after: avoid; break-after: avoid; }
+    .page > section > h2::before { display: inline; margin-right: 0.5rem; }
+    table { display: table; }
+    /* A reading table that runs onto the next page keeps its column names. */
+    thead { display: table-header-group; }
+    tr, figure, blockquote { page-break-inside: avoid; break-inside: avoid; }
+    table + small, figcaption { page-break-before: avoid; break-before: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

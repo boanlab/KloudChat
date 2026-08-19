@@ -33,6 +33,9 @@ _DECK_LAYOUT = {
     "bullets": "bullets",
     "quote": "quote",
     "split": "two-column",
+    # The proposal deck's own name for the same two columns. Which side an
+    # item was on is the point of that slide, so it must not flatten.
+    "compare": "two-column",
     "table": "table",
 }
 
