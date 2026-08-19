@@ -462,6 +462,38 @@ A project with no design system produces exactly what it produced before this
 existed, down to the greys in the PDF. That is the property the export tests
 pin.
 
+### The artifact gallery
+
+`GET /artifacts` returns **a page of cards**, not the workspace. It used to
+return everything whole — on the instance this was written against, 385 rows
+and 4.0 MB, of which 2.8 MB was the markup of 69 HTML documents the screen
+draws as thumbnails. Opening the gallery now costs one 30 KB page plus the
+handful of documents actually on screen.
+
+Three parts, and each is visible in that sentence:
+
+**A page.** Keyset, not offset: the list is ordered by `updated_at`, which
+moves when somebody edits, and an offset would skip or repeat rows underneath
+the person scrolling. The cursor is the last row the client already has —
+`before_at` and `before_id`.
+
+**A card.** `ArtifactOut.card` cuts the body down to what a thumbnail shows:
+an HTML or code artifact travels without its markup at all, a deck as its first
+four slide titles, a report as the top of its first four sections. Media
+artifacts are already card-sized — a `src` and a duration — so they travel
+whole. Every trimmed row is marked `partial`, and anything that renders or
+edits a whole document fetches it by id first; the client keeps its fuller copy
+when a listing row for the same version arrives.
+
+**Counts and search that outlive the page.** The filter row claims to be about
+the workspace, so `GET /artifacts/counts` counts it; `q` searches titles in the
+database rather than filtering the page in the browser. Titles only — the
+bodies are what this endpoint exists not to read.
+
+HTML thumbnails hydrate on approach: an `IntersectionObserver` a screen ahead
+fetches the document for a card about to be seen, so the picture is there when
+it arrives and the ninety cards below it cost nothing.
+
 ### Sharing
 
 In the `shares` table **the token is the permission**: 43 random characters,

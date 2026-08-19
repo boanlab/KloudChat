@@ -9,11 +9,12 @@ from __future__ import annotations
 import base64
 import logging
 import re
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_, tuple_
 from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
@@ -373,17 +374,76 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
 # ══ artifacts ══════════════════════════════════════════════════════════
 
 
+#: One screenful and then some. The gallery asks for the next page when the
+#: person asks for it, so this is about what arrives before anything is on
+#: screen rather than about how much they can ever see.
+_ARTIFACT_PAGE = 60
+
+
 @router.get("/artifacts", response_model=list[ArtifactOut])
 async def list_artifacts(
-    user: CurrentUser, db: DbSession, kind: str | None = None, project_id: str | None = None
+    user: CurrentUser,
+    db: DbSession,
+    kind: str | None = None,
+    project_id: str | None = None,
+    q: str | None = None,
+    limit: int = _ARTIFACT_PAGE,
+    before_at: datetime | None = None,
+    before_id: str | None = None,
 ):
+    """A page of this account's artifacts, newest first, with bodies cut down.
+
+    Everything used to arrive at once and whole: 385 rows, 4.0 MB, every HTML
+    document's full markup, on a screen that draws them as thumbnails. Three
+    things changed and each one is visible in that sentence — the rows are a
+    page, the bodies are cards, and there is a `q` so a person with hundreds of
+    them can find one without scrolling.
+
+    Keyset rather than offset: the list is ordered by a timestamp that changes
+    when somebody edits, and an offset would skip or repeat rows underneath
+    them. `(before_at, before_id)` is simply the last row the client has.
+    """
     query = select(Artifact).where(Artifact.user_id == user.id)
     if kind:
         query = query.where(Artifact.kind == kind)
     if project_id:
         query = query.where(Artifact.project_id == project_id)
-    rows = (await db.exec(query.order_by(col(Artifact.updated_at).desc()))).all()
-    return [ArtifactOut.of(a) for a in rows]
+    if q and q.strip():
+        # Title only. The bodies are what this endpoint is trying not to read.
+        query = query.where(col(Artifact.title).ilike(f"%{q.strip()[:80]}%"))
+    if before_at is not None:
+        query = query.where(
+            tuple_(col(Artifact.updated_at), col(Artifact.id))
+            < tuple_(before_at, before_id or "")
+        )
+    rows = (
+        await db.exec(
+            query.order_by(col(Artifact.updated_at).desc(), col(Artifact.id).desc()).limit(
+                max(1, min(limit, 200))
+            )
+        )
+    ).all()
+    return [ArtifactOut.card(a) for a in rows]
+
+
+@router.get("/artifacts/counts")
+async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None):
+    """How many of each kind there are, for the filter row above the grid.
+
+    Counted here because the grid holds one page and the tabs claim to be
+    about everything. A count from a page would say "3 slides" to somebody who
+    has ninety.
+    """
+    query = (
+        select(Artifact.kind, func.count())
+        .where(Artifact.user_id == user.id)
+        .group_by(col(Artifact.kind))
+    )
+    if q and q.strip():
+        query = query.where(col(Artifact.title).ilike(f"%{q.strip()[:80]}%"))
+    rows = (await db.exec(query)).all()
+    counts = {str(kind): int(total) for kind, total in rows}
+    return {"counts": counts, "total": sum(counts.values())}
 
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)

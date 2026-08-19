@@ -8,7 +8,7 @@ import {
   Video,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArtifactPreview, CodePanel, MediaPanel } from '@/components/artifacts/ArtifactPanel'
 import { PanelControls } from '@/components/artifacts/PanelControls'
@@ -23,6 +23,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  Input,
   LoadingState,
   Modal,
   ReloadNotice,
@@ -58,16 +59,91 @@ const kindLabel: Record<ArtifactKind, string> = {
 
 type Filter = ArtifactKind | 'all'
 
+/**
+ * A card's thumbnail, fetched when it is about to be seen.
+ *
+ * The listing carries a card-sized body — enough for a title, a slide list, the
+ * top of a report — but an HTML document's thumbnail *is* the document, and
+ * sending all of them cost 2.8 MB before anybody scrolled. So those hydrate on
+ * approach: one fetch per card that actually reaches the screen, and none for
+ * the ninety below it.
+ */
+function CardThumb({ artifact }: { artifact: Artifact }) {
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+  const ref = useRef<HTMLDivElement>(null)
+  const needsBody = artifact.partial && (artifact.kind === 'html' || artifact.kind === 'code')
+
+  useEffect(() => {
+    const node = ref.current
+    if (!needsBody || !node) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer.disconnect()
+          void refreshArtifact(artifact.id)
+        }
+      },
+      // A screen ahead: the picture is there by the time it is scrolled to.
+      { rootMargin: '600px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [needsBody, artifact.id, refreshArtifact])
+
+  const media =
+    artifact.kind === 'image' ||
+    artifact.kind === 'audio' ||
+    artifact.kind === 'video' ||
+    artifact.kind === 'chart'
+
+  return (
+    <div ref={ref} className="size-full">
+      {needsBody ? (
+        <div className="grid size-full place-items-center bg-elevated text-xs text-faint">
+          {'…'}
+        </div>
+      ) : media ? (
+        <ArtifactPreview artifact={artifact} />
+      ) : (
+        <div className="pointer-events-none origin-top-left scale-[0.45] [height:222%] [width:222%]">
+          <ArtifactPreview artifact={artifact} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ArtifactsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const { artifacts, deleteArtifact, projects, sessions, loadArtifacts, artifactsLoading, artifactsFailed, refreshArtifact } =
-    useStore()
+  const {
+    artifacts,
+    deleteArtifact,
+    projects,
+    sessions,
+    loadArtifacts,
+    loadMoreArtifacts,
+    artifactsLoading,
+    artifactsLoadingMore,
+    artifactsHasMore,
+    artifactCounts,
+    artifactsFailed,
+    refreshArtifact,
+  } = useStore()
 
-  useEffect(() => {
-    void loadArtifacts()
-  }, [loadArtifacts])
   const [filter, setFilter] = useState<Filter>('all')
+  const [query, setQuery] = useState('')
+
+  // One request per settled keystroke, and one on every tab. The list is a
+  // server query now, so the filter row cannot be a client-side `.filter()` —
+  // it would search the page instead of the workspace.
+  useEffect(() => {
+    const timer = setTimeout(
+      () => void loadArtifacts({ kind: filter === 'all' ? undefined : filter, q: query }),
+      query ? 300 : 0,
+    )
+    return () => clearTimeout(timer)
+  }, [loadArtifacts, filter, query])
   //: The open document by id rather than by copy. A copy goes stale the moment
   //: the panel edits it — a rewritten block, a review, a picture added — and
   //: the dialog would keep showing the version before the edit while the grid
@@ -80,8 +156,14 @@ export function ArtifactsPage() {
   const [confirming, setConfirming] = useState<Artifact | null>(null)
 
   const preview = artifacts.find((a) => a.id === previewId) ?? null
-  const visible = filter === 'all' ? artifacts : artifacts.filter((a) => a.kind === filter)
-  const count = (k: ArtifactKind) => artifacts.filter((a) => a.kind === k).length
+  // The server already applied the filter; the store holds exactly this page.
+  const visible = artifacts
+  // Undefined until the counts arrive, so a tab shows no number rather than a
+  // wrong one: "슬라이드 0" beside ninety slides is worse than "슬라이드".
+  const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
+  const total = artifactCounts
+    ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
+    : undefined
 
   return (
     <>
@@ -92,11 +174,22 @@ export function ArtifactsPage() {
           description={t('만든 결과물이 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
         />
 
+        {/* Search before the filter row: with hundreds of these, the kind is
+            how you narrow and the title is how you find. */}
+        <div className="mb-3 max-w-sm">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label={t('아티팩트 검색')}
+            placeholder={t('제목으로 찾기')}
+          />
+        </div>
+
         <Tabs<Filter>
           value={filter}
           onChange={setFilter}
           tabs={[
-            { id: 'all', label: t('전체'), count: artifacts.length },
+            { id: 'all', label: t('전체'), count: total },
             // Code and HTML are what chat actually produces today. Without
             // tabs they existed only under "all", so the one kind the app can
             // make was the one kind you could not filter to.
@@ -114,13 +207,17 @@ export function ArtifactsPage() {
         {artifactsFailed && <ReloadNotice onRetry={() => void loadArtifacts()} />}
 
         <div className="pt-4">
-          {artifactsLoading && artifacts.length === 0 ? (
+          {artifactsLoading ? (
             <LoadingState />
           ) : visible.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
-              title={t('아직 아티팩트가 없습니다')}
-              description={t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 결과물이 여기에 저장됩니다.')}
+              title={query ? t('찾는 결과물이 없습니다') : t('아직 아티팩트가 없습니다')}
+              description={
+                query
+                  ? t('제목의 다른 부분으로 찾아보세요.')
+                  : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 결과물이 여기에 저장됩니다.')
+              }
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -144,13 +241,7 @@ export function ArtifactsPage() {
                       }}
                       className="block aspect-video w-full overflow-hidden border-b border-line bg-elevated text-left"
                     >
-                      {a.kind === 'image' || a.kind === 'audio' || a.kind === 'video' || a.kind === 'chart' ? (
-                        <ArtifactPreview artifact={a} />
-                      ) : (
-                        <div className="pointer-events-none origin-top-left scale-[0.45] [height:222%] [width:222%]">
-                          <ArtifactPreview artifact={a} />
-                        </div>
-                      )}
+                      <CardThumb artifact={a} />
                     </button>
                     <div className="p-3.5">
                       <div className="flex items-center gap-2">
@@ -194,6 +285,25 @@ export function ArtifactsPage() {
                   </Card>
                 )
               })}
+            </div>
+          )}
+
+          {/* Asked for rather than fetched on scroll: an endless list is one
+              nobody can reach the bottom of, and this one has a bottom. */}
+          {artifactsHasMore && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="secondary"
+                disabled={artifactsLoadingMore}
+                onClick={() => void loadMoreArtifacts()}
+              >
+                {artifactsLoadingMore
+                  ? t('불러오는 중…')
+                  : t('{n}개 더 보기').replace(
+                      '{n}',
+                      String(Math.max(0, (total ?? visible.length) - visible.length)),
+                    )}
+              </Button>
             </div>
           )}
         </div>

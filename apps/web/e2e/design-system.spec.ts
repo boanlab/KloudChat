@@ -129,8 +129,11 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
     async ([fn, id]) => {
       const rows = await eval(fn)('/api/artifacts')
       const list = Array.isArray(rows) ? rows : rows.items
-      return list.find((a: { kind: string; sessionId: string }) =>
-        a.kind === 'deck' && a.sessionId === id) ?? null
+      const row = list.find(
+        (a: { kind: string; sessionId: string }) => a.kind === 'deck' && a.sessionId === id,
+      )
+      // A listing row is a card: four slide titles and no bodies. Read the deck.
+      return row ? await eval(fn)('/api/artifacts/' + row.id) : null
     },
     [AS_USER, sessionId],
   )
@@ -174,8 +177,11 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
     async ([fn, id]) => {
       const rows = await eval(fn)('/api/artifacts')
       const list = Array.isArray(rows) ? rows : rows.items
-      return list.find((a: { kind: string; sessionId: string }) =>
-        a.kind === 'report' && a.sessionId === id) ?? null
+      const row = list.find(
+        (a: { kind: string; sessionId: string }) => a.kind === 'report' && a.sessionId === id,
+      )
+      // A card keeps the top of four sections and no citations; read the report.
+      return row ? await eval(fn)('/api/artifacts/' + row.id) : null
     },
     [AS_USER, reportSession],
   )

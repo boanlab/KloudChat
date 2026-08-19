@@ -361,7 +361,16 @@ interface State {
   deleteProject: (id: string) => Promise<void>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
-  loadArtifacts: () => Promise<void>
+  /** Page one, for the current filter or the one passed in. */
+  loadArtifacts: (filter?: ArtifactFilter) => Promise<void>
+  /** The page after the oldest row on screen. */
+  loadMoreArtifacts: () => Promise<void>
+  /** What the gallery is currently showing: a kind, a title search, or both. */
+  artifactFilter: ArtifactFilter
+  artifactsHasMore: boolean
+  artifactsLoadingMore: boolean
+  /** How many of each kind exist for this filter — a page cannot say. */
+  artifactCounts: Record<string, number> | null
   deleteArtifact: (id: string) => Promise<void>
 
   // ── MCP connectors ────────────────────────────────────────────────────
@@ -422,7 +431,29 @@ const touchWorkspace = () => ++workspaceEpoch
  * wins over the later *request*, leaving a stale snapshot that only surfaces as
  * a phantom edit conflict.
  */
+/** One screenful and then some, matching the server's own page size. */
+const ARTIFACT_PAGE = 60
+
+/** What the gallery is showing. Both optional: no filter is the whole list. */
+export type ArtifactFilter = { kind?: string; q?: string }
+
 let artifactsEpoch = 0
+//: The filter currently being fetched. Sign-in and the gallery ask for the
+//: same first page within the same tick, and asking twice is the whole cost
+//: this page was trying to shed.
+let artifactsInFlight: string | null = null
+
+/**
+ * The same filter written the same way.
+ *
+ * `{}` and `{ kind: undefined, q: '' }` mean one thing and hash to two, which
+ * is how sign-in and the gallery ended up asking for the same page twice.
+ */
+function sameFilter(filter: ArtifactFilter): ArtifactFilter {
+  const kind = filter.kind || undefined
+  const q = filter.q?.trim() || undefined
+  return { ...(kind ? { kind } : {}), ...(q ? { q } : {}) }
+}
 
 const MODEL_STORAGE_KEY = 'kchat-models'
 
@@ -718,6 +749,10 @@ export const useStore = create<State>((set, get) => ({
   modelsLoading: false,
   workspaceLoading: true,
   artifactsLoading: true,
+  artifactsLoadingMore: false,
+  artifactsHasMore: false,
+  artifactFilter: {},
+  artifactCounts: null,
   sessionsLoading: true,
   workspaceFailed: false,
   artifactsFailed: false,
@@ -753,10 +788,11 @@ export const useStore = create<State>((set, get) => ({
     // Screens refetch on mount, and a mutation can land mid-flight. Applying a
     // snapshot taken before it would drop the row just created.
     const epoch = ++workspaceEpoch
-    const artifactEpoch = ++artifactsEpoch
+    // Artifacts load through their own action: the gallery asks for the same
+    // page as it mounts, and one door means one request rather than two.
+    void get().loadArtifacts({})
     const results = await Promise.allSettled([
       projectsApi.list(),
-      artifactsApi.list(),
       skillsApi.list(),
       designsApi.list(),
       designTemplatesApi.list(),
@@ -768,7 +804,6 @@ export const useStore = create<State>((set, get) => ({
     ])
     const [
       projects,
-      artifacts,
       skills,
       designs,
       designTemplates,
@@ -782,14 +817,9 @@ export const useStore = create<State>((set, get) => ({
     if (epoch !== workspaceEpoch) return
     set((s) => ({
       workspaceLoading: false,
-      artifactsLoading: false,
       // Any endpoint that did not come back leaves part of this screen stale.
       workspaceFailed: results.some((r) => r.status === 'rejected'),
       projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
-      artifacts:
-        artifacts.status === 'fulfilled' && artifactEpoch === artifactsEpoch
-          ? artifacts.value.map(toArtifact)
-          : s.artifacts,
       skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
       designs: designs.status === 'fulfilled' ? designs.value : s.designs,
       designTemplates:
@@ -1582,7 +1612,14 @@ export const useStore = create<State>((set, get) => ({
     // rather than overwrite something it cannot see.
     if (!row) return null
     const fresh = toArtifact(row)
-    set((s) => ({ artifacts: s.artifacts.map((a) => (a.id === id ? fresh : a)) }))
+    // Inserted when it is not held: a document can be asked for before the
+    // listing that would have carried it — the panel opening on a turn that
+    // just finished is exactly that case.
+    set((s) => ({
+      artifacts: s.artifacts.some((a) => a.id === id)
+        ? s.artifacts.map((a) => (a.id === id ? fresh : a))
+        : [fresh, ...s.artifacts],
+    }))
     return fresh
   },
 
@@ -1633,17 +1670,67 @@ export const useStore = create<State>((set, get) => ({
     await filesApi.remove(id).catch(() => get().loadWorkspace())
   },
 
-  loadArtifacts: async () => {
+  loadArtifacts: async (filter) => {
+    const next = sameFilter(filter ?? get().artifactFilter)
+    const key = JSON.stringify(next)
+    if (artifactsInFlight === key) return
+    artifactsInFlight = key
     const epoch = ++artifactsEpoch
-    const rows = await artifactsApi.list().catch(() => null)
+    // A different question, so the old answer is not an answer. Without this
+    // the grid keeps the previous kind's cards for the length of a round trip,
+    // and they are clickable — a tab that opens something it is not showing.
+    if (JSON.stringify(get().artifactFilter) !== key) {
+      set({ artifacts: [], artifactsLoading: true, artifactFilter: next })
+    }
+    const [rows, counts] = await Promise.all([
+      artifactsApi.list({ ...next, limit: ARTIFACT_PAGE }).catch(() => null),
+      artifactsApi.counts(next.q).catch(() => null),
+    ])
+    if (artifactsInFlight === key) artifactsInFlight = null
     // A newer fetch has already answered; this one is history.
     if (epoch !== artifactsEpoch) return
     // Lowered either way: a failed fetch is still an answer, and leaving the
     // flag up would spin forever in place of the empty state.
     set((s) => ({
-      artifacts: rows ? rows.map(toArtifact) : s.artifacts,
+      artifacts: rows ? mergeArtifacts(rows.map(toArtifact), s.artifacts) : s.artifacts,
+      artifactFilter: next,
+      artifactsHasMore: rows ? rows.length === ARTIFACT_PAGE : s.artifactsHasMore,
+      artifactCounts: counts ? counts.counts : s.artifactCounts,
       artifactsLoading: false,
       artifactsFailed: rows === null,
+    }))
+  },
+  /**
+   * The next page, from the oldest row on screen.
+   *
+   * Keyset rather than a page number: the list is ordered by a timestamp that
+   * moves when somebody edits, and an offset would skip or repeat rows under
+   * the person scrolling.
+   */
+  loadMoreArtifacts: async () => {
+    const held = get().artifacts
+    const last = held.at(-1)
+    if (!last || get().artifactsLoadingMore) return
+    set({ artifactsLoadingMore: true })
+    const rows = await artifactsApi
+      .list({
+        ...get().artifactFilter,
+        limit: ARTIFACT_PAGE,
+        beforeAt: last.updatedAt,
+        beforeId: last.id,
+      })
+      .catch(() => null)
+    set((s) => ({
+      artifacts: rows
+        ? [
+            ...s.artifacts,
+            ...mergeArtifacts(rows.map(toArtifact), s.artifacts).filter(
+              (row) => !s.artifacts.some((a) => a.id === row.id),
+            ),
+          ]
+        : s.artifacts,
+      artifactsHasMore: rows ? rows.length === ARTIFACT_PAGE : s.artifactsHasMore,
+      artifactsLoadingMore: false,
     }))
   },
   deleteArtifact: async (id) => {
@@ -2169,7 +2256,39 @@ function toArtifact(a: ArtifactRow): Artifact {
     projectId: a.projectId,
     kind: a.kind,
     ...(a.data ?? {}),
+    // After the spread: a body that happens to carry the key must not decide
+    // whether the row is a card.
+    partial: a.partial === true,
   } as Artifact
+}
+
+/**
+ * A page of cards laid over what the store already holds.
+ *
+ * A listing row carries a trimmed body, so taking it wholesale would blank the
+ * document a panel is showing — or worse, hand an editor a truncated copy to
+ * save. The fuller copy wins while it is the same version; anything newer on
+ * the server replaces it.
+ */
+function mergeArtifacts(incoming: Artifact[], held: Artifact[]): Artifact[] {
+  const byId = new Map(held.map((a) => [a.id, a]))
+  return incoming.map((row) => {
+    const mine = byId.get(row.id)
+    if (!row.partial || !mine || mine.partial) return row
+    // The body stays; the facts come from the row. Spreading the row over it
+    // would put the card's empty `content` back on top of the document. When
+    // the server has moved on, the body is stale — say so, and whatever needs
+    // it next will fetch it.
+    return {
+      ...mine,
+      title: row.title,
+      version: row.version,
+      updatedAt: row.updatedAt,
+      sessionId: row.sessionId,
+      projectId: row.projectId,
+      partial: mine.version !== row.version,
+    } as Artifact
+  })
 }
 
 function toSkill(s: SkillRow): Skill {
@@ -2781,8 +2900,9 @@ async function streamReport(
           break
         case 'artifact':
           // The server's copy supersedes the draft: same content, real id, and
-          // the version history hangs off it.
-          await get().loadArtifacts()
+          // the version history hangs off it. Fetched as well as listed — a
+          // listing row carries a card, and the panel needs the document.
+          await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,
@@ -2925,7 +3045,9 @@ async function streamPage(
           patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
           break
         case 'artifact':
-          await get().loadArtifacts()
+          // The document itself, not the listing's card of it: the panel is
+          // about to open on this and its controls are the blocks.
+          await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,
@@ -3081,7 +3203,9 @@ async function streamDeck(
           patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
           break
         case 'artifact':
-          await get().loadArtifacts()
+          // The document itself, not the listing's card of it: the panel is
+          // about to open on this and its controls are the blocks.
+          await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,

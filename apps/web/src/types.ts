@@ -292,6 +292,12 @@ interface ArtifactBase {
   sessionId: string | null
   projectId: string | null
   /**
+   * True while this is the listing's copy, whose body was cut down to what a
+   * card needs. Anything that renders or edits the whole document fetches it
+   * by id first — `refreshArtifact` is what clears this.
+   */
+  partial?: boolean
+  /**
    * What the linter found when this was written. Stored on the artifact, so a
    * document that was fine when it was made does not start reporting problems
    * because the rules were tightened afterwards.

@@ -700,10 +700,30 @@ export const projectsApi = {
   remove: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
 }
 
+function artifactParams(params: ArtifactQuery = {}) {
+  const query = new URLSearchParams()
+  if (params.kind) query.set('kind', params.kind)
+  if (params.projectId) query.set('project_id', params.projectId)
+  if (params.q?.trim()) query.set('q', params.q.trim())
+  if (params.limit) query.set('limit', String(params.limit))
+  if (params.beforeAt) {
+    query.set('before_at', params.beforeAt)
+    query.set('before_id', params.beforeId ?? '')
+  }
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
 export const artifactsApi = {
-  list: (params?: { kind?: string; projectId?: string }) =>
-    call<ArtifactRow[]>(
-      `/artifacts${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
+  /**
+   * One page of the gallery, newest first, with the bodies cut down to what a
+   * card shows. `partial` marks those rows; `get` is the whole document.
+   */
+  list: (params?: ArtifactQuery) => call<ArtifactRow[]>(`/artifacts${artifactParams(params)}`),
+  /** How many of each kind exist, which a page of rows cannot say. */
+  counts: (q?: string) =>
+    call<{ counts: Record<string, number>; total: number }>(
+      `/artifacts/counts${q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`,
     ),
   get: (id: string) => call<ArtifactRow>(`/artifacts/${id}`),
   create: (payload: { kind: string; title?: string; data?: unknown; sessionId?: string | null }) =>
@@ -756,6 +776,18 @@ export interface ArtifactRow {
   projectId: string | null
   createdAt: string
   updatedAt: string
+  /** Set on a listing row: the body was trimmed to what a card shows. */
+  partial?: boolean
+}
+
+/** One page of the gallery. The cursor is simply the last row it returned. */
+export interface ArtifactQuery {
+  kind?: string
+  projectId?: string
+  q?: string
+  limit?: number
+  beforeAt?: string
+  beforeId?: string
 }
 
 /**

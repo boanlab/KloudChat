@@ -114,6 +114,60 @@ class ProjectPatch(Wire):
 
 
 # ── artifacts ──────────────────────────────────────────────────────────
+
+#: How much of a written body a card carries. Enough to recognise the document
+#: in a grid; nowhere near enough to render or edit it, which is what the flag
+#: below is for.
+_CARD_CHARS = 400
+
+#: Sections and slides a card carries. A thumbnail shows the top of a document,
+#: so the rest of it is weight the list pays for on every open.
+_CARD_PARTS = 4
+
+
+def _card_data(kind: ArtifactKind, data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The body a listing needs, which is much less than the body.
+
+    Measured before this existed: 385 artifacts came to 4.0 MB, and 2.8 MB of
+    it was the `content` and `blocks` of 69 HTML documents that the grid draws
+    as thumbnails the size of a business card. Media artifacts are already
+    small — a `src` and a duration — so they travel whole.
+
+    **Every key survives; only the values shrink.** The client's artifact types
+    declare these fields, and a renderer that reads `sources.length` on a card
+    with no `sources` takes the screen down with it — which is exactly what the
+    first version of this function did.
+    """
+    if not data:
+        return data
+    if kind in (ArtifactKind.html, ArtifactKind.code):
+        # The markup is the whole artifact and none of it fits on a card. The
+        # client fetches the document when it is about to show or edit one.
+        return {**data, "content": "", "blocks": []}
+    if kind is ArtifactKind.deck:
+        return {
+            **data,
+            "slides": [
+                {k: v for k, v in (slide or {}).items() if k in ("id", "title", "layout")}
+                for slide in (data.get("slides") or [])[:_CARD_PARTS]
+            ],
+        }
+    if kind is ArtifactKind.report:
+        return {
+            **data,
+            # Citations are a third of a report's weight and none of its card.
+            "sources": [],
+            "sections": [
+                {
+                    **{k: v for k, v in (section or {}).items() if k != "content"},
+                    "content": str((section or {}).get("content") or "")[:_CARD_CHARS],
+                }
+                for section in (data.get("sections") or [])[:_CARD_PARTS]
+            ],
+        }
+    return data
+
+
 class ArtifactOut(Wire):
     id: str
     kind: ArtifactKind
@@ -124,10 +178,23 @@ class ArtifactOut(Wire):
     project_id: str | None
     created_at: datetime
     updated_at: datetime
+    #: True when `data` was cut down for a listing. Anything that renders the
+    #: whole document — or lets somebody edit it — fetches it by id first, or
+    #: it would save a truncated copy over the real one.
+    partial: bool = False
 
     @classmethod
     def of(cls, a: Artifact) -> ArtifactOut:
         return cls.model_validate(a, from_attributes=True)
+
+    @classmethod
+    def card(cls, a: Artifact) -> ArtifactOut:
+        """One row of a listing: the same shape, with the body cut down."""
+        out = cls.model_validate(a, from_attributes=True)
+        trimmed = _card_data(a.kind, a.data)
+        out.partial = trimmed is not a.data
+        out.data = trimmed
+        return out
 
 
 class ArtifactIn(Wire):

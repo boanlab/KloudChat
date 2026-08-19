@@ -86,7 +86,10 @@ async function artifactOf(page: Page, sessionId: string) {
     async ([fn, id]) => {
       const rows = await eval(fn)('/api/artifacts')
       const list = Array.isArray(rows) ? rows : rows.items
-      return list.find((a: { sessionId: string }) => a.sessionId === id) ?? null
+      const row = list.find((a: { sessionId: string }) => a.sessionId === id)
+      // The listing carries cards — a deck's first four slide titles, an HTML
+      // document with no markup at all. The document itself is a fetch by id.
+      return row ? await eval(fn)('/api/artifacts/' + row.id) : null
     },
     [AS_USER, sessionId],
   )
