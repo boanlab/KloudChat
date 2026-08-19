@@ -66,9 +66,11 @@ CATALOGUE = [
 
 
 def planner(wanted, *, allowed=None, kind="slides", writer=EXTERNAL, strict_local=False):
+    """The chosen planner's id, or `""` — the row itself is what the caller
+    needs (it is billed at its own price), and its id is what a test reads."""
     from app.routers.sessions import _planner_model
 
-    return _planner_model(
+    chosen = _planner_model(
         wanted,
         user=_User(allowed),
         catalogue=CATALOGUE,
@@ -76,6 +78,7 @@ def planner(wanted, *, allowed=None, kind="slides", writer=EXTERNAL, strict_loca
         writer=writer,
         strict_local=strict_local,
     )
+    return chosen["id"] if chosen else ""
 
 
 def test_unset_means_the_writer_plans():

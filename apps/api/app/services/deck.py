@@ -340,7 +340,16 @@ async def write(
     default: a deck that is nearly the project's colour is worse than one that
     is plainly not.
     """
-    usage = {"inputTokens": 0, "outputTokens": 0}
+    # Planning is counted apart from writing, because it can run on another
+    # model — and a call billed at the wrong model's price is a ledger that
+    # says the wrong thing about where the money went. Empty when the same
+    # model does both, which is the shape every caller already handles.
+    usage = {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "outlineInputTokens": 0,
+        "outlineOutputTokens": 0,
+    }
     wanted = requested_slides(request)
     fixed_accent = (tokens or {}).get("accent") or ""
 
@@ -378,8 +387,7 @@ async def write(
         yield {"type": "usage", **usage}
         return
 
-    usage["inputTokens"] += spent["inputTokens"]
-    usage["outputTokens"] += spent["outputTokens"]
+    plan_rules.count(usage, spent, planned_apart=bool(outline_model))
     title, subtitle, plan = _parse_outline(text)
     accent = fixed_accent or _theme_accent(text)
 
@@ -398,8 +406,7 @@ async def write(
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck outline retry failed: %s", exc)
         else:
-            usage["inputTokens"] += retry_spent["inputTokens"]
-            usage["outputTokens"] += retry_spent["outputTokens"]
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
             retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
             if retry_plan and not plan_rules.flat_layouts(retry_plan, _LAYOUTS[1:]):
                 title = retry_title or title

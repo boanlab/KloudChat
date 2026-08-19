@@ -206,6 +206,19 @@ names one; empty — the default everywhere — plans with the surface's own mod
 It applies to all three writing tracks and only to the planning call, which is
 one call per document however many blocks follow it.
 
+Its tokens are billed at its own price: the turn reports planning and writing
+apart, because a frontier outline charged at a local writer's rate is a ledger
+that says the wrong thing about where the money went.
+
+**Measured, it changed nothing here.** Three decks per arm on the same prompt
+and template, planner `claude-sonnet-5` against the local writer planning for
+itself: both arms produced eight blocks, four distinct layouts and a longest
+run of one or two. The flatness a stronger planner was meant to fix had
+already been fixed by the prompt, and what these numbers cannot see — whether
+the *order* of a deck is better argued — is not something this instance can
+measure. The setting stays, off by default, and the claim under it is now the
+measurement rather than the expectation.
+
 The outline carries the same request and the same context the body does, so it
 is subject to everything the body is: the id is checked when it is saved, and
 again per turn against this account's allowlist, this surface, and the boundary

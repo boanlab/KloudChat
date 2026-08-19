@@ -150,3 +150,44 @@ async def test_a_report_plans_with_it_too(gateway):
 
     assert seen[0] == "planner"
     assert set(seen[1:]) == {"writer"}
+
+
+@pytest.mark.asyncio
+async def test_the_planner_tokens_are_counted_apart_from_the_writer_tokens(gateway):
+    """A planner can be a different model, and its price is its own.
+
+    Counted together, an outline on a frontier model would be billed at the
+    local writer's rate — which is a ledger that says the wrong thing about
+    where the money went.
+    """
+    seen: list[str] = []
+    replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
+    gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
+
+    usage = {}
+    async for event in deck.write(
+        request="발표", model="writer", api_key="k", outline_model="planner"
+    ):
+        if event["type"] == "usage":
+            usage = event
+
+    assert usage["outlineInputTokens"] > 0
+    assert usage["outlineOutputTokens"] > 0
+    # The writer's own half counts every block call and none of the plan.
+    assert usage["inputTokens"] > 0
+
+
+@pytest.mark.asyncio
+async def test_without_a_planner_the_outline_is_the_writer_s_own_cost(gateway):
+    seen: list[str] = []
+    replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
+    gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
+
+    usage = {}
+    async for event in deck.write(request="발표", model="writer", api_key="k"):
+        if event["type"] == "usage":
+            usage = event
+
+    assert usage["outlineInputTokens"] == 0
+    assert usage["outlineOutputTokens"] == 0
+    assert usage["inputTokens"] == len(seen)  # one per call, from the fake gateway

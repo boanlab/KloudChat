@@ -238,8 +238,12 @@ def _planner_model(
     kind: str,
     writer: dict,
     strict_local: bool,
-) -> str:
-    """The id the outline call should use, or `""` for "same as the writer".
+) -> dict | None:
+    """The catalogue row the outline call should use, or `None` for the writer.
+
+    A row rather than an id: its tokens are billed at its own price, and a
+    call billed at the writer's price is a ledger that says the wrong thing
+    about where the money went.
 
     A whole function for one policy field because everything it has to refuse
     is easy to forget: the account's allowlist, the surface, a turn privacy
@@ -248,12 +252,12 @@ def _planner_model(
     admin screen must not widen where any of it goes.
     """
     if not wanted or strict_local:
-        return ""
+        return None
     planner = model_service.find(_allowed_models(user, catalogue, kind=kind), str(wanted))
     if planner is None or _widens_boundary(planner, writer):
         log.info("outline model %s unusable here", wanted)
-        return ""
-    return str(planner["id"])
+        return None
+    return planner
 
 
 def _find_auto_quality_model(models: list[dict], model_id: str | None) -> dict | None:
@@ -2584,7 +2588,7 @@ async def _audit_policy(
 
 async def _run_page(
     *,
-    outline_model: str = "",
+    outline_model: dict | None = None,
     user_id: str,
     api_key: str,
     session_id: str,
@@ -2615,7 +2619,7 @@ async def _run_page(
         stream = page_service.write(
             request=request,
             model=model["id"],
-            outline_model=outline_model,
+            outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
             template=template,
             tokens=design_tokens,
@@ -2639,7 +2643,15 @@ async def _run_page(
 
     written = page_service.filled(blocks)
     credits = (
-        0 if not written else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        0
+        if not written
+        else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        # The planner's own tokens at the planner's own price, when one ran.
+        + charge_for_tokens(
+            outline_model or model,
+            usage.get("outlineInputTokens", 0),
+            usage.get("outlineOutputTokens", 0),
+        )
     )
 
     artifact_id: str | None = None
@@ -2710,7 +2722,7 @@ async def _run_page(
 
 async def _run_deck(
     *,
-    outline_model: str = "",
+    outline_model: dict | None = None,
     user_id: str,
     api_key: str,
     session_id: str,
@@ -2736,7 +2748,7 @@ async def _run_deck(
         stream = deck_service.write(
             request=request,
             model=model["id"],
-            outline_model=outline_model,
+            outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
@@ -2758,7 +2770,15 @@ async def _run_deck(
 
     written = deck_service.filled(slides)
     credits = (
-        0 if not written else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        0
+        if not written
+        else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        # The planner's own tokens at the planner's own price, when one ran.
+        + charge_for_tokens(
+            outline_model or model,
+            usage.get("outlineInputTokens", 0),
+            usage.get("outlineOutputTokens", 0),
+        )
     )
 
     artifact_id: str | None = None
@@ -2818,7 +2838,7 @@ async def _run_deck(
 
 async def _run_report(
     *,
-    outline_model: str = "",
+    outline_model: dict | None = None,
     user_id: str,
     api_key: str,
     session_id: str,
@@ -2850,7 +2870,7 @@ async def _run_report(
         stream = report_service.write(
             request=request,
             model=model["id"],
-            outline_model=outline_model,
+            outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
@@ -2880,7 +2900,15 @@ async def _run_report(
 
     written = [s for s in sections if (s.get("content") or "").strip()]
     credits = (
-        0 if not written else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        0
+        if not written
+        else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        # The planner's own tokens at the planner's own price, when one ran.
+        + charge_for_tokens(
+            outline_model or model,
+            usage.get("outlineInputTokens", 0),
+            usage.get("outlineOutputTokens", 0),
+        )
     )
 
     artifact_id: str | None = None

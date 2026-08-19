@@ -30,6 +30,19 @@ MAX_RUN = 3
 MIN_DISTINCT = 3
 
 
+def count(usage: dict[str, int], spent: dict[str, int], *, planned_apart: bool) -> None:
+    """Adds one planning call's tokens to the right half of a turn's usage.
+
+    A planner can be a different model from the writer, and a call billed at
+    the wrong model's price is a ledger that says the wrong thing about where
+    the money went. When the same model does both — the default everywhere —
+    the tokens stay where they always were.
+    """
+    prefix = "outline" if planned_apart else ""
+    usage[f"{prefix}InputTokens" if prefix else "inputTokens"] += spent["inputTokens"]
+    usage[f"{prefix}OutputTokens" if prefix else "outputTokens"] += spent["outputTokens"]
+
+
 def flat_layouts(blocks: Sequence[dict], choices: Sequence[str]) -> list[str]:
     """Layouts this plan never reached for — empty when it is varied enough.
 
@@ -55,4 +68,4 @@ def flat_layouts(blocks: Sequence[dict], choices: Sequence[str]) -> list[str]:
     return [layout for layout in options if counted[layout] < most]
 
 
-__all__ = ["MAX_RUN", "MIN_DISTINCT", "flat_layouts"]
+__all__ = ["MAX_RUN", "MIN_DISTINCT", "count", "flat_layouts"]
