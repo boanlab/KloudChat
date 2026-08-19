@@ -462,7 +462,7 @@ export function DeckPanel({
           </button>
         )}
         <Badge className="max-sm:hidden">{deck.theme}</Badge>
-        <LintFindings findings={deck.lint} />
+        <LintFindings findings={deck.lint} artifact={deck} />
         <Button
           size="sm"
           className="lg:hidden"

@@ -297,6 +297,25 @@ interface ArtifactBase {
    * because the rules were tightened afterwards.
    */
   lint?: LintFinding[]
+  /**
+   * One reading by somebody who did not write it. Absent until asked for — it
+   * costs a model call, unlike the linter beside it.
+   */
+  critique?: Critique
+}
+
+/**
+ * A review, not a gate.
+ *
+ * The score is an opinion with a number on it; nothing is blocked by it, and
+ * the findings are the part worth acting on. They carry the linter's shape so
+ * the panel shows one list of things to look at rather than two.
+ */
+export interface Critique {
+  score: number
+  findings: LintFinding[]
+  model: string
+  at: string
 }
 
 /**

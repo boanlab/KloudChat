@@ -10,6 +10,7 @@ Each entry is a folder under `app/design_templates/<id>/`:
 
     template.toml     metadata — read with `tomllib`, no new dependency
     instructions.md   what the model is told, appended to the surface prompt
+    checklist.md      the rubric a critique scores this shape against
     seed.html         the shell, with `{{TITLE}}` / `{{TOKENS}}` / `{{BODY}}`
     sample.html       a body fragment the gallery previews
 
@@ -128,6 +129,11 @@ class DesignTemplate:
     example_prompt: str
     #: Appended to the generation prompt. Never shown to the reader.
     instructions: str
+    #: What a critique reads the finished thing against. Separate from the
+    #: instructions on purpose: writing rules and reviewing rules answer
+    #: different questions, and a rubric folded into the brief becomes a
+    #: checklist the model writes *to* rather than one it is measured by.
+    checklist: str
     #: Whether this template's slides are laid on a dark ground. Carried into
     #: the `.pptx`, which is for presenting; the `.pdf` stays light because it
     #: is for paper, exactly as the seed's own print rules decide.
@@ -196,6 +202,7 @@ def _load() -> dict[str, DesignTemplate]:
             fills_en=tuple(str(f) for f in (meta.get("fills_en") or [])),
             example_prompt_en=str(meta.get("example_prompt_en") or ""),
             instructions=_read(folder, "instructions.md"),
+            checklist=_read(folder, "checklist.md"),
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
             dark=bool(meta.get("dark")),
             arguments=tuple(

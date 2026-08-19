@@ -723,6 +723,8 @@ export const artifactsApi = {
   /** One block of an HTML artifact, addressed by position and re-rendered. */
   rewriteBlock: (id: string, index: number, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
+  /** One reading by a reviewer. Costs a model call; annotates, never edits. */
+  critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */
   restore: (id: string, version: number) =>
     call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),

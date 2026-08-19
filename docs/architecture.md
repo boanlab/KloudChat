@@ -328,7 +328,33 @@ numbers rule is narrow on purpose — an ordinary "12% 증가" is what a report 
 flagged. A check that fires on ordinary writing is one people learn to ignore.
 
 Nothing is corrected automatically. The panel shows a count and a list; the
-report surface already has "이 절만 다시 쓰기" for acting on it.
+report surface already has "이 절만 다시 쓰기" for acting on it, and an HTML
+artifact has the same per-block rewrite.
+
+### Asking for a review
+
+`POST /artifacts/{id}/critique` is the other half: one reading of a finished
+document by somebody who did not write it. It answers with a score out of ten
+and up to six things to fix, in **the same shape the linter produces**, so the
+panel shows one list of things to look at rather than two. The difference
+between the two is only where they came from — the linter is free and certain,
+the review costs a call and is an opinion.
+
+The score is a reading, not a gate. Nothing is blocked by it, and a review
+annotates the artifact rather than editing it: no version snapshot and no
+version bump, the same rule the fact-check follows.
+
+**One reviewer, one pass.** OpenDesign's Critique Theater seats a five-person
+jury and runs up to three rounds, refusing to ship under 8.0 — five to fifteen
+model calls per artifact. Here every call is somebody's credit and the bill is
+shown before the turn, so the panel is one reviewer and the pass is asked for
+explicitly.
+
+The rubric comes from the template the document was written into
+(`checklist.md`), or from a default for the built-in report and deck tracks.
+Reviewing rules are kept apart from writing rules on purpose: folded into the
+brief, a rubric becomes a checklist the model writes *to* rather than one it
+can be measured by.
 
 ### Reading a design system out of a document
 

@@ -60,8 +60,8 @@ from app.schemas.workspace import (
     TemplateOut,
     ToolCatalogOut,
 )
-from app.services import deck as deck_service
 from app.services import (
+    critique,
     deck_export,
     design_extract,
     design_templates,
@@ -73,6 +73,7 @@ from app.services import (
     settings_store,
     starter,
 )
+from app.services import deck as deck_service
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
@@ -491,6 +492,113 @@ async def factcheck_slide(
     artifact.updated_at = utcnow()
     db.add(artifact)
     # No version snapshot: a verdict annotates the deck rather than editing it.
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+#: How a document reaches the reviewer, per kind. The linter reads the same
+#: three shapes; this turns them into headings and prose instead of parts.
+def _reviewable(artifact: Artifact) -> tuple[str, str]:
+    """`(body, rubric)` for one artifact, or `("", "")` when there is nothing."""
+    data = artifact.data or {}
+    if artifact.kind is ArtifactKind.report:
+        parts = [
+            {"heading": s.get("heading") or "", "text": s.get("content") or ""}
+            for s in (data.get("sections") or [])
+        ]
+        return critique.document(parts), ""
+    if artifact.kind is ArtifactKind.deck:
+        parts = [
+            {
+                "heading": s.get("title") or "",
+                "text": " · ".join(
+                    [*(s.get("bullets") or []), s.get("body") or ""]
+                ).strip(" ·"),
+            }
+            for s in (data.get("slides") or [])
+        ]
+        return critique.document(parts), ""
+    if artifact.kind is ArtifactKind.html:
+        parts = [
+            {"heading": b.get("title") or "", "text": b.get("html") or ""}
+            for b in (data.get("blocks") or [])
+        ]
+        template = design_templates.get(str(data.get("templateId") or ""))
+        return critique.document(parts), (template.checklist if template else "")
+    return "", ""
+
+
+@router.post("/artifacts/{artifact_id}/critique", response_model=ArtifactOut)
+async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
+    """One reading of a finished document by somebody who did not write it.
+
+    Asked for explicitly and charged, unlike the linter beside it: that one is
+    free and certain, this one costs a call and is an opinion. The score says
+    so — it is a reading, not a gate, and nothing is blocked by it.
+
+    One reviewer, one pass. OpenDesign seats five and runs three rounds; here
+    every call is somebody's credit.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    body, rubric = _reviewable(artifact)
+    if not body.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_reviewable")
+
+    catalogue = await model_service.list_models()
+    usable = sorted(
+        (m for m in catalogue["models"] if "chat" in m["kinds"]),
+        key=lambda m: m["creditCost"],
+    )
+    session = (
+        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
+    )
+    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
+        usable[0] if usable else None
+    )
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+
+    try:
+        result, usage = await critique.review(
+            title=artifact.title or "",
+            body=body,
+            rubric=rubric,
+            model=model["id"],
+            api_key=api_key,
+        )
+    except critique.CritiqueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+        log.warning("critique failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="critique_failed"
+        ) from exc
+
+    data = dict(artifact.data or {})
+    # No version snapshot and no version bump: a review annotates a document
+    # rather than editing it, which is the rule the fact-check already follows.
+    data["critique"] = {**result, "model": model["id"], "at": utcnow().isoformat()}
+    artifact.data = data
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    settle(db, user, credits, reason="artifact.critique", session_id=artifact.session_id)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)

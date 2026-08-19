@@ -88,7 +88,79 @@ test('검사에서 걸린 곳은 결과물 패널에서 셀 수 있고 읽을 �
   await expect(page.getByRole('list').getByText('배경', { exact: true })).toBeVisible()
 })
 
-test('검사에서 아무것도 걸리지 않으면 배지도 없다', async ({ page }) => {
+test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', async ({ page }) => {
+  test.setTimeout(300_000)
+  await signIn(page)
+
+  const title = `검토 대상 ${Date.now()}`
+  await page.evaluate(
+    async ([fn, name]) =>
+      await eval(fn)('/api/artifacts', {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'report',
+          title: name,
+          data: {
+            sections: [
+              {
+                id: 's1',
+                heading: '배경',
+                level: 1,
+                status: 'done',
+                content:
+                  '학과 서버는 보증이 끝났고 지난해 장애가 세 번 있었다. 교체와 유지 가운데 하나를 2분기 안에 정해야 한다.',
+              },
+              {
+                id: 's2',
+                heading: '대안',
+                level: 1,
+                status: 'done',
+                content: '유지하면 비용이 없다. 교체하면 예산 상신이 필요하다.',
+              },
+            ],
+            sources: [],
+            citationStyle: 'APA',
+            wordCount: 40,
+            lint: [],
+          },
+        }),
+      }),
+    [AS_USER, title],
+  )
+
+  await page.goto('/artifacts')
+  const card = page.getByRole('button', { name: `${title} 열기` })
+  await expect(card).toBeVisible({ timeout: 20_000 })
+  await card.click()
+
+  // Offered even with nothing found automatically: the review is the thing
+  // that costs a call, so it is asked for rather than run.
+  const badge = page.getByRole('button', { name: '검사 결과' })
+  await expect(badge).toBeVisible({ timeout: 20_000 })
+  await badge.click()
+  await expect(page.getByText(/모델을 한 번 호출합니다/)).toBeVisible()
+  await page.getByRole('button', { name: '검토 받기' }).click()
+
+  // The score lands beside the findings, in the one list of things to look at.
+  await expect(page.getByText(/검토 \d+(\.\d)?\/10/)).toBeVisible({ timeout: 240_000 })
+  await page.screenshot({ path: 'test-results/shots/12-critique.png' })
+
+  const stored = await page.evaluate(
+    async ([fn, name]) => {
+      const rows = await eval(fn)('/api/artifacts')
+      const list = Array.isArray(rows) ? rows : rows.items
+      return list.find((a: { title: string }) => a.title === name) ?? null
+    },
+    [AS_USER, title],
+  )
+  expect(stored.data.critique.score).toBeGreaterThanOrEqual(0)
+  expect(stored.data.critique.score).toBeLessThanOrEqual(10)
+  // A review annotates rather than edits: the document and its version stand.
+  expect(stored.version).toBe(1)
+  expect(stored.data.sections).toHaveLength(2)
+})
+
+test('걸린 것이 없으면 개수 대신 검토를 권한다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
@@ -121,6 +193,9 @@ test('검사에서 아무것도 걸리지 않으면 배지도 없다', async ({ 
   await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({
     timeout: 20_000,
   })
-  // A badge that is always there is a badge nobody reads.
-  await expect(page.getByRole('button', { name: '검사 결과' })).toHaveCount(0)
+  // Nothing was found, so the badge says what it *can* offer — a review —
+  // rather than a count of problems that do not exist.
+  const badge = page.getByRole('button', { name: '검사 결과' })
+  await expect(badge).toContainText('검토')
+  await expect(badge).not.toContainText('고칠 곳')
 })

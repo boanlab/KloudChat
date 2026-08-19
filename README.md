@@ -49,6 +49,12 @@ with blanks, a small form to fill them, and the settings that shape implies —
 aspect, duration, voice — applied when you pick it. The finished sentence lands
 in the composer, where it is still yours to change.
 
+Every document is read back before it is stored — for placeholders nobody
+replaced, figures nobody could have sourced, lines repeated from another
+section — and that check costs nothing. Beside it, a review can be asked for:
+one reading by somebody who did not write the thing, scored out of ten against
+the shape it was written into. Neither corrects anything. Both hand you a list.
+
 **2. An agent can search its own documents.** Attach files or URLs to an agent
 and it looks them up through a tool when it needs background, rather than
 having everything pushed into every turn. Retrieval is lexical by default and

@@ -1139,6 +1139,15 @@ const EN: Record<string, string> = {
   '모델이 응답하지 않았습니다. 잠시 후 다시 시도하세요.': 'The model did not answer. Try again in a moment.',
 
 
+  '검토': 'Review',
+  '검토 받기': 'Ask for a review',
+  '다시 검토': 'Review again',
+  '자동 검사': 'Automatic checks',
+  '검토하지 못했습니다.': 'The review could not be produced.',
+  '고칠 곳을 찾지 못했습니다.': 'Nothing to fix was found.',
+  '쓰지 않은 사람의 눈으로 한 번 읽습니다. 모델을 한 번 호출합니다.':
+    'One reading by somebody who did not write it. Costs one model call.',
+
   // ── 블록 다시 쓰기 ───────────────────────────────────────────────
   '어느 부분을 다시 쓸까요?': 'Which part should be rewritten?',
   '제목 없음': 'Untitled',

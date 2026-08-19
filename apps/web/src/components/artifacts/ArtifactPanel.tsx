@@ -299,7 +299,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
             </button>
           ))}
           <span className="flex-1" />
-          <LintFindings findings={artifact.lint} />
+          <LintFindings findings={artifact.lint} artifact={artifact} />
           <RewriteBlock artifact={artifact} />
           <PageExport artifact={artifact} />
         </div>
