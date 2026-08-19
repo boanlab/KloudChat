@@ -147,6 +147,9 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   expect(stored.kind).toBe('html')
   expect(stored.data.templateId).toBe('deck-editorial')
   expect(stored.data.blocks.length).toBeGreaterThanOrEqual(4)
+  // Read back before it was stored, on every document — an empty array is the
+  // linter having run and found nothing, which is not the same as absent.
+  expect(Array.isArray(stored.data.lint)).toBe(true)
   expect(stored.data.blocks[0].layout).toBe('cover')
 
   const html = stored.data.content as string

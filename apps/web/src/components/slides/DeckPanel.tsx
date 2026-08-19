@@ -22,6 +22,7 @@ import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/compon
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, FactCheck, Slide } from '@/types'
+import { LintFindings } from '@/components/artifacts/LintFindings'
 import { useT } from '@/lib/useT'
 
 const verdictMeta = {
@@ -461,6 +462,7 @@ export function DeckPanel({
           </button>
         )}
         <Badge className="max-sm:hidden">{deck.theme}</Badge>
+        <LintFindings findings={deck.lint} />
         <Button
           size="sm"
           className="lg:hidden"

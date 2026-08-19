@@ -28,6 +28,7 @@ import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, Source } from '@/types'
 import { copyText } from '@/lib/clipboard'
+import { LintFindings } from '@/components/artifacts/LintFindings'
 import { useT } from '@/lib/useT'
 
 /** A passage the reader picked out, and the section it belongs to. */
@@ -469,6 +470,7 @@ export function ReportPanel({
             {t('목차')} {done}/{report.sections.length}
           </Button>
           <Badge>v{report.version}</Badge>
+          <LintFindings findings={report.lint} />
           {/* 편집 진입점. 항상 보이는 자리에 둔다 — hover 로만 드러나면 보고서가
               편집 가능하다는 것을 알아낼 방법이 마우스를 훑는 것뿐이 된다. */}
           {editing ? (

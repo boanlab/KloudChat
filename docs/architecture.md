@@ -287,6 +287,36 @@ branding logo: the body is a constant that ships in this image, an iframe `src`
 cannot carry an Authorization header, and `current_viewer`'s `?t=` escape hatch
 would put a live access token in the proxy log for a static asset.
 
+### Checking what was written
+
+Three surfaces carry the same rules in their prompts — do not invent figures,
+do not pad, keep emoji out of headings — stated in `craft`, in the per-surface
+system prompts, and in the starter skills. Nothing read the answer back to see
+whether they held. `services/lint.py` does, on every report, deck and HTML
+artifact, and it costs no model call: the check is free, and acting on it stays
+explicit. Findings are stored on the artifact, so a document that was fine when
+it was made does not start reporting problems because the rules were tightened
+afterwards.
+
+**Half of OpenDesign's `lint-artifact` rules are deliberately absent.** Its P0
+list is mostly visual — default indigo accents, two-stop gradients, rounded
+cards with a coloured left border — because there the model writes CSS. Here it
+cannot: the seed owns every colour and face, and `sanitise` drops `class` and
+`style` before anything is stored. Those rules hold by construction, and
+re-stating them would be a check that can never fire. What is left is what the
+model does choose — the words.
+
+`P0` means the document is wrong: a placeholder nobody replaced, a block that
+never got written, a figure nobody could have sourced. `P1` means it reads
+badly: filler adjectives, an emoji leading a line, a line repeated from another
+section, a slide too crowded or too long to read from the back of a room. The
+numbers rule is narrow on purpose — an ordinary "12% 증가" is what a report is
+*for*, so only round marketing figures and the multiplier-with-a-verb form are
+flagged. A check that fires on ordinary writing is one people learn to ignore.
+
+Nothing is corrected automatically. The panel shows a count and a list; the
+report surface already has "이 절만 다시 쓰기" for acting on it.
+
 ### Design systems
 
 One look, read by every surface that produces a document. Split in two, and the

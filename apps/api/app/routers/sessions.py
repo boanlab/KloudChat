@@ -50,6 +50,7 @@ from app.services import (
     design_templates,
     governance,
     imagegen,
+    lint,
     settings_store,
 )
 from app.services import agent as agent_service
@@ -2591,6 +2592,15 @@ async def _run_page(
                         "blocks": [
                             {"title": b["title"], "layout": b["layout"]} for b in blocks
                         ],
+                        # Read back before it is stored. Costs no model call,
+                        # so it runs on every document; acting on what it finds
+                        # stays the person's decision.
+                        "lint": lint.wire(
+                            lint.check(
+                                lint.from_blocks(blocks),
+                                slides=template.kind == "deck",
+                            )
+                        ),
                         **({"design": design_tokens} if design_tokens else {}),
                     },
                 )
@@ -2692,6 +2702,9 @@ async def _run_deck(
                         # deck presented last month should not repaint itself
                         # because the project changed its design system since.
                         **({"design": design_tokens} if design_tokens else {}),
+                        "lint": lint.wire(
+                            lint.check(lint.from_slides(slides), slides=True)
+                        ),
                         # Every slide, including unwritten ones — a gap stays
                         # visible so it can be fixed.
                         "slides": slides,
@@ -2815,6 +2828,7 @@ async def _run_report(
                             for s in sections
                         ],
                         "sources": sources,
+                        "lint": lint.wire(lint.check(lint.from_sections(sections))),
                         # Same snapshot rule as the deck: the exporters read
                         # this, not the project the report came from.
                         **({"design": design_tokens} if design_tokens else {}),

@@ -1,6 +1,7 @@
 import { AudioLines, Code2, Copy, Download, Eye } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
+import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
@@ -202,6 +203,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
             </button>
           ))}
           <span className="flex-1" />
+          <LintFindings findings={artifact.lint} />
           <PageExport artifact={artifact} />
         </div>
       )}

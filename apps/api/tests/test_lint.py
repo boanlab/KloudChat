@@ -1,0 +1,166 @@
+"""What the linter catches, and — more carefully — what it leaves alone.
+
+A check that fires on ordinary writing is worse than no check: people learn to
+ignore the badge, and then it protects nothing. So every rule here has a
+companion test for the sentence it must stay silent on.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.services import lint
+
+
+def _one(title: str, *lines: str) -> list[lint.Part]:
+    return [lint.Part(title, list(lines))]
+
+
+def _rules(findings: list[lint.Finding]) -> list[str]:
+    return [f.rule for f in findings]
+
+
+# ── what it catches ────────────────────────────────────────────────────
+
+
+def test_a_placeholder_nobody_replaced_is_a_regression():
+    findings = lint.check(_one("배경", "여기에 내용을 입력하세요.", "두 번째 줄입니다."))
+    assert _rules(findings) == ["placeholder"]
+    assert findings[0].severity == "P0"
+    assert findings[0].where == "배경"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "도입하면 10배 빠르다.",
+        "가용성 99.9% 를 보장한다.",
+        "24/7 대응을 제공한다.",
+        "업계 최초로 도입한 방식이다.",
+    ],
+)
+def test_a_figure_nobody_could_have_sourced_is_flagged(line):
+    findings = lint.check(_one("효과", line, "다른 문장도 함께 있다."))
+    assert "invented-metric" in _rules(findings)
+
+
+def test_filler_is_an_advisory_rather_than_a_regression():
+    findings = lint.check(_one("요약", "혁신적인 접근으로 문제를 해결한다."))
+    assert _rules(findings) == ["filler"]
+    assert findings[0].severity == "P1"
+
+
+def test_a_block_that_never_got_written_is_reported_once():
+    findings = lint.check(_one("결론", "…"))
+    assert _rules(findings) == ["empty"]
+    # And nothing else: an empty block cannot also be crowded or repetitive.
+    assert len(findings) == 1
+
+
+def test_an_emoji_leading_a_line_is_the_icon_tell():
+    assert "emoji" in _rules(lint.check(_one("현황", "🚀 빠르게 성장하고 있습니다.")))
+    assert "emoji" in _rules(lint.check(_one("✨ 요약", "본문이 여기에 있습니다.")))
+
+
+def test_the_same_line_twice_across_two_parts_is_a_repeat():
+    parts = [
+        lint.Part("배경", ["점검 이력이 남아 있지 않다."]),
+        lint.Part("문제", ["점검 이력이 남아 있지 않다."]),
+    ]
+    findings = lint.check(parts)
+    assert _rules(findings) == ["repeat"]
+    assert findings[0].where == "문제"
+
+
+def test_slide_shape_rules_apply_only_to_slides():
+    crowded = _one("현황", *[f"항목 번호 {n} 입니다" for n in range(9)])
+    assert "crowded" in _rules(lint.check(crowded, slides=True))
+    assert "crowded" not in _rules(lint.check(crowded))
+
+
+def test_a_line_too_long_for_a_screen_is_flagged():
+    # 45 is where the check sits; the deck prompt itself asks for 40.
+    long_line = (
+        "이 문장은 화면 한 줄에 담기에는 확실히 너무 길어서 "
+        "뒤로 갈수록 두 행이 되고 마는 종류의 문장이다."
+    )
+    assert "long-line" in _rules(lint.check(_one("설명", long_line), slides=True))
+
+
+def test_findings_come_worst_first():
+    parts = _one("요약", "혁신적인 방식이다.", "여기에 내용을 입력하세요.")
+    assert [f.severity for f in lint.check(parts)] == ["P0", "P1"]
+
+
+# ── what it leaves alone ───────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "전년 대비 12% 증가했다.",
+        "표본은 340명이며 응답률은 68% 였다.",
+        "장비 42대 가운데 5대가 점검을 넘겼다.",
+        "처리 시간이 3.2초에서 1.8초로 줄었다.",
+        "2026년 2분기에 두 배로 늘었다고 보고서는 적고 있다.",
+    ],
+)
+def test_ordinary_figures_are_not_touched(line):
+    """A report is *for* numbers. A check that fires on them is noise."""
+    assert lint.check(_one("결과", line, "이어지는 문장이 하나 더 있다.")) == []
+
+
+def test_a_short_but_finished_line_is_not_empty():
+    assert lint.check(_one("결론", "도입을 권고한다. 예산은 2분기에 상신한다.")) == []
+
+
+def test_a_repeated_short_phrase_is_not_a_repeat():
+    """Headings and stock phrases recur; only substantial lines count."""
+    parts = [
+        lint.Part("가", ["없음", "이 절은 배경을 설명한다."]),
+        lint.Part("나", ["없음", "이 절은 대안을 견준다."]),
+    ]
+    assert lint.check(parts) == []
+
+
+def test_the_same_line_twice_inside_one_part_is_not_a_repeat():
+    """A list that echoes itself is one part's problem, and a rewrite fixes it."""
+    parts = [lint.Part("배경", ["점검 이력이 남아 있지 않다.", "점검 이력이 남아 있지 않다."])]
+    assert "repeat" not in _rules(lint.check(parts))
+
+
+# ── reading each surface ───────────────────────────────────────────────
+
+
+def test_a_markdown_report_becomes_parts_without_its_markers():
+    parts = lint.from_sections(
+        [{"heading": "배경", "content": "## 소제목\n- 첫째 항목\n\n1. 둘째 항목"}]
+    )
+    assert parts[0].title == "배경"
+    assert parts[0].lines == ["소제목", "첫째 항목", "둘째 항목"]
+
+
+def test_a_deck_slide_becomes_its_bullets_and_body():
+    parts = lint.from_slides([{"title": "표지", "body": "부제", "bullets": ["가", "나"]}])
+    assert parts[0].lines == ["가", "나", "부제"]
+
+
+def test_an_html_block_is_read_as_lines_not_as_markup():
+    parts = lint.from_blocks(
+        [{"title": "현황", "html": "<ul><li>보유 42대</li><li>점검 5대</li></ul><p>본문</p>"}]
+    )
+    assert parts[0].lines == ["보유 42대", "점검 5대", "본문"]
+    # The tags themselves must not become words the rules then read.
+    assert not any("<" in line for line in parts[0].lines)
+
+
+def test_the_wire_shape_is_flat_strings():
+    findings = lint.check(_one("배경", "여기에 내용을 입력하세요.", "한 줄 더."))
+    assert lint.wire(findings) == [
+        {
+            "severity": "P0",
+            "rule": "placeholder",
+            "message": "채우지 않은 자리가 남았습니다 — “여기에 내용을 입력”.",
+            "where": "배경",
+        }
+    ]

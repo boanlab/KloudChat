@@ -291,6 +291,28 @@ interface ArtifactBase {
   updatedAt: string
   sessionId: string | null
   projectId: string | null
+  /**
+   * What the linter found when this was written. Stored on the artifact, so a
+   * document that was fine when it was made does not start reporting problems
+   * because the rules were tightened afterwards.
+   */
+  lint?: LintFinding[]
+}
+
+/**
+ * One thing worth looking at before this goes anywhere.
+ *
+ * `P0` means the document is wrong — a placeholder nobody replaced, a figure
+ * nobody could have sourced. `P1` means it reads badly. Nothing is corrected
+ * automatically: the check is free, and the rewrite is a decision.
+ */
+export interface LintFinding {
+  severity: 'P0' | 'P1'
+  /** `placeholder` · `invented-metric` · `filler` · `empty` · … */
+  rule: string
+  message: string
+  /** The heading it was found under, or empty for the whole document. */
+  where: string
 }
 
 /** A citation the model attached to a claim, surfaced beside the prose. */
