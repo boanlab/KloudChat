@@ -143,9 +143,10 @@ class Settings(BaseSettings):
     # Hits scraped in full. Each is a page fetch: answer quality against latency.
     web_search_results: int = 5
     web_search_scrape: int = 3
-    # Names conversations. Empty falls back to the session's own model, which
-    # is correct but wasteful on an expensive one.
-    title_model: str = "local/glm-4.7-flash"
+    # Names conversations and extracts memories. Empty falls back to the
+    # session's own model, which is correct but wasteful on an expensive one —
+    # as is naming an expensive one here. 3B-active is what this wants.
+    title_model: str = "local/qwen3.6-35b"
     #: Conversation model when the user has not chosen one. Absent from the
     #: catalogue, the surface falls back to its cheapest.
     default_chat_model: str = "local/qwen3.6-35b"

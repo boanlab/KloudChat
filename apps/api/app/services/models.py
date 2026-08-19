@@ -416,6 +416,41 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     return result
 
 
+#: Enrichment models already reported as absent, so the warning is logged once.
+_MISSING_ENRICHMENT: set[str] = set()
+
+
+async def resolve_enrichment_model() -> str:
+    """`title_model` if the gateway actually serves it, otherwise "".
+
+    Naming a model is a claim about the deployment, and `local/*` names only hold
+    where that GPU deployment exists. Titles and memory extraction are best
+    effort, so a stale name never surfaces as an error — it just produces no
+    title, on every turn, with one log line to say so. Validated against the same
+    catalogue that blanks `default_chat_model`, which turns the stale name into
+    the documented fallback (the session's own model) instead.
+    """
+    configured = settings.title_model
+    if not configured:
+        return ""
+    catalogue = await list_models()
+    if any(
+        model["id"] == configured and "chat" in model["kinds"]
+        for model in catalogue["models"]
+    ):
+        return configured
+    if configured not in _MISSING_ENRICHMENT:
+        # Once per distinct value: memory extraction runs on every turn, and a
+        # per-turn line would bury the one that matters.
+        _MISSING_ENRICHMENT.add(configured)
+        log.warning(
+            "title_model %s is not in the catalogue; "
+            "titles and memory extraction use the session model",
+            configured,
+        )
+    return ""
+
+
 async def list_models_for_egress() -> dict[str, Any]:
     """Returns a live catalogue suitable for privacy and routing decisions.
 

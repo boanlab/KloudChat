@@ -1975,7 +1975,7 @@ async def _run_turn(
         enrichment_model = (
             model["id"]
             if strict_local or disable_fallbacks
-            else settings.title_model or model["id"]
+            else await model_service.resolve_enrichment_model() or model["id"]
         )
         title = await chat_service.generate_title(
             enrichment_model,
@@ -2524,7 +2524,7 @@ async def _enrich(
                 enrichment_model = (
                     model["id"]
                     if strict_local or disable_fallbacks
-                    else settings.title_model or model["id"]
+                    else await model_service.resolve_enrichment_model() or model["id"]
                 )
                 written = await auto_memory_service.extract(
                     db,
