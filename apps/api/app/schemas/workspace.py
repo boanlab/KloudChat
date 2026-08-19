@@ -535,6 +535,33 @@ class DesignArgumentOut(Wire):
     options_en: JsonList = Field(default_factory=list)
 
 
+class DesignExtractIn(Wire):
+    """What to read a design system out of: one of the two, not both."""
+
+    #: An uploaded file whose extracted text is already stored.
+    file_id: str | None = None
+    #: A page, read through the same scraper the `fetch_url` tool uses.
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class DesignExtractOut(Wire):
+    """A proposal, not a row. The editor opens on it and the person saves it.
+
+    Shaped like `DesignSystemIn` so the client can hand it straight to the
+    form it already has, plus what it cost and what it read.
+    """
+
+    name: str
+    description: str
+    tokens: dict[str, str] = Field(default_factory=dict)
+    body: str = ""
+    image_style: str = ""
+    craft: JsonList = Field(default_factory=list)
+    #: What it was read from, so the draft can say so.
+    source: str = ""
+    credits: int = 0
+
+
 class DesignTemplateOut(Wire):
     """One entry of the rendering catalogue.
 

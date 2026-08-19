@@ -317,6 +317,29 @@ flagged. A check that fires on ordinary writing is one people learn to ignore.
 Nothing is corrected automatically. The panel shows a count and a list; the
 report surface already has "이 절만 다시 쓰기" for acting on it.
 
+### Reading a design system out of a document
+
+Four colours and a paragraph of house style is the part nobody types from
+scratch, which is why the only design systems most accounts had were the three
+seeded ones. The material is usually already on hand — the 공문 template
+everything is filed on, an earlier report, a page on the department site.
+
+`POST /designs/extract` takes a `fileId` (its text is already extracted on
+upload) or a `url` (read through `builtin.scrape`, the same scraper the
+`fetch_url` tool uses) and answers with a **draft**. Nothing is stored. What
+comes back is one model's reading of a document, and the person who owns that
+document is the one who can say whether it read it right, so the editor opens
+on it with a note naming what it was read from.
+
+Every field is put through `design.normalise_tokens` and `design.craft_keys`
+before it leaves the service: a colour in the wrong shape becomes the default
+rather than a value somebody saves without noticing. The prompt says to leave
+`body` and `image_style` empty when there is nothing in the document to observe
+— an invented house style is worse than a blank field, because the blank one is
+obviously unfinished.
+
+Costs one call on the cheapest chat model, charged like any other.
+
 ### Design systems
 
 One look, read by every surface that produces a document. Split in two, and the

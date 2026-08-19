@@ -1116,6 +1116,28 @@ const EN: Record<string, string> = {
   '이 결과물을 삭제합니다': 'Delete this artifact',
 
 
+
+  // ── 문서에서 디자인 읽기 ─────────────────────────────────────────
+  '문서에서 가져오기': 'Read from a document',
+  '문서에서 디자인 시스템을 읽어내지 못했습니다.': 'No design system could be read out of that.',
+  '공문 양식이나 지난 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.':
+    'Upload an official template or an earlier report, and its colours, type and voice become a draft. Nothing is saved until you have read it.',
+  '문서 올리기': 'Upload a document',
+  'hwpx · docx · pdf · 텍스트': 'hwpx · docx · pdf · text',
+  '주소에서 읽기': 'Read from a URL',
+  '이 인스턴스에 문서 가져오기가 연결되어 있어야 합니다.': 'This instance needs the page-fetching backend connected.',
+  '읽기': 'Read',
+  '읽는 중입니다…': 'Reading…',
+  '“{name}” 에서 읽었습니다. 확인하고 고친 뒤 저장하세요.':
+    'Read from “{name}”. Check it, change what is wrong, then save.',
+
+  '이 파일에서는 글자를 읽지 못했습니다.': 'No text could be read out of that file.',
+  '그 주소에서 내용을 읽지 못했습니다.': 'Nothing could be read from that URL.',
+  '이 인스턴스에는 문서 가져오기가 연결되어 있지 않습니다.': 'This instance has no page-fetching backend connected.',
+  '파일이나 주소 중 하나만 정하세요.': 'Give a file or a URL, not both.',
+  '남은 크레딧이 부족합니다.': 'Not enough credits left.',
+  '모델이 응답하지 않았습니다. 잠시 후 다시 시도하세요.': 'The model did not answer. Try again in a moment.',
+
   // ── 결과물 검사 ─────────────────────────────────────────────────
   '검사 결과': 'Checks',
   '고칠 곳 {n}': '{n} to fix',

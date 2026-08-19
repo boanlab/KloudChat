@@ -39,6 +39,8 @@ from app.schemas.workspace import (
     ArtifactPatch,
     ArtifactRestore,
     ArtifactVersionOut,
+    DesignExtractIn,
+    DesignExtractOut,
     DesignSystemIn,
     DesignSystemOut,
     DesignTemplateOut,
@@ -60,6 +62,7 @@ from app.schemas.workspace import (
 from app.services import deck as deck_service
 from app.services import (
     deck_export,
+    design_extract,
     design_templates,
     factcheck,
     index_client,
@@ -1228,6 +1231,87 @@ async def list_designs(user: CurrentUser, db: DbSession):
         )
     ).all()
     return [DesignSystemOut.of(d, owner_id=user.id) for d in rows]
+
+
+@router.post("/designs/extract", response_model=DesignExtractOut)
+async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSession):
+    """Reads a design system out of a document or a page, and proposes it.
+
+    Nothing is stored. The answer is a draft the editor opens on, because what
+    comes back is one model's reading of a document and the person who owns
+    that document is the one who can say whether it read it right.
+
+    Charged like any other model call.
+    """
+    if bool(payload.file_id) == bool(payload.url):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_or_url"
+        )
+
+    if payload.file_id:
+        stored = await db.get(StoredFile, payload.file_id)
+        if stored is None or stored.user_id != user.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
+        source, read_from = stored.text, stored.name
+        if not source.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_unreadable"
+            )
+    else:
+        backends = await settings_store.tools_config()
+        if not backends.fetch:
+            # Said rather than guessed at: without the scraper this instance
+            # cannot read a page at all, and a generic failure would send
+            # somebody looking for a broken URL.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="fetch_unavailable"
+            )
+        source = await builtin_tools.scrape(backends.fetch, payload.url or "")
+        read_from = payload.url or ""
+        if not source.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="url_unreadable"
+            )
+
+    catalogue = await model_service.list_models()
+    usable = sorted(
+        (m for m in catalogue["models"] if "chat" in m["kinds"]),
+        key=lambda m: m["creditCost"],
+    )
+    model = usable[0] if usable else None
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+
+    try:
+        draft, usage = await design_extract.extract(
+            source=source, model=model["id"], api_key=api_key
+        )
+    except design_extract.ExtractError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+        log.warning("design extraction failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="extract_failed"
+        ) from exc
+
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    settle(db, user, credits, reason="design.extract")
+    await db.commit()
+    return DesignExtractOut(**draft, source=read_from, credits=credits)
 
 
 @router.post("/designs", response_model=DesignSystemOut, status_code=status.HTTP_201_CREATED)

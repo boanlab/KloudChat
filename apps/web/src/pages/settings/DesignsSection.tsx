@@ -1,7 +1,7 @@
-import { Palette, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { FileUp, Palette, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Field, Input, Switch, Textarea } from '@/components/ui'
-import { designsApi, errorMessage, type DesignRow, type DesignTokens } from '@/lib/api'
+import { designsApi, errorMessage, filesApi, type DesignRow, type DesignTokens } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -77,6 +77,125 @@ function Swatch({
 }
 
 /**
+ * Reading a design system out of something that already exists.
+ *
+ * The four colours and the paragraph of style rules are the part nobody types,
+ * which is why the only design systems most accounts have are the three that
+ * were seeded. The material is usually on hand — the 공문 template everything
+ * is filed on, last year's report, a page on the department site.
+ *
+ * What comes back opens the editor rather than becoming a row: it is one
+ * model's reading of a document, and the person who owns the document is the
+ * one who can say whether it read it right.
+ */
+/**
+ * Refusals this form knows how to say out loud.
+ *
+ * The API answers 4xx with a stable code, which `errorMessage` shows as-is —
+ * fine for a log, useless on a screen. The service's own failures already
+ * come back as sentences and fall through this map untouched.
+ */
+const REFUSAL: Record<string, string> = {
+  file_unreadable: '이 파일에서는 글자를 읽지 못했습니다.',
+  url_unreadable: '그 주소에서 내용을 읽지 못했습니다.',
+  fetch_unavailable: '이 인스턴스에는 문서 가져오기가 연결되어 있지 않습니다.',
+  file_or_url: '파일이나 주소 중 하나만 정하세요.',
+  insufficient_credits: '남은 크레딧이 부족합니다.',
+  extract_failed: '모델이 응답하지 않았습니다. 잠시 후 다시 시도하세요.',
+}
+
+function ExtractForm({
+  onDraft,
+  onCancel,
+}: {
+  onDraft: (draft: Partial<DesignRow>, source: string) => void
+  onCancel: () => void
+}) {
+  const t = useT()
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  const run = async (payload: { fileId?: string; url?: string }) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const draft = await designsApi.extract(payload)
+      onDraft(
+        {
+          name: draft.name,
+          description: draft.description,
+          tokens: draft.tokens,
+          body: draft.body,
+          imageStyle: draft.imageStyle,
+          craft: draft.craft,
+        },
+        draft.source,
+      )
+    } catch (e) {
+      const said = errorMessage(e, t('문서에서 디자인 시스템을 읽어내지 못했습니다.'))
+      setError(REFUSAL[said] ? t(REFUSAL[said]) : said)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section aria-label={t('문서에서 가져오기')} className="space-y-3">
+      <p className="text-sm text-muted">
+        {t('공문 양식이나 지난 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.')}
+      </p>
+
+      <Field label={t('문서 올리기')} hint={t('hwpx · docx · pdf · 텍스트')}>
+        <input
+          ref={fileInput}
+          type="file"
+          aria-label={t('문서 올리기')}
+          disabled={busy}
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            if (!file) return
+            setBusy(true)
+            setError(null)
+            try {
+              const row = await filesApi.upload(file)
+              await run({ fileId: row.id })
+            } catch (err) {
+              setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
+              setBusy(false)
+            }
+            if (fileInput.current) fileInput.current.value = ''
+          }}
+          className="block w-full text-sm file:mr-3 file:rounded-control file:border file:border-line file:bg-panel file:px-2.5 file:py-1 file:text-sm"
+        />
+      </Field>
+
+      <Field label={t('주소에서 읽기')} hint={t('이 인스턴스에 문서 가져오기가 연결되어 있어야 합니다.')}>
+        <span className="flex gap-2">
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://"
+            disabled={busy}
+          />
+          <Button onClick={() => void run({ url })} disabled={busy || !url.trim()}>
+            {t('읽기')}
+          </Button>
+        </span>
+      </Field>
+
+      {busy && <p className="text-sm text-faint">{t('읽는 중입니다…')}</p>}
+      {error && <p className="text-base text-danger">{error}</p>}
+
+      <Button onClick={onCancel} disabled={busy}>
+        {t('취소')}
+      </Button>
+    </section>
+  )
+}
+
+/**
  * The looks this account can put on a project.
  *
  * One screen for both halves of a design system: the four tokens the exporters
@@ -90,6 +209,10 @@ export function DesignsSection() {
   const loadWorkspace = useStore((s) => s.loadWorkspace)
   const [rows, setRows] = useState<DesignRow[]>([])
   const [draft, setDraft] = useState<Partial<DesignRow> | null>(null)
+  const [extracting, setExtracting] = useState(false)
+  //: What the draft was read out of, shown above the form so a person editing
+  //: it knows which fields somebody else's document is responsible for.
+  const [readFrom, setReadFrom] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -113,6 +236,7 @@ export function DesignsSection() {
         : await designsApi.create(payload as Partial<DesignRow> & { name: string })
       setRows((r) => (draft.id ? r.map((x) => (x.id === row.id ? row : x)) : [...r, row]))
       setDraft(null)
+      setReadFrom('')
       // Projects read this list from the store, and an edit made here should
       // show up on the project screen without a reload.
       void loadWorkspace()
@@ -133,9 +257,30 @@ export function DesignsSection() {
     }
   }
 
+  if (extracting) {
+    return (
+      <ExtractForm
+        onCancel={() => setExtracting(false)}
+        onDraft={(made, source) => {
+          setDraft(made)
+          setReadFrom(source)
+          setExtracting(false)
+        }}
+      />
+    )
+  }
+
   if (draft) {
     return (
       <section aria-label={t('디자인 시스템')} className="space-y-4">
+        {readFrom && (
+          <p className="rounded-control border border-line bg-elevated px-2.5 py-1.5 text-sm text-muted">
+            {t('“{name}” 에서 읽었습니다. 확인하고 고친 뒤 저장하세요.').replace(
+              '{name}',
+              readFrom,
+            )}
+          </p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t('이름')}>
             <Input
@@ -291,10 +436,21 @@ export function DesignsSection() {
           {t('아직 디자인이 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.')}
         </p>
       )}
-      <Button onClick={() => setDraft(blank())}>
-        <Plus size={14} />
-        {t('디자인 추가')}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          onClick={() => {
+            setReadFrom('')
+            setDraft(blank())
+          }}
+        >
+          <Plus size={14} />
+          {t('디자인 추가')}
+        </Button>
+        <Button onClick={() => setExtracting(true)}>
+          <FileUp size={14} />
+          {t('문서에서 가져오기')}
+        </Button>
+      </div>
     </section>
   )
 }

@@ -802,8 +802,27 @@ export interface DesignRow {
   updatedAt: string
 }
 
+/** A design system read out of a document — a proposal, not a row. */
+export interface DesignDraftRow {
+  name: string
+  description: string
+  tokens: DesignTokens
+  body: string
+  imageStyle: string
+  craft: string[]
+  /** What it was read from, so the draft can say so. */
+  source: string
+  credits: number
+}
+
 export const designsApi = {
   list: () => call<DesignRow[]>('/designs'),
+  /**
+   * Reads one out of an uploaded file or a page. Costs a model call and stores
+   * nothing — what comes back opens the editor, where a person decides.
+   */
+  extract: (payload: { fileId?: string; url?: string }) =>
+    call<DesignDraftRow>('/designs/extract', body(payload)),
   create: (payload: Partial<DesignRow> & { name: string }) =>
     call<DesignRow>('/designs', body(payload)),
   update: (id: string, patch: Partial<DesignRow>) =>
