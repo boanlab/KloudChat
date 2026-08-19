@@ -164,6 +164,12 @@ class DesignTemplate:
     wrap_block: str
     #: Optional wrapper around every non-cover block, `{blocks}` inside.
     wrap_group: str
+    #: What this template's own instructions promise about a slide's shape,
+    #: in the two numbers the checker can count: items per block, characters
+    #: per item. The lecture deck asks for 25 characters and the checker's
+    #: general bound is 45 — without this, a template's own rule is the one
+    #: rule nothing enforces. Empty means the general bounds apply.
+    limits: dict[str, int]
 
     @property
     def surface(self) -> SessionKind:
@@ -225,6 +231,11 @@ def _load() -> dict[str, DesignTemplate]:
             wrap_cover=str(wrap.get("cover") or "{body}"),
             wrap_block=str(wrap.get("block") or "{body}"),
             wrap_group=str(wrap.get("group") or ""),
+            limits={
+                key: int(value)
+                for key, value in (meta.get("limits") or {}).items()
+                if key in ("max_bullets", "max_bullet_chars") and int(value) > 0
+            },
         )
     return found
 

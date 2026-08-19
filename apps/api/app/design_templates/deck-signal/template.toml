@@ -19,6 +19,13 @@ category_en = "Presentation"
 fills_en = ["Topic", "Audience", "Slides"]
 example_prompt_en = "Make a product talk for a large hall. One idea per slide.\n\nWhat to present: "
 
+# The shape this template's own instructions promise. `services/lint` reads
+# these instead of its general bounds, so the checklist and the checker
+# cannot disagree about what counts as a crowded slide.
+[limits]
+max_bullets = 4
+max_bullet_chars = 25
+
 [wrap]
 cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
 block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

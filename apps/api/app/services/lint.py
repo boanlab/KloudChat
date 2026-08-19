@@ -142,12 +142,22 @@ def from_blocks(blocks: list[dict]) -> list[Part]:
     return parts
 
 
-def check(parts: list[Part], *, slides: bool = False) -> list[Finding]:
+def check(
+    parts: list[Part],
+    *,
+    slides: bool = False,
+    limits: dict[str, int] | None = None,
+) -> list[Finding]:
     """Every finding, worst first.
 
     `slides` turns on the two shape rules that only mean something on a screen
-    somebody reads from the back of a room.
+    somebody reads from the back of a room. `limits` is where a template's own
+    promise overrides the general bound: a lecture deck asks for four items of
+    twenty-five characters, and a checker that only knows about seven and
+    forty-five would pass the slide the template itself calls too long.
     """
+    max_bullets = (limits or {}).get("max_bullets") or _MAX_BULLETS
+    max_bullet_chars = (limits or {}).get("max_bullet_chars") or _MAX_BULLET_CHARS
     findings: list[Finding] = []
     seen: dict[str, str] = {}
 
@@ -215,7 +225,7 @@ def check(parts: list[Part], *, slides: bool = False) -> list[Finding]:
             seen.setdefault(key, where)
 
         if slides:
-            if len(part.lines) > _MAX_BULLETS:
+            if len(part.lines) > max_bullets:
                 findings.append(
                     Finding(
                         "P1",
@@ -224,7 +234,7 @@ def check(parts: list[Part], *, slides: bool = False) -> list[Finding]:
                         where,
                     )
                 )
-            elif any(len(line) > _MAX_BULLET_CHARS for line in part.lines):
+            elif any(len(line) > max_bullet_chars for line in part.lines):
                 findings.append(
                     Finding("P1", "long-line", "한 줄이 화면에서 두 행을 넘깁니다.", where)
                 )

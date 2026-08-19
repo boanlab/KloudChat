@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.services import design_templates as dt
 from app.services import lint
 
 
@@ -164,3 +165,30 @@ def test_the_wire_shape_is_flat_strings():
             "where": "배경",
         }
     ]
+
+
+# ── a template's own promise ───────────────────────────────────────────
+
+
+def test_a_template_can_tighten_the_bounds_the_checker_uses():
+    """The lecture deck asks for 25 characters; the general bound is 45.
+
+    Without the template's own numbers the checker passes a line the template
+    itself calls too long — two rules about the same slide, disagreeing.
+    """
+    line = "가" * 30
+    parts = [lint.Part("한 장", [line, "짧은 줄"])]
+
+    assert not [f for f in lint.check(parts, slides=True) if f.rule == "long-line"]
+    tightened = lint.check(parts, slides=True, limits={"max_bullet_chars": 25})
+    assert [f for f in tightened if f.rule == "long-line"]
+
+
+def test_the_shipped_limits_are_the_ones_the_instructions_state():
+    """`deck-lecture` says 3~4개, 25자 in prose; the manifest has to agree."""
+    template = dt.get("deck-lecture")
+    assert template is not None
+    assert template.limits == {"max_bullets": 4, "max_bullet_chars": 25}
+    assert "25자" in template.instructions
+    # A template that says nothing keeps the general bounds.
+    assert dt.get("doc-report").limits == {}

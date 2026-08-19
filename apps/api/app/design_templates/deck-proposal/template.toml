@@ -15,6 +15,12 @@ category_en = "Presentation"
 fills_en = ["What you propose", "Who decides", "The ask"]
 example_prompt_en = "Make a proposal deck for a review panel. Put the current state and the proposal side by side, and end with what has to be approved, by whom, and by when.\n\nProposal: "
 
+# The shape this template's own instructions promise. `services/lint` reads
+# these instead of its general bounds, so the checklist and the checker
+# cannot disagree about what counts as a crowded slide.
+[limits]
+max_bullets = 5
+
 [wrap]
 cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
 block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

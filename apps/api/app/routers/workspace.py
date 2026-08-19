@@ -705,7 +705,11 @@ async def rewrite_block(
         body=design_templates.assemble(template, blocks),
     )
     data["lint"] = lint.wire(
-        lint.check(lint.from_blocks(blocks), slides=template.kind == "deck")
+        lint.check(
+            lint.from_blocks(blocks),
+            slides=template.kind == "deck",
+            limits=template.limits,
+        )
     )
     artifact.data = data
     artifact.version += 1

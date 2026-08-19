@@ -339,6 +339,13 @@ cannot: the seed owns every colour and face, and `sanitise` drops `class` and
 re-stating them would be a check that can never fire. What is left is what the
 model does choose — the words.
 
+**A template can tighten the shape rules.** The general bounds — seven items a
+slide, forty-five characters a line — are what a screen can carry. A template
+whose own instructions promise less says so in a `[limits]` table, and the
+checker reads those instead: the lecture deck asks for four items of
+twenty-five characters, and without this its own rule would be the one rule
+nothing enforces.
+
 `P0` means the document is wrong: a placeholder nobody replaced, a block that
 never got written, a figure nobody could have sourced. `P1` means it reads
 badly: filler adjectives, an emoji leading a line, a line repeated from another

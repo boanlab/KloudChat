@@ -2603,6 +2603,7 @@ async def _run_page(
                             lint.check(
                                 lint.from_blocks(blocks),
                                 slides=template.kind == "deck",
+                                limits=template.limits,
                             )
                         ),
                         **({"design": design_tokens} if design_tokens else {}),
