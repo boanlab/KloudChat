@@ -175,6 +175,22 @@ class SlideFactCheck(Wire):
     slide_id: str
 
 
+class BlockImage(Wire):
+    """A picture this workspace already made, put into one block of a page.
+
+    The picture travels by id rather than as bytes: it is already stored, the
+    caller is already the owner, and an upload path here would be a second way
+    to get a file into a document that the file rules would have to learn.
+    """
+
+    index: int = Field(ge=0, le=63)
+    #: The `image` artifact to embed.
+    artifact_id: str = Field(min_length=1, max_length=64)
+    #: Printed under the picture. Empty leaves the figure uncaptioned rather
+    #: than repeating the prompt, which is a request and not a caption.
+    caption: str = Field(default="", max_length=200)
+
+
 class BlockRewrite(Wire):
     """Which block of an HTML artifact, and why it is being rewritten.
 

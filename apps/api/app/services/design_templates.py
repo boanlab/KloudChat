@@ -66,7 +66,7 @@ HTML_KINDS = ("deck", "document")
 #: twice. Sub-headings inside a block use `h3`.
 _ALLOWED_TAGS = {
     "p", "h3", "ul", "ol", "li", "strong", "em", "blockquote",
-    "figure", "figcaption", "table", "thead", "tbody", "tr", "th", "td",
+    "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td",
     "div", "span", "section", "br", "hr", "small", "dl", "dt", "dd",
 }
 
@@ -82,7 +82,28 @@ _SCRIPTISH = re.compile(
     r"<(script|style|iframe|object|embed|link|meta|h1|h2)\b.*?(</\1\s*>|$)", re.S | re.I
 )
 _EVENT_ATTR = re.compile(r"\s+on[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+#: Inline presentation from the model. The seed owns every colour, size
+#: and space in the document; a `style=` written into a block is the one
+#: thing that can actually win against it, and it never agrees with the
+#: template around it. `class` survives — that is how a block reaches the
+#: names its own seed styles, such as `lead` and `cols`.
+_STYLE_ATTR = re.compile(r"\s+style\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 _URL_ATTR = re.compile(r"\s+(href|src)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+
+#: The one `src` that survives: a raster picture already inside the file.
+#:
+#: An artifact is opened outside the sandbox and shared by link, so a `src`
+#: that fetches anything is a request made on the reader's behalf from a
+#: document they did not write. A `data:` URI fetches nothing. Raster only —
+#: `image/svg+xml` is a document that can carry script, which is the thing
+#: this whole file exists to keep out.
+#:
+#: Nothing the model writes can pass this: base64 of a real picture is not
+#: something a language model emits. It is here for the bytes the server
+#: embeds on the reader's own instruction.
+_EMBEDDED_IMAGE = re.compile(
+    r"^data:image/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$", re.I
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,9 +287,16 @@ def sanitise(fragment: str) -> str:
     """
     text = _SCRIPTISH.sub("", fragment)
     text = _EVENT_ATTR.sub("", text)
-    # Links and images would fetch from wherever the model invented; the seed
-    # has no room for either and a dead reference reads as a broken document.
-    text = _URL_ATTR.sub("", text)
+    text = _STYLE_ATTR.sub("", text)
+
+    def address(match: re.Match[str]) -> str:
+        """A link goes nowhere in a printed document; a picture may stay."""
+        if match.group(1).lower() != "src":
+            return ""
+        value = match.group(2).strip().strip("\"'")
+        return match.group(0) if _EMBEDDED_IMAGE.match(value) else ""
+
+    text = _URL_ATTR.sub(address, text)
 
     def keep(match: re.Match[str]) -> str:
         return match.group(0) if match.group(1).lower() in _ALLOWED_TAGS else ""
@@ -299,7 +327,7 @@ def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body
     )
     return (
         template.seed.replace("{{TOKENS}}", declarations)
-        .replace("{{TITLE}}", _escape(title))
+        .replace("{{TITLE}}", escape(title))
         .replace("{{BODY}}", body)
     )
 
@@ -319,7 +347,7 @@ def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
             continue
         markup = (template.wrap_cover if block.get("layout") == "cover" else template.wrap_block)
         markup = (
-            markup.replace("{title}", _escape(block.get("title") or ""))
+            markup.replace("{title}", escape(block.get("title") or ""))
             .replace("{layout}", block.get("layout") or "")
             .replace("{n}", str(index))
             .replace("{body}", body)
@@ -343,7 +371,22 @@ def preview(template: DesignTemplate) -> str:
     return render(template, title=template.name, tokens=DEFAULT_TOKENS, body=template.sample)
 
 
-def _escape(text: str) -> str:
+def figure(*, mime: str, data_b64: str, alt: str = "", caption: str = "") -> str:
+    """A picture, already encoded, as a block of markup this seed styles.
+
+    Built here rather than in the router because it is the same vocabulary
+    question as everything else in this file: `<figure>`, `<img>` and
+    `<figcaption>` are what the seeds have rules for, and the `data:` URI is
+    the only address `sanitise` lets through.
+    """
+    body = f'<figure><img src="data:{mime};base64,{data_b64}" alt="{escape(alt)}" />'
+    if caption:
+        body += f"<figcaption>{escape(caption)}</figcaption>"
+    return body + "</figure>"
+
+
+def escape(text: str) -> str:
+    """Text into markup. Public because the router builds a `<figcaption>`."""
     return (
         text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
@@ -356,6 +399,8 @@ __all__ = [
     "DesignTemplate",
     "all_templates",
     "assemble",
+    "escape",
+    "figure",
     "for_surface",
     "get",
     "preview",

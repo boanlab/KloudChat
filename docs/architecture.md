@@ -240,6 +240,16 @@ to a fixed tag vocabulary first. Script elements, event handlers, remote
 because the file is downloaded and opened outside the sandbox, the last because
 the wrapper already wrote that heading and a second one prints the title twice.
 
+**Pictures come from the other direction.** The writing model cannot make one
+and cannot reference one — `sanitise` drops every `src` that is not already
+inside the file. What a person can do is put a picture this workspace made on
+the image surface into a block: `POST /artifacts/{id}/blocks/image` reads the
+stored blob, inlines it as a `data:` URI and re-renders the document. Raster
+only (`image/svg+xml` is a document that can carry script), capped at 3 MB
+before encoding, and snapshotted like a rewrite. The artifact stays one file
+that prints, downloads and shares with the picture in it, and a reader opening
+it fetches nothing.
+
 Two constraints shape every seed:
 
 **No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates
@@ -334,10 +344,13 @@ afterwards.
 **Half of OpenDesign's `lint-artifact` rules are deliberately absent.** Its P0
 list is mostly visual — default indigo accents, two-stop gradients, rounded
 cards with a coloured left border — because there the model writes CSS. Here it
-cannot: the seed owns every colour and face, and `sanitise` drops `class` and
-`style` before anything is stored. Those rules hold by construction, and
-re-stating them would be a check that can never fire. What is left is what the
-model does choose — the words.
+cannot: the seed owns every colour and face, and `sanitise` drops `style`,
+every remote address and every tag outside a fixed vocabulary before anything
+is stored. `class` survives — a block needs `lead` and `cols` to reach what its
+own seed styles — so a model that invents `card` or `columns-2` gets markup
+that renders as nothing rather than markup that fights the template. Those
+rules hold by construction, and re-stating them would be a check that can never
+fire. What is left is what the model does choose — the words.
 
 **A template can tighten the shape rules.** The general bounds — seven items a
 slide, forty-five characters a line — are what a screen can carry. A template

@@ -1,11 +1,11 @@
-import { AudioLines, Code2, Copy, Download, Eye, RefreshCw } from 'lucide-react'
+import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
-import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
@@ -271,7 +271,141 @@ function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
   )
 }
 
-function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
+/**
+ * Putting a picture this workspace already made into one block of a page.
+ *
+ * The writing model never produces one and is not allowed to point at one, so
+ * the picture comes from the other direction: the image surface made it, and
+ * the server inlines its bytes on this click. Nothing is fetched when a reader
+ * opens the file, which is the only way a picture and a sandboxed artifact can
+ * both be true.
+ */
+function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [target, setTarget] = useState<number | null>(null)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [caption, setCaption] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const artifacts = useStore((s) => s.artifacts)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+
+  const blocks = artifact.blocks ?? []
+  // Same session first: the picture somebody made for this document is almost
+  // always the one they made while writing it.
+  const pictures = artifacts
+    .filter((a) => a.kind === 'image')
+    .sort((a, b) => {
+      const mine = Number(b.sessionId === artifact.sessionId) - Number(a.sessionId === artifact.sessionId)
+      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
+    })
+    .slice(0, 24)
+
+  if (blocks.length === 0 || pictures.length === 0) return null
+
+  const insert = async () => {
+    if (target === null || !picked) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.addBlockImage(artifact.id, target, picked, caption.trim())
+      await loadArtifacts()
+      setTarget(null)
+      setPicked(null)
+      setCaption('')
+    } catch (err) {
+      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Dropdown
+        align="right"
+        trigger={() => (
+          <Button variant="secondary" size="sm">
+            <ImagePlus size={13} />
+            {t('그림 넣기')}
+          </Button>
+        )}
+      >
+        <MenuLabel>{t('어느 자리에 넣을까요?')}</MenuLabel>
+        {blocks.map((block, index) => (
+          <MenuItem
+            key={`img-${block.title}-${index}`}
+            hint={String(index + 1)}
+            onClick={() => {
+              setPicked(null)
+              setCaption('')
+              setError(null)
+              setTarget(index)
+            }}
+          >
+            {block.title || t('제목 없음')}
+          </MenuItem>
+        ))}
+      </Dropdown>
+
+      <Modal
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        title={t('{name} 에 그림 넣기').replace(
+          '{name}',
+          (target !== null && blocks[target]?.title) || '',
+        )}
+        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        footer={
+          <>
+            <Button onClick={() => setTarget(null)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
+              {busy ? t('넣는 중…') : t('넣기')}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
+          {pictures.map((picture) => (
+            <button
+              key={picture.id}
+              onClick={() => setPicked(picture.id)}
+              aria-label={picture.title}
+              aria-pressed={picked === picture.id}
+              className={cn(
+                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
+                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
+              )}
+            >
+              <ArtifactPreview artifact={picture} />
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <Input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            aria-label={t('설명')}
+            placeholder={t('그림 아래에 붙일 설명 (선택)')}
+          />
+        </div>
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
+  )
+}
+
+/**
+ * An HTML or code artifact with the controls that belong to it.
+ *
+ * Exported because the artifacts gallery opens the same document in a dialog,
+ * and until it used this it showed the file with no way to check it, rewrite a
+ * block, add a picture or export it — the same artifact answering differently
+ * depending on which screen you opened it from.
+ */
+export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
   const t = useT()
   const [tab, setTab] = useState<'preview' | 'source'>(
     artifact.kind === 'html' ? 'preview' : 'source',
@@ -300,6 +434,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
           ))}
           <span className="flex-1" />
           <LintFindings findings={artifact.lint} artifact={artifact} />
+          <AddBlockImage artifact={artifact} />
           <RewriteBlock artifact={artifact} />
           <PageExport artifact={artifact} />
         </div>

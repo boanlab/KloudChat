@@ -6,6 +6,7 @@ separate because MCP gives them behaviour of their own.
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 from typing import Any
@@ -39,6 +40,7 @@ from app.schemas.workspace import (
     ArtifactPatch,
     ArtifactRestore,
     ArtifactVersionOut,
+    BlockImage,
     BlockRewrite,
     DesignExtractIn,
     DesignExtractOut,
@@ -599,6 +601,113 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     settle(db, user, credits, reason="artifact.critique", session_id=artifact.session_id)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+#: Inlined base64 runs a third larger than the file and lands inside the
+#: artifact's JSON, which the list endpoint returns in full. Past this a
+#: document stops being something a panel opens quickly.
+_MAX_EMBED_BYTES = 3 * 1024 * 1024
+
+#: Raster only. `image/svg+xml` is a document that can carry script, and this
+#: file is opened outside the sandbox every time somebody downloads it.
+_EMBEDDABLE = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+
+@router.post("/artifacts/{artifact_id}/blocks/image", response_model=ArtifactOut)
+async def add_block_image(
+    artifact_id: str, payload: BlockImage, user: CurrentUser, db: DbSession
+):
+    """Puts a picture this workspace already made into one block of a page.
+
+    The writing model cannot produce a picture and is not allowed to reference
+    one — `sanitise` drops every `src` that is not already inside the file. So
+    the path runs the other way: a person picks an image they made on the
+    image surface, and the server inlines its bytes as a `data:` URI on their
+    instruction. The artifact stays one file that prints, downloads and shares
+    with the picture in it, and nothing is fetched when a reader opens it.
+
+    Free — no model call — and snapshotted like a rewrite, so it is one click
+    from undone.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.html:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_page")
+
+    data = dict(artifact.data or {})
+    blocks = [dict(b) for b in (data.get("blocks") or [])]
+    if payload.index >= len(blocks):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="block_not_found")
+    template = design_templates.get(str(data.get("templateId") or ""))
+    if template is None or not template.seed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
+        )
+    if "html" not in blocks[payload.index]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable"
+        )
+
+    picture = await _own(db, Artifact, "user_id", user, payload.artifact_id)
+    if picture.kind is not ArtifactKind.image:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_an_image")
+    # `src` is this server's own download URL for the blob: /api/files/{id}/content
+    match = re.search(r"/files/([0-9a-f]{32})/content", str((picture.data or {}).get("src") or ""))
+    stored = await db.get(StoredFile, match.group(1)) if match else None
+    if stored is None or stored.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="image_file_missing")
+    mime = (stored.mime or "").lower() or "image/png"
+    if mime not in _EMBEDDABLE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_not_embeddable"
+        )
+    try:
+        blob = file_service.read_blob(stored.storage_key)
+    except OSError as exc:
+        log.warning("image blob unreadable for %s: %s", stored.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="image_file_missing"
+        ) from exc
+    if len(blob) > _MAX_EMBED_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_too_large"
+        )
+
+    caption = payload.caption.strip()
+    markup = design_templates.figure(
+        mime=mime,
+        data_b64=base64.b64encode(blob).decode("ascii"),
+        alt=caption or picture.title or "그림",
+        caption=caption,
+    )
+
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=artifact.version,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=f"{blocks[payload.index].get('title')} 에 그림 넣음",
+        )
+    )
+    # Through the same sanitiser as model output: the picture is trusted, the
+    # markup around it is built here, and neither gets to skip the door.
+    blocks[payload.index]["html"] = design_templates.sanitise(
+        f"{blocks[payload.index].get('html') or ''}{markup}"
+    )
+    data["blocks"] = blocks
+    data["content"] = design_templates.render(
+        template,
+        title=artifact.title or template.name,
+        tokens=data.get("design") or {},
+        body=design_templates.assemble(template, blocks),
+    )
+    artifact.data = data
+    artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)

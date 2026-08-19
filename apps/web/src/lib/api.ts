@@ -723,6 +723,14 @@ export const artifactsApi = {
   /** One block of an HTML artifact, addressed by position and re-rendered. */
   rewriteBlock: (id: string, index: number, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
+  /**
+   * Puts a picture made on the image surface into one block of a page.
+   *
+   * The bytes are inlined by the server, so the document stays one file that
+   * prints and downloads with the picture in it. Costs no model call.
+   */
+  addBlockImage: (id: string, index: number, artifactId: string, caption: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/blocks/image`, body({ index, artifactId, caption })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
   critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */

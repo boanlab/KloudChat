@@ -614,3 +614,53 @@ async def test_a_rewrite_is_reduced_to_the_seed_vocabulary_like_any_other_block(
         api_key="k",
     )
     assert fragment == "<p>본문</p>"
+
+
+# ── pictures ───────────────────────────────────────────────────────────
+#
+# The writing model cannot make a picture and is not allowed to point at one.
+# What a person can do is put a picture this workspace already made *into* a
+# page, which the server does by inlining the bytes — so the one `src` that
+# survives sanitising is one that fetches nothing.
+
+
+#: One transparent pixel, PNG. Small enough to read in a diff.
+_PIXEL = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+    "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def test_a_picture_already_inside_the_file_survives():
+    markup = dt.figure(mime="image/png", data_b64=_PIXEL, alt="회로도", caption="그림 1. 회로도")
+    kept = dt.sanitise(markup)
+    assert f"data:image/png;base64,{_PIXEL}" in kept
+    assert "<figcaption>그림 1. 회로도</figcaption>" in kept
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "https://example.test/p.png",  # fetched when the reader opens the file
+        "/api/files/abc/content",  # same, and dead outside this server
+        "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",  # a document, not a picture
+        "data:text/html;base64,PGgxPngNCg==",
+    ],
+)
+def test_every_other_address_is_dropped(src):
+    assert "src" not in dt.sanitise(f'<img src="{src}" />')
+
+
+def test_a_caption_cannot_smuggle_markup():
+    kept = dt.sanitise(dt.figure(mime="image/png", data_b64=_PIXEL, caption="<script>x()</script>"))
+    assert "<script" not in kept and "&lt;script&gt;" in kept
+
+
+def test_inline_presentation_is_dropped_but_class_survives():
+    """The seed owns the look; a `style=` is the one thing that could beat it.
+
+    `class` stays, because that is how a block reaches the names its own seed
+    styles — `lead` on a cover, `cols` on a split slide.
+    """
+    kept = dt.sanitise('<p class="lead" style="color:#f0f">표지 한 줄</p>')
+    assert kept == '<p class="lead">표지 한 줄</p>'
