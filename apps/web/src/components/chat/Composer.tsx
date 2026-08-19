@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
+import { DesignGalleryModal } from '@/components/chat/DesignGallery'
 import { errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { useNavigate } from 'react-router-dom'
@@ -313,6 +314,7 @@ export function Composer({
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const designTemplates = useStore((s) => s.designTemplates)
+  const [galleryOpen, setGalleryOpen] = useState(false)
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   useEffect(() => {
@@ -388,6 +390,9 @@ export function Composer({
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
     null
+  const hasTemplates = designTemplates.some((row) => row.surface === kind)
+  //: Whether the empty screen — and its own copy of this button — is gone.
+  const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
     (candidate) => candidate.id === (session?.model || modelByKind[kind]),
   )
@@ -895,6 +900,24 @@ export function Composer({
             <Paperclip size={16} />
           </button>
 
+          {/* Only once the conversation has started. A shape you can only
+              pick before the first turn is one you cannot change your mind
+              about — and until that turn the empty screen is offering the same
+              thing two inches above, which is clutter, not reassurance. */}
+          {hasTemplates && started && (
+            <button
+              onClick={() => setGalleryOpen(true)}
+              className={cn(
+                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+                shownTemplate ? 'text-accent' : 'text-muted',
+              )}
+              aria-label={t('디자인 고르기')}
+              title={t('결과물이 어떤 모양으로 나올지 고릅니다')}
+            >
+              <LayoutGrid size={16} />
+            </button>
+          )}
+
           {usableSkills.length > 0 && (
             <Dropdown
               className="min-w-64"
@@ -1333,6 +1356,12 @@ export function Composer({
           </>
         )}
       </Modal>
+
+      <DesignGalleryModal
+        kind={kind}
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+      />
     </div>
   )
 }

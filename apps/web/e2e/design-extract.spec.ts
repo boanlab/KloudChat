@@ -29,7 +29,7 @@ const 공문 = [
 test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에 저장한다', async ({ page }) => {
   test.setTimeout(300_000)
   await signIn(page)
-  await page.goto('/settings/preferences')
+  await page.goto('/designs')
 
   const designs = page.getByRole('region', { name: '디자인 시스템' })
   // Counted after the list has arrived: it loads from its own request, and a
@@ -84,7 +84,7 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
 test('읽을 수 없는 파일은 이유를 말하고 아무것도 저장하지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await page.goto('/settings/preferences')
+  await page.goto('/designs')
 
   const designs = page.getByRole('region', { name: '디자인 시스템' })
   await expect(designs.locator('li').first()).toBeVisible({ timeout: 20_000 })

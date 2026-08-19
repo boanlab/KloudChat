@@ -92,6 +92,40 @@ async function artifactOf(page: Page, sessionId: string) {
   )
 }
 
+test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({ page }) => {
+  test.setTimeout(120_000)
+  await signIn(page)
+
+  // ── the home screen ─────────────────────────────────────────────────
+  // It was reachable only from the empty state of a new session, behind a
+  // secondary button — invisible to anybody who did not know it was there.
+  await page.goto('/')
+  const rail = page.getByRole('region', { name: '디자인에서 시작' })
+  await expect(rail).toBeVisible({ timeout: 20_000 })
+  await expect(rail.locator('iframe').first()).toBeVisible()
+  await shot(page, '13-home-rail')
+
+  // Picking one starts its surface with the sentence already filled.
+  await rail.getByRole('button', { name: /편집형 덱/ }).click()
+  await expect(page).toHaveURL(/\/new\/slides/, { timeout: 20_000 })
+  await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
+  await expect(page.getByText('편집형 덱', { exact: true })).toBeVisible()
+
+  // ── a workspace entry of its own ────────────────────────────────────
+  // A design system is a thing you keep and attach, not a preference.
+  await page.goto('/designs')
+  await expect(page.getByRole('region', { name: '디자인 시스템' })).toBeVisible({
+    timeout: 20_000,
+  })
+
+  // Before the first turn the empty screen offers it, and the composer does
+  // not: two copies of the same button two inches apart is clutter. The
+  // composer's copy — the one that survives that turn — is checked in the deck
+  // test below, where a conversation actually exists.
+  await page.goto('/new/report')
+  await expect(page.getByRole('button', { name: '디자인 고르기' })).toHaveCount(1)
+})
+
 test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 받을 수 있다', async ({ page }) => {
   test.setTimeout(600_000)
   await signIn(page)
@@ -203,7 +237,15 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   expect(rewritten.data.content).toContain('<section class="slide cover">')
   expect(rewritten.data.content).toContain(rewritten.data.blocks[1].html.slice(0, 30))
 
-  // ── 6. Taking the shape off reaches the row that holds it ───────────
+  // ── 6. The catalogue is still reachable now the empty screen is gone ─
+  // This is the copy that matters after the first turn: without it a shape
+  // could be chosen once and never changed.
+  await expect(page.getByRole('button', { name: '디자인 고르기' })).toHaveCount(1)
+  await page.getByRole('button', { name: '디자인 고르기' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
+
+  // ── 7. Taking the shape off reaches the row that holds it ───────────
   // The turn made the choice sticky, so a chip that only disappeared locally
   // would leave the next turn writing into a template nobody can see.
   await page.getByRole('button', { name: /편집형 덱 디자인 해제/ }).click()

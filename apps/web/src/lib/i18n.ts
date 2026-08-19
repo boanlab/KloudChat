@@ -1117,6 +1117,14 @@ const EN: Record<string, string> = {
 
 
 
+
+  // ── 디자인 현관 ─────────────────────────────────────────────────
+  '디자인에서 시작': 'Start from a design',
+  '결과물이 어떤 모양으로 나올지 먼저 고릅니다': 'Choose the shape the result comes out in first',
+  '결과물이 어떤 모양으로 나올지 고릅니다': 'Choose the shape the result comes out in',
+  '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다. 공문 양식이나 지난 보고서에서 읽어 올 수도 있습니다.':
+    'Attach one to a project and its slides, reports and images come out in the same colour and type. One can also be read out of an official template or an earlier report.',
+
   // ── 문서에서 디자인 읽기 ─────────────────────────────────────────
   '문서에서 가져오기': 'Read from a document',
   '문서에서 디자인 시스템을 읽어내지 못했습니다.': 'No design system could be read out of that.',

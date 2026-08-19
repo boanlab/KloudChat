@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Switch } from '@/components/ui'
-import { DesignsSection } from './DesignsSection'
 import { authConfig } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
@@ -131,15 +130,7 @@ export function PreferencesTab() {
         </p>
       </section>
 
-      <section className="space-y-3 border-t border-line pt-6">
-        <div>
-          <h2 className="text-base font-semibold">{t('디자인')}</h2>
-          <p className="text-sm text-muted">
-            {t('프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.')}
-          </p>
-        </div>
-        <DesignsSection />
-      </section>
+
     </div>
   )
 }

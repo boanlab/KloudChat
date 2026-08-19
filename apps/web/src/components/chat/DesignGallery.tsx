@@ -92,9 +92,16 @@ function Blanks({
  * screenshot of it. The frame is sandboxed with no permissions at all, which
  * is also why the seeds carry no script.
  */
-export function DesignGallery({ kind }: { kind: SessionKind }) {
+export function DesignGalleryModal({
+  kind,
+  open,
+  onClose,
+}: {
+  kind: SessionKind
+  open: boolean
+  onClose: () => void
+}) {
   const t = useT()
-  const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<DesignTemplateRow[]>([])
   const [category, setCategory] = useState<string | 'all'>('all')
   const setDraft = useStore((s) => s.setDraft)
@@ -125,12 +132,6 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
   )
   const visible =
     category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
-
-  // Nothing to offer on this surface — chat and a/v have no rendering
-  // catalogue, and an empty modal behind a button is worse than no button.
-  if (!useStore.getState().designTemplates.some((r) => r.surface === kind) && !forSurface.length) {
-    return null
-  }
 
   /**
    * The chips a template implies, set from its own metadata.
@@ -169,23 +170,17 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
     setPendingTemplate(row)
     setDraft(prompt)
     applyDefaults(row)
-    setOpen(false)
+    onClose()
   }
 
   return (
-    <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        <LayoutGrid size={14} />
-        {t('디자인 고르기')}
-      </Button>
-
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={t('디자인 고르기')}
-        description={t('고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.')}
-        width="max-w-3xl"
-      >
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('디자인 고르기')}
+      description={t('고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.')}
+      width="max-w-3xl"
+    >
         {categories.length > 1 && (
           <div className="mb-3 flex flex-wrap gap-1.5">
             {(['all', ...categories] as const).map((c) => (
@@ -257,8 +252,30 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
               </div>
             </div>
           ))}
-        </div>
-      </Modal>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * The button that opens it, where a surface has anything to offer.
+ *
+ * Rendered on the empty state of a new session and in the composer's own menu,
+ * so the choice is reachable after the first turn as well — a shape you can
+ * only pick before you start is one you cannot change your mind about.
+ */
+export function DesignGallery({ kind }: { kind: SessionKind }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const has = useStore((s) => s.designTemplates.some((row) => row.surface === kind))
+  if (!has) return null
+  return (
+    <>
+      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+        <LayoutGrid size={14} />
+        {t('디자인 고르기')}
+      </Button>
+      <DesignGalleryModal kind={kind} open={open} onClose={() => setOpen(false)} />
     </>
   )
 }

@@ -25,6 +25,7 @@ const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage').then((m) => (
 const AgentSetupPage = lazy(() => import('@/pages/AgentSetupPage').then((m) => ({ default: m.AgentSetupPage })))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
+const DesignsPage = lazy(() => import('@/pages/DesignsPage').then((m) => ({ default: m.DesignsPage })))
 const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage').then((m) => ({ default: m.ConnectorsPage })))
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
 const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })))
@@ -77,6 +78,7 @@ function Authenticated() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="artifacts" element={<ArtifactsPage />} />
+          <Route path="designs" element={<DesignsPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="skills" element={<SkillsPage />} />
           <Route path="memory" element={<MemoryPage />} />

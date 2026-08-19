@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Badge, Card } from '@/components/ui'
+import { DesignRail } from '@/components/chat/DesignRail'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -57,6 +58,10 @@ export function HomePage() {
             )
           })}
         </div>
+
+        {/* Under the five kinds and above the work already done: what to make
+            and what it can look like are one decision, taken together. */}
+        <DesignRail />
 
         {running.length > 0 && (
           <section className="mb-8">

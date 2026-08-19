@@ -1,4 +1,4 @@
-import { Bot, Boxes, Brain, ChartColumn, Terminal as TerminalIcon, ChevronDown, ChevronRight, History, Layers, LogOut, MoreHorizontal, Pencil, Pin, PinOff, Plug, Plus, Search, Server, Settings, Shield, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Boxes, Brain, ChartColumn, Terminal as TerminalIcon, ChevronDown, ChevronRight, History, Layers, LogOut, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Server, Settings, Shield, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
@@ -59,6 +59,7 @@ const PAGE = 40
 const workspaceNav = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
+  { to: '/designs', label: '디자인', icon: Palette },
   { to: '/agents', label: '에이전트', icon: Bot },
   { to: '/skills', label: '스킬', icon: Sparkles },
   { to: '/memory', label: '메모리', icon: Brain },
