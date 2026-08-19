@@ -77,8 +77,19 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
   await page.getByLabel('이름', { exact: true }).fill(`읽어온 디자인 확인 ${Date.now()}`)
   await page.getByRole('button', { name: '만들기', exact: true }).click()
   await expect(page).toHaveURL(/\/projects\/[0-9a-f]{32}/, { timeout: 20_000 })
+  const projectId = page.url().split('/projects/')[1]
+  // Attaching is an optimistic write, so the screen alone proves nothing: wait
+  // for the request, then read it back from a fresh load.
+  const saved = page.waitForResponse(
+    (r) => r.url().endsWith(`/projects/${projectId}`) && r.request().method() === 'PATCH',
+    { timeout: 20_000 },
+  )
   await page.getByLabel('디자인', { exact: true }).selectOption({ label: name })
-  await expect(page.getByText('검증용', { exact: false })).toHaveCount(0)
+  expect((await saved).status()).toBe(200)
+  await page.reload()
+  await expect(page.getByLabel('디자인', { exact: true })).toHaveValue(/^[0-9a-f]{32}$/, {
+    timeout: 20_000,
+  })
 })
 
 test('읽을 수 없는 파일은 이유를 말하고 아무것도 저장하지 않는다', async ({ page }) => {

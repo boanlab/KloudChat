@@ -57,7 +57,7 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
 
   // ── 1. Write one ────────────────────────────────────────────────────
   const name = `디자인 검증 ${Date.now()}`
-  await page.goto('/settings/preferences')
+  await page.goto('/designs')
   const designs = page.getByRole('region', { name: '디자인 시스템' })
   await designs.getByRole('button', { name: '디자인 추가' }).click()
 
@@ -87,10 +87,24 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
 
   const picker = page.getByLabel('디자인', { exact: true })
   await expect(picker).toBeVisible({ timeout: 20_000 })
+  // The picker writes optimistically, so the screen says “saved” before the
+  // server has been told. Waiting on the PATCH itself is what makes the reload
+  // below a test of the column rather than a race against a request the reload
+  // would otherwise cancel.
+  const saved = page.waitForResponse(
+    (r) =>
+      r.url().endsWith(`/projects/${projectId}`) &&
+      r.request().method() === 'PATCH' &&
+      r.status() === 200,
+    { timeout: 20_000 },
+  )
   await picker.selectOption({ label: name })
   // The description under the picker confirms the row behind the option was
   // resolved, not merely that an option was selected.
   await expect(page.getByText('검증용 자주색 명조')).toBeVisible({ timeout: 20_000 })
+  expect(((await (await saved).json()) as { designSystemId: string }).designSystemId).toMatch(
+    /^[0-9a-f]{32}$/,
+  )
 
   // It survives a reload — this is a column, not component state.
   await page.reload()
