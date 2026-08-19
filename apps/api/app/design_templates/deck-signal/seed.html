@@ -31,6 +31,11 @@
     overflow-y: auto;
     height: 100vh;
   }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
   .slide {
     scroll-snap-align: start;
     min-height: 100vh;

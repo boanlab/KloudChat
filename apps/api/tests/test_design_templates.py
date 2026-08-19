@@ -97,6 +97,17 @@ def test_a_seed_carries_no_script(template):
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
+def test_a_seed_breaks_korean_lines_between_words(template):
+    """The catalogue writes Korean, and Korean breaks between syllables.
+
+    Left alone, a browser puts the second half of a word on the next line —
+    which on a slide reads as a typo. `keep-all` is one line in a seed and easy
+    to leave out of the next one, so it is asserted rather than remembered.
+    """
+    assert "keep-all" in template.seed
+
+
+@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_every_blank_is_one_the_prompt_actually_has(template):
     """A blank nobody substitutes is a `{name}` printed into the sentence."""
     for argument in template.arguments:
