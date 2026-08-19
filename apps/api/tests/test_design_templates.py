@@ -107,6 +107,32 @@ def test_a_seed_breaks_korean_lines_between_words(template):
     assert "keep-all" in template.seed
 
 
+#: Tags a block may contain that a seed has to have an opinion about. Left
+#: unstyled they render as browser defaults in the middle of a designed page,
+#: which is exactly what makes generated documents look generated.
+_MUST_STYLE = ("h3", "table", "blockquote", "figure", "figcaption", "dl", "dd", "hr")
+
+
+@pytest.mark.parametrize(
+    "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
+)
+def test_a_seed_styles_every_tag_a_block_may_reach_for(template):
+    for tag in _MUST_STYLE:
+        assert tag in dt._ALLOWED_TAGS or tag == "hr", tag
+        # A bare element selector — `.slide.figure` is a layout, not a `<figure>`.
+        assert re.search(rf"(?:^|[\s,]){tag}\s*[{{,]", template.seed, re.M), tag
+
+
+@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
+def test_no_seed_justifies_korean(template):
+    """`keep-all` breaks Korean at spaces, and a Korean line has few of them.
+
+    Justifying then stretches those few into rivers running down the page —
+    the one alignment that looks tidy in English and ragged here.
+    """
+    assert "text-align: justify" not in template.seed
+
+
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_every_blank_is_one_the_prompt_actually_has(template):
     """A blank nobody substitutes is a `{name}` printed into the sentence."""

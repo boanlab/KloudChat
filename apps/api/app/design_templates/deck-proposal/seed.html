@@ -96,7 +96,7 @@
   p { margin: 0 0 0.75em; font-size: clamp(0.98rem, 1.35vw, 1.12rem); text-wrap: pretty; }
   p:last-child { margin-bottom: 0; }
   ul, ol { margin: 0; padding-left: 1.15em; }
-  li { margin: 0 0 0.55em; font-size: clamp(0.98rem, 1.45vw, 1.15rem); }
+  li { margin: 0 0 0.55em; font-size: clamp(0.98rem, 1.45vw, 1.15rem); text-wrap: pretty; }
   li:last-child { margin-bottom: 0; }
   li::marker { color: var(--accent); }
   strong { font-weight: 650; }
@@ -104,6 +104,8 @@
   small, .note { font-size: clamp(0.82rem, 1.1vw, 0.95rem); color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-size: clamp(0.86rem, 1.15vw, 1rem); }
   th, td { padding: 0.55em 0.7em; border-bottom: 1px solid var(--hair); text-align: left; }
+  /* A panel reads the numbers down the column. */
+  td { font-variant-numeric: tabular-nums; }
   th { color: var(--muted); font-weight: 600; }
   thead th { border-bottom: 2px solid var(--border); }
 
@@ -193,6 +195,20 @@
   /* ── print: one slide per page ─────────────────────────────────────
      The rail is restated here rather than inherited, because a print box
      that measures narrow would otherwise drop it and scramble the columns. */
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--hair); margin: 1.4rem 0; }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
+
   @page { size: A4 landscape; margin: 12mm; }
   @media print {
     body { background: #fff; height: auto; overflow: visible; }

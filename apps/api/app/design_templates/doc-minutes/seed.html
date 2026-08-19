@@ -128,7 +128,9 @@
     line-height: 1.7rem;
     text-align: center;
   }
-  h3 { margin: 1.4rem 0 0.4rem; font-size: 0.95rem; letter-spacing: 0.02em; color: var(--muted); }
+  /* An agenda item's sub-heading carries as much as the lines under it. */
+  h3 { margin: 1.4rem 0 0.4rem; font-size: 1rem; font-weight: 650;
+       letter-spacing: 0.02em; }
   p { margin: 0 0 0.8rem; text-wrap: pretty; }
   ul, ol { margin: 0 0 1rem; padding-left: 1.2rem; }
   li { margin: 0 0 0.35rem; }
@@ -165,7 +167,8 @@
     letter-spacing: 0.02em;
   }
 
-  table { width: 100%; border-collapse: collapse; margin: 0.4rem 0 1.2rem; font-size: 0.92rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.4rem 0 1.2rem; font-size: 0.92rem;
+          font-variant-numeric: tabular-nums; }
   th, td { padding: 0.5em 0.7em; border-bottom: 1px solid var(--border);
            text-align: left; vertical-align: top; }
   th { color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--accent); }
@@ -185,6 +188,20 @@
     }
     .rows > li > small { text-align: left; }
   }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
   @page { size: A4 portrait; margin: 18mm 16mm; }
   @media print {

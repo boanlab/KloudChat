@@ -63,8 +63,12 @@
     padding-left: 0.7rem;
     border-left: 4px solid var(--accent);
   }
-  h3 { margin: 1.6rem 0 0.4rem; font-size: 1.05rem; color: var(--muted); }
-  p { margin: 0 0 0.9rem; text-align: justify; text-wrap: pretty; }
+  /* Ink rather than muted: a sub-heading that is fainter than its own
+     paragraph reads as a caption somebody left behind. */
+  h3 { margin: 1.6rem 0 0.4rem; font-size: 1.12rem; font-weight: 650; }
+  /* Not justified. Korean with `keep-all` breaks at spaces, so justifying
+     stretches the few spaces a line has into rivers down the page. */
+  p { margin: 0 0 0.9rem; text-wrap: pretty; }
   ul, ol { margin: 0 0 1rem; padding-left: 1.3rem; }
   li { margin: 0 0 0.35rem; }
   li::marker { color: var(--accent); }
@@ -74,8 +78,23 @@
   }
   table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem; }
   th, td { padding: 0.5em 0.7em; border-bottom: 1px solid var(--border); text-align: left; }
+  td { font-variant-numeric: tabular-nums; }
   th { color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--accent); }
   small { color: var(--muted); }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
   @page { size: A4 portrait; margin: 20mm 18mm; }
   @media print {

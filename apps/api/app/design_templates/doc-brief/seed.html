@@ -48,16 +48,32 @@
     border-radius: 10px; padding: 1.1rem 1.3rem;
   }
   h2 { margin: 0 0 0.5rem; font-size: 1rem; letter-spacing: 0.02em; color: var(--accent); }
-  h3 { margin: 0.9rem 0 0.3rem; font-size: 0.9rem; color: var(--muted); }
+  /* One page is dense enough without a heading that hides in it. */
+  h3 { margin: 0.9rem 0 0.3rem; font-size: 1rem; font-weight: 650; }
   p { margin: 0 0 0.6rem; font-size: 0.95rem; text-wrap: pretty; }
   ul, ol { margin: 0; padding-left: 1.1rem; }
   li { margin: 0 0 0.3rem; font-size: 0.95rem; }
   li::marker { color: var(--accent); }
   table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
   th, td { padding: 0.35em 0.5em; border-bottom: 1px solid var(--border); text-align: left; }
+  td { font-variant-numeric: tabular-nums; }
   th { color: var(--muted); font-weight: 600; }
   blockquote { margin: 0.6rem 0; padding-left: 0.8rem;
                border-left: 3px solid var(--accent); color: var(--muted); }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
   @page { size: A4 portrait; margin: 14mm; }
   @media print {

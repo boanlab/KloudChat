@@ -45,6 +45,8 @@
     padding: 8vh 8vw 10vh;
     position: relative;
   }
+  /* A projector is wider than anybody reads in one sweep. */
+  .slide > * { max-width: 58rem; }
   .num {
     position: absolute; right: 8vw; bottom: 4vh;
     font-size: 0.75rem; color: rgba(255,255,255,0.35); letter-spacing: 0.12em;
@@ -60,18 +62,21 @@
     content: ""; display: block; width: 2.4rem; height: 3px;
     margin-top: 0.5em; background: var(--accent);
   }
-  h3 { margin: 1.2em 0 0.3em; font-size: 0.95rem; letter-spacing: 0.06em;
-       text-transform: uppercase; color: var(--accent); }
+  /* A tracked, coloured line above the text: an eyebrow, so smaller is
+     right — but it has to carry weight to read as a label. */
+  h3 { margin: 1.2em 0 0.3em; font-size: 0.95rem; font-weight: 700;
+       letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
   p { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.6vw, 1.25rem);
       color: rgba(245,246,247,0.82); text-wrap: pretty; }
   ul, ol { margin: 0; padding-left: 1em; }
-  li { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.7vw, 1.35rem); }
+  li { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.7vw, 1.35rem); text-wrap: pretty; }
   li::marker { color: var(--accent); }
   strong { color: #fff; font-weight: 650; }
   blockquote { margin: 0; font-size: clamp(1.6rem, 3.6vw, 2.6rem); line-height: 1.25;
                text-wrap: balance; }
   table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
   th, td { padding: 0.55em 0.7em; border-bottom: 1px solid var(--border); text-align: left; }
+  td { font-variant-numeric: tabular-nums; }
   th { color: var(--accent); font-weight: 600; }
 
   .slide.cover { background: linear-gradient(180deg, var(--surface), var(--bg)); }
@@ -88,6 +93,20 @@
 
   .slide.split .cols { display: grid; gap: 2.5rem; grid-template-columns: 1fr 1fr; }
   @media (max-width: 720px) { .slide.split .cols { grid-template-columns: 1fr; } }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
   @page { size: A4 landscape; margin: 10mm; }
   @media print {

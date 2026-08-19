@@ -114,7 +114,9 @@
     color: var(--accent);
   }
 
-  h3 { margin: 1.5rem 0 0.4rem; font-size: 0.93rem; letter-spacing: 0.02em; color: var(--muted); }
+  /* A method's sub-step is a heading, not an aside. */
+  h3 { margin: 1.5rem 0 0.4rem; font-size: 1rem; font-weight: 650;
+       letter-spacing: 0.02em; }
   p { margin: 0 0 0.85rem; text-wrap: pretty; }
   ul, ol { margin: 0 0 0.9rem; padding-left: 1.3rem; }
   li { margin: 0 0 0.4rem; }
@@ -183,6 +185,16 @@
   }
 
   /* ── print: A4 portrait, cover on its own page ─────────────────────── */
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+
+
   @page { size: A4 portrait; margin: 20mm 18mm; }
   @media print {
     body { background: #fff; }
