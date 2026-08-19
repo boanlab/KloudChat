@@ -740,6 +740,7 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
+  '그림 제외': 'no pictures',
   '아티팩트 검색': 'Search artifacts',
   '찾는 결과물이 없습니다': 'Nothing matches',
   '제목의 다른 부분으로 찾아보세요.': 'Try another part of the title.',

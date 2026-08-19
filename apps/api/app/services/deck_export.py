@@ -14,22 +14,32 @@ what you say, not what the room reads.
 from __future__ import annotations
 
 import io
+import logging
 import re
 
+import PIL.Image
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Pt
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
 from app.services import design, fonts
 
+log = logging.getLogger(__name__)
+
 #: 16:9 in points — EMU/12700, and reportlab's default unit. Drives both
 #: exporters.
 _W, _H = 960.0, 540.0
+
+#: How wide a picture gets when it shares the slide with words. Just under half
+#: the text column: smaller and it is decoration, wider and the lines beside it
+#: break every few words.
+_PICTURE_SPAN = 300.0
 _EMU_PER_PT = 12700
 
 #: Korean is laid out with the *East Asian* font, which python-pptx does not
@@ -140,6 +150,25 @@ def _split_columns(bullets: list[str]) -> list[list[str]]:
     return [bullets[:half], bullets[half:]]
 
 
+def _fit(data: bytes, *, box: tuple[float, float]) -> tuple[float, float]:
+    """The size a picture takes inside `box`, in points, keeping its shape.
+
+    Read from the bytes rather than trusted from the markup: the artifact says
+    nothing about pixel dimensions, and a picture drawn to a box it does not
+    fit is either squashed or off the slide.
+    """
+    max_width, max_height = box
+    try:
+        with PIL.Image.open(io.BytesIO(data)) as picture:
+            width, height = picture.size
+    except Exception:  # noqa: BLE001 — a picture we cannot measure gets the box
+        return max_width, max_height
+    if not width or not height:
+        return max_width, max_height
+    scale = min(max_width / width, max_height / height)
+    return width * scale, height * scale
+
+
 def to_pptx(
     title: str,
     slides: list[dict],
@@ -199,6 +228,11 @@ def to_pptx(
         body = str(data.get("body") or "")
         bullets = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
         rows = [[str(cell) for cell in row] for row in (data.get("rows") or []) if row]
+        picture = data.get("image") if isinstance(data.get("image"), dict) else None
+        # A picture takes the right half and the words keep the left. Alone, it
+        # takes the middle of the slide. Either way the text is narrowed here
+        # rather than overlapping it, which is what a slide would show.
+        text_width = _W - 144 - (_PICTURE_SPAN + 24 if picture and (bullets or rows or body) else 0)
 
         if layout == "title" and index == 0:
             frame = _textbox(slide, left=72, top=190, width=_W - 144, height=160)
@@ -224,7 +258,7 @@ def to_pptx(
                 run.text = heading
                 paint(run, size=13, colour=muted)
         else:
-            frame = _textbox(slide, left=72, top=64, width=_W - 144, height=60)
+            frame = _textbox(slide, left=72, top=64, width=text_width, height=60)
             run = frame.paragraphs[0].add_run()
             run.text = heading
             paint(run, size=26, bold=True)
@@ -257,7 +291,7 @@ def to_pptx(
                 # has no column flow, so the split has to be geometry. Matches
                 # the preview's `columnCount: 2` and the .pdf below.
                 columns = _columns_of(data, bullets, layout)
-                span = (_W - 144 - (24 * (len(columns) - 1))) / len(columns)
+                span = (text_width - (24 * (len(columns) - 1))) / len(columns)
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
                         slide,
@@ -278,10 +312,41 @@ def to_pptx(
                         run.text = text
                         paint(run, size=16 if len(columns) > 1 else 18)
             elif body:
-                paragraph_frame = _textbox(slide, left=72, top=150, width=_W - 144, height=_H - 210)
+                paragraph_frame = _textbox(
+                    slide, left=72, top=150, width=text_width, height=_H - 210
+                )
                 run = paragraph_frame.paragraphs[0].add_run()
                 run.text = body
                 paint(run, size=16, colour=muted)
+
+        if picture and picture.get("data"):
+            alone = not (bullets or rows or body)
+            box = (_W - 260, _H - 230) if alone else (_PICTURE_SPAN, _H - 230)
+            width, height = _fit(picture["data"], box=box)
+            left = 72 + (text_width + 24) if not alone else (_W - width) / 2
+            top = 150 + max(0.0, (_H - 230 - height) / 2)
+            try:
+                slide.shapes.add_picture(
+                    io.BytesIO(picture["data"]),
+                    Emu(int(left * _EMU_PER_PT)),
+                    Emu(int(top * _EMU_PER_PT)),
+                    Emu(int(width * _EMU_PER_PT)),
+                    Emu(int(height * _EMU_PER_PT)),
+                )
+            except Exception as exc:  # noqa: BLE001 — one bad picture, not a failed export
+                # Bytes that are not a picture any more: truncated on the way
+                # in, or a format this library refuses. The slide loses its
+                # illustration; the deck still opens.
+                log.warning("could not place a picture in the pptx: %s", exc)
+            else:
+                caption = str(picture.get("caption") or "")
+                if caption:
+                    frame = _textbox(
+                        slide, left=left, top=top + height + 6, width=max(width, 120), height=24
+                    )
+                    run = frame.paragraphs[0].add_run()
+                    run.text = caption
+                    paint(run, size=11, colour=muted)
 
         # Slide number, bottom right — what the room refers to in a question.
         number = _textbox(slide, left=_W - 110, top=_H - 46, width=60, height=26)
@@ -353,6 +418,10 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         body = str(data.get("body") or "")
         bullets = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
         rows = [[str(cell) for cell in row] for row in (data.get("rows") or []) if row]
+        picture = data.get("image") if isinstance(data.get("image"), dict) else None
+        # The same split the .pptx uses, so the printout and the projected deck
+        # put the same things in the same places.
+        text_width = _W - 144 - (_PICTURE_SPAN + 24 if picture and (bullets or rows or body) else 0)
 
         pdf.setFillColorRGB(1, 1, 1)
         pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
@@ -387,7 +456,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             pdf.setFillColorRGB(*ink)
             pdf.setFont(font, 26)
             y = _H - 96
-            for line in _wrap(heading, font, 26, _W - 144):
+            for line in _wrap(heading, font, 26, text_width):
                 pdf.drawString(72, y, line)
                 y -= 34
             y -= 24
@@ -396,7 +465,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 # Ruled rather than boxed: a printed grid of thin lines closes
                 # up at projector distance, and the rule under the header is
                 # what actually separates the labels from the values.
-                width = (_W - 144) / max(len(row) for row in rows)
+                width = text_width / max(len(row) for row in rows)
                 for row_index, row in enumerate(rows):
                     pdf.setFillColorRGB(*(accent if row_index == 0 else ink))
                     pdf.setFont(font, 15)
@@ -416,7 +485,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 columns = _columns_of(data, bullets, layout)
                 size = 16 if len(columns) > 1 else 18
                 step = 22 if len(columns) > 1 else 26
-                span = (_W - 144 - 24 * (len(columns) - 1)) / len(columns)
+                span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 top = y
                 for column_index, column in enumerate(columns):
                     left = 72 + column_index * (span + 24)
@@ -433,9 +502,33 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             elif body:
                 pdf.setFillColorRGB(*muted)
                 pdf.setFont(font, 16)
-                for line in _wrap(body, font, 16, _W - 144):
+                for line in _wrap(body, font, 16, text_width):
                     pdf.drawString(72, y, line)
                     y -= 24
+
+        if picture and picture.get("data"):
+            alone = not (bullets or rows or body)
+            box = (_W - 260, _H - 230) if alone else (_PICTURE_SPAN, _H - 230)
+            width, height = _fit(picture["data"], box=box)
+            left = 72 + text_width + 24 if not alone else (_W - width) / 2
+            bottom = 90 + max(0.0, (_H - 230 - height) / 2)
+            try:
+                pdf.drawImage(
+                    ImageReader(io.BytesIO(picture["data"])),
+                    left,
+                    bottom,
+                    width=width,
+                    height=height,
+                    mask="auto",
+                )
+            except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                log.warning("could not draw a picture into the deck pdf: %s", exc)
+            else:
+                caption = str(picture.get("caption") or "")
+                if caption:
+                    pdf.setFillColorRGB(*muted)
+                    pdf.setFont(font, 11)
+                    pdf.drawString(left, bottom - 16, _wrap(caption, font, 11, width)[0])
 
         # Furniture rather than content, so it keeps its own light grey instead
         # of taking the design's muted tone: a page number in brand colour

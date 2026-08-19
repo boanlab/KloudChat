@@ -264,6 +264,27 @@ before encoding, and snapshotted like a rewrite. The artifact stays one file
 that prints, downloads and shares with the picture in it, and a reader opening
 it fetches nothing.
 
+**And it leaves in the exports.** `page_export` reads the `<figure>` back out
+of the markup — bytes and caption — and hands it to each renderer: a slide
+takes the right half and the words narrow to fit, or the picture takes the
+middle when there is nothing else on the slide; a document places it after the
+section's prose, at 120 mm wide and never taller than the page, with the
+caption kept on the same page as the picture. Sized from the bytes with
+Pillow, because nothing in the artifact says how big a picture is and a figure
+drawn to a guessed box is a squashed one.
+
+`.pptx`, `.docx` and both PDFs carry it. **`.hwpx` does not**, deliberately: a
+picture in OWPML needs a `BinData` part, a manifest entry, a header
+`binDataList` and a `<hp:pic>` that references all three by id, and Hancom
+refuses a file that gets any of it wrong — with no Hancom here to check
+against, the honest thing is a document without the picture rather than one
+nobody can open. The export menu says so on that item rather than leaving it
+to be discovered afterwards.
+
+A picture that has stopped being one — truncated bytes, a format a library
+refuses — costs its own illustration and nothing else: every renderer catches
+it, logs it and finishes the file.
+
 Two constraints shape every seed:
 
 **No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates

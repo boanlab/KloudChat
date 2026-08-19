@@ -20,12 +20,36 @@ removed by `design_templates.sanitise` before it was stored.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from html.parser import HTMLParser
 from typing import Any
 
 #: Block containers whose text is collected separately.
 _TEXT_TAGS = {"h2", "h3", "p", "li", "blockquote", "th", "td"}
+
+#: A picture inside an artifact is a `data:` URI — `design_templates.sanitise`
+#: allows no other kind — so it is already the bytes, and no fetch is involved
+#: in reading one back out.
+_DATA_URI = re.compile(r"^data:(image/(?:png|jpeg|jpg|gif|webp));base64,(.+)$", re.S | re.I)
+
+
+def decode_picture(src: str) -> tuple[str, bytes] | None:
+    """`(mime, bytes)` for an embedded picture, or `None` for anything else.
+
+    Anything else includes a remote address, which cannot appear in a stored
+    artifact and must not be fetched if it somehow does.
+    """
+    match = _DATA_URI.match((src or "").strip())
+    if not match:
+        return None
+    try:
+        return match.group(1).lower().replace("jpg", "jpeg"), base64.b64decode(
+            re.sub(r"\s+", "", match.group(2)), validate=True
+        )
+    except (binascii.Error, ValueError):
+        return None
 
 #: Rendered by `deck_export`, keyed by the layout class the seed uses.
 _DECK_LAYOUT = {
@@ -81,6 +105,18 @@ class _Reader(HTMLParser):
             return
         if self._block is None:
             return
+        if tag == "img":
+            picture = decode_picture(dict(attrs).get("src") or "")
+            if picture:
+                self._block["images"].append(
+                    {"mime": picture[0], "data": picture[1], "caption": ""}
+                )
+            return
+        if tag == "figcaption":
+            self._flush()
+            self._tag = tag
+            self._classes = classes
+            return
         if "cols" in classes:
             self._cols = 1
         elif self._cols and tag == "div":
@@ -100,7 +136,7 @@ class _Reader(HTMLParser):
             return
         if self._block is None:
             return
-        if tag in _TEXT_TAGS:
+        if tag in _TEXT_TAGS or tag == "figcaption":
             self._flush()
         elif tag == "tr" and self._row:
             self._block["rows"].append(self._row)
@@ -131,6 +167,7 @@ class _Reader(HTMLParser):
             "quote": "",
             "rows": [],
             "columns": [],
+            "images": [],
             "_container": container,
         }
 
@@ -160,6 +197,10 @@ class _Reader(HTMLParser):
             self._block["quote"] = text
         elif tag in ("th", "td"):
             self._row.append(text)
+        elif tag == "figcaption":
+            # The caption belongs to the picture above it, not to the prose.
+            if self._block["images"]:
+                self._block["images"][-1]["caption"] = text
         elif "lead" in classes and not self._block["lead"]:
             self._block["lead"] = text
         else:
@@ -228,13 +269,23 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
             # A layout that came back as prose still has to say something; the
             # paragraphs become the lines rather than being thrown away.
             slide["bullets"] = block["paragraphs"]
-        if not (slide.get("bullets") or slide.get("body") or slide.get("rows") or slide["title"]):
+        if block["images"]:
+            # One per slide: a screen holds a picture and its point, and two
+            # pictures on one slide is a slide that should have been two.
+            slide["image"] = block["images"][0]
+        if not (
+            slide.get("bullets")
+            or slide.get("body")
+            or slide.get("rows")
+            or slide.get("image")
+            or slide["title"]
+        ):
             continue
         slides.append(slide)
     return slides
 
 
-def to_sections(html: str) -> list[dict[str, str]]:
+def to_sections(html: str) -> list[dict[str, Any]]:
     """An HTML document as the sections `report_export` draws.
 
     Markdown, because that is what the report exporters read: `_markdown_to_
@@ -253,10 +304,20 @@ def to_sections(html: str) -> list[dict[str, str]]:
         for row in block["rows"]:
             lines.append("- " + " · ".join(row))
         content = "\n\n".join(lines)
-        if not content.strip() and not block["title"]:
+        if not content.strip() and not block["title"] and not block["images"]:
             continue
-        sections.append({"heading": block["title"], "content": content, "level": 1})
+        section: dict[str, Any] = {
+            "heading": block["title"],
+            "content": content,
+            "level": 1,
+        }
+        # A page can hold several, and where they were is lost either way —
+        # the exporters place them after the section's prose, which is where
+        # a figure in a written document usually belongs.
+        if block["images"]:
+            section["images"] = block["images"]
+        sections.append(section)
     return sections
 
 
-__all__ = ["read", "to_sections", "to_slides"]
+__all__ = ["decode_picture", "read", "to_sections", "to_slides"]

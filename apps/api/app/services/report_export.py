@@ -10,17 +10,22 @@ structure is already there, and a browser engine would only lose the headings.
 from __future__ import annotations
 
 import io
+import logging
 import re
 import zipfile
 
+import PIL.Image
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Image as RLImage
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer
 
 from app.services import design, fonts
+
+log = logging.getLogger(__name__)
 
 
 def _markdown_to_lines(text: str) -> list[tuple[str, str, str]]:
@@ -70,7 +75,7 @@ def _strip_inline(text: str) -> str:
 
 def to_docx(title: str, sections: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     from docx import Document
-    from docx.shared import Inches, Pt, RGBColor
+    from docx.shared import Inches, Mm, Pt, RGBColor
 
     style = design.normalise_tokens(tokens) if tokens else None
     #: Colour only. The face stays Word's own: this document is written to be
@@ -105,6 +110,24 @@ def to_docx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
             else:
                 paragraph = document.add_paragraph(clean)
                 paragraph.paragraph_format.space_after = Pt(6)
+        for picture in section.get("images") or []:
+            data = picture.get("data")
+            if not data:
+                continue
+            try:
+                # Word sizes from the file's own DPI otherwise, which for a
+                # generated picture is whatever the model's encoder wrote.
+                document.add_picture(io.BytesIO(data), width=Mm(_PICTURE_MM))
+            except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                log.warning("could not place a picture in the docx: %s", exc)
+                continue
+            caption = str(picture.get("caption") or "")
+            if caption:
+                paragraph = document.add_paragraph(caption)
+                paragraph.paragraph_format.space_after = Pt(8)
+                for run in paragraph.runs:
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
 
     buffer = io.BytesIO()
     document.save(buffer)
@@ -145,6 +168,11 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
             "li", parent=base["BodyText"], fontName=korean, fontSize=10.5, leading=17,
             leftIndent=10 * mm, bulletIndent=4 * mm, spaceAfter=3,
         ),
+        "caption": ParagraphStyle(
+            "cap", parent=base["BodyText"], fontName=korean, fontSize=9, leading=13,
+            textColor=HexColor(style["muted"]) if style else HexColor("#666666"),
+            spaceBefore=2, spaceAfter=2,
+        ),
     }
 
     story: list = [Paragraph(_escape(title), styles["title"]), Spacer(1, 8 * mm)]
@@ -162,6 +190,24 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
                 story.append(Paragraph(clean, styles["bullet"], bulletText=marker))
             else:
                 story.append(Paragraph(clean, styles["body"]))
+        for picture in section.get("images") or []:
+            data = picture.get("data")
+            if not data:
+                continue
+            width, height = _picture_size(data)
+            caption = str(picture.get("caption") or "")
+            try:
+                figure: list = [RLImage(io.BytesIO(data), width=width, height=height)]
+            except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                log.warning("could not place a picture in the report pdf: %s", exc)
+                continue
+            if caption:
+                figure.append(Paragraph(_escape(caption), styles["caption"]))
+            story.append(Spacer(1, 3 * mm))
+            # Kept together: a caption on the page after its picture is a
+            # caption for whatever happens to be above it.
+            story.append(KeepTogether(figure))
+            story.append(Spacer(1, 3 * mm))
 
     buffer = io.BytesIO()
     SimpleDocTemplate(
@@ -174,6 +220,36 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
         title=title,
     ).build(story)
     return buffer.getvalue()
+
+
+#: How wide a picture may print, in millimetres. The A4 text column here is
+#: 166 mm; a figure that fills it edge to edge reads as a page break with a
+#: photograph in it, and one that is small enough to sit beside text cannot,
+#: because neither exporter flows text around a figure.
+_PICTURE_MM = 120.0
+
+
+def _picture_size(data: bytes, *, width_mm: float = _PICTURE_MM) -> tuple[float, float]:
+    """`(width, height)` in points for a picture printed at `width_mm`.
+
+    Measured from the bytes: nothing in the document says how big the picture
+    is, and a figure drawn to a guessed box is a squashed one. Never taller
+    than it is wide by more than the page can hold — a portrait screenshot
+    would otherwise take two pages on its own.
+    """
+    width = width_mm * mm
+    try:
+        with PIL.Image.open(io.BytesIO(data)) as picture:
+            pixels_wide, pixels_high = picture.size
+    except Exception:  # noqa: BLE001 — an unreadable picture still gets a box
+        return width, width * 0.6
+    if not pixels_wide or not pixels_high:
+        return width, width * 0.6
+    height = width * pixels_high / pixels_wide
+    ceiling = 170 * mm
+    if height > ceiling:
+        return width * ceiling / height, ceiling
+    return width, height
 
 
 def _escape(text: str) -> str:

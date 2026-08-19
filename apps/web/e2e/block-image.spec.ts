@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+import { crc32 as zlibCrc32, deflateSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
@@ -12,11 +14,46 @@ import { signIn } from './helpers'
  * through the screen.
  */
 
-/** 240×160, one flat colour. Small enough to inline in a test file. */
-const PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAPAAAACgCAIAAAD5ZfRxAAAAcElEQVR42u3QMQEAAAgDINc/9Ezg' +
-  'JIQmsjWnhAQCggABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAAB' +
-  'AgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgIA/AzWtAAF2LhZlAAAAAElFTkSuQmCC'
+/**
+ * A real PNG, built here.
+ *
+ * Pasted base64 is unreadable in a diff and easy to truncate — the first
+ * version of this file carried a broken one, which the server refused only at
+ * export time, hours later.
+ */
+function png(width = 240, height = 160): string {
+  const raw = Buffer.concat(
+    Array.from({ length: height }, (_, y) =>
+      Buffer.concat([
+        Buffer.from([0]),
+        Buffer.from(
+          Array.from({ length: width * 3 }, (_, i) => (i % 3 === 0 ? 40 + y : i % 3 === 1 ? 90 : 200)),
+        ),
+      ]),
+    ),
+  )
+  const chunk = (kind: string, data: Buffer) => {
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(kind, 'latin1'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(zlibCrc32(body) >>> 0)
+    return Buffer.concat([length, body, crc])
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8 // bit depth
+  header[9] = 2 // truecolour
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]).toString('base64')
+}
+
+const PNG_BASE64 = png()
 
 const SETUP = `async (png) => {
   const login = await fetch('/api/auth/login', {
@@ -127,7 +164,8 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
   // what makes the change undoable. Read off the open dialog, which is also
   // the assertion that the panel is looking at the document the server now
   // holds rather than the copy it opened with.
-  await expect(page.getByRole('dialog').getByText('HTML · v2')).toBeVisible({ timeout: 30_000 })
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('HTML · v2')).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: 'test-results/shots/14-block-image.png' })
 
   const stored = await page.evaluate(
@@ -140,4 +178,15 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
   expect(data.blocks[1].html).toContain('data:image/png;base64,')
   expect(data.content).toContain('<figcaption>그림 1. 시험용</figcaption>')
   expect(data.content).not.toContain('/api/files/')
+
+  // ── and it leaves in the file somebody downloads ────────────────────
+  // A zip stores its entry names uncompressed, so the presence of the media
+  // part is readable from the bytes without unpacking anything.
+  const saved = page.waitForEvent('download', { timeout: 60_000 })
+  await dialog.getByRole('button', { name: '내보내기' }).click()
+  await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
+  const file = await saved
+  const bytes = await readFile(await file.path())
+  expect(file.suggestedFilename()).toMatch(/\.pptx$/)
+  expect(bytes.toString('latin1')).toContain('ppt/media/image1.png')
 })
