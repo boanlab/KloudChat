@@ -257,6 +257,19 @@ there, so the two neutrals swap. The `.pdf` stays light, which is the same
 decision that seed's own print rules already make: a projector and a printer
 want opposite things.
 
+One block can be rewritten after the fact — `POST /artifacts/{id}/blocks/rewrite`
+— and that is why the artifact keeps its blocks whole, markup included, with
+`content` as what they render to. The rewrite replaces one block and assembles
+the document again from the same seed, rather than splicing markup into a
+finished file where the seams are wherever the model last put them. It is
+charged and snapshotted like the report's section rewrite, so a worse rewrite
+is one click from undone.
+
+The part is chosen from a list rather than by clicking into the preview: the
+frame is `sandbox=""` and opaque to the app, which is the same property that
+makes it safe. An artifact written before blocks kept their markup is refused
+rather than rebuilt out of whichever pieces happened to be stored.
+
 **Media templates are prompt templates.** Image, video and audio produce no
 document, so what a template gives them is the sentence itself: an
 `example_prompt` with blanks written `{name}`, and an `[[arguments]]` entry per

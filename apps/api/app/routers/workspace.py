@@ -39,6 +39,7 @@ from app.schemas.workspace import (
     ArtifactPatch,
     ArtifactRestore,
     ArtifactVersionOut,
+    BlockRewrite,
     DesignExtractIn,
     DesignExtractOut,
     DesignSystemIn,
@@ -66,6 +67,7 @@ from app.services import (
     design_templates,
     factcheck,
     index_client,
+    lint,
     page_export,
     report_export,
     settings_store,
@@ -75,6 +77,7 @@ from app.services import design as design_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import page as page_service
 from app.services import report as report_service
 from app.services import transcribe as transcribe_service
 from app.services.credits import charge_for_tokens, has_headroom, settle
@@ -488,6 +491,121 @@ async def factcheck_slide(
     artifact.updated_at = utcnow()
     db.add(artifact)
     # No version snapshot: a verdict annotates the deck rather than editing it.
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+@router.post("/artifacts/{artifact_id}/blocks/rewrite", response_model=ArtifactOut)
+async def rewrite_block(
+    artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession
+):
+    """Rewrites one block of an HTML artifact and re-renders the file.
+
+    The blocks are the source and `content` is what they render to, so this
+    replaces one block and assembles the document again from the same seed —
+    rather than splicing markup into a finished file, where the seams are
+    wherever the model last put them.
+
+    Charged and snapshotted like the report's section rewrite, so a worse
+    rewrite is one click from undone.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.html:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_page")
+
+    data = dict(artifact.data or {})
+    blocks = [dict(b) for b in (data.get("blocks") or [])]
+    if payload.index >= len(blocks):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="block_not_found")
+    template = design_templates.get(str(data.get("templateId") or ""))
+    if template is None or not template.seed:
+        # An artifact written under a template this image no longer ships can
+        # still be read and exported; it cannot be re-rendered, and saying so
+        # is better than assembling it into some other template's shape.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
+        )
+    if "html" not in blocks[payload.index]:
+        # Written before the blocks kept their markup. Rewriting one would
+        # rebuild the document out of the pieces that were kept, silently
+        # dropping the rest.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable"
+        )
+
+    catalogue = await model_service.list_models()
+    usable = sorted(
+        (m for m in catalogue["models"] if template.surface.value in m["kinds"]),
+        key=lambda m: m["creditCost"],
+    )
+    session = (
+        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
+    )
+    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
+        usable[0] if usable else None
+    )
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+
+    try:
+        fragment, usage = await page_service.rewrite_block(
+            request=artifact.title or "",
+            blocks=blocks,
+            index=payload.index,
+            template=template,
+            model=model["id"],
+            api_key=api_key,
+            note=payload.note,
+        )
+    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+        log.warning("block rewrite failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_failed"
+        ) from exc
+
+    if not fragment.strip():
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_empty")
+
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=artifact.version,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=f"{blocks[payload.index].get('title')} 다시 씀",
+        )
+    )
+    blocks[payload.index]["html"] = fragment
+    data["blocks"] = blocks
+    data["content"] = design_templates.render(
+        template,
+        title=artifact.title or template.name,
+        tokens=data.get("design") or {},
+        body=design_templates.assemble(template, blocks),
+    )
+    data["lint"] = lint.wire(
+        lint.check(lint.from_blocks(blocks), slides=template.kind == "deck")
+    )
+    artifact.data = data
+    artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    settle(db, user, credits, reason="page.rewrite", session_id=artifact.session_id)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)

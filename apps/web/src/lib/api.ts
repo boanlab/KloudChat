@@ -720,6 +720,9 @@ export const artifactsApi = {
   /** Rewrites one section. Costs a model call and snapshots the old text. */
   rewriteSection: (id: string, sectionId: string, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/rewrite`, body({ sectionId, note })),
+  /** One block of an HTML artifact, addressed by position and re-rendered. */
+  rewriteBlock: (id: string, index: number, note: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */
   restore: (id: string, version: number) =>
     call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),

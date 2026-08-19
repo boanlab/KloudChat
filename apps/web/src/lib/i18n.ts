@@ -1138,6 +1138,16 @@ const EN: Record<string, string> = {
   '남은 크레딧이 부족합니다.': 'Not enough credits left.',
   '모델이 응답하지 않았습니다. 잠시 후 다시 시도하세요.': 'The model did not answer. Try again in a moment.',
 
+
+  // ── 블록 다시 쓰기 ───────────────────────────────────────────────
+  '어느 부분을 다시 쓸까요?': 'Which part should be rewritten?',
+  '제목 없음': 'Untitled',
+  '무엇을 고칠지 적으면 그것만 반영합니다. 비워 두면 그냥 다시 씁니다.':
+    'Say what to change and only that is applied. Left empty, it simply writes it again.',
+  '다시 쓰는 중…': 'Rewriting…',
+  '고칠 내용': 'What to change',
+  '예: 숫자를 빼고 무엇을 결정해야 하는지만 남겨 주세요.': 'e.g. Drop the figures and leave only what has to be decided.',
+
   // ── 결과물 검사 ─────────────────────────────────────────────────
   '검사 결과': 'Checks',
   '고칠 곳 {n}': '{n} to fix',

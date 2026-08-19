@@ -354,9 +354,57 @@ async def write(
     yield {"type": "usage", **usage}
 
 
+async def rewrite_block(
+    *,
+    request: str,
+    blocks: list[dict[str, Any]],
+    index: int,
+    template: DesignTemplate,
+    model: str,
+    api_key: str,
+    note: str = "",
+) -> tuple[str, dict[str, int]]:
+    """Rewrites one block's markup, with the rest of the document as context.
+
+    Same prompt the first pass used, so a rewritten block is written under the
+    rules its neighbours were — and everything but the target is passed as
+    written, so it does not repeat what the block before it already said.
+    """
+    target = blocks[index]
+    noun, unit = _WORDS.get(template.kind, ("문서", "절"))
+    outline = "\n".join(f"{i + 1}. {b.get('title') or ''}" for i, b in enumerate(blocks))
+    written = "\n".join(
+        f"{b.get('title')}: {re.sub(r'<[^>]+>', ' ', b.get('html') or '')[:200]}"
+        for i, b in enumerate(blocks)
+        if i != index and (b.get("html") or "").strip()
+    )
+    prompt = _BLOCK_PROMPT.format(
+        noun=noun,
+        unit=unit,
+        heading=target.get("title") or "",
+        layout=target.get("layout") or template.layouts[0],
+        outline=outline,
+        written=written[-3000:] or "(없음)",
+        guide=template.instructions,
+        request=request[:1200],
+    )
+    if note.strip():
+        # Last and labelled: an unlabelled sentence appended to a prompt reads
+        # as part of the original request.
+        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
+
+    text, usage = await _complete(
+        model,
+        build_document_messages(template.surface, prompt),
+        api_key,
+        1200,
+    )
+    return _fragment(text), usage
+
+
 def filled(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The blocks that actually say something — what billing and the message count."""
     return [b for b in blocks if (b.get("html") or "").strip()]
 
 
-__all__ = ["filled", "requested_blocks", "write"]
+__all__ = ["filled", "requested_blocks", "rewrite_block", "write"]

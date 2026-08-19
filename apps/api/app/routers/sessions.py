@@ -2587,10 +2587,14 @@ async def _run_page(
                         "language": "html",
                         "content": html,
                         "templateId": template.id,
-                        # The plan, so the panel can list what is in the file
-                        # without parsing it back out of the markup.
+                        # The blocks are the source and `content` is what they
+                        # render to. Kept whole — markup included — so one of
+                        # them can be rewritten without reading the finished
+                        # file back apart and hoping the seams land where they
+                        # did when it was assembled.
                         "blocks": [
-                            {"title": b["title"], "layout": b["layout"]} for b in blocks
+                            {"title": b["title"], "layout": b["layout"], "html": b["html"]}
+                            for b in blocks
                         ],
                         # Read back before it is stored. Costs no model call,
                         # so it runs on every document; acting on what it finds

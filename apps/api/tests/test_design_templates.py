@@ -489,3 +489,68 @@ def test_nothing_is_salvaged_from_prose():
     """Salvage must not invent a plan out of an answer that refused to make one."""
     title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-brief"))
     assert not blocks and not title
+
+
+# ── rewriting one block ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_sees_the_document_around_it(monkeypatch):
+    """Otherwise the new block repeats what the one before it already said."""
+    blocks = [
+        {"layout": "cover", "title": "표지", "html": "<p class='lead'>부제</p>"},
+        {"layout": "bullets", "title": "현황", "html": "<ul><li>보유 42대</li></ul>"},
+        {"layout": "quote", "title": "한 줄", "html": "<blockquote>말</blockquote>"},
+    ]
+    posts: list[dict] = []
+
+    async def litellm_config():
+        return "http://mock-litellm", "unused"
+
+    monkeypatch.setattr(page.settings_store, "litellm_config", litellm_config)
+    monkeypatch.setattr(
+        page.httpx, "AsyncClient", lambda **kw: _Client(["<ul><li>새 항목</li></ul>"], posts, **kw)
+    )
+    fragment, usage = await page.rewrite_block(
+        request="장비 점검 발표",
+        blocks=blocks,
+        index=1,
+        template=dt.get("deck-editorial"),
+        model="m",
+        api_key="k",
+        note="숫자는 빼 주세요.",
+    )
+
+    assert fragment == "<ul><li>새 항목</li></ul>"
+    assert usage["outputTokens"] == 20
+    prompt = posts[0]["messages"][-1]["content"]
+    # The plan, the neighbours as written, and the note — labelled, so it does
+    # not read as part of the original request.
+    assert "1. 표지" in prompt and "3. 한 줄" in prompt
+    assert "부제" in prompt and "말" in prompt
+    assert "현황: 보유 42대" not in prompt  # the target itself is not fed back
+    assert "이번에 다시 쓰는 이유" in prompt and "숫자는 빼 주세요." in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_is_reduced_to_the_seed_vocabulary_like_any_other_block(monkeypatch):
+    posts: list[dict] = []
+
+    async def litellm_config():
+        return "http://mock-litellm", "unused"
+
+    monkeypatch.setattr(page.settings_store, "litellm_config", litellm_config)
+    monkeypatch.setattr(
+        page.httpx,
+        "AsyncClient",
+        lambda **kw: _Client(["```html\n<p>본문</p><script>x()</script>\n```"], posts, **kw),
+    )
+    fragment, _ = await page.rewrite_block(
+        request="r",
+        blocks=[{"layout": "bullets", "title": "가", "html": "<p>이전</p>"}],
+        index=0,
+        template=dt.get("deck-editorial"),
+        model="m",
+        api_key="k",
+    )
+    assert fragment == "<p>본문</p>"

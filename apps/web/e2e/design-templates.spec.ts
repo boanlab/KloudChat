@@ -184,7 +184,26 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
     stored.data.blocks.length,
   )
 
-  // ── 5. Taking the shape off reaches the row that holds it ───────────
+  // ── 5. One block can be rewritten, and the file is rebuilt ──────────
+  // The preview is sandboxed, so the part is chosen from the plan the file was
+  // written from rather than by clicking into the document.
+  await page.getByRole('button', { name: '다시 쓰기', exact: true }).click()
+  const second = stored.data.blocks[1].title as string
+  await page.getByRole('menuitem', { name: second }).click()
+  await page.getByLabel('고칠 내용').fill('항목을 세 줄로 줄이고, 숫자는 빼 주세요.')
+  await page.getByRole('dialog').getByRole('button', { name: '다시 쓰기' }).click()
+  await expect(page.getByRole('dialog')).toBeHidden({ timeout: 240_000 })
+
+  const rewritten = await artifactOf(page, sessionId)
+  // A new version, so the previous one is one click from being restored.
+  expect(rewritten.version).toBe(stored.version + 1)
+  expect(rewritten.data.blocks[1].html).not.toBe(stored.data.blocks[1].html)
+  // The neighbours are untouched and the file was rebuilt from the same seed.
+  expect(rewritten.data.blocks[0].html).toBe(stored.data.blocks[0].html)
+  expect(rewritten.data.content).toContain('<section class="slide cover">')
+  expect(rewritten.data.content).toContain(rewritten.data.blocks[1].html.slice(0, 30))
+
+  // ── 6. Taking the shape off reaches the row that holds it ───────────
   // The turn made the choice sticky, so a chip that only disappeared locally
   // would leave the next turn writing into a template nobody can see.
   await page.getByRole('button', { name: /편집형 덱 디자인 해제/ }).click()

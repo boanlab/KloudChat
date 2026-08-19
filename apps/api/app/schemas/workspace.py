@@ -175,6 +175,19 @@ class SlideFactCheck(Wire):
     slide_id: str
 
 
+class BlockRewrite(Wire):
+    """Which block of an HTML artifact, and why it is being rewritten.
+
+    By position rather than by id: blocks are ordered, a rewrite never changes
+    how many there are, and the artifacts written before this existed carry no
+    ids to address.
+    """
+
+    index: int = Field(ge=0, le=63)
+    #: What to change. Empty means "just try again".
+    note: str = Field(default="", max_length=600)
+
+
 class SectionRewrite(Wire):
     """Which section, and why it is being rewritten."""
 

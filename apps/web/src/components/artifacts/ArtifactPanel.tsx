@@ -1,12 +1,12 @@
-import { AudioLines, Code2, Copy, Download, Eye } from 'lucide-react'
+import { AudioLines, Code2, Copy, Download, Eye, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
-import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
-import { downloadArtifact, fileUrl } from '@/lib/api'
+import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { useStore } from '@/store/useStore'
@@ -175,6 +175,102 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
   )
 }
 
+/**
+ * Rewriting one block of an HTML artifact.
+ *
+ * The preview is sandboxed, so there is no clicking into the document to say
+ * "this part" the way the report panel does. What there is instead is the plan
+ * the file was written from — the blocks are on the artifact — so the choice
+ * is made from a list and the document is re-rendered from the same seed.
+ */
+function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [target, setTarget] = useState<number | null>(null)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+
+  const blocks = artifact.blocks ?? []
+  // Written before blocks kept their markup: the server refuses those, and a
+  // button that always fails is worse than no button.
+  if (blocks.length === 0) return null
+
+  const rewrite = async () => {
+    if (target === null) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.rewriteBlock(artifact.id, target, note)
+      await loadArtifacts()
+      setTarget(null)
+      setNote('')
+    } catch (err) {
+      setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Dropdown
+        align="right"
+        trigger={() => (
+          <Button variant="secondary" size="sm">
+            <RefreshCw size={13} />
+            {t('다시 쓰기')}
+          </Button>
+        )}
+      >
+        <MenuLabel>{t('어느 부분을 다시 쓸까요?')}</MenuLabel>
+        {blocks.map((block, index) => (
+          <MenuItem
+            key={`${block.title}-${index}`}
+            hint={String(index + 1)}
+            onClick={() => {
+              setNote('')
+              setError(null)
+              setTarget(index)
+            }}
+          >
+            {block.title || t('제목 없음')}
+          </MenuItem>
+        ))}
+      </Dropdown>
+
+      <Modal
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        title={t('{name} 다시 쓰기').replace(
+          '{name}',
+          (target !== null && blocks[target]?.title) || '',
+        )}
+        description={t('무엇을 고칠지 적으면 그것만 반영합니다. 비워 두면 그냥 다시 씁니다.')}
+        footer={
+          <>
+            <Button onClick={() => setTarget(null)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void rewrite()} disabled={busy}>
+              {busy ? t('다시 쓰는 중…') : t('다시 쓰기')}
+            </Button>
+          </>
+        }
+      >
+        <Textarea
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          aria-label={t('고칠 내용')}
+          placeholder={t('예: 숫자를 빼고 무엇을 결정해야 하는지만 남겨 주세요.')}
+        />
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
+  )
+}
+
 function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
   const t = useT()
   const [tab, setTab] = useState<'preview' | 'source'>(
@@ -204,6 +300,7 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
           ))}
           <span className="flex-1" />
           <LintFindings findings={artifact.lint} />
+          <RewriteBlock artifact={artifact} />
           <PageExport artifact={artifact} />
         </div>
       )}
