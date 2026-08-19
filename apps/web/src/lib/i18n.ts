@@ -740,7 +740,7 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
-  '그림 제외': 'no pictures',
+  '그림은 자리만': 'picture named, not shown',
   '그림': 'Picture',
   '그림 바꾸기': 'Replace the picture',
   '이 장': 'this slide',

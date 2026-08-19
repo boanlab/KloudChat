@@ -164,10 +164,10 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
       </MenuItem>
       {!isDeck && (
         // Said rather than discovered afterwards: every other format carries
-        // an embedded picture and this one cannot, so a document with one in
+        // the picture and this one can only name it, so a document with one in
         // it says so before the download rather than after.
         <MenuItem
-          hint={hasPicture ? t('그림 제외') : 'HWPX'}
+          hint={hasPicture ? t('그림은 자리만') : 'HWPX'}
           onClick={() => void save('hwpx')}
         >
           {t('한글 문서')}

@@ -286,13 +286,19 @@ caption kept on the same page as the picture. Sized from the bytes with
 Pillow, because nothing in the artifact says how big a picture is and a figure
 drawn to a guessed box is a squashed one.
 
-`.pptx`, `.docx` and both PDFs carry it. **`.hwpx` does not**, deliberately: a
-picture in OWPML needs a `BinData` part, a manifest entry, a header
-`binDataList` and a `<hp:pic>` that references all three by id, and Hancom
-refuses a file that gets any of it wrong — with no Hancom here to check
-against, the honest thing is a document without the picture rather than one
-nobody can open. The export menu says so on that item rather than leaving it
-to be discovered afterwards.
+`.pptx`, `.docx` and both PDFs carry it. **`.hwpx` announces it instead**: a
+`[그림] 캡션` line where the picture was. Embedding one in OWPML needs a
+`BinData` part, a manifest entry, a header `binDataList` and a `<hp:pic>` that
+references all three by id, and the failure mode of getting any of it wrong is
+not a missing picture but a document Hancom refuses to open. Nothing here can
+check that: LibreOffice's Hancom filter reads the v5 binary format and not
+HWPX (`libhwplo.so`, no HWPX entry in its registry), and no independent OWPML
+implementation is installable. Announcing the picture is what can be verified
+here — the reader learns a figure exists and that the `.docx` beside it has
+the real one. Finishing it needs one input this environment cannot produce: a
+`.hwpx` containing a picture, saved by Hancom itself, to match the structure
+against. The export menu marks the item so the trade is visible before the
+download rather than after.
 
 A picture that has stopped being one — truncated bytes, a format a library
 refuses — costs its own illustration and nothing else: every renderer catches

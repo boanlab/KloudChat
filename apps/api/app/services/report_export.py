@@ -438,6 +438,16 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
     text prefixed with `•` rather than as a numbering definition: HWPX list
     numbering lives in the header's `numberings` table and referencing one
     incorrectly makes Hancom refuse the file, which is a bad trade for a dot.
+
+    **A picture becomes a `[그림]` line, not a picture.** Embedding one needs a
+    `BinData` part, a manifest entry, a header `binDataList` and a `<hp:pic>`
+    that references all three by id — and the failure mode of getting any of it
+    wrong is not a missing picture but a document Hancom refuses to open. There
+    is no reader here to check against: LibreOffice's Hancom filter is the v5
+    binary format and does not read HWPX, and no independent implementation of
+    OWPML is available. So the picture is announced rather than embedded, which
+    is a document somebody can still open and a fact they can act on — the
+    `.docx` and the PDF beside it carry the real thing.
     """
     style = design.normalise_tokens(tokens) if tokens else None
     # (paraPr, charPr) pairs from the tables above: title / h1 / h2 / body / bullet.
@@ -454,6 +464,15 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
                 body.append(_hwpx_para(f"{marker} {clean}", 4))
             else:
                 body.append(_hwpx_para(clean, 3))
+        for picture in section.get("images") or []:
+            # The picture itself cannot come — see the note above `to_hwpx` —
+            # so what comes instead is the fact that it exists. Silence would
+            # leave a reader comparing this file with the .docx and finding a
+            # figure missing with nothing to say where it went.
+            caption = str(picture.get("caption") or "").strip()
+            body.append(
+                _hwpx_para(f"[그림] {caption}" if caption else "[그림]", 3, 4)
+            )
 
     section_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'

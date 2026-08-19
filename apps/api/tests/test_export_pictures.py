@@ -122,6 +122,23 @@ def test_the_report_pdf_carries_the_picture():
     assert len(with_picture) > len(without)
 
 
+def test_hwpx_says_a_picture_was_here_instead_of_dropping_it():
+    """The one format that cannot carry it says so in the document.
+
+    Silence would leave somebody comparing this file with the `.docx` and
+    finding a figure missing with nothing to say where it went.
+    """
+    sections = page_export.to_sections(document("doc-report", "section"))
+    archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
+    section_xml = archive.read("Contents/section0.xml").decode()
+    assert "[그림] 그림 1. 시험" in section_xml
+
+    # And with no caption, still a line rather than nothing.
+    plain = page_export.to_sections(document("doc-report", "section", caption=""))
+    other = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", plain, tokens=TOKENS)))
+    assert "[그림]" in other.read("Contents/section0.xml").decode()
+
+
 def test_hwpx_leaves_the_picture_out_and_still_opens():
     """The one format that does not carry it, deliberately.
 
