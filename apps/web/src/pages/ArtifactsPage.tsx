@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArtifactPreview, MediaPanel } from '@/components/artifacts/ArtifactPanel'
+import { ArtifactPreview, CodePanel, MediaPanel } from '@/components/artifacts/ArtifactPanel'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { PageBody } from '@/components/layout/AppShell'
@@ -68,13 +68,18 @@ export function ArtifactsPage() {
     void loadArtifacts()
   }, [loadArtifacts])
   const [filter, setFilter] = useState<Filter>('all')
-  const [preview, setPreview] = useState<Artifact | null>(null)
+  //: The open document by id rather than by copy. A copy goes stale the moment
+  //: the panel edits it — a rewritten block, a review, a picture added — and
+  //: the dialog would keep showing the version before the edit while the grid
+  //: behind it showed the one after.
+  const [previewId, setPreviewId] = useState<string | null>(null)
   //: Set by the report panel when it opens an editor or focus mode. Both need
   //: the room, and a dialog that cannot grow makes the control that asks for
   //: it a button that does nothing.
   const [widePreview, setWidePreview] = useState(false)
   const [confirming, setConfirming] = useState<Artifact | null>(null)
 
+  const preview = artifacts.find((a) => a.id === previewId) ?? null
   const visible = filter === 'all' ? artifacts : artifacts.filter((a) => a.kind === filter)
   const count = (k: ArtifactKind) => artifacts.filter((a) => a.kind === k).length
 
@@ -134,8 +139,8 @@ export function ArtifactsPage() {
                       // loaders write that list and the later reply can be the
                       // older one, which is invisible until an edit is refused.
                       onClick={() => {
-                        setPreview(a)
-                        void refreshArtifact(a.id).then((fresh) => fresh && setPreview(fresh))
+                        setPreviewId(a.id)
+                        void refreshArtifact(a.id)
                       }}
                       className="block aspect-video w-full overflow-hidden border-b border-line bg-elevated text-left"
                     >
@@ -205,7 +210,7 @@ export function ArtifactsPage() {
       <Modal
         open={!!preview}
         onClose={() => {
-          setPreview(null)
+          setPreviewId(null)
           setWidePreview(false)
         }}
         title={preview?.title ?? ''}
@@ -216,7 +221,12 @@ export function ArtifactsPage() {
           <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
             {/* 보고서·슬라이드·차트는 자기 머리말에 이 버튼을 갖고 있다. 나머지
                 종류에는 머리말이 없어서, 넓혀 보는 일만 할 수 없었다. */}
-            {!(preview.kind === 'report' || preview.kind === 'deck' || preview.kind === 'chart') && (
+            {!(
+              preview.kind === 'report' ||
+              preview.kind === 'deck' ||
+              preview.kind === 'chart' ||
+              preview.kind === 'html'
+            ) && (
               <header className="flex shrink-0 justify-end border-b border-line px-2 py-1.5">
                 <PanelControls
                   wide={widePreview}
@@ -237,6 +247,10 @@ export function ArtifactsPage() {
                             // The panel, not a thumbnail: a clip opened from
                             // the gallery has to be playable.
               <MediaPanel artifact={preview} />
+            ) : preview.kind === 'html' || preview.kind === 'code' ? (
+              // The whole panel, not the preview: opened from here it used to
+              // lose its own check, rewrite, picture and export controls.
+              <CodePanel artifact={preview} />
             ) : (
               <ArtifactPreview artifact={preview} />
             )}
