@@ -1627,6 +1627,19 @@ async def send_message(
     # A rendering template replaces the surface's built-in track. Resolved
     # before either of them, because picking one is a choice about what comes
     # out, not a hint the generator may take or leave.
+    # The planner, when an administrator has named one. Resolved against the
+    # same catalogue the writer came from and against this account's own
+    # permissions — a policy row is not a licence to use a model the person
+    # cannot. Anything unresolvable falls back to the writing model, because a
+    # document that plans itself slightly worse beats a turn that fails.
+    outline_model = ""
+    if policy.outline_model_id:
+        planner = model_service.find(catalogue_models, str(policy.outline_model_id))
+        if planner and session.kind.value in planner.get("kinds", []):
+            outline_model = planner["id"]
+        else:
+            log.info("outline model %s unusable here", policy.outline_model_id)
+
     render_template = design_templates.get(session.render_template_id)
     if render_template is not None:
         return StreamingResponse(
@@ -1642,6 +1655,7 @@ async def send_message(
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
+                outline_model=outline_model,
             ),
             media_type="text/event-stream",
             headers={
@@ -1667,6 +1681,7 @@ async def send_message(
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
+                outline_model=outline_model,
             ),
             media_type="text/event-stream",
             headers={
@@ -1692,6 +1707,7 @@ async def send_message(
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
+                outline_model=outline_model,
             ),
             media_type="text/event-stream",
             headers={
@@ -2513,6 +2529,7 @@ async def _audit_policy(
 
 async def _run_page(
     *,
+    outline_model: str = "",
     user_id: str,
     api_key: str,
     session_id: str,
@@ -2543,6 +2560,7 @@ async def _run_page(
         stream = page_service.write(
             request=request,
             model=model["id"],
+            outline_model=outline_model,
             api_key=api_key,
             template=template,
             tokens=design_tokens,
@@ -2637,6 +2655,7 @@ async def _run_page(
 
 async def _run_deck(
     *,
+    outline_model: str = "",
     user_id: str,
     api_key: str,
     session_id: str,
@@ -2662,6 +2681,7 @@ async def _run_deck(
         stream = deck_service.write(
             request=request,
             model=model["id"],
+            outline_model=outline_model,
             api_key=api_key,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
@@ -2743,6 +2763,7 @@ async def _run_deck(
 
 async def _run_report(
     *,
+    outline_model: str = "",
     user_id: str,
     api_key: str,
     session_id: str,
@@ -2774,6 +2795,7 @@ async def _run_report(
         stream = report_service.write(
             request=request,
             model=model["id"],
+            outline_model=outline_model,
             api_key=api_key,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,

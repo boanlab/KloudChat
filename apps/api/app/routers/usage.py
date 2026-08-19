@@ -398,6 +398,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveRoutingEnabled": policy.adaptive_routing_enabled,
         "adaptiveClassifierModelId": policy.adaptive_classifier_model_id,
         "adaptiveEconomyModelIds": list(policy.adaptive_economy_model_ids or []),
+        "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,
         "blockedCategories": list(policy.blocked_categories or []),
         "retentionDays": policy.retention_days,
@@ -415,6 +416,24 @@ async def put_governance(
     """
     policy = await db.get(Governance, "default") or Governance(id="default")
     patch = payload.model_dump(exclude_unset=True)
+    if "outline_model_id" in patch:
+        # Empty clears it, exactly like the classifier. A name that is not in
+        # the catalogue is refused here rather than at document time, where it
+        # would surface as a failed turn somebody already paid for.
+        wanted = (patch["outline_model_id"] or "").strip()
+        patch["outline_model_id"] = wanted or None
+        if wanted:
+            catalogue = await model_service.list_models()
+            usable = {
+                model["id"]
+                for model in catalogue["models"]
+                if {"slides", "report"} & set(model.get("kinds") or [])
+            }
+            if wanted not in usable:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="outline_model_cannot_write_documents",
+                )
     if "privacy_safe_model_ids" in patch:
         catalogue = await model_service.list_models()
         strict_order = [

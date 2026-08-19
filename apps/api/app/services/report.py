@@ -237,6 +237,10 @@ async def write(
     api_key: str,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    #: The model that plans, when an administrator has named one. A report's
+    #: 목차 is the same kind of decision a deck's layouts are: one call that
+    #: every call after it is written against. Empty plans with `model`.
+    outline_model: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -247,7 +251,7 @@ async def write(
     yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
     try:
         text, spent = await _complete(
-            model,
+            outline_model or model,
             build_document_messages(
                 SessionKind.report,
                 _OUTLINE_PROMPT.format(

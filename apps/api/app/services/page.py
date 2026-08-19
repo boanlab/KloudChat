@@ -220,6 +220,11 @@ async def write(
     tokens: dict[str, str] | None = None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    #: The model that plans, when an administrator has named one. The outline
+    #: is one call and decides the shape of every call after it, so it is the
+    #: one place where a stronger model changes the result out of proportion
+    #: to what it costs. Empty means the same model writes and plans.
+    outline_model: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `block`, a final `page` and one `usage` event.
 
@@ -234,7 +239,7 @@ async def write(
 
     async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
         return await _complete(
-            model,
+            outline_model or model,
             build_document_messages(
                 surface,
                 _OUTLINE_PROMPT.format(

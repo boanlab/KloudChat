@@ -9,6 +9,7 @@ import { FeaturesSection } from './FeaturesSection'
 import { TemplatesSection } from './TemplatesSection'
 import { ToolsSection } from './ToolsSection'
 import { AutoRoutingSection } from './AutoRoutingSection'
+import { OutlineModelSection } from './OutlineModelSection'
 
 /**
  * Proxy configuration, editable without a redeploy.
@@ -283,6 +284,11 @@ export function SystemTab() {
           {t('질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.')}
         </p>
         <AutoRoutingSection />
+        {/* Beside it because both are questions about which model runs which
+            call — one for chat turns, one for the call that plans a document. */}
+        <div className="mt-3">
+          <OutlineModelSection />
+        </div>
       </div>
 
       {/* ── 사용할 기능 ─────────────────────────────────────────── */}

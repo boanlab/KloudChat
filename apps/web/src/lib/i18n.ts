@@ -740,6 +740,14 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
+  '구성 단계 모델': 'Planning model',
+  '보고서·슬라이드는 구성을 한 번 잡고 그 뒤에 한 절씩 씁니다. 구성 호출은 문서당 한 번뿐이고 나머지 전부가 그 위에 쓰이므로, 여기만 더 좋은 모델로 두면 비용은 거의 그대로 두고 결과의 짜임새를 올릴 수 있습니다.':
+    'Reports and decks are planned once and then written a section at a time. The planning call happens once per document and everything else is written against it, so a stronger model here changes the shape of the result at almost no extra cost.',
+  '구성에 쓸 모델': 'Model that plans',
+  '비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다.':
+    'Left empty, each surface plans with its own model. The body is always written by the surface’s model.',
+  '화면의 모델을 그대로 사용': 'Use the surface’s own model',
+  '저장했습니다': 'Saved',
   '그림을 넣지 못했습니다.': 'Could not add the picture.',
   '그림 넣기': 'Add a picture',
   '어느 자리에 넣을까요?': 'Where should it go?',

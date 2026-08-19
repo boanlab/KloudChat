@@ -201,6 +201,13 @@ project wears a design system, in which case the palette rule is dropped from
 the prompt entirely and the accent arrives from the project. A slide count
 stated in the request is honoured up to 50.
 
+**The outline can run on a different model.** `governance.outline_model_id`
+names one; empty — the default everywhere — plans with the surface's own model.
+It applies to all three writing tracks and only to the planning call, which is
+one call per document however many blocks follow it. The id is validated when
+it is saved and again per turn against the account's own catalogue; anything
+unusable falls back to the writing model rather than failing the turn.
+
 ### Design templates
 
 The rendering catalogue: shapes the model writes into, as opposed to the

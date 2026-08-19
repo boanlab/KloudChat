@@ -396,6 +396,8 @@ export interface GovernancePolicy {
   adaptiveRoutingEnabled: boolean
   adaptiveClassifierModelId: string | null
   adaptiveEconomyModelIds: string[]
+  /** Plans documents when set; null lets each surface's own model plan. */
+  outlineModelId: string | null
 }
 
 export interface ApiKeyRow {
