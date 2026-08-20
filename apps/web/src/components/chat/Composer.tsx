@@ -399,18 +399,46 @@ export function Composer({
   }
   const draft = useStore((s) => s.draft)
   const setDraft = useStore((s) => s.setDraft)
-  // A template is inserted, not sent: the cursor lands where the user takes
-  // over.
+  /**
+   * A sentence a gallery hands over. Inserted, not sent — and added to what is
+   * in the box, never written over it.
+   *
+   * Somebody three sentences into a prompt who opens the gallery to see what a
+   * shape does was asking a question, not offering to give those sentences up.
+   * On the picture and clip surfaces, which are the only ones that still fill
+   * the box at all, those sentences *are* the prompt, so what a replacement
+   * throws away is the whole of the work — silently, and with nothing to press
+   * to get it back.
+   *
+   * Appending rather than asking, because the question would arrive before its
+   * answer is knowable: a confirm names no sentence the person has read yet,
+   * and it puts a modal in front of a click that was an exploration. And
+   * rather than filling only an empty box, because a shape picked for a prompt
+   * already half written is the ordinary case, and doing nothing there is a
+   * gallery whose cards stop working the moment somebody starts typing.
+   *
+   * What is appended arrives selected, so the one keystroke that undoes an
+   * unwanted pick takes out exactly what the gallery put in and nothing that
+   * was written by hand.
+   */
   useEffect(() => {
     if (!draft) return
     activeRestoreToken.current = null
-    liveValue.current = draft
-    setValue(draft)
+    const kept = liveValue.current.replace(/\s*$/, '')
+    const next = kept ? `${kept}\n\n${draft}` : draft
+    liveValue.current = next
+    setValue(next)
     setDraft('')
     const el = ref.current
     if (el) {
       el.focus()
-      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length))
+      // Into an empty box the caret lands at the end, as it always has: there
+      // is nothing to take back out there, and a media 서식's sentence handed
+      // over selected is a sentence the next keystroke destroys — which is the
+      // very loss this is about, only pointed the other way.
+      requestAnimationFrame(() =>
+        el.setSelectionRange(kept ? next.length - draft.length : next.length, next.length),
+      )
     }
   }, [draft, setDraft])
   /** Uploaded files, not names: the turn sends ids and the server reads the text. */
