@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
-from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
+from app.models.chat import ChatSession, Message, MessageRating, Role, RoutingMode, SessionKind
 from app.schemas.auth import Wire
 
 
@@ -23,11 +23,24 @@ class MessageOut(Wire):
     #: rather than quoting it: the transcript is where what somebody said is
     #: kept, and the template's own sentence was never said by anybody.
     started_from: dict | None = None
+    #: What the reader thought of this answer, or null if nobody has said. Sent
+    #: with the transcript so a rating outlives the tab it was left in.
+    rating: MessageRating | None = None
     created_at: datetime
 
     @classmethod
     def of(cls, m: Message) -> MessageOut:
         return cls.model_validate(m, from_attributes=True)
+
+
+class MessageRatingIn(Wire):
+    """One verdict, or its withdrawal.
+
+    Null is a first-class value here: pressing the lit thumb again takes the
+    rating off, and that has to be expressible rather than merely absent.
+    """
+
+    rating: MessageRating | None = None
 
 
 class ImageRequest(Wire):

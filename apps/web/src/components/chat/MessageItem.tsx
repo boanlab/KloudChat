@@ -377,14 +377,25 @@ export function MessageItem({
 
         {!streaming && message.content && !message.variants && (
           <div className="mt-2 flex items-center gap-1 text-faint">
-            <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            {/* Hidden until the turn is hovered, except once it has been rated:
+                a verdict that only appears when you go looking for it is not
+                readable, and reading back which answers you had already decided
+                against is the whole of what recording them buys. */}
+            <span
+              className={cn(
+                'flex items-center gap-1 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+                !message.liked && 'opacity-0',
+              )}
+            >
             {copyButton(t('복사'))}
             <Button
               variant="ghost"
               size="icon"
               aria-label={t('좋아요')}
+              aria-pressed={message.liked === 'up'}
+              title={t('이 답변이 도움이 되었습니다')}
               className={cn(message.liked === 'up' && 'text-success')}
-              onClick={() => rateMessage(sessionId, message.id, 'up')}
+              onClick={() => void rateMessage(sessionId, message.id, 'up')}
             >
               <ThumbsUp size={14} />
             </Button>
@@ -392,8 +403,10 @@ export function MessageItem({
               variant="ghost"
               size="icon"
               aria-label={t('싫어요')}
+              aria-pressed={message.liked === 'down'}
+              title={t('이 답변이 잘못되었습니다')}
               className={cn(message.liked === 'down' && 'text-danger')}
-              onClick={() => rateMessage(sessionId, message.id, 'down')}
+              onClick={() => void rateMessage(sessionId, message.id, 'down')}
             >
               <ThumbsDown size={14} />
             </Button>

@@ -445,6 +445,11 @@ export function Composer({
     setStartingTemplate(null)
     liveAttachments.current = []
     setAttachments([])
+    // The same reasoning as the skills beside it, and it was the one switch
+    // left out: 웹 검색 is a decision about this conversation, and following
+    // the person into the next one spends their credits on a search nobody
+    // asked for there.
+    setWebSearch(false)
   }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()

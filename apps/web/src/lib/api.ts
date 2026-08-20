@@ -553,6 +553,8 @@ export interface MessageRow {
    * template even after somebody deleted it.
    */
   startedFrom: { templateId: string; title: string } | null
+  /** What the reader thought of this answer. Null until somebody says. */
+  rating: 'up' | 'down' | null
   createdAt: string
 }
 
@@ -633,6 +635,14 @@ export const sessionsApi = {
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/sessions/${id}`, { method: 'DELETE' }),
+  /** 좋아요 / 싫어요, or `null` to take the verdict back. Addressed by message
+   *  rather than by session: the id is unique and the server checks the
+   *  transcript it belongs to anyway. */
+  rate: (messageId: string, rating: 'up' | 'down' | null) =>
+    call<MessageRow>(`/messages/${messageId}/rating`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rating }),
+    }),
 }
 
 /* ── workspace ──────────────────────────────────────────────────────────

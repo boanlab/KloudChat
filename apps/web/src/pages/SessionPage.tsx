@@ -1,6 +1,6 @@
 import { Bot, Boxes, LayoutGrid, Palette, PanelRight } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer } from '@/components/chat/Composer'
@@ -278,6 +278,17 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
   } = useStore()
 
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  /**
+   * A document named by whoever sent us here — the 작업 목록's "원본 작업 열기".
+   *
+   * The panel otherwise follows `session.artifactId`, which is this
+   * conversation's *latest* result: the right answer while you are working,
+   * the wrong one when somebody arrives asking for a particular file. Three
+   * turns later that is a different document, and for a session whose result
+   * has been deleted it is nothing at all.
+   */
+  const requestedArtifactId = searchParams.get('artifact')
   const session = sessions.find((s) => s.id === sessionId) ?? null
   const kind: SessionKind = session?.kind ?? newKind ?? 'chat'
   const meta = kindMeta[kind]
@@ -329,9 +340,33 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
     el.scrollTo({ top: el.scrollHeight, behavior: streaming ? 'auto' : 'smooth' })
   }, [timeline.length, lastLength, runningProgress, streaming])
 
+  /**
+   * Spent on arrival, and only once the session it names is in hand:
+   * `setActiveSession` above opens the panel on the session's own document,
+   * and that runs again when a reload finally loads the list. Clearing the
+   * query afterwards is what lets a closed panel stay closed.
+   */
+  useEffect(() => {
+    if (!requestedArtifactId || !session) return
+    openArtifact(requestedArtifactId)
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('artifact')
+        return next
+      },
+      { replace: true },
+    )
+    // The session is a dependency by id: its object identity changes on every
+    // streamed token, and reopening the panel mid-answer is not what this is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedArtifactId, session?.id, openArtifact, setSearchParams])
+
   const project = projects.find((p) => p.id === session?.projectId)
   const agent = agents.find((a) => a.id === session?.agentId)
-  const sessionArtifact = artifacts.find((a) => a.id === session?.artifactId)
+  const sessionArtifact = artifacts.find(
+    (a) => a.id === (requestedArtifactId ?? session?.artifactId),
+  )
   const Icon = meta.icon
 
   return (

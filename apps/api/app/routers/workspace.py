@@ -1,7 +1,9 @@
 """Projects, files, artifacts, skills, memories, agents.
 
 All six are the same shape: owned by one user, CRUD, no sharing. Connectors are
-separate because MCP gives them behaviour of their own.
+separate because MCP gives them behaviour of their own. A message's rating is
+here for the same reason — it is one owned row edited in place, and none of the
+streaming machinery next door has anything to do with it.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, Message, Role
 from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Agent,
@@ -33,6 +35,7 @@ from app.models.workspace import (
     StoredFile,
     Template,
 )
+from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
     AgentIn,
     AgentOut,
@@ -2147,3 +2150,36 @@ async def delete_agent_knowledge(
     # the agent would keep quoting a file its owner can no longer see.
     if agent.index_key:
         await index_client.forget_document(collection=agent.index_key, doc_id=file_id)
+
+
+# ══ message rating ═════════════════════════════════════════════════════
+#
+# One turn's verdict, written where the transcript already reads. It lives
+# here rather than beside the streaming endpoints because it is workspace
+# bookkeeping — nothing about it touches a model or a credit.
+
+
+@router.patch("/messages/{message_id}/rating", response_model=MessageOut)
+async def rate_message(
+    message_id: str, payload: MessageRatingIn, user: CurrentUser, db: DbSession
+):
+    """Records what the reader thought of one answer, or takes it back.
+
+    Ownership goes through the session: a message has no `user_id` of its own,
+    and an id typed into this URL must not become a way to write on somebody
+    else's transcript. A message that is not the caller's is `not_found`, the
+    same answer every other object here gives.
+    """
+    message = await db.get(Message, message_id)
+    session = await db.get(ChatSession, message.session_id) if message else None
+    if message is None or session is None or session.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    # The buttons only exist under an answer, and a verdict on one's own
+    # question would be a number nobody could act on.
+    if message.role is not Role.assistant:
+        raise HTTPException(status_code=422, detail="not_an_answer")
+    message.rating = payload.rating
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+    return MessageOut.of(message)
