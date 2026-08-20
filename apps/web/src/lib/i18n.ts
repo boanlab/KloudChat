@@ -972,26 +972,6 @@ const EN: Record<string, string> = {
   '발표 시간에 맞춰 장수를 정하고 노트를 붙입니다': 'Sized to your slot, with speaker notes attached',
   '비율과 스타일을 정해 여러 장을 한 번에 만듭니다': 'Set the ratio and style, get several at once',
   '길이와 형식을 정해 만들고 작업 카드로 확인합니다': 'Set the length and format, then watch it on a job card',
-  '이 에러 로그에서 원인이 될 만한 것부터 짚어줘': 'Point out the likely causes in this error log first',
-  '올린 CSV에서 부서별 합계를 내줘': 'Total the CSV I uploaded by department',
-  '이 문단을 팀에 공유할 메일 한 통으로 줄여줘': 'Cut this paragraph down to one email for the team',
-  '두 계약서에서 달라진 조항만 찾아줘': 'Find only the clauses that differ between these two contracts',
-  '올린 설문 결과로 분석 보고서를 써줘': 'Write an analysis report from the survey results I uploaded',
-  '도입 후보 3종을 비교하는 기술 검토 보고서': 'A technical review comparing three candidates',
-  '어제 회의 메모를 회의록으로 정리해줘': 'Turn yesterday\'s meeting notes into proper minutes',
-  '지난 분기 운영 현황 보고서': 'Last quarter\'s operations report',
-  '신입 사원 교육용 보안 기초, 20분': 'Security basics for new hires, 20 minutes',
-  '이 보고서를 발표 자료로 바꿔줘': 'Turn this report into a deck',
-  '고객 미팅용 제안 발표, 10장 이내': 'A client pitch, ten slides or fewer',
-  '학회 발표용 5분 라이트닝 토크': 'A five-minute lightning talk for a conference',
-  '보고서 표지에 쓸 그림, 글자 없이': 'Cover art for a report, no text',
-  '발표 슬라이드 배경, 가운데는 비워서': 'A slide background with the centre left clear',
-  '서비스 구조를 보여주는 개념도': 'A concept diagram of the service architecture',
-  '사내 공지에 넣을 단순한 아이콘': 'A simple icon for an internal announcement',
-  '발표 오프닝에 쓸 4초 영상': 'A four-second opener for a talk',
-  '슬라이드에 얹을 30초 내레이션': 'Thirty seconds of narration over slides',
-  '제품 사용 장면을 보여주는 짧은 클립': 'A short clip of the product in use',
-  '영상 뒤에 깔 잔잔한 배경음악': 'Calm background music to sit under a video',
   '응답 스트리밍': 'Stream responses',
   '토큰이 도착하는 대로 표시합니다. 끄면 답변이 완성된 뒤 한 번에 나타납니다.':
     'Shows tokens as they arrive. Turned off, the whole answer appears at once.',
@@ -1230,8 +1210,6 @@ const EN: Record<string, string> = {
   '모델 비교는 웹 검색 없이 실행합니다': 'A model comparison runs without web search',
   '안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.':
     'The safe local model does not reach outside. Choose it and this request runs without web search.',
-  '아직 대화가 없습니다. 여기서 고른 모델은 이번 답변만이 아니라 이 화면의 기본값이 됩니다.':
-    'There is no conversation yet, so a model picked here becomes this screen\'s default, not just this answer\'s.',
   '계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.':
     'This is an account-wide setting. Turning it off here turns it off everywhere.',
 
@@ -1258,7 +1236,6 @@ const EN: Record<string, string> = {
 
   // ── 대화가 가지고 시작하는 것 ───────────────────────────────────
   '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
-  '이렇게 시작해 보세요': 'Try starting with one of these',
   '이 에이전트가 답합니다': 'answers here',
   '이 프로젝트의 지침과 자료를 함께 씁니다': 'its instructions and files come along',
   '결과물이 이 서식으로 나옵니다': 'the result comes out in this shape',
