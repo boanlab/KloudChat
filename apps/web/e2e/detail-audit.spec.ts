@@ -54,6 +54,11 @@ const ROUTES: [path: string, label: string][] = [
   ['/admin/users', '관리자 · 사용자'],
   ['/admin/usage', '관리자 · 사용량'],
   ['/admin/system', '관리자 · 시스템'],
+  ['/admin/system/routing', '관리자 · 라우팅'],
+  ['/admin/system/features', '관리자 · 기능'],
+  ['/admin/system/templates', '관리자 · 공용 템플릿'],
+  ['/admin/system/branding', '관리자 · 브랜딩'],
+  ['/admin/system/mail', '관리자 · 메일'],
   ['/admin/governance', '관리자 · 정책'],
 ]
 

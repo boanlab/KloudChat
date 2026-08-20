@@ -10,10 +10,11 @@ import { signIn } from './helpers'
 test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 자리에서 고쳐진다', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
-  await page.goto('/admin/system')
+  await page.goto('/admin/system/templates')
 
-  // Scoped: three inputs on this screen answer to "이름", and two sections
-  // besides this one have a 저장 button.
+  // Scoped to the section even though it now has the tab to itself: the form
+  // inside it carries its own 이름 and its own 저장, and the queries below say
+  // which ones they mean.
   const section = page.getByRole('region', { name: '공용 템플릿' })
   const title = `기관 공문 ${Date.now()}`
   await section.getByRole('button', { name: '공용 템플릿 추가' }).click()
@@ -46,7 +47,7 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
   // Corrected from the same screen it was added on. This is the whole point of
   // sharing rather than copying: one edit, and every account that has not
   // started yet gets the right form.
-  await page.goto('/admin/system')
+  await page.goto('/admin/system/templates')
   await section.getByRole('button', { name: `${title} 수정` }).click()
   await expect(section.getByLabel('이름', { exact: true })).toHaveValue(title)
   const fixed = `${title} (개정)`
@@ -61,7 +62,7 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
   await expect(revised.getByText('공용')).toBeVisible()
 
   // Removed from the same screen it was added on.
-  await page.goto('/admin/system')
+  await page.goto('/admin/system/templates')
   await section.getByRole('button', { name: `${fixed} 삭제` }).click()
   await expect(section.locator('li', { hasText: fixed })).toHaveCount(0, { timeout: 15_000 })
 })
