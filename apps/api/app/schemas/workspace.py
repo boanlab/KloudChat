@@ -30,6 +30,7 @@ from app.models.workspace import (
 )
 from app.schemas.auth import Wire
 from app.services import design as design_service
+from app.services.prompt_templates import PromptTemplate
 
 #: JSONB list columns are nullable in the database, but the wire contract is a
 #: list either way — absorbed here rather than in every `of()` and consumer.
@@ -609,6 +610,54 @@ class TemplateIn(Wire):
     #: Administrator-only. A non-administrator setting it is refused rather
     #: than silently ignored.
     shared: bool = False
+
+
+class PromptTemplateOut(Wire):
+    """One built-in starting point, in the shape `TemplateOut` already has.
+
+    Every key the two lists share means the same thing in both, so the gallery
+    renders one card for a built-in and for a template somebody wrote, and the
+    only difference it has to know about is `builtin` — which is what decides
+    whether the card offers a delete button.
+    """
+
+    id: str
+    kind: str
+    #: The same surface as `kind`, spelled the way the rendering catalogue
+    #: spells it. A starting point is a request rather than a shape, so the two
+    #: agree here; the card reads `surface` for both lists rather than reading
+    #: `kind` from one and `surface` from the other.
+    surface: str
+    group: str
+    title: str
+    description: str
+    fills: JsonList = Field(default_factory=list)
+    prompt: str
+    #: The English half of the same card, empty until it is written. Both sides
+    #: travel and the client picks, exactly as on a rendering template.
+    title_en: str = ""
+    description_en: str = ""
+    fills_en: JsonList = Field(default_factory=list)
+    prompt_en: str = ""
+    #: Ships in the image, so nobody can edit or remove it.
+    builtin: bool = True
+
+    @classmethod
+    def of(cls, t: PromptTemplate) -> PromptTemplateOut:
+        return cls(
+            id=t.id,
+            kind=t.kind.value,
+            surface=t.kind.value,
+            group=t.group,
+            title=t.title,
+            description=t.description,
+            fills=list(t.fills),
+            prompt=t.prompt,
+            title_en=t.title_en,
+            description_en=t.description_en,
+            fills_en=list(t.fills_en),
+            prompt_en=t.prompt_en,
+        )
 
 
 class DesignSystemOut(Wire):

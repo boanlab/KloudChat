@@ -55,6 +55,7 @@ from app.schemas.workspace import (
     ProjectIn,
     ProjectOut,
     ProjectPatch,
+    PromptTemplateOut,
     SectionRewrite,
     SkillIn,
     SkillOut,
@@ -74,6 +75,7 @@ from app.services import (
     lint,
     page_export,
     pictures,
+    prompt_templates,
     report_export,
     settings_store,
     starter,
@@ -1589,9 +1591,24 @@ async def export_artifact(
 
 # ══ templates ══════════════════════════════════════════════════════════
 #
-# The gallery's built-ins live in the frontend bundle and cannot be added to.
-# These are the ones a person wrote, returned in the same shape so the gallery
-# concatenates rather than branches.
+# Two lists in one shape, so the gallery concatenates rather than branches:
+# the built-in starting points, which ship in the image and cannot be added
+# to, and the ones a person wrote for themselves.
+
+
+@router.get("/prompt-templates", response_model=list[PromptTemplateOut])
+async def list_prompt_templates(user: CurrentUser, surface: str | None = None):
+    """Every built-in starting point, or those for one surface.
+
+    These were a static array in the frontend bundle, which was enough while
+    picking one only typed a sentence into the composer. A turn now carries the
+    id and the server resolves it, so the catalogue the server resolves against
+    is the one the gallery has to have been offered.
+    """
+    rows = prompt_templates.all_templates()
+    if surface:
+        rows = [t for t in rows if t.kind.value == surface]
+    return [PromptTemplateOut.of(t) for t in rows]
 
 
 @router.get("/templates", response_model=list[TemplateOut])

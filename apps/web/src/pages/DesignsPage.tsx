@@ -54,7 +54,8 @@ function TemplateCatalogue() {
 
   // The card's button means "start this" here rather than "fill the composer
   // in front of me": there is no session yet, so the surface has to open
-  // first. The sentence is waiting in it when it does.
+  // first. The chip is waiting on it when it does — and on a media surface,
+  // where the sentence is the prompt rather than a preamble to it, so is that.
   const start = (row: DesignTemplateRow, prompt: string) => {
     startTemplate(row, prompt)
     navigate(`/new/${row.surface}`)

@@ -104,6 +104,15 @@ class Message(SQLModel, table=True):
     #: detected value, and is safe to return with the transcript.
     routing: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
+    #: The 시작점 this turn was begun from: `{"templateId": ..., "title": ...}`.
+    #: The title travels with the id so a transcript read a year from now still
+    #: names the template, whether or not the row behind it survived — and a
+    #: built-in id says nothing to a reader on its own.
+    #:
+    #: Never the template's prompt. What the model was told is not what the
+    #: person said, and the transcript is the record of the second.
+    started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+
     model: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 

@@ -344,8 +344,6 @@ const EN: Record<string, string> = {
   '무엇이 나오는지 한 줄로': 'One line on what comes out',
   '쉼표로 구분. 고르기 전에 보이는 항목입니다':
     'Comma separated. Shown on the card before it is picked.',
-  '입력창에 채워집니다. 이어서 쓸 수 있게 문장 중간에서 끝내세요':
-    'Fills the composer. End mid-sentence so there is somewhere to carry on.',
   '올리면 그 양식에 맞춰 씁니다. 선택 사항입니다':
     'Upload one and the draft follows its shape. Optional.',
   '예: 공문 초안': 'e.g. Official letter draft',
@@ -724,8 +722,6 @@ const EN: Record<string, string> = {
     'Your request is in. Once an administrator approves it and assigns monthly credits you can start straight away — we will email you when that happens.',
   '계정 없이 열림': 'Opens without an account',
   '계정이 정지되었습니다': 'This account is suspended',
-  '고르면 입력창에 채워집니다. 나머지는 직접 적으면 됩니다.':
-    'Pick one and it fills the composer. Write the rest yourself.',
   '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 워크스페이스에 공유합니다.':
     'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and share the good ones with the workspace.',
   '공유된 결과물': 'Shared artifact',
@@ -1158,6 +1154,18 @@ const EN: Record<string, string> = {
 
 
 
+
+  // ── 시작점 ──────────────────────────────────────────────────────
+  '고르면 이번 요청에 붙습니다. 무엇을 만들지는 직접 적으면 됩니다.':
+    'Picking one attaches it to this request. What to make is still yours to write.',
+  '시작점으로 붙이기': 'Attach as a starting point',
+  '입력창에 채우기': 'Fill the composer',
+  '요청과 함께 전달됩니다. 입력창에는 나타나지 않습니다':
+    'Sent with the request. It never appears in the composer',
+  '{list} 적어 주세요': 'Write down {list}',
+  '{name} 시작점 해제': 'Clear the {name} starting point',
+  '시작점 {name}': 'From {name}',
+  '시작점 {name} · 서식 {title}': 'From {name} · in {title}',
 
   // ── 관리자 화면의 탭 ────────────────────────────────────────────
   '프록시': 'Proxy',

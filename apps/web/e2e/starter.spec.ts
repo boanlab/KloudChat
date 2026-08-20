@@ -61,7 +61,7 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
   await expect(page.getByText(skills[0].name).first()).toBeVisible({ timeout: 15_000 })
 })
 
-test('템플릿을 고르면 보내지 않고 입력창에 채워진다', async ({ page }) => {
+test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async ({ page }) => {
   await signIn(page)
   await page.goto('/new/report')
 
@@ -71,9 +71,12 @@ test('템플릿을 고르면 보내지 않고 입력창에 채워진다', async 
   await expect(page.getByRole('dialog').getByText('독자', { exact: true })).toBeVisible()
   await page.getByRole('dialog').getByText('업무·기술 보고서').click()
 
-  // Filled, not sent. Every template stops where the person takes over, so
-  // sending one delivered a sentence that ended at a colon.
+  // Attached, not typed. The framing used to be pasted into the box and sent
+  // back out in the person's own voice; now it rides with the turn and the box
+  // asks them for the half only they have.
   const box = page.getByLabel('프롬프트 입력')
-  await expect(box).toHaveValue(/목적과 독자: $/)
+  await expect(box).toHaveValue('')
+  await expect(box).toHaveAttribute('placeholder', /목적, 독자, 분량/)
+  await expect(page.getByRole('button', { name: /업무·기술 보고서 시작점 해제/ })).toBeVisible()
   await expect(page).toHaveURL(/\/new\/report$/)
 })

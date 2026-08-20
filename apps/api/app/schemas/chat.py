@@ -19,6 +19,10 @@ class MessageOut(Wire):
     variants: list | None = None
     model: str | None = None
     routing: dict | None = None
+    #: The 시작점 this turn was begun from, as `{templateId, title}`. Names it
+    #: rather than quoting it: the transcript is where what somebody said is
+    #: kept, and the template's own sentence was never said by anybody.
+    started_from: dict | None = None
     created_at: datetime
 
     @classmethod
@@ -175,6 +179,8 @@ class CompareRequest(Wire):
     models: list[str] = Field(min_length=2, max_length=3)
     #: Installed skills explicitly selected for this one comparison.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    #: A 시작점 attached to this one comparison. See `SendMessage`.
+    starting_template_id: str | None = Field(default=None, max_length=64)
     attachments: list[str] | None = None
     privacy_action: Literal[
         "route_strict_local", "mask_external", "send_raw_external"
@@ -215,6 +221,14 @@ class SendMessage(Wire):
     #: Installed skills explicitly selected for this one turn. Empty means no
     #: skill; installation alone never injects a procedure.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    #: A 시작점 — a built-in from `/prompt-templates`, or a `templates` row the
+    #: caller can see. Carried by the turn the way an activated skill is: it
+    #: reaches the model as its own context block, and `content` stays the words
+    #: the person typed.
+    #:
+    #: Not sticky, unlike `render_template_id`: a starting point starts one
+    #: turn, and a shape is worn by the whole conversation.
+    starting_template_id: str | None = Field(default=None, max_length=64)
     #: A rendering template from `/design-templates`. Sticky: it is stored on
     #: the session, so a follow-up turn keeps the shape without resending it.
     #: `""` clears it, which is how somebody goes back to the built-in track.

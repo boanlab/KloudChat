@@ -42,7 +42,7 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
 
   // Picking it works like any other card.
   await card.getByRole('button').first().click()
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/수신:/)
+  await expect(page.getByRole('button', { name: `${title} 시작점 해제` })).toBeVisible()
 
   // Corrected from the same screen it was added on. This is the whole point of
   // sharing rather than copying: one edit, and every account that has not

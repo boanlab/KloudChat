@@ -108,10 +108,12 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   await expect(rail.locator('iframe').first()).toBeVisible()
   await shot(page, '13-home-rail')
 
-  // Picking one starts its surface with the sentence already filled.
+  // Picking one opens its surface wearing the shape. The composer stays empty
+  // — the chip names the 서식, and the example sentence was the same borrowed
+  // voice the 시작점 chip was built to stop.
   await rail.getByRole('button', { name: /편집형 덱/ }).click()
   await expect(page).toHaveURL(/\/new\/slides/, { timeout: 20_000 })
-  await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   await expect(page.getByText('편집형 덱', { exact: true })).toBeVisible()
 
   // ── a workspace entry of its own ────────────────────────────────────
@@ -175,10 +177,10 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   // A seed that shipped with a placeholder left in would render it literally.
   expect(previewHtml).not.toContain('{{')
 
-  // ── 2. Picking one fills the composer and names itself ──────────────
+  // ── 2. Picking one names itself and leaves the box alone ────────────
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(gallery).toBeHidden()
-  await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   await expect(page.getByText('편집형 덱', { exact: true })).toBeVisible()
   await shot(page, '02-deck-picked')
 

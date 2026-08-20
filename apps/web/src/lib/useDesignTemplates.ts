@@ -33,13 +33,15 @@ export function useDesignTemplates(enabled = true) {
 }
 
 /**
- * Picking one: the sentence, the chip on the composer, and the settings the
- * template implies.
+ * Picking one: the chip on the composer, the settings the template implies,
+ * and — on the two media surfaces only — the sentence.
  *
  * Three screens start a 서식 — the gallery inside a session, the catalogue on
  * the 디자인 screen, and the rail at home — and a shape that set the aspect
  * ratio when it was chosen in one of them but not in another would be a shape
- * that behaves differently depending on where it was found.
+ * that behaves differently depending on where it was found. The same is true
+ * of the sentence, which is why the distinction lives here rather than in any
+ * of the three.
  *
  * Only the keys the template names: one that says nothing about duration
  * leaves whatever the person last chose, rather than resetting it to a default
@@ -53,7 +55,13 @@ export function useStartTemplate() {
 
   return (row: DesignTemplateRow, prompt: string) => {
     setPendingTemplate(row)
-    setDraft(prompt)
+    // For a picture or a clip the filled-in sentence *is* the prompt — the
+    // person edits it and sends it, and without it there is nothing to send.
+    // A deck or a document is the other way round: the chip already names the
+    // shape, and typing the example into the box put the product's words in
+    // the transcript under the person's name.
+    const media = row.kind === 'image' || row.kind === 'video' || row.kind === 'audio'
+    if (media) setDraft(prompt)
     const d = row.defaults ?? {}
     if (row.kind === 'image') {
       setImageOptions({

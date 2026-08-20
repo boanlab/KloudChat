@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
+import { templateText } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
@@ -137,7 +139,8 @@ export function MessageItem({
   streaming?: boolean
 }) {
   const t = useT()
-  const { artifacts, openArtifact, rateMessage, models, user } = useStore()
+  const { artifacts, openArtifact, rateMessage, models, user, sessions, designTemplates } =
+    useStore()
   const [copied, setCopied] = useState(false)
   const model = models.find((m) => m.id === message.model)
   const actualModelChanged = Boolean(
@@ -168,6 +171,19 @@ export function MessageItem({
   )
 
   if (message.role === 'user') {
+    /**
+     * What the turn was begun from, named rather than quoted.
+     *
+     * This is the line somebody reads a year later to remember what they did,
+     * and it is the whole reason the framing stopped being typed into the box:
+     * the prompt above it is theirs, and the machinery is here, separately, by
+     * name. The 서식 comes off the session because it is sticky there; the
+     * 시작점 is stored on the turn, because it was only ever about this one.
+     */
+    const shape = designTemplates.find(
+      (row) => row.id === sessions.find((s) => s.id === sessionId)?.renderTemplateId,
+    )
+    const startedFrom = message.startedFrom
     return (
       // A prompt is worth copying as often as an answer is — to run again with
       // one word changed, to paste into a colleague's chat, to keep. It was
@@ -177,6 +193,15 @@ export function MessageItem({
           {copyButton('프롬프트 복사')}
         </span>
         <div className="max-w-[80%] space-y-2">
+          {startedFrom && (
+            <p className="text-right text-xs text-faint">
+              {shape
+                ? t('시작점 {name} · 서식 {title}')
+                    .replace('{name}', startedFrom.title)
+                    .replace('{title}', templateText(shape, currentLang() === 'en').name)
+                : t('시작점 {name}').replace('{name}', startedFrom.title)}
+            </p>
+          )}
           {message.attachments?.map((a) => (
             <div
               key={a.name}
