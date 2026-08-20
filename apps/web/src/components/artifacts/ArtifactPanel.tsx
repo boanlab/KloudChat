@@ -1,10 +1,10 @@
-import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
-import { DeckPanel } from '@/components/slides/DeckPanel'
+import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
 import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
@@ -107,6 +107,118 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
 }
 
 /**
+ * Whether an HTML artifact is a deck or a document.
+ *
+ * The same rule the server follows before it exports one: the template says
+ * which kind it is, and a template that stopped existing across an upgrade
+ * leaves the markup to say so.
+ */
+function useIsDeck(artifact: CodeArtifact) {
+  const templates = useStore((s) => s.designTemplates)
+  const template = templates.find((row) => row.id === artifact.templateId)
+  return template ? template.kind === 'deck' : artifact.content.includes('class="slide')
+}
+
+/** One slide of an HTML deck. */
+interface PageSlide {
+  title: string
+  /** The whole document again, with only this slide left in it. */
+  doc: string
+}
+
+/**
+ * An HTML deck split at its slides.
+ *
+ * `page_export.to_slides` reads the same `<section class="slide">` boundary
+ * server-side and pays for it in design — the columns and the paper belong to
+ * the seed, and the seed needs a browser. Here there is one, so a slide stays
+ * the markup it was written as, and what is shown is the page the reader would
+ * have scrolled to.
+ */
+function splitSlides(html: string): PageSlide[] {
+  const page = new DOMParser().parseFromString(html, 'text/html')
+  const count = page.querySelectorAll('section.slide').length
+  return Array.from({ length: count }, (_, keep) => {
+    // The whole page with the other slides taken out, rather than the section
+    // lifted into a page of its own: the stylesheet, the body's own class and
+    // anything else the seed wrapped around the deck belong to every slide.
+    const one = page.cloneNode(true) as Document
+    const sections = Array.from(one.querySelectorAll('section.slide'))
+    sections.forEach((section, i) => {
+      if (i !== keep) section.remove()
+    })
+    return {
+      // The heading the seed's wrapper wrote from the outline. Read off the
+      // markup rather than off `blocks`, so a rewritten block cannot leave the
+      // list naming something the slide no longer says.
+      title: (sections[keep].querySelector('h2, h1')?.textContent ?? '').trim(),
+      doc: `<!doctype html>${one.documentElement.outerHTML}`,
+    }
+  })
+}
+
+/**
+ * Presenting a deck that came out as a document.
+ *
+ * A JSON deck presents by drawing its slide objects, and this one cannot be
+ * drawn that way: the design is what the 서식 was chosen for, and it lives in
+ * the file's own stylesheet. So the file is what goes on the wall — one
+ * section at a time, in the same sandboxed frame the preview uses and the
+ * same 16:9 rectangle the other track rehearses in.
+ */
+function PagePresent({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [presenting, setPresenting] = useState(false)
+  const [index, setIndex] = useState(0)
+  // Split on the way in rather than on every render: a document being written
+  // changes with every block, and none of those are being presented.
+  const slides = useMemo(
+    () => (presenting ? splitSlides(artifact.content) : []),
+    [presenting, artifact.content],
+  )
+  // Nothing to walk yet. Same shape as the deck panel's button while the
+  // slides are still arriving — present, and plainly not ready.
+  const written = /<section[^>]*class="[^"]*\bslide\b/.test(artifact.content)
+  const at = Math.min(index, Math.max(slides.length - 1, 0))
+
+  return (
+    <>
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={!written}
+        onClick={() => {
+          setIndex(0)
+          setPresenting(true)
+        }}
+      >
+        <Play size={13} />
+        {t('발표')}
+      </Button>
+      {presenting && slides.length > 0 && (
+        <PresentStage
+          title={artifact.title}
+          index={at}
+          count={slides.length}
+          outline={slides.map((s) => s.title)}
+          onIndex={setIndex}
+          onClose={() => setPresenting(false)}
+        >
+          <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control bg-white shadow-float">
+            <iframe
+              title={slides[at].title || artifact.title}
+              srcDoc={slides[at].doc}
+              sandbox=""
+              className="size-full border-0"
+            />
+          </div>
+        </PresentStage>
+      )}
+    </>
+  )
+}
+
+/**
  * The formats an HTML artifact can leave in.
  *
  * `.html` is the artifact itself — the faithful copy, and the one whose print
@@ -121,13 +233,8 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
  */
 function PageExport({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
-  const templates = useStore((s) => s.designTemplates)
   const [busy, setBusy] = useState<string | null>(null)
-
-  // Same rule the server follows: the template says which kind it is, and a
-  // template that stopped existing leaves the markup to say so.
-  const template = templates.find((row) => row.id === artifact.templateId)
-  const isDeck = template ? template.kind === 'deck' : artifact.content.includes('class="slide')
+  const isDeck = useIsDeck(artifact)
 
   const save = async (format: 'pptx' | 'docx' | 'pdf' | 'hwpx' | 'md' | 'html') => {
     setBusy(format)
@@ -411,6 +518,7 @@ export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'c
   const [tab, setTab] = useState<'preview' | 'source'>(
     artifact.kind === 'html' ? 'preview' : 'source',
   )
+  const isDeck = useIsDeck(artifact)
   return (
     <div className="flex h-full min-h-0 flex-col">
       {artifact.kind === 'html' && (
@@ -437,10 +545,15 @@ export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'c
           <LintFindings findings={artifact.lint} artifact={artifact} />
           <AddBlockImage artifact={artifact} />
           <RewriteBlock artifact={artifact} />
-          {/* 저장 시점. 블록 하나를 다시 쓰거나 그림을 넣는 것도 편집이라
-              판이 쌓이는데, 여기에는 그 판으로 돌아갈 길이 없었다. */}
-          <VersionHistory artifact={artifact} />
+          {/* 서식을 고른 대가가 발표를 못 하는 것이어서는 안 된다. 덱이면
+              JSON 덱과 같은 자리에서 같은 이름으로 무대에 오른다. */}
+          {isDeck && <PagePresent artifact={artifact} />}
           <PageExport artifact={artifact} />
+          {/* 저장 시점. 블록 하나를 다시 쓰거나 그림을 넣는 것도 편집이라
+              판이 쌓이는데, 여기에는 그 판으로 돌아갈 길이 없었다. 덱 패널과
+              같은 차례로 세운다 — 두 화면이 같은 줄을 읽게 하려는 것이 이
+              두 가지를 한 자리에 놓은 이유이므로. */}
+          <VersionHistory artifact={artifact} />
         </div>
       )}
       <div className="min-h-0 flex-1">
