@@ -1180,6 +1180,9 @@ const EN: Record<string, string> = {
     'Sets the shape work started in this project comes out in. Each conversation can still pick its own.',
   '{kind} 서식': '{kind} format',
 
+  // ── 버전 기록 ───────────────────────────────────────────────────
+  '되돌리지 못했습니다.': 'Could not restore.',
+
   // ── 디자인 현관 ─────────────────────────────────────────────────
   '결과물이 어떤 모양으로 나올지 먼저 고릅니다': 'Choose the shape the result comes out in first',
   '결과물이 어떤 모양으로 나올지 고릅니다': 'Choose the shape the result comes out in',
