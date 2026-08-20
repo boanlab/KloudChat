@@ -70,7 +70,7 @@ function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone:
   if (m.dataBoundary === 'self_hosted') {
     return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
   }
-  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
+  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-boundary' }
   if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
   if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
   return null
@@ -350,6 +350,7 @@ function ModelMenu({
           )}
           {rows.map((m) => {
             const boundaryOf = boundary(m, t)
+            const free = m.creditCost === 0 && m.inputCreditCost === 0
             return (
         <button
           key={m.id}
@@ -370,7 +371,6 @@ function ModelMenu({
             <span className="flex items-center gap-1.5">
               <span className="truncate text-base font-medium">{m.label}</span>
               <Badge>{m.provider}</Badge>
-              {m.id.endsWith(':free') && <Badge tone="success">{t('무료')}</Badge>}
               {m.adapter && (
                 <Badge tone="warn">
                   <Plug size={10} />
@@ -380,13 +380,23 @@ function ModelMenu({
             </span>
             <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
             <span className="mt-1 flex items-center gap-2 text-xs text-faint">
-              {boundaryOf && (
-                <span className={cn('flex items-center gap-1', boundaryOf.tone)}>
-                  {m.strictLocal && <ShieldCheck size={11} />}
-                  {boundaryOf.text}
-                </span>
-              )}
-              <span>{rateLabel(m, t)}</span>
+              {/* Where the text goes and what it costs, joined rather than
+                  merely adjacent. They are the pair the choice is actually
+                  made on, and spaced apart on one line they read as two
+                  unrelated notes; the rate already spends `·` on its own two
+                  halves, so the join is a slash. The price keeps its own
+                  colour — free and not free is the difference being scanned
+                  for, and at this size a shade of grey does not carry it. */}
+              <span className="flex items-center gap-1">
+                {boundaryOf && (
+                  <span className={cn('flex items-center gap-1', boundaryOf.tone)}>
+                    {m.strictLocal && <ShieldCheck size={11} />}
+                    {boundaryOf.text}
+                  </span>
+                )}
+                {boundaryOf && <span aria-hidden>/</span>}
+                <span className={cn(free && 'text-free')}>{rateLabel(m, t)}</span>
+              </span>
               {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}
               {m.supportsVision && <Eye size={11} />}
               {m.supportsTools && <Wrench size={11} />}
