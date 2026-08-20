@@ -65,8 +65,14 @@ HTML_KINDS = ("deck", "document")
 #: `h2` is deliberately absent: the wrapper writes the block's heading from
 #: the outline, and a model that repeats it inside the body renders the title
 #: twice. Sub-headings inside a block use `h3`.
+#: `code` is the one machine voice the vocabulary has, and it is inline only.
+#: A `<pre>` block would be the obvious companion and is deliberately absent:
+#: what is inside one is whitespace-significant and arbitrarily long, and the
+#: file exporters read markdown lines — a stack trace would arrive re-indented
+#: and half of it read back as a bullet list. Admitting a shape that cannot
+#: leave the app is the same failure as dropping one on the way out.
 _ALLOWED_TAGS = {
-    "p", "h3", "ul", "ol", "li", "strong", "em", "blockquote",
+    "p", "h3", "ul", "ol", "li", "strong", "em", "blockquote", "code",
     "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td",
     "div", "span", "section", "br", "hr", "small", "dl", "dt", "dd",
 }
@@ -90,6 +96,18 @@ _EVENT_ATTR = re.compile(r"\s+on[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I
 #: names its own seed styles, such as `lead` and `cols`.
 _STYLE_ATTR = re.compile(r"\s+style\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 _URL_ATTR = re.compile(r"\s+(href|src)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+#: What is inside a `<code>` is text — that is the whole of what makes it a
+#: `<code>`. Every other rule below reads the fragment as markup, so left
+#: alone `<code><div></code>` becomes a real division and `<code><b>x</b>`
+#: real bold: the sample stops being the sample it was quoting. The closing
+#: tag is required rather than optional, unlike `_SCRIPTISH`'s — an unclosed
+#: one is a typo, and escaping to the end of the fragment would turn the whole
+#: rest of the block into visible tag soup over it.
+_CODE = re.compile(r"(<code\b[^>]*>)(.*?)</code\s*>", re.S | re.I)
+#: An ampersand that is not already opening an entity. A model writes a sample
+#: both ways — `&lt;div&gt;` and a bare `<div>` — and both have to arrive as
+#: the four characters somebody can copy, so neither may be escaped twice.
+_BARE_AMP = re.compile(r"&(?!#?\w{1,32};)")
 
 @dataclass(frozen=True, slots=True)
 class Argument:
@@ -300,6 +318,12 @@ def default_for(defaults: Any, kind: SessionKind) -> str | None:
     return chosen.id
 
 
+def _quoted_code(match: re.Match[str]) -> str:
+    """One `<code>` element with its contents turned back into characters."""
+    inner = _BARE_AMP.sub("&amp;", match.group(2))
+    return f"{match.group(1)}{inner.replace('<', '&lt;').replace('>', '&gt;')}</code>"
+
+
 def sanitise(fragment: str) -> str:
     """One block of model-written HTML, reduced to what the seed styles.
 
@@ -307,7 +331,8 @@ def sanitise(fragment: str) -> str:
     lock rather than the only one. It exists because an artifact is also
     downloaded, opened outside the sandbox, and shared by link.
     """
-    text = _SCRIPTISH.sub("", fragment)
+    text = _CODE.sub(_quoted_code, fragment)
+    text = _SCRIPTISH.sub("", text)
     text = _EVENT_ATTR.sub("", text)
     text = _STYLE_ATTR.sub("", text)
 

@@ -27,7 +27,31 @@ from typing import Any
 from app.services import pictures
 
 #: Block containers whose text is collected separately.
-_TEXT_TAGS = {"h2", "h3", "p", "li", "blockquote", "th", "td"}
+_TEXT_TAGS = {
+    "h2", "h3", "p", "li", "blockquote", "th", "td",
+    "small", "dt", "dd", "figcaption",
+}
+
+#: Admitted by `design_templates` and read for structure rather than for words
+#: of its own: a container this reader walks into, a list its items belong to,
+#: a picture, or an inline element whose text the block around it collected.
+#: `code` is in there — its words arrive unmarked, because the one marker a
+#: linear export could carry is a backtick and only `report_export` strips
+#: those, so a deck would show them on the slide.
+_CARRIED_TAGS = {
+    "ul", "ol", "table", "thead", "tbody", "tr", "figure", "img",
+    "div", "span", "section", "dl", "strong", "em", "code", "br",
+}
+
+#: Admitted and deliberately not carried. A rule is furniture — it separates
+#: two things on a page and says nothing a `.docx` reader would miss.
+#:
+#: Between them the three sets account for every tag
+#: `design_templates._ALLOWED_TAGS` admits, and `test_page_export` pins that.
+#: The way text went missing here the first time was one of the two lists
+#: growing a tag the other had never heard of, and the reader found out by
+#: opening the download.
+_DROPPED_TAGS = {"hr"}
 
 #: Rendered by `deck_export`, keyed by the layout class the seed uses.
 _DECK_LAYOUT = {
@@ -64,6 +88,8 @@ class _Reader(HTMLParser):
         #: item was in is the whole point of that layout.
         self._cols = 0
         self._column: list[str] | None = None
+        #: A `<dt>` waiting for the `<dd>` that defines it.
+        self._term = ""
 
     # ── structure ──────────────────────────────────────────────────────
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -82,6 +108,13 @@ class _Reader(HTMLParser):
             self._open(classes, container=tag)
             return
         if self._block is None:
+            return
+        if tag == "br":
+            # A hard line break inside a paragraph. Nothing else separates the
+            # two halves once the markup is gone, so without a space here they
+            # arrive in the file as one run-on word.
+            if self._tag is not None:
+                self._buffer.append(" ")
             return
         if tag == "img":
             picture = pictures.decode(dict(attrs).get("src") or "")
@@ -114,7 +147,7 @@ class _Reader(HTMLParser):
             return
         if self._block is None:
             return
-        if tag in _TEXT_TAGS or tag == "figcaption":
+        if tag in _TEXT_TAGS:
             self._flush()
         elif tag == "tr" and self._row:
             self._block["rows"].append(self._row)
@@ -146,8 +179,28 @@ class _Reader(HTMLParser):
             "rows": [],
             "columns": [],
             "images": [],
+            "notes": [],
             "_container": container,
         }
+
+    def _item(self, text: str) -> None:
+        """One line of a list, kept in its column as well when it is in one."""
+        if self._block is None:
+            return
+        self._block["bullets"].append(text)
+        if self._column is not None:
+            self._column.append(text)
+
+    def _pair(self) -> None:
+        """A `<dt>` nothing defined, emitted on its own.
+
+        A term with no definition under it is still something somebody wrote
+        down, and a linear export that drops it is the failure this whole file
+        exists to avoid.
+        """
+        if self._term:
+            self._item(self._term)
+            self._term = ""
 
     def _flush(self) -> None:
         text = re.sub(r"\s+", " ", "".join(self._buffer)).strip()
@@ -168,9 +221,25 @@ class _Reader(HTMLParser):
             else:
                 self._block["paragraphs"].append(text)
         elif tag == "li":
-            self._block["bullets"].append(text)
-            if self._column is not None:
-                self._column.append(text)
+            self._item(text)
+        elif tag == "dt":
+            self._pair()
+            self._term = text
+        elif tag == "dd":
+            # A definition list is a list of labelled items, not a table: two
+            # of its cells are a name and what the name stands for, and the
+            # pair only reads as one line. `목적: 3세대 엔진 선정 근거 확보`
+            # is what the cover of a report says on paper.
+            self._item(f"{self._term}: {text}" if self._term else text)
+            self._term = ""
+        elif tag == "small":
+            # A margin note, a source, the condition a figure was measured
+            # under. It is subordinate to the paragraph it follows and must
+            # not arrive as the next claim, so it keeps the em dash the seeds
+            # print in front of it and stays where it stood rather than being
+            # gathered to the end.
+            self._block["paragraphs"].append(f"— {text}")
+            self._block["notes"].append(text)
         elif tag == "blockquote":
             self._block["quote"] = text
         elif tag in ("th", "td"):
@@ -186,6 +255,7 @@ class _Reader(HTMLParser):
 
     def _close(self) -> None:
         self._flush()
+        self._pair()
         if self._block:
             self._block.pop("_container", None)
             self.blocks.append(self._block)
@@ -225,6 +295,7 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
     slides: list[dict[str, Any]] = []
     for block in read(html):
         layout = _DECK_LAYOUT.get(block["layout"], "bullets")
+        prose = False
         slide: dict[str, Any] = {"layout": layout, "title": block["title"]}
         if accent:
             slide["accent"] = accent
@@ -247,6 +318,14 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
             # A layout that came back as prose still has to say something; the
             # paragraphs become the lines rather than being thrown away.
             slide["bullets"] = block["paragraphs"]
+            prose = True
+        if block["notes"] and not prose:
+            # No slide layout has a subordinate voice — each draws bullets, a
+            # table, a quote or a lead, and none of them a source line. So the
+            # note goes where a presentation keeps what has to be said about a
+            # slide without being shown on it. The one exception is the slide
+            # that came back as prose: there the note is already a line.
+            slide["notes"] = "\n".join(block["notes"])
         if block["images"]:
             # One per slide: a screen holds a picture and its point, and two
             # pictures on one slide is a slide that should have been two.
