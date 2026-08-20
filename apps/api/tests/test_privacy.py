@@ -2928,6 +2928,182 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
 
 
 @pytest.mark.asyncio
+async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
+    monkeypatch,
+) -> None:
+    """The stored answer is masked; the streamed one is not. Say so."""
+    raw_email = "answer-owner@example.com"
+    user = User(
+        id="user",
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        monthly_credits=10_000,
+    )
+    session = ChatSession(id="session", user_id=user.id)
+    added: list[object] = []
+
+    async def run_turn(*_args, **_kwargs):
+        yield {"type": "delta", "text": f"Write to {raw_email} and to {raw_email}"}
+        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+
+    class TurnDb:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, model, _id):
+            if model is ChatSession:
+                return session
+            if model is User:
+                return user
+            return None
+
+        def add(self, value):
+            added.append(value)
+
+        async def commit(self):
+            return None
+
+    async def enrich(**_kwargs):
+        # `(artifact_id, memory_step)`; neither matters here.
+        return None, None
+
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
+    monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
+    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    routing = {
+        "requestedModels": ["external/model"],
+        "routedModels": ["external/model"],
+        "effectiveModels": ["external/model"],
+        "actualModels": [],
+        "action": "mask_external",
+        "dataBoundary": "external",
+        "findingCounts": [{"category": "email", "source": "current_input", "count": 1}],
+    }
+    events = [
+        event
+        async for event in sessions_router._run_turn(
+            user_id=user.id,
+            api_key="key",
+            auto_memory=False,
+            session_id=session.id,
+            model=_external_model("external/model"),
+            messages=[{"role": "user", "content": "clean request"}],
+            tools=[],
+            tool_definitions=[],
+            first_user_message="clean request",
+            is_first_turn=False,
+            routing=routing,
+            mask_at_rest=True,
+        )
+    ]
+
+    announced = [
+        json.loads(line.removeprefix("data: ").strip())
+        for line in "".join(events).splitlines()
+        if line.startswith("data: ")
+    ]
+    answer = [
+        finding
+        for event in announced
+        if event["type"] == "privacy_route"
+        for finding in event.get("findingCounts", [])
+        if finding["source"] == "assistant_output"
+    ]
+    assert answer == [{"category": "email", "source": "assistant_output", "count": 2}]
+
+    message = next(
+        row
+        for row in added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
+    )
+    # The record is still masked — this test is about the silence, not the mask.
+    assert raw_email not in message.content
+    assert {"category": "email", "source": "assistant_output", "count": 2} in (
+        message.routing["findingCounts"]
+    )
+    # The prompt's own finding is not overwritten by the answer's.
+    assert {"category": "email", "source": "current_input", "count": 1} in (
+        message.routing["findingCounts"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_clean_answer_under_the_guard_announces_no_answer_findings(
+    monkeypatch,
+) -> None:
+    """No finding, no claim: an untouched answer must not grow a warning."""
+    user = User(
+        id="user",
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        monthly_credits=10_000,
+    )
+    session = ChatSession(id="session", user_id=user.id)
+    added: list[object] = []
+
+    async def run_turn(*_args, **_kwargs):
+        yield {"type": "delta", "text": "아무것도 가릴 것이 없는 답."}
+        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+
+    class TurnDb:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, model, _id):
+            if model is ChatSession:
+                return session
+            if model is User:
+                return user
+            return None
+
+        def add(self, value):
+            added.append(value)
+
+        async def commit(self):
+            return None
+
+    async def enrich(**_kwargs):
+        # `(artifact_id, memory_step)`; neither matters here.
+        return None, None
+
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
+    monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
+    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    _ = [
+        event
+        async for event in sessions_router._run_turn(
+            user_id=user.id,
+            api_key="key",
+            auto_memory=False,
+            session_id=session.id,
+            model=_external_model("external/model"),
+            messages=[{"role": "user", "content": "clean request"}],
+            tools=[],
+            tool_definitions=[],
+            first_user_message="clean request",
+            is_first_turn=False,
+            routing=None,
+            mask_at_rest=True,
+        )
+    ]
+
+    message = next(
+        row
+        for row in added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
+    )
+    assert message.routing is None
+
+
+@pytest.mark.asyncio
 async def test_comparison_masks_variants_and_persists_provider_actual_model(
     monkeypatch,
 ) -> None:

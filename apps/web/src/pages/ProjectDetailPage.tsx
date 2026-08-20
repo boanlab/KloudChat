@@ -278,9 +278,14 @@ export function ProjectDetailPage() {
           <div>
             <p className="text-base font-medium">{t('디자인')}</p>
             {/* Named, because the alternative is a picker whose effect nobody
-                can predict: this changes three surfaces and leaves two alone. */}
+                can predict: this changes four surfaces and leaves two alone.
+                The voice is listed first and 대화 with it, because the voice
+                is the half that reaches the chat — a model writing a sentence
+                cannot act on a hex code, but it can be told how to sound, and
+                a person who reads only "슬라이드 색과 서체" is surprised when
+                this afternoon's design edit changes how the chat answers. */}
             <p className="text-sm text-muted">
-              {t('슬라이드 색과 서체, 보고서 표지, 이미지 스타일에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
+              {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
             </p>
           </div>
           <div className="flex items-center gap-2">

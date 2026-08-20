@@ -1,4 +1,4 @@
-import { Bot, Boxes, LayoutGrid, PanelRight } from 'lucide-react'
+import { Bot, Boxes, LayoutGrid, Palette, PanelRight } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -19,13 +19,31 @@ import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /**
+ * What a project's design system does to each surface, in that surface's own
+ * terms.
+ *
+ * Four entries and not six: audio and video are rendered by something the
+ * design never reaches, and a row promising a look they will not wear is the
+ * same untruth this panel exists to end. Chat gets the voice alone, because
+ * an accent colour is not something a sentence can be written in — but the
+ * voice is real, and it is the surface where a design edited this afternoon
+ * is least expected to show up.
+ */
+const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
+  chat: '이 대화의 말투를 이 디자인에 맞춥니다',
+  report: '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다',
+  slides: '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다',
+  image: '그림의 색과 스타일을 이 디자인에 맞춥니다',
+}
+
+/**
  * What this conversation is already carrying, before a word is typed.
  *
- * An agent, a project or a 서식 is chosen on another screen and then arrives
- * here as a badge in the top bar — which is next to nothing. Pressing 실행 on
- * an agent is the clearest case: the screen that opens looks exactly like a
- * blank session, so the one thing the person just decided is the one thing
- * the screen does not say.
+ * An agent, a project, a 디자인 or a 서식 is chosen on another screen and then
+ * arrives here as a badge in the top bar — which is next to nothing. Pressing
+ * 실행 on an agent is the clearest case: the screen that opens looks exactly
+ * like a blank session, so the one thing the person just decided is the one
+ * thing the screen does not say.
  *
  * Said in the middle of the empty screen instead, where the answer is about
  * to appear, and in the terms the choice was made in — an agent's own
@@ -49,6 +67,10 @@ function StartingFrom({
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
   const pending = useStore((s) => s.pendingTemplate)
   const templates = useStore((s) => s.designTemplates)
+  // The design comes with the project or not at all, so it is looked up from
+  // the project rather than the session.
+  const design = useStore((s) => s.designs.find((d) => d.id === project?.designSystemId))
+  const designReach = DESIGN_REACHES[kind]
   // The composer's own rule for which shape is in force: this turn's pick if
   // there is one, otherwise whatever the session was started with.
   const format =
@@ -79,6 +101,15 @@ function StartingFrom({
       says: project.description,
       colour: undefined,
     },
+    design &&
+      designReach && {
+        key: 'design',
+        icon: <Palette size={13} />,
+        label: t(designReach),
+        name: design.name,
+        says: design.description,
+        colour: design.tokens.accent,
+      },
     format && {
       key: 'format',
       icon: <LayoutGrid size={13} />,

@@ -1153,6 +1153,16 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 디자인 시스템이 실제로 닿는 곳 ──────────────────────────────
+  '말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
+    'The voice reaches chat, reports and slides; colour and type reach slides and report covers; style reaches pictures. Audio and video are untouched.',
+  '이 대화의 말투를 이 디자인에 맞춥니다': 'this conversation takes its voice from the design',
+  '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다':
+    'the report takes its voice, colour and type from the design',
+  '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다':
+    'the slides take their voice, colour and type from the design',
+  '그림의 색과 스타일을 이 디자인에 맞춥니다': 'pictures take their colour and style from the design',
+
   // ── 이 턴에 들어간 것 ───────────────────────────────────────────
   '외 {n}개': 'and {n} more',
 
