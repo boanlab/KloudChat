@@ -1155,6 +1155,15 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 대화가 가지고 시작하는 것 ───────────────────────────────────
+  '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
+  '이렇게 시작해 보세요': 'Try starting with one of these',
+  '이 에이전트가 답합니다': 'answers here',
+  '이 프로젝트의 지침과 자료를 함께 씁니다': 'its instructions and files come along',
+  '결과물이 이 서식으로 나옵니다': 'the result comes out in this shape',
+  '이 에이전트로 대화를 시작합니다.': 'Starting this conversation with the agent.',
+  '{kind}에서 이 에이전트의 지시대로 답합니다.': 'It answers on {kind} the way this agent tells it to.',
+
   // ── 시작점 ──────────────────────────────────────────────────────
   '고르면 이번 요청에 붙습니다. 무엇을 만들지는 직접 적으면 됩니다.':
     'Picking one attaches it to this request. What to make is still yours to write.',
