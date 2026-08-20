@@ -105,11 +105,9 @@ export type RoutingMode = 'manual' | 'auto'
 /**
  * What a session produced, when that is all it has to show for itself.
  *
- * A picture or clip surface runs no turn, so those sessions hold no messages
- * and `preview` is null for them. Their title is already the prompt somebody
- * typed; this is the other half — what came back — and it arrives as
- * measurements rather than a sentence so the sentence can be written in the
- * reader's language.
+ * A picture or clip session whose turn predates message recording holds none,
+ * so `preview` is null. Measurements rather than a sentence, so the sentence
+ * can be written in the reader's language.
  */
 export interface SessionMade {
   /** The noun the row prints. Speech and music are separate although both are
@@ -262,8 +260,7 @@ export interface Variant {
  * A 시작점 waiting on the next turn: what the chip says, what the composer
  * asks the person to bring, and the id the turn carries.
  *
- * Deliberately not the prompt. The framing is the server's to add, and a copy
- * of it on this side would be one keystroke from the composer again.
+ * Not the prompt — the framing is the server's to add.
  */
 export interface StartingPoint {
   id: string
@@ -290,27 +287,23 @@ export interface Message {
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
   usage?: { inputTokens: number; outputTokens: number; credits: number }
   liked?: 'up' | 'down' | null
-  /**
-   * The 시작점 this turn was begun from. Its title and not its prompt: the
-   * transcript is where the person's own words are kept, and printing the
-   * product's framing beside them is how the two came to be confused.
-   */
+    /**
+     * The 시작점 this turn began from, by title rather than prompt: the
+     * transcript keeps the person's own words, not the product's framing.
+     */
   startedFrom?: { templateId: string; title: string }
   /**
    * Why the turn ended badly. Separate from `content`: a turn can fail after
    * writing something, and that half an answer is worth keeping.
    */
   error?: string
-  /**
-   * How the turn ended, as the server recorded it. `error` is this tab's live
-   * account of the same thing and wins while it is on screen; this is what is
-   * left of it after a reload, which is the only reading most failed turns
-   * ever get.
-   *
-   * `no_answer` sits on the question, because nothing spoke. `interrupted`
-   * sits on the reply, because some of it arrived — three of four pictures,
-   * half a sentence.
-   */
+    /**
+     * How the turn ended, as the server recorded it. `error` is this tab's live
+     * account and wins while it is on screen; this is what a reload leaves.
+     *
+     * `no_answer` sits on the question — nothing spoke. `interrupted` sits on
+     * the reply — some of it arrived.
+     */
   failure?: 'no_answer' | 'interrupted'
 }
 

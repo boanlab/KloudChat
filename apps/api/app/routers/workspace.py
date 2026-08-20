@@ -185,14 +185,11 @@ async def _validate_design_system_id(db: DbSession, user: User, design_id: str |
 def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | None:
     """The formats this project starts its work in, refused rather than trimmed.
 
-    The same rule the composer's own pick answers to in
-    `sessions._resolved_template_id`, applied a surface at a time: an id the
-    catalogue cannot place is an error, not a key quietly dropped on the way
-    in. A default that disappears while it is being saved is a project whose
-    documents come out in the wrong shape with nobody told why.
+    The rule `sessions._resolved_template_id` applies to the composer's pick,
+    applied a surface at a time: an unplaceable id is an error, not a key quietly
+    dropped.
 
-    An empty value is that surface leaving the map — the built-in track — so
-    clearing one picker never has to be spelled differently from setting it.
+    An empty value is that surface leaving the map — the built-in track.
     """
     if raw is None:
         return None
@@ -436,15 +433,11 @@ async def list_artifacts(
 ):
     """A page of this account's artifacts, newest first, with bodies cut down.
 
-    Everything used to arrive at once and whole: 385 rows, 4.0 MB, every HTML
-    document's full markup, on a screen that draws them as thumbnails. Three
-    things changed and each one is visible in that sentence — the rows are a
-    page, the bodies are cards, and there is a `q` so a person with hundreds of
-    them can find one without scrolling.
+    A listing draws thumbnails, so it carries cards rather than documents, and
+    `q` finds one among hundreds without scrolling.
 
-    Keyset rather than offset: the list is ordered by a timestamp that changes
-    when somebody edits, and an offset would skip or repeat rows underneath
-    them. `(before_at, before_id)` is simply the last row the client has.
+    Keyset rather than offset: the list is ordered by a timestamp that changes on
+    edit. `(before_at, before_id)` is the last row the client has.
     """
     query = select(Artifact).where(Artifact.user_id == user.id)
     if kind:
@@ -653,12 +646,11 @@ def _reviewable(artifact: Artifact) -> tuple[str, str]:
 async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     """One reading of a finished document by somebody who did not write it.
 
-    Asked for explicitly and charged, unlike the linter beside it: that one is
-    free and certain, this one costs a call and is an opinion. The score says
-    so — it is a reading, not a gate, and nothing is blocked by it.
+    Asked for explicitly and charged, unlike the linter beside it — that one is
+    free and certain, this one costs a call and is an opinion. A reading, not a
+    gate: nothing is blocked by the score.
 
-    One reviewer, one pass. OpenDesign seats five and runs three rounds; here
-    every call is somebody's credit.
+    One reviewer, one pass.
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     body, rubric = _reviewable(artifact)
@@ -823,15 +815,13 @@ async def add_block_image(
 ):
     """Puts a picture this workspace already made into one block of a page.
 
-    The writing model cannot produce a picture and is not allowed to reference
-    one — `sanitise` drops every `src` that is not already inside the file. So
-    the path runs the other way: a person picks an image they made on the
-    image surface, and the server inlines its bytes as a `data:` URI on their
-    instruction. The artifact stays one file that prints, downloads and shares
-    with the picture in it, and nothing is fetched when a reader opens it.
+    The writing model cannot produce a picture and `sanitise` drops every `src`
+    not already inside the file, so the path runs the other way: a person picks an
+    image they made, and the server inlines its bytes as a `data:` URI. The
+    artifact stays one file that prints, downloads and shares with the picture in
+    it.
 
-    Free — no model call — and snapshotted like a rewrite, so it is one click
-    from undone.
+    Free, and snapshotted like a rewrite.
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.html:
@@ -899,13 +889,11 @@ async def rewrite_block(
 ):
     """Rewrites one block of an HTML artifact and re-renders the file.
 
-    The blocks are the source and `content` is what they render to, so this
-    replaces one block and assembles the document again from the same seed —
-    rather than splicing markup into a finished file, where the seams are
-    wherever the model last put them.
+    Blocks are the source and `content` is what they render to, so this replaces
+    one block and assembles the document again from the same seed rather than
+    splicing markup into a finished file.
 
-    Charged and snapshotted like the report's section rewrite, so a worse
-    rewrite is one click from undone.
+    Charged and snapshotted, so a worse rewrite is one click from undone.
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.html:
@@ -1491,16 +1479,13 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
 def _export_page(artifact: Artifact, format: str) -> Response:
     """An HTML artifact as a file somebody can hand on.
 
-    The `.html` is the faithful copy — it is the artifact. The other formats
-    are `page_export` reading the markup back into the shapes the existing
-    exporters draw, which is what a rendering engine would otherwise be for.
-    A deck therefore opens in PowerPoint as editable slides in the right order
-    with the right accent, laid out by this product's own deck renderer rather
-    than by its template's stylesheet. That trade is the point: fidelity lives
-    in the `.html`, editability lives here.
+    The `.html` is the artifact itself. The other formats are `page_export`
+    reading the markup back into the shapes the existing exporters draw, so a deck
+    opens in PowerPoint as editable slides laid out by this product's own deck
+    renderer. Fidelity lives in the `.html`, editability here.
 
-    Which formats are offered follows the template the artifact was written
-    into — a document has no slides and a deck has no `.hwpx`.
+    Which formats are offered follows the template — a document has no slides, a
+    deck no `.hwpx`.
     """
     data = artifact.data or {}
     content = str(data.get("content") or "")
@@ -1580,13 +1565,11 @@ async def export_artifact(
 ):
     """A report, a deck, or an HTML artifact as a file.
 
-    Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or
-    `md`. An artifact written into a rendering template takes `html` — the
-    file itself — plus whichever of the two sets matches the template it came
-    from.
+    Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`.
+    An artifact written into a rendering template takes `html` plus whichever set
+    matches its template.
 
-    Built from what is stored, so the download matches the panel rather than
-    re-running the model.
+    Built from what is stored, so the download matches the panel.
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):

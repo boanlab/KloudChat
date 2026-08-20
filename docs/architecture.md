@@ -82,6 +82,24 @@ The cost is that the token appears in access logs. That is why the exception is
 attached to this one route rather than to the default dependency
 (`core/deps.py:current_viewer`).
 
+### What is recorded about access
+
+`audit_events` carries a sign-in, a failed sign-in, a password change and a key
+issue, each with the client's address and browser. Two screens read it: an
+account's own **접속기록** (`GET /auth/me/access`, the account's rows only) and
+the administrator's audit trail (`GET /audit`, everything).
+
+The address is only as good as the proxy in front. `core/deps.py:client_ip`
+reads the first hop of `X-Forwarded-For`, and the web container resolves that
+hop from trusted proxies only — see
+[Behind a reverse proxy](configuration.md#behind-a-reverse-proxy).
+
+A region is shown beside the address when, and only when, a MaxMind GeoLite2
+file is mounted (`services/geoip.py`). The lookup is offline by design:
+resolving addresses through a third-party service would send every visitor's
+address off the instance. With no file the screens show the address alone,
+and private ranges read `내부망` rather than a guess.
+
 ---
 
 ## 4. Credits
@@ -111,7 +129,7 @@ reason.
 
 ## 5. Data model
 
-Twenty-two migrations under `alembic/versions/`. The principal tables:
+Thirty-one migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
@@ -132,8 +150,17 @@ Twenty-two migrations under `alembic/versions/`. The principal tables:
   because the reader holds a session kind and only two surfaces have a
   rendering track. Seeded onto the session at creation, never re-read: the
   composer's own pick is a decision about that one conversation
-- `shares` — read-only links. The token is the permission, and revocation is a
-  flag rather than a delete
+- `shares` · `share_views` — read-only links, and who opened each one. The
+  token is the permission and revocation is a flag rather than a delete. A
+  visit names the reader when they were signed in and records their address
+  and browser when they were not; repeat opens inside an hour are one visit
+- `messages.artifact_ids` — what a turn produced, for the turns whose answer is
+  a thing rather than a sentence. The image and audio/video surfaces store the
+  prompt as a user message and an assistant message with an empty body and
+  these ids; the transcript renders the picture or the player where the answer
+  goes. A chat turn that writes a file records it here too
+- `messages.failure` — how a turn ended when it did not end in an answer.
+  `no_answer` sits on the question, `interrupted` on a partial reply
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
 - `system_settings` — LiteLLM address and master key, SMTP. Database values
@@ -170,6 +197,13 @@ a real credential and had its tool count checked.
 Artifact extraction and automatic memory run **after** the turn, in their own
 transaction: sharing the turn's would hold it open for an extra query and a
 model call, and a failure in either would roll the answer back.
+
+**The turn outlives the connection.** The work runs in its own task and the SSE
+response only relays what it emits, so closing the tab cancels the relay and
+not the turn — the answer is still stored, charged and titled. Which makes
+stopping a separate act rather than a dropped socket: `POST
+/sessions/{id}/stop` sets a flag the token loop checks, and the turn settles
+where it is with the partial answer kept and the row marked `interrupted`.
 
 ### Report and slides
 
@@ -574,9 +608,17 @@ it arrives and the ninety cards below it cost nothing.
 In the `shares` table **the token is the permission**: 43 random characters,
 revocable, and the only thing the public route consults.
 
-Two scopes. `workspace` requires sign-in from any member of the instance;
+Two scopes. `workspace` asks whether the reader is signed in and never asks
+who they are — there is no team, group or invite anywhere in this product, so
+it means *anyone with an account on this instance* and the picker says so.
 `link` opens to anyone holding the URL, which is the case where the recipient
 has no account here.
+
+Every open is recorded in `share_views`. A signed-in reader is named — name and
+email copied rather than joined, so the row still reads after the account is
+renamed or deleted. An anonymous one is recorded by address and browser, which
+is all the server ever learns about them. Repeat opens inside an hour are one
+visit, so a reader refreshing a long report does not bury everyone else.
 
 A shared session carries the artifact it produced alongside its messages —
 resolved through the session's own `artifact_id`, so nothing else in the
@@ -633,6 +675,14 @@ should. Opinions are not extracted.
 
 ### Images and audio
 
+**Both are stored as ordinary turns.** The prompt is a user message; the reply
+is an assistant message with an empty body carrying `artifact_ids`, and the
+transcript renders the picture or the player where the answer goes. Nothing is
+written *about* the result — prose invented for a picture would be the model
+quoted saying something it never said. A request that produced nothing marks
+the prompt `no_answer` and leaves no reply; a batch that broke halfway keeps
+what arrived and marks the reply `interrupted`.
+
 Image generation is a single upstream call with a prompt rather than a turn
 with a system message, so it never goes through `assemble`. It resolves the
 project's design system on its own (`workspace_context.design_for`) — without
@@ -650,6 +700,10 @@ OpenRouter serves video from a separate endpoint (`/api/v1/videos`), so these
 models do not appear in `/model/info` and are **declared in
 `services/adapters.py:ADAPTER_MODELS`**. Only models `videogen.submit` can
 actually call belong there.
+
+A clip lands in its conversation the same way, written by the worker as it
+delivers rather than by the tab that asked — so a reload or another machine
+sees it. Until then the job card stands in the answer's place.
 
 **Submission uses the user's virtual key**, so the charge lands on that person.
 **Polling and download use the instance master key**, because LiteLLM
@@ -839,6 +893,13 @@ passes identically before and after a change is guarding nothing.
 - **Speech-to-text requires a Whisper backend.** Without one the composer's
   microphone is not rendered, and the `youtube` connector handles only videos
   that have captions.
-- **A single API instance is assumed.** Migrations run on container start and
-  runtime settings are cached in-process; see
+- **A single API instance is assumed.** Migrations run on container start,
+  runtime settings are cached in-process, and the stop signal for a running
+  turn is held in that process — `POST /sessions/{id}/stop` reaches the turn
+  only when it lands on the replica running it. See
   [deployment.md](deployment.md#scaling-notes).
+- **A region needs a mounted GeoLite2 file.** There is no network lookup, by
+  design, so without one every screen shows an address and no place.
+- **Media conversations created before message recording hold no turn.** They
+  keep their title and their result; nothing backfills a conversation nobody
+  had.

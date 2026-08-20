@@ -89,20 +89,17 @@ const isClientRefusal = (error: unknown): error is ApiError =>
   error instanceof ApiError && error.status >= 400 && error.status < 500
 
 /**
- * Model and routing-mode changes are persisted separately from a message send.
- * Keep them ordered per conversation and make sends wait for the latest PATCH,
- * otherwise a quick Enter after choosing Auto can reach the server while the
- * conversation is still manual.
+ * Per-conversation PATCH queue for model and routing-mode changes. A send
+ * waits for the latest one, or a quick Enter after choosing Auto reaches the
+ * server while the conversation is still manual.
  */
 const sessionPersistence = new Map<string, Promise<void>>()
 
 /**
- * Clips currently being watched by a poll loop in this tab.
+ * Clips followed by a poll loop in this tab.
  *
  * A clip is followed by whoever started it and again by whoever opens the
- * conversation it is running in — which is usually the same person in the same
- * tab. Without this the second visit starts a second loop against the same
- * row, and both spend rate limit to learn the same thing.
+ * conversation; without this both loops spend rate limit on the same row.
  */
 const followedJobs = new Set<string>()
 
@@ -257,13 +254,12 @@ interface State {
   ) => Promise<string>
   stopStreaming: () => void
   renameSession: (id: string, title: string) => Promise<void>
-  /**
-   * Puts a rendering template on a session, or takes it off.
-   *
-   * The turn makes it sticky server-side, so clearing the chip has to reach
-   * the row as well — otherwise the next turn keeps writing into a shape the
-   * composer no longer shows.
-   */
+    /**
+     * Puts a rendering template on a session, or takes it off.
+     *
+     * The turn makes it sticky server-side, so clearing the chip has to reach
+     * the row too.
+     */
   setSessionTemplate: (id: string, templateId: string | null) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   /** Bulk removal from the history screen. Returns how many the server removed. */
@@ -325,17 +321,14 @@ interface State {
   /** Confirmed save for forms that must distinguish failure from success. */
   saveGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
 
-  // ── image / audio-video ───────────────────────────────────────────────
-  /**
-   * The 서식 whose defaults the option chips are still showing, if any.
-   *
-   * A media 서식 leaves no chip on the composer — it is spent on the sentence
-   * and on these values the moment it is picked — and the values are one
-   * workspace-wide preference, not a property of the session it was picked in.
-   * So a clip started a week later still comes out in that shape, and nothing
-   * on the screen said why until this. Any hand-made change to an option drops
-   * the name: from then on the values are the person's own.
-   */
+    // ── image / audio-video ───────────────────────────────────────────────
+    /**
+     * The 서식 whose defaults the option chips still show, if any.
+     *
+     * A media 서식 leaves no chip: it is spent on the sentence and on these
+     * values, which are one workspace-wide preference rather than a property of
+     * the session. Any hand-made change to an option drops the name.
+     */
   optionTemplate: DesignTemplateRow | null
   setOptionTemplate: (template: DesignTemplateRow | null) => void
   imageOptions: { aspect: string; style: string; count: number }
@@ -476,10 +469,9 @@ let workspaceEpoch = 0
 const touchWorkspace = () => ++workspaceEpoch
 
 /**
- * Which artifact fetch is current. Two loaders fill the same list —
- * `loadArtifacts` and `loadWorkspace` — and without this the later *reply*
- * wins over the later *request*, leaving a stale snapshot that only surfaces as
- * a phantom edit conflict.
+ * Which artifact fetch is current. `loadArtifacts` and `loadWorkspace` fill
+ * the same list, and without this the later *reply* wins over the later
+ * *request* — a stale snapshot that surfaces as a phantom edit conflict.
  */
 /** One screenful and then some, matching the server's own page size. */
 const ARTIFACT_PAGE = 60
@@ -494,10 +486,8 @@ let artifactsEpoch = 0
 let artifactsInFlight: string | null = null
 
 /**
- * The same filter written the same way.
- *
- * `{}` and `{ kind: undefined, q: '' }` mean one thing and hash to two, which
- * is how sign-in and the gallery ended up asking for the same page twice.
+ * The same filter written the same way. `{}` and `{ kind: undefined, q: '' }`
+ * mean one thing and hash to two.
  */
 function sameFilter(filter: ArtifactFilter): ArtifactFilter {
   const kind = filter.kind || undefined
@@ -520,9 +510,7 @@ const initialModelByKind: Record<SessionKind, string> = (() => {
 
 /**
  * `system` is the default and the state a reader can get back to. Storing the
- * resolved colour instead — which is what happened before — silently opted the
- * app out of the OS setting the first time the toggle was pressed, with no way
- * back short of clearing site data.
+ * resolved colour instead opts the app out of the OS setting permanently.
  */
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -585,15 +573,10 @@ function cancelRefresh() {
  * imitating an answer.
  */
 function handToTheComposer(set: Set, text: string) {
-  // A clip and a piece of audio are started from the composer, where their
-  // length, resolution and voice are chosen — so a prompt that arrives here
-  // is handed back to it rather than answered.
-  //
-  // It used to append an assistant message saying so. That message was never
-  // sent to a model and never stored, so the conversation showed a turn that
-  // had not happened and lost it on the next reload: a made-up reply is a
-  // worse way to say "not here" than simply putting the sentence where it
-  // belongs.
+    // A clip and a piece of audio are started from the composer, where their
+    // length, resolution and voice are chosen — so a prompt arriving here is
+    // handed back to it rather than answered. No assistant message is invented:
+    // a made-up reply is a worse way to say "not here" than moving the sentence.
   set({ draft: text })
 }
 
@@ -623,11 +606,9 @@ function reconcileDefaults(
 /**
  * The model a turn on this conversation will actually run on.
  *
- * The precedence the API states — turn override, then the conversation, then
- * the agent — minus the turn override, which no screen can know in advance. A
- * conversation opened against an agent carries no model of its own until
- * somebody picks one, so without the middle step every surface here would name
- * the screen default while the server ran the agent's choice.
+ * The API's precedence minus the turn override, which no screen knows in
+ * advance: conversation, then agent. A conversation opened against an agent
+ * carries no model of its own until somebody picks one.
  */
 export function effectiveModelId(
   session: Pick<Session, 'model' | 'agentId'> | undefined,
@@ -1037,37 +1018,23 @@ export const useStore = create<State>((set, get) => ({
   },
   setActiveSession: (id) => {
     const session = id ? get().sessions.find((s) => s.id === id) : null
-    /**
-     * A document opens beside its conversation; a picture does not.
-     *
-     * On the writing surfaces the transcript is prose about a file that lives
-     * in the panel, so arriving without the file open is arriving at half the
-     * screen. A picture, a clip and a piece of speech are now *in* the
-     * conversation, at a size worth looking at — opening the panel on top of
-     * them shows the same thing twice and squeezes the conversation into the
-     * remaining third to do it. The panel is a click away: on the picture
-     * itself, or on 이미지 열기 in the top bar.
-     *
-     * Except where there is no conversation to show it in. Ninety-odd picture
-     * and clip sessions were made before any of this was written down and have
-     * a title, a result and no turn; nothing backfills them, because the only
-     * honest turn to invent would be one nobody had. Those open the way they
-     * always did — an empty transcript with the panel beside it — and the
-     * count is what tells them apart from a conversation that can speak for
-     * itself.
-     */
+        /**
+         * A document opens beside its conversation; a picture does not.
+         *
+         * A picture, clip or piece of speech is in the transcript at a readable
+         * size, so opening the panel would show it twice and squeeze the
+         * conversation to a third. It stays one click away.
+         *
+         * Sessions with no messages are the exception — they predate the recording
+         * and have a result but no turn to show it in.
+         */
     const shownInTranscript =
       (session?.kind === 'image' || session?.kind === 'av') && session.messageCount > 0
     const artifactId = shownInTranscript ? null : (session?.artifactId ?? null)
     set({ activeSessionId: id, openArtifactId: artifactId })
-    // Opening a panel means fetching the document, which is what
-    // `openArtifact` does and this path did not — it assigned the id straight
-    // into state and skipped the step. The listing carries cards: a report's
-    // card has its citations emptied and its sections cut to four hundred
-    // characters, because a card is drawn the size of one. So reopening an old
-    // conversation drew the panel from that — the body still full of `[1]`
-    // markers and the header reading 출처 0, which is a document contradicting
-    // itself. Nothing refetches if the copy in hand is already whole.
+        // Opening a panel means fetching the document. The listing carries cards:
+        // a report's card has empty `sources` and sections cut to 400 characters,
+        // so a panel drawn from one contradicts itself. Whole copies are kept.
     const held = artifactId ? get().artifacts.find((a) => a.id === artifactId) : null
     if (artifactId && (!held || held.partial)) void get().refreshArtifact(artifactId)
   },
@@ -1099,15 +1066,12 @@ export const useStore = create<State>((set, get) => ({
           : [session, ...s.sessions],
       }))
 
-      /**
-       * Whatever is still being made in it.
-       *
-       * A clip's card is a row on the server, but it was only ever fetched by
-       * the tab that pressed the button. Reload, or open the conversation on
-       * another machine, and the prompt sat there with nothing under it while
-       * twelve thousand credits were being spent — the one thing the card
-       * exists to prevent.
-       */
+            /**
+             * Whatever is still being made in it.
+             *
+             * A clip's card is a server row, so a reload or another machine has to
+             * fetch it — otherwise the prompt sits alone while credits are spent.
+             */
       const jobRows = await jobsApi.list(id).catch(() => null)
       if (jobRows) {
         set((s) => ({
@@ -1150,17 +1114,12 @@ export const useStore = create<State>((set, get) => ({
       kind,
       projectId,
       agentId,
-      // Left empty for an agent that pins a model, because the agent is the
-      // *last* step of the server's precedence: a model here is a model the
-      // conversation chose, and it would out-rank the very setting the agent
-      // screen prints as a badge. Picking one in the composer afterwards is
-      // then a deliberate override rather than something the client did on
-      // its own.
-      //
-      // An agent that pins nothing — which is every seeded one — still needs
-      // the screen default sent. Withholding it there would leave the server
-      // with no model at all, and its no-model fallback is the cheapest usable
-      // row, not the model this screen has been showing all along.
+            // Left empty for an agent that pins a model: the agent is the *last*
+            // step of the server's precedence, and a model here would out-rank the
+            // setting the agent screen prints as a badge.
+            //
+            // An agent that pins nothing still needs the screen default — the
+            // server's no-model fallback is the cheapest usable row, not this one.
       model: get().agents.find((a) => a.id === agentId)?.model ? null : get().modelByKind[kind],
       routingMode,
     })
@@ -1424,16 +1383,14 @@ export const useStore = create<State>((set, get) => ({
       }
       opts.onSession?.(id)
     }
-    /**
-     * The prompt goes up before the request leaves, the way a chat turn's
-     * does. The server writes the same row as it accepts the job — a clip
-     * takes minutes, and for those minutes the sentence and the card under it
-     * are the whole of what there is to look at.
-     *
-     * A refusal takes it back off. Nothing was accepted, so nothing was
-     * written, and the failed card below carries the prompt and the way to
-     * try again.
-     */
+        /**
+         * The prompt goes up before the request leaves, as a chat turn's does: a
+         * clip takes minutes, and the sentence and the card under it are all
+         * there is to look at.
+         *
+         * A refusal takes it back off — nothing was accepted, so nothing was
+         * written.
+         */
     const { promptId } = beginMediaTurn(set, id, prompt, false)
     try {
       const job = await jobsApi.create(id, {
@@ -1498,12 +1455,10 @@ export const useStore = create<State>((set, get) => ({
         if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
           // The artifact is the point; the card is how it was watched.
           await get().loadArtifacts()
-          // And the clip lands in the conversation, under the prompt that
-          // asked for it: the worker wrote that turn as it delivered, so the
-          // transcript is re-read rather than guessed at here. The panel stays
-          // shut — the clip is playable where it was asked for, and a panel
-          // opening itself minutes later over whatever the person moved on to
-          // is an interruption, not a result.
+                    // The clip lands in the conversation under its prompt; the worker
+                    // wrote that turn on delivery, so the transcript is re-read rather
+                    // than guessed at. The panel stays shut — opening minutes later over
+                    // whatever the person moved on to is an interruption.
           if (job.artifactId) await get().openSession(sessionId)
           return
         }
@@ -1641,16 +1596,15 @@ export const useStore = create<State>((set, get) => ({
       await sessionsApi.update(id, { pinned }).catch(() => get().loadSessions())
     }
   },
-  /**
-   * 좋아요 / 싫어요 on one answer.
-   *
-   * Written through, not held in the tab. A person who marks an answer wrong
-   * is saying something about a transcript they will come back to, and a
-   * verdict that dies with the page never reaches the reading it was left for.
-   *
-   * Pressing the lit thumb again withdraws it, which is why `null` travels to
-   * the server as a value rather than as a missing field.
-   */
+    /**
+     * 좋아요 / 싫어요 on one answer.
+     *
+     * Written through rather than held in the tab: a verdict about a transcript
+     * has to survive the page.
+     *
+     * Pressing the lit thumb withdraws it, which is why `null` travels as a
+     * value rather than as a missing field.
+     */
   rateMessage: async (sessionId, messageId, rating) => {
     const before =
       get()
@@ -1762,14 +1716,10 @@ export const useStore = create<State>((set, get) => ({
       //: turning a chip.
       const next = { avOptions, optionTemplate: null }
       if (!patch.mode) return next
-      // Audio and video share one surface and one remembered model, and the
-      // cheapest `av` model is a speech model. The model follows the mode
-      // unless the one already chosen suits it.
-      //
-      // Whenever the mode is named, not only when it changes: 영상 is the mode
-      // this surface opens in, so a speech model can be sitting under it
-      // without anybody having turned 종류 at all, and a composer that only
-      // ever reacted to the turn had no moment to notice.
+            // Audio and video share one surface and one remembered model, and the
+            // cheapest `av` model is a speech model — so the model follows the mode
+            // unless the one already chosen suits it. Applied whenever the mode is
+            // named, since 영상 is the mode this surface opens in.
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
       const current = s.models.find((m) => m.id === s.modelByKind.av)
       if (current?.modality === wanted) return next
@@ -1914,13 +1864,12 @@ export const useStore = create<State>((set, get) => ({
       artifactsFailed: rows === null,
     }))
   },
-  /**
-   * The next page, from the oldest row on screen.
-   *
-   * Keyset rather than a page number: the list is ordered by a timestamp that
-   * moves when somebody edits, and an offset would skip or repeat rows under
-   * the person scrolling.
-   */
+    /**
+     * The next page, from the oldest row on screen.
+     *
+     * Keyset rather than offset: the list is ordered by a timestamp that moves
+     * on edit, and an offset would skip or repeat rows under the reader.
+     */
   loadMoreArtifacts: async () => {
     const held = get().artifacts
     const last = held.at(-1)
@@ -2118,25 +2067,20 @@ export const useStore = create<State>((set, get) => ({
 
   forkAgent: async (a) => {
     touchWorkspace()
-    /*
-     * What the copy is, said on the copy.
-     *
-     * An agent is its prompt plus what it was given to work with, and only the
-     * first half can travel: skills are rows in the other person's account, and
-     * the knowledge shelf is theirs to grant, not ours to duplicate. Neither
-     * omission is visible on the card that comes back — the copy reads as
-     * complete and answers differently, which is the worst of both.
-     *
-     * The sentence goes in the description rather than into a toast because
-     * the question it answers ("why is this one worse than the one I tried?")
-     * is asked days later, and by then a toast has been gone for days. It is
-     * an ordinary editable field: whoever wired the missing pieces up deletes
-     * the line, and that is the right way to dismiss it.
-     *
-     * Translated on the way in rather than on the way out: this is stored text
-     * from here on, and the card runs the whole description through `t()` as
-     * one string, which a joined sentence is never a key for.
-     */
+        /*
+         * What the copy is, said on the copy.
+         *
+         * Only the prompt travels: skills are rows in the author's account and the
+         * knowledge shelf is theirs to grant. Neither omission shows on the card,
+         * so the copy would read as complete and answer differently.
+         *
+         * In the description rather than a toast — the question it answers is
+         * asked days later. An ordinary editable field, so wiring the missing
+         * pieces up and deleting the line is how it is dismissed.
+         *
+         * Translated on the way in: stored text from here on, and the card runs
+         * the whole description through `t()` as one string.
+         */
     const note = translate(
       get().lang,
       '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.',
@@ -2148,26 +2092,19 @@ export const useStore = create<State>((set, get) => ({
       model: a.model,
       systemPrompt: a.systemPrompt,
       tools: a.tools,
-      /*
-       * Skills as a policy, not as a list of the author's rows.
-       *
-       * Two of the three states name nothing and so travel intact: null is
-       * "whatever you activate this turn", `[]` is "none, ever", and both mean
-       * the same thing in any account. A populated allow-list is the one that
-       * cannot come — every id in it is a row in the author's workspace, so
-       * filtering it against this one could only ever come back empty, and an
-       * emptied allow-list is not the residue of a copy that found nothing. It
-       * is a refusal. The turn reads it as "never a skill", which is how an
-       * imported agent came to turn down every skill its new owner switched
-       * on, on every turn, with nothing said anywhere.
-       *
-       * Inheriting is wider than the curation the author wrote, and that is
-       * the trade taken deliberately: the copy is this person's own agent over
-       * this person's own skills, so it grants nothing they could not grant
-       * themselves in the editor, and a yes they can see beats a no nobody
-       * can. The curation is theirs to rebuild under 허용 목록 지정, which is
-       * where it was sayable in the first place.
-       */
+            /*
+             * Skills as a policy, not as a list of the author's rows.
+             *
+             * `null` ("whatever you activate") and `[]` ("none, ever") name nothing
+             * and travel intact. A populated allow-list cannot: every id in it is a
+             * row in the author's workspace, and filtering it against this one
+             * empties it — which the turn reads as "never a skill", so the imported
+             * agent silently refuses every skill its new owner switches on.
+             *
+             * Inheriting is wider than the author's curation, taken deliberately:
+             * the copy grants nothing its owner could not grant themselves in the
+             * editor. The curation is theirs to rebuild under 허용 목록 지정.
+             */
       skillIds: a.skillIds?.length ? null : a.skillIds,
       kinds: a.kinds,
       temperature: a.temperature,
@@ -2277,12 +2214,11 @@ const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
 
 /**
- * Delete held for a few seconds before it is sent. The row leaves the screen at
- * once and undo cancels the call before anything is destroyed — no server-side
- * retention needed.
+ * Delete held for a few seconds before it is sent: the row leaves the screen
+ * at once and undo cancels the call before anything is destroyed.
  *
- * The window is short so nobody relies on it, and leaving the page flushes what
- * is pending rather than dropping it.
+ * Short enough that nobody relies on it. Leaving the page flushes what is
+ * pending rather than dropping it.
  */
 const UNDO_MS = 6_000
 
@@ -2602,10 +2538,9 @@ function toArtifact(a: ArtifactRow): Artifact {
 /**
  * A page of cards laid over what the store already holds.
  *
- * A listing row carries a trimmed body, so taking it wholesale would blank the
- * document a panel is showing — or worse, hand an editor a truncated copy to
- * save. The fuller copy wins while it is the same version; anything newer on
- * the server replaces it.
+ * A listing row carries a trimmed body, so taking it wholesale would blank a
+ * panel or hand an editor a truncated copy to save. The fuller copy wins
+ * while it is the same version.
  */
 function mergeArtifacts(incoming: Artifact[], held: Artifact[]): Artifact[] {
   const byId = new Map(held.map((a) => [a.id, a]))
@@ -2862,12 +2797,9 @@ async function streamTurn(
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
         case 'artifact':
-          // The document as well as the listing. A listing row carries a card,
-          // and a card blanks the very field this panel renders — an `html`
-          // artifact's `content` is emptied for the grid, which draws it as a
-          // thumbnail. Opening on the card alone put a finished document on
-          // screen as a white rectangle. The page and deck paths already
-          // fetched both; this one did not.
+                    // The document as well as the listing: an `html` card has its
+                    // `content` emptied for the grid, so opening on the card alone puts
+                    // a finished document on screen as a white rectangle.
           void Promise.all([get().loadArtifacts(), get().refreshArtifact(event.artifactId)]).then(
             () => set({ openArtifactId: event.artifactId }),
           )
@@ -3599,10 +3531,9 @@ async function streamDeck(
 /**
  * Puts the turn's privacy routing on the prompt it was decided for.
  *
- * The server writes a detected message masked and keeps the same routing
- * beside it, so this is what a reload would show anyway. Doing it while the
- * turn is still running is what lets the transcript admit the substitution
- * now, instead of at a reopening that may be a week away.
+ * The server stores the same thing, so this is what a reload would show. Doing
+ * it live is what lets the transcript admit the substitution now rather than
+ * at a reopening a week away.
  */
 function markPrompt(set: Set, sessionId: string, routing: PrivacyRouting) {
   set((s) => ({
@@ -3628,16 +3559,13 @@ function patchMessage(set: Set, sessionId: string, messageId: string, fn: (m: Me
 /**
  * The two halves of a media turn, on screen before the server has them.
  *
- * The same optimism the chat composer has always run on: the sentence appears
- * where it was typed, and the answer takes shape under it. The server writes
- * both rows for real and a reload replaces these with its copies, so this is
- * only about the seconds or minutes in between — which on this surface used to
- * be a blank conversation with the work happening somewhere off to the side.
+ * The same optimism the chat composer runs on: the sentence appears where it
+ * was typed and the answer takes shape under it. The server writes both rows
+ * and a reload replaces these.
  *
  * `pending` is the empty answer row that says the picture is coming. A clip
- * does not get one: its job card is a truer version of the same thing, with a
- * stage, a percentage and a way to stop it, and two placeholders for one
- * request would read as two requests.
+ * gets none — its job card carries a stage, a percentage and a way to stop,
+ * and two placeholders for one request would read as two requests.
  */
 function beginMediaTurn(set: Set, sessionId: string, prompt: string, pending: boolean) {
   const promptId = uid('m')
@@ -3669,10 +3597,8 @@ function beginMediaTurn(set: Set, sessionId: string, prompt: string, pending: bo
 /**
  * What came back, under the prompt that asked for it.
  *
- * No charge is written here, though the finished row carries one: this call
- * was handed pictures and not a bill, and the figure arrives a moment later
- * with the server's own copy of the turn. A guess in the meantime would be a
- * number about somebody's allowance that nobody checked.
+ * No charge is written here: this call was handed pictures and not a bill, and
+ * the figure arrives with the server's own copy of the turn.
  */
 function finishMediaTurn(
   set: Set,
@@ -3694,10 +3620,8 @@ function finishMediaTurn(
 /**
  * A request that came back with nothing.
  *
- * The empty answer row goes away rather than standing there for ever, and the
- * question carries the mark — nothing spoke, so nothing may be left on screen
- * looking as though it had. The server records the same thing on the same row,
- * which is what makes this survive a reload.
+ * The empty answer row goes away and the question carries the mark. The server
+ * records the same thing on the same row, which is what survives a reload.
  */
 function failMediaTurn(
   set: Set,

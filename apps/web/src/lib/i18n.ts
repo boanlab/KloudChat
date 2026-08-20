@@ -30,7 +30,6 @@ const EN: Record<string, string> = {
   '직접 지정': 'Set here',
   '서버 주소 사용': 'From server',
   '기본값': 'Default',
-  '미기동': 'Not running',
 
   // ── navigation ──────────────────────────────────────────────────────
   '홈': 'Home',
@@ -205,7 +204,6 @@ const EN: Record<string, string> = {
   '공유됨': 'Shared',
   '관리': 'Manage',
   '관리자': 'Admin',
-  '구성원만': 'Members only',
   '권한 변경': 'Role change',
   '근거 없음': 'No source',
   '근거 열기': 'Open source',
@@ -250,7 +248,6 @@ const EN: Record<string, string> = {
   '메일 발송': 'Outgoing mail',
   '모델': 'Model',
   '모델 비교': 'Compare models',
-  '모델 지정': 'Model selection',
   '모델별': 'By model',
   '모두 삭제': 'Delete all',
   '목차': 'Contents',
@@ -303,7 +300,6 @@ const EN: Record<string, string> = {
   '소스': 'Source',
   '수채화': 'Watercolour',
   '스킬 관리': 'Manage skills',
-  '스킬 연결': 'Attach skills',
   '스킬 편집': 'Edit skill',
   '스타일': 'Style',
   '공용': 'Shared',
@@ -519,7 +515,6 @@ const EN: Record<string, string> = {
   '이 모델은 이 조합을 만들지 않습니다': 'This model does not produce that combination',
   '비교할 모델 (2~3개)': 'Models to compare (2–3)',
   '에이전트로 새 대화': 'New conversation with an agent',
-  '이 화면에서 쓸 수 있는 스킬': 'Skills available on this surface',
   '이번 요청에 적용할 스킬 (최대 3개)': 'Skills for this request (up to 3)',
   '프로젝트 추천': 'Project suggestion',
   '추천': 'Suggested',
@@ -553,7 +548,6 @@ const EN: Record<string, string> = {
   '이전': 'Earlier',
   'Codex · OpenAI 호환 도구': 'Codex · OpenAI-compatible tools',
   '이 계정이 쓴 크레딧입니다. 매달 1일에 배정량으로 다시 채워집니다.': 'What this account has spent. It refills to the allowance on the 1st of each month.',
-  '크레딧. 로컬 모델은 크레딧을 쓰지': 'credits. Local models cost nothing',
   '이전 대화': 'Earlier conversations',
   '더 보기': 'Show more',
   '가입 승인과 월 크레딧 한도를 관리합니다. 한도는 매달 1일에 자동으로 리필되며, 남은 크레딧은 이월되지 않습니다.': 'Approve sign-ups and set monthly credit limits. Limits refill on the 1st; leftover credits do not carry over.',
@@ -561,9 +555,7 @@ const EN: Record<string, string> = {
   '실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.': 'Totalled from real usage. Empty means nobody has spent anything yet.',
   '이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.':
     'Settings that apply to the whole instance. Saved settings apply at once — no restart.',
-  '조직 전체 사용량': 'Organisation usage',
   '본인 사용량': 'Your usage',
-  '가입 승인, 월 크레딧 한도 배정, 정지': 'Approvals, monthly limits, suspension',
   '현재 비밀번호': 'Current password',
   '비밀번호 확인': 'Confirm password',
   '개 더 보기': ' more',
@@ -661,8 +653,6 @@ const EN: Record<string, string> = {
   'MCP 서버 추가': 'Add MCP server',
   'MCP 서버를 붙여 외부 시스템을 도구로 씁니다. 인증 정보는 서버에만 저장되고, 도구 단위로 켜고 끌 수 있습니다.':
     'Attach an MCP server to use outside systems as tools. Credentials stay on the server, and each tool can be turned on or off.',
-  'OpenRouter 가 무료로 제공하는 모델입니다': 'OpenRouter serves this model free of charge',
-  'OpenRouter 무료': 'Free on OpenRouter',
   'PDF (발표용)': 'PDF (for presenting)',
   'PDF, 마크다운, CSV를 올려 두면 이 프로젝트의 모든 대화에서 참조합니다.':
     'Upload PDF, Markdown or CSV and every conversation in this project can draw on it.',
@@ -717,8 +707,6 @@ const EN: Record<string, string> = {
     'Your request is in. Once an administrator approves it and assigns monthly credits you can start straight away — we will email you when that happens.',
   '계정 없이 열림': 'Opens without an account',
   '계정이 정지되었습니다': 'This account is suspended',
-  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 워크스페이스에 공유합니다.':
-    'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and share the good ones with the workspace.',
   '공유된 결과물': 'Shared artifact',
   '공유된 자료입니다. 원본은 공유한 사람만 수정할 수 있습니다.':
     'Shared with you. Only the person who shared it can edit the original.',
@@ -861,7 +849,6 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧': '≈{n} credits',
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
-  '워크스페이스 공유': 'Shared with workspace',
   '계정이 있는 사람': 'Anyone with an account',
   '접속기록': 'Access log',
   '접속 위치': 'Where from',
@@ -892,9 +879,6 @@ const EN: Record<string, string> = {
   '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.':
     'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and open the good ones in the store.',
   '워크스페이스 스토어': 'Workspace store',
-  '워크스페이스에 공유': 'Share with workspace',
-  '워크스페이스에 공유하면 같은 조직 구성원이 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
-    'Sharing lets colleagues copy it from the store. The original stays yours.',
   '원문': 'Source',
   '응답 대기 중…': 'Waiting for a reply…',
   '이 계정은 모델 {n}개로 제한되어 있습니다. 발급한 키도 같은 범위만 호출할 수 있습니다.':
@@ -949,8 +933,6 @@ const EN: Record<string, string> = {
   '크레딧이 차감되지 않았습니다': 'Nothing was charged',
   '키가 발급되었습니다': 'Key issued',
   '텍스트 (노트 포함)': 'Text (with notes)',
-  '특정 작업을 어떻게 처리할지 적어 둔 절차입니다. 관련된 요청이 오면 모델이 스스로 불러옵니다.':
-    'A written procedure for handling one kind of task. The model reaches for it when a request matches.',
   '설치해 둔 절차입니다. 입력창에서 이번 요청에 적용할 스킬을 최대 3개 고릅니다.':
     'Installed procedures. Select up to three for each request in the composer.',
   '{name} 설치 상태': '{name} installation status',
@@ -997,7 +979,6 @@ const EN: Record<string, string> = {
   '개요를 잡고 절 단위로 써서 문서로 내보냅니다': 'Outline it, write section by section, export as a document',
   '발표 시간에 맞춰 장수를 정하고 노트를 붙입니다': 'Sized to your slot, with speaker notes attached',
   '비율과 스타일을 정해 여러 장을 한 번에 만듭니다': 'Set the ratio and style, get several at once',
-  '길이와 형식을 정해 만들고 작업 카드로 확인합니다': 'Set the length and format, then watch it on a job card',
   '응답 스트리밍': 'Stream responses',
   '토큰이 도착하는 대로 표시합니다. 끄면 답변이 완성된 뒤 한 번에 나타납니다.':
     'Shows tokens as they arrive. Turned off, the whole answer appears at once.',
@@ -1007,20 +988,14 @@ const EN: Record<string, string> = {
   '토큰·크레딧 표시': 'Show tokens and credits',
   '각 응답 아래에 모델·토큰·크레딧을 표시합니다.': 'Puts the model, tokens and credits under each response.',
   '리포트 도우미': 'Report assistant',
-  '리포트-도우미': 'report-assistant',
   '업무·기술 보고서를 구조부터 잡아 근거 중심으로 작성합니다.':
     'Structures evidence-based business and technical reports.',
   '회의록 정리': 'Meeting minutes',
-  '회의록-정리': 'meeting-minutes',
   '회의 메모를 결정·조치·미결로 정리합니다.': 'Sorts meeting notes into decisions, actions and open items.',
   '데이터 분석 도우미': 'Data analysis assistant',
-  '데이터-분석-도우미': 'data-analysis-assistant',
   '표·설문 데이터를 집계하고 차트로 만듭니다.': 'Aggregates tabular and survey data and turns it into charts.',
-  '검산 도우미': 'Arithmetic checker',
-  '검산-도우미': 'arithmetic-checker',
   '전개를 단계별로 보여 주고 검산까지 합니다.': 'Shows each step of the working and checks the arithmetic.',
   '원문 읽기 도우미': 'Close reading assistant',
-  '원문-읽기-도우미': 'close-reading-assistant',
   '논문·기술 문서를 근거 중심으로 검토합니다.': 'Reviews papers and technical documents against their evidence.',
   '계산·단위 검증': 'Calculation & unit verification',
   '계산식과 단위, 분모, 기준 시점을 코드로 검산하고 근거를 남깁니다.':
@@ -1041,7 +1016,6 @@ const EN: Record<string, string> = {
   '공문-작성': 'official-correspondence',
   '대내외 공문과 결재 문서를 양식에 맞춰 씁니다.': 'Writes internal and external correspondence to the expected form.',
   '발표 노트 작성': 'Speaker notes',
-  '발표-노트-작성': 'speaker-notes',
   '장마다 실제로 말할 문장을 씁니다. 화면 글자를 반복하지 않습니다.':
     'Writes what you will actually say on each slide, rather than repeating what is on it.',
   '고객사에 맞춘 제안 슬라이드를 구성합니다.': 'Builds a pitch deck shaped around the client.',
@@ -1069,7 +1043,6 @@ const EN: Record<string, string> = {
     'Writes in the register and structure of institutional correspondence.',
   '대내외 공문, 협조 요청, 결재 상신 문서를 쓸 때.':
     'When writing correspondence, requests for cooperation, or documents going up for approval.',
-  '수치가 포함된 답을 낼 때': 'When an answer contains numbers',
   '회의 내용을 정리할 때. 받아쓴 텍스트나 메모를 넘겨받았을 때.':
     'When writing up a meeting, or handed a transcript or notes.',
   '슬라이드를 만든 뒤 발표 노트를 채울 때.': 'After building a deck, when filling in the speaker notes.',
@@ -1097,14 +1070,12 @@ const EN: Record<string, string> = {
   '수식 풀이': 'Worked equations',
   '논문 리뷰어': 'Paper reviewer',
   '미디어': 'Media',
-  '번역·용어': 'Translation & terms',
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
   // ── 작업 단계 카드 ───────────────────────────────────────────────────
   '작업 중': 'Working',
   '작업 완료': 'Done',
   '중단됨': 'Stopped',
-  '{done}/{total} 단계': '{done}/{total} steps',
   '{n}단계': '{n} steps',
   '{n}개 남음': '{n} left',
   '추론': 'Reasoning',
@@ -1114,7 +1085,6 @@ const EN: Record<string, string> = {
   '저장 시점': 'Save point',
   '넓게 보기': 'Widen',
   '패널 좁히기': 'Narrow',
-  '본문을 읽기 좋은 너비로 넓힙니다': 'Widens the panel to a reading width',
   '이 부분 고치기': 'Fix this passage',
   '선택 복사': 'Copy selection',
   '이 대목을 어떻게 바꿀지 적으세요. 예: 근거를 붙여서 두 문장으로.':
@@ -1159,8 +1129,6 @@ const EN: Record<string, string> = {
   '답변을 받지 못했습니다.': 'No answer came back.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
   '다시 물어보기': 'Ask again',
-  '다시 물어볼 때 첨부한 파일은 새로 올려야 합니다.':
-    'Asking again does not carry the attachments — upload them once more.',
   '한 모델을 지목할 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청처럼요.':
     'Spend with no single model behind it — a request that compared several at once, for instance.',
 
@@ -1242,8 +1210,6 @@ const EN: Record<string, string> = {
   // ── 공유 상태와 가려진 기록 ─────────────────────────────────────
   '공유 중': 'Shared',
   '링크 공개 중': 'Public link',
-  '이 인스턴스에 로그인한 구성원이 이 대화를 열 수 있습니다.':
-    'Anyone signed in to this instance can open this conversation.',
   '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.':
     'Anyone with the link can read this conversation without an account.',
   '공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.':
@@ -1358,9 +1324,6 @@ const EN: Record<string, string> = {
   // ── 디자인 템플릿 ───────────────────────────────────────────────
   '고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.':
     'Picking one puts its example into the composer. The sentence is yours to change.',
-  '{name} 디자인 해제': 'Clear the {name} design',
-  'HTML 내려받기': 'Download HTML',
-  '브라우저에서 열어 인쇄하면 PDF 로 저장됩니다': 'Open it in a browser and print to save a PDF',
   '원본 HTML': 'Original HTML',
   '텍스트': 'Text',
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
@@ -1368,8 +1331,6 @@ const EN: Record<string, string> = {
   '디자인': 'Design',
   '디자인 시스템': 'Design systems',
   '디자인 추가': 'Add a design',
-  '슬라이드 색과 서체, 보고서 표지, 이미지 스타일에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
-    'Applies to slide colour and type, report covers and image style. Audio and video are unaffected.',
   '사용 안 함 — 기본 모양': 'None — the default look',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
     'Attach one to a project and its slides, reports and images come out in the same colour and type.',

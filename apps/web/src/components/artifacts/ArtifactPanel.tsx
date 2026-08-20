@@ -130,10 +130,8 @@ interface PageSlide {
  * An HTML deck split at its slides.
  *
  * `page_export.to_slides` reads the same `<section class="slide">` boundary
- * server-side and pays for it in design — the columns and the paper belong to
- * the seed, and the seed needs a browser. Here there is one, so a slide stays
- * the markup it was written as, and what is shown is the page the reader would
- * have scrolled to.
+ * server-side and pays for it in design, since the seed needs a browser. Here
+ * there is one, so a slide stays the markup it was written as.
  */
 function splitSlides(html: string): PageSlide[] {
   const page = new DOMParser().parseFromString(html, 'text/html')
@@ -160,11 +158,9 @@ function splitSlides(html: string): PageSlide[] {
 /**
  * Presenting a deck that came out as a document.
  *
- * A JSON deck presents by drawing its slide objects, and this one cannot be
- * drawn that way: the design is what the 서식 was chosen for, and it lives in
- * the file's own stylesheet. So the file is what goes on the wall — one
- * section at a time, in the same sandboxed frame the preview uses and the
- * same 16:9 rectangle the other track rehearses in.
+ * A JSON deck presents by drawing its slide objects; this one cannot, because
+ * its design lives in the file's own stylesheet. So the file goes on the wall
+ * one section at a time, in the same sandboxed frame the preview uses.
  */
 function PagePresent({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
@@ -221,15 +217,12 @@ function PagePresent({ artifact }: { artifact: CodeArtifact }) {
 /**
  * The formats an HTML artifact can leave in.
  *
- * `.html` is the artifact itself — the faithful copy, and the one whose print
- * rules turn into a PDF in the reader's own browser. The rest are the server
- * reading the markup back into slides or sections and handing them to the
- * exporters this product already had, so a deck opens in PowerPoint as
- * editable slides rather than as a picture of one.
+ * `.html` is the artifact itself, and its print rules turn into a PDF in the
+ * reader's browser. The rest are the server reading the markup back into
+ * slides or sections for the existing exporters.
  *
- * The file is never opened in a tab from here: a `blob:` URL inherits this
- * origin, and model-written markup is not something to run inside it however
- * thoroughly it was stripped on the way in.
+ * Never opened in a tab from here: a `blob:` URL inherits this origin, and
+ * model-written markup is not something to run inside it.
  */
 function PageExport({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
@@ -287,9 +280,8 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
  * Rewriting one block of an HTML artifact.
  *
  * The preview is sandboxed, so there is no clicking into the document to say
- * "this part" the way the report panel does. What there is instead is the plan
- * the file was written from — the blocks are on the artifact — so the choice
- * is made from a list and the document is re-rendered from the same seed.
+ * "this part". The blocks the file was written from stand in for that, and
+ * the document is re-rendered from the same seed.
  */
 function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
@@ -382,11 +374,9 @@ function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
 /**
  * Putting a picture this workspace already made into one block of a page.
  *
- * The writing model never produces one and is not allowed to point at one, so
- * the picture comes from the other direction: the image surface made it, and
- * the server inlines its bytes on this click. Nothing is fetched when a reader
- * opens the file, which is the only way a picture and a sandboxed artifact can
- * both be true.
+ * The writing model never produces one and may not point at one, so the
+ * picture comes from the image surface and the server inlines its bytes.
+ * Nothing is fetched when a reader opens the file.
  */
 function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
   const t = useT()
@@ -508,10 +498,9 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
 /**
  * An HTML or code artifact with the controls that belong to it.
  *
- * Exported because the artifacts gallery opens the same document in a dialog,
- * and until it used this it showed the file with no way to check it, rewrite a
- * block, add a picture or export it — the same artifact answering differently
- * depending on which screen you opened it from.
+ * Exported because the artifacts gallery opens the same document in a dialog
+ * and needs the same controls — check, rewrite a block, add a picture,
+ * export.
  */
 export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
   const t = useT()

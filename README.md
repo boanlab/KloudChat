@@ -211,7 +211,7 @@ without a translation fall back to Korean.
 | `/admin/users` | Signup approval, monthly credit allowance, suspension (admin) |
 | `/admin/usage` | Organisation-wide usage (admin) |
 | `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
-| `/settings` · `/settings/preferences` · `/settings/keys` | Profile and password / default model and behaviour / API key issue and revoke |
+| `/settings` · `/settings/preferences` · `/settings/keys` · `/settings/access` | Profile and password / default model and behaviour / API key issue and revoke / sign-ins and security changes on this account |
 | `/agent-setup` | Coding agent connection — address, key, model (account menu) |
 | `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` | LiteLLM / automatic model routing / enabled surfaces and integrations / shared templates / branding / SMTP (admin) |
 
@@ -228,15 +228,17 @@ without a translation fall back to Korean.
   Thumbnail grid, speaker notes, per-slide text editing. Exports to pptx, PDF
   and Markdown — preview and both exports share one 960×540 geometry, so what
   you saw is what the file contains.
-- **Image** — an option bar above the composer (aspect ratio, style, count),
-  with results inline in the conversation.
-- **Audio / video** — chosen with a type toggle. Only video shows a job card.
-  Picking resolution, audio and duration updates the quote in place. A failure
-  states the cause and that **nothing was charged**.
+- **Image** — an option bar above the composer (aspect ratio, style, count).
+  The prompt and the picture read as an ordinary turn: the sentence where it
+  was typed, the picture under it.
+- **Audio / video** — chosen with a type toggle. The same turn shape, with a
+  job card standing in the answer's place while a clip is made. Picking
+  resolution, audio and duration updates the quote in place. A failure states
+  the cause and that **nothing was charged**.
 
-**Outputs can be shared by link** — either to workspace members or to people
-without an account. Links are read-only and revocable at any time. Project
-files and memories are never included.
+**Outputs can be shared by link** — either to anyone with an account on this
+instance or to people without one. Links are read-only, revocable at any time,
+and record who opened them. Project files and memories are never included.
 
 **The microphone in the composer** transcribes through the backend's
 speech-to-text. The transcript fills the composer rather than being sent.
@@ -244,6 +246,11 @@ speech-to-text. The transcript fills the composer rather than being sent.
 Chat has a **model comparison** mode: the same question goes to two or three
 models at once, each column showing its credit cost, and the conversation
 continues from whichever answer you pick.
+
+**A turn outlives the tab it was started in.** Closing the page or losing the
+connection does not throw the answer away — it is still written, charged and
+titled. Stopping is a separate act: 중단 tells the server before it closes the
+connection, and the partial answer is kept and marked as cut off.
 
 ## Repository layout
 
