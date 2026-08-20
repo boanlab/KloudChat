@@ -1945,6 +1945,142 @@ async def test_a_revoked_model_says_so_and_does_not_become_the_session(monkeypat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "runner_name"),
+    [
+        (sessions_router.SessionKind.report, "_run_report"),
+        (sessions_router.SessionKind.slides, "_run_deck"),
+    ],
+)
+async def test_a_revoked_model_says_so_on_report_and_slides(
+    monkeypatch, kind, runner_name: str
+) -> None:
+    """A substitution is news on every surface, not only the one that resolves privacy.
+
+    Report and slide turns build no privacy resolution, so there was nothing on
+    the turn to carry the swap: the document came out written by a model nobody
+    chose and the transcript agreed with itself. The note the runner is handed
+    is what the reader's badge compares.
+    """
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        allowed_models=["external/allowed"],
+    )
+    revoked = {**_external_model("external/now-blocked"), "kinds": [kind.value]}
+    allowed = {**_external_model("external/allowed"), "kinds": [kind.value]}
+    session = ChatSession(user_id=user.id, kind=kind, model=revoked["id"])
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[revoked, allowed],
+        blocks=[],
+    )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    captured: dict = {}
+
+    async def run_document(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type":"done"}\n\n'
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, runner_name, run_document)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean"),
+        _request(),
+        user,
+        db,
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    routing = captured["routing"]
+    assert routing["requestedModels"] == [revoked["id"]]
+    assert routing["routedModels"] == [allowed["id"]]
+    # What `actualModelChanged` reads in the transcript.
+    assert routing["actualModel"] == allowed["id"]
+    assert routing["action"] == "none"
+    user_message = next(
+        row
+        for row in db.added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.user
+    )
+    assert user_message.routing["requestedModels"] == [revoked["id"]]
+    # The revocation owns this turn only, exactly as it does on chat.
+    assert session.model == revoked["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_document_turn_on_the_model_it_asked_for_carries_no_route_note(
+    monkeypatch,
+) -> None:
+    """Nothing happened, so the turn says nothing — an empty badge row is noise."""
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    allowed = {**_external_model("external/allowed"), "kinds": ["report"]}
+    session = ChatSession(
+        user_id=user.id,
+        kind=sessions_router.SessionKind.report,
+        model=allowed["id"],
+    )
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[allowed],
+        blocks=[],
+    )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    captured: dict = {}
+
+    async def run_document(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type":"done"}\n\n'
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "_run_report", run_document)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean"),
+        _request(),
+        user,
+        db,
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    assert captured["routing"] is None
+
+
+@pytest.mark.asyncio
 async def test_strict_privacy_route_does_not_persist_over_requested_session_model(
     monkeypatch,
 ) -> None:
