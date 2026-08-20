@@ -468,7 +468,6 @@ const EN: Record<string, string> = {
   '월 한도는 계정에 걸려 있습니다. 키를 여러 개 만들어도 한도가 늘지 않고, 다 쓰면 요청이 거부됩니다.':
     'The monthly limit sits on the account. Extra keys do not raise it, and requests are refused once it is spent.',
   '키를 폐기하면 즉시 막힙니다. 도구 쪽 설정도 함께 지우세요.': 'Revoking a key blocks it immediately — clear it from the tool as well.',
-  '이 주소는 브라우저에서 접속한 것과 같은 곳입니다. 사내망 밖에서 쓰려면 그 망에 연결한 뒤 사용하세요.': 'This is the same address you reach in the browser. From outside the network, connect to it first.',
   '대화에서 끝나지 않는': 'More than a',
   '생성형 AI 워크스페이스': 'generative AI workspace',
   '등록된 계정으로 이어서 작업합니다.': 'Sign in to pick up where you left off.',
@@ -863,8 +862,18 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
   '워크스페이스 공유': 'Shared with workspace',
-  '워크스페이스 구성원에게만 공개된 자료입니다. 로그인한 뒤 다시 열어 주세요.':
-    'This is open to workspace members only. Sign in and open it again.',
+  '계정이 있는 사람': 'Anyone with an account',
+  '이 인스턴스에 로그인하면 누구나 열 수 있습니다.':
+    'Anyone signed in to this instance can open it.',
+  '이 인스턴스에 로그인한 사람은 누구나 이 대화를 열 수 있습니다.':
+    'Anyone signed in to this instance can open this conversation.',
+  '로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.':
+    'This one needs you signed in. Sign in and open it again.',
+  '모두에게 공개': 'Open to everyone',
+  '공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
+    'Once open, anyone signed in to this instance can copy it from the store. The original stays yours.',
+  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.':
+    'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and open the good ones in the store.',
   '워크스페이스 스토어': 'Workspace store',
   '워크스페이스에 공유': 'Share with workspace',
   '워크스페이스에 공유하면 같은 조직 구성원이 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':

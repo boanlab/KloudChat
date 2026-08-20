@@ -12,8 +12,13 @@ type Scope = 'workspace' | 'link'
 const options: { id: Scope; label: string; description: string; icon: typeof Users }[] = [
   {
     id: 'workspace',
-    label: '워크스페이스 구성원',
-    description: '이 인스턴스에 로그인한 사람만 열 수 있습니다.',
+    // Not "workspace members": there are no members. There is no team, no
+    // group and no invite anywhere in this product — `ShareScope.workspace`
+    // asks whether the reader is signed in and never asks who they are. A
+    // label promising a named roster would be read as one by somebody sharing
+    // a draft, which is the kind of misreading that does not come back.
+    label: '계정이 있는 사람',
+    description: '이 인스턴스에 로그인하면 누구나 열 수 있습니다.',
     icon: Users,
   },
   {
@@ -28,7 +33,7 @@ const options: { id: Scope; label: string; description: string; icon: typeof Use
 const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' | 'warn' }> = {
   workspace: {
     label: '공유 중',
-    title: '이 인스턴스에 로그인한 구성원이 이 대화를 열 수 있습니다.',
+    title: '이 인스턴스에 로그인한 사람은 누구나 이 대화를 열 수 있습니다.',
     tone: 'accent',
   },
   link: {
