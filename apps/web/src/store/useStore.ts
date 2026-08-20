@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
-import { kindMeta } from '@/lib/kinds'
 import { errorMessage } from '@/lib/api'
 import {
   ApiError,
@@ -557,29 +556,17 @@ function cancelRefresh() {
  * voice come from the composer's controls, so this points at them rather than
  * imitating an answer.
  */
-function notBuiltYet(set: Set, sessionId: string, kind: SessionKind) {
-  const label = kindMeta[kind].label
-  set((s) => ({
-    sessions: s.sessions.map((c) =>
-      c.id === sessionId
-        ? {
-            ...c,
-            messages: [
-              ...c.messages,
-              {
-                id: uid('m'),
-                role: 'assistant' as const,
-                content: tr('{kind}은(는) 아래 입력창의 만들기 버튼으로 시작해 주세요. 길이와 목소리를 여기서는 정할 수 없습니다.').replace(
-                  '{kind}',
-                  tr(label),
-                ),
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          }
-        : c,
-    ),
-  }))
+function handToTheComposer(set: Set, text: string) {
+  // A clip and a piece of audio are started from the composer, where their
+  // length, resolution and voice are chosen — so a prompt that arrives here
+  // is handed back to it rather than answered.
+  //
+  // It used to append an assistant message saying so. That message was never
+  // sent to a model and never stored, so the conversation showed a turn that
+  // had not happened and lost it on the next reload: a made-up reply is a
+  // worse way to say "not here" than simply putting the sentence where it
+  // belongs.
+  set({ draft: text })
 }
 
 /**
@@ -1228,7 +1215,7 @@ export const useStore = create<State>((set, get) => ({
       if (kind !== 'chat') {
         // Likewise: the composer calls `generateAudio`/`generateVideo` directly,
         // since those are jobs rather than turns.
-        notBuiltYet(set, id, kind)
+        handToTheComposer(set, text)
         return id
       }
 
