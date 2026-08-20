@@ -6,11 +6,27 @@ import type { ChartArtifact } from '@/types'
 import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
 import { useT } from '@/lib/useT'
 
+/**
+ * A series' points, defensively.
+ *
+ * The data comes out of a model, and one row missing `points` used to throw
+ * inside the render — which is not a broken chart on a card, it is a blank
+ * screen where the gallery was. A chart with nothing to plot draws as empty.
+ */
+function pointsOf(one: ChartArtifact['series'][number]) {
+  return Array.isArray(one?.points) ? one.points : []
+}
+
+/** The series, likewise: a chart with none is empty rather than fatal. */
+function seriesOf(chart: ChartArtifact) {
+  return Array.isArray(chart.series) ? chart.series : []
+}
+
 /** Every x across every series, in first-appearance order. */
 function categories(chart: ChartArtifact): string[] {
   const out: string[] = []
-  for (const one of chart.series) {
-    for (const point of one.points) if (!out.includes(point.x)) out.push(point.x)
+  for (const one of seriesOf(chart)) {
+    for (const point of pointsOf(one)) if (!out.includes(point.x)) out.push(point.x)
   }
   return out
 }
@@ -40,10 +56,11 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
   const t = useT()
   const [hover, setHover] = useState<string | null>(null)
   const keys = categories(chart)
+  const series = seriesOf(chart)
 
   // Inside the SVG, not in HTML: an exported .png/.svg would otherwise carry
   // colours and no names.
-  const legend = chart.series.length > 1
+  const legend = series.length > 1
   const W = 560
   const H = 280
   const padL = 56
@@ -56,13 +73,13 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
   const stacked = chart.chartType === 'stacked'
 
   const valueAt = (index: number, key: string) =>
-    chart.series[index]?.points.find((p) => p.x === key)?.y
+    pointsOf(series[index]).find((p) => p.x === key)?.y
 
   // Stacked bars scale to the whole stack, grouped ones to the tallest bar.
   const totals = keys.map((key) =>
-    chart.series.reduce((sum, _, i) => sum + Math.max(valueAt(i, key) ?? 0, 0), 0),
+    series.reduce((sum, _, i) => sum + Math.max(valueAt(i, key) ?? 0, 0), 0),
   )
-  const values = chart.series.flatMap((one) => one.points.map((p) => p.y))
+  const values = series.flatMap((one) => pointsOf(one).map((p) => p.y))
   const hi = Math.max(stacked ? Math.max(...totals, 0) : Math.max(...values, 0), 0)
   // Zero baseline: SVG does not draw a bar of negative height.
   const lo = Math.min(...values, 0)
@@ -142,9 +159,9 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
       )}
 
       {legend &&
-        chart.series.map((one, si) => {
+        series.map((one, si) => {
           // Laid out by approximate width — SVG has no flexbox.
-          const offset = chart.series
+          const offset = series
             .slice(0, si)
             .reduce((x, prior) => x + prior.name.length * 7 + 26, padL)
           return (
@@ -163,7 +180,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
         })}
 
       {chart.chartType === 'line'
-        ? chart.series.map((one, si) => {
+        ? series.map((one, si) => {
             const drawn = keys
               .map((key, i) => ({ i, v: valueAt(si, key) }))
               .filter((d): d is { i: number; v: number } => typeof d.v === 'number')
@@ -187,13 +204,13 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
           })
         : keys.map((key, i) => {
             let cursor = 0
-            const width = stacked ? band * 0.5 : (band * 0.62) / chart.series.length
-            return chart.series.map((one, si) => {
+            const width = stacked ? band * 0.5 : (band * 0.62) / series.length
+            return series.map((one, si) => {
               const value = valueAt(si, key)
               if (typeof value !== 'number') return null
               const left = stacked
                 ? centre(i) - width / 2
-                : centre(i) - (width * chart.series.length) / 2 + width * si
+                : centre(i) - (width * series.length) / 2 + width * si
               const height = Math.abs(y(value) - zero)
               const topEdge = stacked
                 ? y(cursor + Math.max(value, 0)) // 아래에서 위로 쌓는다
@@ -251,7 +268,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
             stroke="var(--border)"
             strokeWidth={1}
           />
-          {chart.series.map((one, si) => {
+          {series.map((one, si) => {
             const value = valueAt(si, hover)
             if (typeof value !== 'number') return null
             return (
@@ -264,7 +281,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
                 fontSize={11}
                 fontWeight={600}
               >
-                {chart.series.length > 1 ? `${one.name} ` : ''}
+                {series.length > 1 ? `${one.name} ` : ''}
                 {value.toLocaleString()}
               </text>
             )
@@ -281,7 +298,7 @@ export function ChartThumb({ chart }: { chart: ChartArtifact }) {
     <div className="pointer-events-none flex size-full flex-col justify-center bg-panel px-4 py-3">
       <Plot chart={chart} interactive={false} />
       <div className="mt-1 flex flex-wrap gap-2.5">
-        {chart.series.map((s) => (
+        {seriesOf(chart).map((s) => (
           <span key={s.name} className="flex items-center gap-1 text-2xs text-muted">
             <span className="size-2 rounded-sm" style={{ background: s.color }} />
             {s.name}
