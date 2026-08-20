@@ -460,6 +460,15 @@ export function Composer({
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
+  /**
+   * When the search toggle cannot reach the web whatever it says. A
+   * strict-local model is handed no network tool at all — that route exists so
+   * the text does not leave — and a comparison sends neither column the flag.
+   * An answer written from memory under a lit globe is the worst outcome here,
+   * so the control follows the turn rather than the stored preference.
+   */
+  const searchBlocked = (compareMode && kind === 'chat') || Boolean(model?.strictLocal)
+  const effectiveWebSearch = webSearch && !searchBlocked
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -491,8 +500,10 @@ export function Composer({
         )
       }
     }
-    if (skill.requiredTools.includes('web_search') && !webSearch) {
-      return t('먼저 웹 검색을 켜야 합니다.')
+    if (skill.requiredTools.includes('web_search') && !effectiveWebSearch) {
+      return searchBlocked
+        ? t('strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.')
+        : t('먼저 웹 검색을 켜야 합니다.')
     }
     const unavailable = skill.requiredTools.filter((name) => {
       if (name === 'search_knowledge') return !sessionAgent?.hasKnowledge
@@ -518,7 +529,7 @@ export function Composer({
       project ||
         sessionAgent ||
         attachments.length > 0 ||
-        webSearch ||
+        effectiveWebSearch ||
         activeSkills.length > 0,
     )
   const autoPausedForCompare =
@@ -720,7 +731,7 @@ export function Composer({
         sessionId ?? reusableSessionId,
         text,
         sentAttachments,
-        webSearch,
+        effectiveWebSearch,
         sentSkillIds,
         sentStartingTemplate,
         undefined,
@@ -731,7 +742,7 @@ export function Composer({
     }
     void send(sessionId, kind, text, {
       projectId,
-      webSearch,
+      webSearch: effectiveWebSearch,
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
@@ -802,12 +813,23 @@ export function Composer({
                   .join(' vs ')}
               </Badge>
             )}
-            {webSearch && (
-              <Badge tone="accent">
-                <Globe size={11} />
-                {t('웹 검색')}
-              </Badge>
-            )}
+            {webSearch &&
+              (searchBlocked ? (
+                // The toggle is the person's standing wish; this row is what
+                // the turn will actually do. They disagree here, and saying so
+                // is the whole point of the chip.
+                <Badge tone="warn">
+                  <Globe size={11} />
+                  {compareMode && kind === 'chat'
+                    ? t('웹 검색 안 함 · 모델 비교는 검색 없이 실행합니다')
+                    : t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
+                </Badge>
+              ) : (
+                <Badge tone="accent">
+                  <Globe size={11} />
+                  {t('웹 검색')}
+                </Badge>
+              ))}
             {project && (
               <Badge tone="accent">
                 <Boxes size={11} />
@@ -1172,13 +1194,21 @@ export function Composer({
           {!isMedia && (
             <button
               onClick={() => setWebSearch((w) => !w)}
-              aria-pressed={webSearch}
+              aria-pressed={effectiveWebSearch}
+              disabled={searchBlocked}
               className={cn(
                 'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                webSearch ? 'text-accent' : 'text-muted hover:text-fg',
+                effectiveWebSearch ? 'text-accent' : 'text-muted hover:text-fg',
+                searchBlocked && 'opacity-55 hover:bg-transparent hover:text-muted',
               )}
               aria-label={t('웹 검색')}
-              title={t('웹에서 최신 자료를 찾아 근거로 씁니다')}
+              title={
+                searchBlocked
+                  ? compareMode && kind === 'chat'
+                    ? t('모델 비교는 웹 검색 없이 실행합니다')
+                    : t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')
+                  : t('웹에서 최신 자료를 찾아 근거로 씁니다')
+              }
             >
               <Globe size={15} />
             </button>
@@ -1225,6 +1255,13 @@ export function Composer({
               )}
             >
               <MenuLabel>{t('커넥터')}</MenuLabel>
+              {/* The one control in this toolbar that is not about the turn
+                  being written. Its neighbours all reset at the next message;
+                  this one writes the account, so it has to say so before it is
+                  clicked rather than after a connector goes missing elsewhere. */}
+              <p className="px-2.5 pb-1.5 text-xs text-faint">
+                {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
+              </p>
               {usableConnectors.map((c) => (
                 <MenuItem
                   key={c.id}
@@ -1472,6 +1509,12 @@ export function Composer({
                 </Button>
               )}
             </div>
+            {pendingPrivacy.webSearch &&
+              pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
+                <p className="text-sm text-warn">
+                  {t('안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.')}
+                </p>
+              )}
             {pendingPrivacy.decision.requestedModels.length > 1 &&
               pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
                 <p className="text-sm text-muted">

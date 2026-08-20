@@ -53,11 +53,15 @@ _WEB_SEARCH_NUDGE = (
     "사실을 확인하고, 인용한 내용에는 출처 URL 을 밝히세요."
 )
 
-# Same toggle, tool excluded by an agent allowlist. Prevents a call to a tool
-# the turn does not have.
+# Same toggle, no search tool in this turn — an agent allowlist removed it, or
+# the turn runs on a strict-local model that is given no network tool at all.
+# Neutral about which, because the model cannot tell them apart and the person
+# only needs the one fact: the answer they are reading was written without
+# looking anything up. Silence here is what lets a remembered fact pass for a
+# searched one.
 _WEB_SEARCH_BLOCKED = (
-    "사용자가 웹 검색을 켰지만 이 에이전트에는 검색 도구가 허용되어 있지 않습니다. "
-    "검색을 시도하지 말고, 검색이 필요한 질문이라면 그 사실을 알려 주세요."
+    "사용자가 웹 검색을 켰지만 이 요청에는 검색 도구가 없습니다. "
+    "검색을 시도하지 말고, 답변을 시작할 때 웹 검색 없이 답한다는 사실을 먼저 밝히세요."
 )
 
 

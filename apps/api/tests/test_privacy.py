@@ -1960,6 +1960,85 @@ async def test_strict_privacy_route_does_not_persist_over_requested_session_mode
 
 
 @pytest.mark.asyncio
+async def test_strict_local_turn_admits_it_could_not_search(monkeypatch) -> None:
+    """A privacy route removes the search tool; the answer has to say so.
+
+    Dropping the toggle quietly produced a turn indistinguishable from a
+    searched one, which is how a remembered fact ends up read as a checked one.
+    """
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        preferences={"privacyDefaultAction": "route_strict_local"},
+    )
+    external = _external_model("external/requested")
+    external["supportsTools"] = True
+    strict = {
+        **_external_model("strict-local/safe"),
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "supportsTools": True,
+    }
+    session = ChatSession(user_id=user.id, model=external["id"])
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[external, strict],
+        blocks=[],
+    )
+
+    async def current(*_args, **_kwargs):
+        return Governance(
+            external_data_guard=True,
+            privacy_safe_model_ids=[strict["id"]],
+        )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    async def build_tools(*_args, **_kwargs):
+        return []
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    captured: dict = {}
+
+    async def no_events():
+        return
+        yield b""  # pragma: no cover - shape only
+
+    def run_turn(**kwargs):
+        captured.update(kwargs)
+        return no_events()
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", current)
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "build_tools", build_tools)
+    monkeypatch.setattr(sessions_router, "_run_turn", run_turn)
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="send person@example.com", web_search=True),
+        _request(),
+        user,
+        AcceptedDb(),
+    )
+
+    assert response.status_code == 200
+    prompt = captured["messages"][0]["content"]
+    assert "검색 도구가 없습니다" in prompt
+    assert "web_search 를 최소 한 번" not in prompt
+
+
+@pytest.mark.asyncio
 async def test_strict_local_never_exposes_network_backed_code_or_vector_tools(
     monkeypatch,
 ) -> None:

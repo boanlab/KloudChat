@@ -1608,6 +1608,10 @@ export const useStore = create<State>((set, get) => ({
       }
     }),
   chooseVariant: async (sessionId, messageId, model) => {
+    // Keeping a column decides this conversation and nothing else. It used to
+    // move `modelByKind.chat` as well, so one answer preferred inside a
+    // comparison silently became the model every later chat opened on — and,
+    // because that write never reached storage, only until the next reload.
     set((s) => ({
       sessions: s.sessions.map((c) =>
         c.id === sessionId
@@ -1628,7 +1632,6 @@ export const useStore = create<State>((set, get) => ({
             }
           : c,
       ),
-      modelByKind: { ...s.modelByKind, chat: model },
     }))
     // Optimistic above, durable here: the choice has to survive a reload,
     // because the next turn's history is built from it.
