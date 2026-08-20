@@ -1,6 +1,6 @@
 import { FileUp, Palette, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Button, Field, Input, Switch, Textarea } from '@/components/ui'
+import { Badge, Button, ConfirmDialog, Field, Input, Switch, Textarea } from '@/components/ui'
 import { designsApi, errorMessage, filesApi, type DesignRow, type DesignTokens } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -207,6 +207,7 @@ export function DesignsSection() {
   const t = useT()
   const isAdmin = useStore((s) => s.user?.role === 'admin')
   const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const projects = useStore((s) => s.projects)
   const [rows, setRows] = useState<DesignRow[]>([])
   const [draft, setDraft] = useState<Partial<DesignRow> | null>(null)
   const [extracting, setExtracting] = useState(false)
@@ -214,12 +215,18 @@ export function DesignsSection() {
   //: it knows which fields somebody else's document is responsible for.
   const [readFrom, setReadFrom] = useState('')
   const [saving, setSaving] = useState(false)
+  //: Deleting a look also strips it off every project wearing it. Nothing on
+  //: the row says so and nothing puts it back, so it is asked first.
+  const [confirming, setConfirming] = useState<DesignRow | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = async () => setRows(await designsApi.list().catch(() => []))
   useEffect(() => {
     void load()
-  }, [])
+    // The projects are what deleting a look actually costs, and this screen is
+    // reachable without ever having opened the one that fetches them.
+    void loadWorkspace()
+  }, [loadWorkspace])
 
   const tokens = (draft?.tokens ?? blank().tokens) as DesignTokens
   const setTokens = (patch: Partial<DesignTokens>) =>
@@ -245,6 +252,21 @@ export function DesignsSection() {
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * The line under the question. A look is easy to say yes to losing; the
+   * projects that were wearing it are the part you cannot see from this list,
+   * so they are counted before the answer is given.
+   */
+  const wearing = (row: DesignRow | null) => {
+    const n = row ? projects.filter((p) => p.designSystemId === row.id).length : 0
+    return n === 0
+      ? t('되돌릴 수 없습니다. 이 디자인을 쓰는 프로젝트는 없습니다.')
+      : t('되돌릴 수 없습니다. 이 디자인을 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.').replace(
+          '{n}',
+          String(n),
+        )
   }
 
   const remove = async (row: DesignRow) => {
@@ -418,7 +440,7 @@ export function DesignsSection() {
                 <button
                   type="button"
                   aria-label={t('{name} 삭제').replace('{name}', row.name)}
-                  onClick={() => void remove(row)}
+                  onClick={() => setConfirming(row)}
                   className="shrink-0 text-faint hover:text-danger"
                 >
                   <Trash2 size={13} />
@@ -451,6 +473,14 @@ export function DesignsSection() {
           {t('문서에서 가져오기')}
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={!!confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => confirming && void remove(confirming)}
+        title={t('{name} 삭제').replace('{name}', confirming?.name ?? '')}
+        description={wearing(confirming)}
+      />
     </section>
   )
 }

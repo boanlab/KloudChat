@@ -340,7 +340,8 @@ interface State {
     withAudio: boolean
   }
   setAvOptions: (patch: Partial<State['avOptions']>) => void
-  cancelJob: (id: string) => void
+  /** Stops watching a clip and stops the charge that lands on delivery. */
+  cancelJob: (id: string) => Promise<void>
 
   // ── artifact panel ────────────────────────────────────────────────────
   openArtifactId: string | null
@@ -1592,14 +1593,33 @@ export const useStore = create<State>((set, get) => ({
       if (!usable.length) return { avOptions }
       return { avOptions, modelByKind: { ...s.modelByKind, av: usable[0].id } }
     }),
-  cancelJob: (id) =>
+  cancelJob: async (id) => {
+    const before = get().jobs.find((j) => j.id === id)
+    // Optimistic: the spinner stops on the press, not on the round trip.
     set((s) => ({
       jobs: s.jobs.map((j) =>
         j.id === id
           ? { ...j, status: 'canceled', stage: '취소됨', finishedAt: new Date().toISOString() }
           : j,
       ),
-    })),
+    }))
+    // Only a clip is a row on the server — resolution is what says so, the same
+    // way retry tells the two apart. A picture or a line of speech is a
+    // placeholder for a call still in flight, with nothing there to cancel.
+    if (!before?.params || !('resolution' in before.params)) return
+    try {
+      const row = await jobsApi.cancel(id)
+      set((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? toJob(row) : j)) }))
+    } catch (err) {
+      // The clip is still being made and will still be charged on delivery, so
+      // the card goes back to running rather than reading 취소됨 over a job
+      // nobody stopped.
+      set((s) => ({
+        jobs: s.jobs.map((j) => (j.id === id ? before : j)),
+        mediaError: errorMessage(err, '작업을 취소하지 못했습니다.'),
+      }))
+    }
+  },
 
   openArtifactId: null,
   /**

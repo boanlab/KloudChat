@@ -267,6 +267,20 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
       { timeout: 20_000 },
     )
     .toBeNull()
+
+  // ── 8. The gallery card says which shape it came out in ─────────────
+  // Everything this path produces is one `html` artifact, so a card labelled
+  // by kind labels a deck and a one-pager identically. Read after the shape
+  // was taken off the session: what the card names is the template the
+  // document was written into, not the one the next turn would use.
+  await page.goto('/artifacts')
+  await page.getByLabel('아티팩트 검색').fill(stored.title)
+  const galleryCard = page.locator('div.grid > *', { hasText: stored.title }).first()
+  await expect(galleryCard.getByText('편집형 덱', { exact: true })).toBeVisible({
+    timeout: 20_000,
+  })
+  await expect(galleryCard.getByText('HTML', { exact: true })).toHaveCount(0)
+  await shot(page, '16-gallery-template-name')
 })
 
 test('문서 디자인은 문서 조판으로 나온다', async ({ page }) => {

@@ -1,10 +1,11 @@
-import { LayoutTemplate, Paperclip, Plus, Trash2 } from 'lucide-react'
+import { LayoutTemplate, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { TemplateForm } from '@/components/chat/TemplateGallery'
 import { Badge, Button } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { templatesApi, type TemplateRow } from '@/lib/api'
 import type { SessionKind } from '@/types'
+import { upsertById } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 
 /** Surfaces a template can start. Chat included: a prompt is a starting point too. */
@@ -22,6 +23,8 @@ export function TemplatesSection() {
   const t = useT()
   const [rows, setRows] = useState<TemplateRow[]>([])
   const [adding, setAdding] = useState(false)
+  /** The template being corrected. Null while adding or listing. */
+  const [editing, setEditing] = useState<TemplateRow | null>(null)
 
   const load = async () => setRows(await templatesApi.list().catch(() => []))
   useEffect(() => {
@@ -41,18 +44,24 @@ export function TemplatesSection() {
     }
   }
 
+  const close = () => {
+    setAdding(false)
+    setEditing(null)
+  }
+
   // Named region: three inputs on this screen answer to "이름" (branding, SMTP,
   // and this form), so the section has to be addressable on its own.
-  if (adding) {
+  if (adding || editing) {
     return (
       <section aria-label={t('공용 템플릿')}>
         <TemplateForm
           kinds={KINDS}
           shared
-          onCancel={() => setAdding(false)}
+          template={editing ?? undefined}
+          onCancel={close}
           onSaved={(row) => {
-            setRows((r) => [row, ...r])
-            setAdding(false)
+            setRows((r) => upsertById(r, row))
+            close()
           }}
         />
       </section>
@@ -81,6 +90,17 @@ export function TemplatesSection() {
                 </span>
               )}
               <Badge>{t(kindMeta[row.kind].label)}</Badge>
+              {/* A shared form is the one nobody wants to retype: a wrong
+                  수신처 in it has to be correctable in place, or the fix means
+                  deleting the row every account is already starting from. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('{name} 수정').replace('{name}', row.title)}
+                onClick={() => setEditing(row)}
+              >
+                <Pencil size={13} />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

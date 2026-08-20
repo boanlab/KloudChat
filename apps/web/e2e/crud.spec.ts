@@ -51,6 +51,52 @@ test('에이전트는 카드에서 지우되, 지우기 전에 물어본다', as
   await expect(page.getByText(`요원${tag}`)).toHaveCount(0, { timeout: 15_000 })
 })
 
+test('디자인을 지우기 전에, 기본 모양으로 돌아갈 프로젝트 수를 말한다', async ({ page }) => {
+  const tag = stamp()
+
+  await page.goto('/designs')
+  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  await designs.getByRole('button', { name: '디자인 추가' }).click()
+  await designs.getByLabel('이름', { exact: true }).fill(`디자인${tag}`)
+  await designs.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(designs.locator('li', { hasText: `디자인${tag}` })).toBeVisible({ timeout: 15_000 })
+
+  await page.goto('/projects')
+  await page.getByRole('button', { name: '새 프로젝트' }).first().click()
+  await dialog(page).getByLabel('이름').fill(`옷입은${tag}`)
+  await dialog(page).getByRole('button', { name: '만들기' }).click()
+  await expect(page).toHaveURL(/\/projects\/[0-9a-f]{32}/, { timeout: 15_000 })
+  const projectUrl = page.url()
+
+  // The picker writes optimistically, so waiting on the PATCH is what makes the
+  // count below a question about the server's rows rather than about a race.
+  const picker = page.getByLabel('디자인', { exact: true })
+  await expect(picker).toBeVisible({ timeout: 15_000 })
+  await Promise.all([
+    page.waitForResponse(
+      (r) => /\/api\/projects\/[0-9a-f]{32}$/.test(r.url()) && r.request().method() === 'PATCH',
+    ),
+    picker.selectOption({ label: `디자인${tag}` }),
+  ])
+
+  await page.goto('/designs')
+  await page.getByRole('button', { name: `디자인${tag} 삭제` }).click()
+  await expect(dialog(page).getByRole('heading', { name: `디자인${tag} 삭제` })).toBeVisible()
+  await expect(dialog(page).getByText('프로젝트 1개가 기본 모양으로 돌아갑니다')).toBeVisible()
+
+  await dialog(page).getByRole('button', { name: '취소' }).click()
+  await expect(page.getByRole('button', { name: `디자인${tag} 삭제` })).toBeVisible()
+
+  await page.getByRole('button', { name: `디자인${tag} 삭제` }).click()
+  await dialog(page).getByRole('button', { name: '삭제' }).click()
+  await page.goto('/designs')
+  await expect(page.getByText(`디자인${tag}`)).toHaveCount(0, { timeout: 15_000 })
+
+  // …and the project it was on is wearing the default look again.
+  await page.goto(projectUrl)
+  await expect(page.getByLabel('디자인', { exact: true })).toHaveValue('', { timeout: 15_000 })
+})
+
 test('대화 이름을 사이드바에서 바꾼다', async ({ page }) => {
   const tag = stamp()
   await page.goto('/new/chat')

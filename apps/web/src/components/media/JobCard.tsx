@@ -67,7 +67,7 @@ export function JobCard({ job }: { job: Job }) {
           <Loader2 size={15} className="shrink-0 animate-spin text-accent" />
           <span className="flex-1 text-base font-medium">{t(job.stage)}</span>
           <span className="text-xs tabular-nums text-faint">{job.progress}%</span>
-          <Button variant="ghost" size="icon" aria-label={t('취소')} onClick={() => cancelJob(job.id)}>
+          <Button variant="ghost" size="icon" aria-label={t('취소')} onClick={() => void cancelJob(job.id)}>
             <X size={14} />
           </Button>
         </div>

@@ -1,7 +1,7 @@
 import { CircleAlert, FileText, Globe, Loader2, Paperclip, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
-import { agentsApi, errorMessage, type FileRow } from '@/lib/api'
+import { agentsApi, downloadFile, errorMessage, type FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
 /**
@@ -108,6 +108,15 @@ export function AgentKnowledge({
     }
   }
 
+  const openFile = async (id: string, name: string) => {
+    setError(null)
+    try {
+      await downloadFile(id, name)
+    } catch (err) {
+      setError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+    }
+  }
+
   const remove = async (id: string) => {
     replaceRows(rowsRef.current.filter((f) => f.id !== id))
     try {
@@ -173,7 +182,29 @@ export function AgentKnowledge({
                 ) : (
                   <FileText size={13} className="shrink-0 text-faint" />
                 )}
-                <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                {/* The name is what opens it, so a shelved document can be
+                    read back instead of only counted. A URL row has no blob —
+                    what was stored is the text read that day — so its name
+                    points at the page it came from. */}
+                {f.sourceUrl ? (
+                  <a
+                    href={f.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={f.sourceUrl}
+                    className="min-w-0 flex-1 truncate text-accent hover:underline"
+                  >
+                    {f.name}
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => void openFile(f.id, f.name)}
+                    title={t('원본 파일을 내려받습니다')}
+                    className="min-w-0 flex-1 truncate text-left text-accent hover:underline"
+                  >
+                    {f.name}
+                  </button>
+                )}
                 {/* Extraction can fail on a scanned PDF or a locked HWP. Said
                     here, because a document the agent cannot read is one it
                     will report as present and never be able to quote. */}

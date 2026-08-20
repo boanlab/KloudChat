@@ -1,7 +1,7 @@
-import { CircleCheck, Mail, Server, TriangleAlert } from 'lucide-react'
+import { CircleCheck, Mail, RefreshCw, Server, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '@/components/ui'
-import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
+import { ApiError, adminApi, modelsApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { BrandingSection } from './BrandingSection'
@@ -28,6 +28,9 @@ export function SystemTab() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [probe, setProbe] = useState<{ ok: boolean; detail: string } | null>(null)
+  //: Kept apart from `busy` so the spinner turns on the control that is doing
+  //: the work, while the disabled gate still covers the whole card.
+  const [refreshing, setRefreshing] = useState(false)
   //: Mail is an independent block with its own save and test: a relay change
   //: should not refetch the model catalogue.
   const [smtp, setSmtp] = useState({
@@ -123,6 +126,43 @@ export function SystemTab() {
           }}
         >
           {t('연결 테스트')}
+        </Button>
+        {/* 프록시 설정 파일을 방금 고친 운영자를 위한 버튼이다. 서버는 30초
+            동안 목록을 들고 있어서, 이것이 없으면 그 시간을 기다리는 수밖에
+            없다. */}
+        <Button
+          disabled={busy}
+          title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
+          onClick={async () => {
+            setBusy(true)
+            setRefreshing(true)
+            setProbe(null)
+            try {
+              const { models } = await modelsApi.refresh()
+              // The reply already carries the fresh catalogue, but every picker
+              // reads it from the store, so pull it through there too.
+              await loadModels()
+              setProbe({
+                ok: true,
+                detail: t('모델 목록을 다시 읽었습니다 · 모델 {n}종').replace(
+                  '{n}',
+                  String(models.length),
+                ),
+              })
+            } catch (err) {
+              setProbe({
+                ok: false,
+                detail:
+                  err instanceof ApiError ? err.detail : t('모델 목록을 다시 읽지 못했습니다.'),
+              })
+            } finally {
+              setRefreshing(false)
+              setBusy(false)
+            }
+          }}
+        >
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : undefined} />
+          {t('모델 목록 새로고침')}
         </Button>
       </Card>
 

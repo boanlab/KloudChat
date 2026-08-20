@@ -30,6 +30,8 @@ import {
   PageHeader,
   Tabs,
 } from '@/components/ui'
+import { templateText, type DesignTemplateRow } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Artifact, ArtifactKind } from '@/types'
@@ -55,6 +57,24 @@ const kindLabel: Record<ArtifactKind, string> = {
   video: '동영상',
   code: '코드',
   html: 'HTML',
+}
+
+/**
+ * The icon a rendering template asks for, by what it makes.
+ *
+ * Finer than the artifact's own kind, where a deck and a document are both
+ * `html`. A kind this does not know — an image template, or one added later —
+ * falls back to the artifact's icon.
+ */
+const templateIcon: Record<string, typeof FileText> = {
+  deck: Presentation,
+  document: FileText,
+}
+
+/** The template a document was written into, while it is still in the catalogue. */
+function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
+  const id = artifact.kind === 'html' || artifact.kind === 'code' ? artifact.templateId : undefined
+  return id ? templates.find((row) => row.id === id) : undefined
 }
 
 type Filter = ArtifactKind | 'all'
@@ -129,7 +149,9 @@ export function ArtifactsPage() {
     artifactCounts,
     artifactsFailed,
     refreshArtifact,
+    designTemplates,
   } = useStore()
+  const english = currentLang() === 'en'
 
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
@@ -222,7 +244,15 @@ export function ArtifactsPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {visible.map((a) => {
-                const Icon = kindIcon[a.kind]
+                // What it was made with, when it was made with something: a
+                // 회의록 and a 제안 덱 are both HTML, and a card that says so
+                // says nothing about either. A template that has since left the
+                // catalogue leaves the artifact to speak for itself.
+                const template = templateOf(a, designTemplates)
+                const Icon = (template && templateIcon[template.kind]) ?? kindIcon[a.kind]
+                const label = template
+                  ? templateText(template, english).name
+                  : t(kindLabel[a.kind])
                 const project = projects.find((p) => p.id === a.projectId)
                 const session = sessions.find((s) => s.id === a.sessionId)
                 return (
@@ -263,7 +293,7 @@ export function ArtifactsPage() {
                         </Button>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-faint">
-                        <Badge>{t(kindLabel[a.kind])}</Badge>
+                        <Badge>{label}</Badge>
                         {project && (
                           <span>
                             {project.emoji} {project.name}

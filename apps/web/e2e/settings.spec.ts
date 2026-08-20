@@ -65,6 +65,27 @@ test('시스템 화면이 연결 상태를 보여 주고 마스터 키는 노출
   })
 })
 
+test('모델 목록을 새로고침하면 몇 종을 받아 왔는지 알려 준다', async ({ page }) => {
+  await page.goto('/admin/system')
+  await expect(page.getByText(/LiteLLM 에 연결(되어 있습니다|되지 않았습니다)/)).toBeVisible({
+    timeout: 20_000,
+  })
+
+  // The point of the button is that it goes to the server rather than reusing
+  // what the screen already has, so watch for the request as well as the text.
+  const [refreshed] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes('/api/models/refresh') && r.request().method() === 'POST',
+    ),
+    page.getByRole('button', { name: '모델 목록 새로고침' }).click(),
+  ])
+  expect(refreshed.ok()).toBe(true)
+
+  await expect(page.getByText(/모델 목록을 다시 읽었습니다 · 모델 [0-9]+종/)).toBeVisible({
+    timeout: 30_000,
+  })
+})
+
 test('잘못된 주소를 저장하면 연결이 끊기고, 되돌리면 복구된다', async ({ page }) => {
   await page.goto('/admin/system')
   // Wait for the form to hold the real value before typing over it. Filling

@@ -1,10 +1,10 @@
-import { LayoutTemplate, Loader2, Paperclip, Plus, Trash2, X } from 'lucide-react'
+import { LayoutTemplate, Loader2, Paperclip, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Field, Input, Modal, Textarea } from '@/components/ui'
 import { errorMessage, filesApi, templatesApi, type FileRow, type TemplateRow } from '@/lib/api'
 import { kindMeta } from '@/lib/kinds'
 import { templatesFor, type Template } from '@/lib/templates'
-import { cn } from '@/lib/utils'
+import { cn, upsertById } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
@@ -51,7 +51,7 @@ const asCard = (row: TemplateRow): Card => ({
  * The built-in twenty-four are shipped in the bundle; the rest are the ones
  * this person wrote. Both render as the same card, because "where did this come
  * from" is the product's problem and not the reader's — the only difference is
- * that their own can be thrown away.
+ * that their own can be rewritten and thrown away.
  */
 export function TemplateGallery({
   kind,
@@ -65,6 +65,8 @@ export function TemplateGallery({
   const [group, setGroup] = useState<string | 'all'>('all')
   const [mine, setMine] = useState<TemplateRow[]>([])
   const [composing, setComposing] = useState(false)
+  /** The row being rewritten. Null while writing a new one or browsing. */
+  const [editing, setEditing] = useState<TemplateRow | null>(null)
   const setDraft = useStore((s) => s.setDraft)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
 
@@ -90,6 +92,11 @@ export function TemplateGallery({
     }
   }, [open])
 
+  const closeForm = () => {
+    setComposing(false)
+    setEditing(null)
+  }
+
   const remove = async (id: string) => {
     // Optimistic: the card is theirs and the list is short, so a spinner on a
     // delete they just asked for is only a delay.
@@ -112,19 +119,24 @@ export function TemplateGallery({
         open={open}
         onClose={() => {
           setOpen(false)
-          setComposing(false)
+          closeForm()
         }}
-        title={t('무엇을 만드나요')}
-        description={t('고르면 입력창에 채워집니다. 나머지는 직접 적으면 됩니다.')}
+        title={editing ? t('템플릿 수정') : t('무엇을 만드나요')}
+        description={
+          editing
+            ? t('고친 내용은 다음에 이 템플릿을 고를 때부터 반영됩니다.')
+            : t('고르면 입력창에 채워집니다. 나머지는 직접 적으면 됩니다.')
+        }
         width="max-w-2xl"
       >
-        {composing ? (
+        {composing || editing ? (
           <TemplateForm
             kind={kind}
-            onCancel={() => setComposing(false)}
+            template={editing ?? undefined}
+            onCancel={closeForm}
             onSaved={(row) => {
-              setMine((rows) => [row, ...rows])
-              setComposing(false)
+              setMine((rows) => upsertById(rows, row))
+              closeForm()
             }}
           />
         ) : (
@@ -170,10 +182,10 @@ export function TemplateGallery({
                     }}
                     className="w-full rounded-card border border-line bg-panel p-3.5 text-left transition-colors hover:border-accent hover:bg-elevated"
                   >
-                    <p className="pr-6 text-base font-medium">
+                    <p className="pr-14 text-base font-medium">
                       {item.title}
                       {/* Whose it is, because only one of the two can be
-                          deleted and the button appears on hover. */}
+                          changed and the buttons appear on hover. */}
                       {item.shared && (
                         <span className="ml-1.5 align-middle text-xs font-normal text-faint">
                           {t('공용')}
@@ -202,15 +214,27 @@ export function TemplateGallery({
                     </div>
                   </button>
                   {item.rowId && item.mine !== false && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t('{name} 삭제').replace('{name}', item.title)}
-                      className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                      onClick={() => void remove(item.rowId!)}
-                    >
-                      <Trash2 size={13} />
-                    </Button>
+                    <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      {/* Next to the delete button, because until it was here a
+                          typo in a form used across the organisation had to be
+                          fixed by throwing the template away and retyping it. */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('{name} 수정').replace('{name}', item.title)}
+                        onClick={() => setEditing(mine.find((r) => r.id === item.rowId) ?? null)}
+                      >
+                        <Pencil size={13} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('{name} 삭제').replace('{name}', item.title)}
+                        onClick={() => void remove(item.rowId!)}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -223,16 +247,22 @@ export function TemplateGallery({
 }
 
 /**
- * Writing one down. Shared by the gallery and the admin screen.
+ * Writing one down, or putting it right. Shared by the gallery and the admin
+ * screen.
  *
  * `prompt` is the whole thing: the gallery fills the composer with it and the
  * person keeps typing, so it has to end where they take over. The form says so
  * rather than leaving them to discover it from a card that pastes a full stop.
+ *
+ * Given a `template` it opens on that row's wording and saves over it. The
+ * same fields either way — a correction is the same act as writing it, and a
+ * separate screen for it would only be this one with the boxes filled in.
  */
 export function TemplateForm({
   kind,
   kinds,
   shared = false,
+  template,
   onCancel,
   onSaved,
 }: {
@@ -242,19 +272,31 @@ export function TemplateForm({
   kinds?: readonly SessionKind[]
   /** Offered to every account. Refused by the server for non-administrators. */
   shared?: boolean
+  /** The row being corrected. Absent when this is a new one. */
+  template?: TemplateRow
   onCancel: () => void
   onSaved: (row: TemplateRow) => void
 }) {
   const t = useT()
-  const [surface, setSurface] = useState<SessionKind>(kind ?? kinds?.[0] ?? 'report')
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [fills, setFills] = useState('')
-  const [prompt, setPrompt] = useState('')
-  const [group, setGroup] = useState('')
-  const [file, setFile] = useState<{ id: string; name: string } | null>(null)
+  // Seeded once: the form is mounted afresh for each template, so a row that
+  // arrives later is a row the person is no longer editing.
+  const [surface, setSurface] = useState<SessionKind>(
+    template?.kind ?? kind ?? kinds?.[0] ?? 'report',
+  )
+  const [title, setTitle] = useState(template?.title ?? '')
+  const [description, setDescription] = useState(template?.description ?? '')
+  const [fills, setFills] = useState(template?.fills.join(', ') ?? '')
+  const [prompt, setPrompt] = useState(template?.prompt ?? '')
+  const [group, setGroup] = useState(template?.group ?? '')
+  const [file, setFile] = useState<{ id: string; name: string } | null>(
+    template?.fileId ? { id: template.fileId, name: template.fileName } : null,
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A shared template stays shared through a correction. Its author is the
+  // administrator either way, and quietly making it private on a typo fix
+  // would take it out of everybody else's gallery.
+  const forEverybody = template?.shared ?? shared
 
   const attach = async (picked: File) => {
     setBusy(true)
@@ -272,21 +314,24 @@ export function TemplateForm({
   const save = async () => {
     setBusy(true)
     setError(null)
+    const payload = {
+      kind: kind ?? surface,
+      shared: forEverybody,
+      group: group.trim() || (forEverybody ? '공용' : '내 템플릿'),
+      title: title.trim(),
+      description: description.trim(),
+      fills: fills
+        .split(',')
+        .map((f) => f.trim())
+        .filter(Boolean),
+      prompt,
+      fileId: file?.id ?? null,
+    }
     try {
       onSaved(
-        await templatesApi.create({
-          kind: kind ?? surface,
-          shared,
-          group: group.trim() || (shared ? '공용' : '내 템플릿'),
-          title: title.trim(),
-          description: description.trim(),
-          fills: fills
-            .split(',')
-            .map((f) => f.trim())
-            .filter(Boolean),
-          prompt,
-          fileId: file?.id ?? null,
-        }),
+        template
+          ? await templatesApi.update(template.id, payload)
+          : await templatesApi.create(payload),
       )
     } catch (err) {
       setError(errorMessage(err, t('템플릿을 저장하지 못했습니다.')))
@@ -333,7 +378,7 @@ export function TemplateForm({
           aria-label={t('설명')}
         />
       </Field>
-      <Field label={t('분류')} hint={shared ? t('비우면 "공용"') : t('비우면 "내 템플릿"')}>
+      <Field label={t('분류')} hint={forEverybody ? t('비우면 "공용"') : t('비우면 "내 템플릿"')}>
         <Input value={group} onChange={(e) => setGroup(e.target.value)} aria-label={t('분류')} />
       </Field>
       <Field label={t('준비물')} hint={t('쉼표로 구분. 고르기 전에 보이는 항목입니다')}>

@@ -55,6 +55,18 @@ export function formatDateTime(iso: string | null | undefined) {
   return d.toLocaleString(currentLocale())
 }
 
+/**
+ * A saved row put back where it already was, or added on top when it is new.
+ *
+ * An edit has to land in place: a corrected row that jumps to the front of the
+ * list reads as a second copy of itself.
+ */
+export function upsertById<T extends { id: string }>(rows: T[], row: T): T[] {
+  return rows.some((r) => r.id === row.id)
+    ? rows.map((r) => (r.id === row.id ? row : r))
+    : [row, ...rows]
+}
+
 /** Buckets chats into today / last 7 days / older groups for the sidebar. */
 export function groupByRecency<T extends { updatedAt: string }>(items: T[]) {
   const now = Date.now()

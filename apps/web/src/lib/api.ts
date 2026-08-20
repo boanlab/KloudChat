@@ -683,6 +683,32 @@ export const filesApi = {
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
 }
 
+/**
+ * Hands a stored file back to whoever uploaded it, under its own name.
+ *
+ * A fetch and a blob rather than a link on `downloadUrl`: a click can carry the
+ * Authorization header that an `<img>` cannot, so the token stays out of the
+ * URL — and out of the proxy's access log, where `fileUrl()` has to leave it.
+ */
+export async function downloadFile(id: string, name: string) {
+  const res = await fetch(filesApi.downloadUrl(id), {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export interface ProjectRow {
   id: string
   name: string

@@ -18,6 +18,7 @@ import {
   Tabs,
   Textarea,
 } from '@/components/ui'
+import { downloadFile, errorMessage } from '@/lib/api'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -52,6 +53,7 @@ export function ProjectDetailPage() {
     description: string
   } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Reached directly by URL as often as by click, so it loads its own data.
@@ -87,6 +89,15 @@ export function ProjectDetailPage() {
   // entry; the project keeps the id until somebody changes it.
   const selectedDesign = designs.find((d) => d.id === project.designSystemId)
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
+
+  const openFile = async (id: string, name: string) => {
+    setFileError(null)
+    try {
+      await downloadFile(id, name)
+    } catch (err) {
+      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+    }
+  }
 
   return (
     <>
@@ -383,7 +394,16 @@ export function ProjectDetailPage() {
                   <Card key={f.id} className="flex items-center gap-3 px-4 py-2.5">
                     <FileText size={15} className="shrink-0 text-faint" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base">{f.name}</span>
+                      {/* The name is the button that opens it. Until it was,
+                          the only way to see what a file held was to delete it
+                          and upload it again. */}
+                      <button
+                        onClick={() => void openFile(f.id, f.name)}
+                        title={t('원본 파일을 내려받습니다')}
+                        className="block max-w-full truncate text-left text-base text-accent hover:underline"
+                      >
+                        {f.name}
+                      </button>
                       <span className="block text-xs text-faint">
                         {f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
                       </span>
@@ -399,6 +419,7 @@ export function ProjectDetailPage() {
                   </Card>
                 ))
               )}
+              {fileError && <p className="text-base text-danger">{fileError}</p>}
             </div>
           )}
 

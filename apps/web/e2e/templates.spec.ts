@@ -6,7 +6,7 @@ import { signIn } from './helpers'
  * a twenty-fifth. The document an organisation actually produces — its 공문,
  * its 발표 양식 — was the one document with no starting point.
  */
-test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들어가고, 지울 수 있다', async ({ page }) => {
+test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들어가고, 고치고 지울 수 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
@@ -46,9 +46,30 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   const again = page.getByRole('dialog').locator('div.group', { hasText: name })
   await expect(again).toBeVisible({ timeout: 15_000 })
 
+  // A typo in it is a typo, not a reason to start over. The form opens on what
+  // was written, and saving writes over the same card.
+  await again.getByRole('button', { name: `${name} 수정` }).click()
+  await expect(page.getByLabel('이름')).toHaveValue(name)
+  await expect(page.getByLabel('준비물')).toHaveValue('수신처, 제목')
+  const fixed = `${name} 개정`
+  await page.getByLabel('이름').fill(fixed)
+  await page.getByLabel('문구').fill('아래 양식에 맞춰 공문을 써 줘.\n\n수신자: ')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+
+  const edited = page.getByRole('dialog').locator('div.group', { hasText: fixed })
+  await expect(edited).toBeVisible({ timeout: 15_000 })
+  // One card, not two: the correction replaced the row rather than adding one.
+  await expect(page.getByRole('dialog').locator('div.group', { hasText: name })).toHaveCount(1)
+
+  // And the corrected wording is what the composer gets.
+  await edited.getByRole('button').first().click()
+  await expect(composer).toHaveValue(/수신자:/)
+
   // And it can be thrown away, which is what makes adding one safe.
-  await again.getByRole('button', { name: `${name} 삭제` }).click()
-  await expect(again).toHaveCount(0, { timeout: 15_000 })
+  await openGallery()
+  const doomed = page.getByRole('dialog').locator('div.group', { hasText: fixed })
+  await doomed.getByRole('button', { name: `${fixed} 삭제` }).click()
+  await expect(doomed).toHaveCount(0, { timeout: 15_000 })
 
   // The built-ins are not deletable — they are not this person's to remove.
   const shipped = page.getByRole('dialog').locator('div.group', { hasText: '업무·기술 보고서' })

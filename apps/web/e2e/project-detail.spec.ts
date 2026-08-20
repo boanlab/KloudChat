@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
@@ -49,6 +50,17 @@ test('프로젝트에 올린 지식 파일이 목록과 새로고침에 남는�
   await page.reload()
   await page.getByRole('tab', { name: /^지식/ }).click()
   await expect(page.getByText(filename)).toBeVisible({ timeout: 20_000 })
+
+  // The name gives the file back. Reading the bytes and not just the download
+  // event is the point: the row is a claim about what was uploaded, and this is
+  // the only way to check it short of deleting the file and uploading it again.
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: filename }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe(filename)
+  const saved = await download.path()
+  expect(readFileSync(saved, 'utf8')).toContain('표본 수는 240')
 })
 
 test('프로젝트 안에서 새 작업을 시작하면 그 프로젝트에 속한다', async ({ page }) => {

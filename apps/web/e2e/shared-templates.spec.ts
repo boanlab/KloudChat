@@ -7,7 +7,7 @@ import { signIn } from './helpers'
  * Anybody can write one for themselves from the gallery. This is the other
  * case: an organisation's own form, entered once and offered to every account.
  */
-test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보인다', async ({ page }) => {
+test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 자리에서 고쳐진다', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
   await page.goto('/admin/system')
@@ -43,8 +43,25 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보인다',
   await card.getByRole('button').first().click()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/수신:/)
 
+  // Corrected from the same screen it was added on. This is the whole point of
+  // sharing rather than copying: one edit, and every account that has not
+  // started yet gets the right form.
+  await page.goto('/admin/system')
+  await section.getByRole('button', { name: `${title} 수정` }).click()
+  await expect(section.getByLabel('이름', { exact: true })).toHaveValue(title)
+  const fixed = `${title} (개정)`
+  await section.getByLabel('이름', { exact: true }).fill(fixed)
+  await section.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(section.locator('li', { hasText: fixed })).toBeVisible({ timeout: 20_000 })
+  // Still shared, not quietly turned private by the edit.
+  await page.goto('/new/report')
+  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  const revised = page.getByRole('dialog').locator('div.group', { hasText: fixed })
+  await expect(revised).toBeVisible({ timeout: 20_000 })
+  await expect(revised.getByText('공용')).toBeVisible()
+
   // Removed from the same screen it was added on.
   await page.goto('/admin/system')
-  await section.getByRole('button', { name: `${title} 삭제` }).click()
-  await expect(section.locator('li', { hasText: title })).toHaveCount(0, { timeout: 15_000 })
+  await section.getByRole('button', { name: `${fixed} 삭제` }).click()
+  await expect(section.locator('li', { hasText: fixed })).toHaveCount(0, { timeout: 15_000 })
 })
