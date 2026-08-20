@@ -282,7 +282,12 @@ export interface Message {
   routing?: PrivacyRouting
   steps?: Step[]
   artifactIds?: string[]
-  attachments?: { name: string; size: string; type: string }[]
+  /**
+   * What was uploaded with this turn. `id` names the stored blob, so a reader
+   * can take the file back out of the conversation months later; it is absent
+   * only for the optimistic row drawn while the upload is still in flight.
+   */
+  attachments?: { id?: string; name: string; size: number | string; type: string }[]
   usage?: { inputTokens: number; outputTokens: number; credits: number }
   liked?: 'up' | 'down' | null
   /**

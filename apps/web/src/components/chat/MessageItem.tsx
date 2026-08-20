@@ -3,6 +3,7 @@ import {
   BarChart3,
   Check,
   Copy,
+  Download,
   FileText,
   Image as ImageIcon,
   Paperclip,
@@ -16,10 +17,10 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
-import { templateText } from '@/lib/api'
+import { downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
-import { cn, formatTokens } from '@/lib/utils'
+import { cn, fileSize, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
@@ -144,6 +145,17 @@ export function MessageItem({
   const { artifacts, openArtifact, rateMessage, models, user, sessions, designTemplates } =
     useStore()
   const [copied, setCopied] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
+
+  /** Hands an attachment back to the person who attached it. */
+  const take = async (id: string, name: string) => {
+    setFileError(null)
+    try {
+      await downloadFile(id, name)
+    } catch (err) {
+      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+    }
+  }
   const model = models.find((m) => m.id === message.model)
   const actualModelChanged = Boolean(
     message.routing?.actualModel &&
@@ -213,16 +225,38 @@ export function MessageItem({
                 : t('시작점 {name}').replace('{name}', startedFrom.title)}
             </p>
           )}
-          {message.attachments?.map((a) => (
-            <div
-              key={a.name}
-              className="ml-auto flex w-fit items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
-            >
-              <Paperclip size={13} className="text-faint" />
-              <span>{a.name}</span>
-              <span className="text-faint">{a.size}</span>
-            </div>
-          ))}
+          {message.attachments?.map((a) => {
+            const bytes = typeof a.size === 'number' ? fileSize(a.size) : a.size
+            const chip = (
+              <>
+                <Paperclip size={13} className="text-faint" />
+                <span className="truncate">{a.name}</span>
+                {bytes && <span className="shrink-0 text-faint">{bytes}</span>}
+              </>
+            )
+            const shell =
+              'ml-auto flex w-fit max-w-full items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base'
+            // The file is still on the server, under this id. Without a way
+            // back to it the chip was a receipt for something the reader could
+            // no longer have — it named a document and then kept it.
+            return a.id ? (
+              <button
+                key={a.id}
+                type="button"
+                title={t('원본 파일을 내려받습니다')}
+                className={`${shell} transition-colors hover:border-strong hover:bg-elevated`}
+                onClick={() => void take(a.id!, a.name)}
+              >
+                {chip}
+                <Download size={13} className="shrink-0 text-faint" />
+              </button>
+            ) : (
+              <div key={a.name} className={shell}>
+                {chip}
+              </div>
+            )
+          })}
+          {fileError && <p className="text-right text-sm text-danger">{fileError}</p>}
           <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap">
             {message.content}
           </div>

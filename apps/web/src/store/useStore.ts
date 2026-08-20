@@ -1025,10 +1025,18 @@ export const useStore = create<State>((set, get) => ({
   },
   setActiveSession: (id) => {
     const session = id ? get().sessions.find((s) => s.id === id) : null
-    set({
-      activeSessionId: id,
-      openArtifactId: session?.artifactId ?? null,
-    })
+    const artifactId = session?.artifactId ?? null
+    set({ activeSessionId: id, openArtifactId: artifactId })
+    // Opening a panel means fetching the document, which is what
+    // `openArtifact` does and this path did not — it assigned the id straight
+    // into state and skipped the step. The listing carries cards: a report's
+    // card has its citations emptied and its sections cut to four hundred
+    // characters, because a card is drawn the size of one. So reopening an old
+    // conversation drew the panel from that — the body still full of `[1]`
+    // markers and the header reading 출처 0, which is a document contradicting
+    // itself. Nothing refetches if the copy in hand is already whole.
+    const held = artifactId ? get().artifacts.find((a) => a.id === artifactId) : null
+    if (artifactId && (!held || held.partial)) void get().refreshArtifact(artifactId)
   },
 
   loadSessions: async () => {
@@ -2427,7 +2435,7 @@ function toMessage(raw: MessageRow): Message {
     attachments: raw.attachments?.map((a) =>
       typeof a === 'string'
         ? { name: a, size: '', type: '' }
-        : (a as { name: string; size: string; type: string }),
+        : (a as { id?: string; name: string; size: number | string; type: string }),
     ),
     usage: raw.usage ?? undefined,
     startedFrom: raw.startedFrom ?? undefined,
