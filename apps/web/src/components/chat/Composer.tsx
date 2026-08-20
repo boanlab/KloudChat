@@ -132,6 +132,39 @@ function OptionGroup<T extends string | number>({
   )
 }
 
+/**
+ * Where the chips beside this came from, while they are still the 서식's.
+ *
+ * A media 서식 is spent the moment it is picked: it leaves no chip on the
+ * composer, only these values — and the values are one workspace-wide
+ * preference rather than anything the session owns, so they are still there
+ * next week, shaping a clip nobody picked a shape for. Naming the source is
+ * the honest half of that bargain: the defaults are worth keeping, since a
+ * template that does not set up its own surface asks the person to choose the
+ * same thing twice, but they should not be anonymous. Turning any chip by hand
+ * takes the name off, because from then on the values are the person's own.
+ */
+function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
+  const t = useT()
+  const template = useStore((s) => s.optionTemplate)
+  // The 서식 chip a row above already names an image template while its pick is
+  // waiting for a turn. Saying it twice, two inches apart, is not twice as true.
+  const chipped = useStore((s) => s.pendingTemplate)
+  if (!template || !kinds.includes(template.kind) || chipped?.id === template.id) return null
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-faint"
+      title={t('값을 직접 바꾸면 이 표시는 사라집니다')}
+    >
+      <LayoutGrid size={11} />
+      {t('{name} 서식이 정한 값').replace(
+        '{name}',
+        templateText(template, currentLang() === 'en').name,
+      )}
+    </span>
+  )
+}
+
 function ImageOptions() {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
@@ -157,6 +190,7 @@ function ImageOptions() {
         onChange={(v) => setImageOptions({ count: v })}
         format={(v) => t('{n}장').replace('{n}', String(v))}
       />
+      <TemplateOptionNote kinds={['image']} />
     </>
   )
 }
@@ -230,6 +264,7 @@ function AvOptions() {
         onChange={(v) => setAvOptions({ durationSec: v })}
         format={(v) => t('{n}초').replace('{n}', String(v))}
       />
+      <TemplateOptionNote kinds={['video', 'audio']} />
     </>
   )
 }
@@ -349,6 +384,10 @@ export function Composer({
   const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
+  //: Readable from a callback that outlived the render which sent the turn,
+  //: for the same reason the draft and the attachments each keep one.
+  const livePendingTemplate = useRef(pendingTemplate)
+  livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
@@ -740,6 +779,12 @@ export function Composer({
       ).catch(() => undefined)
       return
     }
+    // The pick is spent here, on the turn now leaving. From this point the
+    // session row the server writes is the record of the shape — the chip
+    // already prefers it — and a pick left standing would follow the person
+    // into the next conversation and outrank the shape that one was wearing.
+    const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
+    setPendingTemplate(null)
     void send(sessionId, kind, text, {
       projectId,
       webSearch: effectiveWebSearch,
@@ -774,6 +819,11 @@ export function Composer({
           liveStartingTemplate.current = next
           return next
         })
+        // A refused turn never reached the server, so the session row was
+        // rolled back with it and the shape is nobody's record now. Hand the
+        // pick back with the rest of the draft, unless a newer one has been
+        // chosen while this request was in flight.
+        if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
       })
   }
 
@@ -790,7 +840,12 @@ export function Composer({
           autoBypassPreview ||
           autoPausedForCompare ||
           startingTemplate ||
-          (pendingTemplate && pendingTemplate.surface === kind) ||
+          // The chip below reads the session's own shape as well as the pick
+          // waiting for a turn, and this row has to open on the same rule.
+          // Asking only about the pick hid the whole row after a reload —
+          // client state is gone by then, while the shape the session is
+          // wearing survives and keeps coming out in every answer.
+          shownTemplate ||
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (

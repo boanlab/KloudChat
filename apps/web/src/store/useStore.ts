@@ -310,6 +310,18 @@ interface State {
   saveGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
 
   // ── image / audio-video ───────────────────────────────────────────────
+  /**
+   * The 서식 whose defaults the option chips are still showing, if any.
+   *
+   * A media 서식 leaves no chip on the composer — it is spent on the sentence
+   * and on these values the moment it is picked — and the values are one
+   * workspace-wide preference, not a property of the session it was picked in.
+   * So a clip started a week later still comes out in that shape, and nothing
+   * on the screen said why until this. Any hand-made change to an option drops
+   * the name: from then on the values are the person's own.
+   */
+  optionTemplate: DesignTemplateRow | null
+  setOptionTemplate: (template: DesignTemplateRow | null) => void
   imageOptions: { aspect: string; style: string; count: number }
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** `mode` picks which artifact the av surface produces; the rest is per-mode. */
@@ -1152,6 +1164,12 @@ export const useStore = create<State>((set, get) => ({
               title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
               updatedAt: now,
               messages: [...c.messages, userMsg],
+              // The turn carries the shape, so the row is about to wear it:
+              // written here with the same optimism as the bubble above, and
+              // the reason the composer can put its pick down at send without
+              // the chip blinking out for the length of the turn. A refusal
+              // restores `before`, which takes this back with it.
+              ...(opts.renderTemplateId ? { renderTemplateId: opts.renderTemplateId } : {}),
             }
           : c,
       ),
@@ -1494,6 +1512,14 @@ export const useStore = create<State>((set, get) => ({
         ...s.jobs,
       ],
     }))
+    // An image template is spent on the picture it shaped, not kept on the
+    // session: unlike a deck or a document there is no file whose shape it has
+    // to keep matching. Which is exactly why it has to be put down here — no
+    // session row will ever hold it, so a pick left standing would be carried
+    // into the next conversation and shape a picture nobody chose it for.
+    const picked = get().pendingTemplate
+    const templateId = picked?.kind === 'image' ? picked.id : undefined
+    if (picked) set({ pendingTemplate: null })
     try {
       const rows = await sessionsApi.images(id, {
         prompt,
@@ -1501,12 +1527,7 @@ export const useStore = create<State>((set, get) => ({
         aspect: imageOptions.aspect,
         style: imageOptions.style,
         count: imageOptions.count,
-        // An image template is spent on the picture it shaped, not kept on the
-        // session: unlike a deck or a document there is no file whose shape it
-        // has to keep matching.
-        templateId: get().pendingTemplate?.kind === 'image'
-          ? get().pendingTemplate?.id
-          : undefined,
+        templateId,
       })
       set((s) => ({
         artifacts: [...rows.map(toArtifact), ...s.artifacts],
@@ -1627,8 +1648,13 @@ export const useStore = create<State>((set, get) => ({
       .catch(() => get().openSession(sessionId))
   },
 
+  optionTemplate: null,
+  setOptionTemplate: (optionTemplate) => set({ optionTemplate }),
   imageOptions: { aspect: '1:1', style: '미니멀', count: 1 },
-  setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
+  //: Every write but the template's own comes from a person turning a chip, so
+  //: a write is where the 서식 stops being the author of these values.
+  setImageOptions: (patch) =>
+    set((s) => ({ imageOptions: { ...s.imageOptions, ...patch }, optionTemplate: null })),
   draft: '',
   setDraft: (draft) => set({ draft }),
   pendingAttachment: null,
@@ -1658,18 +1684,22 @@ export const useStore = create<State>((set, get) => ({
   setAvOptions: (patch) =>
     set((s) => {
       const avOptions = { ...s.avOptions, ...patch }
-      if (!patch.mode || patch.mode === s.avOptions.mode) return { avOptions }
+      //: As with the image chips, a write is where the 서식 stops being the
+      //: author of these values — every one but the template's own is a person
+      //: turning a chip.
+      const next = { avOptions, optionTemplate: null }
+      if (!patch.mode || patch.mode === s.avOptions.mode) return next
       // Audio and video share one surface and one remembered model, and the
       // cheapest `av` model is a speech model. The model follows the mode
       // unless the one already chosen suits it.
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
       const current = s.models.find((m) => m.id === s.modelByKind.av)
-      if (current?.modality === wanted) return { avOptions }
+      if (current?.modality === wanted) return next
       const usable = s.models
         .filter((m) => m.kinds.includes('av') && m.modality === wanted)
         .sort((a, b) => a.creditCost - b.creditCost)
-      if (!usable.length) return { avOptions }
-      return { avOptions, modelByKind: { ...s.modelByKind, av: usable[0].id } }
+      if (!usable.length) return next
+      return { ...next, modelByKind: { ...s.modelByKind, av: usable[0].id } }
     }),
   cancelJob: async (id) => {
     const before = get().jobs.find((j) => j.id === id)
