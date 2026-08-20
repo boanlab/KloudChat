@@ -18,7 +18,8 @@ import {
   Tabs,
   Textarea,
 } from '@/components/ui'
-import { downloadFile, errorMessage } from '@/lib/api'
+import { downloadFile, errorMessage, templateText } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -35,6 +36,7 @@ export function ProjectDetailPage() {
     sessions,
     skills,
     designs,
+    designTemplates,
     memories,
     updateProject,
     deleteProject,
@@ -88,6 +90,12 @@ export function ProjectDetailPage() {
   // A design system the account lost access to leaves the select on its first
   // entry; the project keeps the id until somebody changes it.
   const selectedDesign = designs.find((d) => d.id === project.designSystemId)
+  // A format is a document shape, so only the two catalogue kinds that
+  // produce one are offered here — an image template shapes a prompt, and a
+  // picker over an empty list is a promise the catalogue cannot keep.
+  const english = currentLang() === 'en'
+  const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
+  const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
 
   const openFile = async (id: string, name: string) => {
@@ -303,6 +311,51 @@ export function ProjectDetailPage() {
             <p className="text-sm text-faint">{selectedDesign.description}</p>
           )}
         </Card>
+
+        {formatSurfaces.length > 0 && (
+          <Card className="space-y-3 p-4">
+            <div>
+              <p className="text-base font-medium">{t('기본 서식')}</p>
+              {/* The pair to the design above, and the distinction is the whole
+                  reason there are two cards: that one is the look, this one is
+                  the shape the look is poured into. */}
+              <p className="text-sm text-muted">
+                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
+              </p>
+            </div>
+            {formatSurfaces.map((kind) => (
+              <div key={kind} className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-base text-muted">
+                  {t(kindMeta[kind].label)}
+                </span>
+                <select
+                  aria-label={t('{kind} 서식').replace('{kind}', t(kindMeta[kind].label))}
+                  value={project.renderTemplates[kind] ?? ''}
+                  onChange={(e) =>
+                    void updateProject(project.id, {
+                      // Sent whole, because the server stores it whole: an
+                      // empty value is this surface leaving the map.
+                      renderTemplates: {
+                        ...project.renderTemplates,
+                        [kind]: e.target.value,
+                      },
+                    })
+                  }
+                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+                >
+                  <option value="">{t('사용 안 함 — 기본 모양')}</option>
+                  {formats
+                    .filter((row) => row.surface === kind)
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {templateText(row, english).name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ))}
+          </Card>
+        )}
 
         <Tabs<Tab>
           value={tab}

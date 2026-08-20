@@ -9,6 +9,9 @@ code it guards:
 2. The model writes content and never layout. What it sends is reduced to the
    seed's vocabulary before it reaches a file somebody downloads.
 3. A session with no template produces exactly what it produced before.
+4. A format belongs to the project as much as to the conversation: work
+   started inside a project begins in that project's format, and the composer
+   still decides the conversation it is opened in.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.models.chat import SessionKind
+from app.models.workspace import Project
 from app.routers import sessions as sessions_router
 from app.routers import workspace as workspace_router
 from app.schemas.workspace import DesignTemplateOut
@@ -822,3 +826,105 @@ def test_a_cover_that_came_back_empty_is_still_a_cover():
         ],
     )
     assert "빈 장" not in gapped
+
+
+# ── the project's own formats ──────────────────────────────────────────
+
+
+class _Rows:
+    """`db.get` and nothing else — the fallback asks for nothing else."""
+
+    def __init__(self, rows: dict):
+        self.rows = rows
+
+    async def get(self, _model, row_id):
+        return self.rows.get(row_id)
+
+
+def _project(**kwargs) -> Project:
+    return Project(id="p1", user_id="u1", name="공문 프로젝트", **kwargs)
+
+
+def test_a_project_starts_with_no_format_of_its_own():
+    """The migration's safety argument in one line: nothing existing moves."""
+    assert Project(user_id="u1", name="p").render_templates is None
+
+
+def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
+    """Why the column is a map: two surfaces, two answers, one lookup."""
+    defaults = {"report": "doc-notice", "slides": "deck-proposal"}
+    assert dt.default_for(defaults, SessionKind.report) == "doc-notice"
+    assert dt.default_for(defaults, SessionKind.slides) == "deck-proposal"
+    # A surface the project said nothing about keeps the built-in track.
+    assert dt.default_for(defaults, SessionKind.image) is None
+    assert dt.default_for({"report": "doc-notice"}, SessionKind.slides) is None
+
+
+@pytest.mark.parametrize(
+    "defaults",
+    [
+        None,
+        {},
+        # Written by a version of this image that shipped a template this one
+        # no longer has — the one case the router's refusal cannot reach.
+        {"report": "doc-gone"},
+        # Or one that moved to another surface since it was chosen.
+        {"report": "deck-editorial"},
+    ],
+)
+def test_a_default_the_catalogue_cannot_place_is_the_built_in_track(defaults):
+    assert dt.default_for(defaults, SessionKind.report) is None
+
+
+async def test_a_new_session_begins_in_its_projects_format():
+    """The finding itself: the shape is said once, in the project."""
+    db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
+
+    started = await sessions_router._project_render_template(db, "p1", SessionKind.report)
+    assert started == "doc-notice"
+    # The same project's slides were never given one.
+    assert await sessions_router._project_render_template(db, "p1", SessionKind.slides) is None
+
+
+async def test_work_outside_a_project_is_not_a_lookup():
+    none = await sessions_router._project_render_template(_Rows({}), None, SessionKind.report)
+    assert none is None
+
+
+async def test_the_composer_still_decides_this_conversation():
+    """Precedence, at the two functions that hold it.
+
+    The project seeds a session that has not chosen. Picking a format in the
+    composer is a decision about that one conversation, which is why it is
+    written onto the session and never asked of the project again.
+    """
+    db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
+
+    seeded = await sessions_router._project_render_template(db, "p1", SessionKind.report)
+    assert seeded == "doc-notice"
+    assert sessions_router._resolved_template_id("doc-brief", SessionKind.report) == "doc-brief"
+
+
+def test_clearing_one_surface_leaves_the_other_alone():
+    assert workspace_router._validated_render_templates(None) is None
+    kept = workspace_router._validated_render_templates({"report": "doc-notice", "slides": ""})
+    assert kept == {"report": "doc-notice"}
+
+
+@pytest.mark.parametrize(
+    ("defaults", "expected"),
+    [
+        ({"report": "nope"}, 404),
+        # An image template shapes a prompt; there is no document to start.
+        ({"image": "image-poster"}, 404),
+        ({"report": "deck-editorial"}, 422),
+        # Chat produces no document, so no surface of it can carry a format.
+        ({"chat": "doc-brief"}, 422),
+    ],
+)
+def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(
+    defaults, expected
+):
+    with pytest.raises(HTTPException) as raised:
+        workspace_router._validated_render_templates(defaults)
+    assert raised.value.status_code == expected

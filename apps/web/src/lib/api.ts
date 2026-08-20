@@ -718,6 +718,9 @@ export interface ProjectRow {
   skillIds: string[]
   /** The design system everything in this project wears. Null is the default look. */
   designSystemId: string | null
+  /** Surface → rendering template. Sent whole: a missing key is that surface
+   *  going back to the built-in track. */
+  renderTemplates: Record<string, string>
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
