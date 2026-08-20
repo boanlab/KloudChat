@@ -127,3 +127,42 @@ test('결과물·스킬·에이전트·커넥터 화면에도 같은 선택 막�
     await expect(page.getByText('1개 선택됨')).toHaveCount(0)
   }
 })
+
+test('디자인도 여러 개 골라 한 번에 지운다', async ({ page }) => {
+  test.setTimeout(120_000)
+  await signIn(page)
+
+  const names = [`묶음디자인 A ${Date.now()}`, `묶음디자인 B ${Date.now()}`]
+  for (const name of names) {
+    await page.evaluate(
+      async ([fn, n]) =>
+        await eval(fn as string)('/api/designs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: n, body: '', imageStyle: '' }),
+        }),
+      [AS_USER, name] as const,
+    )
+  }
+
+  await page.goto('/designs')
+  for (const name of names) {
+    await page.getByRole('checkbox', { name: `${name} 선택` }).check()
+  }
+  await expect(page.getByText('2개 선택됨')).toBeVisible()
+  await page.getByRole('button', { name: '선택 삭제' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click()
+
+  for (const name of names) {
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0)
+  }
+  const left = await page.evaluate(
+    async ([fn, a, b]) => {
+      const rows = (await eval(fn as string)('/api/designs')) as { name: string }[]
+      return rows.filter((r) => r.name === a || r.name === b).length
+    },
+    [AS_USER, names[0], names[1]] as const,
+  )
+  expect(left).toBe(0)
+  console.log('디자인 삭제 후 서버에 남은 것:', left)
+})
