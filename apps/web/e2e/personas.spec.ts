@@ -206,7 +206,7 @@ test.describe('페르소나 커버리지', () => {
               case 'off-template':
               case 'sal-template':
                 await gotoSurface(page, persona.surfaces[0])
-                await probe(page.getByRole('button', { name: /템플릿/ }).first()).toBeVisible()
+                await probe(page.getByRole('button', { name: '시작점 고르기' })).toBeVisible()
                 break
 
               /* maths */

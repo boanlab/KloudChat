@@ -335,7 +335,6 @@ const EN: Record<string, string> = {
     'Documents this agent searches for evidence. Not pushed into every turn — looked up when needed.',
   'URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.':
     'A URL is stored as it read at the time. It does not follow later changes.',
-  '템플릿 추가': 'Add template',
   '준비물': 'You bring',
   '문구': 'Prompt',
   '양식 파일': 'Form file',
@@ -622,7 +621,6 @@ const EN: Record<string, string> = {
   'CSV 내보내기': 'Export CSV',
   '서버 직접 추가': 'Add a server',
   '모든 대화 삭제': 'Delete all conversations',
-  '템플릿에서 시작': 'Start from a template',
   '구성을 잡는 중…': 'Outlining…',
   '원본 작업 열기 →': 'Open the original →',
   '그릴 수 있는 값이 없습니다': 'Nothing to plot',
@@ -747,8 +745,6 @@ const EN: Record<string, string> = {
   '모델 목록을 다시 읽었습니다 · 모델 {n}종': 'Model list reloaded · {n} models',
   '모델 목록 새로고침': 'Refresh model list',
   '파일을 내려받지 못했습니다.': 'Could not download the file.',
-  '고친 내용은 다음에 이 템플릿을 고를 때부터 반영됩니다.': 'Your changes apply the next time this template is chosen.',
-  '템플릿 수정': 'Edit template',
   '{name} 수정': 'Edit {name}',
   '작업을 취소하지 못했습니다.': 'Could not cancel the job.',
   '목소리': 'Voice',
@@ -1152,6 +1148,13 @@ const EN: Record<string, string> = {
 
 
 
+
+  // ── 시작점 갤러리의 이름 ────────────────────────────────────────
+  '시작점 고르기': 'Pick a starting point',
+  '시작점 추가': 'Add a starting point',
+  '시작점 수정': 'Edit starting point',
+  '고친 내용은 다음에 이 시작점을 고를 때부터 반영됩니다.':
+    'Your edits apply the next time you pick this starting point.',
 
   // ── 죽어 있던 컨트롤 ────────────────────────────────────────────
   '이 답변이 도움이 되었습니다': 'This answer helped',

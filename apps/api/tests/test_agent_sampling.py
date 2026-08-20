@@ -16,9 +16,11 @@ import pytest
 
 from app.models.chat import ChatSession, Message
 from app.models.user import User
+from app.models.workspace import Agent
 from app.routers import sessions as sessions_router
 from app.services import agent
 from app.services.tools.base import Tool, ToolContext, ToolResult
+from app.services.workspace_context import agent_settings
 
 
 class _Response:
@@ -223,3 +225,40 @@ async def test_the_router_hands_the_agents_temperature_to_the_loop(monkeypatch) 
     assert seen["temperature"] == 0.3
     assert any("답" in json.dumps(chunk, ensure_ascii=False) for chunk in chunks)
     assert any(isinstance(row, Message) for row in added)
+
+
+class _AgentDb:
+    """Just enough of a session to hand `_load_agent` one row."""
+
+    def __init__(self, row: Agent) -> None:
+        self._row = row
+
+    async def get(self, model, key):
+        return self._row if model is Agent and key == self._row.id else None
+
+
+@pytest.mark.asyncio
+async def test_an_agent_that_pins_no_model_overrides_nothing() -> None:
+    # The state the agent screen recommends and every seeded agent is in: an
+    # empty column is "no opinion", and it has to reach the router as one. Come
+    # back as "" and it would be an override of the empty string, which is the
+    # turn asking the proxy for a model by that name.
+    user = User(
+        id="user-1",
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+    )
+    unpinned = Agent(id="agent-1", owner_id=user.id, name="Unpinned", model="")
+    session = ChatSession(id="session-1", user_id=user.id, model="", agent_id=unpinned.id)
+
+    model, _tools, temperature = await agent_settings(_AgentDb(unpinned), user, session)
+
+    assert model is None
+    # The other half of the same row still arrives — an agent with no model is
+    # not an agent with no settings.
+    assert temperature == unpinned.temperature
+
+    pinned = Agent(id="agent-1", owner_id=user.id, name="Pinned", model="vendor/model")
+    model, _tools, _temperature = await agent_settings(_AgentDb(pinned), user, session)
+    assert model == "vendor/model"

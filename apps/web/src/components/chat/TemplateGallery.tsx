@@ -33,6 +33,9 @@ const asCard = (row: TemplateRow): Card => ({
   id: row.id,
   rowId: row.id,
   kind: row.kind,
+  // Stored text rather than a label: the server files a row under this exact
+  // string, and every row written before the word changed still carries it. A
+  // rename here would only saw one group into two.
   group: row.group || '내 템플릿',
   title: row.title,
   description: row.description,
@@ -143,7 +146,7 @@ export function TemplateGallery({ kind }: { kind: SessionKind }) {
     <>
       <Button size="sm" onClick={() => setOpen(true)}>
         <LayoutTemplate size={14} />
-        {t('템플릿에서 시작')}
+        {t('시작점 고르기')}
       </Button>
 
       <Modal
@@ -152,10 +155,10 @@ export function TemplateGallery({ kind }: { kind: SessionKind }) {
           setOpen(false)
           closeForm()
         }}
-        title={editing ? t('템플릿 수정') : t('무엇을 만드나요')}
+        title={editing ? t('시작점 수정') : t('무엇을 만드나요')}
         description={
           editing
-            ? t('고친 내용은 다음에 이 템플릿을 고를 때부터 반영됩니다.')
+            ? t('고친 내용은 다음에 이 시작점을 고를 때부터 반영됩니다.')
             : t('고르면 이번 요청에 붙습니다. 무엇을 만들지는 직접 적으면 됩니다.')
         }
         width="max-w-2xl"
@@ -191,7 +194,7 @@ export function TemplateGallery({ kind }: { kind: SessionKind }) {
                   the form an organisation actually uses has nowhere to live. */}
               <Button size="sm" className="ml-auto" onClick={() => setComposing(true)}>
                 <Plus size={13} />
-                {t('템플릿 추가')}
+                {t('시작점 추가')}
               </Button>
             </div>
 

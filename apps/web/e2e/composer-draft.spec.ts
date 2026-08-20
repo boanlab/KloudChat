@@ -60,7 +60,7 @@ test('문서 시작점은 여전히 입력창에 아무것도 쓰지 않는다',
   const mine = '3월 정기 점검 결과를 정리해 줘.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   const card = page.getByRole('dialog').locator('div.group', { hasText: '장애 보고' })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.getByRole('button').first().click()

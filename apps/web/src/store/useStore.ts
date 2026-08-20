@@ -2092,10 +2092,27 @@ export const useStore = create<State>((set, get) => ({
       model: a.model,
       systemPrompt: a.systemPrompt,
       tools: a.tools,
-      skillIds:
-        a.skillIds === null
-          ? null
-          : a.skillIds.filter((id) => get().skills.some((skill) => skill.id === id)),
+      /*
+       * Skills as a policy, not as a list of the author's rows.
+       *
+       * Two of the three states name nothing and so travel intact: null is
+       * "whatever you activate this turn", `[]` is "none, ever", and both mean
+       * the same thing in any account. A populated allow-list is the one that
+       * cannot come — every id in it is a row in the author's workspace, so
+       * filtering it against this one could only ever come back empty, and an
+       * emptied allow-list is not the residue of a copy that found nothing. It
+       * is a refusal. The turn reads it as "never a skill", which is how an
+       * imported agent came to turn down every skill its new owner switched
+       * on, on every turn, with nothing said anywhere.
+       *
+       * Inheriting is wider than the curation the author wrote, and that is
+       * the trade taken deliberately: the copy is this person's own agent over
+       * this person's own skills, so it grants nothing they could not grant
+       * themselves in the editor, and a yes they can see beats a no nobody
+       * can. The curation is theirs to rebuild under 허용 목록 지정, which is
+       * where it was sayable in the first place.
+       */
+      skillIds: a.skillIds?.length ? null : a.skillIds,
       kinds: a.kinds,
       temperature: a.temperature,
       color: a.color,

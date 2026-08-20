@@ -52,7 +52,7 @@ test('시작점은 입력창을 채우지 않고 요청에 실려 간다', async
   })
 
   await page.goto('/new/chat')
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   const card = page.getByRole('dialog').locator('div.group', { hasText: '장애 원인 좁히기' })
   await expect(card).toBeVisible({ timeout: 20_000 })
   // What the click will do, said on the card that does it.
@@ -74,7 +74,7 @@ test('시작점은 입력창을 채우지 않고 요청에 실려 간다', async
   await expect(box).toHaveAttribute('placeholder', '무엇이든 물어보세요')
 
   // Put it back and send.
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   await page
     .getByRole('dialog')
     .locator('div.group', { hasText: '장애 원인 좁히기' })
