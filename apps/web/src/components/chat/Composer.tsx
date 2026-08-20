@@ -256,6 +256,10 @@ export function Composer({
   autoFocus?: boolean
 }) {
   const t = useT()
+  //: The two surfaces that leave the chat pipeline at submit: a picture or a
+  //: clip is made by its own endpoint, which takes a prompt and the option
+  //: chips and has no room for anything else the composer could collect.
+  const isMedia = kind === 'image' || kind === 'av'
   const [value, setValue] = useState('')
   const liveValue = useRef(value)
   liveValue.current = value
@@ -361,6 +365,14 @@ export function Composer({
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   useEffect(() => {
     if (!pendingAttachment) return
+    // A picture or a clip is made from the prompt alone, so a form that
+    // followed a template onto one of those surfaces is let go instead of
+    // being shown as a chip nothing reads — and let go rather than left in
+    // the store, where it would attach itself to the next chat turn.
+    if (isMedia) {
+      setPendingAttachment(null)
+      return
+    }
     activeRestoreToken.current = null
     setAttachments((current) => {
       const next = current.some((f) => f.id === pendingAttachment.id)
@@ -370,7 +382,7 @@ export function Composer({
       return next
     })
     setPendingAttachment(null)
-  }, [pendingAttachment, setPendingAttachment])
+  }, [isMedia, pendingAttachment, setPendingAttachment])
   useEffect(() => {
     if (!pendingStartingTemplate) return
     activeRestoreToken.current = null
@@ -387,6 +399,11 @@ export function Composer({
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
+  // Switching surfaces keeps this composer mounted, so a choice made for the
+  // last one would follow the person to the next — and an upload that walked
+  // onto the picture or clip surface would be dropped at submit, after the
+  // wait and the credits. The typed sentence stays; it is theirs to reuse
+  // anywhere.
   useEffect(() => {
     if (sessionId && preserveComposerForSession.current === sessionId) {
       preserveComposerForSession.current = null
@@ -397,6 +414,8 @@ export function Composer({
     // A 시작점 belongs to the surface it was picked on, and to one turn.
     liveStartingTemplate.current = null
     setStartingTemplate(null)
+    liveAttachments.current = []
+    setAttachments([])
   }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
@@ -523,7 +542,6 @@ export function Composer({
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
   const activeConnectors = usableConnectors.filter((c) => c.enabled && c.status === 'connected')
-  const isMedia = kind === 'image' || kind === 'av'
   // Per picture, per second by (resolution, sound), or per call — never
   // `creditCost`, which is per 1k output tokens and reads as a fraction of the
   // real price on these surfaces.
@@ -964,46 +982,56 @@ export function Composer({
             attachment control ended up 16px across, narrower than the icon
             inside it. */}
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            className="hidden"
-            aria-label={t('파일 선택')}
-            onChange={async (e) => {
-              const picked = Array.from(e.target.files ?? [])
-              // Reset immediately so picking the same file twice still fires.
-              e.target.value = ''
-              if (!picked.length) return
-              setUploading(true)
-              try {
-                for (const file of picked) {
-                  const row = await uploadFile(file, {
-                    projectId: projectId ?? undefined,
-                    sessionId: sessionId ?? undefined,
-                  }).catch(() => null)
-                  if (row) {
-                    setAttachments((current) => {
-                      activeRestoreToken.current = null
-                      const next = [...current, row]
-                      liveAttachments.current = next
-                      return next
-                    })
+          {/* Not on the picture and clip surfaces. `generateImages`,
+              `generateAudio` and `generateVideo` send a prompt and the option
+              chips; there is no field on those endpoints an upload could ride
+              in, and a paperclip that takes a file only to drop it at submit
+              costs the person a wait and the clip's credits before they find
+              out. */}
+          {!isMedia && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                className="hidden"
+                aria-label={t('파일 선택')}
+                onChange={async (e) => {
+                  const picked = Array.from(e.target.files ?? [])
+                  // Reset immediately so picking the same file twice still fires.
+                  e.target.value = ''
+                  if (!picked.length) return
+                  setUploading(true)
+                  try {
+                    for (const file of picked) {
+                      const row = await uploadFile(file, {
+                        projectId: projectId ?? undefined,
+                        sessionId: sessionId ?? undefined,
+                      }).catch(() => null)
+                      if (row) {
+                        setAttachments((current) => {
+                          activeRestoreToken.current = null
+                          const next = [...current, row]
+                          liveAttachments.current = next
+                          return next
+                        })
+                      }
+                    }
+                  } finally {
+                    setUploading(false)
                   }
-                }
-              } finally {
-                setUploading(false)
-              }
-            }}
-          />
-          <button
-            onClick={() => fileInput.current?.click()}
-            className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
-            aria-label={t('첨부')}
-            title={t('파일을 올려 답변의 근거로 씁니다')}
-          >
-            <Paperclip size={16} />
-          </button>
+                }}
+              />
+              <button
+                onClick={() => fileInput.current?.click()}
+                className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
+                aria-label={t('첨부')}
+                title={t('파일을 올려 답변의 근거로 씁니다')}
+              >
+                <Paperclip size={16} />
+              </button>
+            </>
+          )}
 
           {/* Only once the conversation has started. A shape you can only
               pick before the first turn is one you cannot change your mind
@@ -1023,7 +1051,11 @@ export function Composer({
             </button>
           )}
 
-          {usableSkills.length > 0 && (
+          {/* Same rule as the attachment: a skill is a block of context the
+              chat pipeline assembles, and a picture model is never handed one.
+              Offering the list here would let somebody spend the choice on a
+              turn that cannot use it. */}
+          {!isMedia && usableSkills.length > 0 && (
             <Dropdown
               className="min-w-64"
               trigger={() => (

@@ -374,7 +374,10 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/가볍게 떠다니는 입자/)
   await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
   await expect(page.getByRole('button', { name: '종류 영상' })).toBeVisible()
-  await expect(page.getByText('발표 오프닝', { exact: true })).toBeVisible()
+  // And no chip afterwards. An a/v 서식 is spent on the sentence and the chips
+  // it just set — it has no clause to send with the turn, so a badge saying it
+  // is still in force would name a shape nothing carries.
+  await expect(page.getByText('발표 오프닝', { exact: true })).toHaveCount(0)
 
   // ── audio: picking one switches the surface's mode ──────────────────
   const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
