@@ -33,8 +33,10 @@ export function useDesignTemplates(enabled = true) {
 }
 
 /**
- * Picking one: the chip on the composer, the settings the template implies,
- * and — on the two media surfaces only — the sentence.
+ * Picking one: the settings the template implies, the sentence where the
+ * sentence is the prompt, and the chip where the id still has a turn to ride
+ * on. Three different templates get three different halves of that, and which
+ * half is decided here.
  *
  * Three screens start a 서식 — the gallery inside a session, the catalogue on
  * the 디자인 screen, and the rail at home — and a shape that set the aspect
@@ -54,24 +56,22 @@ export function useStartTemplate() {
   const setAvOptions = useStore((s) => s.setAvOptions)
 
   return (row: DesignTemplateRow, prompt: string) => {
-    setPendingTemplate(row)
     // For a picture or a clip the filled-in sentence *is* the prompt — the
     // person edits it and sends it, and without it there is nothing to send.
     // A deck or a document is the other way round: the chip already names the
     // shape, and typing the example into the box put the product's words in
     // the transcript under the person's name.
-    const media = row.kind === 'image' || row.kind === 'video' || row.kind === 'audio'
-    if (media) setDraft(prompt)
-    const d = row.defaults ?? {}
-    if (row.kind === 'image') {
-      setImageOptions({
-        ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
-        ...(typeof d.style === 'string' ? { style: d.style } : {}),
-        ...(typeof d.count === 'number' ? { count: d.count } : {}),
-      })
-      return
+    if (row.kind === 'image' || row.kind === 'video' || row.kind === 'audio') {
+      setDraft(prompt)
     }
+    const d = row.defaults ?? {}
     if (row.kind === 'video' || row.kind === 'audio') {
+      // Spent the moment it is picked, so nothing is held for the turn. An
+      // a/v 서식 carries no clause for the model — only the image ones do —
+      // and the endpoints that make a clip take a prompt and these chips and
+      // nothing besides. What it changed is on screen where the person can
+      // still read and edit it; a chip left on the composer afterwards would
+      // name a shape that goes nowhere at submit.
       setAvOptions({
         mode: row.kind === 'audio' ? 'audio' : 'video',
         ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
@@ -86,6 +86,15 @@ export function useStartTemplate() {
         // A narration template names its reader; until the composer had a
         // voice chip this was the one default that went nowhere.
         ...(typeof d.voice === 'string' && d.voice ? { voice: d.voice } : {}),
+      })
+      return
+    }
+    setPendingTemplate(row)
+    if (row.kind === 'image') {
+      setImageOptions({
+        ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
+        ...(typeof d.style === 'string' ? { style: d.style } : {}),
+        ...(typeof d.count === 'number' ? { count: d.count } : {}),
       })
     }
   }
