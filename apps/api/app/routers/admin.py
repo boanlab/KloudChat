@@ -98,6 +98,7 @@ def _audit(db, request: Request, admin: User, action: str, target: str, detail: 
             target=target,
             detail=detail,
             ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
         )
     )
 

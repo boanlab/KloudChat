@@ -30,7 +30,7 @@ from app.models.chat import ChatSession, Message, Role
 from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
-from app.services import adaptive_routing, governance, settings_store
+from app.services import adaptive_routing, geoip, governance, settings_store
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 
@@ -441,6 +441,10 @@ async def audit_log(
             "detail": r.detail,
             "metadata": r.event_metadata,
             "ip": r.ip,
+            # Empty unless a GeoLite2 file is configured and covers the
+            # address. An audit row is the last place to put a guess.
+            "region": geoip.lookup(r.ip),
+            "userAgent": r.user_agent,
             "severity": r.severity,
         }
         for r in rows
@@ -626,6 +630,7 @@ async def put_governance(
                 "policyVersion": governance.POLICY_VERSION,
             },
             ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
         )
     )
     await db.commit()

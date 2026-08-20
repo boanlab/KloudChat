@@ -93,7 +93,8 @@ async def upload_logo(
     await settings_store.put(db, settings_store.BRAND_LOGO, filename, admin.id)
     await settings_store.put(db, settings_store.BRAND_LOGO_MIME, mime, admin.id)
     db.add(AuditEvent(actor_id=admin.id, action="branding.logo", target=filename,
-                      detail=f"{len(data)}B", ip=client_ip(request)))
+                      detail=f"{len(data)}B", ip=client_ip(request),
+                      user_agent=request.headers.get("User-Agent", "")[:400]))
     await db.commit()
     settings_store.invalidate()
 
@@ -109,7 +110,8 @@ async def delete_logo(request: Request, admin: AdminUser, db: DbSession):
     await settings_store.put(db, settings_store.BRAND_LOGO, "", admin.id)
     await settings_store.put(db, settings_store.BRAND_LOGO_MIME, "", admin.id)
     db.add(AuditEvent(actor_id=admin.id, action="branding.logo.clear", target=filename or "-",
-                      ip=client_ip(request)))
+                      ip=client_ip(request),
+                      user_agent=request.headers.get("User-Agent", "")[:400]))
     await db.commit()
     settings_store.invalidate()
     if filename:

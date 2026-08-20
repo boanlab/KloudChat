@@ -5,6 +5,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { Button, PageHeader } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
+import { AccessTab } from './settings/AccessTab'
 import { KeysTab } from './settings/KeysTab'
 import { PreferencesTab } from './settings/PreferencesTab'
 import { ProfileTab } from './settings/ProfileTab'
@@ -21,6 +22,7 @@ const tabs = [
   { to: '/settings', label: '프로필', end: true },
   { to: '/settings/preferences', label: '환경설정', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
+  { to: '/settings/access', label: '접속기록', end: false },
 ]
 
 export function SettingsPage() {
@@ -76,6 +78,7 @@ export function SettingsPage() {
           <Route index element={<ProfileTab />} />
           <Route path="preferences" element={<PreferencesTab />} />
           <Route path="keys" element={<KeysTab />} />
+          <Route path="access" element={<AccessTab />} />
           <Route path="*" element={<Navigate to="/settings" replace />} />
         </Routes>
       </PageBody>
