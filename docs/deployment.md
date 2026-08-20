@@ -99,13 +99,20 @@ address and the LiteLLM master key, and use each field's connection test.
 KloudChat does not terminate TLS. Put nginx, Caddy or a load balancer in front of
 `kloudchat-web` and set `KCHAT_COOKIE_SECURE=true`.
 
-Two requirements the proxy must satisfy:
+Three requirements the proxy must satisfy:
 
 **Do not buffer responses.** Answers stream token by token over SSE. A
 buffering proxy makes them appear all at once, which reads as a hang.
 
 **Allow long-lived responses.** A tool-using turn on a local model can run for
 minutes; `CHAT_TIMEOUT_SEC` defaults to 900.
+
+**Forward the client's address.** `X-Forwarded-For` is the only way KloudChat
+learns who is connecting; without it every audit row, share visit and 접속기록
+line records the proxy. The `kloudchat-web` container then has to be told which
+hops to believe — `KCHAT_TRUSTED_PROXIES`, and narrow it to this proxy's own
+address wherever port 5173 is reachable by anyone else. See
+[Behind a reverse proxy](configuration.md#behind-a-reverse-proxy).
 
 ```nginx
 # At http level: $uri is the normalised path with the query string already
@@ -280,6 +287,10 @@ running more:
   first.
 - **Runtime settings are cached in-process.** A change made on one replica
   reaches the others within the cache TTL, not instantly.
+- **A running turn's stop signal is in-process.** `POST /sessions/{id}/stop`
+  reaches the turn only on the replica generating it, so 중단 would become
+  unreliable behind a round-robin balancer. Sticky sessions or a shared signal
+  is the fix.
 
 Neither is a hard barrier, but both need addressing before adding replicas.
 

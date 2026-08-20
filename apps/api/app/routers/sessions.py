@@ -252,15 +252,11 @@ def _planner_model(
 ) -> dict | None:
     """The catalogue row the outline call should use, or `None` for the writer.
 
-    A row rather than an id: its tokens are billed at its own price, and a
-    call billed at the writer's price is a ledger that says the wrong thing
-    about where the money went.
+    A row, not an id: the call is billed at its own price.
 
-    A whole function for one policy field because everything it has to refuse
-    is easy to forget: the account's allowlist, the surface, a turn privacy
-    routed inward, and a boundary the writer does not already have. The outline
-    carries the same request and context the body does, so a setting on the
-    admin screen must not widen where any of it goes.
+    Refused when the account's allowlist, the surface, an inward privacy route,
+    or the writer's own boundary would not allow it — an admin setting must not
+    widen where a document's text goes.
     """
     if not wanted or strict_local:
         return None
@@ -276,17 +272,11 @@ async def _enrichment_model(
 ) -> dict:
     """The catalogue row that titles the session and extracts its memories.
 
-    A row rather than an id, for the reason `_planner_model` returns one: this
-    is a second model doing side work, and its tokens are billed at its own
-    price. Titles and memory are the only calls a person never asks for, which
-    makes billing them at the answer's price the easiest ledger line to
-    disbelieve.
+    A row, not an id: side work billed at its own price, since titles and memory
+    are the only calls nobody asks for.
 
-    Most deployments point `title_model` at a free self-hosted model, and then
-    the charge is zero without anybody having to write a rule for it. Where one
-    is not configured the work falls to the turn's own model and is billed
-    there — the alternative, refusing to run at all above zero cost, would trade
-    a working feature for a credit or two.
+    Falls back to the turn's own model when `title_model` is unset, and is then
+    billed there. Usually a free self-hosted model, so usually zero.
     """
     if strict_local or disable_fallbacks:
         return writer
@@ -500,12 +490,9 @@ def _apply_effective_model(routing: dict[str, Any], model: dict) -> dict[str, An
 def _substitution_routing(requested: dict, effective: dict) -> dict[str, Any]:
     """Routing metadata for a fallback made outside the privacy decision.
 
-    Only chat resolves privacy, so only chat had somewhere to record that the
-    model the turn asked for is no longer the model that answered. A report or
-    a deck made the same substitution in silence. This is the note chat stores,
-    cut back to what a substitution on its own knows: no findings, no action,
-    no decision — just the two ids, which is the comparison the transcript's
-    badge makes.
+    Only chat resolves privacy, so only chat had somewhere to record a
+    substitution. Cut back to what a substitution alone knows — the two ids the
+    transcript's badge compares.
     """
     effective_id = effective["id"]
     boundary = effective.get("dataBoundary") or "unknown"
@@ -738,13 +725,6 @@ def _mask_text_tree(value: Any, masker) -> Any:
     return value
 
 
-def _masked_outbound_context(
-    history: list[str], extra: list[str], *, legacy: bool = False
-) -> tuple[list[str], list[str]]:
-    """Masks each outbound context collection exactly once."""
-    return _mask_list(history, legacy=legacy), _mask_list(extra, legacy=legacy)
-
-
 async def _require_egress_policy():
     """Loads the authoritative policy or refuses before any other egress work."""
     try:
@@ -865,9 +845,8 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
     if not files:
         return None
     short = [file for file in files if file.state != "included"]
-    # Cut and dropped are counted apart: a document that arrived at half length
-    # and one that never arrived are different things to have been answered
-    # without, and one number covering both would hide the worse of them.
+    # Cut and dropped are counted apart: half a document and no document are
+    # different things to have been answered without.
     cut = sum(1 for file in short if file.state == "truncated")
     dropped = len(short) - cut
     fates = [f"{cut}개 잘림"] if cut else []
@@ -918,9 +897,8 @@ def _memory_context_step(workspace: WorkspaceContext) -> dict | None:
         "detail": detail,
         # Names, never bodies: this line is on screen while somebody presents.
         "memories": names,
-        # The client rewrites this line in the reader's language, so it needs
-        # the number the Korean sentence above was built from rather than the
-        # sentence.
+        # The client rewrites this line in the reader's language, so it needs the
+        # number rather than the Korean sentence.
         "totalMemories": workspace.total_memories,
     }
 
@@ -928,11 +906,9 @@ def _memory_context_step(workspace: WorkspaceContext) -> dict | None:
 def _context_steps(workspace: WorkspaceContext) -> list[dict]:
     """What the turn was handed but never said out loud.
 
-    Memories, attachments and project knowledge all reach the model without
-    passing through the conversation, so nothing on screen could tell a person
-    which of them shaped the answer — or that the document they had just
-    watched a chip appear for was cut in half to fit. Each becomes one quiet
-    line in the timeline the applied skills already use.
+    Memories, attachments and project knowledge reach the model without passing
+    through the conversation. Each becomes one timeline line, including when a
+    document was truncated to fit.
     """
     steps = [
         _memory_context_step(workspace),
@@ -1023,11 +999,8 @@ async def list_sessions(
     # One aggregate for the page — the sidebar asks for every conversation.
     ids = [s.id for s in rows]
     previews = await _previews(db, ids)
-    # Emptiness rather than absence. A media conversation now has messages —
-    # the prompt, and a wordless answer holding the picture — so its newest
-    # message is a row with nothing to quote, and asking only about the
-    # sessions with no messages at all would blank the line under every title
-    # this rule was written for.
+    # Empty body, not a missing row: a media answer holds the artifact and
+    # quotes nothing.
     made = await _made(db, [sid for sid in ids if not previews.get(sid, (None, 0))[0]])
     return [
         SessionOut.of(
@@ -1072,15 +1045,10 @@ async def _previews(db: DbSession, session_ids: list[str]) -> dict[str, tuple[st
 async def _made(db: DbSession, session_ids: list[str]) -> dict[str, SessionMade]:
     """`{session_id: what it produced}`, for the conversations that said nothing.
 
-    A picture or clip surface answers with a thing rather than a sentence, so
-    its turn is a prompt and a wordless reply and there is no last message to
-    put under the title. What these rows do have is what they made, and its
-    shape is the one fact the title — the person's own prompt — does not
-    already carry.
+    A picture or clip answers with a thing, so there is no last message to put
+    under the title. Its shape is the one fact the prompt-as-title lacks.
 
-    Asked for once for the whole page, like the previews above, and only for
-    the ids the message query returned nothing for: a report's transcript is
-    the better subtitle wherever there is one.
+    One query for the page, and only for ids the message query left empty.
     """
     if not session_ids:
         return {}
@@ -1103,10 +1071,8 @@ async def _made(db: DbSession, session_ids: list[str]) -> dict[str, SessionMade]
 async def get_session(session_id: str, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
     history = await _history(db, session_id)
-    # Also on the single-session response, and not only in the list: opening a
-    # conversation replaces the row the list handed the client, so leaving this
-    # out here would blank the line under a title the moment somebody looked at
-    # what it names.
+    # Also on the single-session response — opening a conversation replaces
+    # the row the list handed over.
     made = {} if any(m.content for m in history) else await _made(db, [session_id])
     return SessionOut.of(session, history, made=made.get(session_id))
 
@@ -1155,13 +1121,10 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
 async def _project_render_template(
     db: DbSession, project_id: str | None, kind: SessionKind
 ) -> str | None:
-    """The format the project this session is starting in works in, if any.
+    """The format the project this session starts in works in, if any.
 
-    Copied onto the row rather than read through the project on every turn.
-    The composer shows the shape it is about to write in, and a project whose
-    default changes afterwards must not silently change the shape of a
-    conversation somebody is already having — the same reason the composer's
-    own pick is stored here rather than resent.
+    Copied onto the row: a project changing its default must not change the
+    shape of a conversation already under way.
 
     Ownership is settled by `_validate_session_links` before this is asked.
     """
@@ -1172,13 +1135,11 @@ async def _project_render_template(
 
 
 def _resolved_template_id(requested: str | None, kind: SessionKind) -> str | None:
-    """A rendering template id this surface can actually use, or `None`.
+    """A rendering template id this surface can use, or `None`.
 
-    `""` and `None` both mean "no template" — the first is somebody clearing
-    the choice, the second is a payload that did not mention it, and only the
-    caller can tell those apart. An id that does not resolve is refused rather
-    than dropped: a turn that quietly falls back to the built-in track produces
-    a document in the wrong shape and bills for it.
+    `""` clears the choice, `None` means the payload did not mention it; only
+    the caller can tell those apart. An unresolvable id is refused rather than
+    dropped — a silent fallback bills for a document in the wrong shape.
     """
     if not requested:
         return None
@@ -1213,9 +1174,8 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
     # updates the quality ceiling and asks to keep Auto in the same patch.
     if "model" in changes and "routing_mode" not in changes:
         changes["routing_mode"] = RoutingMode.manual
-    # Validate the effective post-patch state, including an unrelated update
-    # to a session that is already Auto. A model-only patch becomes manual
-    # above and intentionally keeps the historical manual-session contract.
+    # Validate the effective post-patch state, including an unrelated update to
+    # a session that is already Auto. A model-only patch becomes manual above.
     if changes.get("routing_mode", session.routing_mode) == RoutingMode.auto:
         await _require_auto_quality_model(user, changes.get("model", session.model))
     if "render_template_id" in changes:
@@ -1259,31 +1219,18 @@ def _record_media(
 ) -> None:
     """Writes the turn a picture or a clip is, as an ordinary turn.
 
-    The writing surfaces get this from running one: the prompt is stored, the
-    title comes off it, and the finished document is hung on the session. These
-    run no turn, so for a long time nothing wrote any of it and the row stayed
-    an untitled "새 작업" pointing at nothing. Naming the session fixed the list.
-    It did not fix the conversation, which still opened blank — the sentence
-    somebody typed was nowhere on the screen they typed it on, and the picture
-    they paid for was in a panel beside it.
+    The prompt is a user message like any other. The reply is an assistant
+    message with no words in it, carrying the ids of what was made — a picture
+    is not a sentence, and prose invented about one would be the model quoted
+    saying something it never said.
 
-    So both halves are stored. The prompt is a user message like any other. The
-    reply is an assistant message with no words in it, carrying the ids of what
-    was made: a picture is not a sentence, and prose invented about one would
-    be the model quoted saying something it never said, while the picture
-    rendered under the prompt says it without anybody having to speak for it.
-
-    A request that came back with nothing marks the prompt instead and leaves
-    no reply, which is what a chat turn does when it dies before its first
-    word. A batch that broke halfway keeps what arrived and says it is less
-    than what was asked for.
+    Nothing made marks the prompt and leaves no reply, as a chat turn does when
+    it dies before its first word. A batch that broke halfway keeps what arrived
+    and says it is less than what was asked for.
     """
     if not session.title:
-        # A title somebody chose is theirs. So, deliberately, is the one the
-        # first prompt left behind: a second batch in the same session is more
-        # of the same work, not a new subject, and renaming the row underneath
-        # somebody mid-session is how a list stops being somewhere to look
-        # things up.
+        # A title, once set, stays. A second batch is more of the same work, not
+        # a new subject.
         session.title = chat_service.provisional_title(prompt)
     db.add(chat_service.media_prompt(session.id, prompt, unanswered=failed and not made))
     if made:
@@ -1296,10 +1243,8 @@ def _record_media(
                 partial=failed,
             )
         )
-        # The panel and the 원본 작업 열기 link still open the newest result,
-        # which is what a session-level pointer is for. The transcript keeps
-        # every batch under the prompt that asked for it; this keeps the one
-        # answer to "what did this conversation end up with".
+        # Newest result, for the panel and 원본 작업 열기. Per-batch results live
+        # on the messages.
         session.artifact_id = made[-1].id
     # The sidebar sorts on this. Making something is the clearest case there is
     # of the conversation having been touched.
@@ -1389,10 +1334,8 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
                 # Prompt as typed, without the appended aspect and style phrases.
                 "prompt": payload.prompt,
                 "aspect": payload.aspect,
-                # What came back, beside what was asked for. The two disagree
-                # often enough — the ratio is a phrase in the prompt, not a
-                # parameter — that showing only the request is a claim the
-                # picture does not back up.
+                # Requested ratio beside the delivered one: the ratio is a phrase in the
+                # prompt, not a parameter, and the two often disagree.
                 "actualAspect": image.aspect,
                 "width": image.width,
                 "height": image.height,
@@ -1476,11 +1419,8 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             seconds=payload.seconds,
         )
     except audiogen.AudioError as exc:
-        # The request is kept even though nothing came of it. A refusal used to
-        # leave the conversation exactly as empty as a success did, so the
-        # person was returned to a blank screen with no record that they had
-        # asked for anything — and the credits line, which is the only other
-        # trace, says nothing about a call that was never billed.
+        # The request is kept even when nothing came of it — otherwise a refusal
+        # leaves a blank screen and no trace but an unbilled credits line.
         _record_media(db, session, payload.prompt, [], failed=True)
         await db.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
@@ -1510,11 +1450,8 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             "prompt": payload.prompt,
             "audioKind": payload.audio_kind,
             "voice": payload.voice if speech else "",
-            # What was asked for, beside what came back. A length is a phrase
-            # in the prompt rather than a parameter, and the two disagree often
-            # enough that showing only the request would be a claim the clip
-            # does not support — `aspect` and `actualAspect` on the image
-            # surface exist for the same reason.
+            # Requested length beside the delivered one — a length is a phrase in the
+            # prompt, not a parameter. Same reason as `aspect`/`actualAspect`.
             "requestedSec": payload.seconds,
             "durationSec": audiogen.duration_seconds(audio),
             "model": model["id"],
@@ -1608,10 +1545,8 @@ async def send_message(
     catalogue = await model_service.list_models_for_egress()
     catalogue_models = catalogue["models"]
     usable = _allowed_models(user, catalogue_models, kind=session.kind.value)
-    # Model precedence: turn override → session → agent. The agent supplies a
-    # default, not a lock — which only means anything if a session started
-    # against an agent is left without a model of its own, so the client does
-    # not send one.
+    # Model precedence: turn override → session → agent. The agent's is a
+    # default, used only when the session carries none.
     try:
         agent_model, agent_tools, agent_temperature = await agent_settings(db, user, session)
     except WorkspaceContextError as exc:
@@ -1637,10 +1572,8 @@ async def send_message(
             status_code=status.HTTP_409_CONFLICT,
             detail="auto_quality_model_required",
         )
-    # The row the turn asked for, when it exists and the account may no longer
-    # use it. A revocation is not a reason to answer silently at another price:
-    # the id is kept so the routing metadata can report it as the requested
-    # model and the transcript says a substitute ran.
+    # The requested model, kept even when the account may no longer use it, so
+    # routing metadata can report it and the transcript can name the substitute.
     revoked_model = model if model is not None and model not in usable else None
     if model not in usable:
         model = None
@@ -1672,11 +1605,9 @@ async def send_message(
     candidate_tools: list[Tool] = []
     strict_tools: list[Tool] = []
 
-    # Build every model-visible tool definition before the privacy decision and
-    # before the first write. Agent shelf filenames/headings and connector JSON
-    # schemas are outbound prompt data just as much as the user's sentence is.
-    # Rebuilding this snapshot on every retry also binds a decision token to
-    # connector/schema/shelf changes instead of a stale registry object.
+    # Every model-visible tool definition, built before the privacy decision and
+    # the first write: shelf filenames and connector schemas are outbound prompt
+    # data. Rebuilding per retry binds the decision token to their current state.
     agent_row: WorkspaceAgent | None = None
     shelf: list[tuple[str, str, str | None]] = []
     shelf_key = ""
@@ -1795,11 +1726,8 @@ async def send_message(
             return resolved
         privacy_resolution = resolved
         if revoked_model is not None:
-            # Name the model that was asked for, not the one that answered.
-            # `actualModelChanged` in the transcript is exactly this comparison,
-            # so restoring the pre-fallback id here is the whole of telling the
-            # reader that a substitute ran — and it is stored on the message,
-            # so it survives a reload the way every other route note does.
+            # The requested model, not the one that answered. `actualModelChanged` is
+            # this comparison, and it is stored on the message.
             resolved.routing = {
                 **resolved.routing,
                 "requestedModels": [revoked_model["id"]],
@@ -1861,10 +1789,8 @@ async def send_message(
         content, masked = masker(content)
         stored_content = content
         if attachment_meta:
-            # Document surfaces now persist the same attachment metadata as
-            # chat. A filename or extraction error is user content too, so the
-            # legacy organisation-wide policy must cover it even when the
-            # request sentence itself is clean.
+            # Document surfaces persist the same attachment metadata as chat, and a
+            # filename or extraction error is user content.
             attachment_meta = _mask_text_tree(attachment_meta, masker)
         if masked:
             await _audit_policy(user, request, "pii.masked", f"{masked}건")
@@ -1892,10 +1818,8 @@ async def send_message(
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
     elif policy.pii_masking:
-        # Report and slide generation gained source-separated workspace context
-        # with the skill runtime. Preserve the pre-existing always-mask policy
-        # across those new outbound fields instead of protecting only the
-        # request sentence.
+        # Report and slide context is source-separated; the always-mask policy
+        # covers those outbound fields, not only the request sentence.
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
     skills_event = workspace.skills_event()
@@ -1911,11 +1835,8 @@ async def send_message(
         context_steps = _mask_text_tree(context_steps, governance.mask_legacy)
 
     # Chat carries a substitution inside its privacy resolution; report and
-    # slides resolve no privacy, so until this existed the swap happened on
-    # those surfaces with nothing on the turn to carry the news. The document
-    # runners take it from here and store it on their own message, so the badge
-    # that already reads this comparison fires wherever the substitution
-    # happened.
+    # slides resolve none, so the runners take it from here and store it on
+    # their own message.
     document_routing = (
         _substitution_routing(revoked_model, model)
         if privacy_resolution is None and revoked_model is not None
@@ -1933,10 +1854,8 @@ async def send_message(
         wire_history,
         with_tools=bool(tools),
         web_search=payload.web_search,
-        # An agent allowlist may have removed the tool the toggle enabled, and a
-        # strict-local route never had it. Carry the toggle through either way:
-        # dropping it here produced an answer that read exactly like a searched
-        # one, so the turn now says out loud that it did not search.
+        # The toggle travels even when no search tool survives an agent allowlist
+        # or a strict-local route — otherwise the answer reads like a searched one.
         web_search_available=any(t.name == "web_search" for t in tools),
         extra=trusted_context,
         untrusted_context=untrusted_context,
@@ -1951,11 +1870,9 @@ async def send_message(
             or session.agent_id
             or session.project_id
         )
-        # Economy turns are intentionally tool-free. The classifier sees the
-        # complete quality-model envelope and exact tool definitions, but its
-        # prompt says those tools will not exist after a route. This preserves
-        # Auto for ordinary tool-capable models without letting a later tool
-        # result overflow the candidate context window checked here.
+        # Economy turns are tool-free. The classifier sees the full quality-model
+        # envelope and is told the tools will not exist after a route, so a later
+        # tool result cannot overflow the candidate window checked here.
         economy_messages = build_messages(
             session.kind,
             wire_history,
@@ -2012,15 +1929,11 @@ async def send_message(
         started_from=workspace.started_from,
     )
     db.add(user_message)
-    # A strict privacy route and SendMessage.model are turn-only overrides. An
-    # Auto session's persisted model is its quality ceiling, changed through
-    # PATCH rather than by a one-off message request. Preserve the historical
-    # manual-session behaviour for clients that still select a model per turn.
+    # A strict privacy route and SendMessage.model are turn-only. An Auto
+    # session's persisted model is its ceiling, changed through PATCH.
     if session.routing_mode != RoutingMode.auto or payload.model is None:
-        # A substitute is for this turn only. Writing it back would outlive the
-        # revocation that caused it: the day the allowlist covers the person's
-        # model again, the session would still be on the cheap one nobody
-        # chose, and nothing would ever move it back.
+        # A substitute is for this turn only: written back, it would outlive the
+        # revocation that caused it and nothing would move the session back.
         if revoked_model is None:
             session.model = requested_model["id"]
     session.updated_at = utcnow()
@@ -2078,20 +1991,14 @@ async def send_message(
 
     is_first_turn = len(history) == 0
 
-    # A rendering template replaces the surface's built-in track. Resolved
-    # before either of them, because picking one is a choice about what comes
-    # out, not a hint the generator may take or leave.
-    # The planner, when an administrator has named one.
+    # A rendering template replaces the surface's built-in track, resolved
+    # before either: it is a choice about the output, not a hint.
     #
-    # The outline call carries the same request and the same context the body
-    # does, so it is subject to everything the body is subject to: this
-    # account's allowlist, this surface, and the boundary the turn was decided
-    # on. A turn that privacy routed to a strict-local model does not get a
-    # planner at all — that route exists precisely so the text does not leave —
-    # and a planner may never be less contained than the writer, or naming one
-    # would quietly widen every document's egress. Anything that fails these
-    # falls back to the writing model: a document planned slightly worse beats
-    # a turn that fails, and beats one that leaks.
+    # The planner, when an administrator has named one. It carries the same
+    # request and context as the body, so it is bound by the same allowlist,
+    # surface and boundary — a strict-local turn gets no planner, and a planner
+    # may never be less contained than the writer. Anything failing those falls
+    # back to the writing model.
     outline_model = _planner_model(
         policy.outline_model_id,
         user=user,
@@ -2138,9 +2045,8 @@ async def send_message(
                 request=content,
                 project_id=session.project_id,
                 routing=document_routing,
-                # The same blocks the chat surface gets. Without this a report
-                # or a deck saw the request sentence alone — no project
-                # instructions, no memories, no attached form.
+                # The same context blocks the chat surface gets: project instructions,
+                # memories, attached forms.
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
@@ -2166,9 +2072,8 @@ async def send_message(
                 request=content,
                 project_id=session.project_id,
                 routing=document_routing,
-                # The same blocks the chat surface gets. Without this a report
-                # or a deck saw the request sentence alone — no project
-                # instructions, no memories, no attached form.
+                # The same context blocks the chat surface gets: project instructions,
+                # memories, attached forms.
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
@@ -2195,14 +2100,12 @@ async def send_message(
                 messages=messages,
                 tools=tools,
                 tool_definitions=tool_definitions,
-                # Sampling belongs to the agent, not to the surface. A turn with no
-                # agent passes None and the upstream default stands, exactly as it
-                # did before this was carried at all.
+                # Sampling belongs to the agent, not the surface. None leaves the upstream
+                # default standing.
                 temperature=agent_temperature,
                 first_user_message=stored_content,
-                # The question is already committed. A turn that produces no answer
-                # has to come back and say so on this exact row, or the transcript
-                # keeps a prompt with silence under it and no account of why.
+                # The question is already committed. A turn with no answer comes back and
+                # says so on this row, or the transcript keeps a prompt and silence.
                 user_message_id=user_message.id,
                 is_first_turn=is_first_turn,
                 skills_event=skills_event,
@@ -2238,39 +2141,27 @@ async def send_message(
     )
 
 
-#: Turns being generated right now, by session. Used only by the stop button:
-#: pressing 중단 has to mean something different from closing the tab, and from
-#: the socket alone the two are identical.
+#: Turns generating right now, by session. Read only by the stop button:
+#: 중단 and a closed tab are the same event on a socket, opposite intentions.
 _STOPPING: dict[str, asyncio.Event] = {}
 
-#: Strong references to the tasks driving turns whose reader has gone. Without
-#: this the event loop is the only thing holding them and they are collectible
-#: mid-turn, which is the same bug wearing a different hat.
+#: Strong references to tasks whose reader has gone — otherwise the loop is
+#: the only thing holding them and they are collectible mid-turn.
 _DETACHED: set[asyncio.Task] = set()
 
 
 async def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
     """Lets a turn finish even when nobody is left reading it.
 
-    A streaming response and the work behind it used to be the same task, so
-    closing the tab cancelled the generator at whatever `yield` it was sitting
-    on — and everything after that yield never ran. Everything after it is the
-    part that stores the answer, charges for it and names the conversation.
+    The response and the work behind it are separate tasks: the turn produces
+    into a queue and this relays it. A reader leaving cancels the relay only, so
+    the turn still reaches the block that stores the answer, charges for it and
+    names the conversation.
 
-    Measured before this existed: 232 of 933 chat sessions on one account held
-    a prompt with no reply. None were charged, so nothing was lost but the
-    work. The `no_answer` marker written for exactly this case never fired
-    either, because the line that writes it sits in the same cancelled block.
+    The queue is unbounded — one turn's worth of small strings.
 
-    So the turn runs in its own task and this only relays what it emits. When
-    the reader leaves, the relay is cancelled and the task is deliberately not:
-    it keeps producing into a queue nobody drains, reaches its own end, and
-    stores what it made. The queue is unbounded, which is affordable because
-    what it holds is one turn's worth of small strings.
-
-    This is the contract the client already documented — "stop aborts the
-    request only; the server still stores what it had produced" — and did not
-    have.
+    This is the contract the client documents: stop aborts the request; the
+    server still stores what it produced.
     """
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
@@ -2376,10 +2267,8 @@ async def _run_turn(
             redact_logging=mask_at_rest,
         ):
             if stopping.is_set():
-                # Asked to stop, so stop — but fall through to the settling
-                # below rather than unwinding. Half an answer is worth keeping
-                # and the tokens already spent are worth charging for; the
-                # difference from a finished turn is the label on the row.
+                # Stop, but fall through to the settling below: the partial answer is worth
+                # keeping and the spent tokens worth charging. Only the label differs.
                 failed = "stopped"
                 break
             if event["type"] == "delta":
@@ -2446,13 +2335,9 @@ async def _run_turn(
     content = "".join(text_parts)
     stored_content = masker(content)[0] if mask_at_rest or tool_output_findings else content
     protect_persistence = mask_at_rest or bool(tool_output_findings)
-    # What the guard took out of the answer on its way to the record. The
-    # prompt's own masking is already told this way — the findings ride on the
-    # message's routing and the bubble reads them off it — and the answer has
-    # the same gap for the same reason: the browser keeps the streamed original
-    # until the session is reopened, so a week later somebody copies what is on
-    # screen and gets placeholders. What is stored stays masked; only the
-    # silence about it ends here.
+    # What the guard took out of the answer. The browser keeps the streamed
+    # original until the session is reopened, so without this somebody copies
+    # what is on screen a week later and gets placeholders.
     answer_findings = (
         governance.findings({"assistant_output": content}, legacy=legacy_masking)
         if stored_content != content
@@ -2521,9 +2406,8 @@ async def _run_turn(
                     usage={**usage, "credits": credits},
                     model=stored_actual_model,
                     routing=stored_routing,
-                    # Half an answer is worth keeping, and worth labelling. The
-                    # browser already says the stream broke; storing it is what
-                    # makes the same thing true tomorrow.
+                    # Half an answer is worth keeping, and worth labelling: the browser says the
+                    # stream broke, and storing it says the same thing tomorrow.
                     failure=TurnFailure.interrupted if failed else None,
                 )
                 db.add(answer)
@@ -2537,11 +2421,9 @@ async def _run_turn(
                     model=stored_actual_model,
                 )
             else:
-                # There is no answer to store — a broken stream, a refusal, or a
-                # model that returned nothing at all. Inventing an assistant
-                # message here would put words in its mouth, so the question
-                # carries the outcome instead: it is the row the reader is
-                # actually looking at, and the row a retry is offered under.
+                # No answer to store — broken stream, refusal, or an empty completion.
+                # An invented assistant message would put words in its mouth, so the
+                # question carries the outcome and the retry.
                 question = await db.get(Message, user_message_id) if user_message_id else None
                 if question is not None:
                     # Stopped before the first token is still stopped, not
@@ -2555,12 +2437,9 @@ async def _run_turn(
                     db.add(question)
             if title:
                 session.title = title
-            # Its own line rather than folded into the answer's figure: a
-            # different model may have run it, the message's stored `credits`
-            # has to keep explaining the message's own tokens, and the one
-            # thing the ledger owes somebody who never asked for a title is a
-            # row that says a title is what they paid for. Nothing is charged
-            # when the title ran on free capacity, which is the usual case.
+            # Its own ledger line: a different model may have run it, the message's
+            # `credits` explains the message's own tokens, and somebody who never asked
+            # for a title is owed a row saying so. Usually free capacity, so zero.
             settle(
                 db,
                 user,
@@ -2658,14 +2537,12 @@ async def _run_turn(
 async def stop_turn(session_id: str, user: CurrentUser, db: DbSession):
     """Asks the turn running on this session to stop where it is.
 
-    Separate from closing the connection, because the two mean opposite things.
-    A reader who navigates away still wants the answer when they come back; a
-    reader who presses 중단 wants it to stop. The socket cannot tell them apart,
-    so the button says so out loud before it aborts the request.
+    Separate from closing the connection, which means the opposite: a reader who
+    navigates away still wants the answer. The socket cannot tell them apart, so
+    the button says so before it aborts.
 
-    Idempotent, and silent about whether anything was running: by the time this
-    lands the turn has often just finished, and that is not an error worth
-    showing anybody.
+    Idempotent, and silent about whether anything was running — by the time it
+    lands the turn has often just finished.
     """
     await _owned(db, user, session_id)
     signal = _STOPPING.get(session_id)
@@ -3082,12 +2959,11 @@ async def _enrich(
 ) -> tuple[str | None, dict | None]:
     """Artifacts and memories derived from a finished turn.
 
-    All optional, and nothing here may raise — the turn is already stored.
+    All optional, and nothing here may raise: the turn is already stored.
 
     Returns the new artifact and, when auto-memory wrote anything, the timeline
-    step saying so. The step is appended to the message row on the way out: the
-    answer was durable before this ran, and a line that vanished on reload
-    would be a worse account than none.
+    step saying so. The step is appended to the stored message, not only
+    streamed, so it survives a reload.
     """
     artifact_id: str | None = None
     memory_step: dict | None = None
@@ -3123,12 +2999,8 @@ async def _enrich(
             if artifact_id:
                 session.artifact_id = artifact_id
                 db.add(session)
-                # And on the turn that made it. The session pointer names the
-                # newest result only, which is what a panel opens — it cannot
-                # say which answer produced which document, so a reloaded
-                # transcript showed a turn claiming "구현했습니다" with the code
-                # nowhere on screen. The timeline said an artifact was written
-                # and nothing linked to it.
+                # And on the turn that made it. The session pointer names the newest
+                # result only and cannot say which answer produced which document.
                 message = await db.get(Message, message_id) if message_id else None
                 if message is not None:
                     message.artifact_ids = [*(message.artifact_ids or []), artifact_id]
@@ -3161,10 +3033,8 @@ async def _enrich(
                     if message is not None:
                         message.steps = [*(message.steps or []), memory_step]
                         db.add(message)
-                # Charged whether or not a fact came out, at the model that
-                # read the turn. The extractor runs on every turn once the
-                # preference is on, and a run that decided there was nothing
-                # to remember cost the same as one that wrote two rows.
+                # Charged whether or not a fact came out, at the model that read the turn:
+                # deciding there was nothing to remember costs the same as writing two rows.
                 settle(
                     db,
                     user,
@@ -3311,11 +3181,8 @@ async def _run_page(
                         "language": "html",
                         "content": html,
                         "templateId": template.id,
-                        # The blocks are the source and `content` is what they
-                        # render to. Kept whole — markup included — so one of
-                        # them can be rewritten without reading the finished
-                        # file back apart and hoping the seams land where they
-                        # did when it was assembled.
+                        # Blocks are the source, `content` what they render to. Both kept whole so
+                        # one block can be rewritten without parsing the finished file back apart.
                         "blocks": [
                             {"title": b["title"], "layout": b["layout"], "html": b["html"]}
                             for b in blocks
@@ -3452,10 +3319,8 @@ async def _run_deck(
                     data={
                         "kind": "deck",
                         "theme": "기본",
-                        # Copied onto the artifact rather than looked up at
-                        # export time: the accent already works this way, and a
-                        # deck presented last month should not repaint itself
-                        # because the project changed its design system since.
+                        # Copied onto the artifact rather than resolved at export time: a deck
+                        # presented last month should not repaint itself when the project changes.
                         **({"design": design_tokens} if design_tokens else {}),
                         "lint": lint.wire(
                             lint.check(lint.from_slides(slides), slides=True)

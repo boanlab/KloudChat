@@ -145,6 +145,67 @@ so it can be set in `.env` like the variables above.
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
 | `STT_OR_MODEL` | `mistralai/voxtral-small-24b-2507` | Fallback transcription model for hosts that cannot run Whisper. **Microphone audio leaves the network.** Set to `""` to keep dictation internal-only. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
+| `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Wrong here and a model answers "올해" with the year it was trained in. |
+| `GEOIP_DATABASE` | — | Path to a MaxMind GeoLite2 City `.mmdb`. Empty disables region lookup; see [Where an address is](#where-an-address-is). |
+| `TITLE_TIMEOUT_SEC` | `60` | Naming a conversation and extracting memories. |
+| `LITELLM_TIMEOUT_SEC` / `LITELLM_PROBE_TIMEOUT_SEC` | `900` / `10` | Model call, and the catalogue probe behind the admin connection test. |
+| `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC` | `20` | Auto's classification call. On timeout the quality model answers. |
+| `FILE_STORAGE_DIR` | `/data/files` | Where uploads and generated media are written. Mount it, or a container rebuild loses every picture. |
+
+---
+
+## Behind a reverse proxy
+
+The web container serves the app and proxies `/api/`. When something else
+answers the internet in front of it — the usual arrangement — two things have
+to line up or every audit row, share visit and 접속기록 line records the proxy
+instead of the person.
+
+**The proxy in front must send the header.** nginx:
+
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header Host $host;
+```
+
+Nothing on the KloudChat side can invent an address that was never sent.
+
+**The web container must be told which hops to believe.** It resolves the
+client from `X-Forwarded-For` for trusted hops only, and ignores the header
+from anywhere else — which is what stops a client from naming its own address.
+`KCHAT_TRUSTED_PROXIES` is the trusted set, one `set_real_ip_from` directive
+per entry:
+
+| `.env` | Default |
+| --- | --- |
+| `KCHAT_TRUSTED_PROXIES` | the private ranges plus loopback |
+
+The default suits a proxy on the same host or Docker network. **Narrow it
+wherever the web port is reachable by anyone else** — every address in the set
+can name itself anything:
+
+```
+KCHAT_TRUSTED_PROXIES="set_real_ip_from 10.1.2.3;"
+```
+
+Also set `KCHAT_COOKIE_SECURE=true` behind TLS.
+
+### Where an address is
+
+Three screens show a region beside an address: the visits on a shared link, an
+account's own 접속기록, and the admin audit trail.
+
+The lookup is **offline only**. Resolving addresses through a third-party
+service would send every visitor's address off the instance, so KloudChat reads
+a MaxMind DB file from disk or says nothing:
+
+1. Download `GeoLite2-City.mmdb` (free, needs a MaxMind account).
+2. Mount it into the API container.
+3. Set `GEOIP_DATABASE` to its path.
+
+With no file configured, those screens show the address alone. Private ranges
+never reach the database and read `내부망`.
 
 ---
 

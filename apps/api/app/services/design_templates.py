@@ -60,17 +60,13 @@ SURFACE: dict[str, SessionKind] = {
 HTML_KINDS = ("deck", "document")
 
 #: Blocks a fragment may contain. Everything else is dropped — the seed owns
-#: the layout, and a model that invents a `<div class="grid-4">` gets a slide
-#: with no styling rather than a broken one.
-#: `h2` is deliberately absent: the wrapper writes the block's heading from
-#: the outline, and a model that repeats it inside the body renders the title
-#: twice. Sub-headings inside a block use `h3`.
-#: `code` is the one machine voice the vocabulary has, and it is inline only.
-#: A `<pre>` block would be the obvious companion and is deliberately absent:
-#: what is inside one is whitespace-significant and arbitrarily long, and the
-#: file exporters read markdown lines — a stack trace would arrive re-indented
-#: and half of it read back as a bullet list. Admitting a shape that cannot
-#: leave the app is the same failure as dropping one on the way out.
+#: the layout, so an invented `<div class="grid-4">` gets a slide with no
+#: styling rather than a broken one.
+#: `h2` is absent: the wrapper writes the block's heading from the outline.
+#: Sub-headings use `h3`.
+#: `code` is inline only. `<pre>` is absent because its contents are
+#: whitespace-significant and the file exporters read markdown lines — a
+#: stack trace would arrive re-indented and half read back as a list.
 _ALLOWED_TAGS = {
     "p", "h3", "ul", "ol", "li", "strong", "em", "blockquote", "code",
     "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td",
@@ -80,11 +76,9 @@ _ALLOWED_TAGS = {
 _TAG = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>")
 #: Removed with their contents rather than unwrapped.
 #:
-#: The first group is inert-by-removal: script and friends have no place in a
-#: document assembled from model output. `h1` and `h2` are here for a different
-#: reason — the wrapper writes the block's heading from the outline, so one in
-#: the body is a title printed twice. Unwrapping it would leave the duplicate
-#: words behind, which is the visible half of the problem.
+#: Script and friends have no place in a document assembled from model output.
+#: `h1` and `h2` are here because the wrapper writes the block's heading, so
+#: one in the body is a title printed twice.
 _SCRIPTISH = re.compile(
     r"<(script|style|iframe|object|embed|link|meta|h1|h2)\b.*?(</\1\s*>|$)", re.S | re.I
 )
@@ -96,13 +90,11 @@ _EVENT_ATTR = re.compile(r"\s+on[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I
 #: names its own seed styles, such as `lead` and `cols`.
 _STYLE_ATTR = re.compile(r"\s+style\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 _URL_ATTR = re.compile(r"\s+(href|src)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
-#: What is inside a `<code>` is text — that is the whole of what makes it a
-#: `<code>`. Every other rule below reads the fragment as markup, so left
-#: alone `<code><div></code>` becomes a real division and `<code><b>x</b>`
-#: real bold: the sample stops being the sample it was quoting. The closing
-#: tag is required rather than optional, unlike `_SCRIPTISH`'s — an unclosed
-#: one is a typo, and escaping to the end of the fragment would turn the whole
-#: rest of the block into visible tag soup over it.
+#: What is inside a `<code>` is text. Every other rule below reads the
+#: fragment as markup, so left alone `<code><div></code>` becomes a real
+#: division. The closing tag is required, unlike `_SCRIPTISH`'s: an unclosed
+#: one is a typo, and escaping to the end would turn the rest of the block
+#: into visible tag soup.
 _CODE = re.compile(r"(<code\b[^>]*>)(.*?)</code\s*>", re.S | re.I)
 #: An ampersand that is not already opening an entity. A model writes a sample
 #: both ways — `&lt;div&gt;` and a bare `<div>` — and both have to arrive as
@@ -153,13 +145,10 @@ class DesignTemplate:
     example_prompt: str
     #: Appended to the generation prompt. Never shown to the reader.
     instructions: str
-    #: What a critique reads the finished thing against. Separate from the
-    #: instructions on purpose: writing rules and reviewing rules answer
-    #: different questions, and a rubric folded into the brief becomes a
-    #: checklist the model writes *to* rather than one it is measured by.
-    #: Shown on the gallery card as well, through `checks`: what a shape is
-    #: read against is the honest answer to what picking it gets you, and a
-    #: name with one line under it was not answering that.
+        #: What a critique reads the finished thing against. Separate from the
+        #: instructions: a rubric folded into the brief becomes a checklist the
+        #: model writes *to* rather than one it is measured by. Shown on the
+        #: gallery card through `checks`.
     checklist: str
     #: Whether this template's slides are laid on a dark ground. Carried into
     #: the `.pptx`, which is for presenting; the `.pdf` stays light because it

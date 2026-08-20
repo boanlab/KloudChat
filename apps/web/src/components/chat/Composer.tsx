@@ -43,12 +43,9 @@ const placeholders: Record<SessionKind, string> = {
 }
 
 /**
- * A 시작점's `fills`, read back as a request.
- *
- * The object particle is chosen from the last syllable's final consonant. The
- * list is the template's own words, so it is not a sentence anybody proofread
- * — and "분량를 적어 주세요" is exactly the seam that tells a reader no one
- * was minding this screen.
+ * A 시작점's `fills`, read back as a request. The object particle is chosen
+ * from the last syllable's final consonant, since the words are the
+ * template's rather than a proofread sentence.
  */
 function bringList(fills: string[]) {
   const list = fills.join(', ')
@@ -135,14 +132,9 @@ function OptionGroup<T extends string | number>({
 /**
  * Where the chips beside this came from, while they are still the 서식's.
  *
- * A media 서식 is spent the moment it is picked: it leaves no chip on the
- * composer, only these values — and the values are one workspace-wide
- * preference rather than anything the session owns, so they are still there
- * next week, shaping a clip nobody picked a shape for. Naming the source is
- * the honest half of that bargain: the defaults are worth keeping, since a
- * template that does not set up its own surface asks the person to choose the
- * same thing twice, but they should not be anonymous. Turning any chip by hand
- * takes the name off, because from then on the values are the person's own.
+ * A media 서식 leaves no chip on the composer, only these values — and they
+ * are one workspace-wide preference, so they persist. Naming the source is
+ * the honest half of that; turning any chip by hand takes the name off.
  */
 function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
   const t = useT()
@@ -196,10 +188,9 @@ function ImageOptions() {
 }
 
 /**
- * The nearest clip this model is actually priced for, or null when it prices
- * none at all. Sound is given up first: a silent-only or sound-only model has
- * made that choice already, while dropping 1080p to 720p is a visible loss the
- * person would rather be asked about than have taken.
+ * The nearest clip this model is priced for, or null when it prices none.
+ * Sound is given up first: a silent-only or sound-only model has made that
+ * choice already, while 1080p → 720p is a visible loss worth asking about.
  */
 function servedVideoShape(
   rates: Record<string, number>,
@@ -234,23 +225,16 @@ function AvOptions() {
   //: catalogue would cost a 서식 its name and change nothing else.
   const hasVideoModel = models.some((m) => m.kinds.includes('av') && m.modality === 'video')
   const shapedFor = useRef<string | null>(null)
-  /**
-   * Turning 종류 to 영상 also changes the model — the store picks one that can
-   * make clips — and the chips are left showing whatever the last clip used.
-   * If that model does not price the combination on screen, the composer
-   * refuses the turn, and the refusal is the first the person hears of a
-   * combination nobody chose. So the chips follow the model here, where the
-   * two are put together, rather than at submit where the mismatch surfaces.
-   * Only when the model itself changes underneath: a chip the person turned
-   * afterwards is their answer, and the estimate line still says so.
-   *
-   * The mode is put to the store first, because 영상 is the mode the surface
-   * opens in and the remembered `av` model on a first visit is the cheapest of
-   * them, which is a speech model. Nothing had asked the store to pair the two
-   * — the picker quietly showed the first model that could make a clip while
-   * the estimate was still being read off the speech model, so /new/av opened
-   * refusing a combination Veo sells and 전송 was dead before a word was typed.
-   */
+    /**
+     * Turning 종류 to 영상 also changes the model, and the chips are left
+     * showing whatever the last clip used. A model that does not price that
+     * combination makes the composer refuse the turn, so the chips follow the
+     * model here rather than surfacing at submit. Only when the model changes
+     * underneath — a chip turned afterwards is the person's answer.
+     *
+     * The mode goes to the store first: 영상 is the mode this surface opens in,
+     * and the cheapest remembered `av` model is a speech model.
+     */
   useEffect(() => {
     if (audio || !avModel) return
     if (avModel.modality !== 'video') {

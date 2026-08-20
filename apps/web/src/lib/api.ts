@@ -47,11 +47,8 @@ export class ApiError extends Error {
 /**
  * What to put on the screen when a call fails.
  *
- * A 4xx `detail` is written for the person who made the request — "이미 사용
- * 중인 이메일입니다" is the answer they need. A 5xx one is written for whoever
- * reads the logs, and putting it on screen hands somebody "upstream exploded"
- * as if it were an instruction. Same for a network error, whose message is the
- * browser's own English.
+ * A 4xx `detail` is written for the person who made the request; a 5xx one is
+ * written for whoever reads the logs, and so is a network error's message.
  */
 /** A bare status code, which is what `readDetail` falls back to. */
 const STATUS_CODE = /^http_\d{3}$/
@@ -59,17 +56,13 @@ const STATUS_CODE = /^http_\d{3}$/
 /**
  * What to put on screen for a failed request.
  *
- * A 5xx used to be handed the fallback wholesale, on the reasoning that a
- * server's own words are not for a reader. But this API deliberately passes
- * some of them: an image route answers 502 carrying the reason the picture was
- * refused, and replacing that with "이미지를 만들지 못했습니다" throws away the
- * only sentence that said why.
+ * A 5xx `detail` is shown when the API wrote it: an image route answers 502
+ * carrying the reason a picture was refused, and a generic fallback would
+ * throw away the only sentence that said why.
  *
- * What must never reach a reader is the other kind — the fallback `readDetail`
- * invents when the body is not JSON at all, which is what a gateway between
- * here and the API produces while it is down. `http_502` is not a message; it
- * is the absence of one, and it was being printed on a job card as though it
- * were an explanation.
+ * What never reaches a reader is `readDetail`'s invented `http_502` — what a
+ * gateway between here and the API produces while it is down. Not a message;
+ * the absence of one.
  */
 export function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError && err.detail && !STATUS_CODE.test(err.detail)) {
@@ -533,9 +526,8 @@ export interface ShareRow {
 /**
  * What shaped a shared conversation: three names and nothing else.
  *
- * Names, never bodies — an agent's system prompt and a project's instructions
- * are the owner's workspace, not part of what a share token buys. The route
- * enforces that; this shape is why it can.
+ * Never bodies — an agent's system prompt and a project's instructions are the
+ * owner's workspace, not part of what a share token buys.
  */
 export interface SharedContext {
   agent: string | null
@@ -671,13 +663,13 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
-  /**
-   * Asks the turn on this session to stop where it is.
-   *
-   * Sent before the fetch is aborted, not instead of it: aborting alone only
-   * closes a socket, and a closed socket is what happens when somebody changes
-   * tabs. The server keeps generating for that one.
-   */
+    /**
+     * Asks the turn on this session to stop where it is.
+     *
+     * Sent before the fetch is aborted, not instead of it: a closed socket is
+     * also what a changed tab looks like, and the server keeps generating for
+     * that one.
+     */
   stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
   /** Which of a comparison's answers the conversation continues from. */
   chooseVariant: (sessionId: string, messageId: string, model: string) =>
@@ -801,9 +793,9 @@ export const filesApi = {
 /**
  * Hands a stored file back to whoever uploaded it, under its own name.
  *
- * A fetch and a blob rather than a link on `downloadUrl`: a click can carry the
- * Authorization header that an `<img>` cannot, so the token stays out of the
- * URL — and out of the proxy's access log, where `fileUrl()` has to leave it.
+ * A fetch and a blob rather than a link on `downloadUrl`: a click can carry
+ * the Authorization header an `<img>` cannot, so the token stays out of the
+ * URL and out of the proxy's access log.
  */
 export async function downloadFile(id: string, name: string) {
   const res = await fetch(filesApi.downloadUrl(id), {
@@ -948,9 +940,8 @@ export interface ArtifactQuery {
 /**
  * A 시작점 the instance ships with.
  *
- * These lived in the bundle until the turn began carrying one instead of
- * typing it: a template the server has to resolve by id has to be a thing the
- * server knows, and two copies of the same twenty-four would only differ.
+ * Server-side rather than bundled: a template the turn carries by id has to be
+ * one the server can resolve.
  */
 export interface PromptTemplateRow {
   id: string
@@ -1145,13 +1136,12 @@ export const designTemplatesApi = {
  * The preview document for a template card, in the look it will be made in.
  *
  * The tokens ride in the query string because an iframe asks for its document
- * by address and has no other way to say anything. The server validates all
- * four the way the exporters read them, so a card cannot advertise a colour no
- * file could come out in. No tokens is not a lesser preview: it is exactly
- * what a project without a design system produces.
+ * by address. The server validates all four the way the exporters read them,
+ * so a card cannot advertise a colour no file could come out in. No tokens is
+ * exactly what a project without a design system produces.
  *
- * Unauthenticated on purpose — see the route's docstring. It is rendered in a
- * sandboxed iframe, so it never runs script even though nothing in it does.
+ * Unauthenticated on purpose — see the route's docstring — and rendered in a
+ * sandboxed iframe.
  */
 export const designTemplatePreviewUrl = (id: string, tokens?: DesignTokens | null) => {
   const url = `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
@@ -1166,11 +1156,10 @@ export const designTemplatePreviewUrl = (id: string, tokens?: DesignTokens | nul
 }
 
 /**
- * The look a project wears, for a card that is standing in for its output.
+ * The look a project wears, for a card standing in for its output.
  *
- * `null` where the project has no design system, or has one this account can
- * no longer see — both are rendered in the default tokens, so both should be
- * previewed in them.
+ * `null` where the project has no design system or has one this account can no
+ * longer see: both render in the default tokens.
  */
 export const designTokensOf = (
   designs: DesignRow[],
