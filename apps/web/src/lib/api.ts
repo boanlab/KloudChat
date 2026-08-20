@@ -401,6 +401,23 @@ export interface UsageReport {
   topUsers: { id: string; name: string; email: string; credits: number; allowance: number }[]
 }
 
+/** One line of somebody's own 접속기록. */
+export interface AccessEventRow {
+  id: string
+  at: string
+  action: string
+  detail: string
+  ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
+  severity: string
+}
+
+export const accessApi = {
+  mine: () => call<AccessEventRow[]>('/auth/me/access'),
+}
+
 export interface AuditRow {
   id: string
   at: string
@@ -409,6 +426,9 @@ export interface AuditRow {
   target: string
   detail: string
   ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
   severity: string
   metadata?: Record<string, unknown> | null
 }

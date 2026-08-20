@@ -1,6 +1,6 @@
 import { Bot, Boxes, Brain, ChartColumn, Terminal as TerminalIcon, ChevronDown, ChevronRight, History, Layers, LogOut, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Server, Settings, Shield, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, groupByRecency } from '@/lib/utils'
@@ -240,9 +240,16 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[268px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div className="flex items-center gap-2 px-3 py-3">
+      {/* The name is where everyone reaches for home. It looked like a header
+          and behaved like one, so the only way back was the 홈 item further
+          down — which is not where a hand goes. */}
+      <Link
+        to="/"
+        aria-label={t('홈')}
+        className="flex items-center gap-2 rounded-control px-3 py-3 transition-colors hover:bg-elevated"
+      >
         <Brand name={brand.name} logo={brand.logo} />
-      </div>
+      </Link>
 
       {/* 만들기 — 다섯 개 축 */}
       <nav className="space-y-0.5 px-3 pb-2">

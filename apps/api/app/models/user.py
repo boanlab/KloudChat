@@ -192,6 +192,11 @@ class AuditEvent(SQLModel, table=True):
         default=None, sa_column=Column("metadata", JSONB, nullable=True)
     )
     ip: str = Field(default="")
+    #: Raw `User-Agent` of the request that caused the event. The other half of
+    #: "was that me": an address travels with a phone, a browser nobody in the
+    #: account has ever used does not. Empty for rows written before 0031, and
+    #: for events with no request behind them.
+    user_agent: str = Field(default="")
     severity: str = Field(default="info")
 
 
