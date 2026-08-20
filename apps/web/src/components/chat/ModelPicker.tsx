@@ -56,6 +56,8 @@ export function ModelPicker({
   kind,
   sessionId,
   compact = false,
+  variant = 'toolbar',
+  label,
   modality,
   onEnableAuto,
   onBusyChange,
@@ -64,6 +66,19 @@ export function ModelPicker({
   /** When set, the picker reads and writes *this conversation's* model. */
   sessionId?: string | null
   compact?: boolean
+  /**
+   * `field` dresses the trigger as a form control so settings can pick the
+   * default for a surface out of this same menu. What a model costs and where
+   * its text goes decide the choice, and they were only ever on screen for the
+   * one-turn pick.
+   */
+  variant?: 'toolbar' | 'field'
+  /**
+   * The surface this picker sets the default for. A `<select>` carries its own
+   * label; a button names only the model, so the field variant has to say what
+   * it is a default for out loud.
+   */
+  label?: string
     /**
      * Narrows the list once more. Audio and video share the `av` surface, so
      * `kinds` alone would offer speech models where a video is being made.
@@ -75,6 +90,7 @@ export function ModelPicker({
   onBusyChange?: (busy: boolean) => void
 }) {
   const t = useT()
+  const field = variant === 'field'
   const [selectionPending, setSelectionPending] = useState(false)
   const {
     models,
@@ -97,6 +113,10 @@ export function ModelPicker({
   const currentId = session?.model || modelByKind[kind]
   const active = usable.find((m) => m.id === currentId) ?? usable[0]
   const autoActive = kind === 'chat' && session?.routingMode === 'auto'
+  // Auto belongs to a conversation, so it is offered only where there is one to
+  // write it to — or a caller standing by to make one. Settings has neither,
+  // and an Auto row there would be a button that quietly does nothing.
+  const canRouteAuto = kind === 'chat' && (Boolean(sessionId) || Boolean(onEnableAuto))
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -112,7 +132,12 @@ export function ModelPicker({
   if (!active) {
     // An empty picker and a broken proxy look identical otherwise.
     return (
-      <span className="flex items-center gap-1.5 px-2 py-1.5 text-base text-faint">
+      <span
+        className={cn(
+          'flex items-center gap-1.5 text-base text-faint',
+          field ? 'h-9 w-full rounded-control border border-line bg-panel px-3' : 'px-2 py-1.5',
+        )}
+      >
         <Cpu size={14} />
         {modelsLoading ? t('모델 불러오는 중…') : t('사용 가능한 모델 없음')}
       </span>
@@ -121,23 +146,38 @@ export function ModelPicker({
 
   return (
     <Dropdown
-      align="right"
-      className="w-[calc(100vw-2rem)] max-w-[340px] min-w-0 sm:w-auto sm:min-w-[340px]"
+      align={field ? 'left' : 'right'}
+      className={
+        field
+          ? 'w-full min-w-0'
+          : 'w-[calc(100vw-2rem)] max-w-[340px] min-w-0 sm:w-auto sm:min-w-[340px]'
+      }
       trigger={({ open }) => (
         <button
           type="button"
           disabled={selectionPending}
           aria-busy={selectionPending}
+          aria-label={label ? `${label}: ${active.label}` : undefined}
           className={cn(
-            'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base font-medium transition-colors',
-            open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+            'flex h-9 items-center gap-1.5 rounded-control text-base font-medium transition-colors',
+            field
+              ? cn(
+                  'w-full justify-between border bg-panel px-3',
+                  open ? 'border-accent' : 'border-line hover:border-line-strong',
+                )
+              : cn(
+                  'shrink-0 px-2.5',
+                  open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+                ),
           )}
         >
-          {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
-          <span className="max-w-[220px] truncate">
-            {autoActive ? `${t('Auto · 비용 절약')} · ${active.label}` : active.label}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
+            <span className={cn('truncate', !field && 'max-w-[220px]')}>
+              {autoActive ? `${t('Auto · 비용 절약')} · ${active.label}` : active.label}
+            </span>
           </span>
-          {!compact && <ChevronDown size={14} className="text-faint" />}
+          {!compact && <ChevronDown size={14} className="shrink-0 text-faint" />}
         </button>
       )}
     >
@@ -146,7 +186,7 @@ export function ModelPicker({
         active={active}
         autoActive={autoActive}
         autoRouting={autoRouting}
-        showAuto={kind === 'chat'}
+        showAuto={canRouteAuto}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
         onAuto={() => {

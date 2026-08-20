@@ -36,6 +36,34 @@ test('설정이 탭으로 나뉘고 각 탭이 URL을 가진다', async ({ page 
   await expect(page.getByRole('tab', { name: '시스템' })).toHaveCount(0)
 })
 
+test('기본 모델도 단가와 데이터 경계를 보고 고른다', async ({ page }) => {
+  await page.goto('/settings/preferences')
+  const chat = page.getByRole('button', { name: /^챗: / })
+  await expect(chat).toBeVisible({ timeout: 20_000 })
+  const before = (await chat.getAttribute('aria-label')) ?? ''
+
+  await chat.click()
+  const menu = page.getByRole('menu')
+  // The composer's menu, so what governance asks about — the credit rate and
+  // where the text goes — is on screen for the default too.
+  await expect(menu.getByText(/크레딧|1k당/).first()).toBeVisible()
+  // Auto is a property of one conversation. There is none here, so it is not
+  // offered rather than offered and inert.
+  await expect(menu.getByText('Auto · 비용 절약')).toHaveCount(0)
+
+  const others = menu.locator('button').filter({ hasNotText: before.replace(/^챗: /, '') })
+  test.skip((await others.count()) === 0, '이 인스턴스에는 챗 모델이 하나뿐입니다')
+  await others.first().click()
+  await expect(chat).not.toHaveAttribute('aria-label', before)
+
+  // Same store action as the old select, so the choice still survives a reload.
+  const after = (await chat.getAttribute('aria-label')) ?? ''
+  await page.reload()
+  await expect(page.getByRole('button', { name: /^챗: / })).toHaveAttribute('aria-label', after, {
+    timeout: 20_000,
+  })
+})
+
 test('이름을 바꾸면 저장되고 새로고침 후에도 남는다', async ({ page }) => {
   const name = `이름 ${Math.random().toString(36).slice(2, 7)}`
   await page.goto('/settings')
