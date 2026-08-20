@@ -604,6 +604,26 @@ function reconcileDefaults(
   return next
 }
 
+/**
+ * The model a turn on this conversation will actually run on.
+ *
+ * The precedence the API states — turn override, then the conversation, then
+ * the agent — minus the turn override, which no screen can know in advance. A
+ * conversation opened against an agent carries no model of its own until
+ * somebody picks one, so without the middle step every surface here would name
+ * the screen default while the server ran the agent's choice.
+ */
+export function effectiveModelId(
+  session: Pick<Session, 'model' | 'agentId'> | undefined,
+  kind: SessionKind,
+  agents: Agent[],
+  modelByKind: Record<SessionKind, string>,
+): string {
+  if (session?.model) return session.model
+  const agent = session?.agentId ? agents.find((a) => a.id === session.agentId) : undefined
+  return agent?.model || modelByKind[kind]
+}
+
 function reconcileCompareModels(current: string[], available: ModelInfo[]): string[] {
   const chatIds = available.filter((model) => model.kinds.includes('chat')).map((model) => model.id)
   const valid = current.filter((id, index) => chatIds.includes(id) && current.indexOf(id) === index)
@@ -1064,7 +1084,18 @@ export const useStore = create<State>((set, get) => ({
       kind,
       projectId,
       agentId,
-      model: get().modelByKind[kind],
+      // Left empty for an agent that pins a model, because the agent is the
+      // *last* step of the server's precedence: a model here is a model the
+      // conversation chose, and it would out-rank the very setting the agent
+      // screen prints as a badge. Picking one in the composer afterwards is
+      // then a deliberate override rather than something the client did on
+      // its own.
+      //
+      // An agent that pins nothing — which is every seeded one — still needs
+      // the screen default sent. Withholding it there would leave the server
+      // with no model at all, and its no-model fallback is the cheapest usable
+      // row, not the model this screen has been showing all along.
+      model: get().agents.find((a) => a.id === agentId)?.model ? null : get().modelByKind[kind],
       routingMode,
     })
     const session = toSession(row, [])
@@ -1105,7 +1136,12 @@ export const useStore = create<State>((set, get) => ({
     const now = new Date().toISOString()
     // The conversation's own model wins; the surface default would undo the
     // in-session picker every turn.
-    const model = get().sessions.find((c) => c.id === id)?.model || get().modelByKind[kind]
+    const model = effectiveModelId(
+      get().sessions.find((c) => c.id === id),
+      kind,
+      get().agents,
+      get().modelByKind,
+    )
     const userMsg: Message = {
       id: uid('m'),
       role: 'user',
@@ -1120,9 +1156,11 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       sessions: s.sessions.map((c) =>
         c.id === id
+          // `model` is deliberately not written back. An empty one is how a
+          // conversation says it is still deferring to its agent, and stamping
+          // the resolved id here would silence that after the first turn.
           ? {
               ...c,
-              model,
               title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
               updatedAt: now,
               messages: [...c.messages, userMsg],

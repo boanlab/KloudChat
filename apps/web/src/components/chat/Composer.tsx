@@ -26,7 +26,7 @@ import { currentLang } from '@/lib/i18n'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { useStore } from '@/store/useStore'
+import { effectiveModelId, useStore } from '@/store/useStore'
 import type { PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
 import { ModelPicker } from './ModelPicker'
 import { useT } from '@/lib/useT'
@@ -468,7 +468,7 @@ export function Composer({
   //: Whether the empty screen — and its own copy of this button — is gone.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
-    (candidate) => candidate.id === (session?.model || modelByKind[kind]),
+    (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools

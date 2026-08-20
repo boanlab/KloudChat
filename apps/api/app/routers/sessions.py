@@ -1285,9 +1285,11 @@ async def send_message(
     catalogue_models = catalogue["models"]
     usable = _allowed_models(user, catalogue_models, kind=session.kind.value)
     # Model precedence: turn override → session → agent. The agent supplies a
-    # default, not a lock.
+    # default, not a lock — which only means anything if a session started
+    # against an agent is left without a model of its own, so the client does
+    # not send one.
     try:
-        agent_model, agent_tools = await agent_settings(db, user, session)
+        agent_model, agent_tools, agent_temperature = await agent_settings(db, user, session)
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
     model_id = session.model if auto_turn else payload.model or session.model or agent_model
@@ -1823,6 +1825,10 @@ async def send_message(
             messages=messages,
             tools=tools,
             tool_definitions=tool_definitions,
+            # Sampling belongs to the agent, not to the surface. A turn with no
+            # agent passes None and the upstream default stands, exactly as it
+            # did before this was carried at all.
+            temperature=agent_temperature,
             first_user_message=stored_content,
             is_first_turn=is_first_turn,
             skills_event=skills_event,
@@ -1866,6 +1872,7 @@ async def _run_turn(
     messages: list[dict],
     tools: list[Tool],
     tool_definitions: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
     first_user_message: str,
     is_first_turn: bool,
     skills_event: dict | None = None,
@@ -1922,6 +1929,7 @@ async def _run_turn(
             tools,
             ctx,
             tool_definitions=tool_definitions,
+            temperature=temperature,
             sanitize_tool_output=(masker if sanitize_tool_output else None),
             sanitize_step_detail=masker if protect_enrichment else None,
             classify_tool_output=classify_tool_output if protect_enrichment else None,

@@ -473,13 +473,18 @@ async def design_for(
 
 async def agent_settings(
     db: AsyncSession, user: User, session: ChatSession
-) -> tuple[str | None, list[str] | None]:
-    """`(model_override, tool_allowlist)` preserving null versus empty."""
+) -> tuple[str | None, list[str] | None, float | None]:
+    """`(model_override, tool_allowlist, temperature)` preserving null versus empty.
+
+    Temperature comes back only when there is an agent to have set it. A turn
+    with no agent sends no temperature at all, which leaves the upstream default
+    where it has always been.
+    """
     agent = await _load_agent(db, user, session)
     if agent is None:
-        return None, None
+        return None, None, None
     tools = None if agent.tools is None else list(agent.tools)
-    return (agent.model or None), tools
+    return (agent.model or None), tools, agent.temperature
 
 
 __all__ = [

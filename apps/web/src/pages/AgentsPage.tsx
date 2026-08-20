@@ -460,7 +460,12 @@ export function AgentsPage() {
                   ))}
                 </select>
               </Field>
-              <Field label={`Temperature — ${draft.temperature}`}>
+              {/* 무엇에 닿는지까지 적는다 — 이 값은 대화 턴의 표본 추출로만
+                  내려가고, 보고서·슬라이드는 각자의 생성 절차를 따른다. */}
+              <Field
+                label={`Temperature — ${draft.temperature}`}
+                hint={t('낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.')}
+              >
                 <input
                   type="range"
                   min={0}

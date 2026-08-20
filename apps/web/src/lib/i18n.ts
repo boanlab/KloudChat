@@ -1155,6 +1155,10 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 에이전트가 정하는 것 ────────────────────────────────────────
+  '낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.':
+    'Lower answers more consistently, higher more variously. Applies on the chat surface only.',
+
   // ── 대화가 가지고 시작하는 것 ───────────────────────────────────
   '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
   '이렇게 시작해 보세요': 'Try starting with one of these',

@@ -12,7 +12,7 @@ import {
 import { useState } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
-import { useStore } from '@/store/useStore'
+import { effectiveModelId, useStore } from '@/store/useStore'
 import type { ModelInfo, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
@@ -95,6 +95,7 @@ export function ModelPicker({
   const {
     models,
     modelByKind,
+    agents,
     setModel,
     setSessionModel,
     setSessionRoutingMode,
@@ -108,9 +109,10 @@ export function ModelPicker({
     (m) => m.kinds.includes(kind) && (!modality || m.modality === modality),
   )
 
-    // Inside a conversation, that conversation's model — the surface default
-    // would name the wrong one on an old thread.
-  const currentId = session?.model || modelByKind[kind]
+    // Inside a conversation, whatever that conversation will actually run on —
+    // the surface default would name the wrong one on an old thread, and the
+    // wrong one again on a thread that is deferring to its agent.
+  const currentId = effectiveModelId(session, kind, agents, modelByKind)
   const active = usable.find((m) => m.id === currentId) ?? usable[0]
   const autoActive = kind === 'chat' && session?.routingMode === 'auto'
   // Auto belongs to a conversation, so it is offered only where there is one to
