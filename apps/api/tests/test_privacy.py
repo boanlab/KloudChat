@@ -2668,7 +2668,7 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
             return None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", ArtifactDb)
-    artifact_id = await sessions_router._enrich(
+    artifact_id, _memory_step = await sessions_router._enrich(
         user_id=user.id,
         session_id=session.id,
         content="safe assistant reply",
@@ -2801,7 +2801,7 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
             return None
 
     async def enrich(**_kwargs):
-        return None
+        return None, None
 
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)

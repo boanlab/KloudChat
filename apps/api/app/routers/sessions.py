@@ -68,6 +68,8 @@ from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.registry import build_tools
 from app.services.workspace_context import (
     ContextBlock,
+    ContextFile,
+    WorkspaceContext,
     WorkspaceContextError,
     agent_settings,
     assemble,
@@ -769,6 +771,129 @@ def _skill_step(event: dict | None) -> dict | None:
             + f" · 약 {int(event.get('estimatedTokens') or 0):,} 토큰"
         ),
     }
+
+
+#: Each says what one file gave up; a per-file line is the point, because
+#: "3개 중 1개" does not tell anybody which document the answer was missing.
+_FILE_NOTE = {
+    "truncated": "{name} {kept:,}자만 반영",
+    "omitted": "{name} 분량을 넘겨 제외",
+    "unreadable": "{name} 읽지 못함",
+}
+
+#: Enough names to recognise the turn by, before the line stops being a line.
+_NAMES_SHOWN = 6
+
+
+def _named(notes: list[str], unit: str) -> str:
+    """A detail line that names what it can and counts the rest."""
+    shown = notes[:_NAMES_SHOWN]
+    line = " · ".join(shown)
+    if len(notes) > len(shown):
+        line += f" 외 {len(notes) - len(shown)}{unit}"
+    return line
+
+
+def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...]) -> dict | None:
+    if not files:
+        return None
+    short = [file for file in files if file.state != "included"]
+    # Cut and dropped are counted apart: a document that arrived at half length
+    # and one that never arrived are different things to have been answered
+    # without, and one number covering both would hide the worse of them.
+    cut = sum(1 for file in short if file.state == "truncated")
+    dropped = len(short) - cut
+    fates = [f"{cut}개 잘림"] if cut else []
+    if dropped:
+        fates.append(f"{dropped}개 빠짐")
+    label = (
+        f"{subject} {len(files)}개 중 " + ", ".join(fates)
+        if fates
+        else f"{subject} {len(files)}개 반영"
+    )
+    notes = [
+        _FILE_NOTE[file.state].format(name=file.name, kept=file.kept_chars) for file in short
+    ]
+    detail = _named(notes or [file.name for file in files], "개")
+    return {
+        "id": step_id,
+        "type": "thinking",
+        "label": label,
+        "status": "done",
+        "detail": detail,
+        # Structured beside the display strings, as the skill step keeps its
+        # skills: an audit should not have to parse Korean to see how much of
+        # a document an answer was built on.
+        "files": [
+            {
+                "name": file.name,
+                "state": file.state,
+                "keptChars": file.kept_chars,
+                "totalChars": file.total_chars,
+            }
+            for file in files
+        ],
+    }
+
+
+def _memory_context_step(workspace: WorkspaceContext) -> dict | None:
+    names = list(workspace.loaded_memories)
+    if not names:
+        return None
+    detail = _named(names, "건")
+    if workspace.total_memories > len(names):
+        detail += f" · 저장된 {workspace.total_memories}건 중 최근 {len(names)}건"
+    return {
+        "id": "context-memories",
+        "type": "thinking",
+        "label": f"메모리 {len(names)}건 참고",
+        "status": "done",
+        "detail": detail,
+        # Names, never bodies: this line is on screen while somebody presents.
+        "memories": names,
+    }
+
+
+def _context_steps(workspace: WorkspaceContext) -> list[dict]:
+    """What the turn was handed but never said out loud.
+
+    Memories, attachments and project knowledge all reach the model without
+    passing through the conversation, so nothing on screen could tell a person
+    which of them shaped the answer — or that the document they had just
+    watched a chip appear for was cut in half to fit. Each becomes one quiet
+    line in the timeline the applied skills already use.
+    """
+    steps = [
+        _memory_context_step(workspace),
+        _file_context_step("context-attachments", "첨부", workspace.attachments),
+        _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),
+    ]
+    return [step for step in steps if step]
+
+
+def _memory_saved_step(written: int) -> dict:
+    return {
+        "id": "memory-saved",
+        "type": "thinking",
+        "label": f"메모리 {written}건 저장",
+        "status": "done",
+        "detail": "자동 메모리에 추가됨",
+    }
+
+
+def _step_event(step: dict) -> dict:
+    """One stored step, addressed for the wire.
+
+    A stored step spends `type` on its display category; a stream event spends
+    it on the event name, so the category rides alongside.
+    """
+    return {**step, "type": "step", "category": step["type"]}
+
+
+def _prelude_steps(skills_event: dict | None, context_steps: list[dict] | None) -> list[dict]:
+    """The steps a turn opens with: what it was given, before it did anything."""
+    applied = _skill_step(skills_event)
+    return ([applied] if applied else []) + list(context_steps or [])
 
 
 async def _owned_attachments(
@@ -1560,11 +1685,16 @@ async def send_message(
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
     skills_event = workspace.skills_event()
-    if policy.pii_masking and skills_event:
+    context_steps = _context_steps(workspace)
+    if policy.pii_masking:
         # The document runners persist this event directly as a timeline step.
         # Treat the selected skill's display name as user-controlled metadata,
         # just like an attachment filename.
-        skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
+        if skills_event:
+            skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
+        # A filename and a memory's name are user-controlled in exactly the
+        # same way, and these steps are persisted and re-served.
+        context_steps = _mask_text_tree(context_steps, governance.mask_legacy)
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
     wire_history = [
@@ -1755,6 +1885,7 @@ async def send_message(
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
+                context_steps=context_steps,
                 outline_model=outline_model,
             ),
             media_type="text/event-stream",
@@ -1781,6 +1912,7 @@ async def send_message(
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
+                context_steps=context_steps,
                 outline_model=outline_model,
             ),
             media_type="text/event-stream",
@@ -1807,6 +1939,7 @@ async def send_message(
                 untrusted_context=untrusted_context,
                 design_tokens=workspace.design_tokens,
                 skills_event=skills_event,
+                context_steps=context_steps,
                 outline_model=outline_model,
             ),
             media_type="text/event-stream",
@@ -1834,6 +1967,7 @@ async def send_message(
             first_user_message=stored_content,
             is_first_turn=is_first_turn,
             skills_event=skills_event,
+            context_steps=context_steps,
             routing=privacy_resolution.routing if privacy_resolution else None,
             quality_model=requested_model if cost_route else None,
             disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
@@ -1878,6 +2012,7 @@ async def _run_turn(
     first_user_message: str,
     is_first_turn: bool,
     skills_event: dict | None = None,
+    context_steps: list[dict] | None = None,
     routing: dict | None = None,
     quality_model: dict | None = None,
     disable_fallbacks: bool = False,
@@ -1894,10 +2029,10 @@ async def _run_turn(
     StreamingResponse.
     """
     text_parts: list[str] = []
-    initial_skill_step = _skill_step(skills_event)
-    steps: list[dict] = [initial_skill_step] if initial_skill_step else []
+    steps: list[dict] = _prelude_steps(skills_event, context_steps)
     usage = {"inputTokens": 0, "outputTokens": 0}
     failed: str | None = None
+    answer_id: str | None = None
     tool_output_masked = 0
     tool_output_findings: dict[tuple[str, str], int] = {}
     actual_model = model["id"]
@@ -1924,6 +2059,8 @@ async def _run_turn(
         yield chat_service.sse({"type": "model_route", **cost_routing})
     if skills_event:
         yield chat_service.sse(skills_event)
+    for step in context_steps or ():
+        yield chat_service.sse(_step_event(step))
     try:
         async for event in agent_service.run_turn(
             model["id"],
@@ -2045,17 +2182,17 @@ async def _run_turn(
         user = await db.get(User, user_id)
         if session is not None and user is not None:
             if content:
-                db.add(
-                    Message(
-                        session_id=session_id,
-                        role=Role.assistant,
-                        content=stored_content,
-                        steps=stored_steps or None,
-                        usage={**usage, "credits": credits},
-                        model=stored_actual_model,
-                        routing=stored_routing,
-                    )
+                answer = Message(
+                    session_id=session_id,
+                    role=Role.assistant,
+                    content=stored_content,
+                    steps=stored_steps or None,
+                    usage={**usage, "credits": credits},
+                    model=stored_actual_model,
+                    routing=stored_routing,
                 )
+                db.add(answer)
+                answer_id = answer.id
                 settle(db, user, credits, reason="chat.completion", session_id=session_id)
             if title:
                 session.title = title
@@ -2108,8 +2245,9 @@ async def _run_turn(
     # Enrichment after the answer is durable, in its own transaction. Sharing
     # the turn's would hold it open for an extra query and a model call, and a
     # failure would roll the reply back.
+    memory_step: dict | None = None
     if stored_content and not failed:
-        new_artifact = await _enrich(
+        new_artifact, memory_step = await _enrich(
             user_id=user_id,
             session_id=session_id,
             content=stored_content,
@@ -2123,8 +2261,11 @@ async def _run_turn(
             disable_fallbacks=disable_fallbacks,
             redact_logging=mask_at_rest or bool(tool_output_findings),
             legacy_masking=legacy_masking,
+            message_id=answer_id,
         )
 
+    if memory_step:
+        yield chat_service.sse(_step_event(memory_step))
     if new_artifact:
         yield chat_service.sse({"type": "artifact", "artifactId": new_artifact})
     if cost_routing:
@@ -2312,6 +2453,10 @@ async def compare_models(
             models=chosen,
             messages=messages,
             skills_event=workspace.skills_event(),
+            # A comparison is answered from the same memories and the same
+            # attachments as a single-model turn, and spends several times the
+            # credits doing it, so it accounts for them the same way.
+            context_steps=_context_steps(workspace),
             routing=resolved.routing,
             mask_at_rest=policy.pii_masking or policy.external_data_guard,
             legacy_masking=policy.pii_masking,
@@ -2334,6 +2479,7 @@ async def _run_comparison(
     models: list[dict],
     messages: list[dict],
     skills_event: dict | None = None,
+    context_steps: list[dict] | None = None,
     routing: dict,
     mask_at_rest: bool = False,
     legacy_masking: bool = False,
@@ -2418,6 +2564,8 @@ async def _run_comparison(
     try:
         if skills_event:
             yield chat_service.sse(skills_event)
+        for step in context_steps or ():
+            yield chat_service.sse(_step_event(step))
         while (event := await queue.get()) is not None:
             yield chat_service.sse(event)
     finally:
@@ -2452,9 +2600,9 @@ async def _run_comparison(
     chosen = next((v for v in variants if v["content"] and not v["error"]), None)
     for variant in variants:
         variant["chosen"] = variant is chosen
-    stored_skill_step = _skill_step(skills_event)
-    if stored_skill_step and mask_at_rest:
-        stored_skill_step = _mask_text_tree(stored_skill_step, masker)
+    stored_prelude = _prelude_steps(skills_event, context_steps)
+    if stored_prelude and mask_at_rest:
+        stored_prelude = _mask_text_tree(stored_prelude, masker)
 
     async with SessionLocal() as db:
         db.add(
@@ -2464,7 +2612,7 @@ async def _run_comparison(
                 content=chosen["content"] if chosen else "",
                 variants=variants,
                 usage={"credits": total},
-                steps=[stored_skill_step] if stored_skill_step else None,
+                steps=stored_prelude or None,
                 model=chosen["actualModel"] if chosen else None,
                 routing=stored_routing,
             )
@@ -2530,17 +2678,24 @@ async def _enrich(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
     legacy_masking: bool = False,
-) -> str | None:
+    message_id: str | None = None,
+) -> tuple[str | None, dict | None]:
     """Artifacts and memories derived from a finished turn.
 
     All optional, and nothing here may raise — the turn is already stored.
+
+    Returns the new artifact and, when auto-memory wrote anything, the timeline
+    step saying so. The step is appended to the message row on the way out: the
+    answer was durable before this ran, and a line that vanished on reload
+    would be a worse account than none.
     """
     artifact_id: str | None = None
+    memory_step: dict | None = None
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
         if session is None or user is None:
-            return None
+            return None, None
         privacy_masker = (
             (governance.mask_legacy if legacy_masking else governance.mask)
             if protect_privacy
@@ -2593,6 +2748,11 @@ async def _enrich(
                 )
                 if written:
                     log.info("auto-memory wrote %d fact(s) for user %s", written, user.id)
+                    memory_step = _memory_saved_step(written)
+                    message = await db.get(Message, message_id) if message_id else None
+                    if message is not None:
+                        message.steps = [*(message.steps or []), memory_step]
+                        db.add(message)
             except Exception:  # noqa: BLE001
                 log.exception("auto-memory failed for session %s", session_id)
 
@@ -2600,8 +2760,8 @@ async def _enrich(
             await db.commit()
         except Exception:  # noqa: BLE001
             log.exception("enrichment commit failed for session %s", session_id)
-            return None
-    return artifact_id
+            return None, None
+    return artifact_id, memory_step
 
 
 async def _audit_policy(
@@ -2649,6 +2809,7 @@ async def _run_page(
     untrusted_context: list[str] | None = None,
     design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
+    context_steps: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one HTML artifact to completion and settles it.
 
@@ -2664,6 +2825,8 @@ async def _run_page(
 
     if skills_event:
         yield chat_service.sse(skills_event)
+    for step in context_steps or ():
+        yield chat_service.sse(_step_event(step))
     try:
         stream = page_service.write(
             request=request,
@@ -2755,7 +2918,7 @@ async def _run_page(
                         content=f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
-                        steps=[_skill_step(skills_event)] if skills_event else None,
+                        steps=_prelude_steps(skills_event, context_steps) or None,
                     )
                 )
                 settle(db, user, credits, reason="page.generate", session_id=session_id)
@@ -2782,6 +2945,7 @@ async def _run_deck(
     untrusted_context: list[str] | None = None,
     design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
+    context_steps: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
 
@@ -2793,6 +2957,8 @@ async def _run_deck(
 
     if skills_event:
         yield chat_service.sse(skills_event)
+    for step in context_steps or ():
+        yield chat_service.sse(_step_event(step))
     try:
         stream = deck_service.write(
             request=request,
@@ -2871,7 +3037,7 @@ async def _run_deck(
                         content=f"{len(written)}장짜리 슬라이드를 만들었습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
-                        steps=[_skill_step(skills_event)] if skills_event else None,
+                        steps=_prelude_steps(skills_event, context_steps) or None,
                     )
                 )
                 settle(db, user, credits, reason="deck.generate", session_id=session_id)
@@ -2898,6 +3064,7 @@ async def _run_report(
     untrusted_context: list[str] | None = None,
     design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
+    context_steps: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it.
 
@@ -2915,6 +3082,8 @@ async def _run_report(
 
     if skills_event:
         yield chat_service.sse(skills_event)
+    for step in context_steps or ():
+        yield chat_service.sse(_step_event(step))
     try:
         stream = report_service.write(
             request=request,
@@ -3009,7 +3178,7 @@ async def _run_report(
                         content=f"{len(written)}개 섹션으로 보고서를 작성했습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
-                        steps=[_skill_step(skills_event)] if skills_event else None,
+                        steps=_prelude_steps(skills_event, context_steps) or None,
                     )
                 )
                 settle(db, user, credits, reason="report.generate", session_id=session_id)

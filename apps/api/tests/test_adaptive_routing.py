@@ -806,7 +806,7 @@ async def test_run_turn_emits_only_full_auto_routes_and_persists_savings(monkeyp
 
     async def enrich(**kwargs):
         seen["enrich"] = kwargs
-        return None
+        return None, None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", Db)
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
