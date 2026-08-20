@@ -1174,7 +1174,21 @@ const EN: Record<string, string> = {
   '그림의 색과 스타일을 이 디자인에 맞춥니다': 'pictures take their colour and style from the design',
 
   // ── 이 턴에 들어간 것 ───────────────────────────────────────────
+  '외 {n}건': 'and {n} more',
   '외 {n}개': 'and {n} more',
+  '메모리 {n}건 참고': 'Drew on {n} memories',
+  '메모리 {n}건 저장': 'Saved {n} memories',
+  '자동 메모리에 추가됨': 'Added to automatic memory',
+  '저장된 {total}건 중 최근 {n}건': 'the {n} most recent of {total} stored',
+  '첨부 파일': 'Attachments',
+  '프로젝트 지식': 'Project knowledge',
+  '{subject} {n}개 반영': '{n} {subject} used in full',
+  '{subject} {n}개 중': 'Of {n} {subject},',
+  '{n}개 잘림': '{n} cut short',
+  '{n}개 빠짐': '{n} left out',
+  '{name} {kept}자만 반영': '{name} — only {kept} characters used',
+  '{name} 분량을 넘겨 제외': '{name} — over budget, left out',
+  '{name} 읽지 못함': '{name} — could not be read',
 
   // ── 이번 턴에만 적용되는 것과, 계정 전체에 적용되는 것 ──────────
   'strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.':
