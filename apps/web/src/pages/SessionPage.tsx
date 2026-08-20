@@ -19,7 +19,7 @@ import { useT } from '@/lib/useT'
 /** Empty state shown before the first prompt of a fresh session. */
 function Intro({ kind, projectId }: { kind: SessionKind; projectId?: string | null }) {
   const t = useT()
-  const { user, send, setDraft } = useStore()
+  const { user, send } = useStore()
   const navigate = useNavigate()
   const meta = kindMeta[kind]
   const Icon = meta.icon
@@ -58,7 +58,7 @@ function Intro({ kind, projectId }: { kind: SessionKind; projectId?: string | nu
         ))}
       </div>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <TemplateGallery kind={kind} onPick={setDraft} />
+        <TemplateGallery kind={kind} />
         {/* The cards are drawn in this project's look, which is the one the
             composer under them will render the answer in. */}
         <DesignGallery kind={kind} projectId={projectId} />

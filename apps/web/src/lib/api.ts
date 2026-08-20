@@ -547,6 +547,12 @@ export interface MessageRow {
   usage: Message['usage'] | null
   model: string | null
   routing: PrivacyRouting | null
+  /**
+   * The 시작점 this turn was begun from, if there was one. Carries the title
+   * as it read that day, so a transcript opened a year later still names the
+   * template even after somebody deleted it.
+   */
+  startedFrom: { templateId: string; title: string } | null
   createdAt: string
 }
 
@@ -831,17 +837,38 @@ export interface ArtifactQuery {
 }
 
 /**
- * A starting point somebody added. Same fields as a built-in `Template` so the
- * gallery can concatenate the two lists instead of branching on origin.
+ * A 시작점 the instance ships with.
+ *
+ * These lived in the bundle until the turn began carrying one instead of
+ * typing it: a template the server has to resolve by id has to be a thing the
+ * server knows, and two copies of the same twenty-four would only differ.
  */
-export interface TemplateRow {
+export interface PromptTemplateRow {
   id: string
   kind: SessionKind
   group: string
   title: string
+  /** What you get. One line, no feature list. */
   description: string
+  /** What you have to bring. The composer asks for these by name. */
   fills: string[]
+  /**
+   * The framing the turn carries. Read by the gallery only on the two media
+   * surfaces, where the sentence is the prompt rather than a preamble to it;
+   * everywhere else the server adds it and the composer never sees it.
+   */
   prompt: string
+}
+
+export const promptTemplatesApi = {
+  list: () => call<PromptTemplateRow[]>('/prompt-templates'),
+}
+
+/**
+ * A 시작점 somebody added. Same fields as a built-in one so the gallery can
+ * concatenate the two lists instead of branching on origin.
+ */
+export interface TemplateRow extends PromptTemplateRow {
   /** An uploaded form this template writes into, when there is one. */
   fileId: string | null
   fileName: string
@@ -1342,6 +1369,12 @@ export async function* streamSession(
     activatedSkillIds?: string[]
     /** A rendering template. Sticky on the session; `''` clears it. */
     renderTemplateId?: string
+    /**
+     * A 시작점, carried by this turn the way an activated skill is. Never
+     * sticky — unlike `renderTemplateId` it is not stored on the session,
+     * because a starting point starts one turn and then it is over.
+     */
+    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
   },
@@ -1360,6 +1393,7 @@ export async function* streamComparison(
     content: string
     models: string[]
     activatedSkillIds?: string[]
+    startingTemplateId?: string
     attachments?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string

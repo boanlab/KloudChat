@@ -222,6 +222,19 @@ export interface Variant {
   chosen?: boolean
 }
 
+/**
+ * A 시작점 waiting on the next turn: what the chip says, what the composer
+ * asks the person to bring, and the id the turn carries.
+ *
+ * Deliberately not the prompt. The framing is the server's to add, and a copy
+ * of it on this side would be one keystroke from the composer again.
+ */
+export interface StartingPoint {
+  id: string
+  title: string
+  fills: string[]
+}
+
 export interface Message {
   id: string
   role: Role
@@ -236,6 +249,12 @@ export interface Message {
   attachments?: { name: string; size: string; type: string }[]
   usage?: { inputTokens: number; outputTokens: number; credits: number }
   liked?: 'up' | 'down' | null
+  /**
+   * The 시작점 this turn was begun from. Its title and not its prompt: the
+   * transcript is where the person's own words are kept, and printing the
+   * product's framing beside them is how the two came to be confused.
+   */
+  startedFrom?: { templateId: string; title: string }
   /**
    * Why the turn ended badly. Separate from `content`: a turn can fail after
    * writing something, and that half an answer is worth keeping.

@@ -15,6 +15,7 @@ import {
   connectorsApi,
   designsApi,
   designTemplatesApi,
+  promptTemplatesApi,
   keysApi,
   filesApi,
   memoryApi,
@@ -44,6 +45,7 @@ import type {
   MessageRow,
   ModelCatalogue,
   ProjectRow,
+  PromptTemplateRow,
   SessionRow,
   SkillRow,
   UsageReport,
@@ -66,6 +68,7 @@ import type {
   ReportArtifact,
   ReportSection,
   SessionKind,
+  StartingPoint,
   Variant,
   Skill,
   Step,
@@ -156,6 +159,9 @@ interface State {
   designs: DesignRow[]
   /** Shapes the answer can come out in. Ships with the server; read-only. */
   designTemplates: DesignTemplateRow[]
+  /** The built-in 시작점, loaded with the workspace so the gallery opens full
+   *  rather than filling in a moment after it is read. */
+  promptTemplates: PromptTemplateRow[]
   availableTools: ToolCatalogEntry[]
   memories: MemoryEntry[]
   agents: Agent[]
@@ -224,6 +230,12 @@ interface State {
        * the server makes it sticky from there.
        */
       renderTemplateId?: string
+      /**
+       * A 시작점 the turn carries. The id is what goes on the wire; the title
+       * rides along so the bubble can name it before the server's copy of the
+       * turn comes back.
+       */
+      startingTemplate?: StartingPoint
       privacyAction?: PrivacyAction
       privacyDecisionToken?: string
             /**
@@ -319,6 +331,13 @@ interface State {
    */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
+  /**
+   * 시작점 picked in the gallery, handed to the composer the way a form file
+   * is. Consumed once and put down: it attaches to the turn it was chosen
+   * for, and the composer owns it from there.
+   */
+  pendingStartingTemplate: StartingPoint | null
+  setPendingStartingTemplate: (template: StartingPoint | null) => void
   /** Whether this instance has a Whisper backend. Drives the composer's mic. */
   dictationEnabled: boolean
   /** Service name and logo to render. An empty logo draws the default mark. */
@@ -704,6 +723,7 @@ export const useStore = create<State>((set, get) => ({
       skills: [],
       designs: [],
       designTemplates: [],
+      promptTemplates: [],
       availableTools: [],
       memories: [],
       agents: [],
@@ -776,6 +796,7 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   designs: [],
   designTemplates: [],
+  promptTemplates: [],
   availableTools: [],
   memories: [],
   agents: [],
@@ -799,6 +820,7 @@ export const useStore = create<State>((set, get) => ({
       skillsApi.list(),
       designsApi.list(),
       designTemplatesApi.list(),
+      promptTemplatesApi.list(),
       memoryApi.list(),
       agentsApi.list(),
       connectorsApi.list(),
@@ -810,6 +832,7 @@ export const useStore = create<State>((set, get) => ({
       skills,
       designs,
       designTemplates,
+      promptTemplates,
       memories,
       agents,
       connectors,
@@ -827,6 +850,8 @@ export const useStore = create<State>((set, get) => ({
       designs: designs.status === 'fulfilled' ? designs.value : s.designs,
       designTemplates:
         designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
+      promptTemplates:
+        promptTemplates.status === 'fulfilled' ? promptTemplates.value : s.promptTemplates,
       availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
       memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
       agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
@@ -1087,6 +1112,9 @@ export const useStore = create<State>((set, get) => ({
       content: text,
       createdAt: now,
       attachments: opts.attachmentNames?.map((name) => ({ name, size: '', type: '' })),
+      startedFrom: opts.startingTemplate
+        ? { templateId: opts.startingTemplate.id, title: opts.startingTemplate.title }
+        : undefined,
     }
 
     set((s) => ({
@@ -1120,17 +1148,34 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.renderTemplateId,
+          opts.startingTemplate?.id,
         )
         return id
       }
 
       if (kind === 'report') {
-        await streamReport(set, get, id, text, model, opts.activatedSkillIds)
+        await streamReport(
+          set,
+          get,
+          id,
+          text,
+          model,
+          opts.activatedSkillIds,
+          opts.startingTemplate?.id,
+        )
         return id
       }
 
       if (kind === 'slides') {
-        await streamDeck(set, get, id, text, model, opts.activatedSkillIds)
+        await streamDeck(
+          set,
+          get,
+          id,
+          text,
+          model,
+          opts.activatedSkillIds,
+          opts.startingTemplate?.id,
+        )
         return id
       }
 
@@ -1153,6 +1198,7 @@ export const useStore = create<State>((set, get) => ({
       if (get().compareMode && get().compareModels.length >= 2) {
         await runComparison(set, get, id, text, {
           activatedSkillIds: opts.activatedSkillIds,
+          startingTemplateId: opts.startingTemplate?.id,
           attachments: opts.attachments,
           attachmentNames: opts.attachmentNames,
           privacyAction: opts.privacyAction,
@@ -1167,6 +1213,7 @@ export const useStore = create<State>((set, get) => ({
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
         activatedSkillIds: opts.activatedSkillIds,
+        startingTemplateId: opts.startingTemplate?.id,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
         onAccepted: acceptSession,
@@ -1559,6 +1606,8 @@ export const useStore = create<State>((set, get) => ({
   setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
+  pendingStartingTemplate: null,
+  setPendingStartingTemplate: (pendingStartingTemplate) => set({ pendingStartingTemplate }),
   dictationEnabled: false,
   brand: { name: 'KloudChat', logo: '' },
   refreshBrand: async () => {
@@ -2178,6 +2227,7 @@ function toMessage(raw: MessageRow): Message {
         : (a as { name: string; size: string; type: string }),
     ),
     usage: raw.usage ?? undefined,
+    startedFrom: raw.startedFrom ?? undefined,
     // A comparison turn stores columns rather than one body, so a reload has to
     // rebuild them.
     variants: raw.variants?.map((v) => ({
@@ -2428,6 +2478,7 @@ async function streamTurn(
     attachments?: string[]
     attachmentNames?: string[]
     activatedSkillIds?: string[]
+    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
     onAccepted?: () => void
@@ -2485,6 +2536,7 @@ async function streamTurn(
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         activatedSkillIds: opts.activatedSkillIds,
+        startingTemplateId: opts.startingTemplateId,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
       },
@@ -2639,6 +2691,7 @@ async function runComparison(
   text: string,
   opts: {
     activatedSkillIds?: string[]
+    startingTemplateId?: string
     attachments?: string[]
     attachmentNames?: string[]
     privacyAction?: PrivacyAction
@@ -2697,6 +2750,7 @@ async function runComparison(
         content: text,
         models,
         activatedSkillIds: opts.activatedSkillIds,
+        startingTemplateId: opts.startingTemplateId,
         attachments: opts.attachments,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
@@ -2804,6 +2858,7 @@ async function streamReport(
   text: string,
   model: string,
   activatedSkillIds?: string[],
+  startingTemplateId?: string,
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -2857,7 +2912,7 @@ async function streamReport(
   try {
     for await (const e of streamSession(
       sessionId,
-      { content: text, model, activatedSkillIds },
+      { content: text, model, activatedSkillIds, startingTemplateId },
       controller.signal,
     )) {
       switch (e.type) {
@@ -2974,6 +3029,7 @@ async function streamPage(
   model: string,
   activatedSkillIds?: string[],
   renderTemplateId?: string,
+  startingTemplateId?: string,
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3028,7 +3084,7 @@ async function streamPage(
   try {
     for await (const e of streamSession(
       sessionId,
-      { content: text, model, activatedSkillIds, renderTemplateId },
+      { content: text, model, activatedSkillIds, renderTemplateId, startingTemplateId },
       controller.signal,
     )) {
       switch (e.type) {
@@ -3125,6 +3181,7 @@ async function streamDeck(
   text: string,
   model: string,
   activatedSkillIds?: string[],
+  startingTemplateId?: string,
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3174,7 +3231,7 @@ async function streamDeck(
   try {
     for await (const e of streamSession(
       sessionId,
-      { content: text, model, activatedSkillIds },
+      { content: text, model, activatedSkillIds, startingTemplateId },
       controller.signal,
     )) {
       switch (e.type) {

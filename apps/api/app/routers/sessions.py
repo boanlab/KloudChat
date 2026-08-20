@@ -706,7 +706,12 @@ async def _history(db: DbSession, session_id: str) -> list[Message]:
 
 def _raise_workspace_error(exc: WorkspaceContextError) -> None:
     code = str(exc)
-    missing = code in {"agent_not_found", "project_not_found", "attachment_not_found"}
+    missing = code in {
+        "agent_not_found",
+        "project_not_found",
+        "attachment_not_found",
+        "starting_template_not_found",
+    }
     raise HTTPException(
         status_code=(
             status.HTTP_404_NOT_FOUND
@@ -1415,6 +1420,7 @@ async def send_message(
             session,
             attachment_ids=payload.attachments,
             activated_skill_ids=payload.activated_skill_ids,
+            starting_template_id=payload.starting_template_id,
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -1533,6 +1539,7 @@ async def send_message(
                 session,
                 attachment_ids=payload.attachments,
                 activated_skill_ids=payload.activated_skill_ids,
+                starting_template_id=payload.starting_template_id,
                 available_tool_names={tool.name for tool in tools},
             )
         except WorkspaceContextError as exc:
@@ -1580,6 +1587,7 @@ async def send_message(
             payload.attachments
             or payload.web_search
             or payload.activated_skill_ids
+            or payload.starting_template_id
             or session.agent_id
             or session.project_id
         )
@@ -1641,6 +1649,7 @@ async def send_message(
         content=stored_content,
         attachments=attachment_meta,
         routing=privacy_resolution.routing if privacy_resolution else None,
+        started_from=workspace.started_from,
     )
     db.add(user_message)
     # A strict privacy route and SendMessage.model are turn-only overrides. An
@@ -2172,6 +2181,7 @@ async def compare_models(
             session,
             attachment_ids=payload.attachments,
             activated_skill_ids=payload.activated_skill_ids,
+            starting_template_id=payload.starting_template_id,
             # Comparison intentionally exposes no tools. A skill that requires
             # one is refused before any column starts or any charge is made.
             available_tool_names=set(),
@@ -2239,6 +2249,7 @@ async def compare_models(
             content=stored_content,
             attachments=attachment_meta,
             routing=resolved.routing,
+            started_from=workspace.started_from,
         )
     )
     session.updated_at = utcnow()

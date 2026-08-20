@@ -1,16 +1,33 @@
 import { LayoutTemplate, Loader2, Paperclip, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Field, Input, Modal, Textarea } from '@/components/ui'
-import { errorMessage, filesApi, templatesApi, type FileRow, type TemplateRow } from '@/lib/api'
+import {
+  errorMessage,
+  filesApi,
+  promptTemplatesApi,
+  templatesApi,
+  type FileRow,
+  type PromptTemplateRow,
+  type TemplateRow,
+} from '@/lib/api'
 import { kindMeta } from '@/lib/kinds'
-import { templatesFor, type Template } from '@/lib/templates'
 import { cn, upsertById } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** A card in the gallery, whichever list it came from. */
-type Card = Template & { rowId?: string; form?: FileRow; shared?: boolean; mine?: boolean }
+type Card = PromptTemplateRow & { rowId?: string; form?: FileRow; shared?: boolean; mine?: boolean }
+
+/**
+ * Whether picking this card fills the composer or attaches to it.
+ *
+ * On the two media surfaces the sentence *is* the prompt — the person edits a
+ * description of a picture and sends that, and a turn carrying an unseen
+ * framing would leave them with nothing to edit. Everywhere else the framing
+ * is the machinery's, and it goes with the turn instead of into their mouth.
+ */
+const fillsTheComposer = (kind: SessionKind) => kind === 'image' || kind === 'av'
 
 const asCard = (row: TemplateRow): Card => ({
   id: row.id,
@@ -42,24 +59,21 @@ const asCard = (row: TemplateRow): Card => ({
 })
 
 /**
- * Starting points for each surface. Opened as a modal so it does not clutter
- * an empty screen, but the button that opens it is always visible — the point
- * is that somebody who does not know how to ask can still begin.
+ * 시작점 for each surface. Opened as a modal so it does not clutter an empty
+ * screen, but the button that opens it is always visible — the point is that
+ * somebody who does not know how to ask can still begin.
  *
- * A card shows **what you need to bring**, not a prompt to paste.
+ * A card shows **what you need to bring**, not a prompt to paste. Picking one
+ * attaches it to the next turn rather than typing it out: the framing is the
+ * product's sentence, and a transcript that reads it back as the person's own
+ * cannot afterwards be untangled by anybody, including them.
  *
- * The built-in twenty-four are shipped in the bundle; the rest are the ones
- * this person wrote. Both render as the same card, because "where did this come
+ * The built-in twenty-four come from the server; the rest are the ones this
+ * person wrote. Both render as the same card, because "where did this come
  * from" is the product's problem and not the reader's — the only difference is
  * that their own can be rewritten and thrown away.
  */
-export function TemplateGallery({
-  kind,
-  onPick,
-}: {
-  kind: SessionKind
-  onPick?: (prompt: string) => void
-}) {
+export function TemplateGallery({ kind }: { kind: SessionKind }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [group, setGroup] = useState<string | 'all'>('all')
@@ -69,10 +83,18 @@ export function TemplateGallery({
   const [editing, setEditing] = useState<TemplateRow | null>(null)
   const setDraft = useStore((s) => s.setDraft)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
+  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
 
-  const builtIn = useMemo(() => templatesFor(kind), [kind])
+  // The workspace load already has them, so the gallery opens full. The fetch
+  // below is the fallback for a screen reached before that landed — the same
+  // arrangement the 서식 catalogue uses.
+  const cached = useStore((s) => s.promptTemplates)
+  const [builtIn, setBuiltIn] = useState<PromptTemplateRow[]>(cached)
   const items = useMemo<Card[]>(
-    () => [...mine.filter((r) => r.kind === kind).map(asCard), ...builtIn],
+    () => [
+      ...mine.filter((r) => r.kind === kind).map(asCard),
+      ...builtIn.filter((r) => r.kind === kind),
+    ],
     [mine, builtIn, kind],
   )
   const groups = useMemo(() => [...new Set(items.map((i) => i.group))], [items])
@@ -87,10 +109,19 @@ export function TemplateGallery({
       .list()
       .then((rows) => live && setMine(rows))
       .catch(() => undefined)
+    // The built-in catalogue is the server's now, so it arrives the same way
+    // the person's own does. An instance that cannot serve it still opens on
+    // whatever they wrote themselves, which is the half they would miss.
+    if (cached.length) setBuiltIn(cached)
+    else
+      void promptTemplatesApi
+        .list()
+        .then((rows) => live && setBuiltIn(rows))
+        .catch(() => undefined)
     return () => {
       live = false
     }
-  }, [open])
+  }, [open, cached])
 
   const closeForm = () => {
     setComposing(false)
@@ -125,7 +156,7 @@ export function TemplateGallery({
         description={
           editing
             ? t('고친 내용은 다음에 이 템플릿을 고를 때부터 반영됩니다.')
-            : t('고르면 입력창에 채워집니다. 나머지는 직접 적으면 됩니다.')
+            : t('고르면 이번 요청에 붙습니다. 무엇을 만들지는 직접 적으면 됩니다.')
         }
         width="max-w-2xl"
       >
@@ -170,9 +201,16 @@ export function TemplateGallery({
                   <button
                     onClick={() => {
                       setOpen(false)
-                      // Filled, never sent. Every prompt here ends mid-sentence.
-                      if (onPick) onPick(item.prompt)
-                      else setDraft(item.prompt)
+                      // Carried by the turn, not typed into it — the composer
+                      // shows a chip and asks for what this card asks for, and
+                      // the sentence never becomes something the person said.
+                      if (fillsTheComposer(item.kind)) setDraft(item.prompt)
+                      else
+                        setPendingStartingTemplate({
+                          id: item.id,
+                          title: item.title,
+                          fills: item.fills,
+                        })
                       // The form rides along as an attachment, which is what
                       // makes "이 양식대로 써 줘" mean anything: the model reads
                       // the document's actual shape rather than a description
@@ -211,6 +249,15 @@ export function TemplateGallery({
                           {item.form.name}
                         </span>
                       )}
+                      {/* What the click does, on the card that does it. The
+                          two answers are different enough — one hands you a
+                          sentence to edit, the other hands the turn a 시작점 —
+                          that guessing from a card is guessing. */}
+                      <span className="ml-auto text-xs text-accent">
+                        {fillsTheComposer(item.kind)
+                          ? t('입력창에 채우기')
+                          : t('시작점으로 붙이기')}
+                      </span>
                     </div>
                   </button>
                   {item.rowId && item.mine !== false && (
@@ -250,9 +297,9 @@ export function TemplateGallery({
  * Writing one down, or putting it right. Shared by the gallery and the admin
  * screen.
  *
- * `prompt` is the whole thing: the gallery fills the composer with it and the
- * person keeps typing, so it has to end where they take over. The form says so
- * rather than leaving them to discover it from a card that pastes a full stop.
+ * `prompt` is the framing the turn carries — it reaches the model above what
+ * the person types, and never the composer. The form says so rather than
+ * leaving somebody to write a half sentence for a box that no longer fills.
  *
  * Given a `template` it opens on that row's wording and saves over it. The
  * same fields either way — a correction is the same act as writing it, and a
@@ -389,7 +436,7 @@ export function TemplateForm({
           aria-label={t('준비물')}
         />
       </Field>
-      <Field label={t('문구')} hint={t('입력창에 채워집니다. 이어서 쓸 수 있게 문장 중간에서 끝내세요')}>
+      <Field label={t('문구')} hint={t('요청과 함께 전달됩니다. 입력창에는 나타나지 않습니다')}>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

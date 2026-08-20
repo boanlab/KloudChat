@@ -5,6 +5,7 @@ import {
   Gauge,
   Globe,
   LayoutGrid,
+  LayoutTemplate,
   Paperclip,
   Plug,
   Loader2,
@@ -26,7 +27,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { PrivacyAction, SessionKind, Skill } from '@/types'
+import type { PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
 import { ModelPicker } from './ModelPicker'
 import { useT } from '@/lib/useT'
 
@@ -38,6 +39,21 @@ const placeholders: Record<SessionKind, string> = {
   slides: '발표 주제와 시간을 적으세요',
   image: '만들고 싶은 이미지를 설명하세요',
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
+}
+
+/**
+ * A 시작점's `fills`, read back as a request.
+ *
+ * The object particle is chosen from the last syllable's final consonant. The
+ * list is the template's own words, so it is not a sentence anybody proofread
+ * — and "분량를 적어 주세요" is exactly the seam that tells a reader no one
+ * was minding this screen.
+ */
+function bringList(fills: string[]) {
+  const list = fills.join(', ')
+  const last = list.charCodeAt(list.length - 1)
+  if (last < 0xac00 || last > 0xd7a3) return `${list}을(를)`
+  return `${list}${(last - 0xac00) % 28 === 0 ? '를' : '을'}`
 }
 
 const ASPECTS = ['1:1', '16:9', '9:16', '4:3']
@@ -61,6 +77,7 @@ type PendingPrivacy = {
   text: string
   attachments: FileRow[]
   activatedSkillIds: string[]
+  startingTemplate: StartingPoint | null
   webSearch: boolean
   restoreToken: number
 }
@@ -326,6 +343,16 @@ export function Composer({
   // A form a picked template brought with it. Taken once and cleared, so it
   // attaches to the draft it arrived with and not to every turn after it.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
+  /**
+   * The 시작점 this turn carries, held here rather than in the store for the
+   * same reason the attachments and the one-turn skills are: a refused turn
+   * has to be handed back whole, and the gallery is long gone by then.
+   */
+  const [startingTemplate, setStartingTemplate] = useState<StartingPoint | null>(null)
+  const liveStartingTemplate = useRef(startingTemplate)
+  liveStartingTemplate.current = startingTemplate
+  const pendingStartingTemplate = useStore((s) => s.pendingStartingTemplate)
+  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const designTemplates = useStore((s) => s.designTemplates)
@@ -344,6 +371,16 @@ export function Composer({
     })
     setPendingAttachment(null)
   }, [pendingAttachment, setPendingAttachment])
+  useEffect(() => {
+    if (!pendingStartingTemplate) return
+    activeRestoreToken.current = null
+    liveStartingTemplate.current = pendingStartingTemplate
+    setStartingTemplate(pendingStartingTemplate)
+    setPendingStartingTemplate(null)
+    // The composer is deliberately left empty; what moves is the caret, so
+    // the person is already writing the thing the placeholder asks for.
+    requestAnimationFrame(() => ref.current?.focus())
+  }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [webSearch, setWebSearch] = useState(false)
@@ -357,6 +394,9 @@ export function Composer({
     }
     liveActivatedSkillIds.current = []
     setActivatedSkillIds([])
+    // A 시작점 belongs to the surface it was picked on, and to one turn.
+    liveStartingTemplate.current = null
+    setStartingTemplate(null)
   }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
@@ -512,6 +552,7 @@ export function Composer({
     files: FileRow[],
     search: boolean,
     skillIds: string[],
+    startedFrom: StartingPoint | null,
     action?: PrivacyAction,
     decisionToken?: string,
     restoreToken?: number,
@@ -526,6 +567,7 @@ export function Composer({
         attachments: files.map((file) => file.id),
         attachmentNames: files.map((file) => file.name),
         activatedSkillIds: skillIds,
+        startingTemplate: startedFrom ?? undefined,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
         onSession: (id) => {
@@ -548,6 +590,7 @@ export function Composer({
           text,
           attachments: files,
           activatedSkillIds: skillIds,
+          startingTemplate: startedFrom,
           webSearch: search,
           restoreToken: restoreToken ?? ++restoreSequence.current,
         })
@@ -561,15 +604,18 @@ export function Composer({
         activeRestoreToken.current === restoreToken &&
         !liveValue.current &&
         liveAttachments.current.length === 0 &&
-        liveActivatedSkillIds.current.length === 0
+        liveActivatedSkillIds.current.length === 0 &&
+        !liveStartingTemplate.current
       ) {
         activeRestoreToken.current = null
         liveValue.current = text
         liveAttachments.current = files
         liveActivatedSkillIds.current = skillIds
+        liveStartingTemplate.current = startedFrom
         setValue(text)
         setAttachments(files)
         setActivatedSkillIds(skillIds)
+        setStartingTemplate(startedFrom)
         requestAnimationFrame(() => ref.current?.focus())
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
@@ -594,9 +640,11 @@ export function Composer({
       liveValue.current = pendingPrivacy.text
       liveAttachments.current = pendingPrivacy.attachments
       liveActivatedSkillIds.current = pendingPrivacy.activatedSkillIds
+      liveStartingTemplate.current = pendingPrivacy.startingTemplate
       setValue(pendingPrivacy.text)
       setAttachments(pendingPrivacy.attachments)
       setActivatedSkillIds(pendingPrivacy.activatedSkillIds)
+      setStartingTemplate(pendingPrivacy.startingTemplate)
     }
     setReusableSessionId(pendingPrivacy.sessionId)
     setPendingPrivacy(null)
@@ -617,6 +665,7 @@ export function Composer({
     const attachmentLabels = attachments.map((f) => f.name)
     const sentAttachments = attachments
     const sentSkillIds = activeSkills.map((skill) => skill.id)
+    const sentStartingTemplate = startingTemplate
     setChatError(null)
     const restoreToken = ++restoreSequence.current
     activeRestoreToken.current = kind === 'chat' ? restoreToken : null
@@ -625,9 +674,13 @@ export function Composer({
     liveValue.current = ''
     liveAttachments.current = []
     liveActivatedSkillIds.current = []
+    // Not sticky, unlike the 서식 chip beside it: a 시작점 starts one turn and
+    // then the conversation is the person's own.
+    liveStartingTemplate.current = null
     setValue('')
     setAttachments([])
     setActivatedSkillIds([])
+    setStartingTemplate(null)
     if (kind === 'av' && avOptions.mode === 'video') {
       // A ticket, not an answer: the clip takes minutes and the job row
       // outlives this request, so the card carries it.
@@ -661,6 +714,7 @@ export function Composer({
         sentAttachments,
         webSearch,
         sentSkillIds,
+        sentStartingTemplate,
         undefined,
         undefined,
         restoreToken,
@@ -677,6 +731,7 @@ export function Composer({
       // `generateImages` on its own path above.
       renderTemplateId:
         shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
+      startingTemplate: sentStartingTemplate ?? undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         preserveComposerForSession.current = id
@@ -695,6 +750,11 @@ export function Composer({
           liveActivatedSkillIds.current = next
           return next
         })
+        setStartingTemplate((current) => {
+          const next = current ?? sentStartingTemplate
+          liveStartingTemplate.current = next
+          return next
+        })
       })
   }
 
@@ -710,6 +770,7 @@ export function Composer({
           activeSkills.length > 0 ||
           autoBypassPreview ||
           autoPausedForCompare ||
+          startingTemplate ||
           (pendingTemplate && pendingTemplate.surface === kind) ||
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
@@ -763,6 +824,28 @@ export function Composer({
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}
+                  className="ml-0.5 text-faint hover:text-fg"
+                >
+                  <X size={10} />
+                </button>
+              </Badge>
+            )}
+            {/* Beside the 서식 chip and read the same way: one names the
+                shape the answer comes out in, this one names where the asking
+                started. Neither is in the box, so neither ends up in the
+                transcript as something the person wrote. */}
+            {startingTemplate && (
+              <Badge tone="accent">
+                <LayoutTemplate size={11} />
+                {startingTemplate.title}
+                <button
+                  type="button"
+                  onClick={() => {
+                    activeRestoreToken.current = null
+                    liveStartingTemplate.current = null
+                    setStartingTemplate(null)
+                  }}
+                  aria-label={t('{name} 시작점 해제').replace('{name}', startingTemplate.title)}
                   className="ml-0.5 text-faint hover:text-fg"
                 >
                   <X size={10} />
@@ -864,7 +947,14 @@ export function Composer({
               submit()
             }
           }}
-          placeholder={t(placeholders[kind])}
+          placeholder={
+            // What this 시작점 needs, instead of what the surface generally
+            // does. It is the half of the template the person still has to
+            // supply, and it used to be legible only as a half-typed sentence.
+            startingTemplate && startingTemplate.fills.length > 0
+              ? t('{list} 적어 주세요').replace('{list}', bringList(startingTemplate.fills))
+              : t(placeholders[kind])
+          }
           aria-label={t('프롬프트 입력')}
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none"
         />
@@ -1302,6 +1392,7 @@ export function Composer({
                       pendingPrivacy.attachments,
                       false,
                       pendingPrivacy.activatedSkillIds,
+                      pendingPrivacy.startingTemplate,
                       'route_strict_local',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
@@ -1323,6 +1414,7 @@ export function Composer({
                     pendingPrivacy.attachments,
                     pendingPrivacy.webSearch,
                     pendingPrivacy.activatedSkillIds,
+                    pendingPrivacy.startingTemplate,
                     'mask_external',
                     pendingPrivacy.decision.decisionToken,
                     pendingPrivacy.restoreToken,
@@ -1345,6 +1437,7 @@ export function Composer({
                       pendingPrivacy.attachments,
                       pendingPrivacy.webSearch,
                       pendingPrivacy.activatedSkillIds,
+                      pendingPrivacy.startingTemplate,
                       'send_raw_external',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,

@@ -6,7 +6,7 @@ import { signIn } from './helpers'
  * a twenty-fifth. The document an organisation actually produces — its 공문,
  * its 발표 양식 — was the one document with no starting point.
  */
-test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들어가고, 고치고 지울 수 있다', async ({ page }) => {
+test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고, 고치고 지울 수 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
@@ -17,8 +17,11 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   }
 
   await openGallery()
-  const builtIn = await page.getByRole('dialog').locator('button:has(p)').count()
-  expect(builtIn, '기본 템플릿이 없다').toBeGreaterThan(0)
+  // Waited for rather than counted on the spot: the built-in 시작점 come from
+  // the server now, so on a cold screen the grid fills a moment after the
+  // dialog opens instead of arriving with the bundle.
+  const cards = page.getByRole('dialog').locator('button:has(p)')
+  await expect(cards.first(), '기본 시작점이 없다').toBeVisible({ timeout: 20_000 })
 
   // Write one down.
   await page.getByRole('button', { name: '템플릿 추가' }).click()
@@ -34,10 +37,12 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   await expect(card).toBeVisible({ timeout: 15_000 })
   await expect(card.getByText('수신처')).toBeVisible()
 
-  // Picking it fills the composer and never sends.
+  // Picking it attaches to the turn and never sends. What the person brings —
+  // 준비물 — is what the empty box now asks for.
   await card.getByRole('button').first().click()
   const composer = page.getByLabel('프롬프트 입력')
-  await expect(composer).toHaveValue(/수신:/)
+  await expect(composer).toHaveValue('')
+  await expect(composer).toHaveAttribute('placeholder', /수신처, 제목/)
   await expect(page).not.toHaveURL(/\/s\/[0-9a-f]{32}/)
 
   // It survives a reload — it is a row, not a tab's memory.
@@ -61,9 +66,9 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   // One card, not two: the correction replaced the row rather than adding one.
   await expect(page.getByRole('dialog').locator('div.group', { hasText: name })).toHaveCount(1)
 
-  // And the corrected wording is what the composer gets.
+  // And the corrected card is the one that attaches.
   await edited.getByRole('button').first().click()
-  await expect(composer).toHaveValue(/수신자:/)
+  await expect(page.getByRole('button', { name: `${fixed} 시작점 해제` })).toBeVisible()
 
   // And it can be thrown away, which is what makes adding one safe.
   await openGallery()
@@ -110,7 +115,7 @@ test('양식 파일을 붙인 템플릿을 고르면 그 파일이 첨부로 따
   await expect(card.getByText('gongmun-form.txt')).toBeVisible()
 
   await card.getByRole('button').first().click()
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/수신:/)
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   // …and the form is on the turn, where the model will read it.
   await expect(page.getByTitle(/토큰|내용 없음/).filter({ hasText: 'gongmun-form.txt' })).toBeVisible({
     timeout: 15_000,

@@ -24,9 +24,10 @@ from app.models.workspace import (
     Project,
     Skill,
     StoredFile,
+    Template,
 )
 from app.services import design as design_service
-from app.services import starter
+from app.services import prompt_templates, starter
 
 MAX_ACTIVE_SKILLS = 3
 _MAX_MEMORIES = 40
@@ -51,6 +52,20 @@ class ContextBlock:
 
 
 @dataclass(frozen=True, slots=True)
+class StartingPoint:
+    """A resolved 시작점: what it is called, and the sentence it opens with.
+
+    Flattened out of the two things it can be — a built-in that ships in the
+    image, or a `templates` row somebody wrote — because from here on nothing
+    cares which it was.
+    """
+
+    id: str
+    title: str
+    prompt: str
+
+
+@dataclass(frozen=True, slots=True)
 class AppliedSkill:
     id: str
     name: str
@@ -62,6 +77,10 @@ class AppliedSkill:
 class WorkspaceContext:
     blocks: tuple[ContextBlock, ...]
     applied_skills: tuple[AppliedSkill, ...]
+    #: What the message row records about the 시작점 this turn was begun from,
+    #: or `None`. Resolved here because this is where the id was checked, and
+    #: the router should not have to look the same template up twice.
+    started_from: dict[str, str] | None = None
     #: The project's design tokens, or `None` when it wears no design system.
     #: `None` rather than the defaults, because the difference is what the deck
     #: outline consults: with no design system the model still picks the accent.
@@ -302,6 +321,48 @@ def _skill_blocks(resolved: list[tuple[Skill, dict]]) -> list[ContextBlock]:
     return blocks
 
 
+async def _resolve_starting_template(
+    db: AsyncSession, user: User, starting_template_id: str | None
+) -> StartingPoint | None:
+    """The 시작점 attached to this turn, if the caller may use it.
+
+    Refused rather than dropped, the way a skill id is: the person picked a
+    card and watched a chip appear, so a turn that quietly went out without it
+    would answer a request nobody made and charge for the answer.
+    """
+    template_id = (starting_template_id or "").strip()
+    if not template_id:
+        return None
+    if builtin := prompt_templates.get(template_id):
+        return StartingPoint(builtin.id, builtin.title, builtin.prompt)
+    row = await db.get(Template, template_id)
+    if row is None or (row.owner_id != user.id and not row.shared):
+        raise WorkspaceContextError("starting_template_not_found")
+    return StartingPoint(row.id, row.title, row.prompt)
+
+
+def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None:
+    """The starting point as what it is: an instruction the person gave.
+
+    It reads as one because it is one — they chose it for this turn, and the
+    only reason it is not in `content` is that they did not type it. A saved
+    template whose whole substance is an attached form has no sentence to
+    carry, and contributes a heading over nothing rather than a block.
+    """
+    if point is None or not point.prompt.strip():
+        return None
+    head = (
+        f"# 시작점 — {point.title}\n"
+        "사용자가 이번 요청에 이 시작점을 붙였습니다. 아래 문장은 사용자가 한 말로 "
+        "받아들이고, 이어지는 사용자 메시지가 그 나머지입니다."
+    )
+    return ContextBlock(
+        source=f"template:{point.id}",
+        text=f"{head}\n{point.prompt.strip()}",
+        trusted=True,
+    )
+
+
 async def assemble(
     db: AsyncSession,
     user: User,
@@ -309,6 +370,7 @@ async def assemble(
     *,
     attachment_ids: list[str] | None = None,
     activated_skill_ids: list[str] | None = None,
+    starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
 ) -> WorkspaceContext:
     """Build one authorised context without auto-activating installed skills."""
@@ -325,6 +387,7 @@ async def assemble(
         activated_skill_ids,
         available_tool_names or set(),
     )
+    starting_point = await _resolve_starting_template(db, user, starting_template_id)
 
     blocks: list[ContextBlock] = []
     if text := _agent_block(agent):
@@ -337,6 +400,11 @@ async def assemble(
     if design_block := design_service.prompt_block(design, session.kind):
         blocks.append(ContextBlock("project.design", design_block, True))
     blocks.extend(_skill_blocks(resolved))
+    # After the skills and before the memories. A skill is a procedure the
+    # person keeps around; a starting point is what they said about this one
+    # turn, so it is the more specific instruction and comes later.
+    if starting_block := _starting_template_block(starting_point):
+        blocks.append(starting_block)
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 
@@ -381,7 +449,12 @@ async def assemble(
     return WorkspaceContext(
         tuple(blocks),
         applied,
-        design_service.tokens_of(design) if design is not None else None,
+        started_from=(
+            {"templateId": starting_point.id, "title": starting_point.title}
+            if starting_point is not None
+            else None
+        ),
+        design_tokens=design_service.tokens_of(design) if design is not None else None,
     )
 
 
@@ -413,6 +486,7 @@ __all__ = [
     "AppliedSkill",
     "ContextBlock",
     "MAX_ACTIVE_SKILLS",
+    "StartingPoint",
     "WorkspaceContext",
     "WorkspaceContextError",
     "agent_settings",
