@@ -119,6 +119,15 @@ export function ModelPicker({
   // write it to — or a caller standing by to make one. Settings has neither,
   // and an Auto row there would be a button that quietly does nothing.
   const canRouteAuto = kind === 'chat' && (Boolean(sessionId) || Boolean(onEnableAuto))
+  /**
+   * Before the first turn there is no conversation to write a model to, so a
+   * pick lands on the surface default and every later conversation inherits
+   * it. That is the right place for it — a new session is created from that
+   * default — but it is not what a picker sitting in the composer looks like
+   * it does, so the menu says which of the two is happening. Settings carries
+   * its own heading and needs no second telling.
+   */
+  const picksDefault = !sessionId && !field
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -189,6 +198,7 @@ export function ModelPicker({
         autoActive={autoActive}
         autoRouting={autoRouting}
         showAuto={canRouteAuto}
+        picksDefault={picksDefault}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
         onAuto={() => {
@@ -221,6 +231,7 @@ function ModelMenu({
   autoActive,
   autoRouting,
   showAuto,
+  picksDefault,
   litellmAvailable,
   selectionPending,
   onAuto,
@@ -231,6 +242,7 @@ function ModelMenu({
   autoActive: boolean
   autoRouting: ReturnType<typeof useStore.getState>['autoRouting']
   showAuto: boolean
+  picksDefault: boolean
   litellmAvailable: boolean
   selectionPending: boolean
   onAuto: () => void | Promise<void>
@@ -289,6 +301,11 @@ function ModelMenu({
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
         {showAuto ? t('모델 직접 선택') : t('모델')}
       </div>
+      {picksDefault && (
+        <p className="px-2.5 pb-1.5 text-xs text-faint">
+          {t('아직 대화가 없습니다. 여기서 고른 모델은 이번 답변만이 아니라 이 화면의 기본값이 됩니다.')}
+        </p>
+      )}
       {!litellmAvailable && (
         <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />

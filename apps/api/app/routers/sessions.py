@@ -1567,7 +1567,6 @@ async def send_message(
         skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
-    effective_web_search = payload.web_search and not strict_local
     wire_history = [
         {"role": message.role.value, "content": body}
         for message, body in zip(history, outbound_history, strict=True)
@@ -1577,8 +1576,11 @@ async def send_message(
         session.kind,
         wire_history,
         with_tools=bool(tools),
-        web_search=effective_web_search,
-        # An agent allowlist may have removed the tool the toggle enabled.
+        web_search=payload.web_search,
+        # An agent allowlist may have removed the tool the toggle enabled, and a
+        # strict-local route never had it. Carry the toggle through either way:
+        # dropping it here produced an answer that read exactly like a searched
+        # one, so the turn now says out loud that it did not search.
         web_search_available=any(t.name == "web_search" for t in tools),
         extra=trusted_context,
         untrusted_context=untrusted_context,

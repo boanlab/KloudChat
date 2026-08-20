@@ -1155,6 +1155,23 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 이번 턴에만 적용되는 것과, 계정 전체에 적용되는 것 ──────────
+  'strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.':
+    'A strict-local model cannot use the web search tool.',
+  '웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다':
+    'No web search — this model does not reach outside',
+  '웹 검색 안 함 · 모델 비교는 검색 없이 실행합니다':
+    'No web search — a model comparison runs without it',
+  '이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다':
+    'This model does not reach outside, so web search is unavailable',
+  '모델 비교는 웹 검색 없이 실행합니다': 'A model comparison runs without web search',
+  '안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.':
+    'The safe local model does not reach outside. Choose it and this request runs without web search.',
+  '아직 대화가 없습니다. 여기서 고른 모델은 이번 답변만이 아니라 이 화면의 기본값이 됩니다.':
+    'There is no conversation yet, so a model picked here becomes this screen\'s default, not just this answer\'s.',
+  '계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.':
+    'This is an account-wide setting. Turning it off here turns it off everywhere.',
+
   // ── 공유 상태와 가려진 기록 ─────────────────────────────────────
   '공유 중': 'Shared',
   '링크 공개 중': 'Public link',
