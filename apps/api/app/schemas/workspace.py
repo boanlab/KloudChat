@@ -451,6 +451,16 @@ class ShareOut(Wire):
         return cls.model_validate(s, from_attributes=True)
 
 
+class BulkDelete(Wire):
+    """Ids to remove in one request.
+
+    Capped so one call cannot become a table scan. Ids this account does not
+    own are skipped rather than refused — see `_owned_many`.
+    """
+
+    ids: list[str] = Field(default_factory=list, max_length=500)
+
+
 class ShareViewOut(Wire):
     """One visit to a shared link, as the owner sees it.
 

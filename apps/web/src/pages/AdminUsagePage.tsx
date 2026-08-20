@@ -168,17 +168,23 @@ export function AdminUsagePage() {
                   </span>
                 )}
               </p>
-              <div className="flex h-40 items-end gap-1.5">
+              {/* The bar's percentage is of the space between the two labels,
+                  so that space has to be a box with a height of its own — a
+                  percentage against an auto-height parent resolves to nothing
+                  and the chart draws blank. */}
+              <div className="flex h-40 items-stretch gap-1.5">
                 {daily.map((d) => (
                   <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                     <span className="text-2xs tabular-nums text-faint">
                       {d.value > 0 ? d.value.toLocaleString() : ''}
                     </span>
-                    <div
-                      className="w-full rounded-t bg-accent"
-                      style={{ height: `${(d.value / maxDaily) * 100}%` }}
-                      title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
-                    />
+                    <div className="flex w-full flex-1 items-end">
+                      <div
+                        className="w-full rounded-t bg-accent"
+                        style={{ height: `${Math.max(2, (d.value / maxDaily) * 100)}%` }}
+                        title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
+                      />
+                    </div>
                     <span className="truncate text-2xs text-faint">{d.date.slice(5)}</span>
                   </div>
                 ))}
