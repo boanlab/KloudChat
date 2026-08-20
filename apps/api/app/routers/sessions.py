@@ -262,6 +262,32 @@ def _planner_model(
     return planner
 
 
+async def _enrichment_model(
+    writer: dict, *, strict_local: bool, disable_fallbacks: bool
+) -> dict:
+    """The catalogue row that titles the session and extracts its memories.
+
+    A row rather than an id, for the reason `_planner_model` returns one: this
+    is a second model doing side work, and its tokens are billed at its own
+    price. Titles and memory are the only calls a person never asks for, which
+    makes billing them at the answer's price the easiest ledger line to
+    disbelieve.
+
+    Most deployments point `title_model` at a free self-hosted model, and then
+    the charge is zero without anybody having to write a rule for it. Where one
+    is not configured the work falls to the turn's own model and is billed
+    there — the alternative, refusing to run at all above zero cost, would trade
+    a working feature for a credit or two.
+    """
+    if strict_local or disable_fallbacks:
+        return writer
+    resolved = await model_service.resolve_enrichment_model()
+    if not resolved or resolved == writer["id"]:
+        return writer
+    catalogue = await model_service.list_models()
+    return model_service.find(catalogue["models"], resolved) or writer
+
+
 def _find_auto_quality_model(models: list[dict], model_id: str | None) -> dict | None:
     """Finds an answer model; privacy-only capacity is classifier-only."""
     model = model_service.find(models, model_id or "")
@@ -1438,6 +1464,11 @@ async def send_message(
             status_code=status.HTTP_409_CONFLICT,
             detail="auto_quality_model_required",
         )
+    # The row the turn asked for, when it exists and the account may no longer
+    # use it. A revocation is not a reason to answer silently at another price:
+    # the id is kept so the routing metadata can report it as the requested
+    # model and the transcript says a substitute ran.
+    revoked_model = model if model is not None and model not in usable else None
     if model not in usable:
         model = None
     if model is None:
@@ -1590,6 +1621,16 @@ async def send_message(
             )
             return resolved
         privacy_resolution = resolved
+        if revoked_model is not None:
+            # Name the model that was asked for, not the one that answered.
+            # `actualModelChanged` in the transcript is exactly this comparison,
+            # so restoring the pre-fallback id here is the whole of telling the
+            # reader that a substitute ran — and it is stored on the message,
+            # so it survives a reload the way every other route note does.
+            resolved.routing = {
+                **resolved.routing,
+                "requestedModels": [revoked_model["id"]],
+            }
         if auto_turn and auto_preflight_findings:
             # Privacy owns this turn. Do not send the original envelope to the
             # complexity classifier even when the selected privacy action is
@@ -1791,7 +1832,12 @@ async def send_message(
     # PATCH rather than by a one-off message request. Preserve the historical
     # manual-session behaviour for clients that still select a model per turn.
     if session.routing_mode != RoutingMode.auto or payload.model is None:
-        session.model = requested_model["id"]
+        # A substitute is for this turn only. Writing it back would outlive the
+        # revocation that caused it: the day the allowlist covers the person's
+        # model again, the session would still be on the cheap one nobody
+        # chose, and nothing would ever move it back.
+        if revoked_model is None:
+            session.model = requested_model["id"]
     session.updated_at = utcnow()
     # `session.render_template_id` was resolved at the top of this handler; the
     # assignment lands with the rest of the turn rather than in its own commit.
@@ -2159,14 +2205,13 @@ async def _run_turn(
 
     new_artifact: str | None = None
     title: str | None = None
+    title_credits = 0
     if is_first_turn and stored_content and not failed:
-        enrichment_model = (
-            model["id"]
-            if strict_local or disable_fallbacks
-            else await model_service.resolve_enrichment_model() or model["id"]
+        enrichment = await _enrichment_model(
+            model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
         )
-        title = await chat_service.generate_title(
-            enrichment_model,
+        title, title_usage = await chat_service.generate_title(
+            enrichment["id"],
             first_user_message,
             stored_content,
             api_key,
@@ -2174,6 +2219,9 @@ async def _run_turn(
             strict_local=strict_local,
             disable_fallbacks=disable_fallbacks,
             redact_logging=mask_at_rest or bool(tool_output_findings),
+        )
+        title_credits = charge_for_tokens(
+            enrichment, title_usage["inputTokens"], title_usage["outputTokens"]
         )
 
     # One transaction: assistant message, deduction, title.
@@ -2196,6 +2244,13 @@ async def _run_turn(
                 settle(db, user, credits, reason="chat.completion", session_id=session_id)
             if title:
                 session.title = title
+            # Its own line rather than folded into the answer's figure: a
+            # different model may have run it, the message's stored `credits`
+            # has to keep explaining the message's own tokens, and the one
+            # thing the ledger owes somebody who never asked for a title is a
+            # row that says a title is what they paid for. Nothing is charged
+            # when the title ran on free capacity, which is the usual case.
+            settle(db, user, title_credits, reason="chat.title", session_id=session_id)
             if privacy_audit_id:
                 privacy_audit = await db.get(AuditEvent, privacy_audit_id)
                 if privacy_audit is not None:
@@ -2729,18 +2784,16 @@ async def _enrich(
 
         if auto_memory:
             try:
-                enrichment_model = (
-                    model["id"]
-                    if strict_local or disable_fallbacks
-                    else await model_service.resolve_enrichment_model() or model["id"]
+                enrichment = await _enrichment_model(
+                    model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
                 )
-                written = await auto_memory_service.extract(
+                written, spent = await auto_memory_service.extract(
                     db,
                     user,
                     user_message=first_user_message,
                     assistant_message=content,
                     api_key=api_key,
-                    model=enrichment_model,
+                    model=enrichment["id"],
                     masker=privacy_masker,
                     strict_local=strict_local,
                     disable_fallbacks=disable_fallbacks,
@@ -2753,6 +2806,19 @@ async def _enrich(
                     if message is not None:
                         message.steps = [*(message.steps or []), memory_step]
                         db.add(message)
+                # Charged whether or not a fact came out, at the model that
+                # read the turn. The extractor runs on every turn once the
+                # preference is on, and a run that decided there was nothing
+                # to remember cost the same as one that wrote two rows.
+                settle(
+                    db,
+                    user,
+                    charge_for_tokens(
+                        enrichment, spent["inputTokens"], spent["outputTokens"]
+                    ),
+                    reason="chat.memory",
+                    session_id=session_id,
+                )
             except Exception:  # noqa: BLE001
                 log.exception("auto-memory failed for session %s", session_id)
 

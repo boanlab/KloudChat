@@ -1881,6 +1881,70 @@ async def test_send_stale_model_fallback_stays_inside_allowlist(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_a_revoked_model_says_so_and_does_not_become_the_session(monkeypatch) -> None:
+    """A fallback the person can see, and that ends when the revocation does.
+
+    The turn still runs — refusing it would be worse — but on another model at
+    another price, so the routing metadata reports the model that was asked for
+    rather than the one that answered, which is what the transcript's badge
+    compares. And the substitute is not written back: a session silently moved
+    to the cheapest row would stay there long after the allowlist was restored.
+    """
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        allowed_models=["external/allowed"],
+    )
+    revoked = _external_model("external/now-blocked")
+    allowed = _external_model("external/allowed")
+    session = ChatSession(user_id=user.id, model=revoked["id"])
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[revoked, allowed],
+        blocks=[],
+    )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    async def build_tools(*_args, **_kwargs):
+        return []
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "build_tools", build_tools)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean"),
+        _request(),
+        user,
+        db,
+    )
+
+    assert response.status_code == 200
+    assert session.model == revoked["id"]
+    user_message = next(
+        row
+        for row in db.added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.user
+    )
+    assert user_message.routing["requestedModels"] == [revoked["id"]]
+    assert user_message.routing["routedModels"] == [allowed["id"]]
+
+
+@pytest.mark.asyncio
 async def test_strict_privacy_route_does_not_persist_over_requested_session_model(
     monkeypatch,
 ) -> None:
@@ -2388,7 +2452,7 @@ async def test_title_and_auto_memory_mask_every_prompt_and_harden_strict_calls(
     monkeypatch.setattr(chat.settings_store, "litellm_config", config)
     monkeypatch.setattr(auto_memory.settings_store, "litellm_config", config)
 
-    title = await chat.generate_title(
+    title, _ = await chat.generate_title(
         "strict-local/model",
         "current person@example.com",
         "reply +1 (415) 555-2671",
@@ -2405,7 +2469,7 @@ async def test_title_and_auto_memory_mask_every_prompt_and_harden_strict_calls(
         body="known owner@example.com",
         type=MemoryType.user,
     )
-    written = await auto_memory.extract(
+    written, _ = await auto_memory.extract(
         _MemoryDb([known]),
         user,
         user_message="current person@example.com",

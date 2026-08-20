@@ -586,14 +586,22 @@ async def factcheck_slide(
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
 
-    target["factCheck"] = await factcheck.check_slide(
+    verdicts, usage = await factcheck.check_slide(
         slide=target, model=model["id"], api_key=api_key
     )
+    target["factCheck"] = verdicts
     data["slides"] = slides
     artifact.data = data
     artifact.updated_at = utcnow()
     db.add(artifact)
     # No version snapshot: a verdict annotates the deck rather than editing it.
+
+    # Charged like the critique beside it, and for the same reason: this is
+    # asked for by name and spends up to five calls answering. Billed at the
+    # model that ran them, which here is the cheapest one the account may use
+    # rather than whatever the deck was written with.
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    settle(db, user, credits, reason="deck.factcheck", session_id=artifact.session_id)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)

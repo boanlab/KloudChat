@@ -345,7 +345,10 @@ def _patch_enrichment(monkeypatch, db: _EnrichDb, *, written: int) -> None:
         return None
 
     async def remember(*_args, **_kwargs):
-        return written
+        # `(written, usage)` since the extractor started reporting what it
+        # spent — its own line on the ledger is a separate property, tested in
+        # tests/test_side_calls_are_billed.py.
+        return written, {"inputTokens": 0, "outputTokens": 0}
 
     async def enrichment_model():
         return "model-a"
