@@ -1023,7 +1023,12 @@ async def list_sessions(
     # One aggregate for the page — the sidebar asks for every conversation.
     ids = [s.id for s in rows]
     previews = await _previews(db, ids)
-    made = await _made(db, [sid for sid in ids if sid not in previews])
+    # Emptiness rather than absence. A media conversation now has messages —
+    # the prompt, and a wordless answer holding the picture — so its newest
+    # message is a row with nothing to quote, and asking only about the
+    # sessions with no messages at all would blank the line under every title
+    # this rule was written for.
+    made = await _made(db, [sid for sid in ids if not previews.get(sid, (None, 0))[0]])
     return [
         SessionOut.of(
             s,
@@ -1067,8 +1072,9 @@ async def _previews(db: DbSession, session_ids: list[str]) -> dict[str, tuple[st
 async def _made(db: DbSession, session_ids: list[str]) -> dict[str, SessionMade]:
     """`{session_id: what it produced}`, for the conversations that said nothing.
 
-    A picture or clip surface runs no turn, so these rows have no last message
-    to put under their title. What they do have is the thing they made, and its
+    A picture or clip surface answers with a thing rather than a sentence, so
+    its turn is a prompt and a wordless reply and there is no last message to
+    put under the title. What these rows do have is what they made, and its
     shape is the one fact the title — the person's own prompt — does not
     already carry.
 
@@ -1101,7 +1107,7 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
     # conversation replaces the row the list handed the client, so leaving this
     # out here would blank the line under a title the moment somebody looked at
     # what it names.
-    made = {} if history else await _made(db, [session_id])
+    made = {} if any(m.content for m in history) else await _made(db, [session_id])
     return SessionOut.of(session, history, made=made.get(session_id))
 
 
@@ -1242,20 +1248,35 @@ async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
 
 
 def _record_media(
-    db: DbSession, session: ChatSession, prompt: str, artifact_id: str | None
+    db: DbSession,
+    session: ChatSession,
+    prompt: str,
+    made: list[Artifact],
+    *,
+    model: str = "",
+    credits: int = 0,
+    failed: bool = False,
 ) -> None:
-    """Leaves the conversation a record of what was asked for and what came back.
+    """Writes the turn a picture or a clip is, as an ordinary turn.
 
-    The writing surfaces get this from their turn: the message is stored, the
-    title is set from it, and the finished document is hung on the session. A
-    picture or a clip runs no turn, so until now nothing wrote any of it — the
-    row stayed an untitled "새 작업" pointing at nothing, and a week later seven
-    clips of the same request were one from another indistinguishable.
+    The writing surfaces get this from running one: the prompt is stored, the
+    title comes off it, and the finished document is hung on the session. These
+    run no turn, so for a long time nothing wrote any of it and the row stayed
+    an untitled "새 작업" pointing at nothing. Naming the session fixed the list.
+    It did not fix the conversation, which still opened blank — the sentence
+    somebody typed was nowhere on the screen they typed it on, and the picture
+    they paid for was in a panel beside it.
 
-    No message is written here on purpose. This surface has no turn to record:
-    the reply is an artifact, not a sentence, and a stored prompt with nothing
-    answering it would render as a conversation that broke off. The prompt is
-    kept where it can be read at a glance instead, as the name of the session.
+    So both halves are stored. The prompt is a user message like any other. The
+    reply is an assistant message with no words in it, carrying the ids of what
+    was made: a picture is not a sentence, and prose invented about one would
+    be the model quoted saying something it never said, while the picture
+    rendered under the prompt says it without anybody having to speak for it.
+
+    A request that came back with nothing marks the prompt instead and leaves
+    no reply, which is what a chat turn does when it dies before its first
+    word. A batch that broke halfway keeps what arrived and says it is less
+    than what was asked for.
     """
     if not session.title:
         # A title somebody chose is theirs. So, deliberately, is the one the
@@ -1264,12 +1285,22 @@ def _record_media(
         # somebody mid-session is how a list stops being somewhere to look
         # things up.
         session.title = chat_service.provisional_title(prompt)
-    if artifact_id:
-        # None when every picture in the batch failed. The name still stands —
-        # an attempt is a record of what was asked for, and the alternative is
-        # the anonymous row this whole change exists to get rid of — but the
-        # session must not point at anything, because nothing exists to point at.
-        session.artifact_id = artifact_id
+    db.add(chat_service.media_prompt(session.id, prompt, unanswered=failed and not made))
+    if made:
+        db.add(
+            chat_service.media_answer(
+                session.id,
+                [artifact.id for artifact in made],
+                model=model,
+                credits=credits,
+                partial=failed,
+            )
+        )
+        # The panel and the 원본 작업 열기 link still open the newest result,
+        # which is what a session-level pointer is for. The transcript keeps
+        # every batch under the prompt that asked for it; this keeps the one
+        # answer to "what did this conversation end up with".
+        session.artifact_id = made[-1].id
     # The sidebar sorts on this. Making something is the clearest case there is
     # of the conversation having been touched.
     session.updated_at = utcnow()
@@ -1377,7 +1408,15 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
 
     if charged:
         settle(db, user, charged, reason="image.generate", session_id=session.id)
-    _record_media(db, session, payload.prompt, made[-1].id if made else None)
+    _record_media(
+        db,
+        session,
+        payload.prompt,
+        made,
+        model=model["id"],
+        credits=charged,
+        failed=failure is not None,
+    )
     await db.commit()
     for artifact in made:
         await db.refresh(artifact)
@@ -1437,6 +1476,13 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             seconds=payload.seconds,
         )
     except audiogen.AudioError as exc:
+        # The request is kept even though nothing came of it. A refusal used to
+        # leave the conversation exactly as empty as a success did, so the
+        # person was returned to a blank screen with no record that they had
+        # asked for anything — and the credits line, which is the only other
+        # trace, says nothing about a call that was never billed.
+        _record_media(db, session, payload.prompt, [], failed=True)
+        await db.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     file_id, key = audiogen.store(user.id, audio)
@@ -1487,7 +1533,9 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
     )
     if charged:
         settle(db, user, charged, reason="audio.generate", session_id=session.id)
-    _record_media(db, session, payload.prompt, artifact.id)
+    _record_media(
+        db, session, payload.prompt, [artifact], model=model["id"], credits=charged
+    )
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -2977,6 +3025,16 @@ async def _enrich(
             if artifact_id:
                 session.artifact_id = artifact_id
                 db.add(session)
+                # And on the turn that made it. The session pointer names the
+                # newest result only, which is what a panel opens — it cannot
+                # say which answer produced which document, so a reloaded
+                # transcript showed a turn claiming "구현했습니다" with the code
+                # nowhere on screen. The timeline said an artifact was written
+                # and nothing linked to it.
+                message = await db.get(Message, message_id) if message_id else None
+                if message is not None:
+                    message.artifact_ids = [*(message.artifact_ids or []), artifact_id]
+                    db.add(message)
         except Exception:  # noqa: BLE001
             log.exception("artifact extraction failed for session %s", session_id)
             artifact_id = None

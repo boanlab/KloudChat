@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.models.chat import Message, Role, TurnFailure
 from app.services import settings_store
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,61 @@ def provisional_title(prompt: str) -> str:
     on which screen made it.
     """
     return " ".join((prompt or "").split())[:TITLE_CHARS]
+
+
+def media_prompt(session_id: str, prompt: str, *, unanswered: bool = False) -> Message:
+    """The person's own sentence, on a surface whose reply is not a sentence.
+
+    Stored for the same reason it is stored everywhere else: it is the half of
+    the conversation somebody wrote themselves, and a screen that swallows it
+    is a screen that lost what they asked for. That it was once left out here
+    is the whole of why these conversations opened blank.
+
+    `unanswered` marks the request that came back with nothing — the model
+    refused, the gateway was down — exactly as a chat turn that dies before its
+    first word marks the question rather than inventing a reply to carry the
+    bad news.
+    """
+    return Message(
+        session_id=session_id,
+        role=Role.user,
+        content=prompt,
+        failure=TurnFailure.no_answer if unanswered else None,
+    )
+
+
+def media_answer(
+    session_id: str,
+    artifact_ids: list[str],
+    *,
+    model: str = "",
+    credits: int = 0,
+    partial: bool = False,
+) -> Message:
+    """What came back, as the thing itself rather than a sentence about it.
+
+    The content is empty on purpose and must stay empty. A picture is not a
+    sentence, and prose written here — "이미지를 만들었습니다" — would be the
+    model quoted saying something no model said. The ids are the answer; the
+    transcript renders them where an answer goes.
+
+    `partial` is the batch that broke in the middle: three of four pictures
+    arrived and the fourth call failed. What arrived is kept and said to be
+    less than what was asked for, which is the same thing a half-written chat
+    answer does with `interrupted`.
+    """
+    return Message(
+        session_id=session_id,
+        role=Role.assistant,
+        content="",
+        artifact_ids=list(artifact_ids),
+        model=model or None,
+        # Only the charge. There are no tokens worth printing under a picture,
+        # and the figure a reader wants beside one they paid for is what it
+        # cost.
+        usage={"credits": credits},
+        failure=TurnFailure.interrupted if partial else None,
+    )
 
 
 async def stream_completion(

@@ -868,8 +868,8 @@ export function Composer({
       return
     }
     if (kind === 'image') {
-      // Not a conversation turn: the result is an artifact, and `send` would
-      // put an empty assistant bubble above the gallery.
+      // A turn like any other, but not a streamed one: the pictures come back
+      // from one call, so `generateImages` writes both halves itself.
       void generateImages(sessionId, text, {
         projectId,
         onSession: (id) => navigate(`/s/${id}`, { replace: true }),

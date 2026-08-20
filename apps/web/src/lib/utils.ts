@@ -1,5 +1,11 @@
 import clsx, { type ClassValue } from 'clsx'
-import type { SessionMade } from '@/types'
+import type {
+  Artifact,
+  AudioArtifact,
+  ImageArtifact,
+  SessionMade,
+  VideoArtifact,
+} from '@/types'
 import { currentLang, currentLocale, translate } from './i18n'
 
 export function cn(...inputs: ClassValue[]) {
@@ -97,6 +103,17 @@ export function madeLine(made: SessionMade | null | undefined, t: (s: string) =>
   const parts = made.count === 1 && seconds ? [`${head} ${seconds}`] : [head, seconds]
   // A ratio reads the same in both languages, so it goes through untranslated.
   return [...parts, made.aspect].filter(Boolean).join(' · ')
+}
+
+/**
+ * An artifact that can be looked at where it stands.
+ *
+ * The line a transcript draws between showing a result and naming one: a
+ * picture, a clip and a player are the reply, so they are rendered in the turn;
+ * a report or a deck has to be opened, so it is offered as a chip.
+ */
+export function isMedia(a: Artifact): a is ImageArtifact | AudioArtifact | VideoArtifact {
+  return a.kind === 'image' || a.kind === 'audio' || a.kind === 'video'
 }
 
 /**

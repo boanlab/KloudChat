@@ -128,6 +128,16 @@ class Message(SQLModel, table=True):
     #: detected value, and is safe to return with the transcript.
     routing: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
+    #: What this turn produced, as artifact ids, for the turns whose answer is
+    #: a thing rather than a sentence — a picture, a clip, a piece of speech.
+    #: The transcript renders them where the answer would be, so nothing has to
+    #: be written *about* the picture in order for the picture to be there.
+    #:
+    #: Ids and not a copy: an artifact is edited, versioned and deleted on its
+    #: own, and a transcript holding its own stale duplicate would be the one
+    #: place in the product showing a version nobody can get back to.
+    artifact_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+
     #: The 시작점 this turn was begun from: `{"templateId": ..., "title": ...}`.
     #: The title travels with the id so a transcript read a year from now still
     #: names the template, whether or not the row behind it survived — and a

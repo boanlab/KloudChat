@@ -101,6 +101,13 @@ async def _poll_until_done(job_id: str) -> None:
 
         if progress.status in ("failed", "error", "canceled"):
             # Not charged: the upstream does not bill for an undelivered clip.
+            #
+            # The prompt keeps no failure mark of its own. Unlike a picture,
+            # a clip has a row of its own that outlives the request, and that
+            # row already carries what broke, that nothing was charged and the
+            # way to try again — under the prompt, where the answer would have
+            # gone. Marking the message too would put the same news in two
+            # places and the way back under the wrong one.
             await _finish(
                 job_id,
                 status=JobStatus.failed,
@@ -176,6 +183,19 @@ async def _poll_until_done(job_id: str) -> None:
                     else estimated
                 )
                 settle(db, user, charged, reason="video.generate", session_id=session_id)
+                # The clip lands in the conversation, under the prompt that
+                # asked for it minutes ago. Written on delivery because until
+                # now there was nothing to write: an answer row naming an
+                # artifact that does not exist yet would render as a turn with
+                # a hole in it.
+                db.add(
+                    chat_service.media_answer(
+                        session_id,
+                        [artifact.id],
+                        model=model_id,
+                        credits=charged,
+                    )
+                )
                 job.status = JobStatus.succeeded
                 job.artifact_id = artifact.id
                 job.credits_used = charged
@@ -268,6 +288,11 @@ async def create_job(
         # never arrives still leaves a record of what was asked for, which is
         # the honest thing for the list to say about it.
         session.title = chat_service.provisional_title(payload.prompt)
+    # The prompt goes into the conversation now, for the same reason the title
+    # does: what the person typed belongs on the screen they typed it on, and
+    # for the next few minutes it is all there is to put there. The card
+    # underneath it is the clip being made; the answer arrives beneath both.
+    db.add(chat_service.media_prompt(session.id, payload.prompt))
     session.updated_at = _now()
     db.add(session)
 

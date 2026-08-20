@@ -599,6 +599,13 @@ export interface MessageRow {
   startedFrom: { templateId: string; title: string } | null
   /** What the reader thought of this answer. Null until somebody says. */
   rating: 'up' | 'down' | null
+  /**
+   * What this turn made, where what it made is the answer — a picture, a clip,
+   * a piece of speech. Null on every turn that answered in words.
+   */
+  artifactIds: string[] | null
+  /** How the turn ended when it did not end in an answer. */
+  failure: 'no_answer' | 'interrupted' | null
   createdAt: string
 }
 

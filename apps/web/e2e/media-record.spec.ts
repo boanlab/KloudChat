@@ -50,7 +50,7 @@ test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page })
     (await (await page.request.get(`/api/sessions/${sessionId}`, { headers })).json()) as {
       title: string
       artifactId: string | null
-      messages: unknown[]
+      messages: { role: string; content: string; artifactIds: string[] | null }[]
       messageCount: number
     }
 
@@ -67,11 +67,16 @@ test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page })
   // Named from the prompt, with no model call: on this surface the prompt is
   // the sentence the person wrote, and there is no reply to summarise.
   expect(after.title).toBe(PROMPT)
-  // And no invented turn. The reply here is an artifact rather than a
-  // sentence, so a stored prompt with nothing answering it would read as a
-  // conversation that broke off.
-  expect(after.messages).toHaveLength(0)
-  expect(after.messageCount).toBe(0)
+  // And the turn itself, which is what makes the conversation readable rather
+  // than merely findable. The prompt as the person's own message, and under it
+  // an answer holding the clip — with no words in it, because nothing spoke.
+  expect(after.messageCount).toBe(2)
+  const [asked, answered] = after.messages
+  expect(asked.role).toBe('user')
+  expect(asked.content).toBe(PROMPT)
+  expect(answered.role).toBe('assistant')
+  expect(answered.content).toBe('')
+  expect(answered.artifactIds).toEqual([after.artifactId])
 
   const artifact = (await (
     await page.request.get(`/api/artifacts/${after.artifactId}`, { headers })
