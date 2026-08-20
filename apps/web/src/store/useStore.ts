@@ -2466,6 +2466,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     messages: raw.messages ? raw.messages.map(toMessage) : (keepMessages ?? []),
     preview: raw.preview,
     messageCount: raw.messageCount,
+    made: raw.made ?? null,
   }
 }
 

@@ -53,6 +53,26 @@ def sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
+#: How much of the opening sentence a provisional title keeps. Long enough to
+#: tell two requests apart in a sidebar, short enough that the row does not
+#: have to truncate it a second time.
+TITLE_CHARS = 40
+
+
+def provisional_title(prompt: str) -> str:
+    """The name a session carries before anything better exists.
+
+    Chat, report and deck sessions overwrite this with `generate_title`'s
+    output once the turn has both halves to summarise. A picture, a clip or a
+    narration never gets that far — there is no reply to summarise, and the
+    prompt already *is* the sentence the person wrote — so on those surfaces
+    this is the final name. One rule rather than two, because two would drift
+    and the sidebar would start naming the same request differently depending
+    on which screen made it.
+    """
+    return " ".join((prompt or "").split())[:TITLE_CHARS]
+
+
 async def stream_completion(
     model: str,
     messages: list[dict[str, Any]],

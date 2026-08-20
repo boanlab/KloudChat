@@ -14,6 +14,7 @@ import type {
   CostRouting,
   Session,
   SessionKind,
+  SessionMade,
   Slide,
   Source,
   Step,
@@ -592,6 +593,8 @@ export interface SessionRow {
   /** Latest message, one line. On list responses because `messages` is not. */
   preview: string | null
   messageCount: number
+  /** What the session produced. Sent only where there is no transcript. */
+  made: SessionMade | null
 }
 
 export const sessionsApi = {

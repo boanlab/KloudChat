@@ -102,6 +102,26 @@ export interface ModelInfo {
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
 export type RoutingMode = 'manual' | 'auto'
 
+/**
+ * What a session produced, when that is all it has to show for itself.
+ *
+ * A picture or clip surface runs no turn, so those sessions hold no messages
+ * and `preview` is null for them. Their title is already the prompt somebody
+ * typed; this is the other half — what came back — and it arrives as
+ * measurements rather than a sentence so the sentence can be written in the
+ * reader's language.
+ */
+export interface SessionMade {
+  /** The noun the row prints. Speech and music are separate although both are
+   *  `audio` artifacts: "내레이션 3개" and "음악 3곡" are not the same row. */
+  kind: 'image' | 'video' | 'narration' | 'music'
+  count: number
+  /** Zero where unknown, and where the artifacts disagree — an unmeasured MP3,
+   *  or two batches shot at two ratios. Nothing is printed for a zero. */
+  seconds: number
+  aspect: string
+}
+
 export interface Session {
   id: string
   kind: SessionKind
@@ -122,6 +142,9 @@ export interface Session {
    */
   preview: string | null
   messageCount: number
+  /** What this conversation made, for the rows `preview` cannot serve. Null
+   *  wherever there is a transcript: the last thing said beats a count of it. */
+  made: SessionMade | null
   /** Artifact this session is currently producing, if any. */
   artifactId: string | null
   /**

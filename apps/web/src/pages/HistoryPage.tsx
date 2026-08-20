@@ -12,7 +12,7 @@ import {
   ReloadNotice,
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
-import { relativeTime } from '@/lib/utils'
+import { madeLine, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -146,6 +146,7 @@ export function HistoryPage() {
         ) : (
           shown.map((s) => {
             const meta = kindMeta[s.kind]
+            const made = madeLine(s.made, t)
             return (
               <Card key={s.id} className="flex items-center gap-3 px-3 py-2.5">
                 {/* 16px 사각형 하나가 전부이던 자리. 지울 대화를 여러 개 고르는
@@ -167,7 +168,13 @@ export function HistoryPage() {
                   <span className="block truncate text-base font-medium">
                     {s.title || t('제목 없는 대화')}
                   </span>
-                  <span className="text-xs text-faint">{relativeTime(s.updatedAt)}</span>
+                  {/* 여기서 고르는 것은 지울 대화다. 언제였는지만으로는 같은
+                      문장으로 만든 영상 일곱 개를 구별할 수 없어서, 무엇이
+                      나왔는지를 같은 줄에 붙인다. 줄 수는 그대로 둔다. */}
+                  <span className="block truncate text-xs text-faint">
+                    {relativeTime(s.updatedAt)}
+                    {made ? ` · ${made}` : ''}
+                  </span>
                 </button>
                 <Badge>{t(meta?.label ?? s.kind)}</Badge>
               </Card>

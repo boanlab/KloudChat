@@ -1149,6 +1149,12 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
+  '이미지 {n}장': '{n} pictures',
+  '영상 {n}개': '{n} clips',
+  '내레이션 {n}개': '{n} narrations',
+  '음악 {n}곡': '{n} tracks',
+
   // ── 왜 눌리지 않는지 ────────────────────────────────────────────
   '이 디자인을 삭제합니다': 'Delete this design',
   '이번 요청에만 적용할 스킬을 고릅니다': 'Choose skills for this request only',
