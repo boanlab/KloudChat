@@ -46,6 +46,7 @@ from app.schemas.workspace import (
     ArtifactVersionOut,
     BlockImage,
     BlockRewrite,
+    BulkDelete,
     DesignExtractIn,
     DesignExtractOut,
     DesignSystemIn,
@@ -112,6 +113,26 @@ async def _own(db: DbSession, model, owner_field: str, user: User, item_id: str)
     if row is None or getattr(row, owner_field) != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return row
+
+
+async def _owned_many(db: DbSession, model, owner_field: str, user: User, ids: list[str]):
+    """The rows among `ids` this account actually owns.
+
+    Silent about the rest rather than 404: a selection made a minute ago can
+    name something already deleted in another tab, and refusing the whole
+    request over it would make a list that is nearly right unusable. The count
+    that comes back says what really went.
+    """
+    if not ids:
+        return []
+    rows = (
+        await db.exec(
+            select(model).where(
+                col(model.id).in_(ids), getattr(model, owner_field) == user.id
+            )
+        )
+    ).all()
+    return list(rows)
 
 
 async def _validate_skill_ids(
@@ -281,10 +302,12 @@ async def patch_project(
     return await _project_out(db, project)
 
 
-@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_project(project_id: str, user: CurrentUser, db: DbSession):
-    project = await _own(db, Project, "user_id", user, project_id)
+async def _remove_project(db: DbSession, project: Project) -> None:
+    """Everything one project takes with it. Uncommitted.
 
+    Shared by the single and bulk routes so the two cannot answer differently
+    about what a delete means.
+    """
     # Knowledge files go with the project; sessions are detached, not deleted.
     for stored in (
         await db.exec(select(StoredFile).where(StoredFile.project_id == project.id))
@@ -296,9 +319,23 @@ async def delete_project(project_id: str, user: CurrentUser, db: DbSession):
     ).all():
         session.project_id = None
         db.add(session)
-
     await db.delete(project)
+
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(project_id: str, user: CurrentUser, db: DbSession):
+    await _remove_project(db, await _own(db, Project, "user_id", user, project_id))
     await db.commit()
+
+
+@router.post("/projects/delete")
+async def delete_projects(payload: BulkDelete, user: CurrentUser, db: DbSession):
+    """Several at once. Returns how many actually went."""
+    rows = await _owned_many(db, Project, "user_id", user, payload.ids)
+    for row in rows:
+        await _remove_project(db, row)
+    await db.commit()
+    return {"deleted": len(rows)}
 
 
 # ══ files ══════════════════════════════════════════════════════════════
@@ -1181,6 +1218,24 @@ async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     await db.commit()
 
 
+@router.post("/artifacts/delete")
+async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession):
+    """Several at once.
+
+    The conversations that produced them are left alone — deleting a document
+    is not a statement about the asking that led to it, and the transcript is
+    still a readable record with a chip that no longer opens.
+    """
+    rows = await _owned_many(db, Artifact, "user_id", user, payload.ids)
+    if not rows:
+        return {"deleted": 0}
+    ids = [row.id for row in rows]
+    await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(ids)))
+    await db.exec(delete(Artifact).where(col(Artifact.id).in_(ids)))
+    await db.commit()
+    return {"deleted": len(ids)}
+
+
 # ══ skills ═════════════════════════════════════════════════════════════
 
 
@@ -1256,6 +1311,15 @@ async def toggle_skill(skill_id: str, user: CurrentUser, db: DbSession):
 async def delete_skill(skill_id: str, user: CurrentUser, db: DbSession):
     await db.delete(await _own(db, Skill, "owner_id", user, skill_id))
     await db.commit()
+
+
+@router.post("/skills/delete")
+async def delete_skills(payload: BulkDelete, user: CurrentUser, db: DbSession):
+    rows = await _owned_many(db, Skill, "owner_id", user, payload.ids)
+    for row in rows:
+        await db.delete(row)
+    await db.commit()
+    return {"deleted": len(rows)}
 
 
 # ══ memories ═══════════════════════════════════════════════════════════
@@ -1428,6 +1492,27 @@ async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
     await db.commit()
     if key:
         await index_client.forget_collection(collection=key)
+
+
+@router.post("/agents/delete")
+async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession):
+    """Several at once, each taking its search index with it.
+
+    The keys are read before the rows go and the collections dropped after the
+    commit — one that fails leaves documents searchable by whoever holds the
+    key, so it is logged rather than swallowed.
+    """
+    rows = await _owned_many(db, Agent, "owner_id", user, payload.ids)
+    keys = [row.index_key for row in rows if row.index_key]
+    for row in rows:
+        await db.delete(row)
+    await db.commit()
+    for key in keys:
+        try:
+            await index_client.forget_collection(collection=key)
+        except Exception:  # noqa: BLE001 — the rows are already gone
+            log.exception("index collection %s outlived its agent", key)
+    return {"deleted": len(rows)}
 
 
 def _attachment(body: bytes, media: str, stem: str, suffix: str) -> Response:
@@ -1903,6 +1988,21 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
     )
     await db.delete(row)
     await db.commit()
+
+
+@router.post("/designs/delete")
+async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
+    """Several at once. Projects wearing any of them fall back to the defaults."""
+    rows = await _owned_many(db, DesignSystem, "owner_id", user, payload.ids)
+    if not rows:
+        return {"deleted": 0}
+    ids = [row.id for row in rows]
+    await db.exec(
+        update(Project).where(col(Project.design_system_id).in_(ids)).values(design_system_id=None)
+    )
+    await db.exec(delete(DesignSystem).where(col(DesignSystem.id).in_(ids)))
+    await db.commit()
+    return {"deleted": len(ids)}
 
 
 # ══ design templates ═══════════════════════════════════════════════════

@@ -116,9 +116,13 @@ export function MyUsagePage() {
                 </span>
               )}
             </p>
-            <div className="mt-3 flex h-28 items-end gap-1">
+            {/* `items-stretch`, not `items-end`: a percentage height needs a
+                parent with a height, and an end-aligned flex item is only as
+                tall as its content. The column is the full 7rem and the bar
+                grows from its floor. */}
+            <div className="mt-3 flex h-28 items-stretch gap-1">
               {daily.map((d) => (
-                <div key={d.date} className="group relative flex-1">
+                <div key={d.date} className="group relative flex flex-1 flex-col justify-end">
                   <div
                     className="rounded-t bg-accent/70 transition-colors group-hover:bg-accent"
                     style={{ height: `${Math.max(2, (d.value / peak) * 100)}%` }}
