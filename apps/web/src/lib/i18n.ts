@@ -863,6 +863,12 @@ const EN: Record<string, string> = {
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
   '워크스페이스 공유': 'Shared with workspace',
   '계정이 있는 사람': 'Anyone with an account',
+  '계정 필요': 'Account required',
+  '열람 기록': 'Who opened it',
+  '열람 기록을 불러오지 못했습니다.': 'Could not load the visits.',
+  '아직 아무도 열지 않았습니다.': 'Nobody has opened it yet.',
+  '계정 없는 방문자': 'Visitor without an account',
+  '주소 없음': 'No address',
   '이 인스턴스에 로그인하면 누구나 열 수 있습니다.':
     'Anyone signed in to this instance can open it.',
   '이 인스턴스에 로그인한 사람은 누구나 이 대화를 열 수 있습니다.':

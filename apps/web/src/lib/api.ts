@@ -542,11 +542,29 @@ export type SharedPayload =
       updatedAt: string
     }
 
+/** One visit to a shared link. */
+export interface ShareViewRow {
+  id: string
+  at: string
+  lastAt: string
+  opens: number
+  /** Empty for a reader with no account here — see `ip`. */
+  name: string
+  email: string
+  /** Empty when the proxy did not forward an address. */
+  ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
+}
+
 export const sharesApi = {
   list: () => call<ShareRow[]>('/shares'),
   create: (payload: { artifactId?: string; sessionId?: string; scope: 'workspace' | 'link' }) =>
     call<ShareRow>('/shares', body(payload)),
   revoke: (id: string) => call<void>(`/shares/${id}`, { method: 'DELETE' }),
+  /** Who has opened this link. Owner only; a revoked link keeps its visits. */
+  views: (id: string) => call<ShareViewRow[]>(`/shares/${id}/views`),
   /** The public read. No token of ours — the URL is the whole permission. */
   read: (token: string) => call<SharedPayload>(`/shared/${token}`),
 }

@@ -180,6 +180,10 @@ class _Db:
             return _Result([self.share])
         if table == "messages":
             return _Result(self.messages)
+        if table == "share_views":
+            # Every read here is a first visit: these tests are about what the
+            # public page discloses, and the visit log is checked by its own.
+            return _Result([])
         raise AssertionError(f"unexpected query: {query}")
 
     def add(self, _row):

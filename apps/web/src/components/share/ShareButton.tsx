@@ -1,10 +1,11 @@
-import { Check, Copy, Globe, Link2, Loader2, Share2, Trash2, Users } from 'lucide-react'
+import { Check, Copy, Globe, Link2, Loader2, MapPin, Share2, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Field, Input, Modal } from '@/components/ui'
-import { errorMessage, sharesApi, type ShareRow } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { errorMessage, sharesApi, type ShareRow, type ShareViewRow } from '@/lib/api'
+import { browserName, cn } from '@/lib/utils'
 import type { Session } from '@/types'
 import { copyText } from '@/lib/clipboard'
+import { currentLocale } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
 
 type Scope = 'workspace' | 'link'
@@ -159,11 +160,12 @@ export function ShareButton({ session }: { session: Session }) {
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
               <Badge tone={share.scope === 'link' ? 'warn' : 'neutral'}>
                 {share.scope === 'link' ? <Globe size={10} /> : <Users size={10} />}
-                {share.scope === 'link' ? t('계정 없이 열림') : t('구성원만')}
+                {share.scope === 'link' ? t('계정 없이 열림') : t('계정 필요')}
               </Badge>
               <span>{t('{n}회 열람').replace('{n}', String(share.views))}</span>
               <span className="text-faint">{t('대화와 결과물만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}</span>
             </div>
+            <ShareViews shareId={share.id} />
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void revoke()}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
               {t('링크 철회')}
@@ -204,5 +206,88 @@ export function ShareButton({ session }: { session: Session }) {
         )}
       </Modal>
     </>
+  )
+}
+
+
+/**
+ * Who has opened this link.
+ *
+ * The count above answers "is anyone reading it". This answers "who", which is
+ * the question somebody actually asks — usually right after realising they
+ * shared the wrong thing, or the right thing with the wrong scope.
+ *
+ * What each row can say depends on how the reader arrived. Signed in, it names
+ * them. Not signed in — which is the entire point of a link share — the
+ * address is the only thing this server ever learned, so the address is what
+ * it says. A row with neither is a reader behind a proxy that forwards
+ * nothing, and it says that too rather than inventing a label.
+ */
+function ShareViews({ shareId }: { shareId: string }) {
+  const t = useT()
+  const [rows, setRows] = useState<ShareViewRow[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    setRows(null)
+    setFailed(false)
+    void sharesApi
+      .views(shareId)
+      .then((r) => live && setRows(r))
+      .catch(() => live && setFailed(true))
+    return () => {
+      live = false
+    }
+  }, [shareId])
+
+  if (failed) return <p className="text-sm text-muted">{t('열람 기록을 불러오지 못했습니다.')}</p>
+  if (rows === null) return <Loader2 size={14} className="animate-spin text-faint" />
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted">{t('아직 아무도 열지 않았습니다.')}</p>
+  }
+
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(currentLocale(), {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+  return (
+    <Field label={t('열람 기록')}>
+      <ul className="divide-y divide-line rounded-card border border-line">
+        {rows.map((v) => {
+          const browser = browserName(v.userAgent)
+          return (
+            <li key={v.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2">
+              <span className="text-base font-medium">
+                {v.name || v.email || t('계정 없는 방문자')}
+              </span>
+              {v.name && v.email && <span className="text-sm text-muted">{v.email}</span>}
+              <span className="ml-auto text-sm text-faint tabular-nums">
+                {when(v.lastAt)}
+                {v.opens > 1 && ` · ${t('{n}회').replace('{n}', String(v.opens))}`}
+              </span>
+              <span className="flex w-full flex-wrap items-center gap-x-2 text-sm text-muted">
+                {v.region && (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin size={11} className="text-faint" />
+                    {v.region}
+                  </span>
+                )}
+                {/* The raw string on hover: the short form drops exactly what
+                    would matter if this ever became a serious question. */}
+                {browser && <span title={v.userAgent}>{browser}</span>}
+                <span className="font-mono text-faint tabular-nums">
+                  {v.ip || t('주소 없음')}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </Field>
   )
 }

@@ -20,22 +20,72 @@ scope does not, which is the case where the recipient has no account here.
 from __future__ import annotations
 
 import secrets
+from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlmodel import col, select
 
-from app.core.deps import CurrentUser, DbSession, current_user
+from app.core.deps import CurrentUser, DbSession, client_ip, current_user
 from app.models.chat import ChatSession, Message
 from app.models.user import utcnow
-from app.models.workspace import Agent, Artifact, Project, Share, ShareScope
+from app.models.workspace import Agent, Artifact, Project, Share, ShareScope, ShareView
 from app.schemas.chat import MessageOut
-from app.schemas.workspace import ShareIn, ShareOut
+from app.schemas.workspace import ShareIn, ShareOut, ShareViewOut
 from app.services import design_templates
 
 router = APIRouter(tags=["shares"])
 
 #: 32 bytes of urlsafe randomness. The token is the entire authorisation.
 _TOKEN_BYTES = 32
+
+#: Repeat opens inside this window are the same visit. A reader refreshing a
+#: long report is one person reading it, and a row per refresh would bury the
+#: other readers under them.
+_VISIT_WINDOW = timedelta(hours=1)
+
+
+async def _record_view(db: DbSession, share: Share, request: Request, viewer) -> None:
+    """Writes down who this was, or the little that can be known about them.
+
+    A signed-in reader is named — the name and email are copied rather than
+    joined, so the record still reads a year from now whether or not the
+    account does. An anonymous one is a `link`-scope recipient, who has no
+    account here by design; their address is all this server ever learns.
+    """
+    ip = client_ip(request)
+    since = utcnow() - _VISIT_WINDOW
+    # Same person, still here: one visit. Identity is the account when there is
+    # one and the address when there is not — an anonymous reader is only ever
+    # their address, so that is what "same reader" can mean for them.
+    same = (
+        (ShareView.viewer_id == viewer.id)
+        if viewer is not None
+        else (col(ShareView.viewer_id).is_(None), ShareView.ip == ip)
+    )
+    conditions = (same,) if not isinstance(same, tuple) else same
+    open_visit = (
+        await db.exec(
+            select(ShareView)
+            .where(ShareView.share_id == share.id, ShareView.last_at >= since, *conditions)
+            .order_by(col(ShareView.last_at).desc())
+        )
+    ).first()
+    if open_visit is not None:
+        open_visit.last_at = utcnow()
+        open_visit.opens += 1
+        db.add(open_visit)
+        return
+
+    db.add(
+        ShareView(
+            share_id=share.id,
+            viewer_id=viewer.id if viewer is not None else None,
+            viewer_name=(getattr(viewer, "name", "") or "") if viewer is not None else "",
+            viewer_email=(getattr(viewer, "email", "") or "") if viewer is not None else "",
+            ip=ip,
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
 
 
 async def _owned_target(db: DbSession, user, payload: ShareIn):
@@ -100,6 +150,27 @@ async def list_shares(user: CurrentUser, db: DbSession):
     return [ShareOut.of(s) for s in rows]
 
 
+@router.get("/shares/{share_id}/views", response_model=list[ShareViewOut])
+async def list_share_views(share_id: str, user: CurrentUser, db: DbSession):
+    """Who has opened this link. Owner only, newest visit first.
+
+    A revoked link keeps its visits: revoking answers "can anyone still read
+    this", and the question that prompted it is usually "who already did".
+    """
+    share = await db.get(Share, share_id)
+    if share is None or share.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    rows = (
+        await db.exec(
+            select(ShareView)
+            .where(ShareView.share_id == share_id)
+            .order_by(col(ShareView.last_at).desc())
+            .limit(200)
+        )
+    ).all()
+    return [ShareViewOut.of(v) for v in rows]
+
+
 @router.delete("/shares/{share_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_share(share_id: str, user: CurrentUser, db: DbSession):
     """Kills the link. The row stays so the owner can still see it existed."""
@@ -122,18 +193,21 @@ async def read_shared(token: str, request: Request, db: DbSession):
     if share is None or share.revoked_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
-    if share.scope is ShareScope.workspace:
-        # Resolved by hand: the route is anonymous for `link` scope, which a
-        # required dependency would 401.
-        try:
-            await current_user(await _identity(request, db))
-        except HTTPException:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="sign_in_required"
-            ) from None
+    # Resolved by hand and never required: the route has to stay open for
+    # `link` scope, which a dependency would 401. Attempted for every scope
+    # though, because a `link` reader who happens to have an account can be
+    # named, and a name is worth more in the log than an address.
+    try:
+        viewer = await current_user(await _identity(request, db))
+    except HTTPException:
+        viewer = None
+
+    if share.scope is ShareScope.workspace and viewer is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="sign_in_required")
 
     share.views += 1
     db.add(share)
+    await _record_view(db, share, request, viewer)
 
     if share.artifact_id:
         artifact = await db.get(Artifact, share.artifact_id)

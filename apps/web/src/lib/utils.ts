@@ -168,3 +168,36 @@ export function fileSize(bytes: number): string {
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
+
+/**
+ * A `User-Agent` string as a person would name the thing.
+ *
+ * Order matters: every browser's UA claims to be several other browsers, so
+ * the specific tokens have to be tested before the ones they impersonate —
+ * Edge before Chrome, Chrome before Safari.
+ *
+ * Returns `''` for anything unrecognised rather than a mangled guess. The row
+ * shows the raw string on hover either way, because the readable form drops
+ * exactly what would matter if the question ever became a serious one.
+ */
+export function browserName(ua: string): string {
+  if (!ua) return ''
+  const browser =
+    /Edg\//.test(ua) ? 'Edge'
+    : /OPR\/|Opera/.test(ua) ? 'Opera'
+    : /SamsungBrowser/.test(ua) ? 'Samsung Internet'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari'
+    : /curl\//.test(ua) ? 'curl'
+    : /python-requests|httpx|axios|Go-http/i.test(ua) ? '스크립트'
+    : ''
+  const platform =
+    /iPhone|iPad/.test(ua) ? 'iOS'
+    : /Android/.test(ua) ? 'Android'
+    : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
+    : /Windows/.test(ua) ? 'Windows'
+    : /Linux/.test(ua) ? 'Linux'
+    : ''
+  return [browser, platform].filter(Boolean).join(' · ')
+}

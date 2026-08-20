@@ -151,6 +151,19 @@ class Settings(BaseSettings):
     #: catalogue, the surface falls back to its cheapest.
     default_chat_model: str = "strict-local/qwen3.6-35b"
 
+    #: The instance's wall clock, as an IANA name. Used for the date given to
+    #: the model and for nothing else — every timestamp in the database stays
+    #: UTC. A model told "today is 2026-08-20" in UTC at 07:00 KST would be a
+    #: day behind for every reader in Seoul, which is the whole reason this is
+    #: configurable rather than hardcoded to UTC.
+    timezone: str = "Asia/Seoul"
+
+    #: Path to a MaxMind GeoLite2 City database. Empty disables region lookup
+    #: entirely — see `services/geoip.py`. Never a network service: resolving
+    #: addresses through a third party would send every visitor's address off
+    #: this instance.
+    geoip_database: str = ""
+
     @property
     def cookie_samesite(self) -> Literal["lax", "none"]:
         # SameSite=None requires Secure; Lax when Secure is off.
