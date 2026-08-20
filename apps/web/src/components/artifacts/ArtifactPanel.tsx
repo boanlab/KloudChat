@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PanelControls } from '@/components/artifacts/PanelControls'
+import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
 import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
@@ -436,6 +437,9 @@ export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'c
           <LintFindings findings={artifact.lint} artifact={artifact} />
           <AddBlockImage artifact={artifact} />
           <RewriteBlock artifact={artifact} />
+          {/* 저장 시점. 블록 하나를 다시 쓰거나 그림을 넣는 것도 편집이라
+              판이 쌓이는데, 여기에는 그 판으로 돌아갈 길이 없었다. */}
+          <VersionHistory artifact={artifact} />
           <PageExport artifact={artifact} />
         </div>
       )}

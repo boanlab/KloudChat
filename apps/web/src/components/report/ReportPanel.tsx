@@ -4,7 +4,6 @@ import {
   Download,
   ExternalLink,
   FileText,
-  History,
   Link2,
   ListTree,
   Loader2,
@@ -21,14 +20,14 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { PanelControls } from '@/components/artifacts/PanelControls'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
-import type { ArtifactVersionRow } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
-import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { cn, formatTokens } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, Source } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { LintFindings } from '@/components/artifacts/LintFindings'
+import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useT } from '@/lib/useT'
 
 /** A passage the reader picked out, and the section it belongs to. */
@@ -162,31 +161,6 @@ export function ReportPanel({
   // Below lg the rail becomes a drawer rather than vanishing: it carries the
   // only signal that the report is still being written.
   const [tocOpen, setTocOpen] = useState(false)
-  const [showVersions, setShowVersions] = useState(false)
-  //: Real history, fetched when the dialog opens — the version number alone
-  //: would print N identical rows.
-  const [versions, setVersions] = useState<ArtifactVersionRow[] | null>(null)
-  const [restoring, setRestoring] = useState<number | null>(null)
-
-  const openVersions = async () => {
-    setShowVersions(true)
-    setVersions(null)
-    setVersions(await artifactsApi.versions(report.id).catch(() => []))
-  }
-
-  const restore = async (version: number) => {
-    setRestoring(version)
-    try {
-      const row = await artifactsApi.restore(report.id, version)
-      const data = (row.data ?? {}) as { sections?: ReportSection[] }
-      report.title = row.title
-      report.version = row.version
-      if (data.sections) report.sections = data.sections
-      setShowVersions(false)
-    } finally {
-      setRestoring(null)
-    }
-  }
   //: Whole-document edit mode. Title, headings and the space between sections
   //: belong to no section, so a per-section editor cannot reach them.
   const [editing, setEditing] = useState(false)
@@ -500,10 +474,12 @@ export function ReportPanel({
           </Button>
           {/* 저장 시점. 되돌릴 수 있다는 사실이 편집 버튼 옆에 붙어 있어야,
               고치기 전에 "잘못 고치면 어쩌지" 를 묻지 않는다. */}
-          <Button size="sm" aria-label={t('버전 기록')} onClick={() => void openVersions()}>
-            <History size={13} />
-            {t('저장 시점')} v{report.version}
-          </Button>
+          <VersionHistory
+            artifact={report}
+            // 되돌린 뒤에도 열려 있는 편집기는 되돌리기 이전의 글을 들고 있다.
+            // 그대로 저장하면 방금 되돌린 일이 취소된다.
+            onRestored={() => openEditor(false)}
+          />
           <PanelControls wide={focus} onToggleWide={onWideChange && toggleFocus} />
           <Button
             variant="ghost"
@@ -738,43 +714,6 @@ export function ReportPanel({
           )}
         </div>
       </div>
-
-      <Modal
-        open={showVersions}
-        onClose={() => setShowVersions(false)}
-        title={t('버전 기록')}
-        description={`${report.title} · ${t('현재')} v${report.version}`}
-      >
-        <div className="space-y-1.5">
-          {versions === null && <p className="text-base text-faint">{t('불러오는 중…')}</p>}
-          {versions?.length === 0 && (
-            <p className="text-base text-faint">{t('아직 저장된 이전 판이 없습니다.')}</p>
-          )}
-          {/* Only superseded revisions come back — the current one is the
-              document on screen, and offering to restore it would be a button
-              that does nothing. */}
-          {versions?.map(({ version: v, summary, createdAt }) => (
-            <div
-              key={v}
-              className="flex items-center gap-3 rounded-card border border-line px-3 py-2.5"
-            >
-              <Badge>v{v}</Badge>
-              <div className="min-w-0 flex-1">
-                <p className="text-base">{summary || t('편집')}</p>
-                <p className="text-xs text-faint">{relativeTime(createdAt)}</p>
-              </div>
-              <Button
-                size="sm"
-                disabled={restoring !== null}
-                aria-label={t('v{n} 로 되돌리기').replace('{n}', String(v))}
-                onClick={() => void restore(v)}
-              >
-                {restoring === v ? t('되돌리는 중…') : t('되돌리기')}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </Modal>
     </div>
   )
 }

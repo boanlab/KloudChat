@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import type { DeckArtifact, FactCheck, Slide } from '@/types'
 import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
+import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -636,6 +637,14 @@ export function DeckPanel({
             {t('텍스트 (노트 포함)')}
           </MenuItem>
         </Dropdown>
+        {/* 저장 시점. 한 장을 고쳐 놓고 원래가 나았다는 것은 고친 뒤에야
+            알게 되고, 그때 되돌릴 곳이 이 줄 말고는 없다. */}
+        <VersionHistory
+          artifact={deck}
+          // 되돌린 덱의 몇째 장인지는 편집기가 열릴 때 잡아 둔 것과 다르다.
+          // 열어 둔 초안을 그대로 저장하면 방금 되돌린 장을 덮어쓴다.
+          onRestored={() => setEditing(false)}
+        />
         <PanelControls wide={width.wide} onToggleWide={width.toggle} onClose={onClose} />
       </header>
 
