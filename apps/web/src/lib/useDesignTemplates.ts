@@ -54,6 +54,7 @@ export function useStartTemplate() {
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const setImageOptions = useStore((s) => s.setImageOptions)
   const setAvOptions = useStore((s) => s.setAvOptions)
+  const setOptionTemplate = useStore((s) => s.setOptionTemplate)
 
   return (row: DesignTemplateRow, prompt: string) => {
     // For a picture or a clip the filled-in sentence *is* the prompt — the
@@ -87,15 +88,29 @@ export function useStartTemplate() {
         // voice chip this was the one default that went nowhere.
         ...(typeof d.voice === 'string' && d.voice ? { voice: d.voice } : {}),
       })
+      // After the write, never before: turning a chip by hand is what tells the
+      // store the values stopped being the template's, and the write above is
+      // that same setter. The bar reads this to say whose values it is showing
+      // — a media 서식 leaves no chip, and these settings outlive the session
+      // it was picked in, so without a name on them a clip made next week comes
+      // out in this shape for no reason anyone can see.
+      setOptionTemplate(row)
       return
     }
     setPendingTemplate(row)
     if (row.kind === 'image') {
-      setImageOptions({
+      const chips = {
         ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
         ...(typeof d.style === 'string' ? { style: d.style } : {}),
         ...(typeof d.count === 'number' ? { count: d.count } : {}),
-      })
+      }
+      setImageOptions(chips)
+      // Same reason, and the same order — but only where it actually set
+      // something. The chip above names the shape while the pick is still
+      // waiting for a turn; the bar takes over once the picture has been asked
+      // for and the pick is spent, since the chips it set stay behind. An a/v
+      // 서식 needs no such test: its write always carries the mode.
+      if (Object.keys(chips).length) setOptionTemplate(row)
     }
   }
 }
