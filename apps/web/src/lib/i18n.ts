@@ -1158,6 +1158,15 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 서식 카탈로그 ───────────────────────────────────────────────
+  '서식': 'Formats',
+  '{n}종 모두 보기': 'See all {n}',
+  '제품이 갖고 있는 결과물의 모양입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
+    'The shapes a result can come out in. Pick one and its screen opens with the example sentence in the composer.',
+  '보여 줄 서식이 없습니다': 'No formats to show',
+  '슬라이드나 보고서를 켜면 그 화면에서 쓸 수 있는 서식이 여기에 나옵니다.':
+    'Turn on slides or reports and the formats those screens can use will appear here.',
+
   // ── 디자인 현관 ─────────────────────────────────────────────────
   '결과물이 어떤 모양으로 나올지 먼저 고릅니다': 'Choose the shape the result comes out in first',
   '결과물이 어떤 모양으로 나올지 고릅니다': 'Choose the shape the result comes out in',

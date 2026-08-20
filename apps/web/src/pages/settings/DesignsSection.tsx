@@ -257,10 +257,10 @@ export function DesignsSection() {
   const setTokens = (patch: Partial<DesignTokens>) =>
     setDraft((d) => ({ ...d, tokens: { ...tokens, ...patch } }))
 
-  // The shape the preview borrows. A deck spends all four tokens at once —
-  // accent on the rules, ink on the title, muted on the caption, the face on
-  // everything — which is why it says more about a look than a document does.
-  // Any seeded template will do where a deck is not offered.
+  //: The shape the preview borrows. A deck spends all four tokens at once —
+  //: accent on the rules, ink on the title, muted on the caption, the face on
+  //: everything — which is why it says more about a look than a document does.
+  //: Any seeded template will do where a deck is not offered.
   const previewTemplate = useStore(
     (s) =>
       s.designTemplates.find((row) => row.kind === 'deck' && row.hasPreview) ??
