@@ -1363,7 +1363,14 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  stopStreaming: () => get().abortStream?.(),
+  stopStreaming: () => {
+    // Said out loud before the socket closes. The server cannot tell 중단 from
+    // a closed tab, and it must: a reader who navigates away still wants the
+    // answer when they come back, and a reader who pressed this does not.
+    const id = get().activeSessionId
+    if (id) void sessionsApi.stop(id).catch(() => undefined)
+    get().abortStream?.()
+  },
 
   // Optimistic, then persisted.
   setSessionTemplate: async (id, templateId) => {

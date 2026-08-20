@@ -2185,46 +2185,48 @@ async def send_message(
         )
 
     return StreamingResponse(
-        _run_turn(
-            user_id=user.id,
-            api_key=api_key,
-            auto_memory=Preferences.of(user).auto_memory,
-            session_id=session.id,
-            model=model,
-            messages=messages,
-            tools=tools,
-            tool_definitions=tool_definitions,
-            # Sampling belongs to the agent, not to the surface. A turn with no
-            # agent passes None and the upstream default stands, exactly as it
-            # did before this was carried at all.
-            temperature=agent_temperature,
-            first_user_message=stored_content,
-            # The question is already committed. A turn that produces no answer
-            # has to come back and say so on this exact row, or the transcript
-            # keeps a prompt with silence under it and no account of why.
-            user_message_id=user_message.id,
-            is_first_turn=is_first_turn,
-            skills_event=skills_event,
-            context_steps=context_steps,
-            routing=privacy_resolution.routing if privacy_resolution else document_routing,
-            quality_model=requested_model if cost_route else None,
-            disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
-            # Guarded organisations mask every persisted model-generated
-            # string, even when the inbound envelope was clean: a provider or
-            # tool can introduce a new email/key in its response.
-            mask_at_rest=policy.pii_masking or policy.external_data_guard,
-            sanitize_tool_output=bool(
-                policy.pii_masking
-                or (
-                    policy.external_data_guard
-                    and privacy_resolution
-                    and not privacy_resolution.strict_local
-                )
-            ),
-            legacy_masking=policy.pii_masking,
-            protect_enrichment=policy.pii_masking or policy.external_data_guard,
-            privacy_audit_id=privacy_audit_id,
-            routing_audit_id=routing_audit_id,
+        _survive_disconnect(
+            _run_turn(
+                user_id=user.id,
+                api_key=api_key,
+                auto_memory=Preferences.of(user).auto_memory,
+                session_id=session.id,
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_definitions=tool_definitions,
+                # Sampling belongs to the agent, not to the surface. A turn with no
+                # agent passes None and the upstream default stands, exactly as it
+                # did before this was carried at all.
+                temperature=agent_temperature,
+                first_user_message=stored_content,
+                # The question is already committed. A turn that produces no answer
+                # has to come back and say so on this exact row, or the transcript
+                # keeps a prompt with silence under it and no account of why.
+                user_message_id=user_message.id,
+                is_first_turn=is_first_turn,
+                skills_event=skills_event,
+                context_steps=context_steps,
+                routing=privacy_resolution.routing if privacy_resolution else document_routing,
+                quality_model=requested_model if cost_route else None,
+                disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
+                # Guarded organisations mask every persisted model-generated
+                # string, even when the inbound envelope was clean: a provider or
+                # tool can introduce a new email/key in its response.
+                mask_at_rest=policy.pii_masking or policy.external_data_guard,
+                sanitize_tool_output=bool(
+                    policy.pii_masking
+                    or (
+                        policy.external_data_guard
+                        and privacy_resolution
+                        and not privacy_resolution.strict_local
+                    )
+                ),
+                legacy_masking=policy.pii_masking,
+                protect_enrichment=policy.pii_masking or policy.external_data_guard,
+                privacy_audit_id=privacy_audit_id,
+                routing_audit_id=routing_audit_id,
+            )
         ),
         media_type="text/event-stream",
         headers={
@@ -2234,6 +2236,59 @@ async def send_message(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+#: Turns being generated right now, by session. Used only by the stop button:
+#: pressing 중단 has to mean something different from closing the tab, and from
+#: the socket alone the two are identical.
+_STOPPING: dict[str, asyncio.Event] = {}
+
+#: Strong references to the tasks driving turns whose reader has gone. Without
+#: this the event loop is the only thing holding them and they are collectible
+#: mid-turn, which is the same bug wearing a different hat.
+_DETACHED: set[asyncio.Task] = set()
+
+
+async def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Lets a turn finish even when nobody is left reading it.
+
+    A streaming response and the work behind it used to be the same task, so
+    closing the tab cancelled the generator at whatever `yield` it was sitting
+    on — and everything after that yield never ran. Everything after it is the
+    part that stores the answer, charges for it and names the conversation.
+
+    Measured before this existed: 232 of 933 chat sessions on one account held
+    a prompt with no reply. None were charged, so nothing was lost but the
+    work. The `no_answer` marker written for exactly this case never fired
+    either, because the line that writes it sits in the same cancelled block.
+
+    So the turn runs in its own task and this only relays what it emits. When
+    the reader leaves, the relay is cancelled and the task is deliberately not:
+    it keeps producing into a queue nobody drains, reaches its own end, and
+    stores what it made. The queue is unbounded, which is affordable because
+    what it holds is one turn's worth of small strings.
+
+    This is the contract the client already documented — "stop aborts the
+    request only; the server still stores what it had produced" — and did not
+    have.
+    """
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def pump() -> None:
+        try:
+            async for event in events:
+                await queue.put(event)
+        except Exception:  # noqa: BLE001 — nobody is left to receive a raise
+            log.exception("detached turn failed")
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(pump())
+    _DETACHED.add(task)
+    task.add_done_callback(_DETACHED.discard)
+
+    while (event := await queue.get()) is not None:
+        yield event
 
 
 async def _run_turn(
@@ -2276,6 +2331,11 @@ async def _run_turn(
     tool_output_findings: dict[tuple[str, str], int] = {}
     actual_model = model["id"]
 
+    # Pressing 중단 sets this. A closed tab does not — that is the whole point
+    # of it being a separate signal from the socket.
+    stopping = asyncio.Event()
+    _STOPPING[session_id] = stopping
+
     ctx = ToolContext(user_id=user_id, session_id=session_id, api_key=api_key)
     masker = governance.mask_legacy if legacy_masking else governance.mask
     strict_local = _strict_model(model)
@@ -2315,6 +2375,13 @@ async def _run_turn(
             disable_fallbacks=disable_fallbacks,
             redact_logging=mask_at_rest,
         ):
+            if stopping.is_set():
+                # Asked to stop, so stop — but fall through to the settling
+                # below rather than unwinding. Half an answer is worth keeping
+                # and the tokens already spent are worth charging for; the
+                # difference from a finished turn is the label on the row.
+                failed = "stopped"
+                break
             if event["type"] == "delta":
                 text_parts.append(event["text"])
             elif event["type"] == "step":
@@ -2477,7 +2544,14 @@ async def _run_turn(
                 # actually looking at, and the row a retry is offered under.
                 question = await db.get(Message, user_message_id) if user_message_id else None
                 if question is not None:
-                    question.failure = TurnFailure.no_answer
+                    # Stopped before the first token is still stopped, not
+                    # unanswered: 답이 오지 않았습니다 under a prompt somebody
+                    # cut off themselves reads as the product failing.
+                    question.failure = (
+                        TurnFailure.interrupted
+                        if failed == "stopped"
+                        else TurnFailure.no_answer
+                    )
                     db.add(question)
             if title:
                 session.title = title
@@ -2573,6 +2647,30 @@ async def _run_turn(
     if title:
         yield chat_service.sse({"type": "title", "title": title})
     yield chat_service.sse({"type": "done"})
+
+    # Only if it is still ours: a second turn on this session has already
+    # replaced it, and popping then would leave that one unstoppable.
+    if _STOPPING.get(session_id) is stopping:
+        del _STOPPING[session_id]
+
+
+@router.post("/{session_id}/stop", status_code=status.HTTP_204_NO_CONTENT)
+async def stop_turn(session_id: str, user: CurrentUser, db: DbSession):
+    """Asks the turn running on this session to stop where it is.
+
+    Separate from closing the connection, because the two mean opposite things.
+    A reader who navigates away still wants the answer when they come back; a
+    reader who presses 중단 wants it to stop. The socket cannot tell them apart,
+    so the button says so out loud before it aborts the request.
+
+    Idempotent, and silent about whether anything was running: by the time this
+    lands the turn has often just finished, and that is not an error worth
+    showing anybody.
+    """
+    await _owned(db, user, session_id)
+    signal = _STOPPING.get(session_id)
+    if signal is not None:
+        signal.set()
 
 
 @router.post("/{session_id}/compare")
