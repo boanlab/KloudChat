@@ -502,14 +502,15 @@ export function DesignsSection() {
                 <Button size="sm" onClick={() => setDraft({ ...row })}>
                   {t('편집')}
                 </Button>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon"
                   aria-label={t('{name} 삭제').replace('{name}', row.name)}
+                  title={t('이 디자인을 삭제합니다')}
                   onClick={() => setConfirming(row)}
-                  className="shrink-0 text-faint hover:text-danger"
                 >
-                  <Trash2 size={13} />
-                </button>
+                  <Trash2 size={14} />
+                </Button>
               </>
             ) : (
               <span className="shrink-0 text-sm text-faint">{t('읽기 전용')}</span>

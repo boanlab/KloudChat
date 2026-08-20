@@ -365,12 +365,14 @@ export function ArtifactsPage() {
         {preview && (
           <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
             {/* 보고서·슬라이드·차트는 자기 머리말에 이 버튼을 갖고 있다. 나머지
-                종류에는 머리말이 없어서, 넓혀 보는 일만 할 수 없었다. */}
+                종류에는 머리말이 없어서, 넓혀 보는 일만 할 수 없었다. HTML은
+                미리보기·소스 탭 줄이 머리말처럼 보이지만 넓히기 버튼은 그 줄이
+                아니라 세션 쪽 패널 껍데기에 있다. 갤러리에는 그 껍데기가 없어,
+                여기서 연 HTML만 좁은 폭에 갇혀 있었다. */}
             {!(
               preview.kind === 'report' ||
               preview.kind === 'deck' ||
-              preview.kind === 'chart' ||
-              preview.kind === 'html'
+              preview.kind === 'chart'
             ) && (
               <header className="flex shrink-0 justify-end border-b border-line px-2 py-1.5">
                 <PanelControls
