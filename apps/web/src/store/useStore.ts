@@ -63,6 +63,7 @@ import type {
   Session,
   Preferences,
   PrivacyAction,
+  PrivacyRouting,
   CodeArtifact,
   DeckArtifact,
   ReportArtifact,
@@ -2586,6 +2587,10 @@ async function streamTurn(
       }
       switch (event.type) {
         case 'privacy_route':
+          if ('findingCounts' in event && event.findingCounts?.length) {
+            const { type: _type, ...routing } = event
+            markPrompt(set, sessionId, routing)
+          }
           patch((m) => ({
             ...m,
             model:
@@ -2801,6 +2806,10 @@ async function runComparison(
       }
       if (e.type === 'privacy_route') {
         if ('effectiveModels' in e) {
+          if (e.findingCounts?.length) {
+            const { type: _type, ...routing } = e
+            markPrompt(set, sessionId, routing)
+          }
           set((s) => ({
             sessions: s.sessions.map((c) =>
               c.id === sessionId
@@ -3354,6 +3363,25 @@ async function streamDeck(
     set({ streaming: false, abortStream: null })
     void get().loadSessions()
   }
+}
+
+/**
+ * Puts the turn's privacy routing on the prompt it was decided for.
+ *
+ * The server writes a detected message masked and keeps the same routing
+ * beside it, so this is what a reload would show anyway. Doing it while the
+ * turn is still running is what lets the transcript admit the substitution
+ * now, instead of at a reopening that may be a week away.
+ */
+function markPrompt(set: Set, sessionId: string, routing: PrivacyRouting) {
+  set((s) => ({
+    sessions: s.sessions.map((c) => {
+      if (c.id !== sessionId) return c
+      const at = c.messages.map((m) => m.role).lastIndexOf('user')
+      if (at < 0) return c
+      return { ...c, messages: c.messages.map((m, i) => (i === at ? { ...m, routing } : m)) }
+    }),
+  }))
 }
 
 function patchMessage(set: Set, sessionId: string, messageId: string, fn: (m: Message) => Message) {

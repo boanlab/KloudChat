@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Paperclip,
   Presentation,
+  ShieldAlert,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -17,6 +18,7 @@ import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
+import { FINDING_LABEL } from '@/lib/privacy'
 import { cn, formatTokens } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
@@ -184,6 +186,15 @@ export function MessageItem({
       (row) => row.id === sessions.find((s) => s.id === sessionId)?.renderTemplateId,
     )
     const startedFrom = message.startedFrom
+    // What the detector found in this sentence, which is also what the stored
+    // copy no longer contains: routers/sessions.py writes the user's Message
+    // masked whenever there is a finding, whichever action was accepted. The
+    // bubble still holds the typed original until the session is reopened, so
+    // the difference is said here rather than discovered a week later by
+    // whoever presses 프롬프트 복사.
+    const redacted = (message.routing?.findingCounts ?? []).filter(
+      (finding) => finding.source === 'current_input',
+    )
     return (
       // A prompt is worth copying as often as an answer is — to run again with
       // one word changed, to paste into a colleague's chat, to keep. It was
@@ -215,6 +226,21 @@ export function MessageItem({
           <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap">
             {message.content}
           </div>
+          {redacted.length > 0 && (
+            <div className="space-y-1 text-right">
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {redacted.map((finding) => (
+                  <Badge key={finding.category} tone="warn">
+                    <ShieldAlert size={10} />
+                    {t(FINDING_LABEL[finding.category] ?? finding.category)} {finding.count}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-sm text-warn">
+                {t('기록에는 가려진 채 저장됩니다. 이 대화를 다시 열면 여기에도 자리표시자만 남습니다.')}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     )

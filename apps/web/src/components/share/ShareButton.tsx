@@ -1,5 +1,5 @@
 import { Check, Copy, Globe, Link2, Loader2, Share2, Trash2, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge, Button, Field, Input, Modal } from '@/components/ui'
 import { errorMessage, sharesApi, type ShareRow } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -24,11 +24,30 @@ const options: { id: Scope; label: string; description: string; icon: typeof Use
   },
 ]
 
+//: The top bar's standing statement, in words rather than in colour alone.
+const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' | 'warn' }> = {
+  workspace: {
+    label: '공유 중',
+    title: '이 인스턴스에 로그인한 구성원이 이 대화를 열 수 있습니다.',
+    tone: 'accent',
+  },
+  link: {
+    label: '링크 공개 중',
+    title: '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.',
+    tone: 'warn',
+  },
+}
+
 /**
  * Read-only sharing of one conversation and the artifacts it produced.
  *
  * Nothing is rendered until the link actually exists: it is minted when the
  * create button is pressed, so the URL on screen is always a working URL.
+ *
+ * The state stands in the top bar beside the button, not behind it. A
+ * conversation anybody with the URL can read must not look like a private one,
+ * and somebody who has forgotten they shared it never opens the dialog to find
+ * out.
  */
 export function ShareButton({ session }: { session: Session }) {
   const t = useT()
@@ -41,6 +60,22 @@ export function ShareButton({ session }: { session: Session }) {
 
   const url = share ? `${window.location.origin}/share/${share.token}` : ''
 
+  // Asked on arrival rather than when the dialog opens, and asked again for
+  // each conversation: the top bar is where the answer has to be.
+  useEffect(() => {
+    let live = true
+    setShare(null)
+    void sharesApi
+      .list()
+      .then((rows) => {
+        if (live) setShare(rows.find((r) => r.sessionId === session.id) ?? null)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [session.id])
+
   const load = async () => {
     setOpen(true)
     setError(null)
@@ -48,7 +83,8 @@ export function ShareButton({ session }: { session: Session }) {
       const rows = await sharesApi.list()
       setShare(rows.find((r) => r.sessionId === session.id) ?? null)
     } catch {
-      setShare(null)
+      // Offline: the button keeps saying what it last knew, which is truer
+      // than saying nothing is shared.
     }
   }
 
@@ -77,6 +113,12 @@ export function ShareButton({ session }: { session: Session }) {
 
   return (
     <>
+      {share && (
+        <Badge tone={sharedState[share.scope].tone} title={t(sharedState[share.scope].title)}>
+          {share.scope === 'link' ? <Globe size={10} /> : <Users size={10} />}
+          {t(sharedState[share.scope].label)}
+        </Badge>
+      )}
       <Button size="sm" onClick={() => void load()} aria-label={t('공유')}>
         <Share2 size={14} />
         {t('공유')}
@@ -89,6 +131,9 @@ export function ShareButton({ session }: { session: Session }) {
         description={session.title}
         footer={<Button variant="primary" onClick={() => setOpen(false)}>{t('완료')}</Button>}
       >
+        <p className="text-sm text-muted">
+          {t('공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.')}
+        </p>
         {share ? (
           <>
             <Field label={t('공유 링크')}>

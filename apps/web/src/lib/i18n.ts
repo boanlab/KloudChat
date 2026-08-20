@@ -1155,6 +1155,23 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 공유 상태와 가려진 기록 ─────────────────────────────────────
+  '공유 중': 'Shared',
+  '링크 공개 중': 'Public link',
+  '이 인스턴스에 로그인한 구성원이 이 대화를 열 수 있습니다.':
+    'Anyone signed in to this instance can open this conversation.',
+  '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.':
+    'Anyone with the link can read this conversation without an account.',
+  '공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.':
+    'Turns added after sharing keep appearing on the link. Revoke it to stop at what is there now.',
+  '기록에는 가려진 채 저장됩니다. 이 대화를 다시 열면 여기에도 자리표시자만 남습니다.':
+    'The stored copy is masked. Reopen this conversation and only the placeholders remain here too.',
+  '전화번호': 'Phone number',
+  '주민 식별번호': 'National ID',
+  '결제카드': 'Payment card',
+  'IP 주소': 'IP address',
+  '개인키': 'Private key',
+
   // ── 에이전트가 정하는 것 ────────────────────────────────────────
   '낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.':
     'Lower answers more consistently, higher more variously. Applies on the chat surface only.',

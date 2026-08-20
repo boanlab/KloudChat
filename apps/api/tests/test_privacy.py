@@ -803,6 +803,54 @@ async def test_mask_raw_and_legacy_upper_bound_actions(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_raw_external_still_carries_what_the_record_was_masked_by(monkeypatch) -> None:
+    """Raw egress is not a raw record.
+
+    `send_raw_external` sends the sentence untouched and stores the Message
+    masked all the same. The transcript explains that substitution from the
+    findings kept on the routing, so they have to survive the one action whose
+    name says nothing was hidden.
+    """
+    monkeypatch.setattr(governance.settings, "jwt_secret", "test-secret-that-is-at-least-32-bytes")
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(user_id=user.id)
+    external = _external_model("external/model")
+    sources = {"current_input": "send person@example.com"}
+    policy = Governance(external_data_guard=True, allow_user_raw_external=True)
+
+    asked = await _resolve_privacy(
+        user=user,
+        session=session,
+        policy=policy,
+        catalogue=[external],
+        requested=[external],
+        sources=sources,
+        explicit_action=None,
+        decision_token=None,
+    )
+    assert isinstance(asked, JSONResponse)
+
+    raw = await _resolve_privacy(
+        user=user,
+        session=session,
+        policy=policy,
+        catalogue=[external],
+        requested=[external],
+        sources=sources,
+        explicit_action="send_raw_external",
+        decision_token=json.loads(asked.body)["decisionToken"],
+    )
+    assert isinstance(raw, _PrivacyResolution)
+    assert raw.mask_outbound is False
+    assert raw.findings
+    assert raw.routing["findingCounts"] == [
+        {"category": "email", "source": "current_input", "count": 1}
+    ]
+    # What is written where the person's sentence used to be.
+    assert governance.mask(sources["current_input"])[0] == "send [이메일]"
+
+
+@pytest.mark.asyncio
 async def test_safe_route_priority_matches_visible_catalogue_order(monkeypatch) -> None:
     monkeypatch.setattr(governance.settings, "jwt_secret", "test-secret-that-is-at-least-32-bytes")
     user = User(email="person@example.test", password_hash="hash", name="Person")
