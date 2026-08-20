@@ -135,7 +135,7 @@ function Intro({
   projectId?: string | null
 }) {
   const t = useT()
-  const { user, send } = useStore()
+  const { user, send, setDraft } = useStore()
   const navigate = useNavigate()
   const meta = kindMeta[kind]
   const Icon = meta.icon
@@ -146,11 +146,23 @@ function Intro({
   // for a session that already exists and already carries a project, a 서식
   // or an agent — passing `null` here started a fresh session and left all
   // three behind, one click after the screen above finished explaining them.
-  const start = (prompt: string) =>
+  //
+  // A picture or a clip is not sent from here at all. Its length, its
+  // resolution and its voice are decided in the composer, and the button that
+  // starts it is down there too, so an example card that fired the request
+  // would be deciding all of that on the person's behalf. It hands them the
+  // sentence instead, which is what the 시작점 gallery two rows below already
+  // does.
+  const start = (prompt: string) => {
+    if (kind === 'image' || kind === 'av') {
+      setDraft(prompt)
+      return
+    }
     void send(sessionId ?? null, kind, prompt, {
       projectId,
       onSession: (id) => navigate(`/s/${id}`, { replace: true }),
     })
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 pb-8">

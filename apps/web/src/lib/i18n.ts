@@ -674,8 +674,6 @@ const EN: Record<string, string> = {
   '{date}에 {n} 크레딧으로 리필됩니다. 남은 크레딧은 이월되지 않습니다. 한도 변경은 관리자에게 문의하세요.':
     'Refills to {n} credits on {date}. Anything left does not carry over. Ask an administrator to change the limit.',
   '{done}/{total} 섹션 · {words} 단어': '{done}/{total} sections · {words} words',
-  '{kind}은(는) 아래 입력창의 만들기 버튼으로 시작해 주세요. 길이와 목소리를 여기서는 정할 수 없습니다.':
-    'Start {kind} with the create button in the composer below. Length and voice cannot be set here.',
   '{list}번 장': 'Slides {list}',
   '{low}~{high} 크레딧 / 초': '{low}–{high} credits / sec',
   '{name} ({email}) 의 대화·프로젝트·아티팩트·메모리·크레딧 기록이 모두 사라지고 LiteLLM 키도 폐기됩니다. 되돌릴 수 없습니다.':
