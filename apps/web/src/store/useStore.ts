@@ -2809,11 +2809,15 @@ async function streamTurn(
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
         case 'artifact':
-          // Load it and open the panel, as opening a session with an artifact
-          // does.
-          void get()
-            .loadArtifacts()
-            .then(() => set({ openArtifactId: event.artifactId }))
+          // The document as well as the listing. A listing row carries a card,
+          // and a card blanks the very field this panel renders — an `html`
+          // artifact's `content` is emptied for the grid, which draws it as a
+          // thumbnail. Opening on the card alone put a finished document on
+          // screen as a white rectangle. The page and deck paths already
+          // fetched both; this one did not.
+          void Promise.all([get().loadArtifacts(), get().refreshArtifact(event.artifactId)]).then(
+            () => set({ openArtifactId: event.artifactId }),
+          )
           break
         case 'step':
           patch((m) => {

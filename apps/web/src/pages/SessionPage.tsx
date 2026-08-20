@@ -156,35 +156,12 @@ function Intro({
   projectId?: string | null
 }) {
   const t = useT()
-  const { user, send, setDraft } = useStore()
-  const navigate = useNavigate()
+  const user = useStore((s) => s.user)
   const meta = kindMeta[kind]
   const Icon = meta.icon
   const agent = useStore((s) =>
     s.agents.find((a) => a.id === s.sessions.find((c) => c.id === sessionId)?.agentId),
   )
-  // Into *this* conversation, not a new one. The empty screen also stands in
-  // for a session that already exists and already carries a project, a 서식
-  // or an agent — passing `null` here started a fresh session and left all
-  // three behind, one click after the screen above finished explaining them.
-  //
-  // A picture or a clip is not sent from here at all. Its length, its
-  // resolution and its voice are decided in the composer, and the button that
-  // starts it is down there too, so an example card that fired the request
-  // would be deciding all of that on the person's behalf. It hands them the
-  // sentence instead, which is what the 시작점 gallery two rows below already
-  // does.
-  const start = (prompt: string) => {
-    if (kind === 'image' || kind === 'av') {
-      setDraft(prompt)
-      return
-    }
-    void send(sessionId ?? null, kind, prompt, {
-      projectId,
-      onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-    })
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 pb-8">
       {/* Pressing 실행 on an agent is a decision about what this conversation
@@ -220,26 +197,6 @@ function Intro({
         )}
       </div>
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
-      {/* The surface's generic openings, unless an agent is driving. An agent
-          is a stance somebody chose on purpose, and "이번 주 회의록 정리해줘"
-          under it is the product talking over them. */}
-      {!agent && (
-        <div
-          role="group"
-          aria-label={t('이렇게 시작해 보세요')}
-          className="grid gap-2 sm:grid-cols-2"
-        >
-          {meta.examples.map((prompt) => (
-            <button
-              key={prompt}
-              onClick={() => start(prompt)}
-              className="animate-fade-up rounded-card border border-line bg-panel px-3.5 py-3 text-left text-base text-muted transition-colors hover:border-line-strong hover:bg-elevated hover:text-fg"
-            >
-              {t(prompt)}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <TemplateGallery kind={kind} />
         {/* The cards are drawn in this project's look, which is the one the

@@ -41,10 +41,6 @@ test('에이전트로 시작하면 그 에이전트가 화면의 주어가 된�
   expect(name).not.toContain('안녕하세요')
   await expect(page.locator('header, [class*="TopBar"]').getByText(name).first()).toBeVisible()
 
-  // And the surface's generic openings are gone: an agent is a stance somebody
-  // chose, and "이번 주 회의록 정리해줘" under it is the product talking over
-  // them.
-  await expect(page.getByRole('group', { name: '이렇게 시작해 보세요' })).toHaveCount(0)
 })
 
 test('프로젝트 안에서 시작하면 무엇을 가지고 시작하는지 적혀 있다', async ({ page }) => {
