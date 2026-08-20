@@ -56,6 +56,11 @@ class AudioRequest(Wire):
     model: str | None = None
     audio_kind: Literal["narration", "music"] = "narration"
     voice: str = "alloy"
+    #: How long the clip should be. No audio model here takes a duration
+    #: parameter, so it is folded into the prompt the way an image's aspect
+    #: ratio is — which makes it a request rather than a setting, and the
+    #: artifact records both what was asked for and what came back.
+    seconds: int = Field(default=0, ge=0, le=300)
 
 
 class VideoJobRequest(Wire):

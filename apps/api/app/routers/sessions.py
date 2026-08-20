@@ -1134,6 +1134,7 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             prompt=payload.prompt,
             speech=speech,
             voice=payload.voice,
+            seconds=payload.seconds,
         )
     except audiogen.AudioError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
@@ -1162,6 +1163,13 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             "jobId": None,
             "prompt": payload.prompt,
             "audioKind": payload.audio_kind,
+            "voice": payload.voice if speech else "",
+            # What was asked for, beside what came back. A length is a phrase
+            # in the prompt rather than a parameter, and the two disagree often
+            # enough that showing only the request would be a claim the clip
+            # does not support — `aspect` and `actualAspect` on the image
+            # surface exist for the same reason.
+            "requestedSec": payload.seconds,
             "durationSec": audiogen.duration_seconds(audio),
             "model": model["id"],
             "transcript": audio.transcript,

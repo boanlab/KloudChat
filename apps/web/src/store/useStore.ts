@@ -333,6 +333,8 @@ interface State {
     aspect: string
     durationSec: number
     audioKind: 'narration' | 'music'
+    /** Narration only: which of the gateway's six voices reads it. */
+    voice: string
     /** Video only. Both are priced separately — see videogen's rate table. */
     resolution: '720p' | '1080p'
     withAudio: boolean
@@ -1341,6 +1343,11 @@ export const useStore = create<State>((set, get) => ({
         model: modelByKind.av || undefined,
         // Speech or music: there is no third kind.
         audioKind: avOptions.audioKind === 'music' ? 'music' : 'narration',
+        // Both were chips on screen that never left the browser: every
+        // narration came back in the default voice, and the length picker
+        // changed a label and nothing else.
+        voice: avOptions.voice,
+        seconds: avOptions.durationSec,
       })
       set((s) => ({
         artifacts: [toArtifact(row), ...s.artifacts],
@@ -1565,6 +1572,7 @@ export const useStore = create<State>((set, get) => ({
     aspect: '16:9',
     durationSec: 4,
     audioKind: 'narration',
+    voice: 'alloy',
     resolution: '720p',
     withAudio: false,
   },

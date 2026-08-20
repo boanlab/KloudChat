@@ -601,7 +601,15 @@ export const sessionsApi = {
   /** One sound clip. Speech and music are different models behind `audioKind`. */
   audio: (
     sessionId: string,
-    payload: { prompt: string; model?: string; audioKind: 'narration' | 'music'; voice?: string },
+    payload: {
+      prompt: string
+      model?: string
+      audioKind: 'narration' | 'music'
+      /** One of the gateway's six; narration only. */
+      voice?: string
+      /** Asked for in the prompt — no audio model here takes a duration. */
+      seconds?: number
+    },
   ) => call<ArtifactRow>(`/sessions/${sessionId}/audio`, body(payload)),
   create: (payload: {
     kind: string

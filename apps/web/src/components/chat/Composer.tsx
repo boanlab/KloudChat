@@ -52,6 +52,9 @@ const AUDIO_KIND_LABEL: Record<(typeof AUDIO_KINDS)[number], string> = {
   music: '음악',
 }
 
+/** The six the gateway accepts. Anything else comes back as `alloy`. */
+const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
+
 type PendingPrivacy = {
   decision: PrivacyDecision
   sessionId: string | null
@@ -169,13 +172,25 @@ function AvOptions() {
         format={(v) => (v === 'audio' ? t('오디오') : t('영상'))}
       />
       {audio ? (
-        <OptionGroup
-          label={t('유형')}
-          value={avOptions.audioKind}
-          options={AUDIO_KINDS}
-          onChange={(v) => setAvOptions({ audioKind: v })}
-          format={(v) => t(AUDIO_KIND_LABEL[v])}
-        />
+        <>
+          <OptionGroup
+            label={t('유형')}
+            value={avOptions.audioKind}
+            options={AUDIO_KINDS}
+            onChange={(v) => setAvOptions({ audioKind: v })}
+            format={(v) => t(AUDIO_KIND_LABEL[v])}
+          />
+          {/* Music has no reader. The chip appears only where it applies,
+              the way the video chips do. */}
+          {avOptions.audioKind === 'narration' && (
+            <OptionGroup
+              label={t('목소리')}
+              value={avOptions.voice}
+              options={VOICES}
+              onChange={(v) => setAvOptions({ voice: v })}
+            />
+          )}
+        </>
       ) : (
         <>
           <OptionGroup

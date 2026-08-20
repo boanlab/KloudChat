@@ -162,6 +162,9 @@ export function DesignGalleryModal({
         ...(d.audioKind === 'narration' || d.audioKind === 'music'
           ? { audioKind: d.audioKind }
           : {}),
+        // A narration template names its reader; until the composer had a
+        // voice chip this was the one default that went nowhere.
+        ...(typeof d.voice === 'string' && d.voice ? { voice: d.voice } : {}),
       })
     }
   }
