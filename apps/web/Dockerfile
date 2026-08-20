@@ -26,4 +26,10 @@ COPY nginx.conf /etc/nginx/templates/default.conf.template
 # not require rebuilding this image.
 ENV KCHAT_API_URL=http://kloudchat-api:8100
 
+# Which hops may name the client in `X-Forwarded-For`. The private ranges plus
+# loopback cover a proxy on the same host, the same Docker network, or the same
+# LAN. Narrow it to the edge proxy's own address wherever this port is
+# reachable by anyone else — see the note in nginx.conf.
+ENV KCHAT_TRUSTED_PROXIES="set_real_ip_from 10.0.0.0/8; set_real_ip_from 172.16.0.0/12; set_real_ip_from 192.168.0.0/16; set_real_ip_from 127.0.0.0/8; set_real_ip_from ::1/128; set_real_ip_from fc00::/7;"
+
 EXPOSE 80

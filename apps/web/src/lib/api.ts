@@ -671,6 +671,14 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
+  /**
+   * Asks the turn on this session to stop where it is.
+   *
+   * Sent before the fetch is aborted, not instead of it: aborting alone only
+   * closes a socket, and a closed socket is what happens when somebody changes
+   * tabs. The server keeps generating for that one.
+   */
+  stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
   /** Which of a comparison's answers the conversation continues from. */
   chooseVariant: (sessionId: string, messageId: string, model: string) =>
     call<MessageRow>(`/sessions/${sessionId}/messages/${messageId}/variant`, body({ model })),
