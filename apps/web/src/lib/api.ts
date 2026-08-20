@@ -835,6 +835,9 @@ export interface ProjectRow {
 }
 
 export const projectsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/projects/delete', body({ ids })),
   list: () => call<ProjectRow[]>('/projects'),
   get: (id: string) => call<ProjectRow>(`/projects/${id}`),
   create: (payload: Partial<ProjectRow> & { name: string }) =>
@@ -859,6 +862,9 @@ function artifactParams(params: ArtifactQuery = {}) {
 }
 
 export const artifactsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/artifacts/delete', body({ ids })),
   /**
    * One page of the gallery, newest first, with the bodies cut down to what a
    * card shows. `partial` marks those rows; `get` is the whole document.
@@ -1030,6 +1036,9 @@ export interface DesignDraftRow {
 }
 
 export const designsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/designs/delete', body({ ids })),
   list: () => call<DesignRow[]>('/designs'),
   /**
    * Reads one out of an uploaded file or a page. Costs a model call and stores
@@ -1167,6 +1176,9 @@ export const designTokensOf = (
 ): DesignTokens | null => designs.find((d) => d.id === designSystemId)?.tokens ?? null
 
 export const skillsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/skills/delete', body({ ids })),
   list: () => call<SkillRow[]>('/skills'),
   create: (payload: Partial<SkillRow> & { name: string }) =>
     call<SkillRow>('/skills', body(payload)),
@@ -1226,6 +1238,9 @@ export interface MemoryRow {
 }
 
 export const agentsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/agents/delete', body({ ids })),
   list: () => call<AgentRow[]>('/agents'),
   create: (payload: Partial<AgentRow> & { name: string }) =>
     call<AgentRow>('/agents', body(payload)),
@@ -1344,6 +1359,9 @@ export interface CatalogEntry {
 }
 
 export const connectorsApi = {
+  /** Several at once. Credentials go with the rows they belong to. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/connectors/delete', body({ ids })),
   catalog: () => call<CatalogEntry[]>('/connectors/catalog'),
   list: () => call<ConnectorRow[]>('/connectors'),
   install: (slug: string, env: Record<string, string> = {}) =>

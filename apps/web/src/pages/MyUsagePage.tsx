@@ -185,11 +185,6 @@ export function MyUsagePage() {
                   </li>
                 )}
               </ul>
-              {other > 0 && (
-                <p className="mt-2 text-xs text-faint">
-                  {t('어느 모델이 썼는지 알 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청이거나, 대화를 지워 남은 단서가 없는 경우입니다.')}
-                </p>
-              )}
             </Card>
             <Card className="p-4">
               <p className="text-base font-medium">{t('화면별')}</p>

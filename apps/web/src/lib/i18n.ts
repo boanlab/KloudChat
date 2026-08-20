@@ -850,6 +850,21 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
   '계정이 있는 사람': 'Anyone with an account',
+  '{n}개 선택됨': '{n} selected',
+  '전체 해제': 'Clear all',
+  '선택 삭제': 'Delete selected',
+  '{n}개를 삭제할까요?': 'Delete {n}?',
+  '{title} {n}개가 사라집니다.': '{n} {title} will be gone.',
+  '되돌릴 수 없습니다.': 'This cannot be undone.',
+  '{name} 선택': 'Select {name}',
+  '결과물': 'Artifacts',
+  '붙여 둔 자료도 함께 지워집니다. 대화는 남고, 프로젝트에서만 빠집니다.':
+    'Their knowledge files go too. Conversations stay, and simply leave the project.',
+  '결과물을 만든 대화는 그대로 남습니다.': 'The conversations that made them stay.',
+  '붙여 둔 자료와 검색 색인도 함께 지워집니다.': 'Their knowledge files and search index go too.',
+  '저장해 둔 인증 정보도 함께 지워집니다.': 'Their stored credentials go too.',
+  '이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.':
+    'Projects wearing them fall back to the default look.',
   '삭제하지 못했습니다.': 'Could not delete.',
   '이 대화들이 만든 결과물도 함께 삭제': 'Also delete what these conversations produced',
   '보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.':
@@ -1133,8 +1148,6 @@ const EN: Record<string, string> = {
   '답변을 받지 못했습니다.': 'No answer came back.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
   '다시 물어보기': 'Ask again',
-  '어느 모델이 썼는지 알 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청이거나, 대화를 지워 남은 단서가 없는 경우입니다.':
-    'Spend no single model can be credited with — a request that compared several at once, or one whose conversation was deleted and left nothing to trace it by.',
 
   // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
   '이미지 {n}장': '{n} pictures',

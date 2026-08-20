@@ -208,11 +208,6 @@ export function AdminUsagePage() {
                 ]}
                 format={cr}
               />
-              {usage.totals.otherCredits > 0 && (
-                <p className="mt-2 text-xs text-faint">
-                  {t('어느 모델이 썼는지 알 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청이거나, 대화를 지워 남은 단서가 없는 경우입니다.')}
-                </p>
-              )}
             </Card>
 
             <div className="grid gap-4 lg:grid-cols-2">

@@ -21,6 +21,7 @@ import { kindMeta, kindOrder } from '@/lib/kinds'
 import { useStableOrder } from '@/lib/useStableOrder'
 import { cn, relativeTime, uid } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Agent } from '@/types'
 import { errorMessage } from '@/lib/api'
@@ -62,6 +63,7 @@ export function AgentsPage() {
     availableTools,
     upsertAgent,
     deleteAgent,
+    deleteMany,
     forkAgent,
     newSession,
     loadWorkspace,
@@ -92,6 +94,8 @@ export function AgentsPage() {
   const ordered = useStableOrder(agents)
   const all = tab === 'store' ? ordered.filter((a) => a.visibility === 'org') : ordered
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
+  // Mine only: somebody else's shared agent is read-only.
+  const pick = useBulkSelect(visible.filter((a) => a.ownerId === user?.id))
 
   // Attached first, then matches; capped, with `skills.length` in the
   // placeholder saying what is hidden. A disabled existing selection remains
@@ -160,10 +164,36 @@ export function AgentsPage() {
           ]}
         />
 
-        <div className="grid gap-3 pt-4 sm:grid-cols-2">
+        <div className="pt-4">
+          <BulkBar
+            count={pick.count}
+            allPicked={pick.allPicked}
+            onToggleAll={pick.toggleAll}
+            onClear={pick.clear}
+            title={t('에이전트')}
+            note={t('붙여 둔 자료와 검색 색인도 함께 지워집니다.')}
+            onDelete={async () => {
+              await deleteMany('agents', pick.ids)
+              pick.clear()
+            }}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
           {visible.map((a) => (
             <Card key={a.id} className="flex flex-col p-4">
               <div className="flex items-start gap-3">
+                {/* Somebody else's shared agent is read-only, so it gets no
+                    checkbox — the delete behind it would 403. */}
+                {a.ownerId === user?.id ? (
+                  <PickBox
+                    checked={pick.picked.has(a.id)}
+                    onChange={() => pick.toggle(a.id)}
+                    label={t('{name} 선택').replace('{name}', t(a.name))}
+                    className="mt-2.5"
+                  />
+                ) : (
+                  <span className="size-4 shrink-0" />
+                )}
                 <span
                   className="grid size-9 shrink-0 place-items-center rounded-card text-white"
                   style={{ background: a.color }}
