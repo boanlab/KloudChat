@@ -145,6 +145,11 @@ class SessionBulkDelete(Wire):
 
     ids: list[str] = []
     all: bool = False
+    #: Delete what the conversations produced as well. Off by default: the
+    #: gallery presents an artifact as a thing in its own right, and a document
+    #: somebody put in a project or shared by link should not disappear because
+    #: the conversation that started it was tidied away.
+    artifacts: bool = False
 
 
 class SessionMade(Wire):

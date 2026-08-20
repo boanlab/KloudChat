@@ -263,7 +263,12 @@ interface State {
   setSessionTemplate: (id: string, templateId: string | null) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   /** Bulk removal from the history screen. Returns how many the server removed. */
-  deleteSessions: (payload: { ids?: string[]; all?: boolean }) => Promise<number>
+  deleteSessions: (payload: {
+    ids?: string[]
+    all?: boolean
+    /** Delete what they produced too. Off unless the reader asked. */
+    artifacts?: boolean
+  }) => Promise<number>
   /** Polls one job until it settles. */
   followJob: (sessionId: string, jobId: string) => Promise<void>
   /** Starts a video and follows it to completion. */
@@ -1573,6 +1578,9 @@ export const useStore = create<State>((set, get) => ({
       activeSessionId: null,
       jobs: payload.all ? [] : s.jobs,
     }))
+    // The gallery holds its own copies, and some of them may have just been
+    // destroyed. Cheaper to re-read than to work out which.
+    if (payload.artifacts) await get().loadArtifacts()
     return deleted
   },
   deleteSession: async (id) => {

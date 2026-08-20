@@ -850,6 +850,10 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
   '계정이 있는 사람': 'Anyone with an account',
+  '삭제하지 못했습니다.': 'Could not delete.',
+  '이 대화들이 만든 결과물도 함께 삭제': 'Also delete what these conversations produced',
+  '보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.':
+    'Reports, slides, images, audio and video. Any shared links to them stop working.',
   '접속기록': 'Access log',
   '접속 위치': 'Where from',
   '브라우저': 'Browser',

@@ -34,7 +34,15 @@ from app.models.chat import (
 )
 from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent as WorkspaceAgent
-from app.models.workspace import AgentVisibility, Artifact, ArtifactKind, Project, StoredFile
+from app.models.workspace import (
+    AgentVisibility,
+    Artifact,
+    ArtifactKind,
+    ArtifactVersion,
+    Job,
+    Project,
+    StoredFile,
+)
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
@@ -1203,6 +1211,13 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
 async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
     await db.exec(delete(Message).where(Message.session_id == session.id))
+    # A clip's job row references the session and nothing cascades it, so a
+    # conversation that made one cannot be deleted until it goes. The clip
+    # itself survives: the artifact is detached, not deleted, and the ledger
+    # keeps the charge. What the job holds is progress and a way to retry,
+    # neither of which means anything without the conversation to sit in.
+    await db.exec(delete(Job).where(Job.session_id == session.id))
+    await db.exec(update(Artifact).where(Artifact.session_id == session.id).values(session_id=None))
     await db.delete(session)
     await db.commit()
 
@@ -1496,11 +1511,27 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
 
     ids = [row.id for row in rows]
     await db.exec(delete(Message).where(col(Message.session_id).in_(ids)))
-    # Artifacts outlive their conversation — detached, not deleted.
-    await db.exec(update(Artifact).where(col(Artifact.session_id).in_(ids)).values(session_id=None))
+    # See `delete_session`: the job row has to go or the delete is refused.
+    await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
+
+    made = (
+        await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(ids)))
+    ).all()
+    if payload.artifacts and made:
+        # Asked for: the versions go first, then the rows. A shared link to one
+        # dies with it — the token points at an artifact, and `shares` cascades.
+        await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(made)))
+        await db.exec(delete(Artifact).where(col(Artifact.id).in_(made)))
+    else:
+        # Detached, not deleted: an artifact is a thing in its own right on the
+        # gallery, and may be in a project or behind a link.
+        await db.exec(
+            update(Artifact).where(col(Artifact.session_id).in_(ids)).values(session_id=None)
+        )
+
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     await db.commit()
-    return {"deleted": len(ids)}
+    return {"deleted": len(ids), "artifactsDeleted": len(made) if payload.artifacts else 0}
 
 
 @router.get("/{session_id}/messages", response_model=list[MessageOut])
