@@ -130,3 +130,24 @@ export function groupByRecency<T extends { updatedAt: string }>(items: T[]) {
   }
   return groups.filter((g) => g.items.length > 0)
 }
+
+/**
+ * A byte count as somebody would say it out loud.
+ *
+ * The server sends `size` as a plain integer, which the attachment chip used to
+ * print verbatim — `2551087` under a filename, a number nobody reads as a
+ * number of anything. Binary units, because that is what a file manager shows
+ * for the same file; one decimal below 10 so 2.4 MB does not round to 2.
+ */
+export function fileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
