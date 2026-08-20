@@ -4,10 +4,22 @@
 
   A class is not a pitch. The room is deep, half of it is writing something
   down, and a slide has to answer "where are we" before it answers anything
-  else. So the step number leads each slide instead of hiding in a corner, the
-  type is set a size larger than the editorial deck, and the `example` layout
-  puts a concept above the case that makes it concrete — the pairing a lecture
-  is actually made of.
+  else. So the step number opens the slide as a pill instead of hiding in a
+  corner, the type is set a size larger than the editorial deck, the content
+  sits centred in the screen, and the `example` layout puts a concept above
+  the case that makes it concrete — the pairing a lecture is actually made of.
+
+  There is deliberately no full-bleed horizontal rule anywhere in here: that
+  is the editorial deck's move, and the moment this one borrows it the two
+  light decks stop being distinguishable across a gallery. What this deck owns
+  is the pill, the highlighter, and the one tinted example panel.
+
+  Colour is derived, never literal: every neutral is a `color-mix` of `--ink`
+  and every tinted surface a `color-mix` of `--accent`, so the deck answers the
+  same way to any accent hue and to a serif or a sans body face. The accent
+  becomes a *surface* in exactly three places — the step pill, the example
+  panel, and the highlighter behind a key term — and each of them carries
+  `print-color-adjust: exact`, because the handout is the same file.
 
   Nothing in here runs, by design: artifacts render in a `sandbox=""` iframe,
   so a keyboard runtime would be dead code that still had to be trusted. The deck
@@ -26,9 +38,13 @@
   :root {
 {{TOKENS}}
     --bg: #ffffff;
-    --board: #f5f4f1;
+    /* Derived, not a literal. A hard-coded board colour stops following the
+       ink the design system chose, which is how a template quietly falls out
+       of its own palette without anybody editing it. */
+    --board: color-mix(in srgb, var(--ink) 5%, #fff);
     --tint: color-mix(in srgb, var(--accent) 8%, #fff);
     --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+    --hair: color-mix(in srgb, var(--ink) 12%, transparent);
     --border: color-mix(in srgb, var(--ink) 14%, transparent);
   }
   *, *::before, *::after { box-sizing: border-box; }
@@ -52,9 +68,16 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    /* Centred, on purpose and unlike the editorial deck: a slide that is
+       read from and copied down should sit where the eye already is. */
     justify-content: center;
     padding: 7vh 7vw 8vh;
     border-bottom: 1px solid var(--border);
+    /* The slide's own `1em`: the body voice, so that every subordinate voice
+       under it — a caption, a note, a definition — lands at 0.84 of what it
+       is subordinate *to* rather than 0.84 of a browser default nothing on
+       this slide is set in. */
+    font-size: clamp(1.05rem, 1.9vw, 1.5rem);
   }
   /* One measure for everything on the slide. A hall projector is wide enough
      to run a sentence past the width anybody can read in one sweep. */
@@ -84,31 +107,35 @@
   h2 {
     margin: 0 0 0.5em;
     font-size: clamp(1.9rem, 4.4vw, 3.2rem);
+    font-weight: 700;
     line-height: 1.12;
     letter-spacing: -0.02em;
     text-wrap: balance;
   }
+  /* A label inside a slide, not a second title: Korean has no upper case, so
+     it is made of tracking and colour rather than `text-transform`. */
   h3 {
     margin: 1.1em 0 0.35em;
     font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+    font-weight: 600;
     letter-spacing: 0.06em;
     color: var(--muted);
   }
   p { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.9vw, 1.5rem); text-wrap: pretty; }
-  small { font-size: 0.78em; color: var(--muted); }
   /* Key terms are what a room copies down, and what somebody looks for later
-     on a photograph of the slide. */
+     on a photograph of the slide. Two of these on a slide is the ceiling —
+     a slide highlighted throughout has highlighted nothing. */
   strong {
     font-weight: 700;
     background: linear-gradient(transparent 62%, var(--accent-soft) 62%);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  li { margin: 0 0 0.65em; font-size: clamp(1.15rem, 2.2vw, 1.9rem); line-height: 1.4;
-       text-wrap: pretty; }
+  li { font-size: clamp(1.15rem, 2.2vw, 1.9rem); line-height: 1.4; text-wrap: pretty; }
+  li + li { margin-top: 0.65em; }
   ul { list-style: none; margin: 0; padding: 0; }
-  ul li { position: relative; padding-left: 1.5em; }
-  ul li::before {
+  ul > li { position: relative; padding-left: 1.5em; }
+  ul > li::before {
     content: "";
     position: absolute;
     left: 0.1em;
@@ -120,12 +147,18 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  ol { margin: 0; padding-left: 1.4em; }
-  ol li::marker { color: var(--accent); font-weight: 700; }
+  /* A numbered list in a class is a procedure, so it is set as steps: the
+     figure carries the accent and a hairline separates one step from the
+     next. Nothing else changes — the square marker would say "list" where
+     the number already says "in this order". */
+  ol { margin: 0; padding-left: 1.5em; }
+  ol > li::marker { color: var(--accent); font-weight: 700;
+                    font-variant-numeric: tabular-nums; }
+  ol > li + li { padding-top: 0.65em; border-top: 1px solid var(--hair); }
   blockquote {
     margin: 0 0 0.7em;
-    padding-left: 0.7em;
-    border-left: 4px solid var(--accent-soft);
+    padding-left: 0.8em;
+    border-left: 3px solid var(--hair);
     font-size: clamp(1.15rem, 2.2vw, 1.7rem);
   }
   table { width: 100%; border-collapse: collapse; font-size: clamp(1rem, 1.7vw, 1.45rem); }
@@ -133,10 +166,33 @@
   td { font-variant-numeric: tabular-nums; }
   th { color: var(--accent); font-weight: 700; border-bottom: 2px solid var(--accent-soft); }
 
+  /* ── the subordinate voice ─────────────────────────────────────── */
+  /* One behaviour for every voice that explains something else: 0.84em,
+     muted, upright, a short measure, 0.5rem under what it explains.
+     Recognising this is how somebody knows a third KloudChat document
+     without being told which template it came from. */
+  figcaption, small, dd, .lead {
+    font-size: 0.84em;
+    line-height: 1.55;
+    color: var(--muted);
+    font-style: normal;
+    max-width: 54ch;
+  }
+  figcaption { margin-top: 0.5rem; }
+  p + small, blockquote + small, figure + small, ul + small, table + small {
+    display: block;
+    margin-top: 0.5rem;
+  }
+
   /* ── cover ─────────────────────────────────────────────────────── */
   /* Sits low, like the board before the class starts. No step marker: the
-     first slide is the one place nobody has to be told where they are. */
-  .slide.cover { background: var(--board); justify-content: flex-end; }
+     first slide is the one place nobody has to be told where they are. The
+     local `font-size` is the scale the lead is 0.84em of. */
+  .slide.cover {
+    background: var(--board);
+    justify-content: flex-end;
+    font-size: clamp(1.25rem, 2.38vw, 1.79rem);
+  }
   .slide.cover .num { display: none; }
   .slide.cover::before {
     content: "";
@@ -148,13 +204,8 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .slide.cover h2 { font-size: clamp(2.2rem, 6vw, 4.2rem); margin-bottom: 0.35em; }
-  .slide.cover .lead {
-    margin: 0;
-    max-width: 54ch;
-    color: var(--muted);
-    font-size: clamp(1.05rem, 2vw, 1.5rem);
-  }
+  .slide.cover h2 { font-size: clamp(2.2rem, 6vw, 4.2rem); margin-bottom: 0; }
+  .slide.cover .lead { margin: 0.5rem 0 0; }
 
   /* ── example: the concept, then the case that carries it ───────── */
   .slide.example > p {
@@ -216,6 +267,8 @@
     font-size: clamp(1.6rem, 4vw, 2.8rem);
     line-height: 1.3;
     text-wrap: balance;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* ── print: one slide per page ─────────────────────────────────── */
@@ -224,19 +277,18 @@
      browser's defaults — an unstyled `<dl>` is how model output starts to
      look like model output. */
   dl { margin: 0 0 1rem; }
-  dt { font-weight: 650; }
-  dd { margin: 0 0 0.5rem; color: var(--muted); }
-  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  dt { font-weight: 700; }
+  dd { margin: 0.5rem 0 0.9rem; }
+  hr { border: 0; border-top: 1px solid var(--hair); margin: 1.4rem 0; }
   /* A picture is a data URI the server embedded; nothing here fetches from
      outside a sandboxed artifact. */
-  figure { margin: 1.2rem 0; text-align: center; }
+  figure { margin: 1.2rem 0; }
   /* A slide is one screen. A portrait picture at full width is twice that,
      and it takes the slide's own box with it — scroll-snap stops landing on
      slide boundaries and print puts one slide across two pages. Height is
      what has to be capped here, not width. */
-  figure img { display: block; margin: 0 auto; max-width: 100%; max-height: 52vh;
+  figure img { display: block; max-width: 100%; max-height: 52vh;
                width: auto; height: auto; }
-  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
   @page { size: A4 landscape; margin: 12mm; }
   @media print {
@@ -254,6 +306,7 @@
     .slide.cover, .slide.quote { background: #fff; }
     .slide.example .ex,
     .slide.example > div { break-inside: avoid; page-break-inside: avoid; }
+    figure img { max-height: 92mm; }
   }
 </style>
 </head>

@@ -1,19 +1,19 @@
 kind = "document"
 name = "안내문·공지"
-description = "근거와 협조 요청, 붙임까지 갖춘 공문 형식의 안내문"
+description = "수신·시행일·근거·붙임을 갖춘 공문. 가운데 정렬 제목에 이중선, 번호와 들여쓰기로 이루어진 계단 하나"
 category = "업무"
 fills = ["알릴 내용", "받는 사람", "시행일"]
-example_prompt = "학과 구성원에게 보낼 안내문을 써 줘. 무엇이 언제부터 달라지는지, 받는 사람이 언제까지 무엇을 해야 하는지 분명히 하고, 마지막에 붙임 자료를 적어 줘.\n\n알릴 내용: "
+example_prompt = "구성원 전체에게 보낼 안내문을 공문 형식으로 써 줘. 무엇에 근거한 안내인지 먼저 밝히고, 무엇이 언제부터 달라지는지, 받는 사람이 언제까지 무엇을 해야 하는지 분명히 하고, 마지막에 붙임 자료를 적어 줘.\n\n알릴 내용: "
 layouts = ["cover", "section"]
 
 # English half of the catalogue. The UI picks a side by language;
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
 name_en = "Notice"
-description_en = "A notice in official form: the grounds, what changes, what to do, what is attached"
+description_en = "A Korean official notice: centred title over a double rule, numbered clauses stepped under their numbers"
 category_en = "Work"
 fills_en = ["What changes", "Recipients", "Effective date"]
-example_prompt_en = "Write a notice for the department. Say what changes and when it takes effect, what the reader has to do and by when, and end with the attachments.\n\nWhat changes: "
+example_prompt_en = "Write this up as an official notice. Give the grounds first, then what changes and when it takes effect, then what the reader has to do and by when, and end with the attachments.\n\nWhat changes: "
 
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'

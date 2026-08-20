@@ -1,10 +1,32 @@
 <!doctype html>
 <!--
-  KloudChat deck seed — signal.
+  KloudChat deck seed — high contrast.
 
-  A dark room deck: high contrast, fewer words, the accent doing the pointing.
-  Same contract as the editorial seed — no script, scroll-snap navigation,
-  one slide per printed page. See `services/design_templates.py`.
+  A hall with the lights down, forty metres to the back row, and the screen is
+  the only light in the room. Two decisions follow from that and everything
+  else is quiet:
+
+  1. One horizontal line, at the same height on every slide. The title hangs
+     off the bottom of it and the body always begins underneath. Turning the
+     page never moves the frame, so a dark room does not flicker.
+  2. The colour is spent once. The cover is a full field of the accent; the
+     fifteen slides after it use the accent for a column label, a single
+     quotation and nothing else. "Nearly black with one bright dot on every
+     slide" is the cliché this deliberately is not.
+
+  There is no literal grey and no literal near-black below: the ground is the
+  project's own ink taken down towards black, and the type is white carrying a
+  trace of the project's accent. Any design system therefore lights the same
+  room in its own colour.
+
+  Printing inverts, and it inverts in one place — `@media print` redefines
+  `--bg` and `--paper`, and every derived value follows. Paper is white, the
+  type is the project's ink, and the accent survives as a rule under the cover
+  title rather than as a full page of toner.
+
+  No script: artifacts render in a `sandbox=""` iframe and the file is also
+  downloaded and opened offline. Navigation is CSS scroll-snap, and `@page`
+  puts one slide on one landscape sheet.
 -->
 <html lang="ko">
 <head>
@@ -14,11 +36,38 @@
 <style>
   :root {
 {{TOKENS}}
-    --bg: #0e1116;
-    --surface: #161b22;
-    --paper: #f5f6f7;
-    --border: rgba(255,255,255,0.10);
+    /* The room, derived rather than picked. */
+    --bg: color-mix(in srgb, var(--ink) 88%, #000);
+    /* White with a trace of the accent in it: the type itself carries the
+       project's colour temperature without ever being coloured. */
+    --paper: color-mix(in srgb, #fff 94%, var(--accent));
+    --dim: color-mix(in srgb, var(--paper) 76%, var(--bg));
+    --border: color-mix(in srgb, var(--paper) 14%, transparent);
+    /* One step up off the ground, not down into it: a panel in a dark room
+       reads by being lighter than the room. */
+    --surface: color-mix(in srgb, var(--bg) 90%, var(--paper));
+    /* The accent twice over, because a design system may hand this template
+       a pale yellow or a navy and both have to work on a black screen. The
+       field is the accent with its lightness capped so white type holds; the
+       text is the accent with its lightness floored so it is legible small.
+       The `color-mix` line is what a browser without relative colour gets. */
+    --accent-field: color-mix(in srgb, var(--accent) 82%, var(--bg));
+    --accent-text: color-mix(in srgb, var(--accent) 76%, var(--paper));
+    /* The one horizontal line, and the space above it the title hangs in. */
+    --rule: 38vh;
+    --pad-x: clamp(1.5rem, 8vw, 6rem);
+    --pad-t: clamp(1.75rem, 5vh, 3.5rem);
   }
+  @supports (color: oklch(from red l c h)) {
+    :root {
+      --accent-field: oklch(from var(--accent) min(l, 0.5) c h);
+      --accent-text: oklch(from var(--accent) max(l, 0.74) c h);
+    }
+  }
+  /* A short screen — a phone in landscape, the gallery card — cannot give
+     the title 38% and still fit a line of body under it. */
+  @media (max-width: 720px), (max-height: 560px) { :root { --rule: 30vh; } }
+
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
@@ -36,62 +85,171 @@
      space; `break-word` is the escape hatch for a token with no space in it,
      such as a path or an identifier. */
   body { word-break: keep-all; overflow-wrap: break-word; }
+
   .slide {
     scroll-snap-align: start;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    padding: 8vh 8vw 10vh;
+    justify-content: flex-start;
+    padding: var(--pad-t) var(--pad-x) clamp(3.5rem, 9vh, 6rem);
     position: relative;
   }
-  /* A projector is wider than anybody reads in one sweep. */
-  .slide > * { max-width: 58rem; }
-  .num {
-    position: absolute; right: 8vw; bottom: 4vh;
-    font-size: 0.75rem; color: rgba(255,255,255,0.35); letter-spacing: 0.12em;
+  /* The line. Absolutely positioned, so it is measured from the slide's own
+     edge and bleeds through the padding on both sides — the one element of
+     the deck that is in the same place on every screen. */
+  .slide::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--rule);
+    height: 1px;
+    background: var(--border);
   }
+  /* A projector is wider than anybody reads in one sweep. */
+  .slide > * { max-width: 62rem; }
+  .num {
+    position: absolute;
+    right: var(--pad-x);
+    bottom: clamp(1.4rem, 4vh, 2.6rem);
+    font-size: 0.8rem;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
+    color: var(--dim);
+  }
+
+  /* ── type ──────────────────────────────────────────────────────────
+     Weight 600 rather than 700: on a bright ground in a dark room the
+     strokes bloom, and a heavy face closes up at the back of the hall. The
+     tracking is tightened to take that back. */
   h2 {
-    margin: 0 0 0.6em;
-    font-size: clamp(1.7rem, 4vw, 3rem);
+    margin: 0;
+    min-height: calc(var(--rule) - var(--pad-t));
+    display: flex;
+    align-items: flex-end;
+    padding-bottom: clamp(0.7rem, 2.2vh, 1.3rem);
+    max-width: 26ch;
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+    font-weight: 600;
     line-height: 1.1;
     letter-spacing: -0.03em;
     text-wrap: balance;
   }
-  h2::after {
-    content: ""; display: block; width: 2.4rem; height: 3px;
-    margin-top: 0.5em; background: var(--accent);
+  /* A label over a column, not a heading with prose of its own. No
+     `text-transform` — Korean has no capitals, and uppercasing the stray
+     English word in a Korean line is the tell of a template that was
+     designed for another language. */
+  h3 {
+    margin: 0 0 0.5em;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--accent-text);
   }
-  /* A tracked, coloured line above the text: an eyebrow, so smaller is
-     right — but it has to carry weight to read as a label. */
-  h3 { margin: 1.2em 0 0.3em; font-size: 0.95rem; font-weight: 700;
-       letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
-  p { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.6vw, 1.25rem);
-      color: rgba(245,246,247,0.82); text-wrap: pretty; }
-  ul, ol { margin: 0; padding-left: 1em; }
-  li { margin: 0 0 0.7em; font-size: clamp(1.05rem, 1.7vw, 1.35rem); text-wrap: pretty; }
-  li::marker { color: var(--accent); }
-  strong { color: #fff; font-weight: 650; }
-  blockquote { margin: 0; font-size: clamp(1.6rem, 3.6vw, 2.6rem); line-height: 1.25;
-               text-wrap: balance; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-  th, td { padding: 0.55em 0.7em; border-bottom: 1px solid var(--border); text-align: left; }
+  p { margin: 0 0 0.7em; font-size: clamp(1.1rem, 1.7vw, 1.35rem);
+      color: var(--dim); text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+  /* The lines are the slide, so they are the largest thing under the rule.
+     The marker is a dash in the same grey as the prose: on this deck the
+     accent is not scattered a dot at a time. */
+  ul { margin: 0; padding-left: 0; list-style: none; }
+  ol { margin: 0; padding-left: 1.3em; }
+  li { margin: 0 0 0.7em; font-size: clamp(1.15rem, 1.9vw, 1.5rem);
+       line-height: 1.4; text-wrap: pretty; }
+  li:last-child { margin-bottom: 0; }
+  ul > li { position: relative; padding-left: 1.5em; }
+  ul > li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--dim);
+  }
+  strong { color: var(--paper); font-weight: 650; }
+  em { font-style: normal; color: var(--paper); }
+  blockquote {
+    margin: 0;
+    font-size: clamp(1.8rem, 3.8vw, 2.8rem);
+    font-weight: 500;
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+  table { width: 100%; border-collapse: collapse;
+          font-size: clamp(0.95rem, 1.4vw, 1.15rem); }
+  th, td { padding: 0.6em 0.8em; border-bottom: 1px solid var(--border);
+           text-align: left; }
+  /* A row of figures is read down the column, not across. */
   td { font-variant-numeric: tabular-nums; }
-  th { color: var(--accent); font-weight: 600; }
+  th { color: var(--dim); font-weight: 600; }
+  thead th { color: var(--paper); font-weight: 700;
+             border-bottom: 2px solid var(--border); }
 
-  .slide.cover { background: linear-gradient(180deg, var(--surface), var(--bg)); }
-  .slide.cover h2 { font-size: clamp(2.1rem, 5.5vw, 4rem); }
-  .slide.cover h2::after { display: none; }
-  .slide.cover .lead { color: rgba(245,246,247,0.6); max-width: 44ch; }
+  /* The subordinate voice, everywhere it appears: a caption, a source, a
+     cover's second line. One size, one colour, one measure, never italic,
+     and half a rem under whatever it explains. Two of these read alike
+     across the whole catalogue; the third is recognisable because of it.
+     On a dark ground the muted token is unreadable, so `--dim` — white
+     stepped back towards the room — plays its part. */
+  figcaption, small, dd, .note, .lead {
+    font-size: 0.85em;
+    line-height: 1.55;
+    font-style: normal;
+    color: var(--dim);
+    max-width: 54ch;
+  }
+  figcaption, .slide .lead, .slide .note { margin-top: 0.5rem; }
+  /* Everything that follows the title starts below the rule. */
+  .slide > h2 + * { margin-top: clamp(1.4rem, 4.5vh, 3rem); }
+  .slide > h2 + .lead { margin-top: 0.5rem; }
 
-  .slide.quote { background: var(--surface); }
-  .slide.quote h2 { font-size: 0.85rem; font-weight: 600; letter-spacing: 0.1em;
-                    text-transform: uppercase; color: rgba(245,246,247,0.45);
-                    margin-bottom: 1.4em; }
-  .slide.quote h2::after { display: none; }
-  .slide.quote blockquote { color: var(--accent); }
+  /* ── cover ─────────────────────────────────────────────────────────
+     The whole field is the accent, once. A little of the ground is mixed in
+     so that a pale accent still carries white type. The rule is gone: the
+     deck opens with colour and then goes quiet, and the only slide with no
+     line is the only slide that is not yet an argument. */
+  .slide.cover {
+    background: var(--accent-field);
+    color: var(--paper);
+  }
+  .slide.cover .num { color: color-mix(in srgb, var(--paper) 70%, transparent); }
+  .slide.cover::before { display: none; }
+  .slide.cover > h2 {
+    display: block;
+    min-height: 0;
+    padding-bottom: 0;
+    margin-top: calc(40vh - var(--pad-t));
+    max-width: 20ch;
+    font-size: clamp(2.2rem, 5.4vw, 3.9rem);
+  }
+  .slide.cover .lead { color: color-mix(in srgb, var(--paper) 78%, transparent); }
 
-  .slide.split .cols { display: grid; gap: 2.5rem; grid-template-columns: 1fr 1fr; }
+  /* ── quote ─────────────────────────────────────────────────────────
+     One sentence, in the middle of a screen with no line across it. The
+     title steps down to a kicker: the sentence is the slide. */
+  .slide.quote { background: var(--surface); justify-content: center; }
+  .slide.quote::before { display: none; }
+  .slide.quote > h2 {
+    display: block;
+    min-height: 0;
+    padding-bottom: 0;
+    max-width: none;
+    margin-bottom: 1.4em;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--dim);
+  }
+  .slide.quote > h2 + * { margin-top: 0; }
+  .slide.quote blockquote { color: var(--accent-text); max-width: 24ch; }
+
+  /* ── split ─────────────────────────────────────────────────────────
+     Two columns under the rule, separated by space alone. A divider here
+     would be a second line arguing with the one line the deck has. */
+  .slide.split .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(2rem, 5vw, 4rem);
+  }
   @media (max-width: 720px) { .slide.split .cols { grid-template-columns: 1fr; } }
 
   /* The rest of the vocabulary `sanitise` lets through. A block that reaches
@@ -100,29 +258,72 @@
      look like model output. */
   dl { margin: 0 0 1rem; }
   dt { font-weight: 650; }
-  dd { margin: 0 0 0.5rem; color: var(--muted); }
-  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  dd { margin: 0 0 0.5rem; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.6rem 0; }
   /* A picture is a data URI the server embedded; nothing here fetches from
      outside a sandboxed artifact. */
-  figure { margin: 1.2rem 0; text-align: center; }
+  figure { margin: 1.2rem 0; }
   /* A slide is one screen. A portrait picture at full width is twice that,
      and it takes the slide's own box with it — scroll-snap stops landing on
      slide boundaries and print puts one slide across two pages. Height is
      what has to be capped here, not width. */
-  figure img { display: block; margin: 0 auto; max-width: 100%; max-height: 52vh;
+  figure img { display: block; margin: 0; max-width: 100%; max-height: 44vh;
                width: auto; height: auto; }
-  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
-  @page { size: A4 landscape; margin: 10mm; }
+  /* ── print: the same deck, inverted ────────────────────────────────
+     Nobody prints a dark deck; a hall deck is handed out as a PDF as often
+     as it is projected. Two custom properties are redefined and everything
+     derived from them turns over with them — the ground becomes paper, the
+     type becomes the project's ink, and `--dim` and `--border` recompute
+     into a readable grey and a hairline without a rule of their own. */
+  @page { size: A4 landscape; margin: 12mm; }
   @media print {
-    /* Printers do not lay ink on the dark; the deck inverts for paper. */
-    body { background: #fff; color: #111; height: auto; overflow: visible; }
-    .slide, .slide.cover, .slide.quote { background: #fff; min-height: auto; height: auto;
-      page-break-after: always; break-after: page; padding: 8mm 10mm; }
+    :root {
+      --bg: #fff;
+      --paper: var(--ink);
+      --surface: #fff;
+      /* The accent turns over with the ground: on paper it has to be dark
+         enough to read, exactly as it had to be light enough on screen. */
+      --accent-text: color-mix(in srgb, var(--accent) 86%, var(--ink));
+    }
+    @supports (color: oklch(from red l c h)) {
+      :root { --accent-text: oklch(from var(--accent) min(l, 0.55) c h); }
+    }
+    body { background: #fff; color: var(--ink); height: auto; overflow: visible; }
+    /* The cover and the quote carry grounds of their own, and a class more
+       than `.slide` does; both are named here or they print a field of ink. */
+    .slide, .slide.cover, .slide.quote {
+      display: block;
+      min-height: auto;
+      height: auto;
+      padding: 8mm 10mm 12mm;
+      background: #fff;
+      color: var(--ink);
+      page-break-after: always;
+      break-after: page;
+    }
     .slide:last-child { page-break-after: auto; break-after: auto; }
-    p { color: #333; }
-    strong { color: #000; }
-    .num { position: static; margin-top: 1.5em; color: #666; }
+    /* The line is drawn by the title on paper: an absolutely positioned rule
+       measured in viewport units has no meaning inside a page box. */
+    .slide::before { display: none; }
+    .slide > h2, .slide.cover > h2, .slide.quote > h2 {
+      display: block;
+      min-height: 0;
+      margin: 0 0 6mm;
+      padding-bottom: 3mm;
+      border-bottom: 1px solid var(--border);
+      font-size: 20pt;
+    }
+    /* The colour that opened the deck survives as a rule rather than as a
+       page of toner a printer may drop anyway. */
+    .slide.cover > h2 { border-bottom: 2pt solid var(--accent-text); font-size: 28pt; }
+    .slide.quote > h2 { font-size: 10pt; letter-spacing: 0.14em; color: var(--muted); }
+    .slide > h2 + * { margin-top: 0; }
+    p, li { font-size: 12pt; }
+    p { color: color-mix(in srgb, var(--ink) 78%, #fff); }
+    blockquote { font-size: 20pt; }
+    figure img { max-height: 90mm; }
+    .num { position: static; display: block; margin-top: 8mm; color: var(--muted); }
   }
 </style>
 </head>

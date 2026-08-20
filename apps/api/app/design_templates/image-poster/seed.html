@@ -1,11 +1,20 @@
 <!doctype html>
 <!--
-  KloudChat image-template card.
+  KloudChat media card: 포스터.
 
-  An image template shapes a prompt; it produces no HTML artifact. What the
-  gallery shows is therefore the recipe, not a picture — showing a sample
-  image here would advertise a result this template cannot promise, since the
-  picture comes from the model and the project's design system.
+  An image template shapes a prompt and produces no HTML artifact, so the
+  gallery has nothing generated to show. It shows the recipe instead, and for
+  a picture template it also shows the frame that recipe is written for.
+
+  This is the one picture template whose result is taller than it is wide, and
+  the card says so before it says anything else: the blueprint stands on its
+  edge in a rail of its own, and the recipe reads down the column beside it.
+  A 4:3 cover ground and a 9:16 poster cannot occupy the same slot, which is
+  what keeps these two cards apart at a glance.
+
+  Drawn in CSS only. The card renders inside a `sandbox=""` frame where nothing
+  executes, is served under `default-src 'none'`, and is downloaded and opened
+  offline — so there is no script here and no request to anywhere.
 -->
 <html lang="ko">
 <head>
@@ -15,36 +24,111 @@
 <style>
   :root {
 {{TOKENS}}
-    --border: color-mix(in srgb, var(--ink) 12%, transparent);
+    /* Every neutral is derived from the ink and every pale plane from the
+       accent, so one design system's colours carry the whole card and no grey
+       literal can drift out of step with them. */
+    --border: color-mix(in srgb, var(--ink) 13%, transparent);
+    --hairline: color-mix(in srgb, var(--ink) 10%, transparent);
+    --wash: color-mix(in srgb, var(--ink) 3%, transparent);
     --tint: color-mix(in srgb, var(--accent) 8%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 38%, transparent);
+    /* One scale for all six media cards, so a narrow panel and a printed page
+       shrink together instead of one heading at a time. */
+    --t-title: clamp(1.05rem, 0.9rem + 0.7vw, 1.45rem);
+    --t-body: 0.92rem;
+    --t-label: 0.75rem;
+    --t-micro: 0.68rem;
+    --gap: 0.7rem;
+    /* Narrow, because the drawing standing in it is 9:16. Its height comes
+       from the ratio, so the rail is the only number that has to be chosen. */
+    --frame-w: 9rem;
   }
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
     background: #fff; color: var(--ink); font-family: var(--font-body);
     line-height: 1.6; -webkit-font-smoothing: antialiased;
-    padding: 1.6rem 1.8rem;
+    padding: clamp(1.2rem, 1rem + 1.4vw, 2rem);
   }
   /* Korean breaks between syllables unless it is told not to, which puts the
      second half of a word on the next line. `keep-all` moves the break to a
      space; `break-word` is the escape hatch for a token with no space in it,
      such as a path or an identifier. */
   body { word-break: keep-all; overflow-wrap: break-word; }
-  h1 { margin: 0 0 0.2rem; font-size: 1.15rem; letter-spacing: -0.01em; }
-  .lead { margin: 0 0 1.2rem; color: var(--muted); font-size: 0.9rem; }
-  .swatch { display: flex; gap: 0.4rem; margin-bottom: 1.2rem; }
-  .swatch span { width: 2.4rem; height: 2.4rem; border-radius: 6px; border: 1px solid var(--border); }
-  section { border: 1px solid var(--border); border-radius: 10px;
-            padding: 0.9rem 1.1rem; margin-bottom: 0.7rem; background: var(--tint); }
-  h2 { margin: 0 0 0.4rem; font-size: 0.8rem; letter-spacing: 0.06em;
-       text-transform: uppercase; color: var(--accent); }
-  p { margin: 0 0 0.4rem; font-size: 0.92rem; }
-  ul { margin: 0; padding-left: 1.1rem; }
-  li { margin: 0 0 0.25rem; font-size: 0.92rem; }
+
+  /* ── the drawing stands, the recipe reads beside it ────────────────── */
+  .stand { display: grid; grid-template-columns: var(--frame-w) minmax(0, 1fr);
+           gap: clamp(1.2rem, 0.6rem + 2.2vw, 2.6rem); align-items: start; }
+  .plan { width: 100%; }
+  .frame { position: relative; width: 100%; aspect-ratio: 9 / 16;
+           border: 1px solid var(--border); background: var(--wash); }
+  /* Top 8%, sides 10%, and stopping at 68% from the bottom: the upper third,
+     which is where a poster's title and date go and where this template
+     therefore asks the picture for nothing. */
+  .frame::after { content: ""; position: absolute; inset: 8% 10% 68%;
+                  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent); }
+  /* The three inks it will be printed in, as a bar rather than three chips:
+     it is a range, not three separate things. */
+  .swatch { display: flex; gap: 0.35rem; margin: 0.4rem 0 0; }
+  .swatch span { flex: 1; height: 1.4rem; border: 1px solid var(--border); }
+  .s-accent { background: var(--accent); }
+  .s-ink { background: var(--ink); }
+  .s-paper { background: color-mix(in srgb, var(--accent) 18%, #fff); }
+  /* The caption law: subordinate voices are muted, a shade smaller, never
+     italic, and sit 0.5rem under the thing they explain. */
+  .note, figcaption, small, dd { display: block; margin: 0.5rem 0 0;
+         font-size: 0.85em; line-height: 1.55; color: var(--muted);
+         max-width: 54ch; font-style: normal; }
+
+  /* ── the recipe, reading down ──────────────────────────────────────── */
+  h1 { margin: 0 0 0.3rem; font-size: var(--t-title); font-weight: 650;
+       letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; }
+  /* Poster is the one picture template that has to describe a mood, so its
+     lead is allowed two lines. It is body size and reads as a lead by colour
+     alone: a half-step down would be a size nobody can tell from it. */
+  .lead { margin: 0 0 1.1rem; font-size: var(--t-body); line-height: 1.6;
+          color: var(--muted); max-width: 54ch; text-wrap: pretty; }
+  /* Blocks are told apart by a hairline above them, not by three boxes; one
+     block per card is filled, and it is always the one that says what the
+     picture may not do. */
+  section { border-top: 1px solid var(--hairline); padding-top: 0.5rem;
+            margin-bottom: 0.75rem; }
+  section:last-child { margin-bottom: 0; }
+  section.keep { background: var(--tint); border-top: 1px solid var(--rule);
+                 padding: 0.5rem 0.8rem 0.65rem; }
+  h2 { margin: 0 0 0.35rem; font-size: var(--t-label); font-weight: 700;
+       letter-spacing: 0.06em; color: var(--accent); }
+  h3 { margin: 0 0 0.3rem; font-size: var(--t-body); font-weight: 650; }
+  p { margin: 0 0 0.4rem; font-size: var(--t-body); text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+  ul, ol { margin: 0; padding-left: 1.05rem; }
+  li { margin: 0 0 0.25rem; font-size: var(--t-body); }
+  li:last-child { margin-bottom: 0; }
   li::marker { color: var(--accent); }
+  hr { border: 0; border-top: 1px solid var(--hairline); margin: 0.8rem 0; }
+  /* Monospace runs large at the same size, so this is an optical match to the
+     body rather than a fourth step. */
   code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
-         background: #fff; border: 1px solid var(--border); border-radius: 4px;
+         background: #fff; border: 1px solid var(--border); border-radius: 3px;
          padding: 0.05rem 0.3rem; }
+
+  /* Too narrow to stand a rail beside a column: the drawing lies back down on
+     top, at a width that still reads as portrait. */
+  @media (max-width: 420px) {
+    .stand { grid-template-columns: 1fr; gap: 1.1rem; }
+    .plan { width: var(--frame-w); }
+  }
+
+  /* The recipe is one page and has to stay one page: a rule split across a
+     sheet break is a rule somebody reads half of. */
+  @page { size: A4 portrait; margin: 16mm; }
+  @media print {
+    body { padding: 0; }
+    h1 { break-after: avoid; }
+    section, .plan { break-inside: avoid; }
+    .frame { background: none; border-color: #999; }
+    code { border-color: #999; }
+  }
 </style>
 </head>
 <body>
