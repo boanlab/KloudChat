@@ -671,7 +671,6 @@ export const useStore = create<State>((set, get) => ({
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
         void get().loadModels()
         void get().loadSessions()
-      void get().loadWorkspace()
         void get().loadWorkspace()
       } catch {
         // No cookie, expired, or the account was suspended — all mean "log in".

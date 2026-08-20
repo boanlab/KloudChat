@@ -488,6 +488,38 @@ def _apply_effective_model(routing: dict[str, Any], model: dict) -> dict[str, An
     }
 
 
+def _substitution_routing(requested: dict, effective: dict) -> dict[str, Any]:
+    """Routing metadata for a fallback made outside the privacy decision.
+
+    Only chat resolves privacy, so only chat had somewhere to record that the
+    model the turn asked for is no longer the model that answered. A report or
+    a deck made the same substitution in silence. This is the note chat stores,
+    cut back to what a substitution on its own knows: no findings, no action,
+    no decision — just the two ids, which is the comparison the transcript's
+    badge makes.
+    """
+    effective_id = effective["id"]
+    boundary = effective.get("dataBoundary") or "unknown"
+    return {
+        "requestedModels": [requested["id"]],
+        "routedModels": [effective_id],
+        "effectiveModels": [effective_id],
+        # The document runners never see a provider-reported id, so the model
+        # they were handed is the whole truth about what ran.
+        "actualModels": [effective_id],
+        "actualModel": effective_id,
+        "action": "none",
+        "dataBoundary": boundary,
+        "modelRoutes": [
+            {
+                "routedModel": effective_id,
+                "actualModel": effective_id,
+                "dataBoundary": boundary,
+            }
+        ],
+    }
+
+
 def _privacy_sources(
     content: str,
     history: list[Message],
@@ -1742,6 +1774,18 @@ async def send_message(
         # same way, and these steps are persisted and re-served.
         context_steps = _mask_text_tree(context_steps, governance.mask_legacy)
 
+    # Chat carries a substitution inside its privacy resolution; report and
+    # slides resolve no privacy, so until this existed the swap happened on
+    # those surfaces with nothing on the turn to carry the news. The document
+    # runners take it from here and store it on their own message, so the badge
+    # that already reads this comparison fires wherever the substitution
+    # happened.
+    document_routing = (
+        _substitution_routing(revoked_model, model)
+        if privacy_resolution is None and revoked_model is not None
+        else None
+    )
+
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
     wire_history = [
         {"role": message.role.value, "content": body}
@@ -1828,7 +1872,7 @@ async def send_message(
         role=Role.user,
         content=stored_content,
         attachments=attachment_meta,
-        routing=privacy_resolution.routing if privacy_resolution else None,
+        routing=privacy_resolution.routing if privacy_resolution else document_routing,
         started_from=workspace.started_from,
     )
     db.add(user_message)
@@ -1931,6 +1975,7 @@ async def send_message(
                 model=model,
                 request=content,
                 project_id=session.project_id,
+                routing=document_routing,
                 template=render_template,
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
@@ -1956,6 +2001,7 @@ async def send_message(
                 model=model,
                 request=content,
                 project_id=session.project_id,
+                routing=document_routing,
                 # The same blocks the chat surface gets. Without this a report
                 # or a deck saw the request sentence alone — no project
                 # instructions, no memories, no attached form.
@@ -1983,6 +2029,7 @@ async def send_message(
                 model=model,
                 request=content,
                 project_id=session.project_id,
+                routing=document_routing,
                 # The same blocks the chat surface gets. Without this a report
                 # or a deck saw the request sentence alone — no project
                 # instructions, no memories, no attached form.
@@ -2019,7 +2066,7 @@ async def send_message(
             is_first_turn=is_first_turn,
             skills_event=skills_event,
             context_steps=context_steps,
-            routing=privacy_resolution.routing if privacy_resolution else None,
+            routing=privacy_resolution.routing if privacy_resolution else document_routing,
             quality_model=requested_model if cost_route else None,
             disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
             # Guarded organisations mask every persisted model-generated
@@ -2896,6 +2943,7 @@ async def _run_page(
     model: dict,
     request: str,
     project_id: str | None,
+    routing: dict[str, Any] | None = None,
     template: design_templates.DesignTemplate,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
@@ -2915,6 +2963,10 @@ async def _run_page(
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
 
+    if routing:
+        # Before the first block of the document, for the same reason chat
+        # sends it first: the model badge on screen is wrong until it arrives.
+        yield chat_service.sse({"type": "privacy_route", **routing})
     if skills_event:
         yield chat_service.sse(skills_event)
     for step in context_steps or ():
@@ -3011,6 +3063,7 @@ async def _run_page(
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
+                        routing=routing,
                     )
                 )
                 settle(db, user, credits, reason="page.generate", session_id=session_id)
@@ -3033,6 +3086,7 @@ async def _run_deck(
     model: dict,
     request: str,
     project_id: str | None,
+    routing: dict[str, Any] | None = None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
     design_tokens: dict[str, str] | None = None,
@@ -3047,6 +3101,10 @@ async def _run_deck(
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
 
+    if routing:
+        # Before the first block of the document, for the same reason chat
+        # sends it first: the model badge on screen is wrong until it arrives.
+        yield chat_service.sse({"type": "privacy_route", **routing})
     if skills_event:
         yield chat_service.sse(skills_event)
     for step in context_steps or ():
@@ -3130,6 +3188,7 @@ async def _run_deck(
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
+                        routing=routing,
                     )
                 )
                 settle(db, user, credits, reason="deck.generate", session_id=session_id)
@@ -3152,6 +3211,7 @@ async def _run_report(
     model: dict,
     request: str,
     project_id: str | None,
+    routing: dict[str, Any] | None = None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
     design_tokens: dict[str, str] | None = None,
@@ -3172,6 +3232,10 @@ async def _run_report(
     #: numbering the prose refers to.
     sources: list[dict] = []
 
+    if routing:
+        # Before the first block of the document, for the same reason chat
+        # sends it first: the model badge on screen is wrong until it arrives.
+        yield chat_service.sse({"type": "privacy_route", **routing})
     if skills_event:
         yield chat_service.sse(skills_event)
     for step in context_steps or ():
@@ -3271,6 +3335,7 @@ async def _run_report(
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
+                        routing=routing,
                     )
                 )
                 settle(db, user, credits, reason="report.generate", session_id=session_id)

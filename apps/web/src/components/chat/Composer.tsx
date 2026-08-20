@@ -196,13 +196,62 @@ function ImageOptions() {
 }
 
 /**
+ * The nearest clip this model is actually priced for, or null when it prices
+ * none at all. Sound is given up first: a silent-only or sound-only model has
+ * made that choice already, while dropping 1080p to 720p is a visible loss the
+ * person would rather be asked about than have taken.
+ */
+function servedVideoShape(
+  rates: Record<string, number>,
+  resolution: '720p' | '1080p',
+  withAudio: boolean,
+): { resolution: '720p' | '1080p'; withAudio: boolean } | null {
+  const keys = Object.keys(rates)
+  if (keys.length === 0) return null
+  const wanted = `${resolution}:${withAudio ? 'sound' : 'silent'}`
+  const key =
+    keys.find((candidate) => candidate === wanted) ??
+    keys.find((candidate) => candidate.startsWith(`${resolution}:`)) ??
+    keys.find((candidate) => candidate.endsWith(withAudio ? ':sound' : ':silent')) ??
+    [...keys].sort((left, right) => rates[left] - rates[right])[0]
+  const [served, sound] = key.split(':')
+  return { resolution: served as '720p' | '1080p', withAudio: sound === 'sound' }
+}
+
+/**
  * One surface, two modalities. `mode` comes first because it decides which of
  * the remaining chips apply — aspect ratio means nothing to a narration track.
  */
 function AvOptions() {
   const t = useT()
-  const { avOptions, setAvOptions } = useStore()
+  const { avOptions, setAvOptions, models, modelByKind } = useStore()
   const audio = avOptions.mode === 'audio'
+  const videoModel = models.find((m) => m.id === modelByKind.av)
+  const shapedFor = useRef<string | null>(null)
+  /**
+   * Turning 종류 to 영상 also changes the model — the store picks one that can
+   * make clips — and the chips are left showing whatever the last clip used.
+   * If that model does not price the combination on screen, the composer
+   * refuses the turn, and the refusal is the first the person hears of a
+   * combination nobody chose. So the chips follow the model here, where the
+   * two are put together, rather than at submit where the mismatch surfaces.
+   * Only when the model itself changes underneath: a chip the person turned
+   * afterwards is their answer, and the estimate line still says so.
+   */
+  useEffect(() => {
+    if (audio || !videoModel || shapedFor.current === videoModel.id) return
+    shapedFor.current = videoModel.id
+    const shape = servedVideoShape(
+      videoModel.creditPerSecond ?? {},
+      avOptions.resolution,
+      avOptions.withAudio,
+    )
+    if (!shape) return
+    if (shape.resolution === avOptions.resolution && shape.withAudio === avOptions.withAudio) {
+      return
+    }
+    setAvOptions(shape)
+  }, [audio, videoModel, avOptions.resolution, avOptions.withAudio, setAvOptions])
   return (
     <>
       <OptionGroup
@@ -285,6 +334,10 @@ export function Composer({
   //: clip is made by its own endpoint, which takes a prompt and the option
   //: chips and has no room for anything else the composer could collect.
   const isMedia = kind === 'image' || kind === 'av'
+  //: Only the chat surface runs a tool loop. A report or a deck writer is
+  //: handed no tools at all, so a lit globe there promised a search that was
+  //: never going to happen — the same reason the two media surfaces hide it.
+  const canWebSearch = kind === 'chat'
   const [value, setValue] = useState('')
   const liveValue = useRef(value)
   liveValue.current = value
@@ -1251,7 +1304,7 @@ export function Composer({
             </Dropdown>
           )}
 
-          {!isMedia && (
+          {canWebSearch && (
             <button
               onClick={() => setWebSearch((w) => !w)}
               aria-pressed={effectiveWebSearch}

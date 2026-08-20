@@ -169,3 +169,39 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
     page.getByText('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.'),
   ).toBeVisible()
 })
+
+test('웹 검색 토글은 검색이 일어날 수 없는 화면에는 없다', async ({ page }) => {
+  // One model every text surface may select, so the composer on each of them
+  // is otherwise complete and the only difference is the toggle itself.
+  await page.route('**/api/models', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue()
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        models: [
+          { ...chatModel('external/one', 'External One'), kinds: ['chat', 'report', 'slides'] },
+        ],
+        litellmAvailable: true,
+        defaultChatModel: 'external/one',
+      }),
+    })
+  })
+  await signIn(page)
+
+  const search = page.getByRole('button', { name: '웹 검색' })
+  await page.goto('/new/chat')
+  await expect(search).toHaveCount(1)
+
+  // A report and a deck writer are handed no tools at all, so the globe over
+  // them was lit for a search that was never going to run. The picture and the
+  // clip surfaces have hidden it for the same reason all along.
+  for (const kind of ['report', 'slides']) {
+    await page.goto(`/new/${kind}`)
+    await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+    await expect(search).toHaveCount(0)
+  }
+})
