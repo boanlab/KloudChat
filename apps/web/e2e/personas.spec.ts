@@ -170,7 +170,11 @@ test.describe('페르소나 커버리지', () => {
               /* governance */
               case 'off-pii':
                 await page.goto('/admin/governance')
-                await probe(page.getByText('개인정보 마스킹')).toBeVisible()
+                // The switch alone, by role and name. A loose text match also
+                // caught the sentence explaining what the policy forbids —
+                // which is rendered or not depending on the policy's own
+                // state, so the probe passed or exploded according to what
+                // some other spec had last left switched on.
                 await probe(page.getByRole('switch', { name: '개인정보 마스킹' })).toBeVisible()
                 break
               case 'off-audit':
@@ -369,7 +373,11 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'grad-version': {
                 await openNewest(page, '보고서')
-                const history = page.getByRole('button', { name: '버전 기록' })
+                // `.first()`, because a conversation shows several artifacts
+                // and each carries its own history — the need is that an
+                // earlier judgement is reachable, not that there is exactly
+                // one of them on screen.
+                const history = page.getByRole('button', { name: '버전 기록' }).first()
                 await probe(history).toBeVisible()
                 await history.click()
                 // Asked of the dialog, not of the page. The old check searched
