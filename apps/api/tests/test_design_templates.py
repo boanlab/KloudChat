@@ -116,6 +116,45 @@ def test_the_card_carries_the_rules_the_result_will_be_read_against():
     assert DesignTemplateOut.of(dt.get("image-poster")).checks == []
 
 
+@pytest.mark.parametrize(
+    "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
+)
+def test_a_template_that_can_hold_code_says_so(template):
+    """The tag list in `instructions.md` is the only list the model reads.
+
+    A seed that styles `<code>` and instructions that do not mention it is a
+    face nothing ever reaches — 최도현 and 오지훈 could not put a command or an
+    exception name into any 서식, and the survey called that the thing to
+    decide before adding another shape.
+    """
+    assert "code" in template.instructions
+
+
+def test_what_is_inside_a_code_element_arrives_as_characters():
+    """Its contents are text. That is the whole of what makes it a `<code>`.
+
+    Every other rule in `sanitise` reads the fragment as markup, so left alone
+    a sample of `<div>` became a real division and one of `<b>` real bold —
+    the quotation stopped being the thing it was quoting.
+    """
+    kept = dt.sanitise("<p>이렇게 <code><div class=\"x\"></code> 쓴다</p>")
+    assert kept == '<p>이렇게 <code>&lt;div class="x"&gt;</code> 쓴다</p>'
+    # A model writes a sample both ways, and neither may be escaped twice.
+    assert dt.sanitise("<code>&lt;b&gt;</code>") == "<code>&lt;b&gt;</code>"
+    assert dt.sanitise("<code>a &amp;&amp; b</code>") == "<code>a &amp;&amp; b</code>"
+    assert dt.sanitise("<code>a & b</code>") == "<code>a &amp; b</code>"
+    # And a script in there is a script somebody is reading about, not one
+    # anything runs — it is shown rather than removed.
+    assert dt.sanitise("<code><script>x()</script></code>") == (
+        "<code>&lt;script&gt;x()&lt;/script&gt;</code>"
+    )
+    # The shape that was refused: a block of it. What is inside a `<pre>` is
+    # whitespace-significant and arbitrarily long, and the file exporters read
+    # markdown lines — a stack trace would arrive re-indented with half of it
+    # read back as a bullet list, which is the loss this batch set out to fix.
+    assert "pre" not in dt._ALLOWED_TAGS
+
+
 def test_the_categories_group_the_catalogue_the_same_way_in_both_languages():
     """The chip row is a filter, so a category is a grouping key, not a label.
 
@@ -151,7 +190,9 @@ def test_a_seed_breaks_korean_lines_between_words(template):
 #: Tags a block may contain that a seed has to have an opinion about. Left
 #: unstyled they render as browser defaults in the middle of a designed page,
 #: which is exactly what makes generated documents look generated.
-_MUST_STYLE = ("h3", "table", "blockquote", "figure", "figcaption", "dl", "dd", "hr")
+_MUST_STYLE = (
+    "h3", "table", "blockquote", "figure", "figcaption", "dl", "dd", "hr", "code",
+)
 
 
 @pytest.mark.parametrize(

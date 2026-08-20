@@ -280,6 +280,19 @@
   dt { font-weight: 700; }
   dd { margin: 0.5rem 0 0.9rem; }
   hr { border: 0; border-top: 1px solid var(--hair); margin: 1.4rem 0; }
+  /* A line of code is a quotation from a machine, so it has to survive being
+     copied out of the page character for character: a fixed-width face, and a
+     field that shows where it starts and where it stops. Inline only — `pre`
+     is not in the vocabulary, so nothing here can grow into a wall. */
+  code {
+    font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    font-size: 0.88em;
+    padding: 0.05em 0.32em;
+    background: var(--tint);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
   /* A picture is a data URI the server embedded; nothing here fetches from
      outside a sandboxed artifact. */
   figure { margin: 1.2rem 0; }

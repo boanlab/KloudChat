@@ -11,10 +11,14 @@
   나눈다. 절 제목은 왼쪽 여백 열에 번호와 함께 서므로 `목적`, `방법`, `결과`, `한계`,
   `측정 조건`처럼 두세 글자로 짧게 짓는다. 긴 제목은 여백 열에서 네 줄이 된다.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, blockquote, table, thead, tbody,
+쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead, tbody,
 tr, th, td, small, figure, figcaption, dl, dt, dd, hr` 뿐이다. `<h2>` 는 쓰지 마라 —
 제목은 따로 붙는다. 그 밖의 태그와 `style`, 링크, 외부 이미지는 버려진다. 쓸 수 있는
 class 는 `lead` 와 `formula` 둘뿐이고, 나머지는 붙여도 아무 일도 일어나지 않는다.
+
+명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
+감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
+가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
 
 ## 측정값
 

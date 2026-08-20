@@ -21,6 +21,10 @@
 - 단서·전제·산출 근거는 `<small>` 한 줄로 그 항목 끝에 붙인다. 그것 때문에
   본문이 길어지면 안 된다.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, blockquote, table, thead,
+쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
 tbody, tr, th, td, small, dl, dt, dd` 뿐이다. `<h2>` 는 쓰지 마라 — 항목 제목은
 따로 붙는다. 그 밖의 태그와 `style`, 링크, 이미지는 버려진다.
+
+명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
+감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
+가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.

@@ -60,6 +60,38 @@ _DOC_BLOCKS = [
     },
 ]
 
+#: The rest of what a document may hold: the cover's own 목적/독자, a margin
+#: note against the paragraph it sources, and a command somebody has to be
+#: able to copy. Every one of these reached the `.html` and stopped there.
+_HELD_BLOCKS = [
+    {
+        "layout": "cover",
+        "title": "서버 교체 검토",
+        "html": (
+            '<p class="lead">2분기 기술 검토</p>'
+            "<dl><dt>목적</dt><dd>교체 여부 판단</dd>"
+            "<dt>독자</dt><dd>인프라팀</dd></dl>"
+        ),
+    },
+    {
+        "layout": "section",
+        "title": "배경",
+        "html": (
+            "<p>보증이 2월에 끝났다.</p>"
+            "<small>구매 계약서 3항, 2026-01-04 확인.</small>"
+            "<p>재기동은 <code>systemctl restart kc-api</code> 로 한다.</p>"
+        ),
+    },
+]
+
+
+def _held_html(template_id: str = "doc-report") -> str:
+    template = dt.get(template_id)
+    blocks = [{**b, "html": dt.sanitise(b["html"])} for b in _HELD_BLOCKS]
+    return dt.render(
+        template, title="서버 교체 검토", tokens=_TOKENS, body=dt.assemble(template, blocks)
+    )
+
 
 def _deck_html(template_id: str = "deck-editorial") -> str:
     template = dt.get(template_id)
@@ -133,6 +165,87 @@ def test_the_one_pager_grid_does_not_swallow_its_cards():
     assert [s["heading"] for s in sections] == ["서버 교체 검토", "배경"]
 
 
+def test_every_tag_the_catalogue_admits_is_accounted_for():
+    """The two vocabularies must not be allowed to drift apart again.
+
+    `small`, `dl`, `dt` and `dd` were admitted by `sanitise` and read by
+    nothing here, so a margin note and a report cover's 목적/독자/기간 reached
+    the `.html` and then not the `.docx`, the `.pdf` or the `.hwpx`. Nothing
+    said so; the reader found out by opening the download. Every tag the
+    catalogue lets through is therefore read for its words, read for its
+    structure, or named as dropped on purpose — and a tag named here that the
+    catalogue has stopped admitting fails this too.
+    """
+    known = (
+        page_export._TEXT_TAGS | page_export._CARRIED_TAGS | page_export._DROPPED_TAGS
+    )
+    assert not dt._ALLOWED_TAGS - known
+    # `h2` is the one the other way round: the block wrapper writes it, so
+    # `sanitise` strips it out of a body while this reader still has to find
+    # it in the assembled document.
+    assert known - dt._ALLOWED_TAGS == {"h2"}
+    assert not page_export._TEXT_TAGS & page_export._CARRIED_TAGS
+    assert not page_export._DROPPED_TAGS & (
+        page_export._TEXT_TAGS | page_export._CARRIED_TAGS
+    )
+
+
+def test_a_margin_note_is_a_note_and_not_the_next_claim():
+    """It sources the paragraph above it, so it has to stay above the next one."""
+    sections = page_export.to_sections(_held_html())
+    lines = sections[1]["content"].split("\n\n")
+
+    assert lines == [
+        "보증이 2월에 끝났다.",
+        "— 구매 계약서 3항, 2026-01-04 확인.",
+        "재기동은 systemctl restart kc-api 로 한다.",
+    ]
+
+
+def test_a_definition_list_is_a_list_of_labelled_items_rather_than_a_table():
+    """Two cells, but a name and what it stands for only read as one line."""
+    cover = page_export.to_sections(_held_html())[0]
+
+    assert "- 목적: 교체 여부 판단" in cover["content"]
+    assert "- 독자: 인프라팀" in cover["content"]
+    # And not as a table: `report_export` would draw the term in a row of its
+    # own, one column wide, which is a definition list somebody has to read
+    # twice to pair up.
+    assert page_export.read(_held_html())[0]["rows"] == []
+
+
+def test_a_dangling_term_is_still_carried():
+    read = page_export.read("<section><h2>ㄱ</h2><dl><dt>기간</dt></dl></section>")
+    assert read[0]["bullets"] == ["기간"]
+
+
+def test_a_hard_line_break_does_not_join_the_two_halves_of_a_line():
+    read = page_export.read("<section><h2>ㄱ</h2><p>앞줄<br />뒷줄</p></section>")
+    assert read[0]["paragraphs"] == ["앞줄 뒷줄"]
+
+
+def test_a_note_on_a_slide_goes_where_a_presentation_keeps_one():
+    """No slide layout has a subordinate voice; the notes pane is the one place."""
+    blocks = [
+        {
+            "layout": "quote",
+            "title": "한 줄",
+            "html": (
+                "<blockquote>점검하지 않은 장비는 없는 장비다</blockquote>"
+                "<small>3팀 토의 정리, 5주차</small>"
+            ),
+        }
+    ]
+    template = dt.get("deck-editorial")
+    html = dt.render(
+        template, title="t", tokens=_TOKENS, body=dt.assemble(template, blocks)
+    )
+    slide = page_export.to_slides(html)[0]
+
+    assert slide["body"] == "점검하지 않은 장비는 없는 장비다"
+    assert slide["notes"] == "3팀 토의 정리, 5주차"
+
+
 def test_markup_that_is_not_ours_yields_nothing_rather_than_raising():
     assert page_export.to_slides("<p>그냥 문단</p>") == []
     assert page_export.read("") == []
@@ -198,6 +311,36 @@ def test_both_document_templates_reach_every_report_format(template_id):
     assert report_export.to_docx("t", sections, tokens=_TOKENS)[:2] == b"PK"
     assert report_export.to_pdf("t", sections, tokens=_TOKENS)[:4] == b"%PDF"
     assert report_export.to_hwpx("t", sections, tokens=_TOKENS)[:2] == b"PK"
+
+
+def _docx_text(blob: bytes) -> str:
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        return archive.read("word/document.xml").decode()
+
+
+def _hwpx_text(blob: bytes) -> str:
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        return archive.read("Contents/section0.xml").decode()
+
+
+@pytest.mark.parametrize("template_id", ["doc-report", "doc-lab", "doc-brief"])
+def test_nothing_a_document_may_hold_is_dropped_on_the_way_to_a_file(template_id):
+    """The whole point of the vocabulary check above, read end to end.
+
+    A reader who downloads the report has to find the same words in it as the
+    one who read it in the browser — the cover's own facts, the source line
+    beside the figure, and the command they were told to run.
+    """
+    sections = page_export.to_sections(_held_html(template_id))
+    for text in (
+        _docx_text(report_export.to_docx("t", sections, tokens=_TOKENS)),
+        _hwpx_text(report_export.to_hwpx("t", sections, tokens=_TOKENS)),
+    ):
+        assert "교체 여부 판단" in text
+        assert "구매 계약서 3항" in text
+        assert "systemctl restart kc-api" in text
+    # The PDF is compressed, so it is checked for building rather than read.
+    assert report_export.to_pdf("t", sections, tokens=_TOKENS)[:4] == b"%PDF"
 
 
 def test_a_dark_template_presents_on_a_dark_ground():

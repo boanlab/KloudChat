@@ -15,10 +15,14 @@ layout 은 다섯 가지다.
 - `split` — 둘을 나란히 견줄 때. `<div class="cols"><div><h3>이름</h3>…</div><div><h3>이름</h3>…</div></div>` 두 칸은 칸막이 없이 여백으로만 갈리므로 각 칸에 `<h3>` 이름을 반드시 붙인다.
 - `table` — 수치나 항목 비교. `<table>` 하나. 열은 세 개까지. 지어낸 숫자는 쓰지 않는다.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, blockquote, table, thead,
+쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
 tbody, tr, th, td, div` 뿐이다. `<h2>` 는 쓰지 마라 — 장 제목은 따로 붙는다.
 쓸 수 있는 `class` 는 `lead` 와 `cols` 둘뿐이고, 그 밖의 태그와 `class`,
 `style`, 링크, 이미지는 버려진다.
+
+명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
+감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
+가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
 
 - 슬라이드는 읽는 글이 아니라 보는 화면이다. 문단을 늘어놓지 않는다.
 - 같은 layout 이 네 장 넘게 이어지면 발표가 지루해진다. `quote` 는 전체에서 최대 2장.

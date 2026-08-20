@@ -69,6 +69,16 @@ _LEADING_EMOJI = re.compile(
 
 _TAGS = re.compile(r"<[^>]+>")
 
+#: Where one line of an HTML block ends. `h3` is not here: a column label is a
+#: signpost over the items, not one of them, and counting it made an editorial
+#: `split` slide of two labels over four items read as six lines — `crowded`
+#: against a bound the slide was well inside.
+_LINE_END = re.compile(r"</(?:li|p|blockquote|td)>")
+#: The label itself, lifted out before the lines are cut so its words are still
+#: read — a placeholder or an emoji in a column heading is exactly the kind of
+#: thing this file is for — and so it does not run into the line after it.
+_LABEL = re.compile(r"<h3\b[^>]*>(.*?)</h3\s*>", re.S | re.I)
+
 
 @dataclass(frozen=True, slots=True)
 class Finding:
@@ -94,10 +104,15 @@ class Part:
 
     title: str
     lines: list[str] = field(default_factory=list)
+    #: Headings *inside* the part — a column label, a sub-heading. Read like
+    #: every other word, but never counted as an item: what the shape rules
+    #: bound is how much a reader has to get through, and a two-word signpost
+    #: is what makes the items under it readable rather than another of them.
+    labels: list[str] = field(default_factory=list)
 
     @property
     def text(self) -> str:
-        return " ".join([self.title, *self.lines]).strip()
+        return " ".join([self.title, *self.labels, *self.lines]).strip()
 
 
 def _plain(markup: str) -> str:
@@ -132,12 +147,14 @@ def from_blocks(blocks: list[dict]) -> list[Part]:
     parts = []
     for block in blocks:
         markup = str(block.get("html") or "")
-        lines = [
-            _plain(piece)
-            for piece in re.split(r"</(?:li|p|blockquote|h3|td)>", markup)
-        ]
+        labels = [_plain(one) for one in _LABEL.findall(markup)]
+        lines = [_plain(piece) for piece in _LINE_END.split(_LABEL.sub(" ", markup))]
         parts.append(
-            Part(str(block.get("title") or ""), [one for one in lines if one])
+            Part(
+                str(block.get("title") or ""),
+                [one for one in lines if one],
+                [one for one in labels if one],
+            )
         )
     return parts
 
@@ -201,7 +218,7 @@ def check(
                 )
             )
 
-        for line in [part.title, *part.lines]:
+        for line in [part.title, *part.labels, *part.lines]:
             if _LEADING_EMOJI.search(line):
                 findings.append(
                     Finding("P1", "emoji", "제목이나 항목이 이모지로 시작합니다.", where)

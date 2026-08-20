@@ -155,6 +155,47 @@ def test_an_html_block_is_read_as_lines_not_as_markup():
     assert not any("<" in line for line in parts[0].lines)
 
 
+def test_a_column_label_is_not_one_of_the_items_under_it():
+    """A `split` slide opens each column with an `<h3>` the seed sets small.
+
+    Counted as lines, two signposts over four items made a slide of six and
+    tripped `crowded` on a slide the template itself calls the right size.
+    """
+    block = {
+        "title": "비교",
+        "html": (
+            '<div class="cols">'
+            "<div><h3>유지</h3><ul><li>비용이 들지 않는다</li>"
+            "<li>복구 경로가 없다</li></ul></div>"
+            "<div><h3>교체</h3><ul><li>예산이 필요하다</li>"
+            "<li>일정은 세 달이다</li></ul></div>"
+            "</div>"
+        ),
+    }
+    part = lint.from_blocks([block])[0]
+
+    assert part.labels == ["유지", "교체"]
+    assert len(part.lines) == 4
+    assert "crowded" not in _rules(
+        lint.check([part], slides=True, limits={"max_bullets": 5})
+    )
+
+
+def test_a_label_is_still_read_for_the_words_in_it():
+    """Not counted is not unread — a placeholder in a column heading is one."""
+    part = lint.from_blocks(
+        [{"title": "비교", "html": "<h3>여기에 제목을 입력</h3><p>본문이 여기 있다.</p>"}]
+    )[0]
+
+    assert part.lines == ["본문이 여기 있다."]
+    assert "placeholder" in _rules(lint.check([part]))
+
+
+def test_a_label_does_not_run_into_the_line_after_it():
+    part = lint.from_blocks([{"title": "ㄱ", "html": "<h3>이름표</h3><p>본문</p>"}])[0]
+    assert part.lines == ["본문"]
+
+
 def test_the_wire_shape_is_flat_strings():
     findings = lint.check(_one("배경", "여기에 내용을 입력하세요.", "한 줄 더."))
     assert lint.wire(findings) == [
