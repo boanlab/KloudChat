@@ -1850,6 +1850,10 @@ export const useStore = create<State>((set, get) => ({
       // other screens are already showing.
       await get().loadWorkspace()
     }
+    // The gallery's tab counts and its "N개 더 보기" come from a second
+    // endpoint that counts the whole workspace, so filtering the list in place
+    // leaves every number beside it describing the workspace as it was.
+    if (kind === 'artifacts') await get().loadArtifacts()
     return deleted
   },
 
@@ -1960,7 +1964,10 @@ export const useStore = create<State>((set, get) => ({
     await holdDelete(set, get, {
       label: nameOf(removed),
       restore,
-      commit: () => artifactsApi.remove(id).catch(() => get().loadArtifacts()),
+      // Counted again afterwards, for the same reason the bulk delete does:
+      // the numbers on the filter row are a separate query over the whole
+      // workspace, not a length of what is on screen.
+      commit: () => artifactsApi.remove(id).then(() => get().loadArtifacts()).catch(() => get().loadArtifacts()),
     })
   },
 
