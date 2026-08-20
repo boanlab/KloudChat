@@ -53,7 +53,7 @@ export const kindMeta: Record<
     label: '오디오/동영상',
     icon: Clapperboard,
     color: '#c0392b',
-    tagline: '길이와 형식을 정해 만들고 작업 카드로 확인합니다',
+    tagline: '길이와 형식을 정해 만들고 대화 안에서 바로 확인합니다',
     panelLabel: '미디어 열기',
   },
 }

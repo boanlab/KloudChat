@@ -27,6 +27,13 @@ class MessageOut(Wire):
     variants: list | None = None
     model: str | None = None
     routing: dict | None = None
+    #: What this turn made, as artifact ids, for the turns whose answer is a
+    #: thing rather than a sentence. The browser renders them where the answer
+    #: would be, which is why they travel with the transcript rather than being
+    #: looked up from the session — the session points at the newest result
+    #: only, and a conversation that made four pictures in two batches has two
+    #: answers to show, each under the prompt that asked for it.
+    artifact_ids: list | None = None
     #: The 시작점 this turn was begun from, as `{templateId, title}`. Names it
     #: rather than quoting it: the transcript is where what somebody said is
     #: kept, and the template's own sentence was never said by anybody.
@@ -143,11 +150,12 @@ class SessionBulkDelete(Wire):
 class SessionMade(Wire):
     """What a session produced, for the line under its title in a list.
 
-    A picture or clip session stores no messages, so `preview` — the last thing
-    said — has nothing to offer and the row sits blank beneath its own name.
-    Its name is already the person's prompt, so echoing that underneath would
-    say one thing twice. What the list is actually missing is the other half:
-    what came back. That is what tells seven clips of one request apart.
+    A picture or clip session answers with the thing itself, so its newest
+    message is a wordless row and `preview` — the last thing said — has nothing
+    to offer. Its name is already the person's prompt, so echoing that
+    underneath would say one thing twice. What the list is actually missing is
+    the other half: what came back. That is what tells seven clips of one
+    request apart.
 
     Counted rather than described, and sent as measurements rather than as a
     finished sentence, because the sentence has to be written in the reader's

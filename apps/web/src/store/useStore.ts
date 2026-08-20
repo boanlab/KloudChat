@@ -96,6 +96,16 @@ const isClientRefusal = (error: unknown): error is ApiError =>
  */
 const sessionPersistence = new Map<string, Promise<void>>()
 
+/**
+ * Clips currently being watched by a poll loop in this tab.
+ *
+ * A clip is followed by whoever started it and again by whoever opens the
+ * conversation it is running in — which is usually the same person in the same
+ * tab. Without this the second visit starts a second loop against the same
+ * row, and both spend rate limit to learn the same thing.
+ */
+const followedJobs = new Set<string>()
+
 function queueSessionPersistence(sessionId: string, persist: () => Promise<void>): Promise<void> {
   const previous = sessionPersistence.get(sessionId) ?? Promise.resolve()
   const queued = previous.catch(() => undefined).then(persist)
@@ -266,15 +276,17 @@ interface State {
     prompt: string,
     opts?: { projectId?: string | null; onSession?: (id: string) => void },
   ) => Promise<void>
-  /** Runs a failed job's request again. Nothing was charged for the failure. */
+  /** Runs a failed clip's request again. Nothing was charged for the failure. */
   retryJob: (job: Job) => Promise<void>
+  /** Sends a failed picture or narration prompt again, as a second turn. */
+  retryMediaTurn: (sessionId: string, prompt: string) => Promise<void>
   /** Generates one sound clip on the a/v surface. */
   generateAudio: (
     sessionId: string | null,
     prompt: string,
     opts?: { projectId?: string | null; onSession?: (id: string) => void },
   ) => Promise<void>
-  /** Generates pictures on the image surface and opens the panel on the last. */
+  /** Generates pictures on the image surface, as one turn in the conversation. */
   generateImages: (
     sessionId: string | null,
     prompt: string,
@@ -1025,7 +1037,28 @@ export const useStore = create<State>((set, get) => ({
   },
   setActiveSession: (id) => {
     const session = id ? get().sessions.find((s) => s.id === id) : null
-    const artifactId = session?.artifactId ?? null
+    /**
+     * A document opens beside its conversation; a picture does not.
+     *
+     * On the writing surfaces the transcript is prose about a file that lives
+     * in the panel, so arriving without the file open is arriving at half the
+     * screen. A picture, a clip and a piece of speech are now *in* the
+     * conversation, at a size worth looking at — opening the panel on top of
+     * them shows the same thing twice and squeezes the conversation into the
+     * remaining third to do it. The panel is a click away: on the picture
+     * itself, or on 이미지 열기 in the top bar.
+     *
+     * Except where there is no conversation to show it in. Ninety-odd picture
+     * and clip sessions were made before any of this was written down and have
+     * a title, a result and no turn; nothing backfills them, because the only
+     * honest turn to invent would be one nobody had. Those open the way they
+     * always did — an empty transcript with the panel beside it — and the
+     * count is what tells them apart from a conversation that can speak for
+     * itself.
+     */
+    const shownInTranscript =
+      (session?.kind === 'image' || session?.kind === 'av') && session.messageCount > 0
+    const artifactId = shownInTranscript ? null : (session?.artifactId ?? null)
     set({ activeSessionId: id, openArtifactId: artifactId })
     // Opening a panel means fetching the document, which is what
     // `openArtifact` does and this path did not — it assigned the id straight
@@ -1065,6 +1098,28 @@ export const useStore = create<State>((set, get) => ({
           ? s.sessions.map((c) => (c.id === id ? session : c))
           : [session, ...s.sessions],
       }))
+
+      /**
+       * Whatever is still being made in it.
+       *
+       * A clip's card is a row on the server, but it was only ever fetched by
+       * the tab that pressed the button. Reload, or open the conversation on
+       * another machine, and the prompt sat there with nothing under it while
+       * twelve thousand credits were being spent — the one thing the card
+       * exists to prevent.
+       */
+      const jobRows = await jobsApi.list(id).catch(() => null)
+      if (jobRows) {
+        set((s) => ({
+          jobs: [
+            ...jobRows.map(toJob),
+            ...s.jobs.filter((j) => !jobRows.some((row) => row.id === j.id)),
+          ],
+        }))
+        for (const job of jobRows) {
+          if (job.status === 'running' || job.status === 'queued') void get().followJob(id, job.id)
+        }
+      }
 
       /**
        * Artifacts the transcript names by id. Every surface that shows one
@@ -1235,8 +1290,11 @@ export const useStore = create<State>((set, get) => ({
       }
 
       if (kind === 'image') {
-        // The composer calls `generateImages` directly; this path only catches an
-        // image prompt routed through chat.
+        // The composer calls `generateImages` directly; this path only catches
+        // an image prompt routed through chat. That call puts up the turn
+        // itself, so the optimistic bubble above comes back off rather than
+        // standing there twice.
+        dropMediaTurn(set, id, userMsg.id)
         await get().generateImages(id, text, { projectId: opts.projectId ?? null })
         return id
       }
@@ -1326,12 +1384,21 @@ export const useStore = create<State>((set, get) => ({
     await sessionsApi.update(id, { title }).catch(() => get().loadSessions())
   },
   retryJob: async (job) => {
-    // Only video carries a resolution, which is what selects the producer. The
-    // failed row is dropped: two cards for one request read as two charges.
+    // A job is a clip and nothing else now: a picture and a piece of speech
+    // come back inside the call that asked for them, and their turn carries
+    // its own way to try again. The failed row is dropped, because two cards
+    // for one request read as two charges.
     set((s) => ({ jobs: s.jobs.filter((j) => j.id !== job.id) }))
-    const video = Boolean(job.params && 'resolution' in job.params)
-    if (video) await get().generateVideo(job.sessionId, job.prompt)
-    else await get().generateAudio(job.sessionId, job.prompt)
+    await get().generateVideo(job.sessionId, job.prompt)
+  },
+
+  retryMediaTurn: async (sessionId, prompt) => {
+    // Sent again rather than repaired in place. The first attempt is a real
+    // thing that happened and stays in the conversation saying so, the same
+    // way asking a chat question twice leaves two questions.
+    const kind = get().sessions.find((c) => c.id === sessionId)?.kind
+    if (kind === 'image') await get().generateImages(sessionId, prompt)
+    else if (kind === 'av') await get().generateAudio(sessionId, prompt)
   },
 
   generateVideo: async (sessionId, prompt, opts = {}) => {
@@ -1350,6 +1417,17 @@ export const useStore = create<State>((set, get) => ({
       }
       opts.onSession?.(id)
     }
+    /**
+     * The prompt goes up before the request leaves, the way a chat turn's
+     * does. The server writes the same row as it accepts the job — a clip
+     * takes minutes, and for those minutes the sentence and the card under it
+     * are the whole of what there is to look at.
+     *
+     * A refusal takes it back off. Nothing was accepted, so nothing was
+     * written, and the failed card below carries the prompt and the way to
+     * try again.
+     */
+    const { promptId } = beginMediaTurn(set, id, prompt, false)
     try {
       const job = await jobsApi.create(id, {
         prompt,
@@ -1362,6 +1440,7 @@ export const useStore = create<State>((set, get) => ({
       set((s) => ({ jobs: [toJob(job), ...s.jobs.filter((j) => j.id !== job.id)] }))
       void get().followJob(id!, job.id)
     } catch (err) {
+      dropMediaTurn(set, id!, promptId)
       set((s) => ({
         jobs: [
           {
@@ -1393,53 +1472,52 @@ export const useStore = create<State>((set, get) => ({
   /** Polls one job until it settles. The server does the work; this keeps the
    *  card current and stops when the row stops moving. */
   followJob: async (sessionId, jobId) => {
-    for (let i = 0; i < 200; i++) {
-      await new Promise((r) => setTimeout(r, 4000))
-      const rows = await jobsApi.list(sessionId).catch(() => null)
-      if (!rows) continue
-      const job = rows.find((j) => j.id === jobId)
-      if (!job) return
-      set((s) => ({
-        jobs: s.jobs.map((j) => (j.id === jobId ? toJob(job) : j)),
-      }))
-      if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
-        // The artifact is the point; the card is how it was watched.
-        await get().loadArtifacts()
-        if (job.artifactId) set({ openArtifactId: job.artifactId })
-        return
+    // One loop per clip. Opening the conversation picks up whatever is still
+    // running in it, which in the tab that started the clip is the loop
+    // already watching it — and two loops polling one job spend rate limit to
+    // learn the same thing twice.
+    if (followedJobs.has(jobId)) return
+    followedJobs.add(jobId)
+    try {
+      for (let i = 0; i < 200; i++) {
+        await new Promise((r) => setTimeout(r, 4000))
+        const rows = await jobsApi.list(sessionId).catch(() => null)
+        if (!rows) continue
+        const job = rows.find((j) => j.id === jobId)
+        if (!job) return
+        set((s) => ({
+          jobs: s.jobs.map((j) => (j.id === jobId ? toJob(job) : j)),
+        }))
+        if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
+          // The artifact is the point; the card is how it was watched.
+          await get().loadArtifacts()
+          // And the clip lands in the conversation, under the prompt that
+          // asked for it: the worker wrote that turn as it delivered, so the
+          // transcript is re-read rather than guessed at here. The panel stays
+          // shut — the clip is playable where it was asked for, and a panel
+          // opening itself minutes later over whatever the person moved on to
+          // is an interruption, not a result.
+          if (job.artifactId) await get().openSession(sessionId)
+          return
+        }
       }
+    } finally {
+      followedJobs.delete(jobId)
     }
   },
   generateAudio: async (sessionId, prompt, opts = {}) => {
-    const { avOptions, modelByKind, models } = get()
+    const { avOptions, modelByKind } = get()
     let id = sessionId
     if (!id) {
       id = await get().newSession('av', { projectId: opts.projectId ?? null })
       opts.onSession?.(id)
     }
-    const jobId = uid('j')
-    const model = models.find((m) => m.id === modelByKind.av)
-    set((s) => ({
-      streaming: true,
-      jobs: [
-        {
-          id: jobId,
-          sessionId: id,
-          kind: 'av' as const,
-          status: 'running' as const,
-          progress: 0,
-          stage: '만드는 중',
-          prompt,
-          model: modelByKind.av || '',
-          params: { seconds: avOptions.durationSec },
-          creditsUsed: 0,
-          creditsEstimated: model?.creditPerCall || model?.creditCost || 0,
-          createdAt: new Date().toISOString(),
-          finishedAt: null,
-        },
-        ...s.jobs,
-      ],
-    }))
+    // Speech comes back inside this call, so the turn is the whole of what is
+    // shown: the prompt, then an answer row waiting a few seconds for its
+    // player. It used to be a job card instead — a progress bar that never
+    // moved off nought, over a conversation with nothing in it.
+    const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
+    set({ streaming: true })
     try {
       const row = await sessionsApi.audio(id, {
         prompt,
@@ -1452,29 +1530,16 @@ export const useStore = create<State>((set, get) => ({
         voice: avOptions.voice,
         seconds: avOptions.durationSec,
       })
-      set((s) => ({
-        artifacts: [toArtifact(row), ...s.artifacts],
-        openArtifactId: row.id,
-        jobs: s.jobs.map((j) =>
-          j.id === jobId
-            ? { ...j, status: 'succeeded' as const, progress: 100, finishedAt: new Date().toISOString() }
-            : j,
-        ),
-      }))
+      set((s) => ({ artifacts: [toArtifact(row), ...s.artifacts] }))
+      // On screen the moment the bytes land, from what this call returned.
+      finishMediaTurn(set, id, answerId, [row.id], false)
       await get().loadSessions()
+      // Then handed over to the server's own rows. They carry the ids a rating
+      // hangs on and the charge that was settled, and what a clip cost is not
+      // something this call was ever told.
+      await get().openSession(id)
     } catch (err) {
-      set((s) => ({
-        jobs: s.jobs.map((j) =>
-          j.id === jobId
-            ? {
-                ...j,
-                status: 'failed' as const,
-                finishedAt: new Date().toISOString(),
-                error: errorMessage(err, tr('오디오를 만들지 못했습니다.')),
-              }
-            : j,
-        ),
-      }))
+      failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('오디오를 만들지 못했습니다.')))
     } finally {
       set({ streaming: false })
     }
@@ -1497,32 +1562,8 @@ export const useStore = create<State>((set, get) => ({
       }
       opts.onSession?.(id)
     }
-    const jobId = uid('j')
-    set((s) => ({
-      streaming: true,
-      jobs: [
-        {
-          id: jobId,
-          sessionId: id,
-          kind: 'image' as const,
-          status: 'running' as const,
-          progress: 0,
-          stage: '만드는 중',
-          prompt,
-          model: modelByKind.image || '',
-          params: null,
-          creditsUsed: 0,
-          // Quoted from the catalogue; the charge lands on what the upstream
-          // reports.
-          creditsEstimated:
-            (get().models.find((m) => m.id === modelByKind.image)?.creditPerImage ?? 0) *
-            imageOptions.count,
-          createdAt: new Date().toISOString(),
-          finishedAt: null,
-        },
-        ...s.jobs,
-      ],
-    }))
+    const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
+    set({ streaming: true })
     // An image template is spent on the picture it shaped, not kept on the
     // session: unlike a deck or a document there is no file whose shape it has
     // to keep matching. Which is exactly why it has to be put down here — no
@@ -1540,30 +1581,25 @@ export const useStore = create<State>((set, get) => ({
         count: imageOptions.count,
         templateId,
       })
-      set((s) => ({
-        artifacts: [...rows.map(toArtifact), ...s.artifacts],
-        openArtifactId: rows.length ? rows[rows.length - 1].id : s.openArtifactId,
-        jobs: s.jobs.map((j) =>
-          j.id === jobId
-            ? { ...j, status: 'succeeded' as const, progress: 100, finishedAt: new Date().toISOString() }
-            : j,
-        ),
-      }))
+      set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
+      // One prompt, one answer, however many pictures came back: four of them
+      // are one reply to one request, not four turns. Fewer than were asked
+      // for is a batch that broke partway, and the answer says so rather than
+      // presenting three as though three had been the question.
+      finishMediaTurn(
+        set,
+        id,
+        answerId,
+        rows.map((row) => row.id),
+        rows.length < imageOptions.count,
+      )
       // The gallery is the record; the sidebar entry should carry the prompt.
       await get().loadSessions()
+      // And the transcript is handed to the server's own rows, which know what
+      // the batch was charged.
+      await get().openSession(id)
     } catch (err) {
-      set((s) => ({
-        jobs: s.jobs.map((j) =>
-          j.id === jobId
-            ? {
-                ...j,
-                status: 'failed' as const,
-                finishedAt: new Date().toISOString(),
-                error: errorMessage(err, tr('이미지를 만들지 못했습니다.')),
-              }
-            : j,
-        ),
-      }))
+      failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('이미지를 만들지 못했습니다.')))
     } finally {
       set({ streaming: false })
     }
@@ -2439,6 +2475,8 @@ function toMessage(raw: MessageRow): Message {
     ),
     usage: raw.usage ?? undefined,
     startedFrom: raw.startedFrom ?? undefined,
+    artifactIds: raw.artifactIds ?? undefined,
+    failure: raw.failure ?? undefined,
     liked: raw.rating ?? null,
     // A comparison turn stores columns rather than one body, so a reload has to
     // rebuild them.
@@ -3575,6 +3613,117 @@ function patchMessage(set: Set, sessionId: string, messageId: string, fn: (m: Me
     sessions: s.sessions.map((c) =>
       c.id === sessionId
         ? { ...c, messages: c.messages.map((m) => (m.id === messageId ? fn(m) : m)) }
+        : c,
+    ),
+  }))
+}
+
+/**
+ * The two halves of a media turn, on screen before the server has them.
+ *
+ * The same optimism the chat composer has always run on: the sentence appears
+ * where it was typed, and the answer takes shape under it. The server writes
+ * both rows for real and a reload replaces these with its copies, so this is
+ * only about the seconds or minutes in between — which on this surface used to
+ * be a blank conversation with the work happening somewhere off to the side.
+ *
+ * `pending` is the empty answer row that says the picture is coming. A clip
+ * does not get one: its job card is a truer version of the same thing, with a
+ * stage, a percentage and a way to stop it, and two placeholders for one
+ * request would read as two requests.
+ */
+function beginMediaTurn(set: Set, sessionId: string, prompt: string, pending: boolean) {
+  const promptId = uid('m')
+  const answerId = pending ? uid('m') : ''
+  const now = new Date().toISOString()
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            // The server names the row from the same prompt. Doing it here too
+            // keeps the sidebar from showing 새 작업 for the length of the call.
+            title: c.messages.length === 0 ? prompt.slice(0, 40) : c.title,
+            updatedAt: now,
+            messages: [
+              ...c.messages,
+              { id: promptId, role: 'user' as const, content: prompt, createdAt: now },
+              ...(answerId
+                ? [{ id: answerId, role: 'assistant' as const, content: '', createdAt: now }]
+                : []),
+            ],
+          }
+        : c,
+    ),
+  }))
+  return { promptId, answerId }
+}
+
+/**
+ * What came back, under the prompt that asked for it.
+ *
+ * No charge is written here, though the finished row carries one: this call
+ * was handed pictures and not a bill, and the figure arrives a moment later
+ * with the server's own copy of the turn. A guess in the meantime would be a
+ * number about somebody's allowance that nobody checked.
+ */
+function finishMediaTurn(
+  set: Set,
+  sessionId: string,
+  answerId: string,
+  artifactIds: string[],
+  short: boolean,
+) {
+  patchMessage(set, sessionId, answerId, (m) => ({
+    ...m,
+    artifactIds,
+    // Fewer pictures than were asked for. The batch is billed per call, so the
+    // ones that arrived are kept and the shortfall is said rather than quietly
+    // rounded down to "here is what you asked for".
+    failure: short ? ('interrupted' as const) : undefined,
+  }))
+}
+
+/**
+ * A request that came back with nothing.
+ *
+ * The empty answer row goes away rather than standing there for ever, and the
+ * question carries the mark — nothing spoke, so nothing may be left on screen
+ * looking as though it had. The server records the same thing on the same row,
+ * which is what makes this survive a reload.
+ */
+function failMediaTurn(
+  set: Set,
+  sessionId: string,
+  promptId: string,
+  answerId: string,
+  said: string,
+) {
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? {
+            ...c,
+            messages: c.messages
+              .filter((m) => m.id !== answerId)
+              .map((m) =>
+                // What the upstream said, while this tab still has it. The
+                // stored mark is the same failure in the product's own words,
+                // and it is all a reload has left to go on.
+                m.id === promptId ? { ...m, failure: 'no_answer' as const, error: said } : m,
+              ),
+          }
+        : c,
+    ),
+  }))
+}
+
+/** Takes an optimistic turn back off, for a request that was never accepted. */
+function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? { ...c, messages: c.messages.filter((m) => !ids.includes(m.id)) }
         : c,
     ),
   }))

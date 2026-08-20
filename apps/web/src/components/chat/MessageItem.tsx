@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Paperclip,
   Presentation,
+  RotateCcw,
   ShieldAlert,
   Sparkles,
   ThumbsDown,
@@ -17,10 +18,11 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
+import { MediaResult } from '@/components/media/MediaResult'
 import { downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
-import { cn, fileSize, formatTokens } from '@/lib/utils'
+import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
@@ -132,6 +134,31 @@ function costRoutePresentation(
   }
 }
 
+/**
+ * How a turn ended, when it did not end in an answer.
+ *
+ * `error` is this tab's live account and wins while it is there; `failure` is
+ * what the server recorded, and the only thing left after a reload. The words
+ * follow the surface, because "답변을 받지 못했습니다" is not what happened when
+ * a picture was asked for.
+ */
+function turnFailureNotice(
+  message: Message,
+  media: boolean,
+  t: (text: string) => string,
+): string | undefined {
+  if (message.error) return message.error
+  if (message.failure === 'interrupted') {
+    return media
+      ? t('요청한 만큼 만들어지지 않았습니다.')
+      : t('답변이 중간에 끊겨 여기까지만 남았습니다.')
+  }
+  if (message.failure === 'no_answer') {
+    return media ? t('만들지 못했습니다.') : t('답변을 받지 못했습니다.')
+  }
+  return undefined
+}
+
 export function MessageItem({
   message,
   sessionId,
@@ -142,8 +169,21 @@ export function MessageItem({
   streaming?: boolean
 }) {
   const t = useT()
-  const { artifacts, openArtifact, rateMessage, models, user, sessions, designTemplates } =
-    useStore()
+  const {
+    artifacts,
+    openArtifact,
+    rateMessage,
+    retryMediaTurn,
+    models,
+    user,
+    sessions,
+    designTemplates,
+  } = useStore()
+  const session = sessions.find((s) => s.id === sessionId)
+  // The two surfaces whose answer is a thing rather than a sentence. They are
+  // read differently at both ends of the turn: what a failure says, and what
+  // stands where an answer would be.
+  const madeHere = session?.kind === 'image' || session?.kind === 'av'
   const [copied, setCopied] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
 
@@ -194,9 +234,8 @@ export function MessageItem({
      * name. The 서식 comes off the session because it is sticky there; the
      * 시작점 is stored on the turn, because it was only ever about this one.
      */
-    const shape = designTemplates.find(
-      (row) => row.id === sessions.find((s) => s.id === sessionId)?.renderTemplateId,
-    )
+    const shape = designTemplates.find((row) => row.id === session?.renderTemplateId)
+    const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
     // What the detector found in this sentence, which is also what the stored
     // copy no longer contains: routers/sessions.py writes the user's Message
@@ -260,6 +299,28 @@ export function MessageItem({
           <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap">
             {message.content}
           </div>
+          {/* A request that came back with nothing says so here, under the
+              sentence that asked. Nothing spoke, so there is no reply to put
+              it in — and a conversation that ends on a prompt with silence
+              beneath it is the state this whole surface was in. */}
+          {failed && (
+            <div
+              role="status"
+              className="flex items-center justify-end gap-2 text-base text-danger"
+            >
+              <TriangleAlert size={14} className="shrink-0" />
+              <span>{failed}</span>
+              {madeHere && (
+                <Button
+                  size="sm"
+                  onClick={() => void retryMediaTurn(sessionId, message.content)}
+                >
+                  <RotateCcw size={13} />
+                  {t('다시 시도')}
+                </Button>
+              )}
+            </div>
+          )}
           {redacted.length > 0 && (
             <div className="space-y-1 text-right">
               <div className="flex flex-wrap justify-end gap-1.5">
@@ -285,6 +346,12 @@ export function MessageItem({
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
+  // A picture, a clip or a player is shown; a document is named. The
+  // difference is whether the artifact can be read where it stands: a report
+  // cannot, and a chip that opens it is the honest offer.
+  const shown = linked.filter(isMedia)
+  const named = linked.filter((a) => !isMedia(a))
+  const failed = turnFailureNotice(message, madeHere, t)
 
   return (
     <div className="animate-fade-up group flex gap-3">
@@ -361,32 +428,47 @@ export function MessageItem({
           <Markdown>{message.content}</Markdown>
         ) : (
           // Not while an error is showing: a failed turn with a blinking
-          // "thinking…" under it reads as still running.
+          // "thinking…" under it reads as still running. Nor once the turn has
+          // its answer in hand — on these surfaces the answer is the picture
+          // below, and no sentence ever arrives to replace this line.
           !message.steps?.length &&
-          !message.error && (
-            <p className="animate-blink text-md text-faint">{t('생각하는 중…')}</p>
+          !failed &&
+          shown.length === 0 &&
+          named.length === 0 && (
+            <p className="animate-blink text-md text-faint">
+              {/* 그림과 클립은 생각하는 게 아니라 만들어진다. */}
+              {madeHere ? t('만드는 중…') : t('생각하는 중…')}
+            </p>
           )
         )}
         {streaming && message.content && (
           <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-blink bg-accent" />
         )}
 
+        {/* Where the answer goes, because here it is the answer. */}
+        {shown.length > 0 && (
+          <div className="mt-1">
+            <MediaResult artifacts={shown} credits={message.usage?.credits ?? 0} />
+          </div>
+        )}
+
         {/* Below the answer, not instead of it. A turn that failed halfway has
-            two things to say — what it managed to write, and that it stopped —
-            and the reader needs both to decide whether to run it again. */}
-        {message.error && (
+            two things to say — what it managed to write or make, and that it
+            stopped — and the reader needs both to decide whether to run it
+            again. */}
+        {failed && (
           <div
             role="status"
             className="mt-3 flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger"
           >
             <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-            <span>{message.error}</span>
+            <span>{failed}</span>
           </div>
         )}
 
-        {linked.length > 0 && (
+        {named.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {linked.map((a) => {
+            {named.map((a) => {
               const Icon = artifactIcon[a.kind]
               return (
                 <button

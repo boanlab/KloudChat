@@ -301,6 +301,17 @@ export interface Message {
    * writing something, and that half an answer is worth keeping.
    */
   error?: string
+  /**
+   * How the turn ended, as the server recorded it. `error` is this tab's live
+   * account of the same thing and wins while it is on screen; this is what is
+   * left of it after a reload, which is the only reading most failed turns
+   * ever get.
+   *
+   * `no_answer` sits on the question, because nothing spoke. `interrupted`
+   * sits on the reply, because some of it arrived — three of four pictures,
+   * half a sentence.
+   */
+  failure?: 'no_answer' | 'interrupted'
 }
 
 /* ── jobs ───────────────────────────────────────────────────────────── */
