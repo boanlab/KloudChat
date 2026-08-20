@@ -306,7 +306,12 @@ export function ArtifactsPage() {
                           size="sm"
                           variant="ghost"
                           className="mt-2 -ml-2"
-                          onClick={() => navigate(`/s/${session.id}`)}
+                          // Which document, not just which conversation. Left
+                          // to itself the session opens whatever it produced
+                          // last — three turns on that is a different file, and
+                          // for a session whose result was deleted it is none
+                          // at all, so the card opened on an empty panel.
+                          onClick={() => navigate(`/s/${session.id}?artifact=${a.id}`)}
                         >
                           {t('원본 작업 열기 →')}
                         </Button>

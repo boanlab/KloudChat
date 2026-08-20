@@ -48,6 +48,17 @@ class Role(StrEnum):
     system = "system"
 
 
+class MessageRating(StrEnum):
+    """What a reader thought of one answer.
+
+    Two values and a null, deliberately: null is "nobody said", which is not
+    the same as an answer somebody looked at and found neither good nor bad.
+    """
+
+    up = "up"
+    down = "down"
+
+
 class ChatSession(SQLModel, table=True):
     """Named `ChatSession` because `Session` collides with SQLAlchemy's."""
 
@@ -114,7 +125,24 @@ class Message(SQLModel, table=True):
     started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     model: str | None = Field(default=None)
+
+    #: What the person who owns this conversation thought of the answer. Kept
+    #: on the message rather than in a feedback table because it is read the
+    #: way it is written — one turn at a time, in the transcript, by the reader
+    #: who left it and comes back to a long thread wanting to know which
+    #: answers they had already decided against.
+    #:
+    #: Plain string rather than a database enum: a third verdict should be a
+    #: migration of this file, not of the type behind it.
+    rating: MessageRating | None = Field(default=None, sa_column=Column(String, nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
-__all__ = ["ChatSession", "Message", "Role", "RoutingMode", "SessionKind"]
+__all__ = [
+    "ChatSession",
+    "Message",
+    "MessageRating",
+    "Role",
+    "RoutingMode",
+    "SessionKind",
+]

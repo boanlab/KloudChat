@@ -281,7 +281,11 @@ interface State {
     opts?: { projectId?: string | null; onSession?: (id: string) => void },
   ) => Promise<void>
   togglePinSession: (id: string) => Promise<void>
-  rateMessage: (sessionId: string, messageId: string, rating: 'up' | 'down' | null) => void
+  rateMessage: (
+    sessionId: string,
+    messageId: string,
+    rating: 'up' | 'down' | null,
+  ) => Promise<void>
 
   // ── model comparison ──────────────────────────────────────────────────
   compareMode: boolean
@@ -1587,19 +1591,38 @@ export const useStore = create<State>((set, get) => ({
       await sessionsApi.update(id, { pinned }).catch(() => get().loadSessions())
     }
   },
-  rateMessage: (sessionId, messageId, rating) =>
-    set((s) => ({
-      sessions: s.sessions.map((c) =>
-        c.id === sessionId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === messageId ? { ...m, liked: m.liked === rating ? null : rating } : m,
-              ),
-            }
-          : c,
-      ),
-    })),
+  /**
+   * 좋아요 / 싫어요 on one answer.
+   *
+   * Written through, not held in the tab. A person who marks an answer wrong
+   * is saying something about a transcript they will come back to, and a
+   * verdict that dies with the page never reaches the reading it was left for.
+   *
+   * Pressing the lit thumb again withdraws it, which is why `null` travels to
+   * the server as a value rather than as a missing field.
+   */
+  rateMessage: async (sessionId, messageId, rating) => {
+    const before =
+      get()
+        .sessions.find((c) => c.id === sessionId)
+        ?.messages.find((m) => m.id === messageId)?.liked ?? null
+    const next = before === rating ? null : rating
+    const show = (liked: 'up' | 'down' | null) =>
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId
+            ? {
+                ...c,
+                messages: c.messages.map((m) => (m.id === messageId ? { ...m, liked } : m)),
+              }
+            : c,
+        ),
+      }))
+    // Lit first: the thumb is the acknowledgement, and waiting a round trip to
+    // draw it is what makes a rating feel like it was not taken.
+    show(next)
+    await sessionsApi.rate(messageId, next).catch(() => show(before))
+  },
 
   compareMode: false,
   compareModels: [],
@@ -2040,10 +2063,33 @@ export const useStore = create<State>((set, get) => ({
 
   forkAgent: async (a) => {
     touchWorkspace()
+    /*
+     * What the copy is, said on the copy.
+     *
+     * An agent is its prompt plus what it was given to work with, and only the
+     * first half can travel: skills are rows in the other person's account, and
+     * the knowledge shelf is theirs to grant, not ours to duplicate. Neither
+     * omission is visible on the card that comes back — the copy reads as
+     * complete and answers differently, which is the worst of both.
+     *
+     * The sentence goes in the description rather than into a toast because
+     * the question it answers ("why is this one worse than the one I tried?")
+     * is asked days later, and by then a toast has been gone for days. It is
+     * an ordinary editable field: whoever wired the missing pieces up deletes
+     * the line, and that is the right way to dismiss it.
+     *
+     * Translated on the way in rather than on the way out: this is stored text
+     * from here on, and the card runs the whole description through `t()` as
+     * one string, which a joined sentence is never a key for.
+     */
+    const note = translate(
+      get().lang,
+      '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.',
+    )
     // A copy, not a reference: the original's owner keeps editing theirs.
     const row = await agentsApi.create({
       name: `${a.name} 사본`,
-      description: a.description,
+      description: a.description ? `${a.description} · ${note}` : note,
       model: a.model,
       systemPrompt: a.systemPrompt,
       tools: a.tools,
@@ -2289,6 +2335,7 @@ function toMessage(raw: MessageRow): Message {
     ),
     usage: raw.usage ?? undefined,
     startedFrom: raw.startedFrom ?? undefined,
+    liked: raw.rating ?? null,
     // A comparison turn stores columns rather than one body, so a reload has to
     // rebuild them.
     variants: raw.variants?.map((v) => ({

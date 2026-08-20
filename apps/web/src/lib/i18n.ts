@@ -1153,6 +1153,12 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 죽어 있던 컨트롤 ────────────────────────────────────────────
+  '이 답변이 도움이 되었습니다': 'This answer helped',
+  '이 답변이 잘못되었습니다': 'This answer was wrong',
+  '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.':
+    'Skills and knowledge files belong to whoever shared it and do not come along. Attach and upload your own.',
+
   // ── 서식이 채워 둔 옵션 ─────────────────────────────────────────
   '{name} 서식이 정한 값': 'Set by the {name} format',
   '값을 직접 바꾸면 이 표시는 사라집니다': 'Change one by hand and this note goes away',
