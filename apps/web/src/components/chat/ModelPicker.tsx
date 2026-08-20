@@ -53,6 +53,20 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
 }
 
 /**
+ * The routing provider, in the word a reader needs from it.
+ *
+ * `hosted_vllm` and `openrouter` are LiteLLM's names for how a request is
+ * dispatched, and a person choosing a model is not asking that — they are
+ * asking whose machine answers. Anything the product has not been taught keeps
+ * its slug rather than being guessed at, which is the same rule the data
+ * boundary follows.
+ */
+const PROVIDER_LABEL: Record<string, string> = {
+  hosted_vllm: 'internal',
+  openrouter: 'external',
+}
+
+/**
  * Where this model's text goes, as a sentence rather than a chip.
  *
  * It was five badges in the row of the name, competing with the vendor, the
@@ -151,7 +165,6 @@ export function ModelPicker({
    * it does, so the menu says which of the two is happening. Settings carries
    * its own heading and needs no second telling.
    */
-  const picksDefault = !sessionId && !field
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -222,7 +235,6 @@ export function ModelPicker({
         autoActive={autoActive}
         autoRouting={autoRouting}
         showAuto={canRouteAuto}
-        picksDefault={picksDefault}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
         onAuto={() => {
@@ -255,7 +267,6 @@ function ModelMenu({
   autoActive,
   autoRouting,
   showAuto,
-  picksDefault,
   litellmAvailable,
   selectionPending,
   onAuto,
@@ -266,7 +277,6 @@ function ModelMenu({
   autoActive: boolean
   autoRouting: ReturnType<typeof useStore.getState>['autoRouting']
   showAuto: boolean
-  picksDefault: boolean
   litellmAvailable: boolean
   selectionPending: boolean
   onAuto: () => void | Promise<void>
@@ -325,11 +335,6 @@ function ModelMenu({
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
         {showAuto ? t('모델 직접 선택') : t('모델')}
       </div>
-      {picksDefault && (
-        <p className="px-2.5 pb-1.5 text-xs text-faint">
-          {t('아직 대화가 없습니다. 여기서 고른 모델은 이번 답변만이 아니라 이 화면의 기본값이 됩니다.')}
-        </p>
-      )}
       {!litellmAvailable && (
         <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
@@ -369,8 +374,15 @@ function ModelMenu({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
-              <span className="truncate text-base font-medium">{m.label}</span>
-              <Badge>{m.provider}</Badge>
+              {/* The vendor is the heading this row sits under, so the row
+                  says the model. `label` carries both for the places that
+                  have no heading to lean on — a single-vendor catalogue draws
+                  no groups, and there the name alone would not say whose it
+                  is. */}
+              <span className="truncate text-base font-medium">
+                {groups.length > 1 ? m.name : m.label}
+              </span>
+              <Badge>{PROVIDER_LABEL[m.provider] ?? m.provider}</Badge>
               {m.adapter && (
                 <Badge tone="warn">
                   <Plug size={10} />
