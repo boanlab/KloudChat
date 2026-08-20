@@ -23,6 +23,14 @@ test('에이전트로 시작하면 그 에이전트가 화면의 주어가 된�
   await run.click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
+  // The agent's own opening, waited for first. `toHaveURL` resolves the moment
+  // the address changes, which is before React has drawn the conversation —
+  // and until it has, the only `h1` on the page is the agent list's own
+  // heading, "에이전트", which is what the top bar was then searched for.
+  await expect(page.getByText('이 에이전트의 지시대로 답합니다', { exact: false })).toBeVisible({
+    timeout: 20_000,
+  })
+
   // The top bar has always carried the agent's name; the point of this change
   // is that the middle of the screen carries it too. Read it from the badge
   // rather than from the card that was clicked, so the assertion is about the
@@ -32,7 +40,6 @@ test('에이전트로 시작하면 그 에이전트가 화면의 주어가 된�
   const name = ((await heading.textContent()) ?? '').trim()
   expect(name).not.toContain('안녕하세요')
   await expect(page.locator('header, [class*="TopBar"]').getByText(name).first()).toBeVisible()
-  await expect(page.getByText('이 에이전트의 지시대로 답합니다', { exact: false })).toBeVisible()
 
   // And the surface's generic openings are gone: an agent is a stance somebody
   // chose, and "이번 주 회의록 정리해줘" under it is the product talking over

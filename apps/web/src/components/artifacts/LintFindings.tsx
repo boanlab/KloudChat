@@ -84,7 +84,12 @@ export function LintFindings({
 
   return (
     <Dropdown
-      align="right"
+      // Opens rightward, into the room that exists. The badge sits early in a
+      // toolbar packed against the right edge, so there is always half a panel
+      // to its right and only a couple of hundred pixels to its left — and a
+      // 320px list opening leftward hangs off the panel, where the panel's own
+      // clipping cuts 검토 받기 in half and nothing can press it.
+      align="left"
       trigger={() => (
         <button type="button" aria-label={t('검사 결과')}>
           <Badge tone={wrong.length > 0 ? 'warn' : undefined}>

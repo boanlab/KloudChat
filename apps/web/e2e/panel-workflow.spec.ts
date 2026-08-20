@@ -320,6 +320,13 @@ test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page 
   await expect(page.locator('.line-through').first()).toBeVisible({ timeout: 180_000 })
 
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 360_000 })
+
+  // The finished deck opens its panel, and below 1024px that panel covers the
+  // conversation rather than sitting beside it — so the work log is behind it.
+  // Put it away first, the way somebody looking back at what ran would.
+  const closePanel = page.locator('[data-panel="artifact"]').getByRole('button', { name: '닫기' })
+  if (await closePanel.first().isVisible().catch(() => false)) await closePanel.first().click()
+
   const done = page.getByRole('button', { name: /작업 완료|중단됨/ }).first()
   await expect(done).toBeVisible()
   // Settled, so it is a one-line summary until asked otherwise.

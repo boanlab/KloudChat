@@ -73,9 +73,15 @@ test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으
   await signIn(page)
   await page.goto('/new/av')
 
-  // Out and back, because that is the move: the surface opens on the cheapest
-  // av model, which is a speech model, and only the return trip picks a model
-  // that has to make a clip.
+  // 영상 on arrival, without a trip through 오디오 first: the remembered av
+  // model is the cheapest of them and that is a speech model, so the surface
+  // used to open quoting a clip against a model that sells none — 전송 dead
+  // and a refusal on screen before anything had been asked for.
+  await expect(page.getByRole('button', { name: /Sound Only/ })).toBeVisible()
+  await expect(page.getByText('예상 1,200 크레딧')).toBeVisible()
+
+  // And out and back, which is the other way the model changes underneath the
+  // chips.
   await page.getByRole('button', { name: /^종류/ }).click()
   await page.getByRole('menuitem', { name: '오디오' }).click()
   await page.getByRole('button', { name: /^종류/ }).click()

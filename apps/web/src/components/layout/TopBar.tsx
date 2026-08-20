@@ -10,7 +10,13 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
   const t = useT()
 
   return (
-    <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur">
+    /* Opaque, not frosted. `backdrop-filter` makes this bar the containing
+       block for every `position: fixed` descendant, and 공유 opens its dialog
+       from in here — so the frost pinned a full-screen modal inside a 52px
+       strip, where the conversation painted straight over it and the buttons
+       could not be pressed. Nothing ever scrolls under this bar for the blur
+       to blur, so the bar simply stops being see-through. */
+    <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-bg px-3">
       <Button
         variant="ghost"
         size="icon"

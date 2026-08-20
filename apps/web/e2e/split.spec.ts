@@ -37,6 +37,19 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   await expect(panel).toBeVisible({ timeout: 20_000 })
   const before = (await panel.boundingBox())!.width
 
+  // Below 1024px the panel stops being a column: it covers the conversation
+  // instead of standing beside it, so there is no boundary between the two to
+  // drag and no ratio to remember. What has to hold at that width is that it
+  // takes the whole width rather than a stripe of it.
+  const viewport = page.viewportSize()!.width
+  if (viewport < 1024) {
+    expect(before, `겹쳐 열린 패널이 폭을 다 쓰지 않음 ${before}/${viewport}`).toBeGreaterThan(
+      viewport * 0.9,
+    )
+    await expect(panel.getByRole('separator')).toHaveCount(0)
+    return
+  }
+
   const handle = panel.getByRole('separator')
   await expect(handle).toBeVisible()
   const box = (await handle.boundingBox())!

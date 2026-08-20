@@ -1710,10 +1710,15 @@ export const useStore = create<State>((set, get) => ({
       //: author of these values — every one but the template's own is a person
       //: turning a chip.
       const next = { avOptions, optionTemplate: null }
-      if (!patch.mode || patch.mode === s.avOptions.mode) return next
+      if (!patch.mode) return next
       // Audio and video share one surface and one remembered model, and the
       // cheapest `av` model is a speech model. The model follows the mode
       // unless the one already chosen suits it.
+      //
+      // Whenever the mode is named, not only when it changes: 영상 is the mode
+      // this surface opens in, so a speech model can be sitting under it
+      // without anybody having turned 종류 at all, and a composer that only
+      // ever reacted to the turn had no moment to notice.
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
       const current = s.models.find((m) => m.id === s.modelByKind.av)
       if (current?.modality === wanted) return next

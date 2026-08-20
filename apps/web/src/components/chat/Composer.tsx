@@ -226,7 +226,13 @@ function AvOptions() {
   const t = useT()
   const { avOptions, setAvOptions, models, modelByKind } = useStore()
   const audio = avOptions.mode === 'audio'
-  const videoModel = models.find((m) => m.id === modelByKind.av)
+  //: Whatever this surface will run on, which in 영상 is not necessarily a
+  //: model that makes clips — hence the modality check below.
+  const avModel = models.find((m) => m.id === modelByKind.av)
+  //: Whether there is anything to move onto — an instance can serve this
+  //: surface with speech alone, and asking for a clip model that is not in the
+  //: catalogue would cost a 서식 its name and change nothing else.
+  const hasVideoModel = models.some((m) => m.kinds.includes('av') && m.modality === 'video')
   const shapedFor = useRef<string | null>(null)
   /**
    * Turning 종류 to 영상 also changes the model — the store picks one that can
@@ -237,12 +243,24 @@ function AvOptions() {
    * two are put together, rather than at submit where the mismatch surfaces.
    * Only when the model itself changes underneath: a chip the person turned
    * afterwards is their answer, and the estimate line still says so.
+   *
+   * The mode is put to the store first, because 영상 is the mode the surface
+   * opens in and the remembered `av` model on a first visit is the cheapest of
+   * them, which is a speech model. Nothing had asked the store to pair the two
+   * — the picker quietly showed the first model that could make a clip while
+   * the estimate was still being read off the speech model, so /new/av opened
+   * refusing a combination Veo sells and 전송 was dead before a word was typed.
    */
   useEffect(() => {
-    if (audio || !videoModel || shapedFor.current === videoModel.id) return
-    shapedFor.current = videoModel.id
+    if (audio || !avModel) return
+    if (avModel.modality !== 'video') {
+      if (hasVideoModel) setAvOptions({ mode: 'video' })
+      return
+    }
+    if (shapedFor.current === avModel.id) return
+    shapedFor.current = avModel.id
     const shape = servedVideoShape(
-      videoModel.creditPerSecond ?? {},
+      avModel.creditPerSecond ?? {},
       avOptions.resolution,
       avOptions.withAudio,
     )
@@ -251,7 +269,7 @@ function AvOptions() {
       return
     }
     setAvOptions(shape)
-  }, [audio, videoModel, avOptions.resolution, avOptions.withAudio, setAvOptions])
+  }, [audio, avModel, hasVideoModel, avOptions.resolution, avOptions.withAudio, setAvOptions])
   return (
     <>
       <OptionGroup

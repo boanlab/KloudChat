@@ -71,6 +71,12 @@ test('세션이 입고 있는 서식은 새로고침해도 칩으로 남는다',
   const chip = page.getByRole('button', { name: '편집형 덱 서식 해제' })
   await expect(chip).toBeVisible({ timeout: 20_000 })
 
+  // And the chip is the only place the shape is named. The empty screen's
+  // "이 대화가 가지고 시작하는 것" card listed the 서식 as well for a while, so
+  // a conversation wearing one said it twice before a word was typed — with the
+  // × on only one of the two.
+  await expect(page.getByText('편집형 덱', { exact: true })).toHaveCount(1)
+
   // The reason this test exists: the chip used to be drawn from the pick alone,
   // and a pick does not survive a reload. The row does, and the row is what
   // shapes every turn — so the composer said no shape was chosen while every
