@@ -2,20 +2,27 @@
 <!--
   KloudChat deck seed — proposal.
 
-  A deck for a room that decides something. The argument runs problem →
-  approach → evidence → ask, so every slide puts its claim in a left rail and
-  the evidence beside it: a reviewer scanning the rail reads the case without
-  reading the deck. The rail collapses under 720px, which is how the gallery
-  preview and a phone see it.
+  A deck for a room that decides something: one screen, three people, and the
+  person who decides is not the person turning the pages. So the title leaves
+  the body and lives in a left rail — a reviewer reads the rail down the deck
+  and has the case before reading a single slide. The title is therefore a
+  label rather than a headline, and it is deliberately *smaller* than the body
+  text it names. The rail is restated in `@media print`, because a proposal is
+  handed round a table as often as it is projected.
+
+  The one coloured surface in the whole deck is the last slide. Accent is
+  spent on argument and nowhere else: the tick before the slide number, the
+  rule that divides `compare` (on the proposed side only), the line that holds
+  up a figure's source, and the ask. A deck where exactly one screen is
+  painted is a deck whose conclusion nobody can miss.
 
   Nothing in here executes, and nothing needs to: artifacts render in a
   `sandbox=""` iframe, so a JS runtime would be dead code that still had to
   be trusted. Navigation is CSS scroll-snap, which works in the panel, in a
   new tab and in the downloaded file alike.
 
-  `@media print` puts one slide on one landscape page — a proposal is handed
-  out as often as it is projected, and "print to PDF" is the export path
-  rather than a rendering engine in the API image.
+  `@media print` puts one slide on one landscape page — "print to PDF" is the
+  export path rather than a rendering engine in the API image.
 -->
 <html lang="ko">
 <head>
@@ -25,11 +32,24 @@
 <style>
   :root {
 {{TOKENS}}
+    /* Every neutral is the project's own ink, thinned. No grey literal
+       appears anywhere below, so the deck reacts to any design system. */
     --paper: #ffffff;
     --surface: color-mix(in srgb, var(--ink) 4%, #fff);
     --border: color-mix(in srgb, var(--ink) 16%, transparent);
     --hair: color-mix(in srgb, var(--ink) 9%, transparent);
     --tint: color-mix(in srgb, var(--accent) 8%, transparent);
+    /* The side that is only being reported, not argued for. */
+    --receded: color-mix(in srgb, var(--ink) 70%, #fff);
+    /* Every accent mark in this deck is drawn on white or on the tint, and a
+       design system may hand the template a pale yellow. This is the accent
+       with its lightness capped so that a rule stays visible and a `strong`
+       stays readable — the same hue, never a different colour. The
+       `color-mix` line is what a browser without relative colour gets. */
+    --accent-ink: color-mix(in srgb, var(--accent) 86%, var(--ink));
+  }
+  @supports (color: oklch(from red l c h)) {
+    :root { --accent-ink: oklch(from var(--accent) min(l, 0.55) c h); }
   }
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -59,13 +79,14 @@
     position: relative;
   }
   /* The one mark that repeats: a short accent tick and the slide's number,
-     bottom left, where the rail is. It is the only accent most slides use. */
+     bottom left, under the rail. */
   .num {
     position: absolute;
     left: clamp(1.5rem, 7vw, 6rem);
     bottom: clamp(1.6rem, 4vh, 3rem);
     font-size: 0.72rem;
     letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
     color: var(--muted);
   }
   .num::before {
@@ -75,9 +96,13 @@
     height: 2px;
     margin-right: 0.6rem;
     vertical-align: middle;
-    background: var(--accent);
+    background: var(--accent-ink);
   }
 
+  /* ── type ──────────────────────────────────────────────────────────
+     The heading is the smallest voice on the slide and the body is the
+     largest, which is the opposite of a keynote and the point of this deck:
+     the title names the slide, the slide makes the case. */
   h2 {
     margin: 0 0 0.7em;
     font-size: clamp(1.3rem, 2.8vw, 2.05rem);
@@ -86,6 +111,8 @@
     font-weight: 680;
     text-wrap: balance;
   }
+  /* A column name — 현행 / 제안 — rather than a sub-heading with prose of
+     its own, so it is tracked and quiet. */
   h3 {
     margin: 0 0 0.5em;
     font-size: 0.8rem;
@@ -93,15 +120,14 @@
     letter-spacing: 0.1em;
     color: var(--muted);
   }
-  p { margin: 0 0 0.75em; font-size: clamp(0.98rem, 1.35vw, 1.12rem); text-wrap: pretty; }
+  p { margin: 0 0 0.75em; font-size: clamp(0.98rem, 1.4vw, 1.15rem); text-wrap: pretty; }
   p:last-child { margin-bottom: 0; }
   ul, ol { margin: 0; padding-left: 1.15em; }
-  li { margin: 0 0 0.55em; font-size: clamp(0.98rem, 1.45vw, 1.15rem); text-wrap: pretty; }
+  li { margin: 0 0 0.55em; font-size: clamp(0.98rem, 1.4vw, 1.15rem); text-wrap: pretty; }
   li:last-child { margin-bottom: 0; }
-  li::marker { color: var(--accent); }
+  li::marker { color: var(--accent-ink); }
   strong { font-weight: 650; }
   blockquote { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.8rem); line-height: 1.35; text-wrap: balance; }
-  small, .note { font-size: clamp(0.82rem, 1.1vw, 0.95rem); color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-size: clamp(0.86rem, 1.15vw, 1rem); }
   th, td { padding: 0.55em 0.7em; border-bottom: 1px solid var(--hair); text-align: left; }
   /* A panel reads the numbers down the column. */
@@ -109,9 +135,24 @@
   th { color: var(--muted); font-weight: 600; }
   thead th { border-bottom: 2px solid var(--border); }
 
+  /* The subordinate voice, everywhere it appears: a caption, a source, a
+     footing line. One size, one colour, one measure, never italic, and half
+     a rem under whatever it explains. Two of these read alike across the
+     whole catalogue; the third is recognisable because of it. */
+  figcaption, small, dd, .note, .lead, .meta {
+    font-size: 0.85em;
+    line-height: 1.55;
+    font-style: normal;
+    color: var(--muted);
+    max-width: 46ch;
+  }
+  figcaption, .slide .lead, .slide .note { margin-top: 0.5rem; }
+
   /* ── the rail ──────────────────────────────────────────────────────
-     Claim on the left, evidence on the right. Below 720px there is no room
-     for two columns, so the heading simply sits above its slide. */
+     Title in the margin, evidence beside it, on every slide but the cover
+     and the table. Below 720px there is no room for two columns, so the
+     heading simply sits above its slide — which is how the gallery card and
+     a phone see it. */
   @media (min-width: 721px) {
     .slide {
       display: grid;
@@ -120,54 +161,61 @@
       align-content: center;
     }
     .slide > * { grid-column: 2; }
-    .slide > h2 { grid-column: 1; align-self: start; margin: 0; padding-top: 0.1em; }
+    .slide > h2 { grid-column: 1; grid-row: 1; align-self: start; margin: 0; padding-top: 0.1em; }
     /* An absolutely positioned child that has been given a column is placed
        against that column; the number belongs to the slide, so it keeps none. */
     .slide > .num { grid-column: auto; }
     /* A title page is not an argument; the cover keeps the full width. */
     .slide.cover { display: flex; }
+    /* A table is the one thing that cannot afford the rail: four columns in
+       79% of the screen are four cramped columns. It keeps the title where
+       every other slide has it and takes the full measure underneath, which
+       makes it the one slide with a silhouette of its own. */
+    .slide.table > *:not(.num) { grid-column: 1 / -1; }
+    .slide.table > h2 { grid-column: 1; margin-bottom: 0.9em; }
   }
 
   /* ── cover ─────────────────────────────────────────────────────────
-     What is proposed, and who is being asked to decide it. */
+     What is proposed, and who is being asked to decide it. The only slide
+     whose title is allowed to be large. */
   .slide.cover { background: var(--surface); }
-  .slide.cover h2 { font-size: clamp(1.9rem, 5vw, 3.3rem); max-width: 24ch; margin-bottom: 0.5em; }
-  .slide.cover .lead { color: var(--muted); font-size: clamp(1rem, 1.7vw, 1.25rem); max-width: 44ch; }
+  .slide.cover h2 { font-size: clamp(1.9rem, 5vw, 3.3rem); max-width: 24ch; margin-bottom: 0; }
   .slide.cover .meta {
     margin: 2rem 0 0;
     padding-top: 0.9rem;
-    border-top: 1px solid var(--border);
-    max-width: 40ch;
+    border-top: 1px solid var(--hair);
     letter-spacing: 0.02em;
-    color: var(--muted);
-    font-size: clamp(0.82rem, 1.1vw, 0.95rem);
   }
 
   /* ── compare ───────────────────────────────────────────────────────
-     Left is what happens now, right is what is proposed. The divider is the
-     accent, so the side being argued for is the side the eye lands on. */
+     Left is what happens now, right is what is proposed. Only the proposed
+     column is ruled and only its name is coloured, and the reported column
+     steps back one shade — which side is being argued for is legible before
+     a word is read. */
   .slide.compare .cols {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: clamp(1.25rem, 3vw, 2.5rem);
   }
+  .slide.compare .cols > div:first-child { color: var(--receded); }
   .slide.compare .cols > div + div {
     padding-left: clamp(1rem, 2vw, 1.75rem);
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--accent-ink);
   }
-  .slide.compare .cols > div + div h3 { color: var(--accent); }
+  .slide.compare .cols > div + div h3 { color: var(--accent-ink); }
   @media (max-width: 720px) {
     .slide.compare .cols { grid-template-columns: 1fr; }
     .slide.compare .cols > div + div {
       padding: 1rem 0 0;
       border-left: 0;
-      border-top: 2px solid var(--accent);
+      border-top: 2px solid var(--accent-ink);
     }
   }
 
   /* ── figure ────────────────────────────────────────────────────────
-     One value or one claim, large, with the line that says where it came
-     from directly under it. A number nobody can source is not evidence. */
+     One value, larger than any title in the deck, with the line that says
+     where it came from directly under it. A number nobody can source is not
+     evidence, so the source is carried on a rule rather than dropped in. */
   .slide.figure .claim {
     margin: 0;
     font-size: clamp(2rem, 6.5vw, 4rem);
@@ -178,42 +226,40 @@
   }
   .slide.figure blockquote { font-size: clamp(1.7rem, 4.6vw, 3rem); line-height: 1.15; }
   .slide.figure .note {
-    margin: 1.2rem 0 0;
-    padding-top: 0.9rem;
-    border-top: 2px solid var(--accent);
-    max-width: 46ch;
+    margin: 1rem 0 0;
+    padding-top: 0.55rem;
+    border-top: 2px solid var(--accent-ink);
   }
 
   /* ── ask ───────────────────────────────────────────────────────────
-     The last slide, and the only one on a coloured ground: what is being
+     The last slide, and the only coloured ground in the deck: what is being
      requested, from whom, by when. */
   .slide.ask { background: var(--tint); }
   .slide.ask li { font-size: clamp(1rem, 1.6vw, 1.22rem); margin-bottom: 0.75em; }
-  .slide.ask li strong { color: var(--accent); }
+  .slide.ask li strong { color: var(--accent-ink); }
   .slide.ask .note { margin-top: 1.4rem; }
 
-  /* ── print: one slide per page ─────────────────────────────────────
-     The rail is restated here rather than inherited, because a print box
-     that measures narrow would otherwise drop it and scramble the columns. */
   /* The rest of the vocabulary `sanitise` lets through. A block that reaches
      for a caption or a definition list should get typography rather than the
      browser's defaults — an unstyled `<dl>` is how model output starts to
      look like model output. */
   dl { margin: 0 0 1rem; }
   dt { font-weight: 650; }
-  dd { margin: 0 0 0.5rem; color: var(--muted); }
+  dd { margin: 0 0 0.5rem; }
   hr { border: 0; border-top: 1px solid var(--hair); margin: 1.4rem 0; }
   /* A picture is a data URI the server embedded; nothing here fetches from
      outside a sandboxed artifact. */
-  figure { margin: 1.2rem 0; text-align: center; }
+  figure { margin: 1.2rem 0; }
   /* A slide is one screen. A portrait picture at full width is twice that,
      and it takes the slide's own box with it — scroll-snap stops landing on
      slide boundaries and print puts one slide across two pages. Height is
      what has to be capped here, not width. */
-  figure img { display: block; margin: 0 auto; max-width: 100%; max-height: 52vh;
+  figure img { display: block; margin: 0; max-width: 100%; max-height: 52vh;
                width: auto; height: auto; }
-  figcaption { margin-top: 0.5rem; font-size: 0.86em; color: var(--muted); }
 
+  /* ── print: one slide per page ─────────────────────────────────────
+     The rail is restated here rather than inherited, because a print box
+     that measures narrow would otherwise drop it and scramble the columns. */
   @page { size: A4 landscape; margin: 12mm; }
   @media print {
     body { background: #fff; height: auto; overflow: visible; }
@@ -230,13 +276,16 @@
       padding: 6mm 8mm 10mm;
     }
     .slide > * { grid-column: 2; }
-    .slide > h2 { grid-column: 1; align-self: start; margin: 0; }
+    .slide > h2 { grid-column: 1; grid-row: 1; align-self: start; margin: 0; }
     .slide > .num { grid-column: 2; }
+    .slide.table > *:not(.num) { grid-column: 1 / -1; }
+    .slide.table > h2 { grid-column: 1; margin-bottom: 4mm; }
     .slide.cover { display: block; background: #fff; }
     .slide:last-child { page-break-after: auto; break-after: auto; }
     /* A printer may drop a background and never drops a rule, so the ask is
        framed on paper instead of tinted. */
-    .slide.ask { background: #fff; border: 1.5pt solid var(--accent); padding: 8mm; }
+    .slide.ask { background: #fff; border: 1.5pt solid var(--accent-ink); padding: 8mm; }
+    figure img { max-height: 90mm; }
     .num { position: static; margin-top: 1.4em; }
   }
 </style>

@@ -1,20 +1,36 @@
 <h1>슬라이드 내레이션</h1>
-<p class="lead">발표 노트를 소리 내어 읽습니다</p>
-<section>
-  <h2>채우는 것</h2>
-  <ul>
-    <li>어조 — 목록에서 고름</li>
-    <li>읽을 내용 — 발표 노트를 붙여 넣기</li>
-  </ul>
-</section>
-<section>
-  <h2>미리 정해지는 것</h2>
-  <p>음성 모드 · <code>nova</code> 목소리.</p>
-</section>
-<section>
-  <h2>지키는 것</h2>
-  <ul>
-    <li>문장 사이에 쉼</li>
-    <li>숫자는 풀어 읽기</li>
-  </ul>
-</section>
+<p class="lead">발표 노트를 소리로 읽습니다. 문장 사이에 쉼을 두므로, 듣는 사람에게는 이해할 틈이, 발표자에게는 슬라이드를 넘길 틈이 생깁니다.</p>
+<div class="band">
+  <div class="meter">
+    <div class="level">
+      <div class="say"><i></i><i></i><i></i><i></i></div>
+      <div class="under"></div>
+    </div>
+    <div class="keys">
+      <span>목소리</span>
+      <span>배경 음악 자리</span>
+    </div>
+  </div>
+  <span class="note">막대 하나가 문장 하나, 사이의 빈칸이 쉼입니다. 길이가 제각각인 것은 문장 길이를 그대로 따르기 때문입니다.</span>
+</div>
+<div class="blocks">
+  <section>
+    <h2>채우는 것</h2>
+    <ul>
+      <li>어조 — <code>차분한 설명조</code></li>
+      <li>읽을 내용 — 발표 노트를 붙여 넣기</li>
+    </ul>
+  </section>
+  <section>
+    <h2>미리 정해지는 것</h2>
+    <p>음성 모드 · <code>nova</code> 목소리. 고른 뒤에도 바꿀 수 있습니다.</p>
+  </section>
+  <section class="keep">
+    <h2>지키는 것</h2>
+    <ul>
+      <li>문장 사이에 쉼</li>
+      <li>숫자는 풀어 읽기</li>
+      <li>슬라이드에 없는 말은 보태지 않음</li>
+    </ul>
+  </section>
+</div>
