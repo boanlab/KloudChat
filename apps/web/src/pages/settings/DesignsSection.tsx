@@ -53,11 +53,10 @@ const blank = (): Partial<DesignRow> => ({
 /**
  * The same string, once the typing has stopped.
  *
- * The preview is a document the browser fetches, and the two controls that
- * feed it are the loudest kind: a colour picker fires while the pointer is
- * still moving, a hex field once per character. A quarter of a second is short
- * enough that the preview still reads as live, and it turns a drag across the
- * spectrum into one load rather than fifty.
+ * The preview is a document the browser fetches, and both controls feeding it
+ * are loud: a colour picker fires while the pointer moves, a hex field once
+ * per character. A quarter of a second still reads as live and turns a drag
+ * across the spectrum into one load.
  */
 function useSettled(value: string, ms = 250) {
   const [settled, setSettled] = useState(value)
@@ -104,21 +103,20 @@ function Swatch({
 /**
  * Reading a design system out of something that already exists.
  *
- * The four colours and the paragraph of style rules are the part nobody types,
- * which is why the only design systems most accounts have are the three that
- * were seeded. The material is usually on hand — the 공문 template everything
- * is filed on, last year's report, a page on the department site.
+ * The four colours and the paragraph of style rules are the part nobody types.
+ * The material is usually on hand — the 공문 template everything is filed on,
+ * last year's report, a page on the department site.
  *
  * What comes back opens the editor rather than becoming a row: it is one
- * model's reading of a document, and the person who owns the document is the
- * one who can say whether it read it right.
+ * model's reading of a document, and only its owner can say whether it read it
+ * right.
  */
 /**
  * Refusals this form knows how to say out loud.
  *
  * The API answers 4xx with a stable code, which `errorMessage` shows as-is —
- * fine for a log, useless on a screen. The service's own failures already
- * come back as sentences and fall through this map untouched.
+ * fine for a log, useless on a screen. The service's own failures already come
+ * back as sentences and fall through untouched.
  */
 const REFUSAL: Record<string, string> = {
   file_unreadable: '이 파일에서는 글자를 읽지 못했습니다.',

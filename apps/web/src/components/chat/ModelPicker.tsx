@@ -69,15 +69,13 @@ const PROVIDER_LABEL: Record<string, string> = {
 /**
  * Where this model's text goes, as a sentence rather than a chip.
  *
- * It was five badges in the row of the name, competing with the vendor, the
- * price tier and the adapter mark for the same strip — and the one fact that
- * decides whether a prompt may leave the building read as one more coloured
- * pill among them. Under the name it is read rather than scanned, in the line
- * that already carries what a turn costs, which is the other question somebody
- * is asking at that moment.
+ * The one fact that decides whether a prompt may leave the building must not
+ * read as one more coloured pill beside the vendor and the price tier. Under
+ * the name it is read rather than scanned, in the line that already carries
+ * what a turn costs.
  *
- * Still coloured, because it is a safety fact and an external model must not
- * read the same as a local one — but colour on words, not a card.
+ * Still coloured — an external model must not read the same as a local one —
+ * but colour on words, not a card.
  */
 function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone: string } | null {
   if (m.strictLocal) return { text: 'strict-local', tone: 'text-success' }
@@ -157,14 +155,12 @@ export function ModelPicker({
   // write it to — or a caller standing by to make one. Settings has neither,
   // and an Auto row there would be a button that quietly does nothing.
   const canRouteAuto = kind === 'chat' && (Boolean(sessionId) || Boolean(onEnableAuto))
-  /**
-   * Before the first turn there is no conversation to write a model to, so a
-   * pick lands on the surface default and every later conversation inherits
-   * it. That is the right place for it — a new session is created from that
-   * default — but it is not what a picker sitting in the composer looks like
-   * it does, so the menu says which of the two is happening. Settings carries
-   * its own heading and needs no second telling.
-   */
+    /**
+     * Before the first turn there is no conversation to write a model to, so a
+     * pick lands on the surface default and every later conversation inherits
+     * it. Correct, but not what a picker in the composer looks like it does, so
+     * the menu says which of the two is happening.
+     */
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)

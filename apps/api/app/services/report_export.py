@@ -439,11 +439,10 @@ def _hwpx_escape(text: str) -> str:
 #: Page geometry, carried in the first paragraph's run exactly as Hancom
 #: writes it. A4 is 59528 x 84188 HWPUNIT; the margins are 30/30/20/15 mm.
 #:
-#: Text laid out without this — every .hwpx this wrote until now — because
-#: Hancom falls back to its own defaults. **A picture does not.** With no page
-#: box to sit in, an object sized in absolute units was read and then not
-#: drawn: the file opened, the text was right, and the picture was simply
-#: absent. Adding this is what made it appear, confirmed in Hancom Office.
+#: Text survives without it — Hancom falls back to its own defaults. **A
+#: picture does not.** With no page box to sit in, an object sized in absolute
+#: units is read and then not drawn: the file opens, the text is right, and the
+#: picture is simply absent.
 _HWPX_SECPR = (
     '<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000"'
     ' tabStopVal="4000" tabStopUnit="HWPUNIT" outlineShapeIDRef="0" memoShapeIDRef="0"'
