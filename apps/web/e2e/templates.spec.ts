@@ -12,7 +12,7 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   await page.goto('/new/report')
 
   const openGallery = async () => {
-    await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+    await page.getByRole('button', { name: '시작점 고르기' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
   }
 
@@ -24,7 +24,7 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   await expect(cards.first(), '기본 시작점이 없다').toBeVisible({ timeout: 20_000 })
 
   // Write one down.
-  await page.getByRole('button', { name: '템플릿 추가' }).click()
+  await page.getByRole('button', { name: '시작점 추가' }).click()
   const name = `공문 초안 ${Date.now()}`
   await page.getByLabel('이름').fill(name)
   await page.getByLabel('설명').fill('기관 공문 양식에 맞춘 초안')
@@ -89,15 +89,15 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
  * document, so the form rides along as an attachment and the draft is written
  * against the real thing.
  */
-test('양식 파일을 붙인 템플릿을 고르면 그 파일이 첨부로 따라온다', async ({ page }) => {
+test('양식 파일을 붙인 시작점을 고르면 그 파일이 첨부로 따라온다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
 
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
-  await page.getByRole('button', { name: '템플릿 추가' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
+  await page.getByRole('button', { name: '시작점 추가' }).click()
 
-  const name = `양식 템플릿 ${Date.now()}`
+  const name = `양식 시작점 ${Date.now()}`
   await page.getByLabel('이름').fill(name)
   await page.getByLabel('문구').fill('이 양식에 맞춰 써 줘.\n\n수신: ')
   await page.getByLabel('양식 파일').setInputFiles({
@@ -122,7 +122,7 @@ test('양식 파일을 붙인 템플릿을 고르면 그 파일이 첨부로 따
   })
 
   // Clean up so the gallery does not fill with test rows.
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   const again = page.getByRole('dialog').locator('div.group', { hasText: name })
   await again.getByRole('button', { name: `${name} 삭제` }).click()
   await expect(again).toHaveCount(0, { timeout: 15_000 })

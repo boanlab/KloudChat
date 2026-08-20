@@ -453,6 +453,13 @@ export function AgentsPage() {
                   onChange={(e) => setDraft({ ...draft, model: e.target.value })}
                   className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
+                  {/* 고정하지 않는 것도 하나의 상태다 — 카드가 '화면 기본
+                      모델' 이라고 그리는 그 상태이고, 씨앗 에이전트는 전부
+                      거기에 있다. 그런데 목록에 그 항목이 없어서, 값이 빈
+                      에이전트를 열면 브라우저가 첫 모델을 대신 골라 보여
+                      주었다. 고르지도 않은 모델이 편집기에 적혀 있는 것이고,
+                      한 번 건드리면 그대로 박힌다. */}
+                  <option value="">{t('화면 기본 모델')}</option>
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.label}

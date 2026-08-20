@@ -70,7 +70,7 @@ test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async
   await signIn(page)
   await page.goto('/new/report')
 
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   // The card shows what you have to bring, not the prompt it will paste.
   await expect(page.getByRole('dialog').getByText('업무·기술 보고서')).toBeVisible()
   await expect(page.getByRole('dialog').getByText('독자', { exact: true })).toBeVisible()

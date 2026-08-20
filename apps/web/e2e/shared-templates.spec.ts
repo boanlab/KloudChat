@@ -35,7 +35,7 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
 
   // It reaches the gallery, where it is marked as everybody's.
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   const card = page.getByRole('dialog').locator('div.group', { hasText: title })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await expect(card.getByText('공용')).toBeVisible()
@@ -56,7 +56,7 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
   await expect(section.locator('li', { hasText: fixed })).toBeVisible({ timeout: 20_000 })
   // Still shared, not quietly turned private by the edit.
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   const revised = page.getByRole('dialog').locator('div.group', { hasText: fixed })
   await expect(revised).toBeVisible({ timeout: 20_000 })
   await expect(revised.getByText('공용')).toBeVisible()

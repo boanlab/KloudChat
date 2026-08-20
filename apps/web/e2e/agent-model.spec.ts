@@ -36,7 +36,11 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
   const dialog = page.getByRole('dialog')
 
   const select = dialog.getByLabel('모델')
-  const labels = (await select.locator('option').allTextContents()).map((s) => s.trim())
+  // The list opens with "no pinned model", which is a state and not a model.
+  // Choosing it here would be asserting the opposite of what follows.
+  const labels = (await select.locator('option').allTextContents())
+    .map((s) => s.trim())
+    .filter((label) => label !== '화면 기본 모델')
   const pinned = labels.find((label) => label !== surfaceDefault)
   test.skip(!pinned, '모델이 하나뿐인 인스턴스에서는 우선순위를 구분할 수 없습니다.')
 
@@ -85,6 +89,56 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
   }
 
   await page.goto('/agents')
+  await page.getByRole('button', { name: `${name} 삭제` }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
+  await expect(page.getByText(name)).toHaveCount(0, { timeout: 15_000 })
+})
+
+/**
+ * The state the product recommends, made sayable.
+ *
+ * An agent that pins no model follows whichever model the screen it is run on
+ * defaults to, and every agent the instance seeds is in that state — the card
+ * has always drawn it as 화면 기본 모델. The 모델 list, though, offered models
+ * and nothing else, so opening such an agent showed a model it had not been
+ * given and no way back to having none. Both halves are checked here: the
+ * editor can put an agent into that state, and it still reads it back as that
+ * state afterwards.
+ */
+test('모델을 고정하지 않은 에이전트를 편집기에서 만들 수 있고, 다시 열어도 그대로다', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await signIn(page)
+
+  await page.goto('/agents')
+  await page.getByRole('button', { name: '새 에이전트' }).first().click()
+  const dialog = page.getByRole('dialog')
+
+  const name = `기본모델요원${Date.now()}`
+  await dialog.getByLabel('이름').fill(name)
+  await dialog.getByLabel('설명').fill('모델을 고정하지 않는 에이전트')
+  await dialog
+    .getByLabel('시스템 프롬프트')
+    .fill('너는 짧고 사실만 담아 답한다. 확인하지 못한 것은 확인이 필요하다고 적는다.')
+  await dialog.getByLabel('모델').selectOption('')
+  await dialog.getByRole('button', { name: '저장' }).last().click()
+  await expect(dialog).toBeHidden({ timeout: 20_000 })
+
+  await page.getByRole('button', { name: `${name} 삭제` }).waitFor({ timeout: 20_000 })
+  const card = page
+    .locator('div')
+    .filter({ hasText: name })
+    .filter({ has: page.getByRole('button', { name: `${name} 삭제` }) })
+    .last()
+  await expect(card.getByText('화면 기본 모델', { exact: true })).toBeVisible()
+
+  // Reopened rather than reasoned about: a select that cannot hold the value
+  // is exactly how the model got pinned by the act of opening the editor.
+  await card.getByRole('button', { name: '편집' }).click()
+  await expect(dialog.getByLabel('모델')).toHaveValue('')
+
+  await dialog.getByRole('button', { name: '취소' }).click()
   await page.getByRole('button', { name: `${name} 삭제` }).click()
   await page.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
   await expect(page.getByText(name)).toHaveCount(0, { timeout: 15_000 })
