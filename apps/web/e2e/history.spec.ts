@@ -107,7 +107,10 @@ test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', a
     page.waitForResponse((r) => r.url().includes('/api/auth/login') && r.request().method() === 'POST'),
     page.locator('form').getByRole('button', { name: '로그인' }).click(),
   ])
-  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 20_000 })
+  // Signed in and inside the app shell. Read off the sidebar toggle rather
+  // than a sidebar link: the sidebar itself is a drawer below 1024px, and what
+  // is being checked here is the login, not the navigation.
+  await expect(page.getByRole('button', { name: '사이드바 토글' })).toBeVisible({ timeout: 20_000 })
 
   // Two conversations and one artifact, so "what survives" has something to say.
   await page.evaluate(async () => {

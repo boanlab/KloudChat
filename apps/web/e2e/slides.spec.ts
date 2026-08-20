@@ -47,6 +47,7 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
     .fill('연구실 신입생에게 파이썬 가상환경 관리를 설명하는 발표 슬라이드를 만들어줘')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
+  const sessionId = page.url().split('/s/')[1]
 
   // The outline lands first, so the whole deck is on screen — greyed out —
   // before any of it is written. That is the point of the two-pass split.
@@ -57,12 +58,23 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   await expect(exportButton).toBeEnabled({ timeout: 360_000 })
 
-  const stored = await page.evaluate(async (fn) => {
-    const rows = await eval(fn)('/api/artifacts')
-    const list = Array.isArray(rows) ? rows : rows.items
-    return list.find((a: { kind: string }) => a.kind === 'deck') ?? null
-  }, AS_USER)
-  expect(stored, '덱 아티팩트가 없습니다').not.toBeNull()
+  // Two things sit between this test and the deck it just made. A listing row
+  // is a card — four slide titles, no bodies — so the deck has to be read by
+  // id. And the account is shared, so "the first deck" is whichever deck was
+  // touched most recently by anybody; this one is found by its session.
+  const stored = await page.evaluate(
+    async ([fn, id]) => {
+      const asUser = eval(fn)
+      const rows = await asUser('/api/artifacts?kind=deck')
+      const list = Array.isArray(rows) ? rows : rows.items
+      const row = list.find((a: { sessionId: string }) => a.sessionId === id)
+      return row ? await asUser('/api/artifacts/' + row.id) : null
+    },
+    [AS_USER, sessionId],
+  )
+  expect(stored, '이 세션의 덱 아티팩트가 없습니다').not.toBeNull()
+  // The document, not a card of it — every assertion below reads a slide body.
+  expect(stored.partial, '목록 카드가 아니라 덱 전체를 읽어야 합니다').toBeFalsy()
 
   const slides = stored.data.slides as {
     layout: string

@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, seedPendingUser, signIn } from './helpers'
+import { E2E_ADMIN, openSidebar, seedPendingUser, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -54,6 +54,10 @@ test('웹 검색을 켜도 화면이 살아 있다 (스텝 렌더 크래시)', a
   // no step rendered at all.
   await expect(page.getByText('웹 검색 중').first()).toBeVisible({ timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  // And the shell around the conversation, which is the tree a step-render
+  // crash would have taken with it. Below 1024px the sidebar is a drawer, so
+  // it has to be opened before it can be read.
+  await openSidebar(page)
   await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible()
 
   await page.reload()

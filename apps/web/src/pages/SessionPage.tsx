@@ -1,4 +1,4 @@
-import { Bot, Boxes, LayoutGrid, Palette, PanelRight } from 'lucide-react'
+import { Bot, Boxes, Palette, PanelRight } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -11,8 +11,6 @@ import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button, EmptyState } from '@/components/ui'
-import { templateText } from '@/lib/api'
-import { currentLang } from '@/lib/i18n'
 import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
@@ -39,15 +37,22 @@ const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
 /**
  * What this conversation is already carrying, before a word is typed.
  *
- * An agent, a project, a 디자인 or a 서식 is chosen on another screen and then
- * arrives here as a badge in the top bar — which is next to nothing. Pressing
- * 실행 on an agent is the clearest case: the screen that opens looks exactly
- * like a blank session, so the one thing the person just decided is the one
- * thing the screen does not say.
+ * An agent, a project or a 디자인 is chosen on another screen and then arrives
+ * here as a badge in the top bar — which is next to nothing. Pressing 실행 on
+ * an agent is the clearest case: the screen that opens looks exactly like a
+ * blank session, so the one thing the person just decided is the one thing the
+ * screen does not say.
  *
  * Said in the middle of the empty screen instead, where the answer is about
  * to appear, and in the terms the choice was made in — an agent's own
  * description rather than its name repeated.
+ *
+ * A 서식 is deliberately not among them, though it is chosen the same way. It
+ * is the one of the four that was never invisible: it lands as a named chip
+ * inside the composer, carrying the × that takes it off again. Naming it here
+ * too put the same two words at both ends of an empty screen, and only the
+ * lower one could be acted on. The shared page keeps its 서식 row — there is
+ * no composer there to say it.
  */
 function StartingFrom({
   sessionId,
@@ -60,25 +65,18 @@ function StartingFrom({
   withoutAgent?: boolean
 }) {
   const t = useT()
-  const english = currentLang() === 'en'
   const session = useStore((s) => s.sessions.find((c) => c.id === sessionId))
   const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
   const agent = withoutAgent ? undefined : found
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
-  const pending = useStore((s) => s.pendingTemplate)
-  const templates = useStore((s) => s.designTemplates)
   // The design comes with the project or not at all, so it is looked up from
   // the project rather than the session.
   const design = useStore((s) => s.designs.find((d) => d.id === project?.designSystemId))
   const designReach = DESIGN_REACHES[kind]
-  // The composer's own rule for which shape is in force: this turn's pick if
-  // there is one, otherwise whatever the session was started with.
-  const format =
-    (pending?.surface === kind ? pending : null) ??
-    templates.find((row) => row.id === session?.renderTemplateId) ??
-    null
 
-  if (!agent && !project && !format) return null
+  // The 디자인 row rides on the project, so a card with neither an agent nor a
+  // project has nothing of its own left to say.
+  if (!agent && !project) return null
 
   // Each row says what the thing will *do* to this conversation rather than
   // naming its category. "프로젝트" over a project's name says nothing the
@@ -110,14 +108,6 @@ function StartingFrom({
         says: design.description,
         colour: design.tokens.accent,
       },
-    format && {
-      key: 'format',
-      icon: <LayoutGrid size={13} />,
-      label: t('결과물이 이 서식으로 나옵니다'),
-      name: templateText(format, english).name,
-      says: templateText(format, english).description,
-      colour: undefined,
-    },
   ].filter(Boolean) as {
     key: string
     icon: React.ReactNode

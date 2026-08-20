@@ -19,6 +19,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
+import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Badge, Button, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -517,6 +518,7 @@ export function DeckPanel({
 }) {
   const t = useT()
   const width = usePanelWidth(onWideChange)
+  const panel = usePanelNarrow<HTMLDivElement>()
   const stage = useStageScale()
   const [selected, setSelected] = useState(0)
   const [editing, setEditing] = useState(false)
@@ -530,9 +532,10 @@ export function DeckPanel({
   //: different questions — "which slide was the chart on" and "does the
   //: argument run in the right order".
   const [rail, setRail] = useState<'thumbs' | 'outline'>('thumbs')
-  //: Below lg the rail becomes a drawer, the same way the report's contents
-  //: do. Beside the stage it is 132px of a 390px screen, which leaves the
-  //: slide 119px — a picture of a slide rather than the slide.
+  //: In a panel narrower than the deck asks for, the rail becomes a drawer,
+  //: the same way the report's contents do. Beside the stage it is 132px of a
+  //: 390px panel, which leaves the slide 119px — a picture of a slide rather
+  //: than the slide.
   const [railOpen, setRailOpen] = useState(false)
 
   const runFactCheck = async (slideId: string) => {
@@ -656,7 +659,7 @@ export function DeckPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={panel.ref} className="flex h-full min-h-0 flex-col">
       {/* 접히는 머리말. 390px 에서는 이 줄이 화면보다 넓고, flex 는 그럴 때
           자식을 줄여서 "내보내기" 를 한 자씩 네 줄로 세운다. 제목은 줄어들되
           버튼은 줄어들지 않는 것이 옳은 순서다. */}
@@ -683,16 +686,19 @@ export function DeckPanel({
         )}
         <Badge className="max-sm:hidden">{deck.theme}</Badge>
         <LintFindings findings={deck.lint} artifact={deck} />
-        <Button
-          size="sm"
-          className="lg:hidden"
-          aria-label={t('장 목록')}
-          title={t('장 목록을 엽니다')}
-          onClick={() => setRailOpen((o) => !o)}
-        >
-          <Rows3 size={13} />
-          {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-        </Button>
+        {/* Only where there is a drawer to open: with the rail standing beside
+            the stage this button opens what is already on screen. */}
+        {panel.narrow && (
+          <Button
+            size="sm"
+            aria-label={t('장 목록')}
+            title={t('장 목록을 엽니다')}
+            onClick={() => setRailOpen((o) => !o)}
+          >
+            <Rows3 size={13} />
+            {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
+          </Button>
+        )}
         {/* 발표 모드. 덱은 방에서 보이는 크기로 한 번 넘겨 봐야 끝난다 */}
         <Button size="sm" disabled={writing} onClick={() => setPresenting(true)}>
           <Play size={13} />
@@ -730,10 +736,10 @@ export function DeckPanel({
       </header>
 
       <div className="relative flex min-h-0 flex-1">
-        {railOpen && (
+        {panel.narrow && railOpen && (
           <button
             aria-label={t('장 목록 닫기')}
-            className="absolute inset-0 z-10 bg-black/30 lg:hidden"
+            className="absolute inset-0 z-10 bg-black/30"
             onClick={() => setRailOpen(false)}
           />
         )}
@@ -744,7 +750,11 @@ export function DeckPanel({
         <nav
           className={cn(
             'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
-            railOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden lg:flex',
+            panel.narrow
+              ? railOpen
+                ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
+                : 'hidden'
+              : 'flex',
           )}
         >
           <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1.5">

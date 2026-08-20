@@ -114,7 +114,11 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   await rail.getByRole('button', { name: /편집형 덱/ }).click()
   await expect(page).toHaveURL(/\/new\/slides/, { timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-  await expect(page.getByText('편집형 덱', { exact: true })).toBeVisible()
+  // Once, and in the composer. "이 대화가 가지고 시작하는 것" listed the 서식
+  // too for a while, which printed the same two words at both ends of an empty
+  // screen — and only the composer's copy carries the × that undoes the pick.
+  await expect(page.getByText('편집형 덱', { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toBeVisible()
 
   // ── a workspace entry of its own ────────────────────────────────────
   // A design system is a thing you keep and attach, not a preference.
@@ -181,7 +185,9 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(gallery).toBeHidden()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-  await expect(page.getByText('편집형 덱', { exact: true })).toBeVisible()
+  // Named once, by the chip — the only copy of the name that can take it off.
+  await expect(page.getByText('편집형 덱', { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toBeVisible()
   await shot(page, '02-deck-picked')
 
   // ── 3. The turn writes into that template ───────────────────────────
@@ -408,7 +414,10 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
   await shot(page, '06-image-gallery')
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
-  await expect(page.getByText('포스터', { exact: true })).toBeVisible()
+  // Same rule on this surface: the pick is named once, on the chip that clears
+  // it, and not a second time by the empty screen above.
+  await expect(page.getByText('포스터', { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '포스터 서식 해제' })).toBeVisible()
 })
 
 test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나온다', async ({ page }) => {

@@ -5,7 +5,7 @@
  * itself rather than buried inside a modal.
  */
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { openSidebar, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 test.use({ actionTimeout: 10_000 })
@@ -110,8 +110,11 @@ test('대화 이름을 사이드바에서 바꾼다', async ({ page }) => {
   // to settle — otherwise the generated title lands on top of the new name.
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 120_000 })
 
+  // Below 1024px the sidebar is a closed overlay, so there is no row to rename
+  // until it is opened. No `hover()` either: the row menu has to answer to a
+  // finger, and a test that hovers first would never notice if it stopped.
+  await openSidebar(page)
   const row = page.locator('aside').locator('div.group').first()
-  await row.hover()
   await row.getByRole('button', { name: '메뉴' }).click()
   await page.getByRole('menuitem', { name: '이름 바꾸기' }).click()
 
@@ -125,6 +128,7 @@ test('대화 이름을 사이드바에서 바꾼다', async ({ page }) => {
   ])
 
   await page.reload()
+  await openSidebar(page)
   await expect(page.getByText(`이름${tag}`).first()).toBeVisible({ timeout: 15_000 })
 })
 

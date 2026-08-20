@@ -132,8 +132,12 @@ test('관리자가 승인하면 대기 화면이 스스로 넘어간다', async 
   await row.getByRole('button', { name: '승인' }).click()
   await expect(row.getByText('활성')).toBeVisible({ timeout: 10_000 })
 
-  // The pending screen polls every 15s; no reload, no re-login.
-  await expect(waitingPage.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 40_000 })
+  // The pending screen polls every 15s; no reload, no re-login. The shell's
+  // own toggle is the signal, not a sidebar link: below 1024px the sidebar is
+  // a drawer that starts closed, and the waiting screen has neither.
+  await expect(waitingPage.getByRole('button', { name: '사이드바 토글' })).toBeVisible({
+    timeout: 40_000,
+  })
 
   await waiting.close()
   await admin.close()

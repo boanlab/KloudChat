@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { openSidebar, signIn } from './helpers'
 
 /**
  * Round four: the connection drops, two people edit the same thing, and the
@@ -65,6 +65,10 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     // browser's error page, and reading that measures Chrome, not KloudChat.
     await page.goto('/')
     await page.waitForTimeout(600)
+    // The link is in the sidebar, and below 1024px the sidebar is a drawer
+    // that starts closed. Opened while still online, so the navigation under
+    // test is the only thing the cut connection touches.
+    await openSidebar(page)
     await page.context().setOffline(true)
     await page.getByRole('link', { name: link, exact: true }).first().click()
     await page.waitForTimeout(1800)

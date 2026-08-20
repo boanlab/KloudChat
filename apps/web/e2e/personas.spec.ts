@@ -367,12 +367,25 @@ test.describe('페르소나 커버리지', () => {
                 await page.goto('/memory')
                 await probe(page.getByRole('heading', { name: '메모리' })).toBeVisible()
                 break
-              case 'grad-version':
+              case 'grad-version': {
                 await openNewest(page, '보고서')
-                await probe(page.getByRole('button', { name: '버전 기록' })).toBeVisible()
-                await page.getByRole('button', { name: '버전 기록' }).click()
-                await probe(page.getByText(/v3|버전/).first()).toBeVisible()
+                const history = page.getByRole('button', { name: '버전 기록' })
+                await probe(history).toBeVisible()
+                await history.click()
+                // Asked of the dialog, not of the page. The old check searched
+                // the whole document for `v3` or 버전 and took the first hit,
+                // which the dialog satisfied only while it was rendered at the
+                // end of the report panel; the shared control opens it beside
+                // the button instead. It also never asked the question the need
+                // asks — the dialog's own title passed it.
+                const listed = page.getByRole('dialog', { name: '버전 기록' })
+                await probe(listed).toBeVisible()
+                await probe(listed.getByText(/현재 v\d+/)).toBeVisible()
+                // An earlier judgement to go back to is the whole point: 이전
+                // 버전과 무엇이 달라졌는지 needs an 이전 버전 on the list.
+                await probe(listed.getByRole('button', { name: /되돌리기/ }).first()).toBeVisible()
                 break
+              }
               case 'res-agent':
                 await page.goto('/agents')
                 await probe(page.getByRole('heading', { name: '에이전트' })).toBeVisible()

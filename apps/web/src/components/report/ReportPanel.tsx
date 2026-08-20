@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { PanelControls } from '@/components/artifacts/PanelControls'
+import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
@@ -138,6 +139,28 @@ function statusIcon(status: ReportSection['status']) {
 }
 
 /**
+ * The document, without the envelope it arrived in.
+ *
+ * `data` is the body; the row around it carries the facts *about* the body —
+ * which version this is, when it was last written, which conversation it came
+ * from. The panel holds the two merged into one object, and PATCHing that
+ * object whole wrote a copy of the facts into the body. The store reads the
+ * body last, so from the first save onward every screen showed the version and
+ * the modified time the document had going *into* that save: a report rewritten
+ * five times still read 저장 시점 v1, which is the one number a reader has for
+ * telling this draft from the one they sent last week.
+ *
+ * `title` stays — the server reads it out of a snapshot when a restore puts one
+ * back, and a snapshot without one restores under the wrong name.
+ */
+function documentBody(report: ReportArtifact): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...report }
+  for (const fact of ['id', 'version', 'createdAt', 'updatedAt', 'sessionId', 'projectId', 'partial'])
+    delete body[fact]
+  return body
+}
+
+/**
  * Sections render as each one finishes rather than waiting for the document.
  * The table of contents doubles as the progress readout: pending sections are
  * visible from the start, greyed until written.
@@ -158,8 +181,10 @@ export function ReportPanel({
   //: Focus mode — 350px beside a transcript is not a reading width.
   const [focus, setFocus] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
-  // Below lg the rail becomes a drawer rather than vanishing: it carries the
-  // only signal that the report is still being written.
+  // In a panel narrower than the document asks for, the contents become a
+  // drawer rather than vanishing: they carry the only signal that the report
+  // is still being written.
+  const panel = usePanelNarrow<HTMLDivElement>()
   const [tocOpen, setTocOpen] = useState(false)
   //: Whole-document edit mode. Title, headings and the space between sections
   //: belong to no section, so a per-section editor cannot reach them.
@@ -276,7 +301,7 @@ export function ReportPanel({
       // PATCHing `data` whole is what snapshots the previous revision
       // server-side, which is the way back from a bad edit.
       const row = await artifactsApi.update(report.id, {
-        data: { ...report, title, sections: parsed.sections },
+        data: documentBody({ ...report, title, sections: parsed.sections }),
         title,
         summary: t('문서 편집'),
         // The version just read, not the one the panel is holding: the store's
@@ -369,15 +394,15 @@ export function ReportPanel({
   }
 
   return (
-    <div className="relative flex h-full min-h-0">
+    <div ref={panel.ref} className="relative flex h-full min-h-0">
       {/* Mounted with the panel, not on the print click: `window.print()` is
           synchronous, so a tree created in that handler is not on screen when
           the browser takes its snapshot. */}
       <PrintDocument report={report} />
-      {tocOpen && (
+      {panel.narrow && tocOpen && (
         <button
           aria-label={t('목차 닫기')}
-          className="absolute inset-0 z-10 bg-black/30 lg:hidden"
+          className="absolute inset-0 z-10 bg-black/30"
           onClick={() => setTocOpen(false)}
         />
       )}
@@ -386,7 +411,11 @@ export function ReportPanel({
       <nav
         className={cn(
           'w-52 shrink-0 flex-col border-r border-line bg-panel',
-          tocOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden lg:flex',
+          panel.narrow
+            ? tocOpen
+              ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
+              : 'hidden'
+            : 'flex',
         )}
       >
         <div className="border-b border-line px-3 py-2.5">
@@ -434,15 +463,14 @@ export function ReportPanel({
           <p className="min-w-0 flex-1 truncate text-base font-medium max-sm:basis-full">
             {report.title}
           </p>
-          <Button
-            size="sm"
-            className="lg:hidden"
-            aria-label={t('목차')}
-            onClick={() => setTocOpen((o) => !o)}
-          >
-            <ListTree size={13} />
-            {t('목차')} {done}/{report.sections.length}
-          </Button>
+          {/* Only where there is a drawer to open: with the contents standing
+              beside the document this button opens what is already on screen. */}
+          {panel.narrow && (
+            <Button size="sm" aria-label={t('목차')} onClick={() => setTocOpen((o) => !o)}>
+              <ListTree size={13} />
+              {t('목차')} {done}/{report.sections.length}
+            </Button>
+          )}
           <Badge>v{report.version}</Badge>
           <LintFindings findings={report.lint} artifact={report} />
           {/* 편집 진입점. 항상 보이는 자리에 둔다 — hover 로만 드러나면 보고서가
