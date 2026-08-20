@@ -740,6 +740,12 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
+  '{name} 서식 해제': 'Clear the {name} format',
+  '이 서식으로 시작': 'Start with this',
+  '서식 고르기': 'Pick a format',
+  '서식에서 시작': 'Start from a format',
+  '고른 색과 서체로 문서를 만들면 나오는 모양입니다.': 'What a document made in these colours and this typeface comes out looking like.',
+  '이 서식이 확인하는 것': 'What this template checks',
   '되돌릴 수 없습니다. 이 디자인을 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.': 'This cannot be undone. {n} project(s) using it go back to the default look.',
   '되돌릴 수 없습니다. 이 디자인을 쓰는 프로젝트는 없습니다.': 'This cannot be undone. No project is using this design.',
   '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
@@ -1153,7 +1159,6 @@ const EN: Record<string, string> = {
 
 
   // ── 디자인 현관 ─────────────────────────────────────────────────
-  '디자인에서 시작': 'Start from a design',
   '결과물이 어떤 모양으로 나올지 먼저 고릅니다': 'Choose the shape the result comes out in first',
   '결과물이 어떤 모양으로 나올지 고릅니다': 'Choose the shape the result comes out in',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다. 공문 양식이나 지난 보고서에서 읽어 올 수도 있습니다.':
@@ -1205,10 +1210,8 @@ const EN: Record<string, string> = {
   '볼 곳 {n}': '{n} to look at',
 
   // ── 디자인 템플릿 ───────────────────────────────────────────────
-  '디자인 고르기': 'Pick a design',
   '고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.':
     'Picking one puts its example into the composer. The sentence is yours to change.',
-  '이 디자인으로 시작': 'Start with this',
   '{name} 디자인 해제': 'Clear the {name} design',
   'HTML 내려받기': 'Download HTML',
   '브라우저에서 열어 인쇄하면 PDF 로 저장됩니다': 'Open it in a browser and print to save a PDF',

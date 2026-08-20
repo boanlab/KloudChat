@@ -759,7 +759,7 @@ export function Composer({
                       void setSessionTemplate(session.id, null)
                     }
                   }}
-                  aria-label={t('{name} 디자인 해제').replace(
+                  aria-label={t('{name} 서식 해제').replace(
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}
@@ -926,7 +926,7 @@ export function Composer({
                 'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
                 shownTemplate ? 'text-accent' : 'text-muted',
               )}
-              aria-label={t('디자인 고르기')}
+              aria-label={t('서식 고르기')}
               title={t('결과물이 어떤 모양으로 나올지 고릅니다')}
             >
               <LayoutGrid size={16} />
@@ -1374,6 +1374,7 @@ export function Composer({
 
       <DesignGalleryModal
         kind={kind}
+        projectId={projectId}
         open={galleryOpen}
         onClose={() => setGalleryOpen(false)}
       />

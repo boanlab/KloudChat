@@ -1847,18 +1847,31 @@ async def list_design_templates(user: CurrentUser, surface: str | None = None):
 
 
 @router.get("/design-templates/{template_id}/preview")
-async def preview_design_template(template_id: str):
-    """This template's own shape, filled with its sample.
+async def preview_design_template(
+    template_id: str,
+    accent: str | None = None,
+    ink: str | None = None,
+    muted: str | None = None,
+    font: str | None = None,
+):
+    """This template's own shape, filled with its sample and worn in a look.
 
     Served as a document rather than as a string in JSON because the gallery
     renders it in a sandboxed iframe, which needs a URL.
 
-    **Unauthenticated, like the branding logo.** The body is a constant that
-    ships in this image and is the same for every account — there is no user
-    data in it to protect. An iframe `src` cannot carry an Authorization
-    header, and the `?t=` escape hatch `current_viewer` provides puts a live
-    access token into the proxy's access log. Paying that for a static asset
-    would buy nothing.
+    The four tokens arrive as query parameters because that iframe is the only
+    thing that can ask for this document, and it can only ask by address. They
+    are the same four every renderer reads, and they go through
+    `design.normalise_tokens` on the way in — so a card shows a colour the
+    exporters can also draw, or the default, and never the string it was sent.
+    A design system is not named here: what the caller sends is the look
+    itself, which keeps the route as free of anybody's rows as it was.
+
+    **Unauthenticated, like the branding logo.** The body is still a constant
+    of this image plus four validated values — there is no user data in it to
+    protect. An iframe `src` cannot carry an Authorization header, and the
+    `?t=` escape hatch `current_viewer` provides puts a live access token into
+    the proxy's access log. Paying that for a static asset would buy nothing.
 
     The client still sandboxes the frame; the headers here keep the document
     inert on its own terms.
@@ -1869,7 +1882,9 @@ async def preview_design_template(template_id: str):
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
     return Response(
-        content=design_templates.preview(template),
+        content=design_templates.preview(
+            template, {"accent": accent, "ink": ink, "muted": muted, "font": font}
+        ),
         media_type="text/html; charset=utf-8",
         headers={
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",

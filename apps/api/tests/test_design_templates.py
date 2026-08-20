@@ -16,10 +16,13 @@ from __future__ import annotations
 import re
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from app.models.chat import SessionKind
 from app.routers import sessions as sessions_router
+from app.routers import workspace as workspace_router
+from app.schemas.workspace import DesignTemplateOut
 from app.services import design_templates as dt
 from app.services import imagegen, page
 
@@ -73,6 +76,40 @@ def test_a_shipped_template_is_complete(template):
     # advertising a shape nobody can see.
     assert template.seed and template.sample
     assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
+
+
+@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
+def test_a_writing_template_says_what_it_will_be_read_against(template):
+    """A rubric is a writing template's third file, not an optional one.
+
+    A media template has nothing to review — the picture or the clip comes back
+    whole — so it ships none, and a card that showed an empty heading for it
+    would be worse than one that shows nothing.
+    """
+    if template.kind in dt.HTML_KINDS:
+        assert len(template.checks) >= 3, template.id
+        # Read as sentences on the card, so nothing may arrive still bulleted.
+        assert not any(line.startswith("-") for line in template.checks), template.id
+    else:
+        assert not template.checks
+
+
+def test_the_card_carries_the_rules_the_result_will_be_read_against():
+    """The one thing that separates two shapes of the same kind.
+
+    회의록 and 안내문 are both documents with a title and a description; what
+    makes them different choices is that one keeps decisions apart from
+    discussion and the other wants grounds and an effective date. That lived
+    only in `checklist.md` until it went on the wire.
+    """
+    card = DesignTemplateOut.of(dt.get("doc-minutes"))
+    assert card.checks == list(dt.get("doc-minutes").checks)
+    assert any("실행 항목" in line for line in card.checks)
+    # camelCase out, like every other field on this card.
+    assert card.model_dump(by_alias=True)["checks"] == card.checks
+    # No English half exists, and the card must not invent one — an image
+    # template has no checklist at all and says so with an empty list.
+    assert DesignTemplateOut.of(dt.get("image-poster")).checks == []
 
 
 def test_the_categories_group_the_catalogue_the_same_way_in_both_languages():
@@ -195,6 +232,35 @@ def test_the_preview_is_the_seed_rather_than_a_second_file(template):
     assert template.sample.strip().split("\n")[0][:40] in html
 
 
+def test_a_preview_wears_the_design_system_it_is_shown_under():
+    """The card and the file it advertises are one look, or the card is a lie.
+
+    The gallery and the design editor both ask for a template in the tokens the
+    project actually wears, so what is on the card is what comes out of it.
+    """
+    html = dt.preview(dt.get("deck-editorial"), {"accent": "#0A7B57", "font": "serif"})
+    assert "--accent: #0a7b57;" in html
+    assert "Nanum Myeongjo" in html
+    # Nothing was said about the ink, so the ink is what it always was.
+    assert "--ink: #1a1a1a;" in html
+
+
+def test_a_token_nobody_could_draw_never_reaches_the_preview():
+    """The route is unauthenticated, so the query string arrives a stranger.
+
+    Per field rather than wholesale, exactly as `normalise_tokens` falls back:
+    the good accent below survives the two values beside it that are not.
+    """
+    html = dt.preview(
+        dt.get("deck-editorial"),
+        {"accent": "#0a7b57", "ink": "red; } body { display:none", "font": "comic"},
+    )
+    assert "--accent: #0a7b57;" in html
+    assert "display:none" not in html
+    assert "--ink: #1a1a1a;" in html
+    assert "comic" not in html
+
+
 def test_only_image_templates_hide_a_clause_from_the_composer():
     """Guardrails stay invisible; a brief stays visible.
 
@@ -217,6 +283,39 @@ def test_media_templates_carry_the_settings_they_imply():
     assert dt.get("audio-narration").defaults["audioKind"] == "narration"
     assert dt.get("audio-bed").defaults["audioKind"] == "music"
     assert dt.get("image-poster").defaults["aspect"] == "9:16"
+
+
+def test_the_preview_route_takes_a_look_by_query_and_trusts_none_of_it():
+    """The one door the tokens come through, and what it lets past.
+
+    An iframe can ask only by address, so the look travels in the query string
+    of a route with no session behind it. The document that comes back is still
+    made of this image's own files and four values the renderers agree exist.
+    """
+    app = FastAPI()
+    app.include_router(workspace_router.router)
+    with TestClient(app) as client:
+        worn = client.get(
+            "/design-templates/deck-editorial/preview",
+            params={"accent": "#0a7b57", "ink": "#111111", "muted": "#777777", "font": "serif"},
+        )
+        assert worn.status_code == 200
+        assert "--accent: #0a7b57;" in worn.text
+        assert "Nanum Myeongjo" in worn.text
+
+        junk = client.get(
+            "/design-templates/deck-editorial/preview",
+            params={"accent": "</style><script>steal()</script>", "font": "wingdings"},
+        )
+        assert junk.status_code == 200
+        assert "steal()" not in junk.text
+        assert "--accent: #5b5bd6;" in junk.text
+
+        # No look asked for is the look a project without a design system gets.
+        bare = client.get("/design-templates/deck-editorial/preview")
+        assert bare.status_code == 200
+        assert "--accent: #5b5bd6;" in bare.text
+        assert client.get("/design-templates/nothing-like-it/preview").status_code == 404
 
 
 # ── what the model is allowed to contribute ────────────────────────────

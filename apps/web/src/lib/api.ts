@@ -951,6 +951,14 @@ export interface DesignTemplateRow {
   categoryEn: string
   fillsEn: string[]
   examplePromptEn: string
+  /**
+   * What a review will read the finished thing against, one line each.
+   *
+   * Korean in both languages: these are the rubric a Korean critique scores
+   * against, so there is no English half to fall back to and none is faked.
+   * Media templates send an empty list — a picture has nothing to review.
+   */
+  checks: string[]
   /** Blanks to fill before the sentence reaches the composer. */
   arguments: DesignArgumentRow[]
   /**
@@ -995,13 +1003,40 @@ export const designTemplatesApi = {
 }
 
 /**
- * The preview document for a template card.
+ * The preview document for a template card, in the look it will be made in.
+ *
+ * The tokens ride in the query string because an iframe asks for its document
+ * by address and has no other way to say anything. The server validates all
+ * four the way the exporters read them, so a card cannot advertise a colour no
+ * file could come out in. No tokens is not a lesser preview: it is exactly
+ * what a project without a design system produces.
  *
  * Unauthenticated on purpose — see the route's docstring. It is rendered in a
  * sandboxed iframe, so it never runs script even though nothing in it does.
  */
-export const designTemplatePreviewUrl = (id: string) =>
-  `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
+export const designTemplatePreviewUrl = (id: string, tokens?: DesignTokens | null) => {
+  const url = `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
+  if (!tokens) return url
+  const query = new URLSearchParams({
+    accent: tokens.accent,
+    ink: tokens.ink,
+    muted: tokens.muted,
+    font: tokens.font,
+  })
+  return `${url}?${query}`
+}
+
+/**
+ * The look a project wears, for a card that is standing in for its output.
+ *
+ * `null` where the project has no design system, or has one this account can
+ * no longer see — both are rendered in the default tokens, so both should be
+ * previewed in them.
+ */
+export const designTokensOf = (
+  designs: DesignRow[],
+  designSystemId: string | null | undefined,
+): DesignTokens | null => designs.find((d) => d.id === designSystemId)?.tokens ?? null
 
 export const skillsApi = {
   list: () => call<SkillRow[]>('/skills'),

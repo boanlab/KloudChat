@@ -403,6 +403,17 @@ branding logo: the body is a constant that ships in this image, an iframe `src`
 cannot carry an Authorization header, and `current_viewer`'s `?t=` escape hatch
 would put a live access token in the proxy log for a static asset.
 
+That preview takes the four tokens as query parameters — `accent`, `ink`,
+`muted`, `font` — because a card is only worth looking at if it is in the look
+the file will come out in: the gallery opened inside a project asks for that
+project's design system, and the design editor asks for whatever the form
+currently holds, which is what makes three hex fields into something you can
+see. The values go through `design.normalise_tokens` on the way in, the same
+call the renderers make, so a bad one falls back per field and nothing but a
+validated colour and one of two known faces reaches the document. The look
+travels as itself rather than as an id, which is what keeps the route free of
+anybody's rows and therefore still safe to leave open.
+
 ### Checking what was written
 
 Three surfaces carry the same rules in their prompts — do not invent figures,

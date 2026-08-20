@@ -93,9 +93,9 @@ export function DesignRail() {
   }
 
   return (
-    <section aria-label={t('디자인에서 시작')} className="mb-8">
+    <section aria-label={t('서식에서 시작')} className="mb-8">
       <div className="mb-2.5 flex items-baseline gap-2">
-        <h2 className="text-base font-semibold">{t('디자인에서 시작')}</h2>
+        <h2 className="text-base font-semibold">{t('서식에서 시작')}</h2>
         <p className="text-sm text-muted">{t('결과물이 어떤 모양으로 나올지 먼저 고릅니다')}</p>
       </div>
       {/* A rail rather than a grid: this is the second thing on the screen,
@@ -113,6 +113,11 @@ export function DesignRail() {
             >
               {row.hasPreview && (
                 <div className="pointer-events-none h-28 overflow-hidden border-b border-line bg-white">
+                  {/* Drawn in the default look, and asking for no other one is
+                      the honest answer here: a card on the home screen starts
+                      a session with no project, so the defaults are what its
+                      deck will actually come out in. The same gallery opened
+                      inside a project passes that project's design system. */}
                   <iframe
                     title={text.name}
                     src={designTemplatePreviewUrl(row.id)}
