@@ -2195,8 +2195,10 @@ async function holdDelete(
 function toStep(raw: Record<string, unknown>): Step {
   // `raw.type` is the stream event kind — always "step" — not `Step.type`, the
   // UI category that picks an icon. Only known categories are honoured;
-  // anything else is a tool call.
-  const category = raw.type as Step['type']
+  // anything else is a tool call. A step the server categorises itself — what
+  // the turn was given, before it did any work — sends `category` alongside,
+  // because the envelope has already spent `type` on the event name.
+  const category = (raw.category ?? raw.type) as Step['type']
   return {
     id: String(raw.id ?? uid('step')),
     type: STEP_TYPES.has(category) ? category : 'tool',
@@ -2856,6 +2858,14 @@ async function runComparison(
         patchMessage(set, sessionId, assistantId, (message) => ({
           ...message,
           steps: upsertStep(message.steps, appliedSkillsStep(e)),
+        }))
+      } else if (e.type === 'step') {
+        // A comparison is answered from the same memories and the same
+        // attachments as a single-model turn, and it spends several times the
+        // credits doing it — so it says what it was given, too.
+        patchMessage(set, sessionId, assistantId, (message) => ({
+          ...message,
+          steps: upsertStep(message.steps, toStep(e as unknown as Record<string, unknown>)),
         }))
       }
     }

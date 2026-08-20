@@ -1153,6 +1153,9 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 이 턴에 들어간 것 ───────────────────────────────────────────
+  '외 {n}개': 'and {n} more',
+
   // ── 이번 턴에만 적용되는 것과, 계정 전체에 적용되는 것 ──────────
   'strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.':
     'A strict-local model cannot use the web search tool.',

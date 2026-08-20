@@ -189,7 +189,7 @@ async def test_the_router_hands_the_agents_temperature_to_the_loop(monkeypatch) 
         return None
 
     async def enrich(**_kwargs):
-        return None
+        return None, None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", Db)
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
