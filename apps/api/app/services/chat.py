@@ -193,10 +193,15 @@ async def generate_title(
     strict_local: bool = False,
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
-) -> str | None:
-    """One short non-streaming call. Best effort — a session with no title is a
-    cosmetic problem, and blocking the turn on it would not be.
+) -> tuple[str | None, dict[str, int]]:
+    """`(title, usage)` from one short non-streaming call.
+
+    Best effort — a session with no title is a cosmetic problem, and blocking
+    the turn on it would not be. The tokens are reported either way: nobody
+    asks for a title, so the call that writes one has to be visible in the
+    ledger rather than absorbed.
     """
+    spent = {"inputTokens": 0, "outputTokens": 0}
     if masker is not None:
         first_user_message, user_hits = masker(first_user_message)
         first_reply, reply_hits = masker(first_reply)
@@ -240,13 +245,19 @@ async def generate_title(
             data = response.json()
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         log.info("title generation skipped: %s", exc)
-        return None
+        return None, spent
 
+    raw = data.get("usage") or {}
+    spent = {
+        "inputTokens": int(raw.get("prompt_tokens") or 0),
+        "outputTokens": int(raw.get("completion_tokens") or 0),
+    }
     choices = data.get("choices") or []
     if not choices:
-        return None
+        return None, spent
     title = (choices[0].get("message") or {}).get("content") or ""
     title = title.strip().strip("\"'").splitlines()[0].strip() if title.strip() else ""
     if masker is not None:
         title = masker(title)[0]
-    return title[:80] or None
+    # The tokens go back even when the reply was unusable: they were spent.
+    return title[:80] or None, spent

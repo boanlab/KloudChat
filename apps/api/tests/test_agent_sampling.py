@@ -186,7 +186,7 @@ async def test_the_router_hands_the_agents_temperature_to_the_loop(monkeypatch) 
         yield {"type": "usage", "inputTokens": 10, "outputTokens": 10}
 
     async def title(*_args, **_kwargs):
-        return None
+        return None, {"inputTokens": 0, "outputTokens": 0}
 
     async def enrich(**_kwargs):
         return None, None

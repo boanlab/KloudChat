@@ -102,16 +102,23 @@ async def extract(
     strict_local: bool = False,
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
-) -> int:
-    """Writes any new facts and returns how many. Caller commits."""
+) -> tuple[int, dict[str, int]]:
+    """Writes any new facts and returns `(how many, usage)`. Caller commits.
+
+    The tokens are reported separately from the count because the two do not
+    move together: the common answer is nothing worth remembering, and it costs
+    exactly as much as the answer that fills two rows. A caller billing only
+    for what was written would bill for almost none of this.
+    """
+    spent = {"inputTokens": 0, "outputTokens": 0}
     if not user_message.strip() or not assistant_message.strip():
-        return 0
+        return 0, spent
 
     existing = (await db.exec(select(Memory).where(Memory.user_id == user.id))).all()
     if len(existing) >= _MAX_TOTAL:
         # Past this size the store stops helping and needs pruning by hand.
         log.info("auto-memory skipped for user %s: %d memories already", user.id, len(existing))
-        return 0
+        return 0, spent
     seen = [(_norm(m.body or m.name), _shingles(m.body or m.name)) for m in existing]
 
     base, _ = await settings_store.litellm_config()
@@ -166,21 +173,28 @@ async def extract(
                 },
             )
             response.raise_for_status()
-            content = (response.json()["choices"][0]["message"]["content"] or "").strip()
+            payload = response.json()
+            content = (payload["choices"][0]["message"]["content"] or "").strip()
     except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
         log.info("auto-memory extraction skipped: %s", exc)
-        return 0
+        return 0, spent
+
+    raw = payload.get("usage") or {}
+    spent = {
+        "inputTokens": int(raw.get("prompt_tokens") or 0),
+        "outputTokens": int(raw.get("completion_tokens") or 0),
+    }
 
     # Small models fence their JSON however they like.
     match = re.search(r"\[.*\]", content, re.S)
     if not match:
-        return 0
+        return 0, spent
     try:
         items = json.loads(match.group(0))
     except json.JSONDecodeError:
-        return 0
+        return 0, spent
     if not isinstance(items, list):
-        return 0
+        return 0, spent
 
     written = 0
     for item in items[:_MAX_PER_TURN]:
@@ -203,4 +217,4 @@ async def extract(
             )
         )
         written += 1
-    return written
+    return written, spent
