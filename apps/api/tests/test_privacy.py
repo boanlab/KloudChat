@@ -574,7 +574,7 @@ async def test_egress_catalogue_rechecks_hot_strict_alias_and_denies_remap(
             return _workspace([])
 
         async def no_settings(*_args, **_kwargs):
-            return None, []
+            return None, [], None
 
         async def no_audit(*_args, **_kwargs):
             return None
@@ -1130,7 +1130,7 @@ async def _patch_guard_dependencies(
         return _workspace(blocks)
 
     async def settings(*_args, **_kwargs):
-        return None, []
+        return None, [], None
 
     async def audit(*_args, **_kwargs):
         return None
@@ -1443,7 +1443,7 @@ async def test_auto_requires_persisted_quality_model_instead_of_agent_fallback(
     )
 
     async def settings(*_args, **_kwargs):
-        return agent_model["id"], []
+        return agent_model["id"], [], None
 
     monkeypatch.setattr(sessions_router, "agent_settings", settings)
 
@@ -2017,7 +2017,7 @@ async def test_strict_route_revalidates_selected_skill_after_tools_are_removed(
         )
 
     async def settings(*_args, **_kwargs):
-        return None, None
+        return None, None, None
 
     async def runner(_arguments):
         return ToolResult(content="ok")

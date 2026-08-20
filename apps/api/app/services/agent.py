@@ -119,6 +119,7 @@ async def _stream_once(
     api_key: str,
     *,
     tool_definitions: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
     strict_local: bool = False,
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
@@ -131,6 +132,11 @@ async def _stream_once(
         "stream_options": {"include_usage": True},
         "user": user_id,
     }
+    # Omitted rather than defaulted: a turn nobody set a temperature for should
+    # sample the way the model ships, and every hop of the same turn has to
+    # sample alike or the answer changes voice halfway through.
+    if temperature is not None:
+        payload["temperature"] = temperature
     if tools:
         payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
         payload["tool_choice"] = "auto"
@@ -214,6 +220,7 @@ async def run_turn(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
     tool_definitions: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -246,6 +253,8 @@ async def run_turn(
         # snapshot so every hop sends byte-for-byte equivalent definitions.
         if tool_definitions is not None:
             stream_kwargs["tool_definitions"] = tool_definitions
+        if temperature is not None:
+            stream_kwargs["temperature"] = temperature
         async for kind, value in _stream_once(
             model,
             conversation,
