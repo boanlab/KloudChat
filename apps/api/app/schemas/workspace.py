@@ -22,6 +22,7 @@ from app.models.workspace import (
     Project,
     Share,
     ShareScope,
+    ShareView,
     Skill,
     SkillSource,
     StoredFile,
@@ -30,6 +31,7 @@ from app.models.workspace import (
 )
 from app.schemas.auth import Wire
 from app.services import design as design_service
+from app.services import geoip
 from app.services.prompt_templates import PromptTemplate
 
 #: JSONB list columns are nullable in the database, but the wire contract is a
@@ -447,6 +449,44 @@ class ShareOut(Wire):
     @classmethod
     def of(cls, s: Share) -> ShareOut:
         return cls.model_validate(s, from_attributes=True)
+
+
+class ShareViewOut(Wire):
+    """One visit to a shared link, as the owner sees it.
+
+    `name`/`email` are empty for an anonymous reader and `ip` is empty for a
+    signed-in one whose address the proxy did not forward. Both empty is a
+    real state — a reader behind a stripping proxy with no account — and it is
+    sent as such rather than dressed up as "unknown", because the screen has to
+    say plainly that nothing was learned.
+    """
+
+    id: str
+    at: datetime
+    last_at: datetime
+    opens: int
+    name: str
+    email: str
+    ip: str
+    #: Empty unless a GeoLite2 database is configured, and empty for an
+    #: address it does not cover. The screen shows the address alone then,
+    #: rather than a guess.
+    region: str
+    user_agent: str
+
+    @classmethod
+    def of(cls, v: ShareView) -> ShareViewOut:
+        return cls(
+            id=v.id,
+            at=v.at,
+            last_at=v.last_at,
+            opens=v.opens,
+            name=v.viewer_name,
+            email=v.viewer_email,
+            ip=v.ip,
+            region=geoip.lookup(v.ip),
+            user_agent=v.user_agent,
+        )
 
 
 # ── connectors ─────────────────────────────────────────────────────────

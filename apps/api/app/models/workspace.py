@@ -379,6 +379,49 @@ class Share(SQLModel, table=True):
     revoked_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
 
 
+class ShareView(SQLModel, table=True):
+    """Who opened a shared link, and when.
+
+    `shares.views` counted opens and named nobody, which answers "is anyone
+    reading this" and not "who has seen it" — and the second question is the
+    one somebody asks after sharing a draft with the wrong scope.
+
+    What can honestly be said about a reader depends on how they arrived. A
+    signed-in one has an account, so the row names it. A `link`-scope reader
+    has no account by design, and their address is the only thing this server
+    ever learns about them; it is written down because a bare "opened 14 times"
+    is not a record of anything.
+
+    The name and email are copies rather than a join. An account can be renamed
+    or deleted, and a log that silently rewrites itself afterwards — or empties
+    a row to a dangling id — is not a log. `viewer_id` stays for the cases
+    where the live account is what the reader wants.
+
+    One row per reader per hour, not per request: a reader who refreshes twenty
+    times is one visit, and twenty rows would bury the other readers.
+    """
+
+    __tablename__ = "share_views"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    share_id: str = Field(foreign_key="shares.id", index=True)
+    #: First open of this visit; `last_at` moves as it continues.
+    at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    last_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    opens: int = Field(default=1)
+    #: Set when the reader was signed in. Null is an anonymous `link` reader.
+    viewer_id: str | None = Field(default=None, foreign_key="users.id", index=True)
+    viewer_name: str = Field(default="")
+    viewer_email: str = Field(default="")
+    #: First hop of `X-Forwarded-For`. Empty when the server sits behind a
+    #: proxy that strips it — said as empty rather than as a proxy's own IP.
+    ip: str = Field(default="")
+    #: Raw `User-Agent`. Stored whole and shortened for display: the readable
+    #: form drops everything that would matter if the question ever became a
+    #: serious one.
+    user_agent: str = Field(default="")
+
+
 # ── connectors (MCP) ───────────────────────────────────────────────────
 
 

@@ -28,6 +28,11 @@ dependencies = [
     # part relationships and layout inheritance are enough machinery that hand-
     # rolling it would be a second exporter to maintain, not a shortcut.
     "python-pptx>=1.0",
+    # Reads a MaxMind DB file from disk. No network: the alternative is posting
+    # every visitor's address to a lookup service, which is not something this
+    # product should do in the background. Inert until GEOIP_DATABASE points at
+    # a file — see services/geoip.py.
+    "geoip2>=4.8",
 ]
 
 [project.optional-dependencies]
