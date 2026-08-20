@@ -71,13 +71,23 @@ export async function seedPendingUser(
   return email
 }
 
-/** Opens the sidebar on viewports where it starts collapsed. */
+/**
+ * Opens the sidebar on viewports where it starts collapsed.
+ *
+ * The wait on the toggle is not politeness — it is the whole correctness of
+ * this. Asked the instant a navigation resolves, `isVisible()` says no because
+ * nothing is drawn yet, and on a desktop, where the sidebar was already open,
+ * the answer was to press the toggle and *close* it. Waiting for the shell
+ * first means the question is asked of a rendered page.
+ */
 export async function openSidebar(page: Page) {
+  const toggle = page.getByRole('button', { name: '사이드바 토글' })
+  await expect(toggle).toBeVisible({ timeout: 20_000 })
   const nav = page.getByRole('link', { name: '커넥터' })
   if (!(await nav.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: '사이드바 토글' }).click()
+    await toggle.click()
   }
-  await expect(nav).toBeVisible()
+  await expect(nav).toBeVisible({ timeout: 10_000 })
 }
 
 export async function gotoSurface(page: Page, kind: string) {

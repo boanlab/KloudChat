@@ -381,9 +381,17 @@ test.describe('페르소나 커버리지', () => {
                 const listed = page.getByRole('dialog', { name: '버전 기록' })
                 await probe(listed).toBeVisible()
                 await probe(listed.getByText(/현재 v\d+/)).toBeVisible()
-                // An earlier judgement to go back to is the whole point: 이전
-                // 버전과 무엇이 달라졌는지 needs an 이전 버전 on the list.
-                await probe(listed.getByRole('button', { name: /되돌리기/ }).first()).toBeVisible()
+                // Either 판 to go back to, or the dialog saying plainly that
+                // there is none yet. Both prove the affordance; requiring a
+                // 되돌리기 button made the probe depend on whether this
+                // account's newest report had ever been edited, which is an
+                // accident of the data and not a fact about the product.
+                await probe(
+                  listed
+                    .getByRole('button', { name: /되돌리기/ })
+                    .or(listed.getByText('아직 저장된 이전 판이 없습니다.'))
+                    .first(),
+                ).toBeVisible()
                 break
               }
               case 'res-agent':
