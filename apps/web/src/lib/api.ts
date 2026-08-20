@@ -53,8 +53,26 @@ export class ApiError extends Error {
  * as if it were an instruction. Same for a network error, whose message is the
  * browser's own English.
  */
+/** A bare status code, which is what `readDetail` falls back to. */
+const STATUS_CODE = /^http_\d{3}$/
+
+/**
+ * What to put on screen for a failed request.
+ *
+ * A 5xx used to be handed the fallback wholesale, on the reasoning that a
+ * server's own words are not for a reader. But this API deliberately passes
+ * some of them: an image route answers 502 carrying the reason the picture was
+ * refused, and replacing that with "이미지를 만들지 못했습니다" throws away the
+ * only sentence that said why.
+ *
+ * What must never reach a reader is the other kind — the fallback `readDetail`
+ * invents when the body is not JSON at all, which is what a gateway between
+ * here and the API produces while it is down. `http_502` is not a message; it
+ * is the absence of one, and it was being printed on a job card as though it
+ * were an explanation.
+ */
 export function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.detail) {
+  if (err instanceof ApiError && err.detail && !STATUS_CODE.test(err.detail)) {
     return err.detail
   }
   return fallback

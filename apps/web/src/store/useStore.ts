@@ -1373,7 +1373,7 @@ export const useStore = create<State>((set, get) => ({
               seconds: avOptions.durationSec,
               audio: avOptions.withAudio,
             },
-            error: err instanceof Error ? err.message : '영상 작업을 시작하지 못했습니다.',
+            error: errorMessage(err, tr('영상 작업을 시작하지 못했습니다.')),
             createdAt: new Date().toISOString(),
             finishedAt: new Date().toISOString(),
           },
@@ -1462,7 +1462,7 @@ export const useStore = create<State>((set, get) => ({
                 ...j,
                 status: 'failed' as const,
                 finishedAt: new Date().toISOString(),
-                error: err instanceof Error ? err.message : '오디오를 만들지 못했습니다.',
+                error: errorMessage(err, tr('오디오를 만들지 못했습니다.')),
               }
             : j,
         ),
@@ -1551,7 +1551,7 @@ export const useStore = create<State>((set, get) => ({
                 ...j,
                 status: 'failed' as const,
                 finishedAt: new Date().toISOString(),
-                error: err instanceof Error ? err.message : '이미지를 만들지 못했습니다.',
+                error: errorMessage(err, tr('이미지를 만들지 못했습니다.')),
               }
             : j,
         ),
