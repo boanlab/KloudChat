@@ -135,7 +135,7 @@ export function AgentsPage() {
       <PageBody>
         <PageHeader
           title={t('에이전트')}
-          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 워크스페이스에 공유합니다.')}
+          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.')}
           action={
             <Button
               variant="primary"
@@ -376,7 +376,7 @@ export function AgentsPage() {
                 {(
                   [
                     { id: 'private', label: t('개인'), icon: Lock },
-                    { id: 'org', label: t('워크스페이스 공유'), icon: Globe },
+                    { id: 'org', label: t('모두에게 공개'), icon: Globe },
                   ] as const
                 ).map((o) => (
                   <button
@@ -490,13 +490,13 @@ export function AgentsPage() {
                 없었습니다 — 워크스페이스 스토어 탭이 영원히 비어 있던 이유. */}
             <Field
               label={t('공개 범위')}
-              hint={t('워크스페이스에 공유하면 같은 조직 구성원이 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
+              hint={t('공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
             >
               <div className="flex gap-1.5">
                 {(
                   [
                     { id: 'private', label: t('나만 쓰기'), icon: Lock },
-                    { id: 'org', label: t('워크스페이스에 공유'), icon: Globe },
+                    { id: 'org', label: t('모두에게 공개'), icon: Globe },
                   ] as const
                 ).map((o) => {
                   const Icon = o.icon
