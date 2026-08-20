@@ -107,13 +107,68 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
     }
 
 
+def _scan(body: str) -> tuple[list[str], bool, int]:
+    """`(brackets still open, ends inside a string, where the last item ended)`.
+
+    The third is where the text can be cut without leaving half of something
+    behind: after a bracket that closed inside a container, or at the comma
+    before whatever came next.
+    """
+    stack: list[str] = []
+    in_string = escaped = False
+    cut = 0
+    for index, char in enumerate(body):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            stack.append("}" if char == "{" else "]")
+        elif char in "}]":
+            if stack:
+                stack.pop()
+            if stack:
+                cut = index + 1
+        elif char == "," and stack:
+            cut = index
+    return stack, in_string, cut
+
+
+def _closed(body: str) -> str:
+    """The same text with whatever it left open closed off, and nothing added.
+
+    A small model ends its JSON a bracket short often enough that refusing the
+    whole review over it throws away the call the reader paid for — a score and
+    three findings, lost to one `}`. So the brackets still open are closed, and
+    a finding the reply stopped in the middle of is dropped whole rather than
+    guessed at: what is stored is only what the model actually finished saying.
+    """
+    stack, in_string, cut = _scan(body)
+    if in_string:
+        body = body[:cut]
+        stack, _, _ = _scan(body)
+    return body.rstrip().rstrip(",") + "".join(reversed(stack))
+
+
 def _object(text: str) -> dict:
     body = re.sub(r"^\s*```[A-Za-z]*\s*\n(.*?)\n?\s*```\s*$", r"\1", text.strip(), flags=re.S)
-    start, end = body.find("{"), body.rfind("}")
-    if start < 0 or end <= start:
+    start = body.find("{")
+    if start < 0:
         return {}
+    body = body[start:]
+    end = body.rfind("}")
+    if end > 0:
+        try:
+            return json.loads(body[: end + 1])
+        except json.JSONDecodeError:
+            pass
     try:
-        return json.loads(body[start : end + 1])
+        return json.loads(_closed(body))
     except json.JSONDecodeError:
         return {}
 
@@ -156,13 +211,19 @@ async def review(
     )
     data = _object(reply)
     if not data:
-        log.warning("critique unparseable: %s", reply[:300])
-        raise CritiqueError("검토 결과를 읽어내지 못했습니다.")
+        # Both ends, because a reply that cannot be read is nearly always
+        # well-formed until it stops, and the head alone shows none of that.
+        log.warning(
+            "critique unparseable (%d chars): %s … %s", len(reply), reply[:200], reply[-200:]
+        )
+        raise CritiqueError(
+            "검토 결과를 읽어내지 못했습니다 — 모델이 답을 끝맺지 못했습니다. 다시 요청해 보세요."
+        )
 
     try:
         score = round(min(10.0, max(0.0, float(data.get("score")))), 1)
     except (TypeError, ValueError):
-        raise CritiqueError("검토 결과를 읽어내지 못했습니다.") from None
+        raise CritiqueError("검토 결과에 점수가 없습니다 — 다시 요청해 보세요.") from None
 
     findings = []
     for raw in (data.get("findings") or [])[:MAX_FINDINGS]:

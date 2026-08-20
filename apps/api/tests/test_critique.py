@@ -137,6 +137,51 @@ async def test_a_reply_with_no_score_is_refused(monkeypatch):
         await _review(monkeypatch, '{"findings": [{"severity": "P0", "message": "가."}]}')
 
 
+# ── a reply that stops early ───────────────────────────────────────────
+#
+# Small models end their JSON a bracket short often enough to matter: the
+# reader pressed 검토 받기, the call was made and charged, and every word of
+# the answer is there except the last `}`. What the model finished saying is
+# kept; what it stopped in the middle of is dropped.
+
+
+@pytest.mark.asyncio
+async def test_a_review_missing_its_last_bracket_is_still_read(monkeypatch):
+    (result, _), _ = await _review(monkeypatch, _GOOD.rstrip("}"))
+    assert result["score"] == 6.5
+    assert [f["where"] for f in result["findings"]] == ["대안", ""]
+
+
+@pytest.mark.asyncio
+async def test_a_finding_cut_off_mid_sentence_is_dropped_whole(monkeypatch):
+    """Half a sentence read as a finding is worse than no finding at all."""
+    reply = (
+        '{"score": 4, "findings": ['
+        '{"severity": "P0", "where": "대안", "message": "같은 기준으로 견주지 않았다."},'
+        '{"severity": "P1", "where": "", "message": "결론에 담당과'
+    )
+    (result, _), _ = await _review(monkeypatch, reply)
+    assert result["score"] == 4.0
+    assert [f["message"] for f in result["findings"]] == ["같은 기준으로 견주지 않았다."]
+
+
+@pytest.mark.asyncio
+async def test_a_score_survives_a_reply_that_stops_in_the_first_finding(monkeypatch):
+    """The number is the part the panel shows; it arrives before the findings do."""
+    (result, _), _ = await _review(
+        monkeypatch, '{"score": 7, "findings": [{"severity": "P1", "message": "결론에'
+    )
+    assert result["score"] == 7.0
+    assert result["findings"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_brace_with_no_review_after_it_is_still_refused(monkeypatch):
+    """Closing what is open must not turn prose into a score of zero."""
+    with pytest.raises(critique.CritiqueError):
+        await _review(monkeypatch, "{ 이 문서는 훌륭합니다.")
+
+
 @pytest.mark.asyncio
 async def test_nothing_is_spent_reviewing_an_empty_document(monkeypatch):
     posts: list[dict] = []
