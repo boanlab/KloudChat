@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import struct
 import zipfile
 import zlib
@@ -122,37 +123,63 @@ def test_the_report_pdf_carries_the_picture():
     assert len(with_picture) > len(without)
 
 
-def test_hwpx_says_a_picture_was_here_instead_of_dropping_it():
-    """The one format that cannot carry it says so in the document.
+def test_hwpx_carries_the_picture_too():
+    """The last format to learn it, and the one that could not be checked here.
 
-    Silence would leave somebody comparing this file with the `.docx` and
-    finding a figure missing with nothing to say where it went.
+    A picture in OWPML is three things that must agree: the bytes in
+    `BinData/`, an `<opf:item id="imageN" … isEmbeded="1">` in `content.hpf`,
+    and `<hc:img binaryItemIDRef="imageN">` in the section. Nothing is declared
+    in `header.xml` — `<hh:binDataList>` is the older HML format, and no HWPX
+    carries one.
     """
     sections = page_export.to_sections(document("doc-report", "section"))
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
+
+    assert "BinData/image1.png" in archive.namelist()
+    assert archive.read("BinData/image1.png")[:8] == b"\x89PNG\r\n\x1a\n"
+    # Stored, like every picture in a file Hancom wrote itself.
+    assert archive.getinfo("BinData/image1.png").compress_type == zipfile.ZIP_STORED
+
+    hpf = archive.read("Contents/content.hpf").decode()
+    assert '<opf:item id="image1" href="BinData/image1.png"' in hpf
+    assert 'isEmbeded="1"' in hpf  # one `d`: OWPML's own spelling
+    assert '<opf:itemref idref="image1"' not in hpf  # the spine holds header+section only
+
     section_xml = archive.read("Contents/section0.xml").decode()
-    assert "[그림] 그림 1. 시험" in section_xml
-
-    # And with no caption, still a line rather than nothing.
-    plain = page_export.to_sections(document("doc-report", "section", caption=""))
-    other = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", plain, tokens=TOKENS)))
-    assert "[그림]" in other.read("Contents/section0.xml").decode()
+    assert 'binaryItemIDRef="image1"' in section_xml
+    assert 'treatAsChar="1"' in section_xml  # inline, and nothing else makes it so
+    assert "그림 1. 시험" in section_xml  # the caption stays a caption
+    assert "binDataList" not in archive.read("Contents/header.xml").decode()
 
 
-def test_hwpx_leaves_the_picture_out_and_still_opens():
-    """The one format that does not carry it, deliberately.
+def test_hwpx_gives_the_page_a_size():
+    """Without `<hp:secPr>` the text still laid out and the picture did not.
 
-    A picture in OWPML needs a `BinData` part, a manifest entry, a header
-    `binDataList` and a `<hp:pic>` that references all three by id. Hancom
-    refuses a file that gets any of it wrong, and there is no Hancom here to
-    check against — so this ships without pictures rather than with a document
-    nobody can open. The text is unaffected.
+    Hancom falls back to its own defaults for text; an object sized in
+    absolute units has no page box to sit in, is read, and is never drawn.
+    Confirmed in Hancom Office: the same document with this element shows the
+    picture, and without it shows nothing.
     """
-    sections = page_export.to_sections(document("doc-report", "section"))
-    archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
-    assert "Contents/section0.xml" in archive.namelist()
-    assert not [name for name in archive.namelist() if "BinData" in name]
-    assert "그림 있는 장" in archive.read("Contents/section0.xml").decode()
+    archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", [], tokens=TOKENS)))
+    section_xml = archive.read("Contents/section0.xml").decode()
+    assert "<hp:secPr" in section_xml
+    assert 'width="59528" height="84188"' in section_xml  # A4
+    # It rides in the first paragraph's run, the only place it is read from.
+    assert section_xml.index("<hp:secPr") < section_xml.index("</hp:p>")
+
+
+def test_a_picture_too_big_for_the_page_is_scaled_to_it():
+    """Native size is `pixels * 75`; a 1024-wide picture is 10.7 inches.
+
+    `imgDim` and `imgClip` stay in the picture's own pixels — they are the
+    source rectangle — while the placed size shrinks to the text column.
+    """
+    markup = report_export._hwpx_picture(1, base64.b64decode(png(width=1024, height=683)))
+    placed = int(re.search(r'<hp:sz width="(\d+)"', markup).group(1))
+    assert placed <= report_export._HWPX_MAX_WIDTH
+    assert f'dimwidth="{1024 * 75}"' in markup  # the source stays native
+    small = report_export._hwpx_picture(1, base64.b64decode(png(width=200, height=100)))
+    assert f'<hp:sz width="{200 * 75}"' in small  # one that already fits is untouched
 
 
 @pytest.mark.parametrize("template_id", ["deck-editorial", "deck-signal"])
@@ -249,3 +276,62 @@ def test_a_slide_picture_that_is_not_an_address_is_ignored():
     assert deck_export.to_pptx("t", slides, tokens=TOKENS)[:2] == b"PK"
     archive = zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("t", slides, tokens=TOKENS)))
     assert not [name for name in archive.namelist() if name.startswith("ppt/media/")]
+
+
+def test_a_portrait_picture_does_not_take_a_whole_page():
+    """120 mm wide made a 600×1200 screenshot 240 mm tall — a sheet of paper
+    with one figure on it. Height is capped, and both dimensions are passed to
+    every renderer rather than left to be inferred from the width."""
+    tall = png(width=600, height=1200)
+    width, height = report_export._picture_size(base64.b64decode(tall))
+    # 297 mm is the page; 170 mm is the ceiling the figure may take.
+    assert height <= 170 * 72 / 25.4 + 1
+    assert width < height  # portrait stays portrait
+    assert width == pytest.approx(height * 600 / 1200, rel=0.02)
+
+
+def test_two_pictures_of_different_sizes_stay_different_sizes():
+    """Every picture used to be placed at one fixed width, so a 360×240
+    diagram came out the same size as a 1024×683 chart — and larger than it
+    was drawn. Native size, shrunk only when it overflows the column."""
+    small = report_export._picture_size(base64.b64decode(png(width=360, height=240)))
+    large = report_export._picture_size(base64.b64decode(png(width=1024, height=683)))
+    assert small[0] < large[0]
+    # The small one is exactly its own size: 360 px at 96 DPI is 270 pt.
+    assert small[0] == pytest.approx(270, rel=0.001)
+    # The large one is the column, not its native 768 pt.
+    assert large[0] == pytest.approx(150 * 72 / 25.4, rel=0.01)
+
+
+def test_every_format_sizes_a_picture_the_same_way():
+    """The `.hwpx` rule and the `.docx`/PDF rule are the same rule, stated in
+    two unit systems — 150 mm of column, 170 mm of height, never enlarged."""
+    data = base64.b64decode(png(width=1024, height=683))
+    width_pt, _ = report_export._picture_size(data)
+    markup = report_export._hwpx_picture(1, data)
+    hwpx_pt = int(re.search(r'<hp:sz width="(\d+)"', markup).group(1)) / 7200 * 72
+    assert width_pt == pytest.approx(hwpx_pt, rel=0.01)
+
+
+def test_a_figure_is_centred_in_every_format():
+    """PDF centred the picture and left-aligned its own caption, while `.docx`
+    and `.hwpx` left-aligned both — the same document read three ways.
+
+    A caption hanging off the left margin under a centred picture belongs to
+    the paragraph above it, not to the figure.
+    """
+    sections = page_export.to_sections(document("doc-report", "section"))
+
+    docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("t", sections, tokens=TOKENS)))
+    body = docx.read("word/document.xml").decode()
+    picture_at = body.index("<w:drawing>")
+    paragraph_at = body.rindex("<w:p>", 0, picture_at)
+    assert 'w:jc w:val="center"' in body[paragraph_at:picture_at]
+
+    hwpx = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
+    section_xml = hwpx.read("Contents/section0.xml").decode()
+    # Paragraph shape 5 is the centred one, used by the picture and its caption.
+    assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="0"><hp:pic' in section_xml
+    assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="4">' in section_xml
+    header = hwpx.read("Contents/header.xml").decode()
+    assert '<hh:paraPr id="5"' in header and 'horizontal="CENTER"' in header

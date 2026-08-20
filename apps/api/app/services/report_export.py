@@ -16,7 +16,7 @@ import zipfile
 
 import PIL.Image
 from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -75,7 +75,8 @@ def _strip_inline(text: str) -> str:
 
 def to_docx(title: str, sections: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     from docx import Document
-    from docx.shared import Inches, Mm, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt, RGBColor
 
     style = design.normalise_tokens(tokens) if tokens else None
     #: Colour only. The face stays Word's own: this document is written to be
@@ -114,16 +115,26 @@ def to_docx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
             data = picture.get("data")
             if not data:
                 continue
+            width_pt, height_pt = _picture_size(data)
             try:
-                # Word sizes from the file's own DPI otherwise, which for a
-                # generated picture is whatever the model's encoder wrote.
-                document.add_picture(io.BytesIO(data), width=Mm(_PICTURE_MM))
+                # Both dimensions, not just the width: Word scales height from
+                # the width and a portrait picture then fills the page on its
+                # own — 120 mm wide made a 600×1200 screenshot 240 mm tall,
+                # which is a sheet of paper with one figure on it. `_picture_
+                # size` already caps the height; pass what it decided.
+                document.add_picture(
+                    io.BytesIO(data), width=Pt(width_pt), height=Pt(height_pt)
+                )
             except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
                 log.warning("could not place a picture in the docx: %s", exc)
                 continue
+            # A figure is centred in all three formats, or the same document
+            # reads differently depending on which one somebody opened.
+            document.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
             caption = str(picture.get("caption") or "")
             if caption:
                 paragraph = document.add_paragraph(caption)
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 paragraph.paragraph_format.space_after = Pt(8)
                 for run in paragraph.runs:
                     run.font.size = Pt(9)
@@ -168,8 +179,11 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
             "li", parent=base["BodyText"], fontName=korean, fontSize=10.5, leading=17,
             leftIndent=10 * mm, bulletIndent=4 * mm, spaceAfter=3,
         ),
+        # Centred, under a centred picture: a caption hanging off the left
+        # margin belongs to the paragraph above it, not to the figure.
         "caption": ParagraphStyle(
             "cap", parent=base["BodyText"], fontName=korean, fontSize=9, leading=13,
+            alignment=TA_CENTER,
             textColor=HexColor(style["muted"]) if style else HexColor("#666666"),
             spaceBefore=2, spaceAfter=2,
         ),
@@ -197,7 +211,9 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
             width, height = _picture_size(data)
             caption = str(picture.get("caption") or "")
             try:
-                figure: list = [RLImage(io.BytesIO(data), width=width, height=height)]
+                image = RLImage(io.BytesIO(data), width=width, height=height)
+                image.hAlign = "CENTER"
+                figure: list = [image]
             except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
                 log.warning("could not place a picture in the report pdf: %s", exc)
                 continue
@@ -222,34 +238,33 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
     return buffer.getvalue()
 
 
-#: How wide a picture may print, in millimetres. The A4 text column here is
-#: 166 mm; a figure that fills it edge to edge reads as a page break with a
-#: photograph in it, and one that is small enough to sit beside text cannot,
-#: because neither exporter flows text around a figure.
-_PICTURE_MM = 120.0
+#: The text column of an A4 page with the margins these exporters use, and as
+#: much height as one figure may take before it owns the page.
+_PICTURE_MM = 150.0
+_PICTURE_MAX_MM = 170.0
+
+#: Pixels are read at 96 DPI, the same rate Hancom uses, so a picture prints at
+#: the size it was made unless it does not fit.
+_POINTS_PER_PIXEL = 72 / 96
 
 
-def _picture_size(data: bytes, *, width_mm: float = _PICTURE_MM) -> tuple[float, float]:
-    """`(width, height)` in points for a picture printed at `width_mm`.
+def _picture_size(data: bytes) -> tuple[float, float]:
+    """`(width, height)` in points: native size, shrunk only if it overflows.
 
-    Measured from the bytes: nothing in the document says how big the picture
-    is, and a figure drawn to a guessed box is a squashed one. Never taller
-    than it is wide by more than the page can hold — a portrait screenshot
-    would otherwise take two pages on its own.
+    Every picture used to be placed at one fixed width, which enlarged the
+    small ones — two figures of different sizes came out identical, and a
+    360x240 diagram was blown up to the width of the page. Scaling down only
+    is both the honest rule and the one the `.hwpx` path was verified with.
     """
-    width = width_mm * mm
     try:
         with PIL.Image.open(io.BytesIO(data)) as picture:
             pixels_wide, pixels_high = picture.size
     except Exception:  # noqa: BLE001 — an unreadable picture still gets a box
-        return width, width * 0.6
-    if not pixels_wide or not pixels_high:
-        return width, width * 0.6
-    height = width * pixels_high / pixels_wide
-    ceiling = 170 * mm
-    if height > ceiling:
-        return width * ceiling / height, ceiling
-    return width, height
+        pixels_wide, pixels_high = 480, 320
+    width = max(1, pixels_wide) * _POINTS_PER_PIXEL
+    height = max(1, pixels_high) * _POINTS_PER_PIXEL
+    scale = min(1.0, _PICTURE_MM * mm / width, _PICTURE_MAX_MM * mm / height)
+    return width * scale, height * scale
 
 
 def _escape(text: str) -> str:
@@ -346,6 +361,7 @@ _HWPX_PARA_SHAPES = (
     (2, "LEFT", 0, 400, 200),      # h2
     (3, "JUSTIFY", 0, 0, 150),     # body
     (4, "JUSTIFY", 1000, 0, 100),  # bullet — indented from the body margin
+    (5, "CENTER", 0, 300, 100),    # figure and its caption
 )
 
 #: 160% is the usual line spacing for a Korean report; single spacing sets Hangul
@@ -420,6 +436,104 @@ def _hwpx_escape(text: str) -> str:
     )
 
 
+#: Page geometry, carried in the first paragraph's run exactly as Hancom
+#: writes it. A4 is 59528 x 84188 HWPUNIT; the margins are 30/30/20/15 mm.
+#:
+#: Text laid out without this — every .hwpx this wrote until now — because
+#: Hancom falls back to its own defaults. **A picture does not.** With no page
+#: box to sit in, an object sized in absolute units was read and then not
+#: drawn: the file opened, the text was right, and the picture was simply
+#: absent. Adding this is what made it appear, confirmed in Hancom Office.
+_HWPX_SECPR = (
+    '<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000"'
+    ' tabStopVal="4000" tabStopUnit="HWPUNIT" outlineShapeIDRef="0" memoShapeIDRef="0"'
+    ' textVerticalWidthHead="0" masterPageCnt="0">'
+    '<hp:grid lineGrid="0" charGrid="0" wonggojiFormat="0"/>'
+    '<hp:startNum pageStartsOn="BOTH" page="0" pic="0" tbl="0" equation="0"/>'
+    '<hp:visibility hideFirstHeader="0" hideFirstFooter="0" hideFirstMasterPage="0"'
+    ' border="SHOW_ALL" fill="SHOW_ALL" hideFirstPageNum="0" hideFirstEmptyLine="0"'
+    ' showLineNumber="0"/>'
+    '<hp:pagePr landscape="WIDELY" width="59528" height="84188" gutterType="LEFT_ONLY">'
+    '<hp:margin header="4252" footer="4252" gutter="0" left="8504" right="8504"'
+    ' top="5668" bottom="4252"/></hp:pagePr>'
+    "</hp:secPr>"
+)
+
+#: HWPUNIT is 1/7200 inch, and Hancom reads a picture's pixels at 96 DPI
+#: whatever the file's own metadata says: one pixel is 75 HWPUNIT.
+_HWPUNIT_PER_PIXEL = 75
+
+#: The text column of the page above, and as much height as a figure may take
+#: before it owns the page.
+_HWPX_MAX_WIDTH = 59528 - 8504 * 2
+_HWPX_MAX_HEIGHT = int(170 / 25.4 * 7200)
+
+#: One picture, inline. `binaryItemIDRef` resolves against the `<opf:item>` id
+#: in `Contents/content.hpf` — that single line is the whole link between this
+#: element and the bytes in `BinData/`. Nothing is declared in `header.xml`:
+#: `<hh:binDataList>` belongs to the older HML format and no HWPX carries one.
+_HWPX_PIC = (
+    '<hp:pic id="{n}" zOrder="0" numberingType="PICTURE" textWrap="SQUARE"'
+    ' textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0"'
+    ' instid="{n}" reverse="0">'
+    '<hp:offset x="0" y="0"/>'
+    '<hp:orgSz width="{w}" height="{h}"/>'
+    '<hp:curSz width="{w}" height="{h}"/>'
+    '<hp:flip horizontal="0" vertical="0"/>'
+    '<hp:rotationInfo angle="0" centerX="{cx}" centerY="{cy}" rotateimage="1"/>'
+    "<hp:renderingInfo>"
+    '<hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+    '<hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+    '<hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+    "</hp:renderingInfo>"
+    '<hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="{w}" y="0"/>'
+    '<hc:pt2 x="{w}" y="{h}"/><hc:pt3 x="0" y="{h}"/></hp:imgRect>'
+    '<hp:imgClip left="0" right="{dw}" top="0" bottom="{dh}"/>'
+    '<hp:inMargin left="0" right="0" top="0" bottom="0"/>'
+    '<hp:imgDim dimwidth="{dw}" dimheight="{dh}"/>'
+    '<hc:img binaryItemIDRef="{ref}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/>'
+    "<hp:effects/>"
+    '<hp:sz width="{w}" widthRelTo="ABSOLUTE" height="{h}" heightRelTo="ABSOLUTE" protect="0"/>'
+    '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0"'
+    ' holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP"'
+    ' horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+    '<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
+    "</hp:pic>"
+)
+
+
+def _hwpx_picture(index: int, data: bytes) -> str:
+    """One picture paragraph, sized to the page.
+
+    `imgDim` and `imgClip` stay in the picture's own pixels — they are the
+    source rectangle — while `orgSz`, `curSz`, `sz` and `imgRect` carry the
+    size on the page. They are equal for a picture that already fits.
+    """
+    try:
+        with PIL.Image.open(io.BytesIO(data)) as picture:
+            pixels_wide, pixels_high = picture.size
+    except Exception:  # noqa: BLE001 — an unreadable picture gets a plain box
+        pixels_wide, pixels_high = 480, 320
+    native_w = max(1, pixels_wide) * _HWPUNIT_PER_PIXEL
+    native_h = max(1, pixels_high) * _HWPUNIT_PER_PIXEL
+    scale = min(1.0, _HWPX_MAX_WIDTH / native_w, _HWPX_MAX_HEIGHT / native_h)
+    width, height = int(native_w * scale), int(native_h * scale)
+    return (
+        '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="0">'
+        + _HWPX_PIC.format(
+            n=index,
+            ref=f"image{index}",
+            w=width,
+            h=height,
+            dw=native_w,
+            dh=native_h,
+            cx=width // 2,
+            cy=height // 2,
+        )
+        + "<hp:t/></hp:run></hp:p>"
+    )
+
+
 def _hwpx_para(text: str, para_pr: int, char_pr: int = 0) -> str:
     """One `<hp:p>`. An empty run still needs the `<hp:t/>` — Hancom renders a
     paragraph with no run as a missing line rather than a blank one."""
@@ -451,7 +565,14 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
     """
     style = design.normalise_tokens(tokens) if tokens else None
     # (paraPr, charPr) pairs from the tables above: title / h1 / h2 / body / bullet.
-    body: list[str] = [_hwpx_para(title, 0, 2)]
+    # The section properties ride in the first paragraph's run, which is where
+    # Hancom puts them and the only place they are read from.
+    body: list[str] = [
+        f'<hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="2">'
+        f"{_HWPX_SECPR}<hp:t>{_hwpx_escape(title)}</hp:t></hp:run></hp:p>"
+    ]
+    #: `BinData/imageN.png` and the `<opf:item id="imageN">` that resolves it.
+    embedded: list[tuple[str, bytes, str]] = []
     for section in sections:
         heading = (section.get("heading") or "").strip()
         if heading:
@@ -465,14 +586,21 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
             else:
                 body.append(_hwpx_para(clean, 3))
         for picture in section.get("images") or []:
-            # The picture itself cannot come — see the note above `to_hwpx` —
-            # so what comes instead is the fact that it exists. Silence would
-            # leave a reader comparing this file with the .docx and finding a
-            # figure missing with nothing to say where it went.
-            caption = str(picture.get("caption") or "").strip()
-            body.append(
-                _hwpx_para(f"[그림] {caption}" if caption else "[그림]", 3, 4)
+            data = picture.get("data")
+            if not data:
+                continue
+            mime = str(picture.get("mime") or "image/png").lower()
+            index = len(embedded) + 1
+            # `image/jpg` rather than `image/jpeg`: Hancom's own spelling, and
+            # the extension follows the same name so the three ids match.
+            extension = {"image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}.get(
+                mime, "png"
             )
+            embedded.append((f"image{index}", data, extension))
+            body.append(_hwpx_picture(index, data))
+            caption = str(picture.get("caption") or "").strip()
+            if caption:
+                body.append(_hwpx_para(caption, 5, 4))
 
     section_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -489,6 +617,29 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
         [title] + [(s.get("heading") or "") for s in sections]
     )[:1000]
 
+    # One `<opf:item>` per picture, between the header and the section: that id
+    # is what `<hc:img binaryItemIDRef>` resolves against, and `isEmbeded` —
+    # one `d`, OWPML's own spelling — is what stops Hancom dropping it. The
+    # spine is left alone; it holds only the header and the section.
+    items = "".join(
+        f'  <opf:item id="{name}" href="BinData/{name}.{extension}"'
+        f' media-type="image/{"jpg" if extension == "jpg" else extension}" isEmbeded="1"/>\n'
+        for name, _, extension in embedded
+    )
+    content_hpf = _HWPX_CONTENT_HPF.format(title=_hwpx_escape(title)).replace(
+        '  <opf:item id="section0"', items + '  <opf:item id="section0"', 1
+    )
+    manifest = _HWPX_MANIFEST.replace(
+        "</odf:manifest>",
+        "".join(
+            f' <odf:file-entry odf:full-path="BinData/{name}.{extension}"'
+            f' odf:media-type="image/{"jpg" if extension == "jpg" else extension}"/>\n'
+            for name, _, extension in embedded
+        )
+        + "</odf:manifest>",
+        1,
+    )
+
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         # `mimetype` must be first and STORED, exactly as in ODF/EPUB. A reader
@@ -498,10 +649,8 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
         )
         archive.writestr("version.xml", _HWPX_VERSION)
         archive.writestr("META-INF/container.xml", _HWPX_CONTAINER)
-        archive.writestr("META-INF/manifest.xml", _HWPX_MANIFEST)
-        archive.writestr(
-            "Contents/content.hpf", _HWPX_CONTENT_HPF.format(title=_hwpx_escape(title))
-        )
+        archive.writestr("META-INF/manifest.xml", manifest)
+        archive.writestr("Contents/content.hpf", content_hpf)
         archive.writestr(
             "Contents/header.xml",
             _HWPX_HEADER.format(
@@ -510,6 +659,14 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
             ),
         )
         archive.writestr("Contents/section0.xml", section_xml)
+        for name, data, extension in embedded:
+            # Stored, like `mimetype` and like every picture in a file Hancom
+            # wrote itself: the XML parts deflate, the binaries do not.
+            archive.writestr(
+                zipfile.ZipInfo(f"BinData/{name}.{extension}"),
+                data,
+                compress_type=zipfile.ZIP_STORED,
+            )
         archive.writestr("Preview/PrvText.txt", preview)
     return buffer.getvalue()
 

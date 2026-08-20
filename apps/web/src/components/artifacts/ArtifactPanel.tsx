@@ -127,8 +127,6 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
   // template that stopped existing leaves the markup to say so.
   const template = templates.find((row) => row.id === artifact.templateId)
   const isDeck = template ? template.kind === 'deck' : artifact.content.includes('class="slide')
-  //: A picture is embedded, so the document itself is the evidence.
-  const hasPicture = artifact.content.includes('data:image/')
 
   const save = async (format: 'pptx' | 'docx' | 'pdf' | 'hwpx' | 'md' | 'html') => {
     setBusy(format)
@@ -163,13 +161,7 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
         PDF
       </MenuItem>
       {!isDeck && (
-        // Said rather than discovered afterwards: every other format carries
-        // the picture and this one can only name it, so a document with one in
-        // it says so before the download rather than after.
-        <MenuItem
-          hint={hasPicture ? t('그림은 자리만') : 'HWPX'}
-          onClick={() => void save('hwpx')}
-        >
+        <MenuItem hint="HWPX" onClick={() => void save('hwpx')}>
           {t('한글 문서')}
         </MenuItem>
       )}

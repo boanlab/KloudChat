@@ -286,19 +286,30 @@ caption kept on the same page as the picture. Sized from the bytes with
 Pillow, because nothing in the artifact says how big a picture is and a figure
 drawn to a guessed box is a squashed one.
 
-`.pptx`, `.docx` and both PDFs carry it. **`.hwpx` announces it instead**: a
-`[그림] 캡션` line where the picture was. Embedding one in OWPML needs a
-`BinData` part, a manifest entry, a header `binDataList` and a `<hp:pic>` that
-references all three by id, and the failure mode of getting any of it wrong is
-not a missing picture but a document Hancom refuses to open. Nothing here can
-check that: LibreOffice's Hancom filter reads the v5 binary format and not
-HWPX (`libhwplo.so`, no HWPX entry in its registry), and no independent OWPML
-implementation is installable. Announcing the picture is what can be verified
-here — the reader learns a figure exists and that the `.docx` beside it has
-the real one. Finishing it needs one input this environment cannot produce: a
-`.hwpx` containing a picture, saved by Hancom itself, to match the structure
-against. The export menu marks the item so the trade is visible before the
-download rather than after.
+**Every format carries it, `.hwpx` included.** That one took a detour worth
+recording. A picture in OWPML is three things that have to agree — the bytes in
+`BinData/imageN.png` (stored, not deflated), an
+`<opf:item id="imageN" … isEmbeded="1"/>` in `Contents/content.hpf`, and
+`<hc:img binaryItemIDRef="imageN">` inside an `<hp:pic>` in the section. That
+`<opf:item>` id is the entire link; `isEmbeded` has one `d`, which is OWPML's
+own spelling, and Hancom drops the picture without it. Nothing is declared in
+`header.xml`: `<hh:binDataList>` belongs to the older HML format and no HWPX
+contains one.
+
+The part that cost the time was not the picture at all. The first attempt
+opened in Hancom with the text correct and no picture anywhere, and the reason
+was a missing `<hp:secPr>` — page geometry, which every `.hwpx` this wrote had
+been leaving out. Text lays out on Hancom's defaults without it; an object
+sized in absolute units has no page box to sit in, and is read and then never
+drawn. Every document now carries A4 and its margins in the first paragraph's
+run, which is also where Hancom itself puts them.
+
+None of this could be checked here — LibreOffice's Hancom filter reads the v5
+binary format and not HWPX, and no independent OWPML implementation is
+installable — so it was settled the only way left: the structure was
+transcribed from genuine Hancom output (hwpxlib's test corpus), three variants
+differing by one element each were generated, and somebody opened them in
+Hancom Office.
 
 A picture that has stopped being one — truncated bytes, a format a library
 refuses — costs its own illustration and nothing else: every renderer catches
