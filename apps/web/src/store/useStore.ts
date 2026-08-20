@@ -407,6 +407,16 @@ interface State {
   ) => Promise<string>
   updateProject: (id: string, patch: Partial<Project>) => Promise<void>
   deleteProject: (id: string) => Promise<void>
+  /**
+   * Several at once. No undo window, unlike the single deletes: a list of
+   * twelve is a decision somebody made deliberately behind a confirm, and a
+   * held delete would leave the screen disagreeing with the server for as
+   * long as it lasted.
+   */
+  deleteMany: (
+    kind: 'projects' | 'artifacts' | 'skills' | 'agents' | 'designs' | 'connectors',
+    ids: string[],
+  ) => Promise<number>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
   /** Page one, for the current filter or the one passed in. */
@@ -1808,6 +1818,41 @@ export const useStore = create<State>((set, get) => ({
     const row = await projectsApi.update(id, patch as never).catch(() => null)
     if (row) set((s) => ({ projects: s.projects.map((p) => (p.id === id ? toProject(row) : p)) }))
   },
+  deleteMany: async (kind, ids) => {
+    if (ids.length === 0) return 0
+    touchWorkspace()
+    const api = {
+      projects: projectsApi,
+      artifacts: artifactsApi,
+      skills: skillsApi,
+      agents: agentsApi,
+      designs: designsApi,
+      connectors: connectorsApi,
+    }[kind]
+    const { deleted } = await api.removeMany(ids)
+    const gone = new Set(ids)
+    set((s) => ({
+      projects: kind === 'projects' ? s.projects.filter((r) => !gone.has(r.id)) : s.projects,
+      artifacts: kind === 'artifacts' ? s.artifacts.filter((r) => !gone.has(r.id)) : s.artifacts,
+      skills: kind === 'skills' ? s.skills.filter((r) => !gone.has(r.id)) : s.skills,
+      agents: kind === 'agents' ? s.agents.filter((r) => !gone.has(r.id)) : s.agents,
+      designs: kind === 'designs' ? s.designs.filter((r) => !gone.has(r.id)) : s.designs,
+      connectors:
+        kind === 'connectors' ? s.connectors.filter((r) => !gone.has(r.id)) : s.connectors,
+      // The server detaches rather than deletes on both of these.
+      sessions:
+        kind === 'projects'
+          ? s.sessions.map((c) => (c.projectId && gone.has(c.projectId) ? { ...c, projectId: null } : c))
+          : s.sessions,
+    }))
+    if (kind === 'projects' || kind === 'designs') {
+      // A project loses its look, a look loses its projects; both are rows the
+      // other screens are already showing.
+      await get().loadWorkspace()
+    }
+    return deleted
+  },
+
   deleteProject: async (id) => {
     touchWorkspace()
     set((s) => ({

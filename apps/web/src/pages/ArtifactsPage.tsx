@@ -33,6 +33,7 @@ import {
 import { templateText, type DesignTemplateRow } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { relativeTime } from '@/lib/utils'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Artifact, ArtifactKind } from '@/types'
 import { useT } from '@/lib/useT'
@@ -139,6 +140,7 @@ export function ArtifactsPage() {
   const {
     artifacts,
     deleteArtifact,
+    deleteMany,
     projects,
     sessions,
     loadArtifacts,
@@ -186,6 +188,7 @@ export function ArtifactsPage() {
   const total = artifactCounts
     ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
     : undefined
+  const pick = useBulkSelect(visible)
 
   return (
     <>
@@ -242,6 +245,19 @@ export function ArtifactsPage() {
               }
             />
           ) : (
+            <>
+            <BulkBar
+              count={pick.count}
+              allPicked={pick.allPicked}
+              onToggleAll={pick.toggleAll}
+              onClear={pick.clear}
+              title={t('결과물')}
+              note={t('결과물을 만든 대화는 그대로 남습니다.')}
+              onDelete={async () => {
+                await deleteMany('artifacts', pick.ids)
+                pick.clear()
+              }}
+            />
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {visible.map((a) => {
                 // What it was made with, when it was made with something: a
@@ -275,13 +291,14 @@ export function ArtifactsPage() {
                     </button>
                     <div className="p-3.5">
                       <div className="flex items-center gap-2">
+                        <PickBox
+                          checked={pick.picked.has(a.id)}
+                          onChange={() => pick.toggle(a.id)}
+                          label={t('{name} 선택').replace('{name}', a.title)}
+                        />
                         <Icon size={14} className="shrink-0 text-accent" />
                         <p className="min-w-0 flex-1 truncate text-base font-medium">{a.title}</p>
                         <Badge>v{a.version}</Badge>
-                        {/* `deleteArtifact` has been in the store since the
-                            screen was built; nothing ever called it, so the one
-                            list that now fills up on its own had no way to be
-                            cleared. */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -321,6 +338,7 @@ export function ArtifactsPage() {
                 )
               })}
             </div>
+            </>
           )}
 
           {/* Asked for rather than fetched on scroll: an endless list is one

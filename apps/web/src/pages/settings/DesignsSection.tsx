@@ -9,6 +9,7 @@ import {
   type DesignRow,
   type DesignTokens,
 } from '@/lib/api'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -232,6 +233,8 @@ export function DesignsSection() {
   const loadWorkspace = useStore((s) => s.loadWorkspace)
   const projects = useStore((s) => s.projects)
   const [rows, setRows] = useState<DesignRow[]>([])
+  const deleteMany = useStore((s) => s.deleteMany)
+  const pick = useBulkSelect(rows.filter((r) => r.mine))
   const [draft, setDraft] = useState<Partial<DesignRow> | null>(null)
   const [extracting, setExtracting] = useState(false)
   //: What the draft was read out of, shown above the form so a person editing
@@ -482,12 +485,35 @@ export function DesignsSection() {
 
   return (
     <section aria-label={t('디자인 시스템')} className="space-y-3">
+      <BulkBar
+        count={pick.count}
+        allPicked={pick.allPicked}
+        onToggleAll={pick.toggleAll}
+        onClear={pick.clear}
+        title={t('디자인')}
+        note={t('이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.')}
+        onDelete={async () => {
+          await deleteMany('designs', pick.ids)
+          setRows((r) => r.filter((x) => !pick.ids.includes(x.id)))
+          pick.clear()
+        }}
+      />
       <ul className="space-y-1">
         {rows.map((row) => (
           <li
             key={row.id}
             className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
           >
+            {/* Mine only: a shared design belongs to whoever made it. */}
+            {row.mine ? (
+              <PickBox
+                checked={pick.picked.has(row.id)}
+                onChange={() => pick.toggle(row.id)}
+                label={t('{name} 선택').replace('{name}', row.name)}
+              />
+            ) : (
+              <span className="size-4 shrink-0" />
+            )}
             <span
               aria-hidden
               className="size-4 shrink-0 rounded-full border border-line"

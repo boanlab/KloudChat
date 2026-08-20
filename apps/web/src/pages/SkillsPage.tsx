@@ -19,6 +19,7 @@ import { kindMeta } from '@/lib/kinds'
 import { useStableOrder } from '@/lib/useStableOrder'
 import { cn, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Skill } from '@/types'
 import { errorMessage } from '@/lib/api'
@@ -35,7 +36,7 @@ const sourceLabel: Record<Skill['source'], string> = {
 
 export function SkillsPage() {
   const t = useT()
-  const { skills, availableTools, toggleSkill, upsertSkill, deleteSkill, loadWorkspace } =
+  const { skills, availableTools, toggleSkill, upsertSkill, deleteSkill, deleteMany, loadWorkspace } =
     useStore()
 
   useEffect(() => {
@@ -92,6 +93,9 @@ export function SkillsPage() {
   const ordered = useStableOrder(skills)
   const all = filter === 'all' ? ordered : ordered.filter((s) => s.source === filter)
   const { visible, hidden, more } = usePaged(all, [filter, skills.length])
+  // Only the rows a delete can actually reach, so 전체 선택 does not pick a
+  // built-in skill and then have the request refuse it.
+  const pick = useBulkSelect(visible.filter((s) => s.source !== 'built-in'))
 
   return (
     <>
@@ -119,9 +123,34 @@ export function SkillsPage() {
           ]}
         />
 
-        <div className="space-y-2 pt-4">
+        <div className="pt-4">
+          <BulkBar
+            count={pick.count}
+            allPicked={pick.allPicked}
+            onToggleAll={pick.toggleAll}
+            onClear={pick.clear}
+            title={t('스킬')}
+            onDelete={async () => {
+              await deleteMany('skills', pick.ids)
+              pick.clear()
+            }}
+          />
+        </div>
+        <div className="space-y-2">
           {visible.map((s) => (
             <Card key={s.id} className="flex items-start gap-3 p-4">
+              {/* Only where a delete is possible. A checkbox on a built-in
+                  skill would put it in 전체 선택 and then refuse it. */}
+              {s.source !== 'built-in' ? (
+                <PickBox
+                  checked={pick.picked.has(s.id)}
+                  onChange={() => pick.toggle(s.id)}
+                  label={t('{name} 선택').replace('{name}', t(s.name))}
+                  className="mt-2.5"
+                />
+              ) : (
+                <span className="size-4 shrink-0" />
+              )}
               <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
                 <Sparkles size={15} />
               </span>
