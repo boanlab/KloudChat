@@ -38,8 +38,10 @@ from app.schemas.chat import (
     SendMessage,
     SessionBulkDelete,
     SessionCreate,
+    SessionMade,
     SessionOut,
     SessionPatch,
+    made_from_artifacts,
     snippet,
 )
 from app.schemas.workspace import ArtifactOut
@@ -1012,19 +1014,26 @@ async def list_sessions(
     rows = (await db.exec(query)).all()
 
     # One aggregate for the page — the sidebar asks for every conversation.
-    previews = await _previews(db, [s.id for s in rows])
+    ids = [s.id for s in rows]
+    previews = await _previews(db, ids)
+    made = await _made(db, [sid for sid in ids if sid not in previews])
     return [
         SessionOut.of(
             s,
             preview=previews.get(s.id, (None, 0))[0],
             message_count=previews.get(s.id, (None, 0))[1],
+            made=made.get(s.id),
         )
         for s in rows
     ]
 
 
 async def _previews(db: DbSession, session_ids: list[str]) -> dict[str, tuple[str | None, int]]:
-    """`{session_id: (latest message snippet, message count)}`."""
+    """`{session_id: (latest message snippet, message count)}`.
+
+    Absent for a conversation with no messages at all, which is what tells the
+    caller to look at what the session produced instead.
+    """
     if not session_ids:
         return {}
     counts = dict(
@@ -1048,10 +1057,45 @@ async def _previews(db: DbSession, session_ids: list[str]) -> dict[str, tuple[st
     return {sid: (snippet(content), counts.get(sid, 0)) for sid, content in latest}
 
 
+async def _made(db: DbSession, session_ids: list[str]) -> dict[str, SessionMade]:
+    """`{session_id: what it produced}`, for the conversations that said nothing.
+
+    A picture or clip surface runs no turn, so these rows have no last message
+    to put under their title. What they do have is the thing they made, and its
+    shape is the one fact the title — the person's own prompt — does not
+    already carry.
+
+    Asked for once for the whole page, like the previews above, and only for
+    the ids the message query returned nothing for: a report's transcript is
+    the better subtitle wherever there is one.
+    """
+    if not session_ids:
+        return {}
+    rows = (
+        await db.exec(
+            select(Artifact.session_id, Artifact.kind, Artifact.data)
+            .where(col(Artifact.session_id).in_(session_ids))
+            .order_by(col(Artifact.session_id), col(Artifact.created_at).desc())
+        )
+    ).all()
+    by_session: dict[str, list[tuple[str, dict | None]]] = {}
+    for session_id, kind, data in rows:
+        if session_id is not None:
+            by_session.setdefault(session_id, []).append((str(kind), data))
+    summarised = {sid: made_from_artifacts(made) for sid, made in by_session.items()}
+    return {sid: made for sid, made in summarised.items() if made is not None}
+
+
 @router.get("/{session_id}", response_model=SessionOut)
 async def get_session(session_id: str, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
-    return SessionOut.of(session, await _history(db, session_id))
+    history = await _history(db, session_id)
+    # Also on the single-session response, and not only in the list: opening a
+    # conversation replaces the row the list handed the client, so leaving this
+    # out here would blank the line under a title the moment somebody looked at
+    # what it names.
+    made = {} if history else await _made(db, [session_id])
+    return SessionOut.of(session, history, made=made.get(session_id))
 
 
 @router.post("", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
@@ -1190,6 +1234,41 @@ async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
     await db.commit()
 
 
+def _record_media(
+    db: DbSession, session: ChatSession, prompt: str, artifact_id: str | None
+) -> None:
+    """Leaves the conversation a record of what was asked for and what came back.
+
+    The writing surfaces get this from their turn: the message is stored, the
+    title is set from it, and the finished document is hung on the session. A
+    picture or a clip runs no turn, so until now nothing wrote any of it — the
+    row stayed an untitled "새 작업" pointing at nothing, and a week later seven
+    clips of the same request were one from another indistinguishable.
+
+    No message is written here on purpose. This surface has no turn to record:
+    the reply is an artifact, not a sentence, and a stored prompt with nothing
+    answering it would render as a conversation that broke off. The prompt is
+    kept where it can be read at a glance instead, as the name of the session.
+    """
+    if not session.title:
+        # A title somebody chose is theirs. So, deliberately, is the one the
+        # first prompt left behind: a second batch in the same session is more
+        # of the same work, not a new subject, and renaming the row underneath
+        # somebody mid-session is how a list stops being somewhere to look
+        # things up.
+        session.title = chat_service.provisional_title(prompt)
+    if artifact_id:
+        # None when every picture in the batch failed. The name still stands —
+        # an attempt is a record of what was asked for, and the alternative is
+        # the anonymous row this whole change exists to get rid of — but the
+        # session must not point at anything, because nothing exists to point at.
+        session.artifact_id = artifact_id
+    # The sidebar sorts on this. Making something is the clearest case there is
+    # of the conversation having been touched.
+    session.updated_at = utcnow()
+    db.add(session)
+
+
 @router.post("/{session_id}/images", response_model=list[ArtifactOut])
 async def generate_images(session_id: str, payload: ImageRequest, user: CurrentUser, db: DbSession):
     """Makes pictures and stores them as artifacts.
@@ -1291,6 +1370,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
 
     if charged:
         settle(db, user, charged, reason="image.generate", session_id=session.id)
+    _record_media(db, session, payload.prompt, made[-1].id if made else None)
     await db.commit()
     for artifact in made:
         await db.refresh(artifact)
@@ -1400,6 +1480,7 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
     )
     if charged:
         settle(db, user, charged, reason="audio.generate", session_id=session.id)
+    _record_media(db, session, payload.prompt, artifact.id)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -1892,7 +1973,7 @@ async def send_message(
     # assignment lands with the rest of the turn rather than in its own commit.
     if not session.title:
         # Provisional title, replaced once the first turn completes.
-        session.title = stored_content.strip()[:40]
+        session.title = chat_service.provisional_title(stored_content)
     db.add(session)
     privacy_audit_id: str | None = None
     if privacy_resolution and privacy_resolution.findings:
@@ -2533,7 +2614,7 @@ async def compare_models(
     )
     session.updated_at = utcnow()
     if not session.title:
-        session.title = stored_content.strip()[:40]
+        session.title = chat_service.provisional_title(stored_content)
     db.add(session)
     privacy_audit_id: str | None = None
     if resolved.findings:

@@ -128,6 +128,85 @@ class SessionBulkDelete(Wire):
     all: bool = False
 
 
+class SessionMade(Wire):
+    """What a session produced, for the line under its title in a list.
+
+    A picture or clip session stores no messages, so `preview` — the last thing
+    said — has nothing to offer and the row sits blank beneath its own name.
+    Its name is already the person's prompt, so echoing that underneath would
+    say one thing twice. What the list is actually missing is the other half:
+    what came back. That is what tells seven clips of one request apart.
+
+    Counted rather than described, and sent as measurements rather than as a
+    finished sentence, because the sentence has to be written in the reader's
+    language and this is the API.
+    """
+
+    #: The noun the row prints: `image`, `video`, `narration` or `music`.
+    #: Narration and music are separated here although both are `audio`
+    #: artifacts, because "내레이션 3개" and "음악 3곡" are what somebody would say.
+    kind: Literal["image", "video", "narration", "music"]
+    count: int
+    #: Zero when unknown and — deliberately — when the artifacts disagree. An
+    #: MP3's length is never measured, and four pictures made in two batches at
+    #: two ratios have no single ratio; printing one of them would be a claim
+    #: about the others.
+    seconds: int = 0
+    aspect: str = ""
+
+
+#: Artifact kinds a row names after themselves. Audio is deliberately not one
+#: of them: it splits into narration and music on its own `audioKind`. Anything
+#: absent here — a report, a deck, a chart — is not summarised this way at all.
+_MEDIA_KINDS = ("image", "video")
+
+
+def _agreed(rows: list[dict], *keys: str):
+    """The one value every row gives for a key, or None where they differ.
+
+    A falsy value is not an answer: a missing ratio is stored as `""` and an
+    unmeasured length as `0`, so a set of rows where only some carry the fact
+    does not agree on it.
+    """
+    for key in keys:
+        seen = {row.get(key) for row in rows}
+        if len(seen) == 1:
+            only = seen.pop()
+            if only:
+                return only
+    return None
+
+
+def made_from_artifacts(rows: list[tuple[str, dict | None]]) -> SessionMade | None:
+    """`(kind, data)` for one session, newest first, as one summary.
+
+    Only the newest artifact's own kind is counted. A session that made three
+    pictures and then a clip is, to the person looking for it, the clip one,
+    and "이미지 3장 · 영상 1개" is a row nobody reads.
+    """
+    if not rows:
+        return None
+    kind, newest = rows[0][0], rows[0][1] or {}
+    same = [data or {} for k, data in rows if k == kind]
+    if kind == "audio":
+        noun = "music" if newest.get("audioKind") == "music" else "narration"
+    elif kind in _MEDIA_KINDS:
+        noun = kind
+    else:
+        return None
+    seconds = _agreed(same, "durationSec") if noun != "image" else None
+    # What came back before what was asked for: `actualAspect` is measured off
+    # the picture while `aspect` is the phrase the prompt asked in, and the two
+    # disagree often enough that the artifact panel already shows both.
+    aspect = _agreed(same, "actualAspect", "aspect") if noun != "narration" else None
+    return SessionMade(
+        kind=noun,
+        count=len(same),
+        seconds=int(seconds or 0),
+        aspect=str(aspect or ""),
+    )
+
+
 class SessionOut(Wire):
     id: str
     kind: SessionKind
@@ -148,6 +227,10 @@ class SessionOut(Wire):
     #: response must not carry transcripts.
     preview: str | None = None
     message_count: int = 0
+    #: What this session produced, for the rows `preview` cannot serve. Set
+    #: only where there is no transcript, so a conversation that happens to
+    #: have made a picture still shows what was last said about it.
+    made: SessionMade | None = None
 
     @classmethod
     def of(
@@ -157,6 +240,7 @@ class SessionOut(Wire):
         *,
         preview: str | None = None,
         message_count: int = 0,
+        made: SessionMade | None = None,
     ) -> SessionOut:
         out = cls.model_validate(s, from_attributes=True)
         out.messages = [MessageOut.of(m) for m in messages] if messages is not None else None
@@ -166,6 +250,7 @@ class SessionOut(Wire):
         else:
             out.preview = preview
             out.message_count = message_count
+        out.made = made
         return out
 
 

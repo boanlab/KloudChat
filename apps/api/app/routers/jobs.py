@@ -23,6 +23,7 @@ from app.models.chat import ChatSession
 from app.models.user import User
 from app.models.workspace import Artifact, ArtifactKind, Job, JobStatus, StoredFile
 from app.schemas.chat import JobOut, VideoJobRequest
+from app.services import chat as chat_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
@@ -157,6 +158,15 @@ async def _poll_until_done(job_id: str) -> None:
                 )
                 db.add(artifact)
                 await db.flush()
+                session = await db.get(ChatSession, session_id)
+                if session is not None:
+                    # Here and not at submission: until the upstream hands the
+                    # clip back there is nothing to point at, and a session
+                    # pointing at an artifact that does not exist opens an
+                    # empty panel — which is worse than opening none.
+                    session.artifact_id = artifact.id
+                    session.updated_at = _now()
+                    db.add(session)
                 # Charged on delivery. The upstream's reported figure wins when
                 # it reports one; the pass-through's per-path price is a floor to
                 # quote from, not the figure to charge.
@@ -250,6 +260,16 @@ async def create_job(
         )
     except videogen.VideoError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    if not session.title:
+        # Named now rather than on delivery. A clip takes minutes, and for
+        # those minutes this row is the only place the person can find the
+        # thing they are being charged twelve thousand credits for. A clip that
+        # never arrives still leaves a record of what was asked for, which is
+        # the honest thing for the list to say about it.
+        session.title = chat_service.provisional_title(payload.prompt)
+    session.updated_at = _now()
+    db.add(session)
 
     job = Job(
         user_id=user.id,
