@@ -563,7 +563,8 @@ const EN: Record<string, string> = {
   '가입 승인과 월 크레딧 한도를 관리합니다. 한도는 매달 1일에 자동으로 리필되며, 남은 크레딧은 이월되지 않습니다.': 'Approve sign-ups and set monthly credit limits. Limits refill on the 1st; leftover credits do not carry over.',
   '누가 언제 무엇을 했는지 남은 기록입니다. 로그인, 승인, 정지, 권한 변경, 설정 변경이 남습니다.': 'A record of who did what and when — sign-ins, approvals, suspensions, role changes and setting changes.',
   '실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.': 'Totalled from real usage. Empty means nobody has spent anything yet.',
-  '모델 프록시와 메일 발송 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.': 'Model proxy and outgoing mail. Saved settings apply at once — no restart.',
+  '이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.':
+    'Settings that apply to the whole instance. Saved settings apply at once — no restart.',
   '조직 전체 사용량': 'Organisation usage',
   '본인 사용량': 'Your usage',
   '가입 승인, 월 크레딧 한도 배정, 정지': 'Approvals, monthly limits, suspension',
@@ -1157,6 +1158,12 @@ const EN: Record<string, string> = {
 
 
 
+
+  // ── 관리자 화면의 탭 ────────────────────────────────────────────
+  '프록시': 'Proxy',
+  '라우팅': 'Routing',
+  '기능': 'Features',
+  '메일': 'Mail',
 
   // ── 서식 카탈로그 ───────────────────────────────────────────────
   '서식': 'Formats',

@@ -86,11 +86,11 @@ function Authenticated() {
           <Route path="usage" element={<MyUsagePage />} />
           <Route path="connectors" element={<ConnectorsPage />} />
           <Route path="agent-setup" element={<AgentSetupPage />} />
-          {/* Nested routes live inside the page, so the parent needs the splat. */}
+          {/* Tabs live inside these pages, so the parent needs the splat. */}
           <Route path="settings/*" element={<SettingsPage />} />
           <Route path="admin/users" element={<AdminUsersPage />} />
           <Route path="admin/usage" element={<AdminUsagePage />} />
-          <Route path="admin/system" element={<AdminSystemPage />} />
+          <Route path="admin/system/*" element={<AdminSystemPage />} />
           <Route path="admin/governance" element={<AdminGovernancePage />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

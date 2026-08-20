@@ -17,7 +17,9 @@ const ROUTES = [
   '/projects', '/artifacts', '/agents', '/skills', '/memory', '/history',
   '/usage', '/connectors', '/agent-setup', '/designs', '/settings',
   '/settings/preferences', '/settings/keys', '/admin/users', '/admin/usage',
-  '/admin/system', '/admin/governance',
+  '/admin/system', '/admin/system/routing', '/admin/system/features',
+  '/admin/system/templates', '/admin/system/branding', '/admin/system/mail',
+  '/admin/governance',
 ]
 
 async function scan(page: Page, where: string) {

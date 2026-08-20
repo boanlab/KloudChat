@@ -213,7 +213,7 @@ without a translation fall back to Korean.
 | `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
 | `/settings` · `/settings/preferences` · `/settings/keys` | Profile and password / default model and behaviour / API key issue and revoke |
 | `/agent-setup` | Coding agent connection — address, key, model (account menu) |
-| `/admin/system` | Enabled surfaces, branding, backend integration, LiteLLM, SMTP (admin) |
+| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` | LiteLLM / automatic model routing / enabled surfaces and integrations / shared templates / branding / SMTP (admin) |
 
 ### What each surface does differently
 
