@@ -16,7 +16,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
 import { Badge, Button, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
@@ -302,6 +302,153 @@ function toLines(slide: Slide): string {
 }
 
 /**
+ * The room a deck is shown in: black, full-screen, and holding the keyboard.
+ *
+ * Shared with the HTML deck panel, where a deck written into a 서식 is markup
+ * rather than slide objects. What stands on the stage differs; the counter,
+ * the keys and the way out are the same job, and a second copy of them is a
+ * second thing to keep in step.
+ */
+export function PresentStage({
+  title,
+  index,
+  count,
+  onIndex,
+  onClose,
+  notes,
+  outline,
+  children,
+}: {
+  title: string
+  index: number
+  count: number
+  onIndex: (i: number) => void
+  onClose: () => void
+  /** The presenter's own screen. Left out by a deck that carries no notes. */
+  notes?: ReactNode
+  /** Slide titles, so a long deck can be jumped through rather than stepped. */
+  outline?: string[]
+  children: ReactNode
+}) {
+  const t = useT()
+  const [showNotes, setShowNotes] = useState(true)
+  const [showList, setShowList] = useState(false)
+
+  /**
+   * Keyboard, owned while presenting. Capture phase and stopped here: an
+   * Escape left to bubble would also close the dialog the deck opened from.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const keys = ['Escape', 'ArrowRight', 'ArrowLeft', ' ', 'n', 'N']
+      if (!keys.includes(e.key)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight' || e.key === ' ') onIndex(Math.min(index + 1, count - 1))
+      if (e.key === 'ArrowLeft') onIndex(Math.max(index - 1, 0))
+      if (e.key.toLowerCase() === 'n') setShowNotes((s) => !s)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [index, count, onIndex, onClose])
+
+  /* Portalled to the body rather than left where the panel sits. The deck can
+     be opened inside a dialog, and an animated ancestor makes `fixed` resolve
+     against *that box* — which turns full-screen rehearsal into a slide shown
+     in a 500px window. */
+  return createPortal(
+    <div role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
+      <div className="flex items-center gap-2 px-4 py-2 text-white/70">
+        <Presentation size={14} />
+        <span className="text-base">{title}</span>
+        <span className="ml-auto text-base tabular-nums">
+          {index + 1} / {count}
+        </span>
+        {outline && (
+          <button
+            onClick={() => setShowList((s) => !s)}
+            aria-pressed={showList}
+            className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
+          >
+            {t('장 목록')}
+          </button>
+        )}
+        {notes !== undefined && (
+          <button
+            onClick={() => setShowNotes((s) => !s)}
+            className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
+          >
+            {t('노트')} (N)
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          aria-label={t('발표 끝내기')}
+          className="rounded-control p-1.5 transition-colors hover:bg-white/10"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1">
+        {/* 어디까지 왔고 다음이 무엇인지. 스무 장짜리 덱을 한 장씩 넘겨
+            찾는 것은 방에 사람이 앉아 있을 때 할 일이 아니다. */}
+        {outline && showList && (
+          <nav
+            aria-label={t('장 목록')}
+            className="w-52 shrink-0 overflow-y-auto border-r border-white/10 py-2"
+          >
+            {outline.map((name, i) => (
+              <button
+                key={i}
+                onClick={() => onIndex(i)}
+                aria-current={i === index}
+                aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
+                className={cn(
+                  'flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm leading-snug transition-colors',
+                  i === index
+                    ? 'bg-white/15 text-white'
+                    : 'text-white/55 hover:bg-white/10 hover:text-white',
+                )}
+              >
+                <span className="shrink-0 text-white/40 tabular-nums">{i + 1}</span>
+                <span className="min-w-0 flex-1 line-clamp-2">{name || t('제목 없음')}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">{children}</div>
+      </div>
+      {notes !== undefined && showNotes && (
+        <div className="max-h-40 overflow-y-auto border-t border-white/10 px-6 py-3 text-base leading-relaxed text-white/75">
+          {notes}
+        </div>
+      )}
+      <div className="flex items-center justify-center gap-2 pb-4 text-white/70">
+        <button
+          onClick={() => onIndex(Math.max(index - 1, 0))}
+          disabled={index === 0}
+          aria-label={t('이전 장')}
+          className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span className="text-sm">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
+        <button
+          onClick={() => onIndex(Math.min(index + 1, count - 1))}
+          disabled={index >= count - 1}
+          aria-label={t('다음 장')}
+          className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+/**
  * Full-screen rehearsal. A deck is checked by walking it at the speed it will
  * be shown at, which a 400px preview in a side panel cannot be — the text that
  * is too small to read from the back of the room is legible in a thumbnail.
@@ -318,87 +465,21 @@ function PresentMode({
   onClose: () => void
 }) {
   const t = useT()
-  const [showNotes, setShowNotes] = useState(true)
   const slide = deck.slides[index]
-
-  /**
-   * Keyboard, owned while presenting. Capture phase and stopped here: an
-   * Escape left to bubble would also close the dialog the deck opened from.
-   */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const keys = ['Escape', 'ArrowRight', 'ArrowLeft', ' ', 'n', 'N']
-      if (!keys.includes(e.key)) return
-      e.preventDefault()
-      e.stopPropagation()
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowRight' || e.key === ' ')
-        onIndex(Math.min(index + 1, deck.slides.length - 1))
-      if (e.key === 'ArrowLeft') onIndex(Math.max(index - 1, 0))
-      if (e.key.toLowerCase() === 'n') setShowNotes((s) => !s)
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [index, deck.slides.length, onIndex, onClose])
-
   if (!slide) return null
-  /* Portalled to the body rather than left where the panel sits. The deck can
-     be opened inside a dialog, and an animated ancestor makes `fixed` resolve
-     against *that box* — which turns full-screen rehearsal into a slide shown
-     in a 500px window. */
-  return createPortal(
-    <div role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
-      <div className="flex items-center gap-2 px-4 py-2 text-white/70">
-        <Presentation size={14} />
-        <span className="text-base">{deck.title}</span>
-        <span className="ml-auto text-base tabular-nums">
-          {index + 1} / {deck.slides.length}
-        </span>
-        <button
-          onClick={() => setShowNotes((s) => !s)}
-          className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
-        >
-          {t('노트')} (N)
-        </button>
-        <button
-          onClick={onClose}
-          aria-label={t('발표 끝내기')}
-          className="rounded-control p-1.5 transition-colors hover:bg-white/10"
-        >
-          <X size={16} />
-        </button>
+  return (
+    <PresentStage
+      title={deck.title}
+      index={index}
+      count={deck.slides.length}
+      onIndex={onIndex}
+      onClose={onClose}
+      notes={slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
+    >
+      <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
+        <SlideView slide={slide} scale={2.4} />
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">
-        <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
-          <SlideView slide={slide} scale={2.4} />
-        </div>
-      </div>
-      {showNotes && (
-        <div className="max-h-40 overflow-y-auto border-t border-white/10 px-6 py-3 text-base leading-relaxed text-white/75">
-          {slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
-        </div>
-      )}
-      <div className="flex items-center justify-center gap-2 pb-4 text-white/70">
-        <button
-          onClick={() => onIndex(Math.max(index - 1, 0))}
-          disabled={index === 0}
-          aria-label={t('이전 장')}
-          className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <span className="text-sm">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
-        <button
-          onClick={() => onIndex(Math.min(index + 1, deck.slides.length - 1))}
-          disabled={index >= deck.slides.length - 1}
-          aria-label={t('다음 장')}
-          className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
-        >
-          <ChevronRight size={18} />
-        </button>
-      </div>
-    </div>,
-    document.body,
+    </PresentStage>
   )
 }
 
