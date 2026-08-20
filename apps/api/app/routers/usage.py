@@ -1,8 +1,18 @@
 """Organisation usage, computed from what actually happened.
 
-Every figure comes from stored turns: `messages.usage.credits` is what the turn
-was billed, `messages.model` what answered it, the session `kind` which surface
-asked. Nothing is estimated or seeded.
+Two records exist of a thing that happened, and neither holds both halves. A
+stored turn knows that somebody asked and which model answered; the credit
+ledger knows what it cost. A self-hosted model answers without spending, and a
+picture spends without answering — so either record read alone is missing whole
+columns of the truth, and the screen built on it said so out loud: for an
+account whose spend was all pictures and clips, the total came from the ledger
+and every bar beside it came from turns, which left the entire figure filed
+under "기타".
+
+So both are read as one stream of billable events: turns carry the request and
+the model, ledger rows carry the money, and every breakdown below is that same
+stream grouped a different way. The bars and the number above them cannot
+disagree, because they are the same rows. Nothing is estimated or seeded.
 """
 
 from __future__ import annotations
@@ -11,7 +21,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import Integer, cast, func
+from sqlalchemy import DateTime, case, func, literal, union_all
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -29,15 +39,18 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 #: dependency cannot leak the whole instance.
 me_router = APIRouter(prefix="/me", tags=["usage"])
 
+#: The reasons that bill for work no turn records — a picture, a line of
+#: speech, a clip. They count as requests in their own right because nothing
+#: else counts them; every other reason rides along with an assistant message
+#: that is already in the stream, and counting those twice would inflate the
+#: request figure the moment a model stopped being free.
+MEDIA_REASONS = ("image.generate", "audio.generate", "video.generate")
+
 
 def _cycle_start() -> datetime:
     """Midnight on the first of the current month — when allowances refill."""
     now = datetime.now(UTC)
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-#: `usage->>'credits'` as an integer. A turn whose upstream withheld usage
-#: counts as zero rather than dropping the row, keeping request counts honest.
-_CREDITS = func.coalesce(cast(Message.usage["credits"].astext, Integer), 0)
 
 
 def _since(days: int) -> datetime:
@@ -46,68 +59,136 @@ def _since(days: int) -> datetime:
     return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+#: Which model a ledger row paid. `credit_ledger.model` says so from 0027 on.
+#: Rows older than the column, and the media routes that do not write it yet,
+#: fall back to the session — which is honest for a picture or a clip, whose
+#: session is one generator with one price sheet, and dishonest for a
+#: conversation, where the model on the session is only the one selected now.
+#: So the fallback stops at the media reasons; anything else with no model of
+#: its own stays unattributed rather than being guessed at.
+_SPEND_MODEL = func.nullif(
+    func.coalesce(
+        col(CreditLedger.model),
+        case(
+            (col(CreditLedger.reason).in_(MEDIA_REASONS), col(ChatSession.model)),
+            else_=None,
+        ),
+        "",
+    ),
+    "",
+)
+
+
+def _events(since: datetime, user_id: str | None = None):
+    """Every billable event in the window, from both records of one.
+
+    Both halves are shaped the same — when, which model, which surface, whose,
+    how much, how many — so that one grouping answers the total, the daily
+    chart, the per-model list and the per-surface list at once.
+    """
+    turns = (
+        select(
+            func.date_trunc(
+                "day", col(Message.created_at), type_=DateTime(timezone=True)
+            ).label("day"),
+            col(Message.model).label("model"),
+            col(ChatSession.kind).label("kind"),
+            col(ChatSession.user_id).label("user_id"),
+            # A turn carries no money on purpose: the ledger is what the
+            # balance is computed from, and letting the message's own copy of
+            # the figure into the sum would count a priced turn twice.
+            literal(0).label("credits"),
+            literal(1).label("requests"),
+        )
+        .select_from(Message)
+        .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
+        # Assistant turns only: a user message is not a request to a model.
+        .where(Message.role == Role.assistant, Message.created_at >= since)
+    )
+    spend = (
+        select(
+            func.date_trunc(
+                "day", col(CreditLedger.created_at), type_=DateTime(timezone=True)
+            ).label("day"),
+            _SPEND_MODEL.label("model"),
+            col(ChatSession.kind).label("kind"),
+            col(CreditLedger.user_id).label("user_id"),
+            (-col(CreditLedger.delta)).label("credits"),
+            case((col(CreditLedger.reason).in_(MEDIA_REASONS), 1), else_=0).label("requests"),
+        )
+        .select_from(CreditLedger)
+        # Outer, because a design extraction is charged against no conversation
+        # at all, and dropping it would stop the parts adding up to the total.
+        .join(ChatSession, col(CreditLedger.session_id) == col(ChatSession.id), isouter=True)
+        .where(CreditLedger.delta < 0, CreditLedger.created_at >= since)
+    )
+    if user_id is not None:
+        turns = turns.where(ChatSession.user_id == user_id)
+        spend = spend.where(CreditLedger.user_id == user_id)
+    return union_all(turns, spend).subquery()
+
+
+def _kind(kind) -> str:
+    """The surface's name. A union hands the enum back raw on some drivers."""
+    return getattr(kind, "value", kind)
+
+
 @router.get("/usage")
 async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=90)):
     since = _since(days)
-    # Assistant turns only: a user message is not a request to a model.
-    answered = (Message.role == Role.assistant) & (Message.created_at >= since)
+    events = _events(since)
+    credits = func.coalesce(func.sum(events.c.credits), 0)
+    requests = func.coalesce(func.sum(events.c.requests), 0)
+    people = func.count(func.distinct(events.c.user_id))
 
-    totals = (
-        await db.exec(
-            select(
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-                func.count(func.distinct(ChatSession.user_id)),
-            )
-            .select_from(Message)
-            .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
-            .where(answered)
-        )
+    spent, request_count, active_users = (
+        await db.exec(select(credits, requests, people))
     ).one()
 
     daily = (
         await db.exec(
-            select(
-                func.date_trunc("day", col(Message.created_at)).label("day"),
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-            )
-            .where(answered)
-            .group_by("day")
-            .order_by("day")
+            select(events.c.day, credits, requests)
+            .group_by(events.c.day)
+            .order_by(events.c.day)
         )
     ).all()
 
     by_model = (
         await db.exec(
-            select(
-                Message.model,
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-                func.count(func.distinct(ChatSession.user_id)),
-            )
-            .select_from(Message)
-            .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
-            .where(answered, col(Message.model).is_not(None))
-            .group_by(col(Message.model))
-            .order_by(func.coalesce(func.sum(_CREDITS), 0).desc(), func.count().desc())
+            select(events.c.model, credits, requests, people)
+            .where(events.c.model.is_not(None))
+            .group_by(events.c.model)
+            .order_by(credits.desc(), requests.desc())
         )
     ).all()
 
     by_surface = (
         await db.exec(
-            select(
-                ChatSession.kind,
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-            )
-            .select_from(Message)
-            .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
-            .where(answered)
-            .group_by(col(ChatSession.kind))
-            .order_by(func.coalesce(func.sum(_CREDITS), 0).desc())
+            select(events.c.kind, credits, requests)
+            .where(events.c.kind.is_not(None))
+            .group_by(events.c.kind)
+            .order_by(credits.desc())
         )
     ).all()
+
+    # The two residues, kept apart because they are different admissions: a
+    # charge no single model can be named for, and a charge that was never
+    # made against a conversation.
+    other_credits, loose_credits, loose_requests = (
+        await db.exec(
+            select(
+                func.coalesce(
+                    func.sum(case((events.c.model.is_(None), events.c.credits), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((events.c.kind.is_(None), events.c.credits), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((events.c.kind.is_(None), events.c.requests), else_=0)), 0
+                ),
+            )
+        )
+    ).one()
 
     top_users = (
         await db.exec(
@@ -116,14 +197,12 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
                 User.name,
                 User.email,
                 User.monthly_credits,
-                func.coalesce(func.sum(_CREDITS), 0).label("spent"),
+                credits.label("spent"),
             )
-            .select_from(Message)
-            .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
-            .join(User, col(ChatSession.user_id) == col(User.id))
-            .where(answered)
+            .select_from(events)
+            .join(User, events.c.user_id == col(User.id))
             .group_by(col(User.id), col(User.name), col(User.email), col(User.monthly_credits))
-            .order_by(func.coalesce(func.sum(_CREDITS), 0).desc())
+            .order_by(credits.desc())
             .limit(10)
         )
     ).all()
@@ -138,15 +217,26 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).one()
 
-    spent, requests, active_users = totals
+    surfaces = [
+        {"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface
+    ]
+    if loose_credits or loose_requests:
+        surfaces.append(
+            {"kind": "other", "credits": int(loose_credits), "requests": int(loose_requests)}
+        )
+
     return {
         "days": days,
         "since": since,
         "totals": {
             "credits": int(spent),
-            "requests": int(requests),
+            "requests": int(request_count),
             "activeUsers": int(active_users),
             "allocatedCredits": int(allocated),
+            # Spend no single model can be named for: a comparison that ran
+            # several on one charge, or a row written before the ledger
+            # recorded a model at all.
+            "otherCredits": int(other_credits),
         },
         "daily": [
             {"date": day.date().isoformat(), "credits": int(c), "requests": int(n)}
@@ -156,9 +246,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             {"model": m, "credits": int(c), "requests": int(n), "users": int(u)}
             for m, c, n, u in by_model
         ],
-        "bySurface": [
-            {"kind": k.value, "credits": int(c), "requests": int(n)} for k, c, n in by_surface
-        ],
+        "bySurface": surfaces,
         "topUsers": [
             {
                 "id": uid,
@@ -207,7 +295,7 @@ async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
 
 @me_router.get("/usage")
 async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1, le=90)):
-    """The caller's own spending, from the same stored turns as the admin view.
+    """The caller's own spending, from the same event stream as the admin view.
 
     Separate from `/admin/usage` rather than that endpoint with a filter: the
     figures an administrator needs — who spent it, how the roster compares — are
@@ -216,81 +304,60 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     and whether the trend will run out before the cycle does.
     """
     since = _since(days)
-    mine = (
-        (Message.role == Role.assistant)
-        & (Message.created_at >= since)
-        & (ChatSession.user_id == user.id)
-    )
-    joined = select().select_from(Message).join(
-        ChatSession, col(Message.session_id) == col(ChatSession.id)
-    )
+    events = _events(since, user_id=user.id)
+    credits = func.coalesce(func.sum(events.c.credits), 0)
+    requests = func.coalesce(func.sum(events.c.requests), 0)
 
-    spent, requests = (
-        await db.exec(
-            joined.add_columns(func.coalesce(func.sum(_CREDITS), 0), func.count()).where(mine)
-        )
-    ).one()
+    spent, request_count = (await db.exec(select(credits, requests))).one()
 
     daily = (
         await db.exec(
-            joined.add_columns(
-                func.date_trunc("day", col(Message.created_at)).label("day"),
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-            )
-            .where(mine)
-            .group_by("day")
-            .order_by("day")
+            select(events.c.day, credits, requests)
+            .group_by(events.c.day)
+            .order_by(events.c.day)
         )
     ).all()
 
     by_model = (
         await db.exec(
-            joined.add_columns(
-                Message.model,
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-            )
-            .where(mine, col(Message.model).is_not(None))
-            .group_by(col(Message.model))
-            .order_by(func.coalesce(func.sum(_CREDITS), 0).desc())
+            select(events.c.model, credits, requests)
+            .where(events.c.model.is_not(None))
+            .group_by(events.c.model)
+            .order_by(credits.desc(), requests.desc())
         )
     ).all()
 
     by_surface = (
         await db.exec(
-            joined.add_columns(
-                ChatSession.kind,
-                func.coalesce(func.sum(_CREDITS), 0),
-                func.count(),
-            )
-            .where(mine)
-            .group_by(col(ChatSession.kind))
-            .order_by(func.coalesce(func.sum(_CREDITS), 0).desc())
+            select(events.c.kind, credits, requests)
+            .where(events.c.kind.is_not(None))
+            .group_by(events.c.kind)
+            .order_by(credits.desc())
         )
     ).all()
 
-    # Totals come from the ledger, not from conversation turns.
-    #
-    # Conversation is not the only thing that spends — image generation bills
-    # without producing a message. The ledger is what the balance is computed
-    # from, so the screen has to agree with the ledger.
-    #
-    # The breakdown below is per model and per surface, which the ledger does
-    # not record. It is derived from messages and therefore covers turns only;
-    # the difference is surfaced as `other`.
-    spend = -func.coalesce(func.sum(CreditLedger.delta), 0)
-    ledger_window = (
+    other_credits, loose_credits, loose_requests = (
         await db.exec(
-            select(spend)
-            .where(CreditLedger.user_id == user.id)
-            .where(CreditLedger.delta < 0)
-            .where(CreditLedger.created_at >= since)
+            select(
+                func.coalesce(
+                    func.sum(case((events.c.model.is_(None), events.c.credits), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((events.c.kind.is_(None), events.c.credits), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((events.c.kind.is_(None), events.c.requests), else_=0)), 0
+                ),
+            )
         )
     ).one()
+
+    # The one figure here that is not about the window: it answers how much of
+    # this month's allowance is gone, so it is read from the first of the month
+    # regardless of which range button is pressed.
     cycle_used = (
         await db.exec(
-            select(spend)
+            select(-func.coalesce(func.sum(CreditLedger.delta), 0))
             .where(CreditLedger.user_id == user.id)
             .where(CreditLedger.delta < 0)
             .where(CreditLedger.created_at >= _cycle_start())
@@ -298,10 +365,15 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     ).one()
     # SQLModel hands back a scalar for some drivers and a one-element row for
     # others; both mean the same number here.
-    ledger_window = int(
-        ledger_window if not hasattr(ledger_window, "__len__") else ledger_window[0]
-    )
     cycle_used = int(cycle_used if not hasattr(cycle_used, "__len__") else cycle_used[0])
+
+    surfaces = [
+        {"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface
+    ]
+    if loose_credits or loose_requests:
+        surfaces.append(
+            {"kind": "other", "credits": int(loose_credits), "requests": int(loose_requests)}
+        )
 
     return {
         "days": days,
@@ -313,11 +385,12 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         # produces a figure that matches neither.
         "apiKeys": await _api_key_spend(db, user),
         "totals": {
-            "credits": ledger_window,
-            "requests": int(requests),
-            # Spend the per-model breakdown cannot account for — today that is
-            # image generation, which bills without producing a turn.
-            "otherCredits": max(0, ledger_window - int(spent)),
+            "credits": int(spent),
+            "requests": int(request_count),
+            # Spend no single model can be named for. A residue now, rather
+            # than the whole figure: pictures, clips and speech are broken out
+            # above like everything else.
+            "otherCredits": int(other_credits),
         },
         "cycle": {
             "allowance": int(user.monthly_credits or 0),
@@ -331,9 +404,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         "byModel": [
             {"model": m, "credits": int(c), "requests": int(n)} for m, c, n in by_model
         ],
-        "bySurface": [
-            {"kind": k.value, "credits": int(c), "requests": int(n)} for k, c, n in by_surface
-        ],
+        "bySurface": surfaces,
     }
 
 

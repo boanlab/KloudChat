@@ -64,6 +64,10 @@ export function AdminUsagePage() {
   }, [loadUsage, days])
 
   const cr = (v: number) => `${v.toLocaleString()} cr`
+  // The ledger can charge against no conversation at all, which is a surface
+  // the five-kind table has no entry for.
+  const surface = (kind: string) =>
+    kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
   // Free local models cost nothing, so a credit chart for an instance that only
   // runs them is a row of zeroes. Plot what did happen instead of nothing.
   const byCredits = (usage?.totals.credits ?? 0) > 0
@@ -81,6 +85,9 @@ export function AdminUsagePage() {
       [],
       [t('모델'), t('크레딧'), t('요청'), t('사용자')],
       ...usage.byModel.map((m) => [m.model, String(m.credits), String(m.requests), String(m.users)]),
+      ...(usage.totals.otherCredits > 0
+        ? [[t('기타'), String(usage.totals.otherCredits), '', '']]
+        : []),
     ]
     const csv = rows.map((r) => r.join(',')).join('\n')
     const url = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv' }))
@@ -181,13 +188,25 @@ export function AdminUsagePage() {
             <Card className="mb-4 p-4">
               <p className="mb-3 text-base font-medium">{t('모델별')}</p>
               <Bars
-                rows={usage.byModel.map((m) => ({
-                  label: m.model,
-                  value: m.credits,
-                  sub: `${t('{n}회').replace('{n}', String(m.requests))} · ${t('{n}명').replace('{n}', String(m.users))}`,
-                }))}
+                rows={[
+                  ...usage.byModel.map((m) => ({
+                    label: m.model,
+                    value: m.credits,
+                    sub: `${t('{n}회').replace('{n}', String(m.requests))} · ${t('{n}명').replace('{n}', String(m.users))}`,
+                  })),
+                  // Named rather than dropped: a bar chart that quietly omits
+                  // part of the total is how the whole total ended up here.
+                  ...(usage.totals.otherCredits > 0
+                    ? [{ label: t('기타'), value: usage.totals.otherCredits }]
+                    : []),
+                ]}
                 format={cr}
               />
+              {usage.totals.otherCredits > 0 && (
+                <p className="mt-2 text-xs text-faint">
+                  {t('한 모델을 지목할 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청처럼요.')}
+                </p>
+              )}
             </Card>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -195,7 +214,7 @@ export function AdminUsagePage() {
                 <p className="mb-3 text-base font-medium">{t('화면별')}</p>
                 <Bars
                   rows={usage.bySurface.map((s) => ({
-                    label: t(kindMeta[s.kind as SessionKind]?.label ?? s.kind),
+                    label: surface(s.kind),
                     value: s.credits,
                     sub: t('{n}건').replace('{n}', String(s.requests)),
                     color: kindMeta[s.kind as SessionKind]?.color,

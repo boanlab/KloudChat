@@ -24,7 +24,14 @@ from sqlmodel import col, delete, select
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.deps import CurrentUser, DbSession, client_ip
-from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
+from app.models.chat import (
+    ChatSession,
+    Message,
+    Role,
+    RoutingMode,
+    SessionKind,
+    TurnFailure,
+)
 from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent as WorkspaceAgent
 from app.models.workspace import AgentVisibility, Artifact, ArtifactKind, Project, StoredFile
@@ -2144,6 +2151,10 @@ async def send_message(
             # did before this was carried at all.
             temperature=agent_temperature,
             first_user_message=stored_content,
+            # The question is already committed. A turn that produces no answer
+            # has to come back and say so on this exact row, or the transcript
+            # keeps a prompt with silence under it and no account of why.
+            user_message_id=user_message.id,
             is_first_turn=is_first_turn,
             skills_event=skills_event,
             context_steps=context_steps,
@@ -2189,6 +2200,7 @@ async def _run_turn(
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
     first_user_message: str,
+    user_message_id: str | None = None,
     is_first_turn: bool,
     skills_event: dict | None = None,
     context_steps: list[dict] | None = None,
@@ -2360,6 +2372,7 @@ async def _run_turn(
     new_artifact: str | None = None
     title: str | None = None
     title_credits = 0
+    title_model: str | None = None
     if is_first_turn and stored_content and not failed:
         enrichment = await _enrichment_model(
             model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
@@ -2377,6 +2390,7 @@ async def _run_turn(
         title_credits = charge_for_tokens(
             enrichment, title_usage["inputTokens"], title_usage["outputTokens"]
         )
+        title_model = enrichment["id"]
 
     # One transaction: assistant message, deduction, title.
     async with SessionLocal() as db:
@@ -2392,10 +2406,31 @@ async def _run_turn(
                     usage={**usage, "credits": credits},
                     model=stored_actual_model,
                     routing=stored_routing,
+                    # Half an answer is worth keeping, and worth labelling. The
+                    # browser already says the stream broke; storing it is what
+                    # makes the same thing true tomorrow.
+                    failure=TurnFailure.interrupted if failed else None,
                 )
                 db.add(answer)
                 answer_id = answer.id
-                settle(db, user, credits, reason="chat.completion", session_id=session_id)
+                settle(
+                    db,
+                    user,
+                    credits,
+                    reason="chat.completion",
+                    session_id=session_id,
+                    model=stored_actual_model,
+                )
+            else:
+                # There is no answer to store — a broken stream, a refusal, or a
+                # model that returned nothing at all. Inventing an assistant
+                # message here would put words in its mouth, so the question
+                # carries the outcome instead: it is the row the reader is
+                # actually looking at, and the row a retry is offered under.
+                question = await db.get(Message, user_message_id) if user_message_id else None
+                if question is not None:
+                    question.failure = TurnFailure.no_answer
+                    db.add(question)
             if title:
                 session.title = title
             # Its own line rather than folded into the answer's figure: a
@@ -2404,7 +2439,14 @@ async def _run_turn(
             # thing the ledger owes somebody who never asked for a title is a
             # row that says a title is what they paid for. Nothing is charged
             # when the title ran on free capacity, which is the usual case.
-            settle(db, user, title_credits, reason="chat.title", session_id=session_id)
+            settle(
+                db,
+                user,
+                title_credits,
+                reason="chat.title",
+                session_id=session_id,
+                model=title_model,
+            )
             if privacy_audit_id:
                 privacy_audit = await db.get(AuditEvent, privacy_audit_id)
                 if privacy_audit is not None:
@@ -2836,6 +2878,9 @@ async def _run_comparison(
                 }
                 db.add(privacy_audit)
         if settled is not None and total:
+            # No model on this row: one charge covered several of them, and
+            # naming any one of them on the usage screen would be a lie about
+            # where the money went. It lands in "기타" instead, which is true.
             settle(db, settled, total, reason="chat.compare", session_id=session_id)
         await db.commit()
 
@@ -2972,6 +3017,7 @@ async def _enrich(
                     ),
                     reason="chat.memory",
                     session_id=session_id,
+                    model=enrichment["id"],
                 )
             except Exception:  # noqa: BLE001
                 log.exception("auto-memory failed for session %s", session_id)
@@ -3147,7 +3193,14 @@ async def _run_page(
                         routing=routing,
                     )
                 )
-                settle(db, user, credits, reason="page.generate", session_id=session_id)
+                settle(
+                    db,
+                    user,
+                    credits,
+                    reason="page.generate",
+                    session_id=session_id,
+                    model=model["id"],
+                )
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
@@ -3272,7 +3325,14 @@ async def _run_deck(
                         routing=routing,
                     )
                 )
-                settle(db, user, credits, reason="deck.generate", session_id=session_id)
+                settle(
+                    db,
+                    user,
+                    credits,
+                    reason="deck.generate",
+                    session_id=session_id,
+                    model=model["id"],
+                )
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
@@ -3419,7 +3479,14 @@ async def _run_report(
                         routing=routing,
                     )
                 )
-                settle(db, user, credits, reason="report.generate", session_id=session_id)
+                settle(
+                    db,
+                    user,
+                    credits,
+                    reason="report.generate",
+                    session_id=session_id,
+                    model=model["id"],
+                )
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()

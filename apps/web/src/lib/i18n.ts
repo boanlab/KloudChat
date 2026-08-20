@@ -1149,6 +1149,16 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 답을 받지 못한 턴, 그리고 지목할 모델이 없는 몫 ─────────────
+  '기타': 'Other',
+  '답변을 받지 못했습니다.': 'No answer came back.',
+  '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
+  '다시 물어보기': 'Ask again',
+  '다시 물어볼 때 첨부한 파일은 새로 올려야 합니다.':
+    'Asking again does not carry the attachments — upload them once more.',
+  '한 모델을 지목할 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청처럼요.':
+    'Spend with no single model behind it — a request that compared several at once, for instance.',
+
   // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
   '이미지 {n}장': '{n} pictures',
   '영상 {n}개': '{n} clips',

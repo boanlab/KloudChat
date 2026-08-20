@@ -5,7 +5,15 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
-from app.models.chat import ChatSession, Message, MessageRating, Role, RoutingMode, SessionKind
+from app.models.chat import (
+    ChatSession,
+    Message,
+    MessageRating,
+    Role,
+    RoutingMode,
+    SessionKind,
+    TurnFailure,
+)
 from app.schemas.auth import Wire
 
 
@@ -26,6 +34,10 @@ class MessageOut(Wire):
     #: What the reader thought of this answer, or null if nobody has said. Sent
     #: with the transcript so a rating outlives the tab it was left in.
     rating: MessageRating | None = None
+    #: How this turn ended when it did not end in an answer. On the wire for
+    #: the same reason the rating is: the browser already says so while it is
+    #: happening, and that notice lives in one tab and is gone on reload.
+    failure: TurnFailure | None = None
     created_at: datetime
 
     @classmethod
