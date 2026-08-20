@@ -282,6 +282,24 @@ def get(template_id: str | None) -> DesignTemplate | None:
     return _TEMPLATES.get(template_id or "")
 
 
+def default_for(defaults: Any, kind: SessionKind) -> str | None:
+    """The format a project hands a new session on this surface, if any.
+
+    Lenient where the write path is strict, deliberately. A project's map is
+    written through a router that refuses an id this catalogue cannot place,
+    so what is left for the read to meet is the case validation cannot reach:
+    an id that stopped existing between two versions of this image. That
+    degrades to the built-in track, the way a session's own stale id does — a
+    project nobody can start work in would be the worse failure.
+    """
+    if not isinstance(defaults, dict):
+        return None
+    chosen = get(defaults.get(kind.value))
+    if chosen is None or chosen.kind not in HTML_KINDS or chosen.surface is not kind:
+        return None
+    return chosen.id
+
+
 def sanitise(fragment: str) -> str:
     """One block of model-written HTML, reduced to what the seed styles.
 
@@ -438,6 +456,7 @@ __all__ = [
     "DesignTemplate",
     "all_templates",
     "assemble",
+    "default_for",
     "escape",
     "figure",
     "pictures_in",

@@ -34,6 +34,23 @@ def _json(**kwargs) -> Column:
 
 
 class Project(SQLModel, table=True):
+    """The work, and the defaults everything started inside it begins with.
+
+    `render_templates` is a map from surface to template id rather than a
+    column per surface. A project produces on five surfaces and only two of
+    them have a rendering track today, so columns would be three that are
+    always null plus a migration the day a third surface gains one — and the
+    only code that reads them holds the kind of the session being created,
+    which a map answers with a lookup and columns answer with a branch per
+    surface.
+
+    Keyed by `SessionKind` for that same reason: the reader has a session
+    kind, not a template kind. The values are ids in the shipped catalogue and
+    deliberately not foreign keys, exactly as `sessions.render_template_id` is
+    not — the catalogue lives in the image, so an id an upgrade removes has to
+    degrade to "no format" rather than to a project that will not load.
+    """
+
     __tablename__ = "projects"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
@@ -48,6 +65,10 @@ class Project(SQLModel, table=True):
     #: defaults stand — the model picks the deck accent and the exporters use
     #: their own fonts, exactly as before design systems existed.
     design_system_id: str | None = Field(default=None, foreign_key="design_systems.id")
+    #: Surface → rendering template: the format a new session on that surface
+    #: starts in. Null and `{}` both mean the built-in track, which is what a
+    #: project that never chose a format has always produced.
+    render_templates: dict | None = Field(default=None, sa_column=_json(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 

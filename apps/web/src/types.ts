@@ -513,6 +513,11 @@ export interface Project {
   skillIds: string[]
   /** The design system this project's output wears. Null is the default look. */
   designSystemId: string | null
+  /**
+   * Surface → rendering template: the shape work started here comes out in.
+   * A surface with no entry uses the built-in track.
+   */
+  renderTemplates: Record<string, string>
   updatedAt: string
 }
 

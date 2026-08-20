@@ -127,6 +127,11 @@ Twenty-two migrations under `alembic/versions/`. The principal tables:
 - `sessions.render_template_id` — the rendering template a session writes into.
   A plain string, not a foreign key: the catalogue ships inside the API image,
   and an id that disappears in an upgrade degrades to "no template"
+- `projects.render_templates` — surface → template id, the format work started
+  in this project begins in. A JSONB map rather than a column per surface,
+  because the reader holds a session kind and only two surfaces have a
+  rendering track. Seeded onto the session at creation, never re-read: the
+  composer's own pick is a decision about that one conversation
 - `shares` — read-only links. The token is the permission, and revocation is a
   flag rather than a delete
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a

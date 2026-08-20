@@ -2245,6 +2245,7 @@ function toProject(p: ProjectRow): Project {
     sessionIds: p.sessionIds,
     skillIds: p.skillIds,
     designSystemId: p.designSystemId ?? null,
+    renderTemplates: p.renderTemplates ?? {},
     updatedAt: p.updatedAt,
   }
 }

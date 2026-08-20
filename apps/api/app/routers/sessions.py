@@ -894,11 +894,31 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         agent_id=payload.agent_id,
         model=payload.model or "",
         routing_mode=payload.routing_mode,
+        render_template_id=await _project_render_template(db, payload.project_id, payload.kind),
     )
     db.add(session)
     await db.commit()
     await db.refresh(session)
     return SessionOut.of(session, [])
+
+
+async def _project_render_template(
+    db: DbSession, project_id: str | None, kind: SessionKind
+) -> str | None:
+    """The format the project this session is starting in works in, if any.
+
+    Copied onto the row rather than read through the project on every turn.
+    The composer shows the shape it is about to write in, and a project whose
+    default changes afterwards must not silently change the shape of a
+    conversation somebody is already having — the same reason the composer's
+    own pick is stored here rather than resent.
+
+    Ownership is settled by `_validate_session_links` before this is asked.
+    """
+    if not project_id:
+        return None
+    project = await db.get(Project, project_id)
+    return design_templates.default_for(project.render_templates, kind) if project else None
 
 
 def _resolved_template_id(requested: str | None, kind: SessionKind) -> str | None:

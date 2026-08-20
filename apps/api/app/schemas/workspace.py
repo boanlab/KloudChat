@@ -34,6 +34,8 @@ from app.services import design as design_service
 #: JSONB list columns are nullable in the database, but the wire contract is a
 #: list either way — absorbed here rather than in every `of()` and consumer.
 JsonList = Annotated[list[str], BeforeValidator(lambda v: v or [])]
+#: The same absorption for a JSONB map column.
+JsonMap = Annotated[dict[str, str], BeforeValidator(lambda v: v or {})]
 
 
 # ── files ──────────────────────────────────────────────────────────────
@@ -74,6 +76,8 @@ class ProjectOut(Wire):
     instructions: str
     skill_ids: JsonList = Field(default_factory=list)
     design_system_id: str | None = None
+    #: Surface → rendering template. What a new session here starts in.
+    render_templates: JsonMap = Field(default_factory=dict)
     files: list[FileOut] = Field(default_factory=list)
     session_ids: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -88,6 +92,7 @@ class ProjectOut(Wire):
     ) -> ProjectOut:
         out = cls.model_validate(p, from_attributes=True)
         out.skill_ids = list(p.skill_ids or [])
+        out.render_templates = dict(p.render_templates or {})
         out.files = [FileOut.of(f) for f in (files or [])]
         out.session_ids = list(session_ids or [])
         return out
@@ -100,6 +105,7 @@ class ProjectIn(Wire):
     instructions: str = ""
     skill_ids: list[str] | None = None
     design_system_id: str | None = None
+    render_templates: dict[str, str] | None = None
 
 
 class ProjectPatch(Wire):
@@ -111,6 +117,9 @@ class ProjectPatch(Wire):
     #: Explicit null clears it, so `exclude_unset` is what separates "no design
     #: system" from "leave the design system alone".
     design_system_id: str | None = None
+    #: Sent whole, not per surface: a map with one key is how a picker clears
+    #: the other surface, and a merge here would make that impossible to say.
+    render_templates: dict[str, str] | None = None
 
 
 # ── artifacts ──────────────────────────────────────────────────────────

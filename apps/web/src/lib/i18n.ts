@@ -1167,6 +1167,12 @@ const EN: Record<string, string> = {
   '슬라이드나 보고서를 켜면 그 화면에서 쓸 수 있는 서식이 여기에 나옵니다.':
     'Turn on slides or reports and the formats those screens can use will appear here.',
 
+  // ── 프로젝트의 기본 서식 ────────────────────────────────────────
+  '기본 서식': 'Default formats',
+  '이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
+    'Sets the shape work started in this project comes out in. Each conversation can still pick its own.',
+  '{kind} 서식': '{kind} format',
+
   // ── 디자인 현관 ─────────────────────────────────────────────────
   '결과물이 어떤 모양으로 나올지 먼저 고릅니다': 'Choose the shape the result comes out in first',
   '결과물이 어떤 모양으로 나올지 고릅니다': 'Choose the shape the result comes out in',

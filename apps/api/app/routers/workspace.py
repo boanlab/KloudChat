@@ -177,6 +177,38 @@ async def _validate_design_system_id(db: DbSession, user: User, design_id: str |
         )
 
 
+def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | None:
+    """The formats this project starts its work in, refused rather than trimmed.
+
+    The same rule the composer's own pick answers to in
+    `sessions._resolved_template_id`, applied a surface at a time: an id the
+    catalogue cannot place is an error, not a key quietly dropped on the way
+    in. A default that disappears while it is being saved is a project whose
+    documents come out in the wrong shape with nobody told why.
+
+    An empty value is that surface leaving the map — the built-in track — so
+    clearing one picker never has to be spelled differently from setting it.
+    """
+    if raw is None:
+        return None
+    chosen: dict[str, str] = {}
+    for surface, template_id in raw.items():
+        if not template_id:
+            continue
+        template = design_templates.get(template_id)
+        if template is None or template.kind not in design_templates.HTML_KINDS:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+            )
+        if template.surface.value != surface:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="design_template_surface_mismatch",
+            )
+        chosen[template.surface.value] = template.id
+    return chosen
+
+
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
     files = (
         await db.exec(
@@ -207,7 +239,9 @@ async def list_projects(user: CurrentUser, db: DbSession):
 async def create_project(payload: ProjectIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_design_system_id(db, user, payload.design_system_id)
-    project = Project(user_id=user.id, **payload.model_dump())
+    fields = payload.model_dump()
+    fields["render_templates"] = _validated_render_templates(fields["render_templates"])
+    project = Project(user_id=user.id, **fields)
     db.add(project)
     await db.commit()
     await db.refresh(project)
@@ -234,6 +268,8 @@ async def patch_project(
         )
     if "design_system_id" in changes:
         await _validate_design_system_id(db, user, changes["design_system_id"])
+    if "render_templates" in changes:
+        changes["render_templates"] = _validated_render_templates(changes["render_templates"])
     for field, value in changes.items():
         setattr(project, field, value)
     project.updated_at = utcnow()
