@@ -201,6 +201,7 @@ without a translation fall back to Korean.
 | `/new/:kind` · `/s/:id` | The shared work surface. `kind` = chat, report, slides, image, av |
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, member sessions, linked skills and memories |
 | `/artifacts` | Gallery of every output. Filter by kind, jump back to the originating session |
+| `/designs` · `?tab=template` | Design systems you make — colour, type, voice — and the 서식 catalogue the product ships, grouped by surface |
 | `/agents` | System prompt, model, tool permissions, and which surfaces an agent applies to |
 | `/skills` | `SKILL.md` front matter, applicable surfaces, enable toggle |
 | `/memory` | user / feedback / project / reference types, global or project scope, `[[links]]` |

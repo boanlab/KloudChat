@@ -1,20 +1,21 @@
 import { LayoutGrid } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Badge, Button, Modal } from '@/components/ui'
 import {
   argumentText,
   designTemplatePreviewUrl,
-  designTemplatesApi,
   designTokensOf,
   fillPrompt,
   templateText,
   type DesignTemplateRow,
+  type DesignTokens,
 } from '@/lib/api'
 import { Input } from '@/components/ui'
 import { currentLang } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
+import { useDesignTemplates, useStartTemplate } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 
 /**
@@ -143,20 +144,102 @@ function Checks({ checks }: { checks: string[] }) {
 }
 
 /**
- * Shapes the answer can come out in.
+ * One entry of the catalogue: its own shape, what it asks you to bring, what
+ * it will be read against, and the button that starts it.
+ *
+ * The same card in the gallery and on the 디자인 screen, because the two ask
+ * one question in two rooms. Where the button leads is the caller's business —
+ * inside a session it fills the composer that is already open, and from the
+ * catalogue there is no session yet, so the surface has to be opened first.
+ *
+ * The preview is the template's *own* seed filled with its own sample, so what
+ * is on the card is the thing that will be produced rather than a screenshot
+ * of it. The frame is sandboxed with no permissions at all, which is also why
+ * the seeds carry no script.
+ */
+export function DesignTemplateCard({
+  row,
+  english,
+  tokens,
+  onPick,
+}: {
+  row: DesignTemplateRow
+  english: boolean
+  /** The look to draw it in. Absent is the default one, which is honest. */
+  tokens?: DesignTokens | null
+  onPick: (row: DesignTemplateRow, prompt: string) => void
+}) {
+  const t = useT()
+  const text = templateText(row, english)
+  return (
+    <div className="group overflow-hidden rounded-card border border-line bg-panel transition-colors hover:border-line-strong">
+      {/* 500 × 0.42 = 210. The frame is sized to its own scaled height
+          rather than to a round number, so the card shows the whole
+          first slide — a template that puts its title low was being
+          cropped into what looked like a blank card. */}
+      {row.hasPreview && (
+        <div className="pointer-events-none h-[210px] overflow-hidden border-b border-line bg-white">
+          {/* Scaled down rather than cropped: a card should show the
+              whole shape, and a 400px-wide slice of a slide is not a
+              preview of it. */}
+          <iframe
+            title={text.name}
+            src={designTemplatePreviewUrl(row.id, tokens)}
+            sandbox=""
+            loading="lazy"
+            tabIndex={-1}
+            className="h-[500px] w-[1000px] origin-top-left border-0"
+            style={{ transform: 'scale(0.42)' }}
+          />
+        </div>
+      )}
+      <div className="space-y-2 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-base font-medium">{text.name}</p>
+          <Badge>{text.category}</Badge>
+        </div>
+        <p className="text-sm text-muted">{text.description}</p>
+        <Checks checks={row.checks} />
+        {row.arguments.length > 0 ? (
+          <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={onPick} />
+        ) : (
+          <>
+            {text.fills.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {text.fills.map((fill) => (
+                  <span
+                    key={fill}
+                    className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
+                  >
+                    {fill}
+                  </span>
+                ))}
+              </div>
+            )}
+            <Button size="sm" onClick={() => onPick(row, text.examplePrompt)}>
+              {t('이 서식으로 시작')}
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Shapes the answer can come out in, for the surface being worked on.
  *
  * The prompt gallery beside it answers "what do I ask for"; this one answers
  * "what should it look like when it arrives". They are separate because the
  * two choices are independent — any prompt can be written into any shape.
  *
- * Every card shows the template's *own* seed filled with its own sample, so
- * what is on the card is the thing that will be produced rather than a
- * screenshot of it. The frame is sandboxed with no permissions at all, which
- * is also why the seeds carry no script.
+ * One surface at a time, because that is the question a session asks. The
+ * whole catalogue, every surface at once, is on the 디자인 screen.
  *
- * And filled in the colours the session will actually be rendered in: a shape
- * chosen here comes out wearing the project's design system, so a card that
- * showed the default indigo was advertising a document nobody would receive.
+ * The cards are filled in the colours the session will actually be rendered
+ * in: a shape chosen here comes out wearing the project's design system, so a
+ * card that showed the default indigo was advertising a document nobody would
+ * receive.
  */
 export function DesignGalleryModal({
   kind,
@@ -171,27 +254,12 @@ export function DesignGalleryModal({
   onClose: () => void
 }) {
   const t = useT()
-  const [rows, setRows] = useState<DesignTemplateRow[]>([])
   const [category, setCategory] = useState<string | 'all'>('all')
-  const setDraft = useStore((s) => s.setDraft)
-  const setPendingTemplate = useStore((s) => s.setPendingTemplate)
-  const setImageOptions = useStore((s) => s.setImageOptions)
-  const setAvOptions = useStore((s) => s.setAvOptions)
-  const cached = useStore((s) => s.designTemplates)
+  const rows = useDesignTemplates(open)
+  const start = useStartTemplate()
   const tokens = useStore((s) =>
     designTokensOf(s.designs, s.projects.find((p) => p.id === projectId)?.designSystemId),
   )
-
-  // The store's copy is what the workspace load already fetched; the request
-  // here is the fallback for a screen opened before that landed.
-  useEffect(() => {
-    if (!open) return
-    if (cached.length) {
-      setRows(cached)
-      return
-    }
-    void designTemplatesApi.list().then(setRows).catch(() => setRows([]))
-  }, [open, cached])
 
   const english = currentLang() === 'en'
   const forSurface = useMemo(
@@ -205,46 +273,8 @@ export function DesignGalleryModal({
   const visible =
     category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
 
-  /**
-   * The chips a template implies, set from its own metadata.
-   *
-   * Only the keys it names: a template that says nothing about duration
-   * leaves whatever the person last chose, rather than resetting it to a
-   * default they did not ask for.
-   */
-  const applyDefaults = (row: DesignTemplateRow) => {
-    const d = row.defaults ?? {}
-    if (row.kind === 'image') {
-      setImageOptions({
-        ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
-        ...(typeof d.style === 'string' ? { style: d.style } : {}),
-        ...(typeof d.count === 'number' ? { count: d.count } : {}),
-      })
-      return
-    }
-    if (row.kind === 'video' || row.kind === 'audio') {
-      setAvOptions({
-        mode: row.kind === 'audio' ? 'audio' : 'video',
-        ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
-        ...(typeof d.seconds === 'number' ? { durationSec: d.seconds } : {}),
-        ...(d.resolution === '720p' || d.resolution === '1080p'
-          ? { resolution: d.resolution }
-          : {}),
-        ...(typeof d.audio === 'boolean' ? { withAudio: d.audio } : {}),
-        ...(d.audioKind === 'narration' || d.audioKind === 'music'
-          ? { audioKind: d.audioKind }
-          : {}),
-        // A narration template names its reader; until the composer had a
-        // voice chip this was the one default that went nowhere.
-        ...(typeof d.voice === 'string' && d.voice ? { voice: d.voice } : {}),
-      })
-    }
-  }
-
   const pick = (row: DesignTemplateRow, prompt: string) => {
-    setPendingTemplate(row)
-    setDraft(prompt)
-    applyDefaults(row)
+    start(row, prompt)
     onClose()
   }
 
@@ -276,61 +306,14 @@ export function DesignGalleryModal({
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {visible.map(({ row, text }) => (
-            <div
+          {visible.map(({ row }) => (
+            <DesignTemplateCard
               key={row.id}
-              className="group overflow-hidden rounded-card border border-line bg-panel transition-colors hover:border-line-strong"
-            >
-              {/* 500 × 0.42 = 210. The frame is sized to its own scaled height
-                  rather than to a round number, so the card shows the whole
-                  first slide — a template that puts its title low was being
-                  cropped into what looked like a blank card. */}
-              {row.hasPreview && (
-                <div className="pointer-events-none h-[210px] overflow-hidden border-b border-line bg-white">
-                  {/* Scaled down rather than cropped: a card should show the
-                      whole shape, and a 400px-wide slice of a slide is not a
-                      preview of it. */}
-                  <iframe
-                    title={text.name}
-                    src={designTemplatePreviewUrl(row.id, tokens)}
-                    sandbox=""
-                    loading="lazy"
-                    tabIndex={-1}
-                    className="h-[500px] w-[1000px] origin-top-left border-0"
-                    style={{ transform: 'scale(0.42)' }}
-                  />
-                </div>
-              )}
-              <div className="space-y-2 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-base font-medium">{text.name}</p>
-                  <Badge>{text.category}</Badge>
-                </div>
-                <p className="text-sm text-muted">{text.description}</p>
-                <Checks checks={row.checks} />
-                {row.arguments.length > 0 ? (
-                  <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={pick} />
-                ) : (
-                  <>
-                    {text.fills.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {text.fills.map((fill) => (
-                          <span
-                            key={fill}
-                            className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
-                          >
-                            {fill}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <Button size="sm" onClick={() => pick(row, text.examplePrompt)}>
-                      {t('이 서식으로 시작')}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
+              row={row}
+              english={english}
+              tokens={tokens}
+              onPick={pick}
+            />
           ))}
       </div>
     </Modal>
