@@ -2186,6 +2186,27 @@ async def _run_turn(
     content = "".join(text_parts)
     stored_content = masker(content)[0] if mask_at_rest or tool_output_findings else content
     protect_persistence = mask_at_rest or bool(tool_output_findings)
+    # What the guard took out of the answer on its way to the record. The
+    # prompt's own masking is already told this way — the findings ride on the
+    # message's routing and the bubble reads them off it — and the answer has
+    # the same gap for the same reason: the browser keeps the streamed original
+    # until the session is reopened, so a week later somebody copies what is on
+    # screen and gets placeholders. What is stored stays masked; only the
+    # silence about it ends here.
+    answer_findings = (
+        governance.findings({"assistant_output": content}, legacy=legacy_masking)
+        if stored_content != content
+        else []
+    )
+    if answer_findings:
+        routing = {
+            **(routing or {}),
+            "findingCounts": [
+                *((routing or {}).get("findingCounts") or []),
+                *(row.wire() for row in answer_findings),
+            ],
+        }
+        yield chat_service.sse({"type": "privacy_route", **routing})
     stored_steps = _mask_text_tree(steps, masker) if protect_persistence else steps
     stored_actual_model = masker(actual_model)[0] if protect_persistence else actual_model
     credits = (
