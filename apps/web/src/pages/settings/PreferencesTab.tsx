@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ModelPicker } from '@/components/chat/ModelPicker'
 import { Switch } from '@/components/ui'
 import { authConfig } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
@@ -14,7 +15,7 @@ import { useT } from '@/lib/useT'
  */
 export function PreferencesTab() {
   const t = useT()
-  const { models, modelByKind, setModel, user, updateProfile } = useStore()
+  const { user, updateProfile } = useStore()
   const prefs = user?.preferences
   const [allowRawExternal, setAllowRawExternal] = useState<boolean | null>(null)
   const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
@@ -33,30 +34,22 @@ export function PreferencesTab() {
           <h2 className="text-base font-semibold">{t('기본 모델')}</h2>
           <p className="text-sm text-muted">{t('화면별로 처음 선택되는 모델입니다.')}</p>
         </div>
+        {/* The composer's picker, not a list of names. A default is the model
+            most turns will actually run on, so the two things that decide it —
+            the credit rate and where the text goes — have to be readable here
+            at least as much as they are when picking for a single turn. */}
         <div className="grid gap-3 sm:grid-cols-2">
           {kindOrder.map((kind) => {
             const meta = kindMeta[kind]
             const Icon = meta.icon
-            const usable = models.filter((m) => m.kinds.includes(kind))
             return (
-              <label key={kind} className="block space-y-1.5">
+              <div key={kind} className="space-y-1.5">
                 <span className="flex items-center gap-1.5 text-base font-medium">
                   <Icon size={13} style={{ color: meta.color }} />
                   {t(meta.label)}
                 </span>
-                <select
-                  value={modelByKind[kind]}
-                  onChange={(e) => setModel(kind, e.target.value)}
-                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
-                >
-                  {usable.length === 0 && <option value="">{t('사용 가능한 모델 없음')}</option>}
-                  {usable.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <ModelPicker kind={kind} variant="field" label={t(meta.label)} />
+              </div>
             )
           })}
         </div>
