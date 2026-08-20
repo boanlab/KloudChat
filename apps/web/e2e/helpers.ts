@@ -59,13 +59,20 @@ export async function signIn(page: Page) {
 /**
  * Creates an account that stays `pending`, for the admin approval screens.
  * Idempotent: a duplicate signup answers 409 and that is fine.
+ *
+ * Safe to call on a page already signed in as somebody else: a signup that
+ * lands in `pending` is issued no session, so the caller's cookies survive.
+ * The password is a parameter because a caller that afterwards signs *into*
+ * the account has to know which one the row was created with, whether this
+ * call made it or found it.
  */
 export async function seedPendingUser(
   page: Page,
   email = 'e2e-pending@example.com',
+  password = 'pending-playwright-pass',
 ): Promise<string> {
   await page.request.post('/api/auth/signup', {
-    data: { email, password: 'pending-playwright-pass', name: '승인 대기' },
+    data: { email, password, name: '승인 대기' },
     failOnStatusCode: false,
   })
   return email

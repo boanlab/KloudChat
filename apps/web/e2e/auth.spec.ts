@@ -8,6 +8,7 @@
  */
 
 import { expect, test } from '@playwright/test'
+import { seedPendingUser } from './helpers'
 
 const ADMIN = { email: 'e2e-admin@example.com', password: 'correct-horse-battery', name: '관리자' }
 // Unique per run: the pending-approval path only exists for an account that has
@@ -22,6 +23,17 @@ const USER = {
 // Signup order is load-bearing (first account becomes admin), so these share
 // state and must not interleave.
 test.describe.configure({ mode: 'serial' })
+
+/**
+ * What "signed in" looks like at every width.
+ *
+ * A sidebar link is a claim about the viewport rather than about the session:
+ * below 1024px the sidebar is a drawer that starts closed, so 아티팩트 is not
+ * in the page at all and a passing session reads as a lost one. The shell's
+ * toggle is drawn for exactly the people who have a session and nobody else.
+ */
+const shell = (page: import('@playwright/test').Page) =>
+  page.getByRole('button', { name: '사이드바 토글' })
 
 async function fillAuthForm(
   page: import('@playwright/test').Page,
@@ -107,6 +119,15 @@ test('관리자가 승인하면 대기 화면이 스스로 넘어간다', async 
   const waitingPage = await waiting.newPage()
   const adminPage = await admin.newPage()
 
+  // The account approved below was the one the previous test signed up, and
+  // nothing said so. Run on its own — which is what happens the moment anybody
+  // re-runs a single failure by name — this logged in as an address that had
+  // never been created and reported "이메일 또는 비밀번호가 올바르지 않습니다",
+  // which reads as a broken login rather than a missing fixture. Seeding it
+  // here answers 409 when that test did run and creates the row when it did
+  // not; either way the password is the one the login below sends.
+  await seedPendingUser(waitingPage, USER.email, USER.password)
+
   await waitingPage.goto('/')
   await fillAuthForm(waitingPage, 'login', USER)
   await expect(waitingPage.getByRole('heading', { name: '승인을 기다리는 중입니다' })).toBeVisible({
@@ -129,15 +150,14 @@ test('관리자가 승인하면 대기 화면이 스스로 넘어간다', async 
   await adminPage.getByPlaceholder('이름 또는 이메일').fill(USER.email)
   const row = adminPage.locator('tr', { hasText: USER.email })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await row.getByRole('button', { name: '승인' }).click()
+  // Exact, because the row also carries a "<이름> 모델 제한" button and the
+  // account's own name is part of that label — an unanchored "승인" matches
+  // both the moment somebody is called 승인 대기.
+  await row.getByRole('button', { name: '승인', exact: true }).click()
   await expect(row.getByText('활성')).toBeVisible({ timeout: 10_000 })
 
-  // The pending screen polls every 15s; no reload, no re-login. The shell's
-  // own toggle is the signal, not a sidebar link: below 1024px the sidebar is
-  // a drawer that starts closed, and the waiting screen has neither.
-  await expect(waitingPage.getByRole('button', { name: '사이드바 토글' })).toBeVisible({
-    timeout: 40_000,
-  })
+  // The pending screen polls every 15s; no reload, no re-login.
+  await expect(shell(waitingPage)).toBeVisible({ timeout: 40_000 })
 
   await waiting.close()
   await admin.close()
@@ -146,17 +166,17 @@ test('관리자가 승인하면 대기 화면이 스스로 넘어간다', async 
 test('새로고침해도 로그인이 유지된다', async ({ page }) => {
   await page.goto('/')
   await fillAuthForm(page, 'login', ADMIN)
-  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 15_000 })
+  await expect(shell(page)).toBeVisible({ timeout: 15_000 })
   // The access token is memory-only — surviving this proves the refresh cookie
   // round-trip in bootstrap() works.
   await page.reload()
-  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 15_000 })
+  await expect(shell(page)).toBeVisible({ timeout: 15_000 })
 })
 
 test('로그아웃하면 세션이 끊긴다', async ({ page }) => {
   await page.goto('/')
   await fillAuthForm(page, 'login', ADMIN)
-  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 15_000 })
+  await expect(shell(page)).toBeVisible({ timeout: 15_000 })
   await page.goto('/settings')
   await page.getByRole('button', { name: '로그아웃' }).click()
   await expect(page.getByRole('button', { name: '회원가입', exact: true })).toBeVisible({

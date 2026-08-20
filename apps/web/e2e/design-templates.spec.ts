@@ -270,6 +270,18 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   // ── 6. The catalogue is still reachable now the empty screen is gone ─
   // This is the copy that matters after the first turn: without it a shape
   // could be chosen once and never changed.
+  //
+  // The panel is put away first, because everything from here on is in the
+  // composer. Below the desktop breakpoint the panel is not a column beside
+  // the conversation but a full-bleed overlay on top of it — the document is
+  // the whole screen while you are reading it, and closing it is how anybody
+  // gets back to the box. Reaching past it instead only produced a click that
+  // waited out its timeout on a button Playwright could see and a reader
+  // could not press.
+  const panel = page.locator('aside[data-panel="artifact"]')
+  await panel.getByRole('button', { name: '닫기' }).click()
+  await expect(panel).toBeHidden()
+
   await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
   await page.getByRole('button', { name: '서식 고르기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
