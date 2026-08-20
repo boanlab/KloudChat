@@ -675,8 +675,8 @@ class DesignTemplateOut(Wire):
 
     Deliberately the same shape the prompt-template gallery already renders —
     title, description, what you have to bring, a starting sentence — plus the
-    two things only this catalogue has: which surface it belongs to, and
-    whether it has a preview to show.
+    three things only this catalogue has: which surface it belongs to, whether
+    it has a preview to show, and the rules the result will be read against.
     """
 
     id: str
@@ -693,6 +693,17 @@ class DesignTemplateOut(Wire):
     category_en: str = ""
     fills_en: JsonList = Field(default_factory=list)
     example_prompt_en: str = ""
+    #: What a review will read the finished thing against, one sentence per
+    #: line. The discipline is what actually separates two shapes of the same
+    #: kind — 회의록 keeps decisions apart from discussion, 안내문 wants
+    #: grounds and an effective date — and it stayed on the server while the
+    #: card showed a name and one line.
+    #:
+    #: Korean only, and deliberately not paired with a `_en` twin: the
+    #: checklists are the rubric a Korean critique scores against, and an
+    #: English half nobody wrote would be a promise in the wrong language.
+    #: Media templates have no checklist and send an empty list.
+    checks: JsonList = Field(default_factory=list)
     #: Blanks in `example_prompt`, written `{name}`. Filled in the gallery and
     #: substituted before the sentence reaches the composer, where the person
     #: can still read and change every word of it.
@@ -718,6 +729,7 @@ class DesignTemplateOut(Wire):
             category_en=t.category_en,
             fills_en=list(t.fills_en),
             example_prompt_en=t.example_prompt_en,
+            checks=list(t.checks),
             arguments=[
                 DesignArgumentOut(
                     name=a.name,

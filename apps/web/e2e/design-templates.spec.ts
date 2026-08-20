@@ -58,7 +58,7 @@ async function openGallery(page: Page, ids: string[]) {
       }),
     ),
   )
-  await page.getByRole('button', { name: '디자인 고르기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   // Not fatal: a gallery opened a second time in one test serves its previews
   // from the browser's cache, and a cache hit is not a network response.
   await previews.catch(() => undefined)
@@ -103,7 +103,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   // It was reachable only from the empty state of a new session, behind a
   // secondary button — invisible to anybody who did not know it was there.
   await page.goto('/')
-  const rail = page.getByRole('region', { name: '디자인에서 시작' })
+  const rail = page.getByRole('region', { name: '서식에서 시작' })
   await expect(rail).toBeVisible({ timeout: 20_000 })
   await expect(rail.locator('iframe').first()).toBeVisible()
   await shot(page, '13-home-rail')
@@ -126,10 +126,15 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   // composer's copy — the one that survives that turn — is checked in the deck
   // test below, where a conversation actually exists.
   await page.goto('/new/report')
-  await expect(page.getByRole('button', { name: '디자인 고르기' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
+
+  // 디자인 belongs to the design system alone. While the catalogue wore the
+  // same word, whichever of the two you picked you believed you had picked
+  // the other one.
+  await expect(page.getByRole('button', { name: /디자인/ })).toHaveCount(0)
 })
 
-test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 받을 수 있다', async ({ page }) => {
+test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받을 수 있다', async ({ page }) => {
   test.setTimeout(600_000)
   await signIn(page)
 
@@ -138,6 +143,18 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   const gallery = await openGallery(page, ['deck-editorial', 'deck-signal'])
   const card = gallery.locator('div.group', { hasText: '편집형 덱' })
   await expect(card).toBeVisible({ timeout: 20_000 })
+
+  // ── the discipline is on the card ───────────────────────────────────
+  // A name and one line do not tell two decks apart; what the result will be
+  // read against does. Three rules are printed and the rest fold away, so what
+  // is asserted is that shape rather than the sentences — the catalogue can
+  // rewrite a rule without anybody having to edit this.
+  await expect(card.getByText('이 서식이 확인하는 것')).toBeVisible()
+  await expect(card.locator('ul[lang="ko"]').first().locator('li')).toHaveCount(3)
+  const folded = card.locator('details li').last()
+  await expect(folded).toBeHidden()
+  await card.locator('details summary').click()
+  await expect(folded).toBeVisible()
 
   // The preview is the seed rendered around its sample, served as a document.
   // Fetched rather than read through the frame: `sandbox=""` makes the frame
@@ -159,7 +176,7 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   expect(previewHtml).not.toContain('{{')
 
   // ── 2. Picking one fills the composer and names itself ──────────────
-  await card.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await card.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(gallery).toBeHidden()
   await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
   await expect(page.getByText('편집형 덱', { exact: true })).toBeVisible()
@@ -245,15 +262,15 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   // ── 6. The catalogue is still reachable now the empty screen is gone ─
   // This is the copy that matters after the first turn: without it a shape
   // could be chosen once and never changed.
-  await expect(page.getByRole('button', { name: '디자인 고르기' })).toHaveCount(1)
-  await page.getByRole('button', { name: '디자인 고르기' }).click()
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
 
   // ── 7. Taking the shape off reaches the row that holds it ───────────
   // The turn made the choice sticky, so a chip that only disappeared locally
   // would leave the next turn writing into a template nobody can see.
-  await page.getByRole('button', { name: /편집형 덱 디자인 해제/ }).click()
+  await page.getByRole('button', { name: /편집형 덱 서식 해제/ }).click()
   await expect(page.getByText('편집형 덱', { exact: true })).toHaveCount(0)
   await expect
     .poll(
@@ -283,7 +300,7 @@ test('덱 디자인을 고르면 그 템플릿의 HTML 이 나오고 파일로 �
   await shot(page, '16-gallery-template-name')
 })
 
-test('문서 디자인은 문서 조판으로 나온다', async ({ page }) => {
+test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
   test.setTimeout(600_000)
   await signIn(page)
 
@@ -292,7 +309,7 @@ test('문서 디자인은 문서 조판으로 나온다', async ({ page }) => {
   const card = gallery.locator('div.group', { hasText: '한 장 요약' })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await shot(page, '04-document-gallery')
-  await card.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await card.getByRole('button', { name: '이 서식으로 시작' }).click()
 
   await page.getByLabel('프롬프트 입력').fill('학과 서버를 교체할지 정하는 한 장 요약을 써줘')
   await page.getByLabel('프롬프트 입력').press('Enter')
@@ -331,7 +348,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   await poster.getByLabel('무엇을').fill('연구실 개방 행사')
   await poster.getByLabel('분위기').selectOption('밝고 활기찬')
   await shot(page, '08-image-blanks')
-  await poster.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
 
   // The sentence arrives filled in — and still editable, which is the whole
   // reason it goes to the composer rather than straight to the model.
@@ -350,7 +367,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   await expect(opener).toBeVisible({ timeout: 20_000 })
   await opener.getByLabel('움직임').selectOption('가볍게 떠다니는 입자')
   await shot(page, '09-video-blanks')
-  await opener.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await opener.getByRole('button', { name: '이 서식으로 시작' }).click()
 
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/가볍게 떠다니는 입자/)
   await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
@@ -360,14 +377,14 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   // ── audio: picking one switches the surface's mode ──────────────────
   const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
   const bed = audioGallery.locator('div.group', { hasText: '배경 음악' })
-  await bed.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await bed.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/잔잔하고 따뜻한/)
   // A music template on the video mode would generate the wrong thing.
   await expect(page.getByRole('button', { name: '유형 음악' })).toBeVisible()
   await expect(page.getByRole('button', { name: '종류 오디오' })).toBeVisible()
 })
 
-test('이미지 디자인은 프롬프트를 다듬을 뿐 세션의 템플릿이 되지 않는다', async ({ page }) => {
+test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 되지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
@@ -384,19 +401,19 @@ test('이미지 디자인은 프롬프트를 다듬을 뿐 세션의 템플릿�
   expect(await preview.text()).toContain('글자를 그리지 않음')
 
   await shot(page, '06-image-gallery')
-  await card.getByRole('button', { name: '이 디자인으로 시작' }).click()
+  await card.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
   await expect(page.getByText('포스터', { exact: true })).toBeVisible()
 })
 
-test('디자인을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나온다', async ({ page }) => {
+test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나온다', async ({ page }) => {
   test.setTimeout(600_000)
   await signIn(page)
 
   // The regression this whole track had to avoid: the built-in path is only
   // replaced when somebody picks a shape.
   await page.goto('/new/slides')
-  await expect(page.getByRole('button', { name: '디자인 고르기' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
   await page.getByLabel('프롬프트 입력').fill('사무실 보안 수칙을 알리는 짧은 발표 자료')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })

@@ -139,6 +139,9 @@ class DesignTemplate:
     #: instructions on purpose: writing rules and reviewing rules answer
     #: different questions, and a rubric folded into the brief becomes a
     #: checklist the model writes *to* rather than one it is measured by.
+    #: Shown on the gallery card as well, through `checks`: what a shape is
+    #: read against is the honest answer to what picking it gets you, and a
+    #: name with one line under it was not answering that.
     checklist: str
     #: Whether this template's slides are laid on a dark ground. Carried into
     #: the `.pptx`, which is for presenting; the `.pdf` stays light because it
@@ -180,6 +183,22 @@ class DesignTemplate:
     @property
     def surface(self) -> SessionKind:
         return SURFACE[self.kind]
+
+    @property
+    def checks(self) -> tuple[str, ...]:
+        """The checklist as sentences, for somebody choosing rather than a model.
+
+        `critique` hands the file over whole and the bullet marks do it no
+        harm; a card renders each line as a list item of its own, and a stray
+        dash in front of it reads as the template's punctuation. Split here so
+        both readings come from the one file, which is what keeps them from
+        drifting.
+        """
+        return tuple(
+            line.lstrip("-").strip()
+            for line in self.checklist.splitlines()
+            if line.lstrip().startswith("-")
+        )
 
 
 def _read(folder: Path, name: str) -> str:
@@ -354,11 +373,21 @@ def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
     return "\n".join(part for part in (cover, grouped) if part)
 
 
-def preview(template: DesignTemplate) -> str:
-    """What the gallery card shows: this template's own shape, filled in."""
-    from app.services.design import DEFAULT_TOKENS
+def preview(template: DesignTemplate, tokens: dict[str, str] | None = None) -> str:
+    """What the gallery card shows: this template's own shape, filled in.
 
-    return render(template, title=template.name, tokens=DEFAULT_TOKENS, body=template.sample)
+    `tokens` is the look the card is standing in for — the design system of the
+    project it will be started in, when there is one. It goes through
+    `normalise_tokens` rather than into the document as it arrived, so a card
+    can only ever show a colour and a face the exporters can also draw. `None`
+    is the whole of the fallback: it normalises to the defaults, which is what
+    a project with no design system is rendered in.
+    """
+    from app.services.design import normalise_tokens
+
+    return render(
+        template, title=template.name, tokens=normalise_tokens(tokens), body=template.sample
+    )
 
 
 def figure(*, mime: str, data_b64: str, alt: str = "", caption: str = "") -> str:

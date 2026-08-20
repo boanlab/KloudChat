@@ -5,6 +5,7 @@ import {
   argumentText,
   designTemplatePreviewUrl,
   designTemplatesApi,
+  designTokensOf,
   fillPrompt,
   templateText,
   type DesignTemplateRow,
@@ -74,8 +75,69 @@ function Blanks({
         )
       })}
       <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values))}>
-        {t('이 디자인으로 시작')}
+        {t('이 서식으로 시작')}
       </Button>
+    </div>
+  )
+}
+
+/**
+ * How many of a template's rules the card prints before folding the rest away.
+ *
+ * The files hold six or seven, and they are sentences rather than chips:
+ * printed whole they become a page of rules with a preview on top, and the
+ * card stops being something a person can scan a grid of. Three is what the
+ * files support — the structural rules come first in every one of them, so the
+ * first three are the ones that actually tell two shapes apart.
+ */
+const CHECKS_ON_CARD = 3
+
+/**
+ * What a review will read the finished document against.
+ *
+ * This is the honest difference between two shapes of the same kind: 회의록
+ * keeps what was decided apart from what was discussed and gives every action
+ * an owner and a date, 안내문 wants grounds, an effective date and its
+ * attachments. Until this travelled, both were a name and one line, and a
+ * person picked a shape without knowing what it would hold them to.
+ *
+ * 확인하는 것 rather than 지키는 것 because the lines are the questions a
+ * reviewer asks of the finished document. The shape cannot promise the
+ * answers — it can only see to it that they are asked.
+ *
+ * Korean in both languages. There is no English checklist to fall back to and
+ * writing one here would put words in the reviewer's mouth; the card's own
+ * rule for a missing half is to show the Korean rather than nothing, and
+ * hiding the list from an English reader would take away exactly the thing it
+ * is here for. `lang` says which language it is, so a browser reads it and
+ * breaks its lines as Korean.
+ */
+function Checks({ checks }: { checks: string[] }) {
+  const t = useT()
+  if (checks.length === 0) return null
+  const rest = checks.slice(CHECKS_ON_CARD)
+  const line = (text: string) => (
+    <li key={text} className="flex gap-1.5">
+      <span aria-hidden>·</span>
+      <span>{text}</span>
+    </li>
+  )
+  return (
+    <div className="rounded-control bg-elevated p-2 text-xs leading-relaxed">
+      <p className="mb-1 font-medium text-muted">{t('이 서식이 확인하는 것')}</p>
+      <ul lang="ko" className="space-y-0.5 text-faint">
+        {checks.slice(0, CHECKS_ON_CARD).map(line)}
+      </ul>
+      {rest.length > 0 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-muted transition-colors hover:text-fg">
+            {t('{n}개 더 보기').replace('{n}', String(rest.length))}
+          </summary>
+          <ul lang="ko" className="mt-1 space-y-0.5 text-faint">
+            {rest.map(line)}
+          </ul>
+        </details>
+      )}
     </div>
   )
 }
@@ -91,13 +153,20 @@ function Blanks({
  * what is on the card is the thing that will be produced rather than a
  * screenshot of it. The frame is sandboxed with no permissions at all, which
  * is also why the seeds carry no script.
+ *
+ * And filled in the colours the session will actually be rendered in: a shape
+ * chosen here comes out wearing the project's design system, so a card that
+ * showed the default indigo was advertising a document nobody would receive.
  */
 export function DesignGalleryModal({
   kind,
+  projectId,
   open,
   onClose,
 }: {
   kind: SessionKind
+  /** Whose look the cards are shown in. Absent means the default one. */
+  projectId?: string | null
   open: boolean
   onClose: () => void
 }) {
@@ -109,6 +178,9 @@ export function DesignGalleryModal({
   const setImageOptions = useStore((s) => s.setImageOptions)
   const setAvOptions = useStore((s) => s.setAvOptions)
   const cached = useStore((s) => s.designTemplates)
+  const tokens = useStore((s) =>
+    designTokensOf(s.designs, s.projects.find((p) => p.id === projectId)?.designSystemId),
+  )
 
   // The store's copy is what the workspace load already fetched; the request
   // here is the fallback for a screen opened before that landed.
@@ -180,7 +252,7 @@ export function DesignGalleryModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={t('디자인 고르기')}
+      title={t('서식 고르기')}
       description={t('고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.')}
       width="max-w-3xl"
     >
@@ -220,7 +292,7 @@ export function DesignGalleryModal({
                       preview of it. */}
                   <iframe
                     title={text.name}
-                    src={designTemplatePreviewUrl(row.id)}
+                    src={designTemplatePreviewUrl(row.id, tokens)}
                     sandbox=""
                     loading="lazy"
                     tabIndex={-1}
@@ -235,6 +307,7 @@ export function DesignGalleryModal({
                   <Badge>{text.category}</Badge>
                 </div>
                 <p className="text-sm text-muted">{text.description}</p>
+                <Checks checks={row.checks} />
                 {row.arguments.length > 0 ? (
                   <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={pick} />
                 ) : (
@@ -252,7 +325,7 @@ export function DesignGalleryModal({
                       </div>
                     )}
                     <Button size="sm" onClick={() => pick(row, text.examplePrompt)}>
-                      {t('이 디자인으로 시작')}
+                      {t('이 서식으로 시작')}
                     </Button>
                   </>
                 )}
@@ -271,7 +344,13 @@ export function DesignGalleryModal({
  * so the choice is reachable after the first turn as well — a shape you can
  * only pick before you start is one you cannot change your mind about.
  */
-export function DesignGallery({ kind }: { kind: SessionKind }) {
+export function DesignGallery({
+  kind,
+  projectId,
+}: {
+  kind: SessionKind
+  projectId?: string | null
+}) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const has = useStore((s) => s.designTemplates.some((row) => row.surface === kind))
@@ -280,9 +359,14 @@ export function DesignGallery({ kind }: { kind: SessionKind }) {
     <>
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <LayoutGrid size={14} />
-        {t('디자인 고르기')}
+        {t('서식 고르기')}
       </Button>
-      <DesignGalleryModal kind={kind} open={open} onClose={() => setOpen(false)} />
+      <DesignGalleryModal
+        kind={kind}
+        projectId={projectId}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
     </>
   )
 }

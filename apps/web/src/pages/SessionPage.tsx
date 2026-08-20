@@ -17,7 +17,7 @@ import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** Empty state shown before the first prompt of a fresh session. */
-function Intro({ kind }: { kind: SessionKind }) {
+function Intro({ kind, projectId }: { kind: SessionKind; projectId?: string | null }) {
   const t = useT()
   const { user, send, setDraft } = useStore()
   const navigate = useNavigate()
@@ -59,7 +59,9 @@ function Intro({ kind }: { kind: SessionKind }) {
       </div>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <TemplateGallery kind={kind} onPick={setDraft} />
-        <DesignGallery kind={kind} />
+        {/* The cards are drawn in this project's look, which is the one the
+            composer under them will render the answer in. */}
+        <DesignGallery kind={kind} projectId={projectId} />
       </div>
     </div>
   )
@@ -218,7 +220,7 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
             </>
           ) : (
             <>
-              <Intro kind={kind} />
+              <Intro kind={kind} projectId={session?.projectId ?? null} />
               {/* The URL is authoritative, not the store lookup. On `/s/:id`
                   the row may not have arrived yet — falling back to `null` there
                   makes the composer start a *new* conversation, silently
