@@ -18,7 +18,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
 import { DesignGalleryModal } from '@/components/chat/DesignGallery'
 import { errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
@@ -421,6 +421,8 @@ export function Composer({
    * unwanted pick takes out exactly what the gallery put in and nothing that
    * was written by hand.
    */
+  //: A range to restore once React has actually written the text it belongs to.
+  const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
     if (!draft) return
     activeRestoreToken.current = null
@@ -429,18 +431,23 @@ export function Composer({
     liveValue.current = next
     setValue(next)
     setDraft('')
-    const el = ref.current
-    if (el) {
-      el.focus()
-      // Into an empty box the caret lands at the end, as it always has: there
-      // is nothing to take back out there, and a media 서식's sentence handed
-      // over selected is a sentence the next keystroke destroys — which is the
-      // very loss this is about, only pointed the other way.
-      requestAnimationFrame(() =>
-        el.setSelectionRange(kept ? next.length - draft.length : next.length, next.length),
-      )
-    }
+    ref.current?.focus()
+    // Into an empty box the caret lands at the end, as it always has: there is
+    // nothing to take back out there, and a media 서식's sentence handed over
+    // selected is a sentence the next keystroke destroys — which is the very
+    // loss this is about, only pointed the other way.
+    //
+    // Left for the layout effect below rather than set here: the textarea is
+    // controlled, so React writes this value in a later commit and that write
+    // collapses any selection made before it.
+    pendingSelection.current = [kept ? next.length - draft.length : next.length, next.length]
   }, [draft, setDraft])
+  useLayoutEffect(() => {
+    const range = pendingSelection.current
+    if (!range) return
+    pendingSelection.current = null
+    ref.current?.setSelectionRange(range[0], range[1])
+  }, [value])
   /** Uploaded files, not names: the turn sends ids and the server reads the text. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
@@ -1213,8 +1220,12 @@ export function Composer({
               className="min-w-64"
               trigger={() => (
                 <button
-                  // Icon-only, so it needs an accessible name.
+                  // Icon-only, so it needs an accessible name — and a title,
+                  // because the name alone says what the button is and not
+                  // what pressing it does. Every other control on this bar
+                  // carries both.
                   aria-label={t('스킬')}
+                  title={t('이번 요청에만 적용할 스킬을 고릅니다')}
                   className={cn(
                     'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeSkills.length ? 'text-accent' : 'text-muted hover:text-fg',

@@ -1149,6 +1149,16 @@ const EN: Record<string, string> = {
 
 
 
+  // ── 왜 눌리지 않는지 ────────────────────────────────────────────
+  '이 디자인을 삭제합니다': 'Delete this design',
+  '이번 요청에만 적용할 스킬을 고릅니다': 'Choose skills for this request only',
+  '절약 모델은 3개까지만 추가할 수 있습니다': 'At most three economy models',
+  '이미 가장 먼저 시도하는 모델입니다': 'Already tried first',
+  '한 칸 위로 올려 더 먼저 시도합니다': 'Move it up, so it is tried sooner',
+  '이미 가장 나중에 시도하는 모델입니다': 'Already tried last',
+  '한 칸 아래로 내려 더 나중에 시도합니다': 'Move it down, so it is tried later',
+  '이 모델을 절약 목록에서 뺍니다': 'Take this model off the economy list',
+
   // ── 시작점 갤러리의 이름 ────────────────────────────────────────
   '시작점 고르기': 'Pick a starting point',
   '시작점 추가': 'Add a starting point',
