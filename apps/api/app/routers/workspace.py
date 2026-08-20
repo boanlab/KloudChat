@@ -604,7 +604,14 @@ async def factcheck_slide(
     # model that ran them, which here is the cheapest one the account may use
     # rather than whatever the deck was written with.
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    settle(db, user, credits, reason="deck.factcheck", session_id=artifact.session_id)
+    settle(
+        db,
+        user,
+        credits,
+        reason="deck.factcheck",
+        session_id=artifact.session_id,
+        model=model["id"],
+    )
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -711,7 +718,14 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     db.add(artifact)
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    settle(db, user, credits, reason="artifact.critique", session_id=artifact.session_id)
+    settle(
+        db,
+        user,
+        credits,
+        reason="artifact.critique",
+        session_id=artifact.session_id,
+        model=model["id"],
+    )
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -997,7 +1011,14 @@ async def rewrite_block(
     db.add(artifact)
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    settle(db, user, credits, reason="page.rewrite", session_id=artifact.session_id)
+    settle(
+        db,
+        user,
+        credits,
+        reason="page.rewrite",
+        session_id=artifact.session_id,
+        model=model["id"],
+    )
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -1090,7 +1111,14 @@ async def rewrite_section(
     db.add(artifact)
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    settle(db, user, credits, reason="report.rewrite", session_id=artifact.session_id)
+    settle(
+        db,
+        user,
+        credits,
+        reason="report.rewrite",
+        session_id=artifact.session_id,
+        model=model["id"],
+    )
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -1834,7 +1862,7 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
         ) from exc
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    settle(db, user, credits, reason="design.extract")
+    settle(db, user, credits, reason="design.extract", model=model["id"])
     await db.commit()
     return DesignExtractOut(**draft, source=read_from, credits=credits)
 

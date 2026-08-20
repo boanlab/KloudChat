@@ -48,6 +48,19 @@ class Role(StrEnum):
     system = "system"
 
 
+class TurnFailure(StrEnum):
+    """How a turn ended, when it did not end in an answer.
+
+    Named for what the person is left holding rather than for what broke: the
+    provider's error text belongs in the log, and the two outcomes a reader can
+    tell apart on the screen — nothing at all, or half an answer — are also the
+    only two that change what they do next.
+    """
+
+    no_answer = "no_answer"
+    interrupted = "interrupted"
+
+
 class MessageRating(StrEnum):
     """What a reader thought of one answer.
 
@@ -135,6 +148,17 @@ class Message(SQLModel, table=True):
     #: Plain string rather than a database enum: a third verdict should be a
     #: migration of this file, not of the type behind it.
     rating: MessageRating | None = Field(default=None, sa_column=Column(String, nullable=True))
+
+    #: Set when this turn did not produce the answer it was supposed to carry:
+    #: on the assistant row when something was written before the stream broke,
+    #: and on the question itself when nothing was. Null is the ordinary
+    #: answered turn, and is also every row written before this was recorded.
+    #:
+    #: A reader who closes the tab mid-answer leaves nothing here — the request
+    #: task is cancelled, so there is no moment left in which to write — and
+    #: that gap is read positionally instead, as a question with nothing under
+    #: it. Which is what makes the older rows legible too.
+    failure: TurnFailure | None = Field(default=None, sa_column=Column(String, nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
@@ -145,4 +169,5 @@ __all__ = [
     "Role",
     "RoutingMode",
     "SessionKind",
+    "TurnFailure",
 ]

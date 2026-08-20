@@ -162,6 +162,16 @@ class CreditLedger(SQLModel, table=True):
     reason: str
     session_id: str | None = Field(default=None)
     job_id: str | None = Field(default=None)
+    #: Which model the money was paid to. Recorded here rather than read back
+    #: from the session, because the two disagree wherever it matters: a deck's
+    #: fact-check bills the cheapest model the account may use and not the one
+    #: the deck was written with, a picture bills whatever the request asked
+    #: for, and a conversation can change model between one turn and the next.
+    #:
+    #: Null where nothing single answers the question — a comparison that ran
+    #: several models on one charge, a design extraction that belongs to no
+    #: session — and on every row written before this column existed.
+    model: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 

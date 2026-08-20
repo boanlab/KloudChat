@@ -260,7 +260,9 @@ export const authConfig = {
 
 export interface MyUsage {
   days: number
-  totals: { credits: number; requests: number }
+  /** `otherCredits` is spend no single model can be named for — a comparison
+   *  that ran several on one charge — not the part the breakdown forgot. */
+  totals: { credits: number; requests: number; otherCredits: number }
   /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
   daily: { date: string; credits: number; requests: number }[]
@@ -366,10 +368,18 @@ export const adminApi = {
 export interface UsageReport {
   days: number
   since: string
-  totals: { credits: number; requests: number; activeUsers: number; allocatedCredits: number }
+  totals: {
+    credits: number
+    requests: number
+    activeUsers: number
+    allocatedCredits: number
+    otherCredits: number
+  }
   daily: { date: string; credits: number; requests: number }[]
   byModel: { model: string; credits: number; requests: number; users: number }[]
-  bySurface: { kind: SessionKind; credits: number; requests: number }[]
+  /** `'other'` beside the five surfaces: spend charged against no session,
+   *  which is how the bars keep adding up to the total. */
+  bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]
   topUsers: { id: string; name: string; email: string; credits: number; allowance: number }[]
 }
 
