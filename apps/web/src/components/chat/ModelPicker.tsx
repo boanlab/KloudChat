@@ -45,11 +45,35 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
       : t('{n} 크레딧').replace('{n}', m.creditCost.toLocaleString())
   }
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
-    return m.dataBoundary === 'self_hosted' ? t('자체 운영 · 무료') : t('외부 제공 · 무료')
+    return t('무료')
   }
   return t('1k당 입력 {in} · 출력 {out}')
     .replace('{in}', m.inputCreditCost.toLocaleString())
     .replace('{out}', m.creditCost.toLocaleString())
+}
+
+/**
+ * Where this model's text goes, as a sentence rather than a chip.
+ *
+ * It was five badges in the row of the name, competing with the vendor, the
+ * price tier and the adapter mark for the same strip — and the one fact that
+ * decides whether a prompt may leave the building read as one more coloured
+ * pill among them. Under the name it is read rather than scanned, in the line
+ * that already carries what a turn costs, which is the other question somebody
+ * is asking at that moment.
+ *
+ * Still coloured, because it is a safety fact and an external model must not
+ * read the same as a local one — but colour on words, not a card.
+ */
+function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone: string } | null {
+  if (m.strictLocal) return { text: 'strict-local', tone: 'text-success' }
+  if (m.dataBoundary === 'self_hosted') {
+    return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
+  }
+  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
+  if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
+  if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
+  return null
 }
 
 export function ModelPicker({
@@ -324,7 +348,9 @@ function ModelMenu({
               {vendor}
             </div>
           )}
-          {rows.map((m) => (
+          {rows.map((m) => {
+            const boundaryOf = boundary(m, t)
+            return (
         <button
           key={m.id}
           type="button"
@@ -344,22 +370,6 @@ function ModelMenu({
             <span className="flex items-center gap-1.5">
               <span className="truncate text-base font-medium">{m.label}</span>
               <Badge>{m.provider}</Badge>
-              {m.strictLocal && (
-                <Badge tone="success">
-                  <ShieldCheck size={10} />
-                  strict-local
-                </Badge>
-              )}
-              {!m.strictLocal && m.dataBoundary === 'self_hosted' && (
-                <Badge tone="warn">{t('self-hosted · strict 미확인')}</Badge>
-              )}
-              {!m.strictLocal && m.dataBoundary === 'hybrid' && (
-                <Badge tone="warn">{t('외부 전환 가능')}</Badge>
-              )}
-              {m.dataBoundary === 'external' && <Badge tone="warn">{t('외부 제공')}</Badge>}
-              {m.dataBoundary === 'unknown' && (
-                <Badge tone="warn">{t('경계 미확인')}</Badge>
-              )}
               {m.id.endsWith(':free') && <Badge tone="success">{t('무료')}</Badge>}
               {m.adapter && (
                 <Badge tone="warn">
@@ -370,6 +380,12 @@ function ModelMenu({
             </span>
             <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
             <span className="mt-1 flex items-center gap-2 text-xs text-faint">
+              {boundaryOf && (
+                <span className={cn('flex items-center gap-1', boundaryOf.tone)}>
+                  {m.strictLocal && <ShieldCheck size={11} />}
+                  {boundaryOf.text}
+                </span>
+              )}
               <span>{rateLabel(m, t)}</span>
               {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}
               {m.supportsVision && <Eye size={11} />}
@@ -377,7 +393,8 @@ function ModelMenu({
             </span>
           </span>
         </button>
-          ))}
+            )
+          })}
         </div>
       ))}
     </>
