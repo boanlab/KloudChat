@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     title_model: str = "local/qwen3.6-35b"
     #: Conversation model when the user has not chosen one. Absent from the
     #: catalogue, the surface falls back to its cheapest.
-    default_chat_model: str = "local/qwen3.6-35b"
+    default_chat_model: str = "strict-local/qwen3.6-35b"
 
     @property
     def cookie_samesite(self) -> Literal["lax", "none"]:
