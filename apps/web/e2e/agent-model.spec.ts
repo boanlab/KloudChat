@@ -47,14 +47,21 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
   // `starter.spec` checks that every agent has one.
   await dialog
     .getByLabel('시스템 프롬프트')
-    .fill('너는 짧고 사실만 담아 답한다. 모르는 것은 모른다고 말한다.')
+    .fill(
+      '너는 짧고 사실만 담아 답한다. 모르는 것은 모른다고 말하고, 확인하지 못한 것은 ' +
+        '확인이 필요하다고 적는다.',
+    )
   await select.selectOption({ label: pinned! })
   await dialog.getByRole('button', { name: '저장' }).last().click()
   await expect(dialog).toBeHidden({ timeout: 20_000 })
 
   await page.getByRole('button', { name: `${name} 삭제` }).waitFor({ timeout: 20_000 })
+  // The innermost box holding both the name and its delete button, which is
+  // the card — filtering on the button alone lands on the button's own row,
+  // one level below the badges.
   const card = page
     .locator('div')
+    .filter({ hasText: name })
     .filter({ has: page.getByRole('button', { name: `${name} 삭제` }) })
     .last()
   // The badge is the claim the composer has to live up to.

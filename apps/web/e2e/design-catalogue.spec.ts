@@ -63,8 +63,11 @@ test('디자인 화면은 만드는 것과 제품이 주는 것을 탭으로 나
   // sentence is waiting in the composer when it does.
   await minutes.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(page).toHaveURL(/\/new\/report/, { timeout: 20_000 })
-  await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
+  // The chip, not a sentence. A document 서식 no longer types its example into
+  // the box — the chip says which shape, and the words in the box stay the
+  // person's own.
   await expect(page.getByText('회의록', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
 })
 
 test('서식 탭은 주소로 바로 열리고, 홈의 줄은 몇 개만 보여 준 뒤 넘긴다', async ({ page }) => {
