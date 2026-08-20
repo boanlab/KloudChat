@@ -3421,7 +3421,7 @@ async def _run_report(
                 # are still being written.
             if event["type"] == "title":
                 doc_title = str(event.get("title") or "").strip()
-                # Forwarded — until this arrives the panel heads the draft with
+                # Forwarded: until it arrives the panel heads the draft with
                 # the request.
             if event["type"] == "usage":
                 usage = {k: v for k, v in event.items() if k != "type"}

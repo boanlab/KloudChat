@@ -337,12 +337,11 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
 })
 
 test('그림·클립 화면에는 보낼 곳 없는 첨부·스킬 버튼이 없다', async ({ page }) => {
-  // Both controls used to render on every surface, and both were dropped at
-  // submit: `generateImages`/`generateAudio`/`generateVideo` send the prompt
-  // and the option chips, and the endpoints behind them have no field an
-  // upload or a skill could ride in. A clip costs 12,000–32,000 크레딧 and
-  // several minutes, so the person paid twice over before the picture they
-  // attached turned out to have been thrown away.
+  // Neither control may render here. `generateImages`/`generateAudio`/
+  // `generateVideo` send the prompt and the option chips, and the endpoints
+  // behind them have no field an upload or a skill could ride in — so an
+  // attachment offered on these surfaces is silently dropped at submit, after
+  // 12,000–32,000 크레딧 and several minutes.
   await page.goto('/new/chat')
   await expect(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '스킬', exact: true }).first()).toBeVisible()

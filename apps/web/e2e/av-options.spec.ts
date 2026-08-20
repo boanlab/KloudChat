@@ -73,10 +73,10 @@ test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으
   await signIn(page)
   await page.goto('/new/av')
 
-  // 영상 on arrival, without a trip through 오디오 first: the remembered av
-  // model is the cheapest of them and that is a speech model, so the surface
-  // used to open quoting a clip against a model that sells none — 전송 dead
-  // and a refusal on screen before anything had been asked for.
+  // 영상 on arrival, without a trip through 오디오 first. The remembered av
+  // model is the cheapest of them, which is a speech model, so the surface has
+  // to pair mode and model itself or it opens quoting a clip against a model
+  // that sells none.
   await expect(page.getByRole('button', { name: /Sound Only/ })).toBeVisible()
   await expect(page.getByText('예상 1,200 크레딧')).toBeVisible()
 
@@ -93,7 +93,7 @@ test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으
   await expect(page.getByRole('button', { name: /소리.*있음/ })).toBeVisible()
   // Resolution is given up last: 720p was already priced, so it stays.
   await expect(page.getByRole('button', { name: /해상도.*720p/ })).toBeVisible()
-  // The refusal is what the person used to meet first. There is a price on
+  // The refusal must never be the first thing on screen. There is a price on
   // screen instead: 4 seconds at 300 credits a second.
   await expect(page.getByText('이 모델은 이 조합을 만들지 않습니다')).toHaveCount(0)
   await expect(page.getByText('예상 1,200 크레딧')).toBeVisible()

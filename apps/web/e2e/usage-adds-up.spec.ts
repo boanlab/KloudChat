@@ -4,14 +4,13 @@ import { signIn } from './helpers'
 /**
  * 사용량 화면은 자기가 아는 숫자를 설명할 수 있어야 한다.
  *
- * The screen used to take its total from the credit ledger and every bar beside
- * it from stored turns. Pictures, clips and speech bill without producing a
- * turn, so an account that spent everything on media read as one large number
- * and a page of zeroes underneath it — the whole figure filed under 기타.
+ * Total and breakdown must come from the same source. The credit ledger is it:
+ * pictures, clips and speech bill without producing a turn, so a screen that
+ * totals the ledger and breaks down stored turns files every media credit
+ * under 기타.
  *
- * Nothing here generates anything: a clip costs 12,000 credits and a picture
- * 4,400, and the property under test is arithmetic, not generation. These read
- * whatever the seeded account has already spent and check that the parts of it
+ * Nothing here generates anything — the property under test is arithmetic.
+ * These read what the seeded account has already spent and check the parts
  * add up to the whole.
  */
 

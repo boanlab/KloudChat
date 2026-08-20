@@ -321,9 +321,8 @@ async def test_a_media_row_written_before_the_column_still_finds_its_model(db) -
 
 
 async def test_a_free_month_still_says_what_ran(db) -> None:
-    """Self-hosted models bill nothing, and the screen used to show that as
-    nothing at all — no models, no chart, an account that looked idle after 260
-    turns a day."""
+    """Self-hosted models bill nothing, which is not the same as nothing
+    happening: 260 turns a day at zero credits still has models and a chart."""
     user = await _account(db)
     chat = await _session_row(db, user, kind="chat", model="local/gemma-4-26b-a4b")
     for day in (1, 1, 2):

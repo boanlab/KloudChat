@@ -282,10 +282,8 @@ def to_pptx(
             paint(run, size=26, bold=True)
 
             if rows:
-                # A real table, not bullets that used to be one: this layout
-                # exists because an HTML deck can carry one, and flattening it
-                # into lines is the difference between a comparison somebody
-                # can read and a list they have to reconstruct.
+                # A real table, because an HTML deck can carry one. Flattened
+                # into lines it is a comparison the reader has to rebuild.
                 shape = slide.shapes.add_table(
                     len(rows),
                     max(len(row) for row in rows),

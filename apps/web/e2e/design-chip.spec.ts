@@ -77,10 +77,9 @@ test('세션이 입고 있는 서식은 새로고침해도 칩으로 남는다',
   // × on only one of the two.
   await expect(page.getByText('편집형 덱', { exact: true })).toHaveCount(1)
 
-  // The reason this test exists: the chip used to be drawn from the pick alone,
-  // and a pick does not survive a reload. The row does, and the row is what
-  // shapes every turn — so the composer said no shape was chosen while every
-  // answer kept coming out in one.
+  // The chip has to be drawn from the session row, not from the pick: a pick
+  // does not survive a reload and the row does, and the row is what shapes
+  // every turn.
   await page.reload()
   await expect(chip).toBeVisible({ timeout: 20_000 })
 

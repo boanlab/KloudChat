@@ -98,10 +98,9 @@ test('그림은 프롬프트 아래, 대화 안에 나온다', async ({ page }) 
   await expect(page.getByRole('button', { name: '이미지 열기' })).toHaveCount(0)
 
   /**
-   * And again after a reload, which is the whole reason the turn is stored
-   * rather than drawn from what this tab happens to remember. The stubbed read
-   * is the conversation the server holds — before this change it held nothing,
-   * and a reload gave a blank screen with a panel beside it.
+   * And again after a reload — the reason the turn is stored rather than drawn
+   * from what this tab remembers. The stubbed read is the conversation the
+   * server holds.
    */
   await page.reload()
   await expect(page.getByText(PROMPT).first()).toBeVisible({ timeout: 20_000 })

@@ -395,8 +395,8 @@ export function ArtifactsPage() {
                             // the gallery has to be playable.
               <MediaPanel artifact={preview} />
             ) : preview.kind === 'html' || preview.kind === 'code' ? (
-              // The whole panel, not the preview: opened from here it used to
-              // lose its own check, rewrite, picture and export controls.
+              // The whole panel, not the preview: the same document must not
+              // lose its check, rewrite, picture and export controls here.
               <CodePanel artifact={preview} />
             ) : (
               <ArtifactPreview artifact={preview} />

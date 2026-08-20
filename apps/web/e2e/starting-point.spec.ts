@@ -4,14 +4,12 @@ import { signIn } from './helpers'
 /**
  * A 시작점 is carried by the turn, not typed into it.
  *
- * Picking a card used to paste the template's whole framing into the composer
- * — "업무·기술 보고서가 필요하다. 확인되지 않은 수치는…" — and the person
- * added six words on the end and sent it. The transcript then said all of it
- * in their voice, and a year later nobody could tell which half was whose.
+ * Pasting the framing into the composer makes the transcript say all of it in
+ * the person's voice, and nothing afterwards can tell which half was whose.
  *
- * So what this walks is the seam: the box stays empty, a chip says where the
- * asking started, the request carries an id instead of a paragraph, and the
- * line above the bubble names the template rather than quoting it.
+ * So this walks the seam: the box stays empty, a chip says where the asking
+ * started, the request carries an id rather than a paragraph, and the line
+ * above the bubble names the template rather than quoting it.
  *
  * The catalogue is stubbed rather than read from the seed. What is being
  * tested is the mechanism, and pinning it to a shipped template's wording

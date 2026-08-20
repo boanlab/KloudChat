@@ -128,46 +128,40 @@ class Message(SQLModel, table=True):
     #: detected value, and is safe to return with the transcript.
     routing: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
-    #: What this turn produced, as artifact ids, for the turns whose answer is
-    #: a thing rather than a sentence — a picture, a clip, a piece of speech.
-    #: The transcript renders them where the answer would be, so nothing has to
-    #: be written *about* the picture in order for the picture to be there.
-    #:
-    #: Ids and not a copy: an artifact is edited, versioned and deleted on its
-    #: own, and a transcript holding its own stale duplicate would be the one
-    #: place in the product showing a version nobody can get back to.
+        #: What this turn produced, as artifact ids, for the turns whose answer is
+        #: a thing rather than a sentence. The transcript renders them where the
+        #: answer would be, so nothing has to be written *about* the picture.
+        #:
+        #: Ids and not a copy: an artifact is edited, versioned and deleted on its
+        #: own, and a stale duplicate here would show a version nobody can reach.
     artifact_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
-    #: The 시작점 this turn was begun from: `{"templateId": ..., "title": ...}`.
-    #: The title travels with the id so a transcript read a year from now still
-    #: names the template, whether or not the row behind it survived — and a
-    #: built-in id says nothing to a reader on its own.
-    #:
-    #: Never the template's prompt. What the model was told is not what the
-    #: person said, and the transcript is the record of the second.
+        #: The 시작점 this turn began from: `{"templateId": ..., "title": ...}`.
+        #: The title travels with the id so the transcript still names the template
+        #: whether or not the row survived — a built-in id says nothing on its own.
+        #:
+        #: Never the template's prompt: what the model was told is not what the
+        #: person said, and the transcript records the second.
     started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     model: str | None = Field(default=None)
 
-    #: What the person who owns this conversation thought of the answer. Kept
-    #: on the message rather than in a feedback table because it is read the
-    #: way it is written — one turn at a time, in the transcript, by the reader
-    #: who left it and comes back to a long thread wanting to know which
-    #: answers they had already decided against.
-    #:
-    #: Plain string rather than a database enum: a third verdict should be a
-    #: migration of this file, not of the type behind it.
+        #: What the person who owns this conversation thought of the answer. On
+        #: the message rather than in a feedback table because it is read the way
+        #: it is written: one turn at a time, in the transcript, by the reader who
+        #: left it.
+        #:
+        #: Plain string rather than a database enum — a third verdict should be a
+        #: migration of this file, not of the type behind it.
     rating: MessageRating | None = Field(default=None, sa_column=Column(String, nullable=True))
 
-    #: Set when this turn did not produce the answer it was supposed to carry:
-    #: on the assistant row when something was written before the stream broke,
-    #: and on the question itself when nothing was. Null is the ordinary
-    #: answered turn, and is also every row written before this was recorded.
-    #:
-    #: A reader who closes the tab mid-answer leaves nothing here — the request
-    #: task is cancelled, so there is no moment left in which to write — and
-    #: that gap is read positionally instead, as a question with nothing under
-    #: it. Which is what makes the older rows legible too.
+        #: Set when this turn did not produce the answer it was supposed to carry:
+        #: on the assistant row when something was written before the stream broke,
+        #: and on the question itself when nothing was. Null is the ordinary
+        #: answered turn, and every row written before this was recorded.
+        #:
+        #: Rows predating it are read positionally instead — a question with
+        #: nothing under it.
     failure: TurnFailure | None = Field(default=None, sa_column=Column(String, nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 

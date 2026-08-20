@@ -1,10 +1,8 @@
 /**
  * Reading the 서식 catalogue, and starting one.
  *
- * Their own module rather than the gallery's, because three screens start a
- * 서식 — the gallery inside a session, the catalogue on the 디자인 screen and
- * the rail at home — and a file that exports both components and hooks loses
- * fast refresh for all of them.
+ * Its own module rather than the gallery's: three screens start a 서식, and a
+ * file exporting both components and hooks loses fast refresh.
  */
 import { useEffect, useState } from 'react'
 import { designTemplatesApi, type DesignTemplateRow } from '@/lib/api'
@@ -13,10 +11,9 @@ import { useStore } from '@/store/useStore'
 /**
  * The catalogue itself, wherever it is being read.
  *
- * The store's copy is what the workspace load already fetched; the request is
- * the fallback for a screen opened before that landed. `enabled` is for the
- * gallery, which sits inside every composer and has no business asking for a
- * catalogue nobody opened.
+ * The store's copy comes from the workspace load; the request is the fallback
+ * for a screen opened before that landed. `enabled` keeps the composer's
+ * gallery from fetching a catalogue nobody opened.
  */
 export function useDesignTemplates(enabled = true) {
   const cached = useStore((s) => s.designTemplates)
@@ -35,19 +32,12 @@ export function useDesignTemplates(enabled = true) {
 /**
  * Picking one: the settings the template implies, the sentence where the
  * sentence is the prompt, and the chip where the id still has a turn to ride
- * on. Three different templates get three different halves of that, and which
- * half is decided here.
- *
- * Three screens start a 서식 — the gallery inside a session, the catalogue on
- * the 디자인 screen, and the rail at home — and a shape that set the aspect
- * ratio when it was chosen in one of them but not in another would be a shape
- * that behaves differently depending on where it was found. The same is true
- * of the sentence, which is why the distinction lives here rather than in any
- * of the three.
+ * on. Which half applies depends on the template, and is decided here rather
+ * than in any of the three screens that start one — otherwise a shape would
+ * behave differently depending on where it was found.
  *
  * Only the keys the template names: one that says nothing about duration
- * leaves whatever the person last chose, rather than resetting it to a default
- * they did not ask for.
+ * leaves whatever the person last chose.
  */
 export function useStartTemplate() {
   const setDraft = useStore((s) => s.setDraft)
@@ -57,22 +47,19 @@ export function useStartTemplate() {
   const setOptionTemplate = useStore((s) => s.setOptionTemplate)
 
   return (row: DesignTemplateRow, prompt: string) => {
-    // For a picture or a clip the filled-in sentence *is* the prompt — the
-    // person edits it and sends it, and without it there is nothing to send.
-    // A deck or a document is the other way round: the chip already names the
-    // shape, and typing the example into the box put the product's words in
-    // the transcript under the person's name.
+        // For a picture or a clip the filled-in sentence *is* the prompt. A deck
+        // or a document is the other way round — the chip names the shape, and
+        // typing the example into the box would put the product's words in the
+        // transcript under the person's name.
     if (row.kind === 'image' || row.kind === 'video' || row.kind === 'audio') {
       setDraft(prompt)
     }
     const d = row.defaults ?? {}
     if (row.kind === 'video' || row.kind === 'audio') {
-      // Spent the moment it is picked, so nothing is held for the turn. An
-      // a/v 서식 carries no clause for the model — only the image ones do —
-      // and the endpoints that make a clip take a prompt and these chips and
-      // nothing besides. What it changed is on screen where the person can
-      // still read and edit it; a chip left on the composer afterwards would
-      // name a shape that goes nowhere at submit.
+            // Spent the moment it is picked: an a/v 서식 carries no clause for the
+            // model, and the clip endpoints take a prompt and these chips and
+            // nothing else. A chip left on the composer would name a shape that
+            // goes nowhere at submit.
       setAvOptions({
         mode: row.kind === 'audio' ? 'audio' : 'video',
         ...(typeof d.aspect === 'string' ? { aspect: d.aspect } : {}),
@@ -88,12 +75,9 @@ export function useStartTemplate() {
         // voice chip this was the one default that went nowhere.
         ...(typeof d.voice === 'string' && d.voice ? { voice: d.voice } : {}),
       })
-      // After the write, never before: turning a chip by hand is what tells the
-      // store the values stopped being the template's, and the write above is
-      // that same setter. The bar reads this to say whose values it is showing
-      // — a media 서식 leaves no chip, and these settings outlive the session
-      // it was picked in, so without a name on them a clip made next week comes
-      // out in this shape for no reason anyone can see.
+            // After the write, never before: turning a chip by hand is what tells
+            // the store the values stopped being the template's, and the write above
+            // is that same setter. The bar reads this to say whose values it shows.
       setOptionTemplate(row)
       return
     }
@@ -105,11 +89,10 @@ export function useStartTemplate() {
         ...(typeof d.count === 'number' ? { count: d.count } : {}),
       }
       setImageOptions(chips)
-      // Same reason, and the same order — but only where it actually set
-      // something. The chip above names the shape while the pick is still
-      // waiting for a turn; the bar takes over once the picture has been asked
-      // for and the pick is spent, since the chips it set stay behind. An a/v
-      // 서식 needs no such test: its write always carries the mode.
+            // Same reason and the same order, but only where it set something. The
+            // chip names the shape while the pick awaits a turn; the bar takes over
+            // once it is spent. An a/v 서식 needs no such test — its write always
+            // carries the mode.
       if (Object.keys(chips).length) setOptionTemplate(row)
     }
   }

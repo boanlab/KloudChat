@@ -2,13 +2,13 @@ import { expect, test, type Page } from '@playwright/test'
 import { openSidebar, signIn } from './helpers'
 
 /**
- * Four controls that used to do less than they looked like they did.
+ * Four controls that must do what they look like they do.
  *
- * None of them was broken in a way a screenshot shows. The thumb lit, the
- * button navigated, the switch turned blue — and then the rating was gone on
- * reload, the link opened a different document, the switch was still on in a
- * conversation nobody had asked it about, and the imported agent was missing
- * half of what made the original good without saying so.
+ * None of these failures shows in a screenshot: the thumb lights, the button
+ * navigates, the switch turns blue. What is checked is what happens next — the
+ * rating survives a reload, the link opens the document it named, the switch
+ * scopes to the conversation it was set in, and an imported agent says what
+ * did not come with it.
  *
  * Stubbed rather than seeded, deliberately: what is being held here is what
  * the client does with a fixed server, and every one of these bugs is a claim
@@ -108,8 +108,8 @@ test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인�
       ),
     })
   })
-  // The endpoint the buttons never used to reach. It stores, and answers with
-  // the message, so the client ends up holding the server's version of the turn.
+  // The endpoint the buttons have to reach. It stores, and answers with the
+  // message, so the client ends up holding the server's version of the turn.
   await page.route('**/api/messages/message-2/rating', async (route) => {
     stored = (route.request().postDataJSON() as { rating: 'up' | 'down' | null }).rating
     await route.fulfill({
@@ -127,7 +127,7 @@ test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인�
   await down.click()
   expect((await written).postDataJSON()).toEqual({ rating: 'down' })
 
-  // The reload is the whole test: this is exactly where the verdict used to go.
+  // The reload is the whole test: a verdict held only in the tab is no verdict.
   await page.reload()
   const reloaded = page.getByRole('button', { name: '싫어요' })
   await expect(reloaded).toHaveAttribute('aria-pressed', 'true')
@@ -174,9 +174,9 @@ test('원본 작업 열기는 눌린 결과물을 연다, 그 대화의 최신 �
   // whose session has moved on since.
   await links.first().click()
 
-  // The session's own `artifactId` is `artifact-latest`, which is what this
-  // used to open: three turns of work later a different document entirely,
-  // and nothing at all for a session whose result had been deleted.
+  // The session's own `artifactId` is `artifact-latest`. Opening that instead
+  // would be a different document three turns later, and nothing at all for a
+  // session whose result has been deleted.
   await expect(page).toHaveURL(/\/s\/session-1/)
   await expect.poll(() => fetched).toContain('artifact-clicked')
   expect(fetched).not.toContain('artifact-latest')

@@ -61,9 +61,7 @@ export function MediaResult({
 
   const modelLabel = (id: string) => models.find((m) => m.id === id)?.label ?? id
   // What it cost, beside what it made. On a shared allowance where one clip is
-  // twelve thousand credits, this is not a detail somebody goes looking for —
-  // and it is the figure the disappearing job card used to be the only place
-  // to read.
+  // twelve thousand credits, this is not a detail somebody goes looking for.
   const charge = credits > 0 ? t('{n} 크레딧 차감됨').replace('{n}', credits.toLocaleString()) : ''
   const caption = (parts: string[]) => (
     <p className="mt-1.5 text-xs text-faint">{[...parts, charge].filter(Boolean).join(' · ')}</p>

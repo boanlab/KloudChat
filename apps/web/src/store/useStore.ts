@@ -1476,8 +1476,7 @@ export const useStore = create<State>((set, get) => ({
     }
     // Speech comes back inside this call, so the turn is the whole of what is
     // shown: the prompt, then an answer row waiting a few seconds for its
-    // player. It used to be a job card instead — a progress bar that never
-    // moved off nought, over a conversation with nothing in it.
+    // player. No job card — there is no server-side job to report on.
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     set({ streaming: true })
     try {
@@ -1643,10 +1642,9 @@ export const useStore = create<State>((set, get) => ({
       }
     }),
   chooseVariant: async (sessionId, messageId, model) => {
-    // Keeping a column decides this conversation and nothing else. It used to
-    // move `modelByKind.chat` as well, so one answer preferred inside a
-    // comparison silently became the model every later chat opened on — and,
-    // because that write never reached storage, only until the next reload.
+    // Keeping a column decides this conversation and nothing else. Moving
+    // `modelByKind.chat` too would make one preference inside a comparison the
+    // model every later chat opens on.
     set((s) => ({
       sessions: s.sessions.map((c) =>
         c.id === sessionId

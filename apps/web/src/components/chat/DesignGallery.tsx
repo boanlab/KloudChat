@@ -21,11 +21,10 @@ import { useT } from '@/lib/useT'
 /**
  * The blanks a media template leaves, and the button that fills them in.
  *
- * The filled sentence goes to the composer rather than to the model: on these
+ * The filled sentence goes to the composer rather than the model: on these
  * surfaces the prompt is the entire input, so a template that sent something
- * the person never read would be one they could not correct. Every value here
- * starts at the template's own default, so the card is usable without typing
- * anything — which is the point of a starting sentence.
+ * unread would be one nobody could correct. Every value starts at the
+ * template's own default, so the card is usable without typing.
  */
 function Blanks({
   row,
@@ -85,33 +84,27 @@ function Blanks({
 /**
  * How many of a template's rules the card prints before folding the rest away.
  *
- * The files hold six or seven, and they are sentences rather than chips:
- * printed whole they become a page of rules with a preview on top, and the
- * card stops being something a person can scan a grid of. Three is what the
- * files support — the structural rules come first in every one of them, so the
- * first three are the ones that actually tell two shapes apart.
+ * The files hold six or seven, as sentences rather than chips, and printed
+ * whole they stop the card being scannable in a grid. Three works because the
+ * structural rules come first in every file — the ones that tell two shapes
+ * apart.
  */
 const CHECKS_ON_CARD = 3
 
 /**
  * What a review will read the finished document against.
  *
- * This is the honest difference between two shapes of the same kind: 회의록
- * keeps what was decided apart from what was discussed and gives every action
- * an owner and a date, 안내문 wants grounds, an effective date and its
- * attachments. Until this travelled, both were a name and one line, and a
- * person picked a shape without knowing what it would hold them to.
+ * The honest difference between two shapes of the same kind: 회의록 keeps what
+ * was decided apart from what was discussed, 안내문 wants grounds, an
+ * effective date and its attachments.
  *
- * 확인하는 것 rather than 지키는 것 because the lines are the questions a
- * reviewer asks of the finished document. The shape cannot promise the
- * answers — it can only see to it that they are asked.
+ * 확인하는 것 rather than 지키는 것: the lines are the questions a reviewer
+ * asks of the finished document. The shape cannot promise the answers, only
+ * see to it that they are asked.
  *
- * Korean in both languages. There is no English checklist to fall back to and
- * writing one here would put words in the reviewer's mouth; the card's own
- * rule for a missing half is to show the Korean rather than nothing, and
- * hiding the list from an English reader would take away exactly the thing it
- * is here for. `lang` says which language it is, so a browser reads it and
- * breaks its lines as Korean.
+ * Korean in both languages — there is no English checklist to fall back to,
+ * and writing one here would put words in the reviewer's mouth. `lang` says
+ * which language it is, so a browser breaks its lines as Korean.
  */
 function Checks({ checks }: { checks: string[] }) {
   const t = useT()

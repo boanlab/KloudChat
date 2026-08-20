@@ -423,12 +423,11 @@ _MISSING_ENRICHMENT: set[str] = set()
 async def resolve_enrichment_model() -> str:
     """`title_model` if the gateway actually serves it, otherwise "".
 
-    Naming a model is a claim about the deployment, and `local/*` names only hold
-    where that GPU deployment exists. Titles and memory extraction are best
-    effort, so a stale name never surfaces as an error — it just produces no
-    title, on every turn, with one log line to say so. Validated against the same
-    catalogue that blanks `default_chat_model`, which turns the stale name into
-    the documented fallback (the session's own model) instead.
+    Naming a model is a claim about the deployment, and `local/*` names hold
+    only where that GPU deployment exists. Titles and memory extraction are
+    best effort, so a stale name produces no title and one log line rather than
+    an error. Validated against the same catalogue that blanks
+    `default_chat_model`.
     """
     configured = settings.title_model
     if not configured:

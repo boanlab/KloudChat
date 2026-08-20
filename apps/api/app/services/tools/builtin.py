@@ -234,10 +234,8 @@ EXECUTE_CODE = Tool(
 _ARTIFACT_KINDS = {"html", "code"}
 
 #: Tags that only mark up running text. Markup drawn from nothing but these is
-#: prose in an HTML costume: no layout, no styling, nothing a browser gives it
-#: that a chat bubble does not already give it. `table`, `main`, `div` and the
-#: rest stay out on purpose — they suggest a page, and letting a page through is
-#: the cheaper mistake.
+#: prose in an HTML costume. `table`, `main`, `div` and the rest stay out:
+#: they suggest a page, and letting a page through is the cheaper mistake.
 _PROSE_TAGS = frozenset(
     {
         "p", "br", "hr", "span", "a", "b", "i", "u", "em", "strong", "small",
@@ -251,11 +249,9 @@ _PROSE_TAGS = frozenset(
 #: script whose author simply left the field off.
 _PROSE_LANGUAGES = frozenset({"text", "txt", "plain", "md", "markdown"})
 
-#: Prose shorter than this is an answer even when the user said "만들어 줘":
-#: reading it is the whole use, and a panel puts a click in front of that. Above
-#: it a transcript genuinely struggles and export starts to earn its keep. Set
-#: generously, because refusing a real document — unexportable, unversioned,
-#: copied out by hand — costs more than one needless click.
+#: Prose shorter than this is an answer even when the user said "만들어 줘" —
+#: reading it is the whole use, and a panel puts a click in front of that. Set
+#: generously: refusing a real document costs more than one needless click.
 _PROSE_MAX_CHARS = 1000
 
 #: Below this the panel holds so little that the answer can carry it too, and
@@ -311,12 +307,10 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
 
     visible = _visible_length(kind, content)
-    # The one call the description cannot prevent, since the model has already
-    # decided by the time it reads one. Only the model's own guess is overruled:
-    # a user who asked for a file said so, and `userRequested` carries that
-    # through. Not `failed`, because nothing went wrong — an errored step paints
-    # the whole turn 중단됨 in the timeline while the answer that follows is
-    # exactly the one the reader wanted.
+        # The one call the description cannot prevent, the model having already
+        # decided by the time it reads one. Only the model's own guess is
+        # overruled; `userRequested` carries an explicit ask through. Not `failed`,
+        # because nothing went wrong — an errored step paints the whole turn 중단됨.
     if (
         not bool(args.get("userRequested"))
         and visible < _PROSE_MAX_CHARS
@@ -611,11 +605,11 @@ def knowledge_tool(
     에이전트에는 자료가 없습니다" teaches the model to stop calling it, and then
     it is ignored on the agent that does have a shelf.
     """
-    # Contents list per document. Filenames are often meaningless, and a model
-    # choosing tools by description needs to know what the shelf covers.
-    #
-    # Headings, not an excerpt: given a sample the model reads it as the
-    # material and rules the shelf out without searching.
+        # Contents list per document: filenames are often meaningless, and a model
+        # choosing tools by description needs to know what the shelf covers.
+        #
+        # Headings, not an excerpt — given a sample the model reads it as the
+        # material and rules the shelf out without searching.
     def _outline(text: str, limit: int = 12) -> str:
         seen: list[str] = []
         for line in text.splitlines():

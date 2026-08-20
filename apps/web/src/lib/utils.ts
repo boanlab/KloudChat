@@ -65,19 +65,16 @@ export function formatDateTime(iso: string | null | undefined) {
 /**
  * The line under a media session's title: what it made.
  *
- * A picture or clip surface runs no turn, so those rows have no last message to
- * show and sat blank beneath their own name. The name is already the prompt
- * somebody typed, so repeating it underneath would say one thing twice; this
- * says the other half — how many came back, how long, what shape — which is the
- * only thing that tells seven clips of one request apart.
+ * The title is already the prompt somebody typed, so this says the other half
+ * — how many came back, how long, what shape — which is what tells seven clips
+ * of one request apart.
  *
- * Written here rather than on the server because it is interface text and has
- * to read in whichever language is on, and assembled from counts and
- * measurements rather than picked from a list of finished sentences because
- * "이미지 4장" and "영상 4초 · 16:9" are one shape with different parts in it.
+ * Assembled here rather than on the server: it is interface text and has to
+ * read in whichever language is on, and "이미지 4장" and "영상 4초 · 16:9"
+ * are one shape with different parts in it.
  *
- * A part that is not known is left out rather than defaulted. A shorter true
- * line beats "영상 0초", which reads as a clip that failed.
+ * An unknown part is left out rather than defaulted — a shorter true line
+ * beats "영상 0초", which reads as a clip that failed.
  */
 export function madeLine(made: SessionMade | null | undefined, t: (s: string) => string) {
   if (!made || made.count < 1) return null
@@ -151,10 +148,9 @@ export function groupByRecency<T extends { updatedAt: string }>(items: T[]) {
 /**
  * A byte count as somebody would say it out loud.
  *
- * The server sends `size` as a plain integer, which the attachment chip used to
- * print verbatim — `2551087` under a filename, a number nobody reads as a
- * number of anything. Binary units, because that is what a file manager shows
- * for the same file; one decimal below 10 so 2.4 MB does not round to 2.
+ * The server sends `size` as a plain integer. Binary units, matching what a
+ * file manager shows for the same file; one decimal below 10, so 2.4 MB does
+ * not round to 2.
  */
 export function fileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return ''
@@ -172,13 +168,13 @@ export function fileSize(bytes: number): string {
 /**
  * A `User-Agent` string as a person would name the thing.
  *
- * Order matters: every browser's UA claims to be several other browsers, so
- * the specific tokens have to be tested before the ones they impersonate —
- * Edge before Chrome, Chrome before Safari.
+ * Order matters: every browser's UA claims to be several others, so specific
+ * tokens are tested before the ones they impersonate — Edge before Chrome,
+ * Chrome before Safari.
  *
- * Returns `''` for anything unrecognised rather than a mangled guess. The row
- * shows the raw string on hover either way, because the readable form drops
- * exactly what would matter if the question ever became a serious one.
+ * `''` for anything unrecognised rather than a mangled guess. The raw string
+ * is on hover either way, since the readable form drops what would matter if
+ * the question became a serious one.
  */
 export function browserName(ua: string): string {
   if (!ua) return ''
