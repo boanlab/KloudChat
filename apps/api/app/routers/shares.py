@@ -3,8 +3,15 @@
 Two routes that need a session, and one that must not have one.
 
 The public route is deliberately narrow: a token in, exactly the shared thing
-out, and no way to reach anything else — no owner name, no project, no sibling
-artifacts, no walkable ids.
+out, and no way to reach anything else — no owner name, no sibling artifacts,
+no walkable ids.
+
+The one thing it sends beyond the transcript is the account the conversation
+gives of itself: which agent answered, which project it was held in, which
+서식 the result was written into. A reader who cannot see that cannot tell why
+the document came out as it did, and has nobody to ask. Names only — an
+agent's system prompt and a project's instructions are the work itself, and
+this token bought one conversation rather than the workspace behind it.
 
 `workspace` scope requires a session, from any member of the instance. `link`
 scope does not, which is the case where the recipient has no account here.
@@ -20,9 +27,10 @@ from sqlmodel import col, select
 from app.core.deps import CurrentUser, DbSession, current_user
 from app.models.chat import ChatSession, Message
 from app.models.user import utcnow
-from app.models.workspace import Artifact, Share, ShareScope
+from app.models.workspace import Agent, Artifact, Project, Share, ShareScope
 from app.schemas.chat import MessageOut
 from app.schemas.workspace import ShareIn, ShareOut
+from app.services import design_templates
 
 router = APIRouter(tags=["shares"])
 
@@ -158,11 +166,33 @@ async def read_shared(token: str, request: Request, db: DbSession):
     )
     if artifact is not None and artifact.user_id != session.user_id:
         artifact = None
+    # What this conversation started with, which the empty screen in the app
+    # has told its owner ever since a 시작점 stopped being typed into the
+    # composer. The recipient of the link is the one reader who was told none
+    # of it, and the one who cannot ask.
+    #
+    # Each of these is a name and nothing else. `agent.system_prompt` and
+    # `project.instructions` are the bodies behind two of them, and neither
+    # goes near this route.
+    agent = await db.get(Agent, session.agent_id) if session.agent_id else None
+    project = await db.get(Project, session.project_id) if session.project_id else None
+    if project is not None and project.user_id != session.user_id:
+        project = None
+    shape = design_templates.get(session.render_template_id)
     await db.commit()
     return {
         "kind": "session",
         "title": session.title,
         "sessionKind": session.kind.value,
+        "startedWith": {
+            "agent": agent.name if agent is not None else None,
+            "project": f"{project.emoji} {project.name}".strip() if project is not None else None,
+            # Both halves of the name, because the page that renders it picks
+            # by the language on screen exactly as every other 서식 name does.
+            "format": (
+                {"name": shape.name, "nameEn": shape.name_en} if shape is not None else None
+            ),
+        },
         "messages": [MessageOut.of(m) for m in messages],
         "artifact": (
             {

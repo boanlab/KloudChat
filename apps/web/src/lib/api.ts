@@ -481,6 +481,19 @@ export interface ShareRow {
 }
 
 /** What the public page gets. Deliberately narrow — see routers/shares.py. */
+/**
+ * What shaped a shared conversation: three names and nothing else.
+ *
+ * Names, never bodies — an agent's system prompt and a project's instructions
+ * are the owner's workspace, not part of what a share token buys. The route
+ * enforces that; this shape is why it can.
+ */
+export interface SharedContext {
+  agent: string | null
+  project: string | null
+  format: { name: string; nameEn: string } | null
+}
+
 export type SharedPayload =
   | { kind: 'artifact'; title: string; artifactKind: string; data: unknown; updatedAt: string }
   | {
@@ -488,6 +501,8 @@ export type SharedPayload =
       title: string
       sessionKind: string
       messages: MessageRow[]
+      /** Absent on a share minted before this travelled. */
+      startedWith?: SharedContext | null
       /** What the conversation produced, when it produced something. */
       artifact: {
         title: string
