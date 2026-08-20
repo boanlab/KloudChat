@@ -56,7 +56,8 @@ test('프로젝트에 올린 지식 파일이 목록과 새로고침에 남는�
   // the only way to check it short of deleting the file and uploading it again.
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: filename }).click(),
+    // Exact: the row's delete button is labelled "{name} 삭제".
+    page.getByRole('button', { name: filename, exact: true }).click(),
   ])
   expect(download.suggestedFilename()).toBe(filename)
   const saved = await download.path()

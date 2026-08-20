@@ -160,16 +160,21 @@ test('아티팩트를 카드에서 지운다', async ({ page }) => {
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 180_000 })
 
   await page.goto('/artifacts')
+  // Counted off the filter row rather than off the cards. The grid holds one
+  // page of the workspace, so deleting a row is followed by the next one
+  // moving up into it and the number of cards on screen does not move — the
+  // tab counts everything, which is what "one fewer" means here.
+  const all = page.getByRole('tab', { name: /전체/ })
+  await expect(all).toHaveText(/전체\s*\d+/, { timeout: 20_000 })
+  const before = Number((await all.textContent())?.match(/\d+/)?.[0] ?? '0')
+  expect(before).toBeGreaterThan(0)
+
   const remove = page.getByRole('button', { name: /삭제$/ })
   await expect(remove.first()).toBeVisible({ timeout: 20_000 })
-  const before = await remove.count()
-
   await remove.first().click()
   await dialog(page).getByRole('button', { name: '삭제' }).click()
   await page.goto('/artifacts')
-  await expect(page.getByRole('button', { name: /삭제$/ })).toHaveCount(before - 1, {
-    timeout: 15_000,
-  })
+  await expect(all).toHaveText(new RegExp(`전체\\s*${before - 1}(\\D|$)`), { timeout: 15_000 })
 })
 
 test('직접 등록한 커넥터의 자격증명을 다시 넣는다', async ({ page }) => {

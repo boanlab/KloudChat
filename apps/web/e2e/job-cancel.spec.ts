@@ -48,17 +48,26 @@ function sessionIdOf(page: Page) {
  */
 async function startStubbedJob(page: Page) {
   await page.route('**/api/sessions/*/jobs', async (route) => {
-    if (route.request().method() !== 'POST') return route.abort()
     const parts = new URL(route.request().url()).pathname.split('/')
-    await route.fulfill({ json: jobRow(parts[parts.length - 2]) })
+    const row = jobRow(parts[parts.length - 2])
+    // The poll that follows the card is answered with the same row rather than
+    // refused: refusing it threw inside the turn that creates the session, and
+    // the screen never got as far as the card this test is about.
+    await route.fulfill({ json: route.request().method() === 'POST' ? row : [row] })
   })
 
   await page.goto('/new/av')
-  await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '영상' }).click()
   await page.getByRole('button', { name: /^해상도/ }).click()
   await page.getByRole('menuitem', { name: '720p' }).click()
   await page.keyboard.press('Escape')
+
+  // The model is named rather than left to whatever the account last used:
+  // every (model × resolution × sound × length) is priced separately and an
+  // unlisted combination is refused in the composer, so a test about
+  // cancelling would otherwise fail for having nothing to start.
+  await page.getByRole('button', { name: /Veo/ }).first().click()
+  await page.getByRole('button', { name: /Veo 3\.1 Lite/ }).first().click()
+  await expect(page.getByText(/예상 [\d,]+ 크레딧/).first()).toBeVisible({ timeout: 15_000 })
 
   await page.getByLabel('프롬프트 입력').fill('취소 확인용')
   await page.getByLabel('프롬프트 입력').press('Enter')
