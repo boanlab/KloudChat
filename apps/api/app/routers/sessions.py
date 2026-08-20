@@ -1365,7 +1365,15 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         charged += charge_for_tokens(model, image.input_tokens, image.output_tokens)
 
     if charged:
-        settle(db, user, charged, reason="image.generate", session_id=session.id)
+        settle(
+            db,
+            user,
+            charged,
+            reason="image.generate",
+            session_id=session.id,
+            model=model["id"],
+            surface=session.kind.value,
+        )
     _record_media(
         db,
         session,
@@ -1484,7 +1492,15 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
         int(model.get("creditPerCall") or 0),
     )
     if charged:
-        settle(db, user, charged, reason="audio.generate", session_id=session.id)
+        settle(
+            db,
+            user,
+            charged,
+            reason="audio.generate",
+            session_id=session.id,
+            model=model["id"],
+            surface=session.kind.value,
+        )
     _record_media(
         db, session, payload.prompt, [artifact], model=model["id"], credits=charged
     )

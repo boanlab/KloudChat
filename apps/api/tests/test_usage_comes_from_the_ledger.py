@@ -78,6 +78,7 @@ _DDL = (
         session_id TEXT,
         job_id TEXT,
         model TEXT,
+        surface TEXT,
         created_at DATETIME
     )
     """,

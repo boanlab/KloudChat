@@ -182,7 +182,15 @@ async def _poll_until_done(job_id: str) -> None:
                     if progress.cost_usd
                     else estimated
                 )
-                settle(db, user, charged, reason="video.generate", session_id=session_id)
+                settle(
+                    db,
+                    user,
+                    charged,
+                    reason="video.generate",
+                    session_id=session_id,
+                    model=model_id,
+                    surface="av",
+                )
                 # The clip lands in the conversation, under the prompt that
                 # asked for it minutes ago. Written on delivery because until
                 # now there was nothing to write: an answer row naming an

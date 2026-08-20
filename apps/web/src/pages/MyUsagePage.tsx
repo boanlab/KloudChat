@@ -187,7 +187,7 @@ export function MyUsagePage() {
               </ul>
               {other > 0 && (
                 <p className="mt-2 text-xs text-faint">
-                  {t('한 모델을 지목할 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청처럼요.')}
+                  {t('어느 모델이 썼는지 알 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청이거나, 대화를 지워 남은 단서가 없는 경우입니다.')}
                 </p>
               )}
             </Card>
