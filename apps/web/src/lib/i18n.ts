@@ -893,7 +893,6 @@ const EN: Record<string, string> = {
   '일': 'days',
   '입력한 값은 서버에만 보관하며, 저장한 뒤에는 표시하지 않습니다.':
     'What you enter is kept on the server only and is not shown again.',
-  '자체 운영 · 무료': 'Self-hosted · free',
   '저장된 메모리가 없습니다': 'No memories saved',
   '저장하고 다시 연결': 'Save and reconnect',
   '저장하지 못했습니다.': 'Could not save.',
