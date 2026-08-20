@@ -877,6 +877,10 @@ def _memory_context_step(workspace: WorkspaceContext) -> dict | None:
         "detail": detail,
         # Names, never bodies: this line is on screen while somebody presents.
         "memories": names,
+        # The client rewrites this line in the reader's language, so it needs
+        # the number the Korean sentence above was built from rather than the
+        # sentence.
+        "totalMemories": workspace.total_memories,
     }
 
 
@@ -904,6 +908,7 @@ def _memory_saved_step(written: int) -> dict:
         "label": f"메모리 {written}건 저장",
         "status": "done",
         "detail": "자동 메모리에 추가됨",
+        "memoriesWritten": written,
     }
 
 

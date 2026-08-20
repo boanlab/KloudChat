@@ -2275,7 +2275,7 @@ function toStep(raw: Record<string, unknown>): Step {
   // the turn was given, before it did any work — sends `category` alongside,
   // because the envelope has already spent `type` on the event name.
   const category = (raw.category ?? raw.type) as Step['type']
-  return {
+  const step: Step = {
     id: String(raw.id ?? uid('step')),
     type: STEP_TYPES.has(category) ? category : 'tool',
     label: String(raw.label ?? ''),
@@ -2285,8 +2285,83 @@ function toStep(raw: Record<string, unknown>): Step {
     // of seven is the only thing on the surface that knows how much is left.
     progress: raw.progress as Step['progress'],
     skills: raw.skills as Step['skills'],
+    memories: raw.memories as Step['memories'],
+    files: raw.files as Step['files'],
+    memoriesWritten: raw.memoriesWritten as number | undefined,
+    totalMemories: raw.totalMemories as number | undefined,
     estimatedTokens: raw.estimatedTokens as number | undefined,
   }
+  // The server writes these lines in Korean because it also stores them on the
+  // message, where the document runners read them back. Rewritten here from
+  // the numbers and names it sent alongside, so an English reader gets the
+  // same line rather than the one the row happens to hold — the same thing
+  // `appliedSkillsStep` does for the skills step.
+  return { ...step, ...retold(step) }
+}
+
+/** How many names a line prints before it starts counting instead. */
+const NAMES_SHOWN = 6
+
+function named(names: string[], more: '외 {n}건' | '외 {n}개'): string {
+  const shown = names.slice(0, NAMES_SHOWN).join(' · ')
+  return names.length > NAMES_SHOWN
+    ? `${shown} ${tr(more).replace('{n}', String(names.length - NAMES_SHOWN))}`
+    : shown
+}
+
+function retold(step: Step): Partial<Step> {
+  if (step.memoriesWritten !== undefined) {
+    return {
+      label: tr('메모리 {n}건 저장').replace('{n}', String(step.memoriesWritten)),
+      detail: tr('자동 메모리에 추가됨'),
+    }
+  }
+  if (step.memories) {
+    const detail = named(step.memories, '외 {n}건')
+    return {
+      label: tr('메모리 {n}건 참고').replace('{n}', String(step.memories.length)),
+      detail:
+        step.totalMemories && step.totalMemories > step.memories.length
+          ? `${detail} · ${tr('저장된 {total}건 중 최근 {n}건')
+              .replace('{total}', String(step.totalMemories))
+              .replace('{n}', String(step.memories.length))}`
+          : detail,
+    }
+  }
+  if (step.files) {
+    const subject = step.id === 'context-knowledge' ? tr('프로젝트 지식') : tr('첨부 파일')
+    const short = step.files.filter((file) => file.state !== 'included')
+    // Cut and dropped are counted apart: a document that arrived at half
+    // length and one that never arrived are different things to have been
+    // answered without.
+    const cut = short.filter((file) => file.state === 'truncated').length
+    const dropped = short.length - cut
+    const fates = [
+      ...(cut ? [tr('{n}개 잘림').replace('{n}', String(cut))] : []),
+      ...(dropped ? [tr('{n}개 빠짐').replace('{n}', String(dropped))] : []),
+    ]
+    const note = (file: NonNullable<Step['files']>[number]) =>
+      file.state === 'truncated'
+        ? tr('{name} {kept}자만 반영')
+            .replace('{name}', file.name)
+            .replace('{kept}', file.keptChars.toLocaleString())
+        : tr(file.state === 'omitted' ? '{name} 분량을 넘겨 제외' : '{name} 읽지 못함').replace(
+            '{name}',
+            file.name,
+          )
+    return {
+      label: fates.length
+        ? `${tr('{subject} {n}개 중').replace('{subject}', subject).replace('{n}', String(step.files.length))} ${fates.join(', ')}`
+        : tr('{subject} {n}개 반영')
+            .replace('{subject}', subject)
+            .replace('{n}', String(step.files.length)),
+      detail: named(
+        short.length ? short.map(note) : step.files.map((file) => file.name),
+        '외 {n}개',
+      ),
+    }
+  }
+  return {}
 }
 
 function appliedSkillsStep(event: {

@@ -206,6 +206,19 @@ export interface Step {
     catalogKey: string | null
     estimatedTokens: number
   }[]
+  /** Names of the memories this turn was given. Never their bodies. */
+  memories?: string[]
+  /** How much of each file reached the model. */
+  files?: {
+    name: string
+    state: 'included' | 'truncated' | 'omitted' | 'unreadable'
+    keptChars: number
+    totalChars: number
+  }[]
+  /** Memories the extractor wrote out of this turn. */
+  memoriesWritten?: number
+  /** How many memories exist, when only the most recent were loaded. */
+  totalMemories?: number
   estimatedTokens?: number
 }
 
