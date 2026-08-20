@@ -681,8 +681,8 @@ export const sessionsApi = {
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
   /** Many at once. `all` is resolved server-side, so a conversation started in
    *  another tab is not silently spared. */
-  deleteMany: (payload: { ids?: string[]; all?: boolean }) =>
-    call<{ deleted: number }>('/sessions/delete', body(payload)),
+  deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean }) =>
+    call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
   /** Pictures. Synchronous: the upstream is a completion whose answer is a
    *  PNG, so there is nothing to poll. */
   images: (
