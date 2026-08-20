@@ -172,6 +172,11 @@ class CreditLedger(SQLModel, table=True):
     #: several models on one charge, a design extraction that belongs to no
     #: session — and on rows written before this column existed.
     model: str | None = Field(default=None)
+    #: The surface the charge came from — `chat`, `image`, `av` and so on.
+    #: On the row rather than read through `session_id`, so deleting a
+    #: conversation does not move its spend into 기타. Null where nothing
+    #: single answers: a design extraction belongs to no surface.
+    surface: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 

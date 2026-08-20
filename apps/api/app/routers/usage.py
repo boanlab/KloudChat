@@ -21,7 +21,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import DateTime, case, func, literal, union_all
+from sqlalchemy import DateTime, String, case, cast, func, literal, union_all
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -59,13 +59,10 @@ def _since(days: int) -> datetime:
     return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-#: Which model a ledger row paid. `credit_ledger.model` says so from 0027 on.
-#: Rows older than the column, and the media routes that do not write it yet,
-#: fall back to the session — which is honest for a picture or a clip, whose
-#: session is one generator with one price sheet, and dishonest for a
-#: conversation, where the model on the session is only the one selected now.
-#: So the fallback stops at the media reasons; anything else with no model of
-#: its own stays unattributed rather than being guessed at.
+#: Which model a ledger row paid. Every route writes it now; the fallback is
+#: for rows older than 0027 that migration 0032 could not recover, and it
+#: stops at the media reasons — a media session is one generator with one price
+#: sheet, while a conversation's stored model is only the one selected today.
 _SPEND_MODEL = func.nullif(
     func.coalesce(
         col(CreditLedger.model),
@@ -76,6 +73,15 @@ _SPEND_MODEL = func.nullif(
         "",
     ),
     "",
+)
+
+#: Which surface a ledger row came from. The row says so from 0032 on, which is
+#: what keeps a charge attributed after its conversation is deleted; the join is
+#: the fallback for older rows whose session is still there.
+#: `sessions.kind` is a Postgres enum and the column is text, so the join half
+#: is cast — COALESCE refuses to match the two otherwise.
+_SPEND_SURFACE = func.coalesce(
+    col(CreditLedger.surface), cast(col(ChatSession.kind), String)
 )
 
 
@@ -92,7 +98,9 @@ def _events(since: datetime, user_id: str | None = None):
                 "day", col(Message.created_at), type_=DateTime(timezone=True)
             ).label("day"),
             col(Message.model).label("model"),
-            col(ChatSession.kind).label("kind"),
+            # Cast for the same reason `_SPEND_SURFACE` casts: the two halves
+            # of the union have to agree, and one of them is now plain text.
+            cast(col(ChatSession.kind), String).label("kind"),
             col(ChatSession.user_id).label("user_id"),
             # A turn carries no money on purpose: the ledger is what the
             # balance is computed from, and letting the message's own copy of
@@ -111,7 +119,7 @@ def _events(since: datetime, user_id: str | None = None):
                 "day", col(CreditLedger.created_at), type_=DateTime(timezone=True)
             ).label("day"),
             _SPEND_MODEL.label("model"),
-            col(ChatSession.kind).label("kind"),
+            _SPEND_SURFACE.label("kind"),
             col(CreditLedger.user_id).label("user_id"),
             (-col(CreditLedger.delta)).label("credits"),
             case((col(CreditLedger.reason).in_(MEDIA_REASONS), 1), else_=0).label("requests"),

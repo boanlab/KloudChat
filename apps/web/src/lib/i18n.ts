@@ -1133,8 +1133,8 @@ const EN: Record<string, string> = {
   '답변을 받지 못했습니다.': 'No answer came back.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
   '다시 물어보기': 'Ask again',
-  '한 모델을 지목할 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청처럼요.':
-    'Spend with no single model behind it — a request that compared several at once, for instance.',
+  '어느 모델이 썼는지 알 수 없는 몫입니다. 여러 모델을 한 번에 비교한 요청이거나, 대화를 지워 남은 단서가 없는 경우입니다.':
+    'Spend no single model can be credited with — a request that compared several at once, or one whose conversation was deleted and left nothing to trace it by.',
 
   // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
   '이미지 {n}장': '{n} pictures',

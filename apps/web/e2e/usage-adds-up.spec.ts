@@ -60,10 +60,13 @@ test('그림과 영상에 쓴 크레딧이 화면에 그대로 보인다', async
   const media = usage.bySurface.filter((row) => row.kind === 'image' || row.kind === 'av')
   test.skip(media.length === 0, '이 계정은 이 기간에 그림이나 영상을 만들지 않았습니다')
 
+  // Scoped to the 화면별 card: the sidebar carries the same five words as
+  // navigation links, and a bare text match finds those instead.
+  const bySurface = page.locator('div').filter({ hasText: /^화면별/ }).last()
   const labels = { image: '이미지', av: '오디오/동영상' }
   for (const row of media) {
-    await expect(page.getByText(labels[row.kind as 'image' | 'av'], { exact: true })).toBeVisible()
-    await expect(page.getByText(row.credits.toLocaleString()).first()).toBeVisible()
+    await expect(bySurface.getByText(labels[row.kind as 'image' | 'av'], { exact: true })).toBeVisible()
+    await expect(bySurface.getByText(row.credits.toLocaleString()).first()).toBeVisible()
   }
 
   // And the model that made them is named, rather than every model reading zero
