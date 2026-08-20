@@ -21,11 +21,8 @@ import { useT } from '@/lib/useT'
  * terms.
  *
  * Four entries and not six: audio and video are rendered by something the
- * design never reaches, and a row promising a look they will not wear is the
- * same untruth this panel exists to end. Chat gets the voice alone, because
- * an accent colour is not something a sentence can be written in — but the
- * voice is real, and it is the surface where a design edited this afternoon
- * is least expected to show up.
+ * design never reaches. Chat gets the voice alone — an accent colour is not
+ * something a sentence can be written in.
  */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
   chat: '이 대화의 말투를 이 디자인에 맞춥니다',
@@ -37,22 +34,16 @@ const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
 /**
  * What this conversation is already carrying, before a word is typed.
  *
- * An agent, a project or a 디자인 is chosen on another screen and then arrives
- * here as a badge in the top bar — which is next to nothing. Pressing 실행 on
- * an agent is the clearest case: the screen that opens looks exactly like a
- * blank session, so the one thing the person just decided is the one thing the
- * screen does not say.
+ * An agent, a project or a 디자인 is chosen on another screen and arrives here
+ * as a badge in the top bar. Pressing 실행 on an agent is the clearest case:
+ * the screen that opens looks exactly like a blank session. So it is said in
+ * the middle of the empty screen, in the terms the choice was made in — an
+ * agent's own description rather than its name repeated.
  *
- * Said in the middle of the empty screen instead, where the answer is about
- * to appear, and in the terms the choice was made in — an agent's own
- * description rather than its name repeated.
- *
- * A 서식 is deliberately not among them, though it is chosen the same way. It
- * is the one of the four that was never invisible: it lands as a named chip
- * inside the composer, carrying the × that takes it off again. Naming it here
- * too put the same two words at both ends of an empty screen, and only the
- * lower one could be acted on. The shared page keeps its 서식 row — there is
- * no composer there to say it.
+ * A 서식 is deliberately absent: it lands as a named chip inside the composer
+ * carrying the × that takes it off again, so naming it here too would put the
+ * same two words at both ends of an empty screen with only the lower one
+ * actionable. The shared page keeps its 서식 row — no composer there.
  */
 function StartingFrom({
   sessionId,
@@ -226,15 +217,13 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  /**
-   * A document named by whoever sent us here — the 작업 목록's "원본 작업 열기".
-   *
-   * The panel otherwise follows `session.artifactId`, which is this
-   * conversation's *latest* result: the right answer while you are working,
-   * the wrong one when somebody arrives asking for a particular file. Three
-   * turns later that is a different document, and for a session whose result
-   * has been deleted it is nothing at all.
-   */
+    /**
+     * A document named by whoever sent us here — the 작업 목록's 원본 작업 열기.
+     *
+     * The panel otherwise follows `session.artifactId`, this conversation's
+     * *latest* result: right while you are working, wrong when somebody arrives
+     * asking for a particular file.
+     */
   const requestedArtifactId = searchParams.get('artifact')
   const session = sessions.find((s) => s.id === sessionId) ?? null
   const kind: SessionKind = session?.kind ?? newKind ?? 'chat'

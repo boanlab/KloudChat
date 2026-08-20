@@ -31,7 +31,8 @@ from app.services.workspace_context import _load_design_system
 
 def test_absent_tokens_are_the_previous_defaults():
     assert design.normalise_tokens(None) == design.DEFAULT_TOKENS
-    # Matches the constants the exporters drew with before this existed.
+    # The same constant the deck exporter draws with, so a project with no
+    # design system comes out identically either way.
     assert design.DEFAULT_TOKENS["accent"] == deck_service._ACCENT
 
 

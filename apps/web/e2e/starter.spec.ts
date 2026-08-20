@@ -76,9 +76,9 @@ test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async
   await expect(page.getByRole('dialog').getByText('독자', { exact: true })).toBeVisible()
   await page.getByRole('dialog').getByText('업무·기술 보고서').click()
 
-  // Attached, not typed. The framing used to be pasted into the box and sent
-  // back out in the person's own voice; now it rides with the turn and the box
-  // asks them for the half only they have.
+  // Attached, not typed: the framing rides with the turn, and the box asks for
+  // the half only the person has. Pasted into the box, it would come back out
+  // in their own voice.
   const box = page.getByLabel('프롬프트 입력')
   await expect(box).toHaveValue('')
   await expect(box).toHaveAttribute('placeholder', /목적, 독자, 분량/)

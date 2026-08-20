@@ -204,11 +204,9 @@ def test_the_turn_opens_with_what_it_was_given_skills_first():
 
 
 async def test_a_written_memory_says_so_on_the_row_it_came_from(monkeypatch):
-    """Auto-memory used to write into a log line and nothing else.
-
-    The answer is already durable when this runs, so the step is an edit to the
-    message it belongs to as well as an event — a line that vanished on the
-    next reload would be a worse account of the turn than no line at all.
+    """The answer is already durable when auto-memory runs, so the step is an
+    edit to the message it belongs to as well as an event. Streamed only, it
+    would vanish on the next reload.
     """
     answer = Message(id="message-1", session_id="session-1", role=Role.assistant, content="네")
     db = _EnrichDb(answer)

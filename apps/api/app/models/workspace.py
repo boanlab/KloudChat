@@ -36,19 +36,13 @@ def _json(**kwargs) -> Column:
 class Project(SQLModel, table=True):
     """The work, and the defaults everything started inside it begins with.
 
-    `render_templates` is a map from surface to template id rather than a
-    column per surface. A project produces on five surfaces and only two of
-    them have a rendering track today, so columns would be three that are
-    always null plus a migration the day a third surface gains one — and the
-    only code that reads them holds the kind of the session being created,
-    which a map answers with a lookup and columns answer with a branch per
-    surface.
+    `render_templates` maps surface → template id rather than a column per
+    surface: only two of five surfaces have a rendering track, and the only reader
+    holds the kind of the session being created, which a map answers with a lookup.
 
-    Keyed by `SessionKind` for that same reason: the reader has a session
-    kind, not a template kind. The values are ids in the shipped catalogue and
-    deliberately not foreign keys, exactly as `sessions.render_template_id` is
-    not — the catalogue lives in the image, so an id an upgrade removes has to
-    degrade to "no format" rather than to a project that will not load.
+    The values are ids in the shipped catalogue and deliberately not foreign keys,
+    as `sessions.render_template_id` is not — the catalogue lives in the image, so
+    an id an upgrade removes degrades to "no format".
     """
 
     __tablename__ = "projects"
@@ -382,23 +376,16 @@ class Share(SQLModel, table=True):
 class ShareView(SQLModel, table=True):
     """Who opened a shared link, and when.
 
-    `shares.views` counted opens and named nobody, which answers "is anyone
-    reading this" and not "who has seen it" — and the second question is the
-    one somebody asks after sharing a draft with the wrong scope.
-
     What can honestly be said about a reader depends on how they arrived. A
-    signed-in one has an account, so the row names it. A `link`-scope reader
-    has no account by design, and their address is the only thing this server
-    ever learns about them; it is written down because a bare "opened 14 times"
-    is not a record of anything.
+    signed-in one has an account, so the row names it. A `link`-scope reader has
+    none by design, and their address is the only thing this server ever learns.
 
-    The name and email are copies rather than a join. An account can be renamed
-    or deleted, and a log that silently rewrites itself afterwards — or empties
-    a row to a dangling id — is not a log. `viewer_id` stays for the cases
-    where the live account is what the reader wants.
+    Name and email are copies rather than a join: an account can be renamed or
+    deleted, and a log that rewrites itself is not a log. `viewer_id` stays for
+    the cases where the live account is what the reader wants.
 
-    One row per reader per hour, not per request: a reader who refreshes twenty
-    times is one visit, and twenty rows would bury the other readers.
+    One row per reader per hour — twenty refreshes are one visit, and twenty rows
+    would bury the other readers.
     """
 
     __tablename__ = "share_views"

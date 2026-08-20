@@ -4,9 +4,8 @@ import { signIn } from './helpers'
 /**
  * '취소' has to reach the server.
  *
- * The card used to be rewritten locally and nothing else: the clip went on
- * being made upstream, was charged on delivery, and came back as 만드는 중 on
- * the next reload.
+ * Rewriting the card locally is not cancelling: the clip goes on being made
+ * upstream, is charged on delivery, and comes back as 만드는 중 on reload.
  *
  * The job is stubbed rather than generated — a real clip is 12,000 credits and
  * several minutes, and what is under test is the call, not the video.

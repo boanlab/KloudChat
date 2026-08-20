@@ -305,9 +305,8 @@ async def write(
             else:
                 log.info("page outline still flat for %s, keeping the first", template.id)
     if not plan:
-        # The one failure that used to leave nothing behind: the call
-        # succeeded, so there is no exception, and the turn ends with no
-        # artifact and no message. What the model actually said is the only
+        # The failure with no exception behind it: the call succeeded and the
+        # turn ends with no artifact. What the model actually said is the only
         # way to tell a refusal from a malformed answer.
         log.warning("page outline unparseable for %s: %s", template.id, text[:300])
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}

@@ -305,10 +305,9 @@ function toLines(slide: Slide): string {
 /**
  * The room a deck is shown in: black, full-screen, and holding the keyboard.
  *
- * Shared with the HTML deck panel, where a deck written into a 서식 is markup
- * rather than slide objects. What stands on the stage differs; the counter,
- * the keys and the way out are the same job, and a second copy of them is a
- * second thing to keep in step.
+ * Shared with the HTML deck panel, where a deck is markup rather than slide
+ * objects. What stands on the stage differs; the counter, the keys and the way
+ * out are the same job.
  */
 export function PresentStage({
   title,
@@ -450,9 +449,9 @@ export function PresentStage({
 }
 
 /**
- * Full-screen rehearsal. A deck is checked by walking it at the speed it will
- * be shown at, which a 400px preview in a side panel cannot be — the text that
- * is too small to read from the back of the room is legible in a thumbnail.
+ * Full-screen rehearsal. A deck is checked by walking it at the size it will
+ * be shown at — text too small to read from the back of the room is legible
+ * in a 400px thumbnail.
  */
 function PresentMode({
   deck,

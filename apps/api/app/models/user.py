@@ -170,7 +170,7 @@ class CreditLedger(SQLModel, table=True):
     #:
     #: Null where nothing single answers the question — a comparison that ran
     #: several models on one charge, a design extraction that belongs to no
-    #: session — and on every row written before this column existed.
+    #: session — and on rows written before this column existed.
     model: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 

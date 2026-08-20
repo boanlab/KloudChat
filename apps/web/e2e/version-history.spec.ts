@@ -4,12 +4,10 @@ import { signIn } from './helpers'
 /**
  * 버전 기록은 종류를 가리지 않는다.
  *
- * The endpoints never did — every write snapshots the revision it replaces, and
- * `versions`/`restore` take an id and nothing else. Only the report panel ever
- * listed them, so a deck or an HTML document piled up revisions with no way
- * back to one. What this covers is the same control answering on all three
- * screens, and a restore behaving the way the server describes it: an edit,
- * which leaves the revision it replaced in the list behind it.
+ * The endpoints do not: every write snapshots the revision it replaces, and
+ * `versions`/`restore` take an id and nothing else. So the same control has to
+ * answer on all three panels, and a restore has to behave the way the server
+ * describes it — an edit, leaving the revision it replaced in the list.
  */
 
 const AS_USER = `async (path, init) => {

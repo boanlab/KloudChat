@@ -5,10 +5,9 @@ import { signIn } from './helpers'
  * What an empty conversation says about itself.
  *
  * A session can arrive already carrying an agent, a project or a 서식, each
- * chosen on a different screen. Before this, all three arrived as a badge in
- * the top bar and the middle of the screen greeted the person as though
- * nothing had been decided — pressing 실행 on an agent was the plainest case,
- * because the screen that opened was indistinguishable from a blank one.
+ * chosen on a different screen. A badge in the top bar is not enough: pressing
+ * 실행 on an agent opens a screen otherwise indistinguishable from a blank
+ * one, so the middle of the screen has to name what was decided.
  *
  * Nothing here sends a turn, so nothing here costs credits.
  */

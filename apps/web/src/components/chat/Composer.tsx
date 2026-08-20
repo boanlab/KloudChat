@@ -1128,9 +1128,8 @@ export function Composer({
             }
           }}
           placeholder={
-            // What this 시작점 needs, instead of what the surface generally
-            // does. It is the half of the template the person still has to
-            // supply, and it used to be legible only as a half-typed sentence.
+            // What this 시작점 needs, rather than what the surface generally
+            // does — the half of the template the person still has to supply.
             startingTemplate && startingTemplate.fills.length > 0
               ? t('{list} 적어 주세요').replace('{list}', bringList(startingTemplate.fills))
               : t(placeholders[kind])

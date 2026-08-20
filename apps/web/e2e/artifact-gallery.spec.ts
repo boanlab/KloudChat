@@ -4,11 +4,9 @@ import { signIn } from './helpers'
 /**
  * The gallery as a query, not as a download.
  *
- * It used to fetch every artifact whole on open — 385 rows and 4.0 MB on this
- * instance, most of it the markup of documents drawn as thumbnails the size of
- * a business card. What this covers is the three things that replaced it: a
- * page instead of everything, counts that still speak for the whole workspace,
- * and a search that reaches past the page.
+ * A grid draws thumbnails, so it must not download documents. Three claims:
+ * a page rather than everything, counts that still speak for the whole
+ * workspace, and a search that reaches past the page.
  */
 
 const PAGE = 60

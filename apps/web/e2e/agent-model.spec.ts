@@ -5,11 +5,11 @@ import { signIn } from './helpers'
  * Which model an agent's conversation actually runs on.
  *
  * The API resolves a turn's model as turn override → conversation → agent, so
- * the agent only ever gets a say when the conversation has no model of its own.
- * The client used to stamp the screen default onto every new conversation,
- * which meant the last step was unreachable: an agent pinned to a strict-local
- * model for privacy quietly ran on whatever the chat screen happened to
- * default to, and the agent card went on printing the pinned model as a badge.
+ * the agent only gets a say when the conversation has no model of its own —
+ * which means the client must not stamp the screen default onto a conversation
+ * opened against an agent. Otherwise an agent pinned to a strict-local model
+ * runs on whatever the chat screen defaults to while its card prints the
+ * pinned one.
  *
  * Two claims here, and they have to agree: the composer names the agent's
  * model, and picking another one in the composer still wins — an override is

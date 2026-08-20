@@ -184,7 +184,7 @@ def test_a_picture_too_big_for_the_page_is_scaled_to_it():
 
 @pytest.mark.parametrize("template_id", ["deck-editorial", "deck-signal"])
 def test_a_slide_that_is_only_a_picture_still_exports(template_id):
-    """No bullets, no body — the slide is the picture, and it used to vanish."""
+    """No bullets, no body: the slide is the picture, and it still exports."""
     template = dt.get(template_id)
     html = dt.render(
         template,
@@ -291,9 +291,10 @@ def test_a_portrait_picture_does_not_take_a_whole_page():
 
 
 def test_two_pictures_of_different_sizes_stay_different_sizes():
-    """Every picture used to be placed at one fixed width, so a 360×240
-    diagram came out the same size as a 1024×683 chart — and larger than it
-    was drawn. Native size, shrunk only when it overflows the column."""
+    """Native size, shrunk only when it overflows the column.
+
+    One fixed width would draw a 360×240 diagram at the size of a 1024×683
+    chart, and larger than it was made."""
     small = report_export._picture_size(base64.b64decode(png(width=360, height=240)))
     large = report_export._picture_size(base64.b64decode(png(width=1024, height=683)))
     assert small[0] < large[0]
