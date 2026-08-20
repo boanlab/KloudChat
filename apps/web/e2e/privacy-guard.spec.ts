@@ -472,3 +472,48 @@ test('comparison retry keeps attachment ids and starts no column before a decisi
     privacyAction: 'mask_external',
   })
 })
+
+/**
+ * The record and the screen disagree the moment the detector finds something:
+ * the Message is stored masked whatever action was taken, while the bubble
+ * still holds what was typed until the session is next opened. The turn is
+ * where that has to be said — a week later there is only a sentence with holes
+ * in it and nobody to ask.
+ */
+test('가려진 채 저장된다는 사실을 그 턴 안에서 말한다', async ({ page }) => {
+  await signIn(page)
+
+  await page.route('**/api/sessions/*/messages', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: [
+        // `send_raw_external`: the envelope goes out untouched and the stored
+        // message is masked all the same.
+        'data: {"type":"privacy_route","requestedModels":["external/model"],"routedModels":["external/model"],"effectiveModels":["external/model"],"actualModels":[],"action":"send_raw_external","dataBoundary":"external","findingCounts":[{"category":"email","source":"current_input","count":1}]}',
+        'data: {"type":"delta","text":"원문 그대로 보냈습니다."}',
+        'data: {"type":"usage","inputTokens":1,"outputTokens":2,"credits":0}',
+        'data: {"type":"done"}',
+        '',
+      ].join('\n'),
+    })
+  })
+
+  await page.goto('/new/chat')
+  const composer = page.getByLabel('프롬프트 입력')
+  const typed = '연락처는 person@example.com 입니다'
+  await composer.fill(typed)
+  await composer.press('Enter')
+
+  await expect(page.getByText('이메일 1')).toBeVisible()
+  await expect(
+    page.getByText('기록에는 가려진 채 저장됩니다. 이 대화를 다시 열면 여기에도 자리표시자만 남습니다.'),
+  ).toBeVisible()
+  // The bubble is not rewritten: what was sent this time really was the
+  // original, and pretending otherwise is its own lie.
+  await expect(page.getByText(typed)).toBeVisible()
+})
