@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from conftest import both_passes
 
 from app.services import deck, page, report
 from app.services import design_templates as dt
@@ -66,10 +67,7 @@ async def test_the_planner_writes_the_outline_and_the_writer_writes_the_rest(gat
     replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    async for _ in deck.write(
-        request="발표", model="writer", api_key="k", outline_model="planner"
-    ):
-        pass
+    await both_passes(deck, request="발표", model="writer", api_key="k", outline_model="planner")
 
     assert seen[0] == "planner"
     assert set(seen[1:]) == {"writer"}
@@ -81,8 +79,7 @@ async def test_without_one_the_writer_plans_as_before(gateway):
     replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    async for _ in deck.write(request="발표", model="writer", api_key="k"):
-        pass
+    await both_passes(deck, request="발표", model="writer", api_key="k")
 
     assert set(seen) == {"writer"}
 
@@ -102,10 +99,7 @@ async def test_a_flat_plan_is_asked_once_more_and_the_planner_is_asked_again(gat
     replies = [flat, _DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    async for _ in deck.write(
-        request="발표", model="writer", api_key="k", outline_model="planner"
-    ):
-        pass
+    await both_passes(deck, request="발표", model="writer", api_key="k", outline_model="planner")
 
     assert seen[:2] == ["planner", "planner"]
     assert set(seen[2:]) == {"writer"}
@@ -124,14 +118,14 @@ async def test_a_page_plans_with_it_too(gateway):
     replies = [plan, *["<p>내용</p>"] * 6]
     gateway.setattr(page.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    async for _ in page.write(
+    await both_passes(
+        page,
         request="발표",
         model="writer",
         api_key="k",
         template=dt.get("deck-editorial"),
         outline_model="planner",
-    ):
-        pass
+    )
 
     assert seen[0] == "planner"
     assert set(seen[1:]) == {"writer"}
@@ -143,10 +137,9 @@ async def test_a_report_plans_with_it_too(gateway):
     replies = ['{"title": "제목", "sections": ["가", "나", "다", "라"]}', *["본문"] * 6]
     gateway.setattr(report.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    async for _ in report.write(
-        request="보고서", model="writer", api_key="k", outline_model="planner"
-    ):
-        pass
+    await both_passes(
+        report, request="보고서", model="writer", api_key="k", outline_model="planner"
+    )
 
     assert seen[0] == "planner"
     assert set(seen[1:]) == {"writer"}
@@ -164,17 +157,19 @@ async def test_the_planner_tokens_are_counted_apart_from_the_writer_tokens(gatew
     replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    usage = {}
-    async for event in deck.write(
-        request="발표", model="writer", api_key="k", outline_model="planner"
-    ):
-        if event["type"] == "usage":
-            usage = event
+    events = await both_passes(
+        deck, request="발표", model="writer", api_key="k", outline_model="planner"
+    )
+    # The planning pass and the writing pass each end with their own `usage`.
+    # The first carries the planner's tokens and nothing else; the second
+    # carries the writer's.
+    planned, wrote = [e for e in events if e["type"] == "usage"]
 
-    assert usage["outlineInputTokens"] > 0
-    assert usage["outlineOutputTokens"] > 0
+    assert planned["outlineInputTokens"] > 0
+    assert planned["outlineOutputTokens"] > 0
     # The writer's own half counts every block call and none of the plan.
-    assert usage["inputTokens"] > 0
+    assert wrote["inputTokens"] > 0
+    assert wrote["outlineInputTokens"] == 0
 
 
 @pytest.mark.asyncio
@@ -183,11 +178,10 @@ async def test_without_a_planner_the_outline_is_the_writer_s_own_cost(gateway):
     replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
 
-    usage = {}
-    async for event in deck.write(request="발표", model="writer", api_key="k"):
-        if event["type"] == "usage":
-            usage = event
+    events = await both_passes(deck, request="발표", model="writer", api_key="k")
+    totals = [e for e in events if e["type"] == "usage"]
 
-    assert usage["outlineInputTokens"] == 0
-    assert usage["outlineOutputTokens"] == 0
-    assert usage["inputTokens"] == len(seen)  # one per call, from the fake gateway
+    assert all(e["outlineInputTokens"] == 0 for e in totals)
+    assert all(e["outlineOutputTokens"] == 0 for e in totals)
+    # One per call, from the fake gateway, across both passes.
+    assert sum(e["inputTokens"] for e in totals) == len(seen)

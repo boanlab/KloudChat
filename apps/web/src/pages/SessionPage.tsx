@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer } from '@/components/chat/Composer'
+import { ProposalCard } from '@/components/chat/ProposalCard'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
 import { DesignGallery } from '@/components/chat/DesignGallery'
@@ -372,6 +373,16 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
                     ) : (
                       <JobCard key={item.j.id} job={item.j} />
                     ),
+                  )}
+                  {/* Under the transcript and above the composer, which is
+                      where the decision is: read what it means to write, then
+                      either press the button or type what to change. */}
+                  {session.pending && (
+                    <ProposalCard
+                      sessionId={session.id}
+                      pending={session.pending}
+                      kind={kind}
+                    />
                   )}
                 </div>
               </div>

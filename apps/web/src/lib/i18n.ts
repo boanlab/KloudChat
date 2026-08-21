@@ -968,6 +968,22 @@ const EN: Record<string, string> = {
   '여기에 놓으면 첨부됩니다': 'Drop to attach',
   '여기에 놓으면 자료로 추가됩니다': 'Drop to add as a document',
   '여기에 놓으면 참고 파일로 추가됩니다': 'Drop to add as a reference file',
+  '시작하기 전에': 'Before we start',
+  '이렇게 구성하려고 합니다': 'This is what it will be',
+  '이대로 생성': 'Write this',
+  '이대로 계속': 'Continue',
+  '있는 자료로 진행': 'Go with what arrived',
+  '이대로 생성해 주세요': 'Write this',
+  '있는 자료로 진행해 주세요': 'Go with what arrived',
+  '먼저 위 항목을 골라 주세요': 'Choose above first',
+  '고를 것이 없으면 아래 입력창에 직접 적어도 됩니다.':
+    'If none of these fit, write your own answer in the box below.',
+  '고칠 곳이 있으면 아래 입력창에 적어 주세요. 다시 구성해 옵니다.':
+    'To change anything, say so in the box below and it will plan again.',
+  '답을 적거나, 위에서 고르세요': 'Answer here, or choose above',
+  '고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요':
+    'Say what to change — or press the button above to write it as it is',
+  '모델 비교 끄기': 'Turn off model comparison',
   '접속기록': 'Access log',
   '접속 기록': 'Access log',
   '로그인된 기기': 'Where you are signed in',

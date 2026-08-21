@@ -162,7 +162,10 @@ async def test_the_prompt_the_model_reads_is_unchanged_by_the_reporting(monkeypa
     context = await _assembled_with([_file("긴글.txt", "가" * 30), _file("남은글.txt", "나" * 5)])
 
     block = next(b.text for b in context.blocks if b.source == "attachment")
-    assert "…(이하 20자 생략)" in block
+    # Not "the last 20 characters are missing" any more: an excerpt chosen
+    # around what somebody asked for can leave out the beginning too, and a
+    # notice that named only the tail would be wrong exactly when it mattered.
+    assert "…(전체 30자 중 일부입니다)" in block
     assert "## 포함되지 않은 파일\n남은글.txt" in block
 
 

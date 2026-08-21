@@ -101,6 +101,18 @@ class ChatSession(SQLModel, table=True):
     #: after an upgrade has to degrade to "no template" rather than to a
     #: session that will not load.
     render_template_id: str | None = Field(default=None)
+    #: A generation that has stopped to ask something, and is waiting to be
+    #: told to go on.
+    #:
+    #: Holds the request it began from, what was attached to it, and either the
+    #: questions it needs answered or the outline it intends to write. Null on
+    #: a session with nothing waiting, which is most of them most of the time.
+    #:
+    #: On the session rather than on the message that carries it, because it is
+    #: session state: exactly one generation may be waiting at a time, a reload
+    #: has to find it, and a second request while one is pending is an answer
+    #: to it rather than a new document.
+    pending: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     pinned: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
