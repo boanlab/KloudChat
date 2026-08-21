@@ -195,6 +195,22 @@ test('웹 검색은 켠 대화에만 남고 다음 대화로 따라오지 않는
   await stubGet(page, '**/api/sessions/session-1', session({ messages: [answer(null)] }))
 
   await page.goto('/new/chat')
+  // The screen default is strict-local, which is given no web tool — so the
+  // toggle this test is about is disabled until a model that can reach the
+  // network is chosen.
+  await page
+    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
+    .first()
+    .click()
+  const rows = page.getByRole('button', { name: /qwen3\.6/i })
+  for (let i = 0; i < (await rows.count()); i++) {
+    const name = (await rows.nth(i).getAttribute('aria-label')) ?? (await rows.nth(i).innerText())
+    if (!/strict/i.test(name)) {
+      await rows.nth(i).click()
+      break
+    }
+  }
+
   const search = page.getByRole('button', { name: '웹 검색' })
   await search.click()
   await expect(search).toHaveAttribute('aria-pressed', 'true')

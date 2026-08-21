@@ -21,7 +21,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
 import { DesignGalleryModal } from '@/components/chat/DesignGallery'
-import { errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
+import { errorCode, errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
@@ -772,11 +772,13 @@ export function Composer({
         requestAnimationFrame(() => ref.current?.focus())
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
-      const detail = errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.'))
+      // The code, not the sentence: `errorMessage` is what goes on screen and
+      // deliberately swallows machine strings, so branching on its output
+      // depended on one leaking through.
       setChatError(
-        detail === 'auto_quality_model_required'
+        errorCode(error) === 'auto_quality_model_required'
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
-          : detail,
+          : errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')),
       )
       throw error
     }

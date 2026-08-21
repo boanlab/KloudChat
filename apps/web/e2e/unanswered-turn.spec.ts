@@ -111,7 +111,7 @@ test('답변이 오지 않은 질문은 다시 열어도 그 사실과 다시 �
 
   await page.goto(`/s/${ID}`)
 
-  await expect(page.getByText(QUESTION)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(QUESTION).last()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('답변을 받지 못했습니다.')).toBeVisible()
 
   // A video job has had a retry all along; a conversation turn had none.
@@ -178,7 +178,7 @@ test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', asyn
   await page.getByLabel('프롬프트 입력').press('Enter')
 
   await expect.poll(() => sent, { timeout: 30_000 }).toEqual([QUESTION])
-  await expect(page.getByText(QUESTION)).toBeVisible()
+  await expect(page.getByText(QUESTION).last()).toBeVisible()
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '다시 물어보기' })).toHaveCount(0)
 
