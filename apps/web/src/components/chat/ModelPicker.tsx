@@ -82,7 +82,11 @@ function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone:
   if (m.dataBoundary === 'self_hosted') {
     return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
   }
-  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-boundary' }
+  // Amber, the same as `external` and `unknown`, because the server ranks the
+  // three together — `_BOUNDARY_RANK` in routers/sessions.py gives all of them
+  // 1. A colour that separated hybrid from external would be the screen
+  // inventing a distinction nothing else in the product makes.
+  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
   if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
   if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
   return null
