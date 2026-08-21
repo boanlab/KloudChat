@@ -1,0 +1,340 @@
+<!doctype html>
+<!--
+  KloudChat document seed — minutes.
+
+  A record rather than an argument, and one that is read for the first time two
+  months late. Everything here serves the reader who is looking for their own
+  name and their own date.
+
+  The one move: a ruler down the right-hand edge. One column, `--rail` wide,
+  runs from the masthead to the last row — 일시·장소·참석 at the top, then
+  담당 · 기한 on every decision and action beneath it, all right-aligned in
+  tabular figures against the same edge. The accent draws that column's rule in
+  the masthead and a hairline continues it through the body, so running a finger
+  down the right margin is a way to read the document rather than a metaphor.
+
+  Agenda numbers hang in the left margin instead of sitting in tinted boxes.
+  Two heavy devices — a numbered chip and a ruled column — would each make the
+  other quieter, and the column is the one that earns its ink.
+
+  The masthead stays on the first printed page instead of taking one of its
+  own: minutes are filed and cited, and a title sheet in front of two pages of
+  rows is a page nobody reads. The report seed breaks after its cover because a
+  report is read from the front.
+
+  No script. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --paper: #ffffff;
+    /* Every neutral is the ink at low strength, so a document in any design
+       system holds together rather than fading to the same grey. */
+    --border: color-mix(in srgb, var(--ink) 13%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 38%, transparent);
+    /* The right-hand column: 담당 · 기한 in the body, 일시·장소 in the
+       masthead. One width for both, or the ruler is not a ruler. */
+    --rail: 10rem;
+    --rail-gap: 1.25rem;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: color-mix(in srgb, var(--ink) 4%, #fff);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: 1.7;
+    /* Korean breaks at the word, not inside it; the long ASCII token that
+       keep-all would push past the margin still breaks. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 3rem 5rem;
+    background: var(--paper);
+    min-height: 100vh;
+    counter-reset: agenda;
+  }
+
+  /* ── masthead ────────────────────────────────────────────────────── */
+  /* Asymmetric on purpose. The notice seed is the symmetrical one — centred
+     title, centred double rule — and the two must not converge. */
+  .cover {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--rail);
+    column-gap: 2.5rem;
+    align-items: start;
+    padding-bottom: 1.3rem;
+    margin-bottom: 2.4rem;
+    border-bottom: 3px solid var(--accent);
+  }
+  /* Everything the model writes stacks in the left column. Only the meta list
+     is lifted out, so a paragraph it adds cannot land in the margin. */
+  .cover > * { grid-column: 1; }
+  .cover h1 {
+    margin: 0 0 0.5rem;
+    font-size: clamp(1.55rem, 3.6vw, 2.3rem);
+    font-weight: 650;
+    line-height: 1.22;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .cover .lead {
+    margin: 0;
+    max-width: 54ch;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.55;
+    font-style: normal;
+  }
+  .cover .meta {
+    grid-column: 2;
+    /* Spanning the title and the line under it rather than sitting in the
+       first row: a four-line meta block in a one-line row would stretch that
+       row and drop the lead half a page below the title it belongs to. */
+    grid-row: 1 / span 2;
+    align-self: start;
+    list-style: none;
+    margin: 0.35rem 0 0;
+    /* The rule sits on the *left* of this column, where the body's hairline
+       will carry on down the page. On the right it would be a stripe hanging
+       off the paper's edge and would start nothing. */
+    padding: 0 0 0 1rem;
+    border-left: 2px solid var(--accent);
+    text-align: right;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .cover .meta li { margin: 0 0 0.55rem; }
+  .cover .meta li:last-child { margin-bottom: 0; }
+  .cover .meta strong {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+
+  /* ── numbered agenda items ───────────────────────────────────────── */
+  section { margin: 0 0 2.1rem; counter-increment: agenda; }
+  h2 {
+    position: relative;
+    margin: 0 0 0.7rem;
+    font-size: 1.18rem;
+    font-weight: 650;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  /* The number hangs in the margin, so the heading starts on the same left
+     edge as the prose under it. Right-aligned inside its box and set in
+     tabular figures: 1항 and 10항 line up with each other. */
+  h2::before {
+    content: counter(agenda) ".";
+    position: absolute;
+    left: -2.4rem;
+    top: 0.08rem;
+    width: 1.8rem;
+    text-align: right;
+    color: var(--accent);
+    font-size: 0.95rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    /* Matching the heading's own line box, so the numeral sits on the
+       heading's first baseline rather than floating above it. */
+    line-height: 1.71rem;
+  }
+  /* An agenda item's sub-heading carries as much as the lines under it. */
+  h3 { margin: 1.4rem 0 0.4rem; font-size: 1rem; font-weight: 650;
+       letter-spacing: 0.01em; }
+  p { margin: 0 0 0.8rem; text-wrap: pretty; }
+  section > :last-child { margin-bottom: 0; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.2rem; }
+  li { margin: 0 0 0.35rem; }
+  li::marker { color: var(--accent); }
+  strong { font-weight: 650; }
+  em { font-style: normal; text-decoration: underline; text-underline-offset: 0.25em;
+       text-decoration-color: var(--rule); text-decoration-thickness: 1px; }
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.4rem 1rem;
+    border-left: 3px solid var(--rule);
+    color: var(--muted);
+  }
+
+  /* ── the subordinate voice ───────────────────────────────────────── */
+  /* One behaviour for every small print in the catalogue: quiet, short
+     measure, upright, half a line under whatever it explains. */
+  small, figcaption, dd {
+    display: block;
+    margin-top: 0.5rem;
+    max-width: 54ch;
+    color: var(--muted);
+    font-size: 0.85em;
+    line-height: 1.55;
+    font-style: normal;
+  }
+
+  /* ── decisions and action items ──────────────────────────────────── */
+  .rows {
+    list-style: none;
+    margin: 0.3rem 0 1.3rem;
+    padding: 0;
+    border-top: 1px solid var(--border);
+  }
+  .rows > li {
+    position: relative;
+    margin: 0;
+    /* The right-hand column is reserved on every row, whether or not this row
+       filled it — a ruler with a gap in it stops being an edge to scan. */
+    padding: 0.75rem calc(var(--rail) + var(--rail-gap)) 0.75rem 0;
+    min-height: 3.4rem;
+    border-bottom: 1px solid var(--border);
+    text-wrap: pretty;
+  }
+  /* The hairline is drawn per row rather than once down the list, so it
+     survives a page break instead of printing across one. Rows touch, so it
+     reads as one line. */
+  .rows > li::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: var(--rail);
+    width: 1px;
+    background: var(--border);
+  }
+  /* The settled sentence leads the row; the rest of the `<li>` explains it. */
+  .rows > li > strong { display: block; font-size: 1rem; font-weight: 650; }
+  /* 담당 · 기한, pinned in the column. Absolute rather than a grid track
+     because a grid would put the loose sentence after the `<strong>` into the
+     next cell it could find, which is this one. */
+  .rows > li > small {
+    position: absolute;
+    top: 0.78rem;
+    right: 0;
+    margin-top: 0;
+    width: var(--rail);
+    max-width: var(--rail);
+    padding-left: 0.6rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  /* A table is the same ledger with named columns: same figures, and its last
+     column falls in the same place as the rail when there is one to spare. */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.4rem 0 1.2rem;
+    font-size: 0.94rem;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td { padding: 0.55em 0.7em; border-bottom: 1px solid var(--border);
+           text-align: left; vertical-align: top; }
+  th:first-child, td:first-child { padding-left: 0; }
+  th:last-child, td:last-child { padding-right: 0; }
+  th {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+  /* Three columns or more means the last one is a date or an owner rather than
+     prose, and it belongs on the ruler. A browser without `:has()` simply
+     leaves it left-aligned. */
+  tr:has(> :nth-child(3)) > :last-child { width: var(--rail); text-align: right; }
+
+  /* ── narrow panel ────────────────────────────────────────────────── */
+  /* Under 720px there is no second column to give away: the rail folds under
+     the row it belonged to and the document reads as one column. */
+  @media (max-width: 720px) {
+    .page { padding: 2.2rem 1.4rem 3rem; }
+    .cover { grid-template-columns: 1fr; }
+    .cover .meta {
+      grid-column: 1;
+      grid-row: auto;
+      margin-top: 1.1rem;
+      text-align: left;
+    }
+    h2 { padding-left: 2.1rem; }
+    h2::before { left: 0; width: 1.6rem; }
+    .rows > li { padding-right: 0; min-height: 0; }
+    .rows > li::before { display: none; }
+    .rows > li > small {
+      position: static;
+      display: block;
+      width: auto;
+      max-width: none;
+      margin-top: 0.35rem;
+      padding-left: 0;
+      text-align: left;
+    }
+    tr:has(> :nth-child(3)) > :last-child { width: auto; }
+  }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0.2rem 0 0.6rem; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+  /* A line of code is a quotation from a machine, so it has to survive being
+     copied out of the page character for character: a fixed-width face, and a
+     field that shows where it starts and where it stops. Inline only — `pre`
+     is not in the vocabulary, so nothing here can grow into a wall. */
+  code {
+    font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    font-size: 0.88em;
+    padding: 0.05em 0.32em;
+    background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; break-inside: avoid; }
+  /* A page scrolls, so width is the constraint — but a picture taller than the
+     paper still breaks across two pages with nothing on the second. */
+  figure img { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; }
+  figcaption { margin-top: 0.5rem; }
+
+  @page { size: A4 portrait; margin: 18mm 16mm; }
+  @media print {
+    body { background: #fff; }
+    /* The agenda numbers keep hanging on paper, but they have to hang inside
+       the printed page: anything laid out past the page box is clipped away,
+       so the text block is indented and the numbers sit in that indent. It
+       doubles as the margin these get punched and filed by. */
+    .page { max-width: none; margin: 0; padding: 0 0 0 2.4rem; min-height: 0; }
+    /* The masthead is page one's header rather than a page of its own. */
+    .cover { page-break-after: avoid; break-after: avoid; }
+    h2, h3 { page-break-after: avoid; break-after: avoid; }
+    /* A row split across the fold loses the half that says whose it is. */
+    .rows > li { page-break-inside: avoid; break-inside: avoid; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    section { page-break-inside: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

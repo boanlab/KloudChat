@@ -4,6 +4,8 @@ import {
   Columns2,
   Gauge,
   Globe,
+  LayoutGrid,
+  LayoutTemplate,
   Paperclip,
   Plug,
   Loader2,
@@ -16,14 +18,17 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
-import { errorMessage, PrivacyDecisionError, transcribe } from '@/lib/api'
+import { DesignGalleryModal } from '@/components/chat/DesignGallery'
+import { errorCode, errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
+import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { useStore } from '@/store/useStore'
-import type { PrivacyAction, SessionKind, Skill } from '@/types'
+import { effectiveModelId, useStore } from '@/store/useStore'
+import type { PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
 import { ModelPicker } from './ModelPicker'
 import { useT } from '@/lib/useT'
 
@@ -35,6 +40,18 @@ const placeholders: Record<SessionKind, string> = {
   slides: '발표 주제와 시간을 적으세요',
   image: '만들고 싶은 이미지를 설명하세요',
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
+}
+
+/**
+ * A 시작점's `fills`, read back as a request. The object particle is chosen
+ * from the last syllable's final consonant, since the words are the
+ * template's rather than a proofread sentence.
+ */
+function bringList(fills: string[]) {
+  const list = fills.join(', ')
+  const last = list.charCodeAt(list.length - 1)
+  if (last < 0xac00 || last > 0xd7a3) return `${list}을(를)`
+  return `${list}${(last - 0xac00) % 28 === 0 ? '를' : '을'}`
 }
 
 const ASPECTS = ['1:1', '16:9', '9:16', '4:3']
@@ -49,25 +66,18 @@ const AUDIO_KIND_LABEL: Record<(typeof AUDIO_KINDS)[number], string> = {
   music: '음악',
 }
 
+/** The six the gateway accepts. Anything else comes back as `alloy`. */
+const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
+
 type PendingPrivacy = {
   decision: PrivacyDecision
   sessionId: string | null
   text: string
   attachments: FileRow[]
   activatedSkillIds: string[]
+  startingTemplate: StartingPoint | null
   webSearch: boolean
   restoreToken: number
-}
-
-const FINDING_LABEL: Record<string, string> = {
-  email: '이메일',
-  phone: '전화번호',
-  government_id: '주민 식별번호',
-  payment_card: '결제카드',
-  ip_address: 'IP 주소',
-  api_key: 'API 키',
-  jwt: 'JWT',
-  private_key: '개인키',
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -119,6 +129,34 @@ function OptionGroup<T extends string | number>({
   )
 }
 
+/**
+ * Where the chips beside this came from, while they are still the 서식's.
+ *
+ * A media 서식 leaves no chip on the composer, only these values — and they
+ * are one workspace-wide preference, so they persist. Naming the source is
+ * the honest half of that; turning any chip by hand takes the name off.
+ */
+function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
+  const t = useT()
+  const template = useStore((s) => s.optionTemplate)
+  // The 서식 chip a row above already names an image template while its pick is
+  // waiting for a turn. Saying it twice, two inches apart, is not twice as true.
+  const chipped = useStore((s) => s.pendingTemplate)
+  if (!template || !kinds.includes(template.kind) || chipped?.id === template.id) return null
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-faint"
+      title={t('값을 직접 바꾸면 이 표시는 사라집니다')}
+    >
+      <LayoutGrid size={11} />
+      {t('{name} 서식이 정한 값').replace(
+        '{name}',
+        templateText(template, currentLang() === 'en').name,
+      )}
+    </span>
+  )
+}
+
 function ImageOptions() {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
@@ -144,8 +182,31 @@ function ImageOptions() {
         onChange={(v) => setImageOptions({ count: v })}
         format={(v) => t('{n}장').replace('{n}', String(v))}
       />
+      <TemplateOptionNote kinds={['image']} />
     </>
   )
+}
+
+/**
+ * The nearest clip this model is priced for, or null when it prices none.
+ * Sound is given up first: a silent-only or sound-only model has made that
+ * choice already, while 1080p → 720p is a visible loss worth asking about.
+ */
+function servedVideoShape(
+  rates: Record<string, number>,
+  resolution: '720p' | '1080p',
+  withAudio: boolean,
+): { resolution: '720p' | '1080p'; withAudio: boolean } | null {
+  const keys = Object.keys(rates)
+  if (keys.length === 0) return null
+  const wanted = `${resolution}:${withAudio ? 'sound' : 'silent'}`
+  const key =
+    keys.find((candidate) => candidate === wanted) ??
+    keys.find((candidate) => candidate.startsWith(`${resolution}:`)) ??
+    keys.find((candidate) => candidate.endsWith(withAudio ? ':sound' : ':silent')) ??
+    [...keys].sort((left, right) => rates[left] - rates[right])[0]
+  const [served, sound] = key.split(':')
+  return { resolution: served as '720p' | '1080p', withAudio: sound === 'sound' }
 }
 
 /**
@@ -154,8 +215,45 @@ function ImageOptions() {
  */
 function AvOptions() {
   const t = useT()
-  const { avOptions, setAvOptions } = useStore()
+  const { avOptions, setAvOptions, models, modelByKind } = useStore()
   const audio = avOptions.mode === 'audio'
+  //: Whatever this surface will run on, which in 영상 is not necessarily a
+  //: model that makes clips — hence the modality check below.
+  const avModel = models.find((m) => m.id === modelByKind.av)
+  //: Whether there is anything to move onto — an instance can serve this
+  //: surface with speech alone, and asking for a clip model that is not in the
+  //: catalogue would cost a 서식 its name and change nothing else.
+  const hasVideoModel = models.some((m) => m.kinds.includes('av') && m.modality === 'video')
+  const shapedFor = useRef<string | null>(null)
+    /**
+     * Turning 종류 to 영상 also changes the model, and the chips are left
+     * showing whatever the last clip used. A model that does not price that
+     * combination makes the composer refuse the turn, so the chips follow the
+     * model here rather than surfacing at submit. Only when the model changes
+     * underneath — a chip turned afterwards is the person's answer.
+     *
+     * The mode goes to the store first: 영상 is the mode this surface opens in,
+     * and the cheapest remembered `av` model is a speech model.
+     */
+  useEffect(() => {
+    if (audio || !avModel) return
+    if (avModel.modality !== 'video') {
+      if (hasVideoModel) setAvOptions({ mode: 'video' })
+      return
+    }
+    if (shapedFor.current === avModel.id) return
+    shapedFor.current = avModel.id
+    const shape = servedVideoShape(
+      avModel.creditPerSecond ?? {},
+      avOptions.resolution,
+      avOptions.withAudio,
+    )
+    if (!shape) return
+    if (shape.resolution === avOptions.resolution && shape.withAudio === avOptions.withAudio) {
+      return
+    }
+    setAvOptions(shape)
+  }, [audio, avModel, hasVideoModel, avOptions.resolution, avOptions.withAudio, setAvOptions])
   return (
     <>
       <OptionGroup
@@ -166,13 +264,25 @@ function AvOptions() {
         format={(v) => (v === 'audio' ? t('오디오') : t('영상'))}
       />
       {audio ? (
-        <OptionGroup
-          label={t('유형')}
-          value={avOptions.audioKind}
-          options={AUDIO_KINDS}
-          onChange={(v) => setAvOptions({ audioKind: v })}
-          format={(v) => t(AUDIO_KIND_LABEL[v])}
-        />
+        <>
+          <OptionGroup
+            label={t('유형')}
+            value={avOptions.audioKind}
+            options={AUDIO_KINDS}
+            onChange={(v) => setAvOptions({ audioKind: v })}
+            format={(v) => t(AUDIO_KIND_LABEL[v])}
+          />
+          {/* Music has no reader. The chip appears only where it applies,
+              the way the video chips do. */}
+          {avOptions.audioKind === 'narration' && (
+            <OptionGroup
+              label={t('목소리')}
+              value={avOptions.voice}
+              options={VOICES}
+              onChange={(v) => setAvOptions({ voice: v })}
+            />
+          )}
+        </>
       ) : (
         <>
           <OptionGroup
@@ -205,6 +315,7 @@ function AvOptions() {
         onChange={(v) => setAvOptions({ durationSec: v })}
         format={(v) => t('{n}초').replace('{n}', String(v))}
       />
+      <TemplateOptionNote kinds={['video', 'audio']} />
     </>
   )
 }
@@ -221,6 +332,14 @@ export function Composer({
   autoFocus?: boolean
 }) {
   const t = useT()
+  //: The two surfaces that leave the chat pipeline at submit: a picture or a
+  //: clip is made by its own endpoint, which takes a prompt and the option
+  //: chips and has no room for anything else the composer could collect.
+  const isMedia = kind === 'image' || kind === 'av'
+  //: Only the chat surface runs a tool loop. A report or a deck writer is
+  //: handed no tools at all, so a lit globe there promised a search that was
+  //: never going to happen — the same reason the two media surfaces hide it.
+  const canWebSearch = kind === 'chat'
   const [value, setValue] = useState('')
   const liveValue = useRef(value)
   liveValue.current = value
@@ -282,20 +401,55 @@ export function Composer({
   }
   const draft = useStore((s) => s.draft)
   const setDraft = useStore((s) => s.setDraft)
-  // A template is inserted, not sent: the cursor lands where the user takes
-  // over.
+  /**
+   * A sentence a gallery hands over. Inserted, not sent — and added to what is
+   * in the box, never written over it.
+   *
+   * Somebody three sentences into a prompt who opens the gallery to see what a
+   * shape does was asking a question, not offering to give those sentences up.
+   * On the picture and clip surfaces, which are the only ones that still fill
+   * the box at all, those sentences *are* the prompt, so what a replacement
+   * throws away is the whole of the work — silently, and with nothing to press
+   * to get it back.
+   *
+   * Appending rather than asking, because the question would arrive before its
+   * answer is knowable: a confirm names no sentence the person has read yet,
+   * and it puts a modal in front of a click that was an exploration. And
+   * rather than filling only an empty box, because a shape picked for a prompt
+   * already half written is the ordinary case, and doing nothing there is a
+   * gallery whose cards stop working the moment somebody starts typing.
+   *
+   * What is appended arrives selected, so the one keystroke that undoes an
+   * unwanted pick takes out exactly what the gallery put in and nothing that
+   * was written by hand.
+   */
+  //: A range to restore once React has actually written the text it belongs to.
+  const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
     if (!draft) return
     activeRestoreToken.current = null
-    liveValue.current = draft
-    setValue(draft)
+    const kept = liveValue.current.replace(/\s*$/, '')
+    const next = kept ? `${kept}\n\n${draft}` : draft
+    liveValue.current = next
+    setValue(next)
     setDraft('')
-    const el = ref.current
-    if (el) {
-      el.focus()
-      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length))
-    }
+    ref.current?.focus()
+    // Into an empty box the caret lands at the end, as it always has: there is
+    // nothing to take back out there, and a media 서식's sentence handed over
+    // selected is a sentence the next keystroke destroys — which is the very
+    // loss this is about, only pointed the other way.
+    //
+    // Left for the layout effect below rather than set here: the textarea is
+    // controlled, so React writes this value in a later commit and that write
+    // collapses any selection made before it.
+    pendingSelection.current = [kept ? next.length - draft.length : next.length, next.length]
   }, [draft, setDraft])
+  useLayoutEffect(() => {
+    const range = pendingSelection.current
+    if (!range) return
+    pendingSelection.current = null
+    ref.current?.setSelectionRange(range[0], range[1])
+  }, [value])
   /** Uploaded files, not names: the turn sends ids and the server reads the text. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
@@ -308,9 +462,36 @@ export function Composer({
   // A form a picked template brought with it. Taken once and cleared, so it
   // attaches to the draft it arrived with and not to every turn after it.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
+  /**
+   * The 시작점 this turn carries, held here rather than in the store for the
+   * same reason the attachments and the one-turn skills are: a refused turn
+   * has to be handed back whole, and the gallery is long gone by then.
+   */
+  const [startingTemplate, setStartingTemplate] = useState<StartingPoint | null>(null)
+  const liveStartingTemplate = useRef(startingTemplate)
+  liveStartingTemplate.current = startingTemplate
+  const pendingStartingTemplate = useStore((s) => s.pendingStartingTemplate)
+  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
+  const pendingTemplate = useStore((s) => s.pendingTemplate)
+  const setPendingTemplate = useStore((s) => s.setPendingTemplate)
+  //: Readable from a callback that outlived the render which sent the turn,
+  //: for the same reason the draft and the attachments each keep one.
+  const livePendingTemplate = useRef(pendingTemplate)
+  livePendingTemplate.current = pendingTemplate
+  const designTemplates = useStore((s) => s.designTemplates)
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   useEffect(() => {
     if (!pendingAttachment) return
+    // A picture or a clip is made from the prompt alone, so a form that
+    // followed a template onto one of those surfaces is let go instead of
+    // being shown as a chip nothing reads — and let go rather than left in
+    // the store, where it would attach itself to the next chat turn.
+    if (isMedia) {
+      setPendingAttachment(null)
+      return
+    }
     activeRestoreToken.current = null
     setAttachments((current) => {
       const next = current.some((f) => f.id === pendingAttachment.id)
@@ -320,13 +501,28 @@ export function Composer({
       return next
     })
     setPendingAttachment(null)
-  }, [pendingAttachment, setPendingAttachment])
+  }, [isMedia, pendingAttachment, setPendingAttachment])
+  useEffect(() => {
+    if (!pendingStartingTemplate) return
+    activeRestoreToken.current = null
+    liveStartingTemplate.current = pendingStartingTemplate
+    setStartingTemplate(pendingStartingTemplate)
+    setPendingStartingTemplate(null)
+    // The composer is deliberately left empty; what moves is the caret, so
+    // the person is already writing the thing the placeholder asks for.
+    requestAnimationFrame(() => ref.current?.focus())
+  }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [webSearch, setWebSearch] = useState(false)
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
+  // Switching surfaces keeps this composer mounted, so a choice made for the
+  // last one would follow the person to the next — and an upload that walked
+  // onto the picture or clip surface would be dropped at submit, after the
+  // wait and the credits. The typed sentence stays; it is theirs to reuse
+  // anywhere.
   useEffect(() => {
     if (sessionId && preserveComposerForSession.current === sessionId) {
       preserveComposerForSession.current = null
@@ -334,6 +530,16 @@ export function Composer({
     }
     liveActivatedSkillIds.current = []
     setActivatedSkillIds([])
+    // A 시작점 belongs to the surface it was picked on, and to one turn.
+    liveStartingTemplate.current = null
+    setStartingTemplate(null)
+    liveAttachments.current = []
+    setAttachments([])
+    // The same reasoning as the skills beside it, and it was the one switch
+    // left out: 웹 검색 is a decision about this conversation, and following
+    // the person into the next one spends their credits on a search nobody
+    // asked for there.
+    setWebSearch(false)
   }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
@@ -372,9 +578,31 @@ export function Composer({
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
+  /**
+   * The rendering template this turn will use: the one just picked, or the one
+   * the session is already wearing. Derived rather than mirrored into state —
+   * the server is what makes the choice sticky, and a copy of it here would be
+   * one more thing that can disagree with the document being produced.
+   */
+  const shownTemplate =
+    (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
+    designTemplates.find((row) => row.id === session?.renderTemplateId) ??
+    null
+  const hasTemplates = designTemplates.some((row) => row.surface === kind)
+  //: Whether the empty screen — and its own copy of this button — is gone.
+  const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
-    (candidate) => candidate.id === (session?.model || modelByKind[kind]),
+    (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
+  /**
+   * When the search toggle cannot reach the web whatever it says. A
+   * strict-local model is handed no network tool at all — that route exists so
+   * the text does not leave — and a comparison sends neither column the flag.
+   * An answer written from memory under a lit globe is the worst outcome here,
+   * so the control follows the turn rather than the stored preference.
+   */
+  const searchBlocked = (compareMode && kind === 'chat') || Boolean(model?.strictLocal)
+  const effectiveWebSearch = webSearch && !searchBlocked
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -406,8 +634,10 @@ export function Composer({
         )
       }
     }
-    if (skill.requiredTools.includes('web_search') && !webSearch) {
-      return t('먼저 웹 검색을 켜야 합니다.')
+    if (skill.requiredTools.includes('web_search') && !effectiveWebSearch) {
+      return searchBlocked
+        ? t('strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.')
+        : t('먼저 웹 검색을 켜야 합니다.')
     }
     const unavailable = skill.requiredTools.filter((name) => {
       if (name === 'search_knowledge') return !sessionAgent?.hasKnowledge
@@ -433,7 +663,7 @@ export function Composer({
       project ||
         sessionAgent ||
         attachments.length > 0 ||
-        webSearch ||
+        effectiveWebSearch ||
         activeSkills.length > 0,
     )
   const autoPausedForCompare =
@@ -447,7 +677,6 @@ export function Composer({
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
   const activeConnectors = usableConnectors.filter((c) => c.enabled && c.status === 'connected')
-  const isMedia = kind === 'image' || kind === 'av'
   // Per picture, per second by (resolution, sound), or per call — never
   // `creditCost`, which is per 1k output tokens and reads as a fraction of the
   // real price on these surfaces.
@@ -476,6 +705,7 @@ export function Composer({
     files: FileRow[],
     search: boolean,
     skillIds: string[],
+    startedFrom: StartingPoint | null,
     action?: PrivacyAction,
     decisionToken?: string,
     restoreToken?: number,
@@ -490,6 +720,7 @@ export function Composer({
         attachments: files.map((file) => file.id),
         attachmentNames: files.map((file) => file.name),
         activatedSkillIds: skillIds,
+        startingTemplate: startedFrom ?? undefined,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
         onSession: (id) => {
@@ -512,6 +743,7 @@ export function Composer({
           text,
           attachments: files,
           activatedSkillIds: skillIds,
+          startingTemplate: startedFrom,
           webSearch: search,
           restoreToken: restoreToken ?? ++restoreSequence.current,
         })
@@ -525,23 +757,28 @@ export function Composer({
         activeRestoreToken.current === restoreToken &&
         !liveValue.current &&
         liveAttachments.current.length === 0 &&
-        liveActivatedSkillIds.current.length === 0
+        liveActivatedSkillIds.current.length === 0 &&
+        !liveStartingTemplate.current
       ) {
         activeRestoreToken.current = null
         liveValue.current = text
         liveAttachments.current = files
         liveActivatedSkillIds.current = skillIds
+        liveStartingTemplate.current = startedFrom
         setValue(text)
         setAttachments(files)
         setActivatedSkillIds(skillIds)
+        setStartingTemplate(startedFrom)
         requestAnimationFrame(() => ref.current?.focus())
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
-      const detail = errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.'))
+      // The code, not the sentence: `errorMessage` is what goes on screen and
+      // deliberately swallows machine strings, so branching on its output
+      // depended on one leaking through.
       setChatError(
-        detail === 'auto_quality_model_required'
+        errorCode(error) === 'auto_quality_model_required'
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
-          : detail,
+          : errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')),
       )
       throw error
     }
@@ -558,9 +795,11 @@ export function Composer({
       liveValue.current = pendingPrivacy.text
       liveAttachments.current = pendingPrivacy.attachments
       liveActivatedSkillIds.current = pendingPrivacy.activatedSkillIds
+      liveStartingTemplate.current = pendingPrivacy.startingTemplate
       setValue(pendingPrivacy.text)
       setAttachments(pendingPrivacy.attachments)
       setActivatedSkillIds(pendingPrivacy.activatedSkillIds)
+      setStartingTemplate(pendingPrivacy.startingTemplate)
     }
     setReusableSessionId(pendingPrivacy.sessionId)
     setPendingPrivacy(null)
@@ -581,6 +820,7 @@ export function Composer({
     const attachmentLabels = attachments.map((f) => f.name)
     const sentAttachments = attachments
     const sentSkillIds = activeSkills.map((skill) => skill.id)
+    const sentStartingTemplate = startingTemplate
     setChatError(null)
     const restoreToken = ++restoreSequence.current
     activeRestoreToken.current = kind === 'chat' ? restoreToken : null
@@ -589,9 +829,13 @@ export function Composer({
     liveValue.current = ''
     liveAttachments.current = []
     liveActivatedSkillIds.current = []
+    // Not sticky, unlike the 서식 chip beside it: a 시작점 starts one turn and
+    // then the conversation is the person's own.
+    liveStartingTemplate.current = null
     setValue('')
     setAttachments([])
     setActivatedSkillIds([])
+    setStartingTemplate(null)
     if (kind === 'av' && avOptions.mode === 'video') {
       // A ticket, not an answer: the clip takes minutes and the job row
       // outlives this request, so the card carries it.
@@ -610,8 +854,8 @@ export function Composer({
       return
     }
     if (kind === 'image') {
-      // Not a conversation turn: the result is an artifact, and `send` would
-      // put an empty assistant bubble above the gallery.
+      // A turn like any other, but not a streamed one: the pictures come back
+      // from one call, so `generateImages` writes both halves itself.
       void generateImages(sessionId, text, {
         projectId,
         onSession: (id) => navigate(`/s/${id}`, { replace: true }),
@@ -623,20 +867,32 @@ export function Composer({
         sessionId ?? reusableSessionId,
         text,
         sentAttachments,
-        webSearch,
+        effectiveWebSearch,
         sentSkillIds,
+        sentStartingTemplate,
         undefined,
         undefined,
         restoreToken,
       ).catch(() => undefined)
       return
     }
+    // The pick is spent here, on the turn now leaving. From this point the
+    // session row the server writes is the record of the shape — the chip
+    // already prefers it — and a pick left standing would follow the person
+    // into the next conversation and outrank the shape that one was wearing.
+    const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
+    setPendingTemplate(null)
     void send(sessionId, kind, text, {
       projectId,
-      webSearch,
+      webSearch: effectiveWebSearch,
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
+      // Only the writing surfaces take one; an image template is applied by
+      // `generateImages` on its own path above.
+      renderTemplateId:
+        shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
+      startingTemplate: sentStartingTemplate ?? undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         preserveComposerForSession.current = id
@@ -655,6 +911,16 @@ export function Composer({
           liveActivatedSkillIds.current = next
           return next
         })
+        setStartingTemplate((current) => {
+          const next = current ?? sentStartingTemplate
+          liveStartingTemplate.current = next
+          return next
+        })
+        // A refused turn never reached the server, so the session row was
+        // rolled back with it and the shape is nobody's record now. Hand the
+        // pick back with the rest of the draft, unless a newer one has been
+        // chosen while this request was in flight.
+        if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
       })
   }
 
@@ -670,6 +936,13 @@ export function Composer({
           activeSkills.length > 0 ||
           autoBypassPreview ||
           autoPausedForCompare ||
+          startingTemplate ||
+          // The chip below reads the session's own shape as well as the pick
+          // waiting for a turn, and this row has to open on the same rule.
+          // Asking only about the pick hid the whole row after a reload —
+          // client state is gone by then, while the shape the session is
+          // wearing survives and keeps coming out in every answer.
+          shownTemplate ||
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (
@@ -692,16 +965,73 @@ export function Composer({
                   .join(' vs ')}
               </Badge>
             )}
-            {webSearch && (
-              <Badge tone="accent">
-                <Globe size={11} />
-                {t('웹 검색')}
-              </Badge>
-            )}
+            {webSearch &&
+              (searchBlocked ? (
+                // The toggle is the person's standing wish; this row is what
+                // the turn will actually do. They disagree here, and saying so
+                // is the whole point of the chip.
+                <Badge tone="warn">
+                  <Globe size={11} />
+                  {compareMode && kind === 'chat'
+                    ? t('웹 검색 안 함 · 모델 비교는 검색 없이 실행합니다')
+                    : t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
+                </Badge>
+              ) : (
+                <Badge tone="accent">
+                  <Globe size={11} />
+                  {t('웹 검색')}
+                </Badge>
+              ))}
             {project && (
               <Badge tone="accent">
                 <Boxes size={11} />
                 {project.emoji} {project.name}
+              </Badge>
+            )}
+            {shownTemplate && (
+              <Badge tone="accent">
+                <LayoutGrid size={11} />
+                {templateText(shownTemplate, currentLang() === 'en').name}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingTemplate(null)
+                    // Sticky server-side once a turn has used it, so clearing
+                    // the chip has to clear the row too.
+                    if (session?.renderTemplateId) {
+                      void setSessionTemplate(session.id, null)
+                    }
+                  }}
+                  aria-label={t('{name} 서식 해제').replace(
+                    '{name}',
+                    templateText(shownTemplate, currentLang() === 'en').name,
+                  )}
+                  className="ml-0.5 text-faint hover:text-fg"
+                >
+                  <X size={10} />
+                </button>
+              </Badge>
+            )}
+            {/* Beside the 서식 chip and read the same way: one names the
+                shape the answer comes out in, this one names where the asking
+                started. Neither is in the box, so neither ends up in the
+                transcript as something the person wrote. */}
+            {startingTemplate && (
+              <Badge tone="accent">
+                <LayoutTemplate size={11} />
+                {startingTemplate.title}
+                <button
+                  type="button"
+                  onClick={() => {
+                    activeRestoreToken.current = null
+                    liveStartingTemplate.current = null
+                    setStartingTemplate(null)
+                  }}
+                  aria-label={t('{name} 시작점 해제').replace('{name}', startingTemplate.title)}
+                  className="ml-0.5 text-faint hover:text-fg"
+                >
+                  <X size={10} />
+                </button>
               </Badge>
             )}
             {activeSkills.map((skill) => (
@@ -799,7 +1129,13 @@ export function Composer({
               submit()
             }
           }}
-          placeholder={t(placeholders[kind])}
+          placeholder={
+            // What this 시작점 needs, rather than what the surface generally
+            // does — the half of the template the person still has to supply.
+            startingTemplate && startingTemplate.fills.length > 0
+              ? t('{list} 적어 주세요').replace('{list}', bringList(startingTemplate.fills))
+              : t(placeholders[kind])
+          }
           aria-label={t('프롬프트 입력')}
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none"
         />
@@ -809,54 +1145,90 @@ export function Composer({
             attachment control ended up 16px across, narrower than the icon
             inside it. */}
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            className="hidden"
-            aria-label={t('파일 선택')}
-            onChange={async (e) => {
-              const picked = Array.from(e.target.files ?? [])
-              // Reset immediately so picking the same file twice still fires.
-              e.target.value = ''
-              if (!picked.length) return
-              setUploading(true)
-              try {
-                for (const file of picked) {
-                  const row = await uploadFile(file, {
-                    projectId: projectId ?? undefined,
-                    sessionId: sessionId ?? undefined,
-                  }).catch(() => null)
-                  if (row) {
-                    setAttachments((current) => {
-                      activeRestoreToken.current = null
-                      const next = [...current, row]
-                      liveAttachments.current = next
-                      return next
-                    })
+          {/* Not on the picture and clip surfaces. `generateImages`,
+              `generateAudio` and `generateVideo` send a prompt and the option
+              chips; there is no field on those endpoints an upload could ride
+              in, and a paperclip that takes a file only to drop it at submit
+              costs the person a wait and the clip's credits before they find
+              out. */}
+          {!isMedia && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                className="hidden"
+                aria-label={t('파일 선택')}
+                onChange={async (e) => {
+                  const picked = Array.from(e.target.files ?? [])
+                  // Reset immediately so picking the same file twice still fires.
+                  e.target.value = ''
+                  if (!picked.length) return
+                  setUploading(true)
+                  try {
+                    for (const file of picked) {
+                      const row = await uploadFile(file, {
+                        projectId: projectId ?? undefined,
+                        sessionId: sessionId ?? undefined,
+                      }).catch(() => null)
+                      if (row) {
+                        setAttachments((current) => {
+                          activeRestoreToken.current = null
+                          const next = [...current, row]
+                          liveAttachments.current = next
+                          return next
+                        })
+                      }
+                    }
+                  } finally {
+                    setUploading(false)
                   }
-                }
-              } finally {
-                setUploading(false)
-              }
-            }}
-          />
-          <button
-            onClick={() => fileInput.current?.click()}
-            className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
-            aria-label={t('첨부')}
-            title={t('파일을 올려 답변의 근거로 씁니다')}
-          >
-            <Paperclip size={16} />
-          </button>
+                }}
+              />
+              <button
+                onClick={() => fileInput.current?.click()}
+                className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
+                aria-label={t('첨부')}
+                title={t('파일을 올려 답변의 근거로 씁니다')}
+              >
+                <Paperclip size={16} />
+              </button>
+            </>
+          )}
 
-          {usableSkills.length > 0 && (
+          {/* Only once the conversation has started. A shape you can only
+              pick before the first turn is one you cannot change your mind
+              about — and until that turn the empty screen is offering the same
+              thing two inches above, which is clutter, not reassurance. */}
+          {hasTemplates && started && (
+            <button
+              onClick={() => setGalleryOpen(true)}
+              className={cn(
+                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+                shownTemplate ? 'text-accent' : 'text-muted',
+              )}
+              aria-label={t('서식 고르기')}
+              title={t('결과물이 어떤 모양으로 나올지 고릅니다')}
+            >
+              <LayoutGrid size={16} />
+            </button>
+          )}
+
+          {/* Same rule as the attachment: a skill is a block of context the
+              chat pipeline assembles, and a picture model is never handed one.
+              Offering the list here would let somebody spend the choice on a
+              turn that cannot use it. */}
+          {!isMedia && usableSkills.length > 0 && (
             <Dropdown
               className="min-w-64"
               trigger={() => (
                 <button
-                  // Icon-only, so it needs an accessible name.
+                  // Icon-only, so it needs an accessible name — and a title,
+                  // because the name alone says what the button is and not
+                  // what pressing it does. Every other control on this bar
+                  // carries both.
                   aria-label={t('스킬')}
+                  title={t('이번 요청에만 적용할 스킬을 고릅니다')}
                   className={cn(
                     'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeSkills.length ? 'text-accent' : 'text-muted hover:text-fg',
@@ -974,16 +1346,24 @@ export function Composer({
             </Dropdown>
           )}
 
-          {!isMedia && (
+          {canWebSearch && (
             <button
               onClick={() => setWebSearch((w) => !w)}
-              aria-pressed={webSearch}
+              aria-pressed={effectiveWebSearch}
+              disabled={searchBlocked}
               className={cn(
                 'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                webSearch ? 'text-accent' : 'text-muted hover:text-fg',
+                effectiveWebSearch ? 'text-accent' : 'text-muted hover:text-fg',
+                searchBlocked && 'opacity-55 hover:bg-transparent hover:text-muted',
               )}
               aria-label={t('웹 검색')}
-              title={t('웹에서 최신 자료를 찾아 근거로 씁니다')}
+              title={
+                searchBlocked
+                  ? compareMode && kind === 'chat'
+                    ? t('모델 비교는 웹 검색 없이 실행합니다')
+                    : t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')
+                  : t('웹에서 최신 자료를 찾아 근거로 씁니다')
+              }
             >
               <Globe size={15} />
             </button>
@@ -1030,6 +1410,13 @@ export function Composer({
               )}
             >
               <MenuLabel>{t('커넥터')}</MenuLabel>
+              {/* The one control in this toolbar that is not about the turn
+                  being written. Its neighbours all reset at the next message;
+                  this one writes the account, so it has to say so before it is
+                  clicked rather than after a connector goes missing elsewhere. */}
+              <p className="px-2.5 pb-1.5 text-xs text-faint">
+                {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
+              </p>
               {usableConnectors.map((c) => (
                 <MenuItem
                   key={c.id}
@@ -1219,6 +1606,7 @@ export function Composer({
                       pendingPrivacy.attachments,
                       false,
                       pendingPrivacy.activatedSkillIds,
+                      pendingPrivacy.startingTemplate,
                       'route_strict_local',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
@@ -1240,6 +1628,7 @@ export function Composer({
                     pendingPrivacy.attachments,
                     pendingPrivacy.webSearch,
                     pendingPrivacy.activatedSkillIds,
+                    pendingPrivacy.startingTemplate,
                     'mask_external',
                     pendingPrivacy.decision.decisionToken,
                     pendingPrivacy.restoreToken,
@@ -1262,6 +1651,7 @@ export function Composer({
                       pendingPrivacy.attachments,
                       pendingPrivacy.webSearch,
                       pendingPrivacy.activatedSkillIds,
+                      pendingPrivacy.startingTemplate,
                       'send_raw_external',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
@@ -1274,6 +1664,12 @@ export function Composer({
                 </Button>
               )}
             </div>
+            {pendingPrivacy.webSearch &&
+              pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
+                <p className="text-sm text-warn">
+                  {t('안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.')}
+                </p>
+              )}
             {pendingPrivacy.decision.requestedModels.length > 1 &&
               pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
                 <p className="text-sm text-muted">
@@ -1288,6 +1684,13 @@ export function Composer({
           </>
         )}
       </Modal>
+
+      <DesignGalleryModal
+        kind={kind}
+        projectId={projectId}
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+      />
     </div>
   )
 }

@@ -25,6 +25,7 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
+from app.services import outline as plan_rules
 from app.services import settings_store
 from app.services.context import build_document_messages
 
@@ -237,17 +238,30 @@ async def write(
     api_key: str,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    #: The model that plans, when an administrator has named one. A report's
+    #: 목차 is the same kind of decision a deck's layouts are: one call that
+    #: every call after it is written against. Empty plans with `model`.
+    outline_model: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
     The caller owns persistence, billing and the artifact — this only writes.
     """
-    usage = {"inputTokens": 0, "outputTokens": 0}
+    # Planning is counted apart from writing, because it can run on another
+    # model — and a call billed at the wrong model's price is a ledger that
+    # says the wrong thing about where the money went. Empty when the same
+    # model does both, which is the shape every caller already handles.
+    usage = {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "outlineInputTokens": 0,
+        "outlineOutputTokens": 0,
+    }
 
     yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
     try:
         text, spent = await _complete(
-            model,
+            outline_model or model,
             build_document_messages(
                 SessionKind.report,
                 _OUTLINE_PROMPT.format(
@@ -266,8 +280,7 @@ async def write(
         yield {"type": "usage", **usage}
         return
 
-    usage["inputTokens"] += spent["inputTokens"]
-    usage["outputTokens"] += spent["outputTokens"]
+    plan_rules.count(usage, spent, planned_apart=bool(outline_model))
     title, headings = _parse_outline(text)
     if len(headings) < _MIN_SECTIONS:
         yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}

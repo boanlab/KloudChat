@@ -11,7 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import AuditEvent, User, UserRole, UserStatus
+from app.services import geoip
 
 
 def _camel(s: str) -> str:
@@ -135,3 +136,39 @@ class SignupResponse(Wire):
 
     user: UserOut
     session: SessionOut | None = None
+
+
+class AccessEventOut(Wire):
+    """One line of somebody's own 접속기록.
+
+    `action` travels as the stored verb rather than as a sentence: the screen
+    that renders it is the one that knows the reader's language, and a Korean
+    string baked in here would come back in English nowhere.
+
+    `region` is empty unless the server has a GeoLite2 database, and empty for
+    an address it does not cover. Never a guess — on this screen a wrong city
+    is worse than no city, because the reason to look is to spot the one entry
+    that was not you.
+    """
+
+    id: str
+    at: datetime
+    action: str
+    detail: str
+    ip: str
+    region: str
+    user_agent: str
+    severity: str
+
+    @classmethod
+    def of(cls, e: AuditEvent) -> AccessEventOut:
+        return cls(
+            id=e.id,
+            at=e.at,
+            action=e.action,
+            detail=e.detail,
+            ip=e.ip,
+            region=geoip.lookup(e.ip),
+            user_agent=e.user_agent,
+            severity=e.severity,
+        )

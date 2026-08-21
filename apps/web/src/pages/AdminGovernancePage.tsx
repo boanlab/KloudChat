@@ -2,7 +2,7 @@ import { Search, ShieldCheck, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { formatDateTime } from '@/lib/utils'
+import { browserName, formatDateTime } from '@/lib/utils'
 import { Badge, Button, Card, Input, PageHeader, Switch, Tabs } from '@/components/ui'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -60,7 +60,7 @@ export function AdminGovernancePage() {
     const q = query.trim().toLowerCase()
     if (!q) return audit ?? []
     return (audit ?? []).filter((e) =>
-      [e.actor, e.action, ACTION_LABEL[e.action] ?? '', e.target, e.detail, e.ip]
+      [e.actor, e.action, ACTION_LABEL[e.action] ?? '', e.target, e.detail, e.ip, e.region]
         .join(' ')
         .toLowerCase()
         .includes(q),
@@ -312,7 +312,7 @@ export function AdminGovernancePage() {
                   <th className="px-4 py-2.5 font-medium">{t('계정')}</th>
                   <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
                   <th className="px-4 py-2.5 font-medium">{t('대상')}</th>
-                  <th className="px-4 py-2.5 font-medium">IP</th>
+                  <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -329,7 +329,18 @@ export function AdminGovernancePage() {
                       {e.detail && <span className="ml-2 text-xs text-faint">{e.detail}</span>}
                     </td>
                     <td className="max-w-[240px] truncate px-4 py-2.5 text-muted">{e.target}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-faint">{e.ip}</td>
+                    {/* Address, place and browser in one cell: three columns
+                        of mostly-empty would push 행위 off a laptop screen,
+                        and these three are read together or not at all. */}
+                    <td className="px-4 py-2.5 text-xs whitespace-nowrap text-faint">
+                      <span className="font-mono tabular-nums">{e.ip || '—'}</span>
+                      {e.region && <span className="ml-2">{e.region}</span>}
+                      {browserName(e.userAgent) && (
+                        <span className="ml-2" title={e.userAgent}>
+                          {browserName(e.userAgent)}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

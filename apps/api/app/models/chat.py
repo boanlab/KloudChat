@@ -48,6 +48,30 @@ class Role(StrEnum):
     system = "system"
 
 
+class TurnFailure(StrEnum):
+    """How a turn ended, when it did not end in an answer.
+
+    Named for what the person is left holding rather than for what broke: the
+    provider's error text belongs in the log, and the two outcomes a reader can
+    tell apart on the screen — nothing at all, or half an answer — are also the
+    only two that change what they do next.
+    """
+
+    no_answer = "no_answer"
+    interrupted = "interrupted"
+
+
+class MessageRating(StrEnum):
+    """What a reader thought of one answer.
+
+    Two values and a null, deliberately: null is "nobody said", which is not
+    the same as an answer somebody looked at and found neither good nor bad.
+    """
+
+    up = "up"
+    down = "down"
+
+
 class ChatSession(SQLModel, table=True):
     """Named `ChatSession` because `Session` collides with SQLAlchemy's."""
 
@@ -71,6 +95,12 @@ class ChatSession(SQLModel, table=True):
         sa_column=Column(String, nullable=False, default=RoutingMode.manual.value),
     )
     artifact_id: str | None = Field(default=None)
+    #: The rendering template this session writes into, when one was picked.
+    #: A plain string rather than a foreign key: the catalogue ships inside the
+    #: image, so there is no row to point at, and an id that stops existing
+    #: after an upgrade has to degrade to "no template" rather than to a
+    #: session that will not load.
+    render_template_id: str | None = Field(default=None)
     pinned: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
@@ -98,8 +128,50 @@ class Message(SQLModel, table=True):
     #: detected value, and is safe to return with the transcript.
     routing: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
+        #: What this turn produced, as artifact ids, for the turns whose answer is
+        #: a thing rather than a sentence. The transcript renders them where the
+        #: answer would be, so nothing has to be written *about* the picture.
+        #:
+        #: Ids and not a copy: an artifact is edited, versioned and deleted on its
+        #: own, and a stale duplicate here would show a version nobody can reach.
+    artifact_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+
+        #: The 시작점 this turn began from: `{"templateId": ..., "title": ...}`.
+        #: The title travels with the id so the transcript still names the template
+        #: whether or not the row survived — a built-in id says nothing on its own.
+        #:
+        #: Never the template's prompt: what the model was told is not what the
+        #: person said, and the transcript records the second.
+    started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+
     model: str | None = Field(default=None)
+
+        #: What the person who owns this conversation thought of the answer. On
+        #: the message rather than in a feedback table because it is read the way
+        #: it is written: one turn at a time, in the transcript, by the reader who
+        #: left it.
+        #:
+        #: Plain string rather than a database enum — a third verdict should be a
+        #: migration of this file, not of the type behind it.
+    rating: MessageRating | None = Field(default=None, sa_column=Column(String, nullable=True))
+
+        #: Set when this turn did not produce the answer it was supposed to carry:
+        #: on the assistant row when something was written before the stream broke,
+        #: and on the question itself when nothing was. Null is the ordinary
+        #: answered turn, and every row written before this was recorded.
+        #:
+        #: Rows predating it are read positionally instead — a question with
+        #: nothing under it.
+    failure: TurnFailure | None = Field(default=None, sa_column=Column(String, nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
-__all__ = ["ChatSession", "Message", "Role", "RoutingMode", "SessionKind"]
+__all__ = [
+    "ChatSession",
+    "Message",
+    "MessageRating",
+    "Role",
+    "RoutingMode",
+    "SessionKind",
+    "TurnFailure",
+]

@@ -31,7 +31,16 @@ export function MyUsagePage() {
 
   const cycle = data?.cycle
   const pct = cycle && cycle.allowance > 0 ? Math.min(100, (cycle.used / cycle.allowance) * 100) : 0
-  const peak = Math.max(1, ...(data?.daily ?? []).map((d) => d.credits))
+  // A month spent entirely on self-hosted models bills nothing, and a chart of
+  // zeroes says nothing happened when 260 turns a day did. Plot the turns.
+  const byCredits = (data?.totals.credits ?? 0) > 0
+  const daily = (data?.daily ?? []).map((d) => ({ ...d, value: byCredits ? d.credits : d.requests }))
+  const peak = Math.max(1, ...daily.map((d) => d.value))
+  const other = data?.totals.otherCredits ?? 0
+  // The ledger can charge against no conversation at all, which is a surface
+  // the five-kind table has no entry for.
+  const surface = (kind: string) =>
+    kind in kindMeta ? t(kindMeta[kind as keyof typeof kindMeta].label) : t('기타')
 
   return (
     <>
@@ -98,16 +107,29 @@ export function MyUsagePage() {
       ) : (
         <>
           <Card className="mt-4 p-4">
-            <p className="text-base font-medium">{t('일별')}</p>
-            <div className="mt-3 flex h-28 items-end gap-1">
-              {(data?.daily ?? []).map((d) => (
-                <div key={d.date} className="group relative flex-1">
+            <p className="text-base font-medium">
+              {t('일별')} {byCredits ? t('크레딧') : t('응답 수')}
+              {!byCredits && (
+                <span className="font-normal text-faint">
+                  {' '}
+                  — {t('이 기간에는 과금되는 모델을 쓰지 않았습니다')}
+                </span>
+              )}
+            </p>
+            {/* `items-stretch`, not `items-end`: a percentage height needs a
+                parent with a height, and an end-aligned flex item is only as
+                tall as its content. The column is the full 7rem and the bar
+                grows from its floor. */}
+            <div className="mt-3 flex h-28 items-stretch gap-1">
+              {daily.map((d) => (
+                <div key={d.date} className="group relative flex flex-1 flex-col justify-end">
                   <div
                     className="rounded-t bg-accent/70 transition-colors group-hover:bg-accent"
-                    style={{ height: `${Math.max(2, (d.credits / peak) * 100)}%` }}
+                    style={{ height: `${Math.max(2, (d.value / peak) * 100)}%` }}
                   />
                   <span className="pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 rounded bg-panel px-1.5 py-0.5 text-xs whitespace-nowrap shadow group-hover:block">
-                    {d.date.slice(5)} · {d.credits.toLocaleString()}
+                    {d.date.slice(5)} · {t('{n}회').replace('{n}', String(d.requests))} ·{' '}
+                    {t('{n} 크레딧').replace('{n}', d.credits.toLocaleString())}
                   </span>
                 </div>
               ))}
@@ -156,6 +178,12 @@ export function MyUsagePage() {
                     </span>
                   </li>
                 ))}
+                {other > 0 && (
+                  <li className="flex items-baseline justify-between gap-3 text-base">
+                    <span className="text-muted">{t('기타')}</span>
+                    <span className="shrink-0 tabular-nums">{other.toLocaleString()}</span>
+                  </li>
+                )}
               </ul>
             </Card>
             <Card className="p-4">
@@ -163,9 +191,7 @@ export function MyUsagePage() {
               <ul className="mt-2 space-y-1.5">
                 {(data?.bySurface ?? []).map((s) => (
                   <li key={s.kind} className="flex items-baseline justify-between gap-3 text-base">
-                    <span className="text-muted">
-                      {t(kindMeta[s.kind as keyof typeof kindMeta]?.label ?? s.kind)}
-                    </span>
+                    <span className="text-muted">{surface(s.kind)}</span>
                     <span className="shrink-0 tabular-nums">
                       {s.credits.toLocaleString()}{' '}
                       <span className="text-faint">· {t('{n}회').replace('{n}', String(s.requests))}</span>

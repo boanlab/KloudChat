@@ -125,9 +125,15 @@ export function AutoRoutingSection() {
           label={t('절약 모델 추가')}
           hint={t('최대 3개까지 추가할 수 있으며 위에서부터 사용 가능 여부를 확인합니다.')}
         >
+          {/* Greyed out at three, and the hint above it is read once and then
+              forgotten — so the reason is carried by the control that stopped
+              responding, where it is looked for. */}
           <select
             value=""
             disabled={economyModelIds.length >= 3}
+            title={
+              economyModelIds.length >= 3 ? t('절약 모델은 3개까지만 추가할 수 있습니다') : undefined
+            }
             onChange={(event) => {
               const id = event.target.value
               if (!id || economyModelIds.includes(id)) return
@@ -175,11 +181,20 @@ export function AutoRoutingSection() {
                       {model.dataBoundary === 'self_hosted' ? 'self-hosted' : t('외부 제공')}
                     </Badge>
                   )}
+                  {/* An arrow that cannot move is the row telling you it is
+                      already at the end of the list, but only if you already
+                      read the numbering that way. The tooltip says it outright,
+                      at the arrow that refused. */}
                   <Button
                     variant="ghost"
                     size="icon"
                     disabled={index === 0}
                     aria-label={t('{name} 우선순위 올리기').replace('{name}', model?.label ?? id)}
+                    title={
+                      index === 0
+                        ? t('이미 가장 먼저 시도하는 모델입니다')
+                        : t('한 칸 위로 올려 더 먼저 시도합니다')
+                    }
                     onClick={() => updateOrder(id, -1)}
                   >
                     <ArrowUp size={14} />
@@ -189,6 +204,11 @@ export function AutoRoutingSection() {
                     size="icon"
                     disabled={index === economyModelIds.length - 1}
                     aria-label={t('{name} 우선순위 내리기').replace('{name}', model?.label ?? id)}
+                    title={
+                      index === economyModelIds.length - 1
+                        ? t('이미 가장 나중에 시도하는 모델입니다')
+                        : t('한 칸 아래로 내려 더 나중에 시도합니다')
+                    }
                     onClick={() => updateOrder(id, 1)}
                   >
                     <ArrowDown size={14} />
@@ -197,6 +217,7 @@ export function AutoRoutingSection() {
                     variant="ghost"
                     size="icon"
                     aria-label={t('{name} 제거').replace('{name}', model?.label ?? id)}
+                    title={t('이 모델을 절약 목록에서 뺍니다')}
                     onClick={() => {
                       setEconomyModelIds((current) => current.filter((candidate) => candidate !== id))
                       dirty.current = true

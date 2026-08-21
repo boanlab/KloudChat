@@ -1,15 +1,17 @@
-import { AudioLines, Code2, Copy, Download, Eye } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
+import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PanelControls } from '@/components/artifacts/PanelControls'
-import { DeckPanel } from '@/components/slides/DeckPanel'
+import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
-import { Badge, Button, ButtonLink } from '@/components/ui'
-import { fileUrl } from '@/lib/api'
+import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { useStore } from '@/store/useStore'
-import type { Artifact } from '@/types'
+import type { Artifact, CodeArtifact } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
@@ -104,15 +106,412 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
   }
 }
 
-function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
+/**
+ * Whether an HTML artifact is a deck or a document.
+ *
+ * The same rule the server follows before it exports one: the template says
+ * which kind it is, and a template that stopped existing across an upgrade
+ * leaves the markup to say so.
+ */
+function useIsDeck(artifact: CodeArtifact) {
+  const templates = useStore((s) => s.designTemplates)
+  const template = templates.find((row) => row.id === artifact.templateId)
+  return template ? template.kind === 'deck' : artifact.content.includes('class="slide')
+}
+
+/** One slide of an HTML deck. */
+interface PageSlide {
+  title: string
+  /** The whole document again, with only this slide left in it. */
+  doc: string
+}
+
+/**
+ * An HTML deck split at its slides.
+ *
+ * `page_export.to_slides` reads the same `<section class="slide">` boundary
+ * server-side and pays for it in design, since the seed needs a browser. Here
+ * there is one, so a slide stays the markup it was written as.
+ */
+function splitSlides(html: string): PageSlide[] {
+  const page = new DOMParser().parseFromString(html, 'text/html')
+  const count = page.querySelectorAll('section.slide').length
+  return Array.from({ length: count }, (_, keep) => {
+    // The whole page with the other slides taken out, rather than the section
+    // lifted into a page of its own: the stylesheet, the body's own class and
+    // anything else the seed wrapped around the deck belong to every slide.
+    const one = page.cloneNode(true) as Document
+    const sections = Array.from(one.querySelectorAll('section.slide'))
+    sections.forEach((section, i) => {
+      if (i !== keep) section.remove()
+    })
+    return {
+      // The heading the seed's wrapper wrote from the outline. Read off the
+      // markup rather than off `blocks`, so a rewritten block cannot leave the
+      // list naming something the slide no longer says.
+      title: (sections[keep].querySelector('h2, h1')?.textContent ?? '').trim(),
+      doc: `<!doctype html>${one.documentElement.outerHTML}`,
+    }
+  })
+}
+
+/**
+ * Presenting a deck that came out as a document.
+ *
+ * A JSON deck presents by drawing its slide objects; this one cannot, because
+ * its design lives in the file's own stylesheet. So the file goes on the wall
+ * one section at a time, in the same sandboxed frame the preview uses.
+ */
+function PagePresent({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [presenting, setPresenting] = useState(false)
+  const [index, setIndex] = useState(0)
+  // Split on the way in rather than on every render: a document being written
+  // changes with every block, and none of those are being presented.
+  const slides = useMemo(
+    () => (presenting ? splitSlides(artifact.content) : []),
+    [presenting, artifact.content],
+  )
+  // Nothing to walk yet. Same shape as the deck panel's button while the
+  // slides are still arriving — present, and plainly not ready.
+  const written = /<section[^>]*class="[^"]*\bslide\b/.test(artifact.content)
+  const at = Math.min(index, Math.max(slides.length - 1, 0))
+
+  return (
+    <>
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={!written}
+        onClick={() => {
+          setIndex(0)
+          setPresenting(true)
+        }}
+      >
+        <Play size={13} />
+        {t('발표')}
+      </Button>
+      {presenting && slides.length > 0 && (
+        <PresentStage
+          title={artifact.title}
+          index={at}
+          count={slides.length}
+          outline={slides.map((s) => s.title)}
+          onIndex={setIndex}
+          onClose={() => setPresenting(false)}
+        >
+          <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control bg-white shadow-float">
+            <iframe
+              title={slides[at].title || artifact.title}
+              srcDoc={slides[at].doc}
+              sandbox=""
+              className="size-full border-0"
+            />
+          </div>
+        </PresentStage>
+      )}
+    </>
+  )
+}
+
+/**
+ * The formats an HTML artifact can leave in.
+ *
+ * `.html` is the artifact itself, and its print rules turn into a PDF in the
+ * reader's browser. The rest are the server reading the markup back into
+ * slides or sections for the existing exporters.
+ *
+ * Never opened in a tab from here: a `blob:` URL inherits this origin, and
+ * model-written markup is not something to run inside it.
+ */
+function PageExport({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [busy, setBusy] = useState<string | null>(null)
+  const isDeck = useIsDeck(artifact)
+
+  const save = async (format: 'pptx' | 'docx' | 'pdf' | 'hwpx' | 'md' | 'html') => {
+    setBusy(format)
+    try {
+      await downloadArtifact(artifact.id, format, artifact.title || 'document')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Dropdown
+      align="right"
+      trigger={() => (
+        <Button variant="secondary" size="sm" disabled={busy !== null}>
+          <Download size={13} />
+          {t('내보내기')}
+        </Button>
+      )}
+    >
+      <MenuLabel>{t('형식 선택')}</MenuLabel>
+      {isDeck ? (
+        <MenuItem hint="PPTX" onClick={() => void save('pptx')}>
+          PowerPoint
+        </MenuItem>
+      ) : (
+        <MenuItem hint="DOCX" onClick={() => void save('docx')}>
+          {t('Word 문서')}
+        </MenuItem>
+      )}
+      <MenuItem hint="PDF" onClick={() => void save('pdf')}>
+        PDF
+      </MenuItem>
+      {!isDeck && (
+        <MenuItem hint="HWPX" onClick={() => void save('hwpx')}>
+          {t('한글 문서')}
+        </MenuItem>
+      )}
+      <MenuItem hint="HTML" onClick={() => void save('html')}>
+        {t('원본 HTML')}
+      </MenuItem>
+      <MenuItem hint="MD" onClick={() => void save('md')}>
+        {t('텍스트')}
+      </MenuItem>
+    </Dropdown>
+  )
+}
+
+/**
+ * Rewriting one block of an HTML artifact.
+ *
+ * The preview is sandboxed, so there is no clicking into the document to say
+ * "this part". The blocks the file was written from stand in for that, and
+ * the document is re-rendered from the same seed.
+ */
+function RewriteBlock({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [target, setTarget] = useState<number | null>(null)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+
+  const blocks = artifact.blocks ?? []
+  // Written before blocks kept their markup: the server refuses those, and a
+  // button that always fails is worse than no button.
+  if (blocks.length === 0) return null
+
+  const rewrite = async () => {
+    if (target === null) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.rewriteBlock(artifact.id, target, note)
+      await loadArtifacts()
+      setTarget(null)
+      setNote('')
+    } catch (err) {
+      setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Dropdown
+        align="right"
+        trigger={() => (
+          <Button variant="secondary" size="sm">
+            <RefreshCw size={13} />
+            {t('다시 쓰기')}
+          </Button>
+        )}
+      >
+        <MenuLabel>{t('어느 부분을 다시 쓸까요?')}</MenuLabel>
+        {blocks.map((block, index) => (
+          <MenuItem
+            key={`${block.title}-${index}`}
+            hint={String(index + 1)}
+            onClick={() => {
+              setNote('')
+              setError(null)
+              setTarget(index)
+            }}
+          >
+            {block.title || t('제목 없음')}
+          </MenuItem>
+        ))}
+      </Dropdown>
+
+      <Modal
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        title={t('{name} 다시 쓰기').replace(
+          '{name}',
+          (target !== null && blocks[target]?.title) || '',
+        )}
+        description={t('무엇을 고칠지 적으면 그것만 반영합니다. 비워 두면 그냥 다시 씁니다.')}
+        footer={
+          <>
+            <Button onClick={() => setTarget(null)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void rewrite()} disabled={busy}>
+              {busy ? t('다시 쓰는 중…') : t('다시 쓰기')}
+            </Button>
+          </>
+        }
+      >
+        <Textarea
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          aria-label={t('고칠 내용')}
+          placeholder={t('예: 숫자를 빼고 무엇을 결정해야 하는지만 남겨 주세요.')}
+        />
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
+  )
+}
+
+/**
+ * Putting a picture this workspace already made into one block of a page.
+ *
+ * The writing model never produces one and may not point at one, so the
+ * picture comes from the image surface and the server inlines its bytes.
+ * Nothing is fetched when a reader opens the file.
+ */
+function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
+  const t = useT()
+  const [target, setTarget] = useState<number | null>(null)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [caption, setCaption] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const artifacts = useStore((s) => s.artifacts)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+
+  const blocks = artifact.blocks ?? []
+  // Same session first: the picture somebody made for this document is almost
+  // always the one they made while writing it.
+  const pictures = artifacts
+    .filter((a) => a.kind === 'image')
+    .sort((a, b) => {
+      const mine = Number(b.sessionId === artifact.sessionId) - Number(a.sessionId === artifact.sessionId)
+      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
+    })
+    .slice(0, 24)
+
+  if (blocks.length === 0 || pictures.length === 0) return null
+
+  const insert = async () => {
+    if (target === null || !picked) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.addBlockImage(artifact.id, target, picked, caption.trim())
+      await loadArtifacts()
+      setTarget(null)
+      setPicked(null)
+      setCaption('')
+    } catch (err) {
+      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Dropdown
+        align="right"
+        trigger={() => (
+          <Button variant="secondary" size="sm">
+            <ImagePlus size={13} />
+            {t('그림 넣기')}
+          </Button>
+        )}
+      >
+        <MenuLabel>{t('어느 자리에 넣을까요?')}</MenuLabel>
+        {blocks.map((block, index) => (
+          <MenuItem
+            key={`img-${block.title}-${index}`}
+            hint={String(index + 1)}
+            onClick={() => {
+              setPicked(null)
+              setCaption('')
+              setError(null)
+              setTarget(index)
+            }}
+          >
+            {block.title || t('제목 없음')}
+          </MenuItem>
+        ))}
+      </Dropdown>
+
+      <Modal
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        title={t('{name} 에 그림 넣기').replace(
+          '{name}',
+          (target !== null && blocks[target]?.title) || '',
+        )}
+        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        footer={
+          <>
+            <Button onClick={() => setTarget(null)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
+              {busy ? t('넣는 중…') : t('넣기')}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
+          {pictures.map((picture) => (
+            <button
+              key={picture.id}
+              onClick={() => setPicked(picture.id)}
+              aria-label={picture.title}
+              aria-pressed={picked === picture.id}
+              className={cn(
+                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
+                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
+              )}
+            >
+              <ArtifactPreview artifact={picture} />
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <Input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            aria-label={t('설명')}
+            placeholder={t('그림 아래에 붙일 설명 (선택)')}
+          />
+        </div>
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
+  )
+}
+
+/**
+ * An HTML or code artifact with the controls that belong to it.
+ *
+ * Exported because the artifacts gallery opens the same document in a dialog
+ * and needs the same controls — check, rewrite a block, add a picture,
+ * export.
+ */
+export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
   const t = useT()
   const [tab, setTab] = useState<'preview' | 'source'>(
     artifact.kind === 'html' ? 'preview' : 'source',
   )
+  const isDeck = useIsDeck(artifact)
   return (
     <div className="flex h-full min-h-0 flex-col">
       {artifact.kind === 'html' && (
-        <div className="flex gap-1 border-b border-line px-3 py-1.5">
+        <div className="flex items-center gap-1 border-b border-line px-3 py-1.5">
           {(
             [
               { id: 'preview', label: t('미리보기'), icon: Eye },
@@ -131,6 +530,19 @@ function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 
               {t.label}
             </button>
           ))}
+          <span className="flex-1" />
+          <LintFindings findings={artifact.lint} artifact={artifact} />
+          <AddBlockImage artifact={artifact} />
+          <RewriteBlock artifact={artifact} />
+          {/* 서식을 고른 대가가 발표를 못 하는 것이어서는 안 된다. 덱이면
+              JSON 덱과 같은 자리에서 같은 이름으로 무대에 오른다. */}
+          {isDeck && <PagePresent artifact={artifact} />}
+          <PageExport artifact={artifact} />
+          {/* 저장 시점. 블록 하나를 다시 쓰거나 그림을 넣는 것도 편집이라
+              판이 쌓이는데, 여기에는 그 판으로 돌아갈 길이 없었다. 덱 패널과
+              같은 차례로 세운다 — 두 화면이 같은 줄을 읽게 하려는 것이 이
+              두 가지를 한 자리에 놓은 이유이므로. */}
+          <VersionHistory artifact={artifact} />
         </div>
       )}
       <div className="min-h-0 flex-1">

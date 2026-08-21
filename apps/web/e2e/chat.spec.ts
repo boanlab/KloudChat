@@ -40,8 +40,13 @@ test('메시지를 보내면 토큰이 스트리밍되고 답이 남는다', asy
   const assistant = page.locator('.group').filter({ hasNot: page.locator('form') }).last()
   await expect(assistant).toContainText('2', { timeout: 90_000 })
 
-  // The usage footer only renders once the turn is settled.
-  await expect(page.getByText(/크레딧$/).last()).toBeVisible({ timeout: 30_000 })
+  // The usage footer only renders once the turn is settled. Read on the answer
+  // itself and on the whole line: `/크레딧$/` across the page also matched the
+  // sidebar's "이번 달 크레딧" label, so it passed on a turn that never
+  // reported anything — and a free model ends the line "무료", not "크레딧".
+  await expect(assistant.getByText(/ in · .+ out · (무료|[\d,]+ 크레딧)/)).toBeVisible({
+    timeout: 30_000,
+  })
 })
 
 test('새로고침해도 대화가 남아 있다', async ({ page }) => {

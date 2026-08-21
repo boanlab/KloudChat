@@ -1,0 +1,50 @@
+kind = "image"
+name = "개념도"
+description = "구조를 암시하는 그림. 이름표는 붙이지 않고 자리만 남깁니다"
+category = "문서"
+fills = ["무엇의 구조인지", "구조의 형태", "그리는 결"]
+example_prompt = "{subject}의 구조를 한 장으로 보여 주는 그림. {shape} 형태로, {texture} 느낌으로 그려 줘."
+layouts = ["cover"]
+# Two things are true of every picture this template asks for, and both are
+# about what a picture model cannot do: it renders lettering badly, and a
+# diagram it draws by itself has labels that say nothing. So the prompt asks
+# for the shape of a structure and leaves the naming to the slide it lands on.
+prompt_suffix = "abstract schematic composition, simple blocks and layers joined by plain connectors, suggest structure rather than drawing a real labelled diagram, at most six elements, generous whitespace between them, even flat lighting, no text, no lettering, no numbers, no logos, no faces"
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Concept diagram"
+description_en = "An image that suggests structure, with the labels left for you to add"
+category_en = "Documents"
+fills_en = ["What the structure is", "Shape of the structure", "Rendering"]
+example_prompt_en = "An image showing how {subject} is structured, {shape}, drawn in {texture}."
+
+[defaults]
+aspect = "16:9"
+style = "미니멀"
+
+[[arguments]]
+name = "subject"
+label = "무엇의 구조"
+label_en = "Structure of what"
+default = "연구실 데이터 처리 흐름"
+default_en = "a lab's data-processing pipeline"
+
+[[arguments]]
+name = "shape"
+label = "형태"
+label_en = "Shape"
+default = "층으로 쌓인"
+default_en = "stacked in layers"
+options = ["층으로 쌓인", "가운데에서 뻗어 나가는", "왼쪽에서 오른쪽으로 흐르는", "격자로 맞물린"]
+options_en = ["stacked in layers", "radiating from a centre", "flowing left to right", "meshed in a grid"]
+
+[[arguments]]
+name = "texture"
+label = "결"
+label_en = "Rendering"
+default = "가는 선의 도면"
+default_en = "thin drafting lines"
+options = ["가는 선의 도면", "색면 구성", "연필 스케치"]
+options_en = ["thin drafting lines", "flat colour planes", "a pencil sketch"]

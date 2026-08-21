@@ -89,7 +89,21 @@ def _json_block(text: str, opener: str, closer: str) -> Any:
         return None
 
 
-async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> str:
+#: A slide is one extraction plus one judgement per claim, so no single call
+#: knows what the slide cost. Every one of them reports its own tokens and the
+#: caller adds them up, the way the document writers already do.
+def _spend() -> dict[str, int]:
+    return {"inputTokens": 0, "outputTokens": 0}
+
+
+def _add(total: dict[str, int], spent: dict[str, int]) -> None:
+    total["inputTokens"] += spent["inputTokens"]
+    total["outputTokens"] += spent["outputTokens"]
+
+
+async def _complete(
+    model: str, prompt: str, api_key: str, max_tokens: int
+) -> tuple[str, dict[str, int]]:
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -105,7 +119,12 @@ async def _complete(model: str, prompt: str, api_key: str, max_tokens: int) -> s
             },
         )
         response.raise_for_status()
-        return (response.json()["choices"][0]["message"]["content"] or "").strip()
+        payload = response.json()
+        raw = payload.get("usage") or {}
+        return (payload["choices"][0]["message"]["content"] or "").strip(), {
+            "inputTokens": int(raw.get("prompt_tokens") or 0),
+            "outputTokens": int(raw.get("completion_tokens") or 0),
+        }
 
 
 async def _search(query: str) -> list[dict[str, str]]:
@@ -146,18 +165,25 @@ def slide_text(slide: dict) -> str:
     return "\n".join(parts)
 
 
-async def check_slide(*, slide: dict, model: str, api_key: str) -> dict:
-    """Returns a `FactCheck` for one slide — always `done`, possibly empty.
+async def check_slide(
+    *, slide: dict, model: str, api_key: str
+) -> tuple[dict, dict[str, int]]:
+    """`(factCheck, usage)` for one slide — always `done`, possibly empty.
 
     An empty claim list is a real answer: a slide of positions and definitions
     has nothing a search engine can settle.
+
+    The tokens come back beside the verdicts because a caller who cannot see
+    them bills for none of them, and this is the most expensive thing on the
+    deck screen: up to five calls and four searches for one slide.
     """
+    usage = _spend()
     body = slide_text(slide)
     if not body.strip():
-        return {"status": "done", "claims": []}
+        return {"status": "done", "claims": []}, usage
 
     try:
-        raw = await _complete(
+        raw, spent = await _complete(
             model,
             _EXTRACT_PROMPT.format(
                 limit=MAX_CLAIMS, title=slide.get("title") or "", body=body[:2000]
@@ -167,53 +193,67 @@ async def check_slide(*, slide: dict, model: str, api_key: str) -> dict:
         )
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("claim extraction failed: %s", exc)
-        return {"status": "done", "claims": []}
+        return {"status": "done", "claims": []}, usage
+    _add(usage, spent)
 
     items = _json_block(raw, "[", "]")
     claims = [str(c).strip() for c in items if str(c).strip()] if isinstance(items, list) else []
     if not claims:
-        return {"status": "done", "claims": []}
+        return {"status": "done", "claims": []}, usage
 
     judged = await asyncio.gather(
         *(_judge(c, model, api_key) for c in claims[:MAX_CLAIMS]), return_exceptions=True
     )
     out = []
-    for claim, result in zip(claims[:MAX_CLAIMS], judged, strict=False):
-        if isinstance(result, BaseException):
-            log.info("factcheck judge crashed: %s", result)
+    for claim, outcome in zip(claims[:MAX_CLAIMS], judged, strict=False):
+        if isinstance(outcome, BaseException):
+            log.info("factcheck judge crashed: %s", outcome)
             result = {
                 "verdict": "uncertain",
                 "note": "확인하지 못했습니다.",
                 "sourceUrl": "",
             }
+        else:
+            result, spent = outcome
+            _add(usage, spent)
         out.append({"id": f"c_{uuid.uuid4().hex[:8]}", "text": claim, **result})
-    return {"status": "done", "claims": out}
+    return {"status": "done", "claims": out}, usage
 
 
-async def _judge(claim: str, model: str, api_key: str) -> dict:
-    """One claim → a verdict. Every failure path returns `uncertain`."""
+async def _judge(claim: str, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
+    """One claim → `(verdict, usage)`. Every failure path returns `uncertain`.
+
+    A search that found nothing costs no tokens; a judgement that was read and
+    then thrown away still cost them, and is reported.
+    """
     hits = await _search(claim)
     if not hits:
         return {
             "verdict": "uncertain",
             "note": "검색 결과를 얻지 못했습니다. 직접 확인이 필요합니다.",
             "sourceUrl": "",
-        }
+        }, _spend()
 
     evidence = "\n\n".join(
         f"[{i + 1}] {h['title']}\n{h['url']}\n{h['snippet']}" for i, h in enumerate(hits)
     )
     try:
-        raw = await _complete(
+        raw, spent = await _complete(
             model, _JUDGE_PROMPT.format(claim=claim, evidence=evidence), api_key, 300
         )
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.info("factcheck judge failed: %s", exc)
-        return {"verdict": "uncertain", "note": "판정하지 못했습니다.", "sourceUrl": ""}
+        return (
+            {"verdict": "uncertain", "note": "판정하지 못했습니다.", "sourceUrl": ""},
+            _spend(),
+        )
 
     data = _json_block(raw, "{", "}")
     if not isinstance(data, dict):
-        return {"verdict": "uncertain", "note": "판정을 읽지 못했습니다.", "sourceUrl": ""}
+        return (
+            {"verdict": "uncertain", "note": "판정을 읽지 못했습니다.", "sourceUrl": ""},
+            spent,
+        )
 
     verdict = str(data.get("verdict") or "").strip().lower()
     if verdict not in ("supported", "unsupported", "uncertain"):
@@ -237,7 +277,7 @@ async def _judge(claim: str, model: str, api_key: str) -> dict:
         "verdict": verdict,
         "note": (str(data.get("note") or "").strip() + note_suffix)[:300],
         "sourceUrl": url,
-    }
+    }, spent
 
 
 __all__ = ["MAX_CLAIMS", "available", "check_slide", "slide_text"]

@@ -1,0 +1,33 @@
+kind = "audio"
+name = "배경 음악"
+description = "말소리를 덮지 않게 깔아 두는 짧은 배경 트랙"
+category = "홍보"
+fills = ["느낌", "악기"]
+example_prompt = "{mood} 느낌의 짧은 배경 음악. {instrument} 중심으로, 멜로디는 단순하게. 나레이션을 덮지 않게 조용히 깔릴 것. 가사 없음."
+name_en = "Background bed"
+description_en = "A short track to sit under a voice without covering it"
+category_en = "Promotion"
+fills_en = ["Mood", "Instrument"]
+example_prompt_en = "A short {mood} background track led by {instrument}, with a simple melody. It should sit quietly under narration. No vocals."
+
+[defaults]
+mode = "audio"
+audioKind = "music"
+
+[[arguments]]
+name = "mood"
+label = "느낌"
+label_en = "Mood"
+default = "잔잔하고 따뜻한"
+default_en = "calm and warm"
+options = ["잔잔하고 따뜻한", "가볍고 경쾌한", "차분하고 진지한"]
+options_en = ["calm and warm", "light and upbeat", "measured and serious"]
+
+[[arguments]]
+name = "instrument"
+label = "악기"
+label_en = "Instrument"
+default = "피아노와 얕은 현악"
+default_en = "piano with soft strings"
+options = ["피아노와 얕은 현악", "어쿠스틱 기타", "부드러운 신시사이저"]
+options_en = ["piano with soft strings", "acoustic guitar", "soft synthesiser"]

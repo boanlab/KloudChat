@@ -15,7 +15,9 @@ import { personas } from './personas'
  * sidebar's row menu appears on all twenty-three screens at all three widths,
  * and reporting it seventy times would say the product has seventy problems
  * when it has one. Each defect therefore carries the list of screens it was
- * seen on instead of a copy per screen.
+ * seen on instead of a copy per screen, and the same holds down a list: one
+ * delete button rendered once per row is one defect, not one per row. What
+ * counts as the same control is `identity`.
  *
  * It is a discovery tool and never fails the run — a red suite would only make
  * the notes harder to read. Everything goes to `audit/detail-audit.json`.
@@ -25,6 +27,11 @@ interface Observation {
   rule: string
   /** The control, named the way the persona would point at it. */
   subject: string
+  /**
+   * Which control this is, as opposed to which copy of it — see `identity`.
+   * Absent where the subject already names one thing, as it does for a panel.
+   */
+  key?: string
   where: string
   viewport: string
   hurts: string
@@ -47,13 +54,18 @@ const ROUTES: [path: string, label: string][] = [
   ['/usage', '내 사용량'],
   ['/connectors', '커넥터'],
   ['/agent-setup', '에이전트 설정'],
+  ['/designs', '디자인'],
   ['/settings', '설정'],
   ['/settings/preferences', '설정 · 환경'],
   ['/settings/keys', '설정 · 키'],
-  ['/settings/system', '설정 · 시스템'],
   ['/admin/users', '관리자 · 사용자'],
   ['/admin/usage', '관리자 · 사용량'],
   ['/admin/system', '관리자 · 시스템'],
+  ['/admin/system/routing', '관리자 · 라우팅'],
+  ['/admin/system/features', '관리자 · 기능'],
+  ['/admin/system/templates', '관리자 · 공용 템플릿'],
+  ['/admin/system/branding', '관리자 · 브랜딩'],
+  ['/admin/system/mail', '관리자 · 메일'],
   ['/admin/governance', '관리자 · 정책'],
 ]
 
@@ -90,13 +102,14 @@ async function auditScreen(page: Page, where: string, viewport: string) {
       const out: {
         rule: string
         subject: string
+        key: string
         where: string
         viewport: string
         hurts: string
         ok: boolean
       }[] = []
-      const add = (rule: string, ok: boolean, subject: string, hurts: string) =>
-        out.push({ rule, ok, subject, where, viewport, hurts })
+      const add = (rule: string, ok: boolean, subject: string, hurts: string, key = subject) =>
+        out.push({ rule, ok, subject, key, where, viewport, hurts })
 
       const visible = (el: Element) => {
         const r = el.getBoundingClientRect()
@@ -122,6 +135,27 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         return `<${el.tagName.toLowerCase()}${region ? ` in ${region}` : ''}>`
       }
 
+      /**
+       * Which control this is, as opposed to which copy of it.
+       *
+       * The label of a control inside a list row is the row's own name, so the
+       * one delete button in a list of thirty designs arrives under thirty
+       * different labels and is filed as thirty defects — the same miscount the
+       * per-screen dedupe already exists to prevent, one level down, and one
+       * that makes the headline number a function of how much seed data the
+       * database happens to hold. What the row shares is what the JSX wrote:
+       * the tag and the class list, plus the icon, which is the only thing
+       * telling the three identically styled ghost buttons of a reorder row
+       * apart. Two genuinely different controls that match on all three would
+       * be merged, and they would also take the same one-line fix.
+       */
+      const identity = (el: Element) =>
+        [
+          el.tagName.toLowerCase(),
+          (el.getAttribute('class') || '').replace(/\s+/g, ' ').trim(),
+          el.querySelector('svg')?.getAttribute('class') || '',
+        ].join('|')
+
       const controls = Array.from(
         document.querySelectorAll(
           'button, a[href], input, textarea, select, [role="switch"], [role="tab"], [role="menuitem"]',
@@ -133,6 +167,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         const aria = el.getAttribute('aria-label')
         const title = el.getAttribute('title')
         const id = label(el)
+        const who = identity(el)
         const isInput = /^(input|textarea|select)$/i.test(el.tagName)
 
         // R1 — a control with no name is one a screen reader cannot announce.
@@ -141,12 +176,12 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         const named = isInput
           ? !!(aria || el.getAttribute('id') && document.querySelector(`label[for="${el.getAttribute('id')}"]`) || el.closest('label'))
           : !!(text || aria)
-        add('name', named, id, '읽어 주지 못하고, 무엇을 넣는 칸인지 알 수 없다')
+        add('name', named, id, '읽어 주지 못하고, 무엇을 넣는 칸인지 알 수 없다', who)
 
         // R2 — icon-only controls need a tooltip. An icon is a guess until
         // something spells it out, and hovering is where people look first.
         if (!text && !!el.querySelector('svg')) {
-          add('tooltip', !!title, id, '아이콘만 보고 뜻을 짐작해야 한다')
+          add('tooltip', !!title, id, '아이콘만 보고 뜻을 짐작해야 한다', who)
         }
 
         // R3 — revealed on hover. There is no hover on a tablet, so for the
@@ -157,7 +192,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
             const cls = cur.getAttribute('class') || ''
             if (/opacity-0/.test(cls) && /group-hover|focus-within/.test(cls)) hidden = true
           }
-          add('touch-reach', !hidden, id, '터치 기기에서는 존재하지 않는 버튼이다')
+          add('touch-reach', !hidden, id, '터치 기기에서는 존재하지 않는 버튼이다', who)
 
           // R4 — a target smaller than a fingertip.
           // An input wrapped in a label is as big as the label — that is what
@@ -166,13 +201,13 @@ async function auditScreen(page: Page, where: string, viewport: string) {
           const r = target.getBoundingClientRect()
           const tiny = Math.min(r.width, r.height) < 32 && el.tagName !== 'A'
           add('tap-size', !tiny, `${id} · ${Math.round(r.width)}×${Math.round(r.height)}`,
-            '손가락으로 정확히 누르기 어렵다')
+            '손가락으로 정확히 누르기 어렵다', who)
         }
 
         // R5 — disabled with no reason on screen. "Why can't I click this"
         // has no answer anywhere.
         if ((el as HTMLButtonElement).disabled) {
-          add('disabled-reason', !!title, id, '왜 못 누르는지 알 수 없다')
+          add('disabled-reason', !!title, id, '왜 못 누르는지 알 수 없다', who)
         }
       }
 
@@ -290,15 +325,20 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
   void session
 
   /* ── dedupe ─────────────────────────────────────────────────────────
-     One defect per (rule, control), carrying every screen it showed up on. */
+     One defect per (rule, control), carrying every screen it showed up on and
+     how many copies of it were counted, so collapsing a thirty-row list does
+     not quietly turn a wide problem into a narrow-looking one. */
   const defects = new Map<string, {
-    rule: string; subject: string; hurts: string; screens: Set<string>; viewports: Set<string>
+    rule: string; subject: string; hurts: string; seen: number
+    screens: Set<string>; viewports: Set<string>
   }>()
   for (const o of seen) {
-    const key = `${o.rule}|${o.subject}`
+    const key = `${o.rule}|${o.key ?? o.subject}`
     const hit = defects.get(key) ?? {
-      rule: o.rule, subject: o.subject, hurts: o.hurts, screens: new Set(), viewports: new Set(),
+      rule: o.rule, subject: o.subject, hurts: o.hurts, seen: 0,
+      screens: new Set(), viewports: new Set(),
     }
+    hit.seen += 1
     hit.screens.add(o.where)
     hit.viewports.add(o.viewport)
     defects.set(key, hit)
@@ -306,7 +346,7 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
 
   const list = [...defects.values()]
     .map((d) => ({ ...d, screens: [...d.screens], viewports: [...d.viewports] }))
-    .sort((a, b) => b.screens.length - a.screens.length)
+    .sort((a, b) => b.screens.length - a.screens.length || b.seen - a.seen)
 
   const byRule = list.reduce<Record<string, number>>((acc, d) => {
     acc[d.rule] = (acc[d.rule] ?? 0) + 1

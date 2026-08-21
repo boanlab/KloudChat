@@ -5,7 +5,15 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
-from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
+from app.models.chat import (
+    ChatSession,
+    Message,
+    MessageRating,
+    Role,
+    RoutingMode,
+    SessionKind,
+    TurnFailure,
+)
 from app.schemas.auth import Wire
 
 
@@ -19,11 +27,39 @@ class MessageOut(Wire):
     variants: list | None = None
     model: str | None = None
     routing: dict | None = None
+    #: What this turn made, as artifact ids, for the turns whose answer is a
+    #: thing rather than a sentence. The browser renders them where the answer
+    #: would be, which is why they travel with the transcript rather than being
+    #: looked up from the session — the session points at the newest result
+    #: only, and a conversation that made four pictures in two batches has two
+    #: answers to show, each under the prompt that asked for it.
+    artifact_ids: list | None = None
+    #: The 시작점 this turn was begun from, as `{templateId, title}`. Names it
+    #: rather than quoting it: the transcript is where what somebody said is
+    #: kept, and the template's own sentence was never said by anybody.
+    started_from: dict | None = None
+    #: What the reader thought of this answer, or null if nobody has said. Sent
+    #: with the transcript so a rating outlives the tab it was left in.
+    rating: MessageRating | None = None
+    #: How this turn ended when it did not end in an answer. On the wire for
+    #: the same reason the rating is: the browser already says so while it is
+    #: happening, and that notice lives in one tab and is gone on reload.
+    failure: TurnFailure | None = None
     created_at: datetime
 
     @classmethod
     def of(cls, m: Message) -> MessageOut:
         return cls.model_validate(m, from_attributes=True)
+
+
+class MessageRatingIn(Wire):
+    """One verdict, or its withdrawal.
+
+    Null is a first-class value here: pressing the lit thumb again takes the
+    rating off, and that has to be expressible rather than merely absent.
+    """
+
+    rating: MessageRating | None = None
 
 
 class ImageRequest(Wire):
@@ -37,6 +73,10 @@ class ImageRequest(Wire):
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
+    #: An `image` design template. It shapes the prompt rather than producing a
+    #: file, so unlike the deck and document templates nothing is stored under
+    #: its name — the picture is the whole output.
+    template_id: str | None = Field(default=None, max_length=60)
     #: Up to four. Each is a separate upstream call and a separate charge.
     count: int = Field(default=1, ge=1, le=4)
 
@@ -52,6 +92,11 @@ class AudioRequest(Wire):
     model: str | None = None
     audio_kind: Literal["narration", "music"] = "narration"
     voice: str = "alloy"
+    #: How long the clip should be. No audio model here takes a duration
+    #: parameter, so it is folded into the prompt the way an image's aspect
+    #: ratio is — which makes it a request rather than a setting, and the
+    #: artifact records both what was asked for and what came back.
+    seconds: int = Field(default=0, ge=0, le=300)
 
 
 class VideoJobRequest(Wire):
@@ -100,6 +145,91 @@ class SessionBulkDelete(Wire):
 
     ids: list[str] = []
     all: bool = False
+    #: Delete what the conversations produced as well. Off by default: the
+    #: gallery presents an artifact as a thing in its own right, and a document
+    #: somebody put in a project or shared by link should not disappear because
+    #: the conversation that started it was tidied away.
+    artifacts: bool = False
+
+
+class SessionMade(Wire):
+    """What a session produced, for the line under its title in a list.
+
+    A picture or clip session answers with the thing itself, so its newest
+    message is a wordless row and `preview` — the last thing said — has nothing
+    to offer. Its name is already the person's prompt, so echoing that
+    underneath would say one thing twice. What the list is actually missing is
+    the other half: what came back. That is what tells seven clips of one
+    request apart.
+
+    Counted rather than described, and sent as measurements rather than as a
+    finished sentence, because the sentence has to be written in the reader's
+    language and this is the API.
+    """
+
+    #: The noun the row prints: `image`, `video`, `narration` or `music`.
+    #: Narration and music are separated here although both are `audio`
+    #: artifacts, because "내레이션 3개" and "음악 3곡" are what somebody would say.
+    kind: Literal["image", "video", "narration", "music"]
+    count: int
+    #: Zero when unknown and — deliberately — when the artifacts disagree. An
+    #: MP3's length is never measured, and four pictures made in two batches at
+    #: two ratios have no single ratio; printing one of them would be a claim
+    #: about the others.
+    seconds: int = 0
+    aspect: str = ""
+
+
+#: Artifact kinds a row names after themselves. Audio is deliberately not one
+#: of them: it splits into narration and music on its own `audioKind`. Anything
+#: absent here — a report, a deck, a chart — is not summarised this way at all.
+_MEDIA_KINDS = ("image", "video")
+
+
+def _agreed(rows: list[dict], *keys: str):
+    """The one value every row gives for a key, or None where they differ.
+
+    A falsy value is not an answer: a missing ratio is stored as `""` and an
+    unmeasured length as `0`, so a set of rows where only some carry the fact
+    does not agree on it.
+    """
+    for key in keys:
+        seen = {row.get(key) for row in rows}
+        if len(seen) == 1:
+            only = seen.pop()
+            if only:
+                return only
+    return None
+
+
+def made_from_artifacts(rows: list[tuple[str, dict | None]]) -> SessionMade | None:
+    """`(kind, data)` for one session, newest first, as one summary.
+
+    Only the newest artifact's own kind is counted. A session that made three
+    pictures and then a clip is, to the person looking for it, the clip one,
+    and "이미지 3장 · 영상 1개" is a row nobody reads.
+    """
+    if not rows:
+        return None
+    kind, newest = rows[0][0], rows[0][1] or {}
+    same = [data or {} for k, data in rows if k == kind]
+    if kind == "audio":
+        noun = "music" if newest.get("audioKind") == "music" else "narration"
+    elif kind in _MEDIA_KINDS:
+        noun = kind
+    else:
+        return None
+    seconds = _agreed(same, "durationSec") if noun != "image" else None
+    # What came back before what was asked for: `actualAspect` is measured off
+    # the picture while `aspect` is the phrase the prompt asked in, and the two
+    # disagree often enough that the artifact panel already shows both.
+    aspect = _agreed(same, "actualAspect", "aspect") if noun != "narration" else None
+    return SessionMade(
+        kind=noun,
+        count=len(same),
+        seconds=int(seconds or 0),
+        aspect=str(aspect or ""),
+    )
 
 
 class SessionOut(Wire):
@@ -111,6 +241,8 @@ class SessionOut(Wire):
     model: str
     routing_mode: RoutingMode
     artifact_id: str | None
+    #: The rendering template this session writes into, if one was picked.
+    render_template_id: str | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime
@@ -120,6 +252,10 @@ class SessionOut(Wire):
     #: response must not carry transcripts.
     preview: str | None = None
     message_count: int = 0
+    #: What this session produced, for the rows `preview` cannot serve. Set
+    #: only where there is no transcript, so a conversation that happens to
+    #: have made a picture still shows what was last said about it.
+    made: SessionMade | None = None
 
     @classmethod
     def of(
@@ -129,6 +265,7 @@ class SessionOut(Wire):
         *,
         preview: str | None = None,
         message_count: int = 0,
+        made: SessionMade | None = None,
     ) -> SessionOut:
         out = cls.model_validate(s, from_attributes=True)
         out.messages = [MessageOut.of(m) for m in messages] if messages is not None else None
@@ -138,6 +275,7 @@ class SessionOut(Wire):
         else:
             out.preview = preview
             out.message_count = message_count
+        out.made = made
         return out
 
 
@@ -164,6 +302,8 @@ class CompareRequest(Wire):
     models: list[str] = Field(min_length=2, max_length=3)
     #: Installed skills explicitly selected for this one comparison.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    #: A 시작점 attached to this one comparison. See `SendMessage`.
+    starting_template_id: str | None = Field(default=None, max_length=64)
     attachments: list[str] | None = None
     privacy_action: Literal[
         "route_strict_local", "mask_external", "send_raw_external"
@@ -181,6 +321,7 @@ class SessionPatch(Wire):
     model: str | None = None
     routing_mode: RoutingMode | None = None
     project_id: str | None = None
+    render_template_id: str | None = Field(default=None, max_length=60)
 
     @field_validator("routing_mode", mode="before")
     @classmethod
@@ -203,6 +344,18 @@ class SendMessage(Wire):
     #: Installed skills explicitly selected for this one turn. Empty means no
     #: skill; installation alone never injects a procedure.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    #: A 시작점 — a built-in from `/prompt-templates`, or a `templates` row the
+    #: caller can see. Carried by the turn the way an activated skill is: it
+    #: reaches the model as its own context block, and `content` stays the words
+    #: the person typed.
+    #:
+    #: Not sticky, unlike `render_template_id`: a starting point starts one
+    #: turn, and a shape is worn by the whole conversation.
+    starting_template_id: str | None = Field(default=None, max_length=64)
+    #: A rendering template from `/design-templates`. Sticky: it is stored on
+    #: the session, so a follow-up turn keeps the shape without resending it.
+    #: `""` clears it, which is how somebody goes back to the built-in track.
+    render_template_id: str | None = Field(default=None, max_length=60)
     privacy_action: Literal[
         "route_strict_local", "mask_external", "send_raw_external"
     ] | None = None

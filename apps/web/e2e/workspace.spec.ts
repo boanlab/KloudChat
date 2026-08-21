@@ -8,7 +8,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { answerText, signIn } from './helpers'
+import { answerText, pickToolModel, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -169,8 +169,7 @@ test('첨부한 파일의 내용을 모델이 읽는다', async ({ page }) => {
 
 test('웹 검색 토글을 켜면 실제로 검색 단계가 보인다', async ({ page }) => {
   await page.goto('/new/chat')
-  await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
-  await page.getByRole('button', { name: /qwen3\.6/i }).first().click()
+  await pickToolModel(page)
 
   await page.getByRole('button', { name: /웹 검색/ }).first().click()
   await askFromNew(page, '올해 노벨 물리학상 수상자를 웹에서 확인해줘.')

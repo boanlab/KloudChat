@@ -11,6 +11,10 @@ note.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
+from app.core.config import settings
 from app.models.chat import SessionKind
 
 # Per-surface house prompt. Kept short — cost on every turn. Tool routing and
@@ -53,12 +57,41 @@ _WEB_SEARCH_NUDGE = (
     "사실을 확인하고, 인용한 내용에는 출처 URL 을 밝히세요."
 )
 
-# Same toggle, tool excluded by an agent allowlist. Prevents a call to a tool
-# the turn does not have.
+# Same toggle, no search tool in this turn — an agent allowlist removed it, or
+# the turn runs on a strict-local model that is given no network tool at all.
+# Neutral about which, because the model cannot tell them apart and the person
+# only needs the one fact: the answer they are reading was written without
+# looking anything up. Silence here is what lets a remembered fact pass for a
+# searched one.
 _WEB_SEARCH_BLOCKED = (
-    "사용자가 웹 검색을 켰지만 이 에이전트에는 검색 도구가 허용되어 있지 않습니다. "
-    "검색을 시도하지 말고, 검색이 필요한 질문이라면 그 사실을 알려 주세요."
+    "사용자가 웹 검색을 켰지만 이 요청에는 검색 도구가 없습니다. "
+    "검색을 시도하지 말고, 답변을 시작할 때 웹 검색 없이 답한다는 사실을 먼저 밝히세요."
 )
+
+
+_WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
+
+
+def _today() -> str:
+    """Today, said out loud.
+
+    A model with no clock answers "올해" from its training data. Asked for this
+    year's Nobel laureate in August 2026 it said 2024 — confidently, with a
+    web-search step in the timeline above it, because the search it wrote was
+    for the year it believed it was.
+
+    The weekday is here because "다음 주 화요일" is unanswerable without it, and
+    a model will answer it anyway.
+    """
+    try:
+        zone = ZoneInfo(settings.timezone)
+    except Exception:  # a misconfigured name must not break every turn
+        zone = UTC
+    now = datetime.now(zone)
+    return (
+        f"오늘은 {now.year}년 {now.month}월 {now.day}일 "
+        f"{_WEEKDAYS[now.weekday()]}요일입니다."
+    )
 
 
 def system_prompt(
@@ -70,7 +103,7 @@ def system_prompt(
     extra: list[str] | None = None,
 ) -> str:
     """Assembles the system turn. `extra` is the caller-ordered workspace blocks."""
-    parts = [_SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat])]
+    parts = [_SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]), _today()]
     parts.extend(p for p in (extra or []) if p and p.strip())
     if with_tools:
         parts.append(_TOOL_RULES)

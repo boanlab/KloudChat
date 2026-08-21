@@ -38,7 +38,7 @@ test('이미지를 만들면 아티팩트로 남고 크레딧이 걷힌다', asy
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
-  // The picture itself, served inline from the file store.
+  // The picture itself, in the conversation, served inline from the file store.
   const image = page.locator('img[src*="/api/files/"]').first()
   await expect(image).toBeVisible({ timeout: 240_000 })
     // Visible and loaded are different things: an `<img>` has layout size even
@@ -58,8 +58,9 @@ test('이미지를 만들면 아티팩트로 남고 크레딧이 걷힌다', asy
   expect(stored, '이미지 아티팩트가 없습니다').not.toBeNull()
   expect(stored.data.src).toContain('/api/files/')
 
-  // Billed. Image generation writes no message, so this only holds because the
-  // usage figure comes from the ledger.
+  // Billed. The turn records what it was charged, but this reads the ledger:
+  // the figure on the message is a copy for the reader, and the account is the
+  // account.
   const spentAfter = await page.evaluate(
     async (fn) => (await eval(fn)('/api/me/usage?days=1')).cycle.used,
     AS_USER,

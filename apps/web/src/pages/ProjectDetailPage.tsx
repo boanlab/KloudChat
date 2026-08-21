@@ -18,6 +18,8 @@ import {
   Tabs,
   Textarea,
 } from '@/components/ui'
+import { downloadFile, errorMessage, templateText } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -33,6 +35,8 @@ export function ProjectDetailPage() {
     projects,
     sessions,
     skills,
+    designs,
+    designTemplates,
     memories,
     updateProject,
     deleteProject,
@@ -51,6 +55,7 @@ export function ProjectDetailPage() {
     description: string
   } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Reached directly by URL as often as by click, so it loads its own data.
@@ -82,7 +87,25 @@ export function ProjectDetailPage() {
     skills.some((skill) => skill.id === id && skill.enabled),
   )
   const projectMemories = memories.filter((m) => m.scope === project.id)
+  // A design system the account lost access to leaves the select on its first
+  // entry; the project keeps the id until somebody changes it.
+  const selectedDesign = designs.find((d) => d.id === project.designSystemId)
+  // A format is a document shape, so only the two catalogue kinds that
+  // produce one are offered here — an image template shapes a prompt, and a
+  // picker over an empty list is a promise the catalogue cannot keep.
+  const english = currentLang() === 'en'
+  const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
+  const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
+
+  const openFile = async (id: string, name: string) => {
+    setFileError(null)
+    try {
+      await downloadFile(id, name)
+    } catch (err) {
+      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+    }
+  }
 
   return (
     <>
@@ -251,6 +274,94 @@ export function ProjectDetailPage() {
           />
         </Card>
 
+        <Card className="space-y-3 p-4">
+          <div>
+            <p className="text-base font-medium">{t('디자인')}</p>
+            {/* Named, because the alternative is a picker whose effect nobody
+                can predict: this changes four surfaces and leaves two alone.
+                The voice is listed first and 대화 with it, because the voice
+                is the half that reaches the chat — a model writing a sentence
+                cannot act on a hex code, but it can be told how to sound, and
+                a person who reads only "슬라이드 색과 서체" is surprised when
+                this afternoon's design edit changes how the chat answers. */}
+            <p className="text-sm text-muted">
+              {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedDesign && (
+              <span
+                aria-hidden
+                className="size-5 shrink-0 rounded-control border border-line"
+                style={{ background: selectedDesign.tokens.accent }}
+              />
+            )}
+            <select
+              aria-label={t('디자인')}
+              value={project.designSystemId ?? ''}
+              onChange={(e) =>
+                void updateProject(project.id, { designSystemId: e.target.value || null })
+              }
+              className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+            >
+              <option value="">{t('사용 안 함 — 기본 모양')}</option>
+              {designs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedDesign?.description && (
+            <p className="text-sm text-faint">{selectedDesign.description}</p>
+          )}
+        </Card>
+
+        {formatSurfaces.length > 0 && (
+          <Card className="space-y-3 p-4">
+            <div>
+              <p className="text-base font-medium">{t('기본 서식')}</p>
+              {/* The pair to the design above, and the distinction is the whole
+                  reason there are two cards: that one is the look, this one is
+                  the shape the look is poured into. */}
+              <p className="text-sm text-muted">
+                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
+              </p>
+            </div>
+            {formatSurfaces.map((kind) => (
+              <div key={kind} className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-base text-muted">
+                  {t(kindMeta[kind].label)}
+                </span>
+                <select
+                  aria-label={t('{kind} 서식').replace('{kind}', t(kindMeta[kind].label))}
+                  value={project.renderTemplates[kind] ?? ''}
+                  onChange={(e) =>
+                    void updateProject(project.id, {
+                      // Sent whole, because the server stores it whole: an
+                      // empty value is this surface leaving the map.
+                      renderTemplates: {
+                        ...project.renderTemplates,
+                        [kind]: e.target.value,
+                      },
+                    })
+                  }
+                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
+                >
+                  <option value="">{t('사용 안 함 — 기본 모양')}</option>
+                  {formats
+                    .filter((row) => row.surface === kind)
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {templateText(row, english).name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ))}
+          </Card>
+        )}
+
         <Tabs<Tab>
           value={tab}
           onChange={setTab}
@@ -341,7 +452,16 @@ export function ProjectDetailPage() {
                   <Card key={f.id} className="flex items-center gap-3 px-4 py-2.5">
                     <FileText size={15} className="shrink-0 text-faint" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base">{f.name}</span>
+                      {/* The name is the button that opens it. Until it was,
+                          the only way to see what a file held was to delete it
+                          and upload it again. */}
+                      <button
+                        onClick={() => void openFile(f.id, f.name)}
+                        title={t('원본 파일을 내려받습니다')}
+                        className="block max-w-full truncate text-left text-base text-accent hover:underline"
+                      >
+                        {f.name}
+                      </button>
                       <span className="block text-xs text-faint">
                         {f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
                       </span>
@@ -357,6 +477,7 @@ export function ProjectDetailPage() {
                   </Card>
                 ))
               )}
+              {fileError && <p className="text-base text-danger">{fileError}</p>}
             </div>
           )}
 

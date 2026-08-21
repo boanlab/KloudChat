@@ -16,6 +16,11 @@ import { useT } from '@/lib/useT'
 const icons = { thinking: Brain, tool: Wrench, artifact: FileText }
 /** What kind of work this is, for the header once the list is showing. */
 const kindLabel = { thinking: '추론', tool: '도구 사용', artifact: '산출물' }
+/** How many other steps the folded line names before it starts counting.
+ *  Every turn now opens with lines saying what it was handed — memories,
+ *  attachments, project knowledge — and unbudgeted the folded line would spend
+ *  itself on those and never reach the work. */
+const COLLAPSED_NAMES = 3
 
 /** One checklist line. Finished work is struck through: the shape of the run
  *  stays readable without every line still being worth reading. */
@@ -95,6 +100,7 @@ export function StepTimeline({ steps, live }: { steps: Step[]; live: boolean }) 
   // Header subject: the kind of work, then the step's own name.
   const head = current ?? steps.at(-1)!
   const HeadIcon = icons[head.type]
+  const rest = steps.filter((s) => s !== head)
 
   return (
     <div className="animate-fade-up mb-3 overflow-hidden rounded-card border border-line bg-elevated/50">
@@ -119,9 +125,11 @@ export function StepTimeline({ steps, live }: { steps: Step[]; live: boolean }) 
         </span>
         {/* The rest of the run, named rather than counted: "3단계" says a turn
             did something; the names say it searched the web. */}
-        {!expanded && steps.length > 1 && (
+        {!expanded && rest.length > 0 && (
           <span className="min-w-0 truncate text-faint">
-            · {steps.filter((s) => s !== head).map((s) => s.label).join(' · ')}
+            · {rest.slice(0, COLLAPSED_NAMES).map((s) => s.label).join(' · ')}
+            {rest.length > COLLAPSED_NAMES &&
+              ` · ${t('외 {n}개').replace('{n}', String(rest.length - COLLAPSED_NAMES))}`}
           </span>
         )}
         <span className="ml-auto shrink-0 whitespace-nowrap text-faint tabular-nums">

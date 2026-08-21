@@ -1,6 +1,6 @@
-import { Bot, Boxes, Brain, ChartColumn, Terminal as TerminalIcon, ChevronDown, ChevronRight, History, Layers, LogOut, MoreHorizontal, Pencil, Pin, PinOff, Plug, Plus, Search, Server, Settings, Shield, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Boxes, Brain, ChartColumn, Terminal as TerminalIcon, ChevronDown, ChevronRight, History, Layers, LogOut, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Server, Settings, Shield, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, groupByRecency } from '@/lib/utils'
@@ -59,6 +59,7 @@ const PAGE = 40
 const workspaceNav = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
+  { to: '/designs', label: '디자인', icon: Palette },
   { to: '/agents', label: '에이전트', icon: Bot },
   { to: '/skills', label: '스킬', icon: Sparkles },
   { to: '/memory', label: '메모리', icon: Brain },
@@ -138,9 +139,17 @@ function SessionRow({
       </button>
       <Dropdown
         align="right"
-        trigger={() => (
+        trigger={({ open }) => (
+          /* Fading in on hover keeps the list quiet, but hover is a thing only a
+             mouse has: on a tablet this was the only way to rename, pin or
+             delete a conversation, and it never appeared. So the row shows it
+             outright where the pointer cannot hover, on keyboard focus, and for
+             as long as its own menu is open. */
           <button
-            className="mr-1 grid size-6 shrink-0 place-items-center rounded-control text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-line hover:text-fg"
+            className={cn(
+              'mr-1 grid size-6 shrink-0 place-items-center rounded-control text-faint opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-line hover:text-fg [@media(hover:none)]:opacity-100',
+              open && 'opacity-100',
+            )}
             aria-label={t('메뉴')}
             title={t('이 대화의 이름 바꾸기·고정·삭제')}
           >
@@ -231,9 +240,16 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[268px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div className="flex items-center gap-2 px-3 py-3">
+      {/* The name is where everyone reaches for home. It looked like a header
+          and behaved like one, so the only way back was the 홈 item further
+          down — which is not where a hand goes. */}
+      <Link
+        to="/"
+        aria-label={t('홈')}
+        className="flex items-center gap-2 rounded-control px-3 py-3 transition-colors hover:bg-elevated"
+      >
         <Brand name={brand.name} logo={brand.logo} />
-      </div>
+      </Link>
 
       {/* 만들기 — 다섯 개 축 */}
       <nav className="space-y-0.5 px-3 pb-2">
@@ -277,62 +293,68 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 워크스페이스 */}
-      <NavSection id="workspace" label={t('워크스페이스')}>
-        {workspaceNav.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                isActive
-                  ? 'bg-elevated font-medium text-fg'
-                  : 'text-muted hover:bg-elevated hover:text-fg',
-              )
-            }
-          >
-            <Icon size={15} />
-            {t(label)}
-          </NavLink>
-        ))}
-      </NavSection>
-
       {/* 관리자 항목은 계정 메뉴 안에 있다. 대기 건수는 계정 버튼에 붙어 있어,
           내비게이션을 한 벌 더 두지 않고도 승인 큐가 스스로 드러난다. */}
 
-      {/* 최근 작업 — 사이드바의 본체입니다. */}
-      {/* `min-h-0`, not a floor: with a minimum height the list refuses to shrink,
-          and on a short window it pushes the credits and the account below the
-          fold — the two things that must not go missing. */}
-      <div className="mt-1 min-h-0 flex-1 overflow-y-auto border-t border-line px-3 py-2">
-        {pinned.length > 0 && (
-          <section className="mb-3">
-            <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-              {t('고정됨')}
-            </p>
-            <div className="space-y-0.5">{pinned.map(renderRow)}</div>
-          </section>
-        )}
-        {groups.map((g) => (
-          <section key={g.label} className="mb-3">
-            <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-              {t(g.label)}
-            </p>
-            <div className="space-y-0.5">{g.items.map(renderRow)}</div>
-          </section>
-        ))}
-        {hidden > 0 && (
-          <button
-            onClick={() => setShown((n) => n + PAGE)}
-            className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
-          >
-            {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
-          </button>
-        )}
-        {filtered.length === 0 && (
-          <p className="px-2.5 py-6 text-center text-base text-faint">{t('검색 결과가 없습니다')}</p>
-        )}
+      {/* 워크스페이스 + 최근 작업 — 사이드바의 본체입니다. */}
+      {/* One scroller for both, because pinning the workspace rows cost what the
+          conversations needed: on a 800px-tall laptop the eight fixed rows left
+          the list 125px, two conversations, and a row menu with nowhere to open
+          — it flipped upward into the clipped edge, where its items drew over
+          the navigation and a click on 이름 바꾸기 landed on 커넥터 instead.
+          `min-h-0`, not a floor: with a minimum height the region refuses to
+          shrink, and on a short window it pushes the credits and the account
+          below the fold — the two things that must not go missing. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NavSection id="workspace" label={t('워크스페이스')}>
+          {workspaceNav.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
+                  isActive
+                    ? 'bg-elevated font-medium text-fg'
+                    : 'text-muted hover:bg-elevated hover:text-fg',
+                )
+              }
+            >
+              <Icon size={15} />
+              {t(label)}
+            </NavLink>
+          ))}
+        </NavSection>
+
+        <div className="border-t border-line px-3 py-2">
+          {pinned.length > 0 && (
+            <section className="mb-3">
+              <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
+                {t('고정됨')}
+              </p>
+              <div className="space-y-0.5">{pinned.map(renderRow)}</div>
+            </section>
+          )}
+          {groups.map((g) => (
+            <section key={g.label} className="mb-3">
+              <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
+                {t(g.label)}
+              </p>
+              <div className="space-y-0.5">{g.items.map(renderRow)}</div>
+            </section>
+          ))}
+          {hidden > 0 && (
+            <button
+              onClick={() => setShown((n) => n + PAGE)}
+              className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+            >
+              {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
+            </button>
+          )}
+          {filtered.length === 0 && (
+            <p className="px-2.5 py-6 text-center text-base text-faint">{t('검색 결과가 없습니다')}</p>
+          )}
+        </div>
       </div>
 
       {/* 크레딧 + 계정 — always on screen, at any height. */}

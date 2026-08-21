@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { gotoSurface, openSidebar, seedPendingUser, signIn } from './helpers'
+import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
 import { personas } from './personas'
 
 /**
@@ -170,7 +170,11 @@ test.describe('페르소나 커버리지', () => {
               /* governance */
               case 'off-pii':
                 await page.goto('/admin/governance')
-                await probe(page.getByText('개인정보 마스킹')).toBeVisible()
+                // The switch alone, by role and name. A loose text match also
+                // caught the sentence explaining what the policy forbids —
+                // which is rendered or not depending on the policy's own
+                // state, so the probe passed or exploded according to what
+                // some other spec had last left switched on.
                 await probe(page.getByRole('switch', { name: '개인정보 마스킹' })).toBeVisible()
                 break
               case 'off-audit':
@@ -206,7 +210,7 @@ test.describe('페르소나 커버리지', () => {
               case 'off-template':
               case 'sal-template':
                 await gotoSurface(page, persona.surfaces[0])
-                await probe(page.getByRole('button', { name: /템플릿/ }).first()).toBeVisible()
+                await probe(page.getByRole('button', { name: '시작점 고르기' })).toBeVisible()
                 break
 
               /* maths */
@@ -367,12 +371,37 @@ test.describe('페르소나 커버리지', () => {
                 await page.goto('/memory')
                 await probe(page.getByRole('heading', { name: '메모리' })).toBeVisible()
                 break
-              case 'grad-version':
+              case 'grad-version': {
                 await openNewest(page, '보고서')
-                await probe(page.getByRole('button', { name: '버전 기록' })).toBeVisible()
-                await page.getByRole('button', { name: '버전 기록' }).click()
-                await probe(page.getByText(/v3|버전/).first()).toBeVisible()
+                // `.first()`, because a conversation shows several artifacts
+                // and each carries its own history — the need is that an
+                // earlier judgement is reachable, not that there is exactly
+                // one of them on screen.
+                const history = page.getByRole('button', { name: '버전 기록' }).first()
+                await probe(history).toBeVisible()
+                await history.click()
+                // Asked of the dialog, not of the page. The old check searched
+                // the whole document for `v3` or 버전 and took the first hit,
+                // which the dialog satisfied only while it was rendered at the
+                // end of the report panel; the shared control opens it beside
+                // the button instead. It also never asked the question the need
+                // asks — the dialog's own title passed it.
+                const listed = page.getByRole('dialog', { name: '버전 기록' })
+                await probe(listed).toBeVisible()
+                await probe(listed.getByText(/현재 v\d+/)).toBeVisible()
+                // Either 판 to go back to, or the dialog saying plainly that
+                // there is none yet. Both prove the affordance; requiring a
+                // 되돌리기 button made the probe depend on whether this
+                // account's newest report had ever been edited, which is an
+                // accident of the data and not a fact about the product.
+                await probe(
+                  listed
+                    .getByRole('button', { name: /되돌리기/ })
+                    .or(listed.getByText('아직 저장된 이전 판이 없습니다.'))
+                    .first(),
+                ).toBeVisible()
                 break
+              }
               case 'res-agent':
                 await page.goto('/agents')
                 await probe(page.getByRole('heading', { name: '에이전트' })).toBeVisible()
@@ -389,14 +418,19 @@ test.describe('페르소나 커버리지', () => {
                 break
 
               /* development */
-              case 'dev-steps':
-                // Tool-call steps are real now: a web search turn emits them.
+              case 'dev-steps': {
+                // Tool-call steps are real: a web search turn emits them. The
+                // screen default is strict-local, which is given no web tool
+                // at all, so the model comes first — the need is that the
+                // steps appear, not that the default can search.
                 await gotoSurface(page, 'chat')
+                await pickToolModel(page)
                 await page.getByRole('button', { name: '웹 검색' }).first().click()
                 await page.getByLabel('프롬프트 입력').fill('올해 노벨 물리학상 수상자를 웹에서 찾아줘.')
                 await page.getByLabel('프롬프트 입력').press('Enter')
                 await probe(page.getByText('웹 검색 중').first()).toBeVisible({ timeout: 60_000 })
                 break
+              }
 
               /* responsive layout */
               case 'sal-mobile': {

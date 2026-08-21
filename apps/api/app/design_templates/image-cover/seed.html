@@ -1,0 +1,142 @@
+<!doctype html>
+<!--
+  KloudChat media card: 표지 그림.
+
+  An image template shapes a prompt and produces no HTML artifact, so there is
+  nothing generated for the gallery to show. What it shows instead is the
+  recipe — and, for a picture template, the frame that recipe is written for.
+
+  The blueprint is the point. A sample picture here would advertise a result
+  that depends on the picture model and on the project's design system, and
+  this file knows neither; a drawn rectangle with its ratio and its title-safe
+  area marked is something the template can actually promise. It is CSS only:
+  the card renders inside a `sandbox=""` frame where nothing executes, is
+  served under `default-src 'none'`, and is also downloaded and opened offline,
+  so there is no script and no request to anywhere.
+
+  The card is read at 1000×500 scaled down to a gallery tile, and again in a
+  narrow panel, so it is a landscape composition that collapses rather than
+  shrinks.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    /* Every neutral is derived from the ink and every pale plane from the
+       accent, so one design system's colours carry the whole card and no grey
+       literal can drift out of step with them. */
+    --border: color-mix(in srgb, var(--ink) 13%, transparent);
+    --hairline: color-mix(in srgb, var(--ink) 10%, transparent);
+    --wash: color-mix(in srgb, var(--ink) 3%, transparent);
+    --tint: color-mix(in srgb, var(--accent) 8%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 38%, transparent);
+    /* One scale for all six media cards, so a narrow panel and a printed page
+       shrink together instead of one heading at a time. */
+    --t-title: clamp(1.05rem, 0.9rem + 0.7vw, 1.45rem);
+    --t-body: 0.92rem;
+    --t-label: 0.75rem;
+    --t-micro: 0.68rem;
+    --gap: 0.7rem;
+    /* The blueprint's width. Its height comes from the ratio, so changing the
+       ratio changes the drawing rather than the column it stands in. */
+    --frame-w: 15rem;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #fff; color: var(--ink); font-family: var(--font-body);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+    padding: clamp(1.2rem, 1rem + 1.4vw, 2rem);
+  }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+
+  /* ── identity beside the blueprint ─────────────────────────────────── */
+  .head { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+          gap: clamp(1rem, 0.4rem + 2.2vw, 2.6rem); align-items: start;
+          margin: 0 0 1.15rem; }
+  h1 { margin: 0 0 0.3rem; font-size: var(--t-title); font-weight: 650;
+       letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; }
+  /* The lead is body size and reads as a lead by colour alone: a half-step
+     down from the body would be a size nobody can tell from it. */
+  .lead { margin: 0; font-size: var(--t-body); line-height: 1.6;
+          color: var(--muted); max-width: 54ch; text-wrap: pretty; }
+
+  /* ── the blueprint: a ratio and a title-safe area, drawn ───────────── */
+  /* The column is exactly as wide as the drawing, so the swatch bar and the
+     caption under it measure the frame instead of drifting past its edge. */
+  .plan { width: var(--frame-w); }
+  .frame { position: relative; width: 100%; aspect-ratio: 4 / 3;
+           border: 1px solid var(--border); background: var(--wash); }
+  /* Top and bottom 32%, left and right 12% — the centre band a title sits in,
+     which is the one thing this template asks the picture to leave alone. */
+  .frame::after { content: ""; position: absolute; inset: 32% 12%;
+                  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent); }
+  /* The three colours the picture is asked to stay inside, drawn as a
+     printer's bar rather than three chips: it is a range, not three things. */
+  .swatch { display: flex; gap: 0.4rem; margin: 1rem 0 0; max-width: 54ch; }
+  .swatch span { flex: 1; height: 1.7rem; border: 1px solid var(--border); }
+  .s-accent { background: var(--accent); }
+  .s-ink { background: var(--ink); }
+  .s-muted { background: var(--muted); }
+  /* The caption law: subordinate voices are muted, a shade smaller, never
+     italic, and sit 0.5rem under the thing they explain. */
+  .note, figcaption, small, dd { display: block; margin: 0.5rem 0 0;
+         font-size: 0.85em; line-height: 1.55; color: var(--muted);
+         max-width: 54ch; font-style: normal; }
+
+  /* ── the recipe, three blocks across ───────────────────────────────── */
+  .blocks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1.4rem; align-items: start; }
+  /* Blocks are told apart by a hairline above them, not by three boxes; one
+     block per card is filled, and it is always the one that says what the
+     picture may not do. */
+  section { border-top: 1px solid var(--hairline); padding-top: 0.55rem; }
+  section.keep { background: var(--tint); border-top: 1px solid var(--rule);
+                 padding: 0.55rem 0.8rem 0.7rem; }
+  h2 { margin: 0 0 0.4rem; font-size: var(--t-label); font-weight: 700;
+       letter-spacing: 0.06em; color: var(--accent); }
+  h3 { margin: 0 0 0.3rem; font-size: var(--t-body); font-weight: 650; }
+  p { margin: 0 0 0.4rem; font-size: var(--t-body); text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+  ul, ol { margin: 0; padding-left: 1.05rem; }
+  li { margin: 0 0 0.25rem; font-size: var(--t-body); }
+  li:last-child { margin-bottom: 0; }
+  li::marker { color: var(--accent); }
+  hr { border: 0; border-top: 1px solid var(--hairline); margin: 0.8rem 0; }
+  /* Monospace runs large at the same size, so this is an optical match to the
+     body rather than a fourth step. */
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
+         background: #fff; border: 1px solid var(--border); border-radius: 3px;
+         padding: 0.05rem 0.3rem; }
+
+  /* A narrow panel gets the same card standing up, not a shrunken one. */
+  @media (max-width: 720px) {
+    .head { grid-template-columns: 1fr; }
+    .plan { width: min(var(--frame-w), 100%); }
+    .blocks { grid-template-columns: 1fr; gap: var(--gap); }
+  }
+
+  /* The recipe is one page and has to stay one page: a rule split across a
+     sheet break is a rule somebody reads half of. */
+  @page { size: A4 portrait; margin: 16mm; }
+  @media print {
+    body { padding: 0; }
+    h1 { break-after: avoid; }
+    section, .plan { break-inside: avoid; }
+    .frame { background: none; border-color: #999; }
+    code { border-color: #999; }
+  }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

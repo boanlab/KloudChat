@@ -16,11 +16,13 @@ from app.models.workspace import (
     Connector,
     ConnectorStatus,
     ConnectorTool,
+    DesignSystem,
     Memory,
     MemoryType,
     Project,
     Share,
     ShareScope,
+    ShareView,
     Skill,
     SkillSource,
     StoredFile,
@@ -28,10 +30,15 @@ from app.models.workspace import (
     Transport,
 )
 from app.schemas.auth import Wire
+from app.services import design as design_service
+from app.services import geoip
+from app.services.prompt_templates import PromptTemplate
 
 #: JSONB list columns are nullable in the database, but the wire contract is a
 #: list either way — absorbed here rather than in every `of()` and consumer.
 JsonList = Annotated[list[str], BeforeValidator(lambda v: v or [])]
+#: The same absorption for a JSONB map column.
+JsonMap = Annotated[dict[str, str], BeforeValidator(lambda v: v or {})]
 
 
 # ── files ──────────────────────────────────────────────────────────────
@@ -71,6 +78,9 @@ class ProjectOut(Wire):
     emoji: str
     instructions: str
     skill_ids: JsonList = Field(default_factory=list)
+    design_system_id: str | None = None
+    #: Surface → rendering template. What a new session here starts in.
+    render_templates: JsonMap = Field(default_factory=dict)
     files: list[FileOut] = Field(default_factory=list)
     session_ids: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -85,6 +95,7 @@ class ProjectOut(Wire):
     ) -> ProjectOut:
         out = cls.model_validate(p, from_attributes=True)
         out.skill_ids = list(p.skill_ids or [])
+        out.render_templates = dict(p.render_templates or {})
         out.files = [FileOut.of(f) for f in (files or [])]
         out.session_ids = list(session_ids or [])
         return out
@@ -96,6 +107,8 @@ class ProjectIn(Wire):
     emoji: str = "📁"
     instructions: str = ""
     skill_ids: list[str] | None = None
+    design_system_id: str | None = None
+    render_templates: dict[str, str] | None = None
 
 
 class ProjectPatch(Wire):
@@ -104,9 +117,69 @@ class ProjectPatch(Wire):
     emoji: str | None = None
     instructions: str | None = None
     skill_ids: list[str] | None = None
+    #: Explicit null clears it, so `exclude_unset` is what separates "no design
+    #: system" from "leave the design system alone".
+    design_system_id: str | None = None
+    #: Sent whole, not per surface: a map with one key is how a picker clears
+    #: the other surface, and a merge here would make that impossible to say.
+    render_templates: dict[str, str] | None = None
 
 
 # ── artifacts ──────────────────────────────────────────────────────────
+
+#: How much of a written body a card carries. Enough to recognise the document
+#: in a grid; nowhere near enough to render or edit it, which is what the flag
+#: below is for.
+_CARD_CHARS = 400
+
+#: Sections and slides a card carries. A thumbnail shows the top of a document,
+#: so the rest of it is weight the list pays for on every open.
+_CARD_PARTS = 4
+
+
+def _card_data(kind: ArtifactKind, data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The body a listing needs, which is much less than the body.
+
+    Measured before this existed: 385 artifacts came to 4.0 MB, and 2.8 MB of
+    it was the `content` and `blocks` of 69 HTML documents that the grid draws
+    as thumbnails the size of a business card. Media artifacts are already
+    small — a `src` and a duration — so they travel whole.
+
+    **Every key survives; only the values shrink.** The client's artifact types
+    declare these fields, and a renderer that reads `sources.length` on a card
+    with no `sources` takes the screen down with it — which is exactly what the
+    first version of this function did.
+    """
+    if not data:
+        return data
+    if kind in (ArtifactKind.html, ArtifactKind.code):
+        # The markup is the whole artifact and none of it fits on a card. The
+        # client fetches the document when it is about to show or edit one.
+        return {**data, "content": "", "blocks": []}
+    if kind is ArtifactKind.deck:
+        return {
+            **data,
+            "slides": [
+                {k: v for k, v in (slide or {}).items() if k in ("id", "title", "layout")}
+                for slide in (data.get("slides") or [])[:_CARD_PARTS]
+            ],
+        }
+    if kind is ArtifactKind.report:
+        return {
+            **data,
+            # Citations are a third of a report's weight and none of its card.
+            "sources": [],
+            "sections": [
+                {
+                    **{k: v for k, v in (section or {}).items() if k != "content"},
+                    "content": str((section or {}).get("content") or "")[:_CARD_CHARS],
+                }
+                for section in (data.get("sections") or [])[:_CARD_PARTS]
+            ],
+        }
+    return data
+
+
 class ArtifactOut(Wire):
     id: str
     kind: ArtifactKind
@@ -117,10 +190,23 @@ class ArtifactOut(Wire):
     project_id: str | None
     created_at: datetime
     updated_at: datetime
+    #: True when `data` was cut down for a listing. Anything that renders the
+    #: whole document — or lets somebody edit it — fetches it by id first, or
+    #: it would save a truncated copy over the real one.
+    partial: bool = False
 
     @classmethod
     def of(cls, a: Artifact) -> ArtifactOut:
         return cls.model_validate(a, from_attributes=True)
+
+    @classmethod
+    def card(cls, a: Artifact) -> ArtifactOut:
+        """One row of a listing: the same shape, with the body cut down."""
+        out = cls.model_validate(a, from_attributes=True)
+        trimmed = _card_data(a.kind, a.data)
+        out.partial = trimmed is not a.data
+        out.data = trimmed
+        return out
 
 
 class ArtifactIn(Wire):
@@ -166,6 +252,47 @@ class SlideFactCheck(Wire):
     """Which slide to check."""
 
     slide_id: str
+
+
+class SlideImage(Wire):
+    """A picture this workspace already made, put on one slide of a JSON deck.
+
+    By slide id rather than by position: a deck's slides carry ids and a
+    person may reorder them between choosing and sending.
+    """
+
+    slide_id: str = Field(min_length=1, max_length=64)
+    artifact_id: str = Field(min_length=1, max_length=64)
+    caption: str = Field(default="", max_length=200)
+
+
+class BlockImage(Wire):
+    """A picture this workspace already made, put into one block of a page.
+
+    The picture travels by id rather than as bytes: it is already stored, the
+    caller is already the owner, and an upload path here would be a second way
+    to get a file into a document that the file rules would have to learn.
+    """
+
+    index: int = Field(ge=0, le=63)
+    #: The `image` artifact to embed.
+    artifact_id: str = Field(min_length=1, max_length=64)
+    #: Printed under the picture. Empty leaves the figure uncaptioned rather
+    #: than repeating the prompt, which is a request and not a caption.
+    caption: str = Field(default="", max_length=200)
+
+
+class BlockRewrite(Wire):
+    """Which block of an HTML artifact, and why it is being rewritten.
+
+    By position rather than by id: blocks are ordered, a rewrite never changes
+    how many there are, and the artifacts written before this existed carry no
+    ids to address.
+    """
+
+    index: int = Field(ge=0, le=63)
+    #: What to change. Empty means "just try again".
+    note: str = Field(default="", max_length=600)
 
 
 class SectionRewrite(Wire):
@@ -322,6 +449,54 @@ class ShareOut(Wire):
     @classmethod
     def of(cls, s: Share) -> ShareOut:
         return cls.model_validate(s, from_attributes=True)
+
+
+class BulkDelete(Wire):
+    """Ids to remove in one request.
+
+    Capped so one call cannot become a table scan. Ids this account does not
+    own are skipped rather than refused — see `_owned_many`.
+    """
+
+    ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class ShareViewOut(Wire):
+    """One visit to a shared link, as the owner sees it.
+
+    `name`/`email` are empty for an anonymous reader and `ip` is empty for a
+    signed-in one whose address the proxy did not forward. Both empty is a
+    real state — a reader behind a stripping proxy with no account — and it is
+    sent as such rather than dressed up as "unknown", because the screen has to
+    say plainly that nothing was learned.
+    """
+
+    id: str
+    at: datetime
+    last_at: datetime
+    opens: int
+    name: str
+    email: str
+    ip: str
+    #: Empty unless a GeoLite2 database is configured, and empty for an
+    #: address it does not cover. The screen shows the address alone then,
+    #: rather than a guess.
+    region: str
+    user_agent: str
+
+    @classmethod
+    def of(cls, v: ShareView) -> ShareViewOut:
+        return cls(
+            id=v.id,
+            at=v.at,
+            last_at=v.last_at,
+            opens=v.opens,
+            name=v.viewer_name,
+            email=v.viewer_email,
+            ip=v.ip,
+            region=geoip.lookup(v.ip),
+            user_agent=v.user_agent,
+        )
 
 
 # ── connectors ─────────────────────────────────────────────────────────
@@ -484,6 +659,211 @@ class TemplateIn(Wire):
     file_id: str | None = None
     #: Administrator-only. A non-administrator setting it is refused rather
     #: than silently ignored.
+    shared: bool = False
+
+
+class PromptTemplateOut(Wire):
+    """One built-in starting point, in the shape `TemplateOut` already has.
+
+    Every key the two lists share means the same thing in both, so the gallery
+    renders one card for a built-in and for a template somebody wrote, and the
+    only difference it has to know about is `builtin` — which is what decides
+    whether the card offers a delete button.
+    """
+
+    id: str
+    kind: str
+    #: The same surface as `kind`, spelled the way the rendering catalogue
+    #: spells it. A starting point is a request rather than a shape, so the two
+    #: agree here; the card reads `surface` for both lists rather than reading
+    #: `kind` from one and `surface` from the other.
+    surface: str
+    group: str
+    title: str
+    description: str
+    fills: JsonList = Field(default_factory=list)
+    prompt: str
+    #: The English half of the same card, empty until it is written. Both sides
+    #: travel and the client picks, exactly as on a rendering template.
+    title_en: str = ""
+    description_en: str = ""
+    fills_en: JsonList = Field(default_factory=list)
+    prompt_en: str = ""
+    #: Ships in the image, so nobody can edit or remove it.
+    builtin: bool = True
+
+    @classmethod
+    def of(cls, t: PromptTemplate) -> PromptTemplateOut:
+        return cls(
+            id=t.id,
+            kind=t.kind.value,
+            surface=t.kind.value,
+            group=t.group,
+            title=t.title,
+            description=t.description,
+            fills=list(t.fills),
+            prompt=t.prompt,
+            title_en=t.title_en,
+            description_en=t.description_en,
+            fills_en=list(t.fills_en),
+            prompt_en=t.prompt_en,
+        )
+
+
+class DesignSystemOut(Wire):
+    """A look, in the shape both the project picker and the editor render.
+
+    `tokens` is always complete — a caller should never have to know which of
+    the four the row happened to store.
+    """
+
+    id: str
+    name: str
+    description: str
+    tokens: dict[str, str] = Field(default_factory=dict)
+    body: str
+    image_style: str
+    craft: JsonList = Field(default_factory=list)
+    #: Offered to every account. Administrators only.
+    shared: bool = False
+    #: Whether the caller may edit or remove it.
+    mine: bool = True
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, d: DesignSystem, *, owner_id: str | None = None) -> DesignSystemOut:
+        out = cls.model_validate(d, from_attributes=True)
+        out.tokens = design_service.tokens_of(d)
+        out.craft = design_service.craft_keys(d.craft)
+        out.mine = owner_id is None or d.owner_id == owner_id
+        return out
+
+
+class DesignArgumentOut(Wire):
+    """One blank in a media template's prompt, in both languages."""
+
+    name: str
+    label: str
+    label_en: str = ""
+    default: str = ""
+    default_en: str = ""
+    options: JsonList = Field(default_factory=list)
+    options_en: JsonList = Field(default_factory=list)
+
+
+class DesignExtractIn(Wire):
+    """What to read a design system out of: one of the two, not both."""
+
+    #: An uploaded file whose extracted text is already stored.
+    file_id: str | None = None
+    #: A page, read through the same scraper the `fetch_url` tool uses.
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class DesignExtractOut(Wire):
+    """A proposal, not a row. The editor opens on it and the person saves it.
+
+    Shaped like `DesignSystemIn` so the client can hand it straight to the
+    form it already has, plus what it cost and what it read.
+    """
+
+    name: str
+    description: str
+    tokens: dict[str, str] = Field(default_factory=dict)
+    body: str = ""
+    image_style: str = ""
+    craft: JsonList = Field(default_factory=list)
+    #: What it was read from, so the draft can say so.
+    source: str = ""
+    credits: int = 0
+
+
+class DesignTemplateOut(Wire):
+    """One entry of the rendering catalogue.
+
+    Deliberately the same shape the prompt-template gallery already renders —
+    title, description, what you have to bring, a starting sentence — plus the
+    three things only this catalogue has: which surface it belongs to, whether
+    it has a preview to show, and the rules the result will be read against.
+    """
+
+    id: str
+    kind: str
+    surface: str
+    name: str
+    description: str
+    category: str
+    fills: JsonList = Field(default_factory=list)
+    example_prompt: str
+    #: The English half of the same card. Both sides travel; the client picks.
+    name_en: str = ""
+    description_en: str = ""
+    category_en: str = ""
+    fills_en: JsonList = Field(default_factory=list)
+    example_prompt_en: str = ""
+    #: What a review will read the finished thing against, one sentence per
+    #: line. The discipline is what actually separates two shapes of the same
+    #: kind — 회의록 keeps decisions apart from discussion, 안내문 wants
+    #: grounds and an effective date — and it stayed on the server while the
+    #: card showed a name and one line.
+    #:
+    #: Korean only, and deliberately not paired with a `_en` twin: the
+    #: checklists are the rubric a Korean critique scores against, and an
+    #: English half nobody wrote would be a promise in the wrong language.
+    #: Media templates have no checklist and send an empty list.
+    checks: JsonList = Field(default_factory=list)
+    #: Blanks in `example_prompt`, written `{name}`. Filled in the gallery and
+    #: substituted before the sentence reaches the composer, where the person
+    #: can still read and change every word of it.
+    arguments: list[DesignArgumentOut] = Field(default_factory=list)
+    #: Composer settings this template implies — aspect, duration, voice.
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    #: `True` when `/design-templates/{id}/preview` has something to render.
+    has_preview: bool = True
+
+    @classmethod
+    def of(cls, t: object) -> DesignTemplateOut:
+        return cls(
+            id=t.id,
+            kind=t.kind,
+            surface=t.surface.value,
+            name=t.name,
+            description=t.description,
+            category=t.category,
+            fills=list(t.fills),
+            example_prompt=t.example_prompt,
+            name_en=t.name_en,
+            description_en=t.description_en,
+            category_en=t.category_en,
+            fills_en=list(t.fills_en),
+            example_prompt_en=t.example_prompt_en,
+            checks=list(t.checks),
+            arguments=[
+                DesignArgumentOut(
+                    name=a.name,
+                    label=a.label,
+                    label_en=a.label_en,
+                    default=a.default,
+                    default_en=a.default_en,
+                    options=list(a.options),
+                    options_en=list(a.options_en),
+                )
+                for a in t.arguments
+            ],
+            defaults=dict(t.defaults),
+            has_preview=bool(t.seed and t.sample),
+        )
+
+
+class DesignSystemIn(Wire):
+    name: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=200)
+    tokens: dict[str, str] | None = None
+    #: Capped rather than free — see `models.workspace.DesignSystem`.
+    body: str = Field(default="", max_length=design_service.MAX_BODY)
+    image_style: str = Field(default="", max_length=design_service.MAX_IMAGE_STYLE)
+    craft: list[str] | None = None
+    #: Administrator-only, refused rather than ignored. Same rule as templates.
     shared: bool = False
 
 

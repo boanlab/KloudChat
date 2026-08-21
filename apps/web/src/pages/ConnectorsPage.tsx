@@ -30,6 +30,7 @@ import {
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { cn, relativeTime } from '@/lib/utils'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { CatalogEntry } from '@/lib/api'
 import type { Connector, ConnectorStatus } from '@/types'
@@ -51,11 +52,15 @@ function ConnectorCard({
   onOpen,
   onEditCredentials,
   needsCredentials,
+  picked,
+  onPick,
 }: {
   connector: Connector
   onOpen: () => void
   onEditCredentials: () => void
   needsCredentials: boolean
+  picked: boolean
+  onPick: () => void
 }) {
   const t = useT()
   const { toggleConnector, syncConnector } = useStore()
@@ -68,6 +73,12 @@ function ConnectorCard({
     // connector without matching on its name.
     <Card className="flex flex-col p-4" data-connector={connector.slug}>
       <div className="flex items-start gap-3">
+        <PickBox
+          checked={picked}
+          onChange={onPick}
+          label={t('{name} 선택').replace('{name}', connector.name)}
+          className="mt-2.5"
+        />
         <span
           className="grid size-9 shrink-0 place-items-center rounded-card text-lg"
           style={{ background: `${connector.color}1a` }}
@@ -419,6 +430,7 @@ export function ConnectorsPage() {
     loadWorkspace,
     toggleConnectorTool,
     uninstallConnector,
+    deleteMany,
     addCustomConnector,
     workspaceLoading,
     workspaceFailed,
@@ -441,6 +453,7 @@ export function ConnectorsPage() {
   })
 
   const installed = connectors.filter((c) => c.installed)
+  const pick = useBulkSelect(installed)
   // Installed entries stay in the catalog, marked. "Is GitHub supported?" is a
   // question about the catalog, and hiding the answer once someone adds it means
   // the list silently shrinks as it gets used.
@@ -494,7 +507,20 @@ export function ConnectorsPage() {
               description={t('카탈로그에서 필요한 서비스를 추가하거나, MCP 서버 주소를 직접 등록하세요.')}
             />
           ) : tab === 'installed' ? (
-            Object.entries(installedByCategory).map(([category, items]) => (
+            <>
+            <BulkBar
+              count={pick.count}
+              allPicked={pick.allPicked}
+              onToggleAll={pick.toggleAll}
+              onClear={pick.clear}
+              title={t('커넥터')}
+              note={t('저장해 둔 인증 정보도 함께 지워집니다.')}
+              onDelete={async () => {
+                await deleteMany('connectors', pick.ids)
+                pick.clear()
+              }}
+            />
+            {Object.entries(installedByCategory).map(([category, items]) => (
               <section key={category}>
                 <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
                   {t(category)}
@@ -513,12 +539,15 @@ export function ConnectorsPage() {
                         (c.envKeys?.length ?? 0) > 0 ||
                         (catalog.find((e) => e.slug === c.slug)?.requiredEnv?.length ?? 0) > 0
                       }
+                      picked={pick.picked.has(c.id)}
+                      onPick={() => pick.toggle(c.id)}
                       onEditCredentials={() => setReCredential(c)}
                     />
                   ))}
                 </div>
               </section>
-            ))
+            ))}
+            </>
           ) : (
             Object.entries(catalogByCategory).map(([category, items]) => (
               <section key={category}>

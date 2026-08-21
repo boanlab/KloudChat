@@ -32,7 +32,28 @@ else buried inside it. Five surfaces sit side by side: reports stream section
 by section and cite the sources they searched, slides export as `.pptx` and
 `.pdf`, audio and video report progress on job cards. All five share the same
 project context — instructions, knowledge files and memories — and start from a
-template gallery you can add to.
+template gallery you can add to. A project can also wear a design system, so
+its deck, its report and its cover image come out in one colour and one
+typeface instead of three.
+
+Alongside the prompt gallery there is a **rendering catalogue**: shapes the
+answer comes out in. Picking one replaces the surface's built-in track — a
+slides session writes a single-file HTML deck, a report session writes a laid
+out document — and the model fills a fixed vocabulary of blocks rather than
+writing layout. Those files carry no script and do carry print rules, and they
+convert back out to `.pptx`, `.docx`, `.pdf` and `.hwpx` without a rendering
+engine, because the markup came out of a closed vocabulary in the first place.
+
+On the media surfaces the same catalogue holds prompt templates: a sentence
+with blanks, a small form to fill them, and the settings that shape implies —
+aspect, duration, voice — applied when you pick it. The finished sentence lands
+in the composer, where it is still yours to change.
+
+Every document is read back before it is stored — for placeholders nobody
+replaced, figures nobody could have sourced, lines repeated from another
+section — and that check costs nothing. Beside it, a review can be asked for:
+one reading by somebody who did not write the thing, scored out of ten against
+the shape it was written into. Neither corrects anything. Both hand you a list.
 
 **2. An agent can search its own documents.** Attach files or URLs to an agent
 and it looks them up through a tool when it needs background, rather than
@@ -180,6 +201,7 @@ without a translation fall back to Korean.
 | `/new/:kind` · `/s/:id` | The shared work surface. `kind` = chat, report, slides, image, av |
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, member sessions, linked skills and memories |
 | `/artifacts` | Gallery of every output. Filter by kind, jump back to the originating session |
+| `/designs` · `?tab=template` | Design systems you make — colour, type, voice — and the 서식 catalogue the product ships, grouped by surface |
 | `/agents` | System prompt, model, tool permissions, and which surfaces an agent applies to |
 | `/skills` | `SKILL.md` front matter, applicable surfaces, enable toggle |
 | `/memory` | user / feedback / project / reference types, global or project scope, `[[links]]` |
@@ -189,9 +211,9 @@ without a translation fall back to Korean.
 | `/admin/users` | Signup approval, monthly credit allowance, suspension (admin) |
 | `/admin/usage` | Organisation-wide usage (admin) |
 | `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
-| `/settings` · `/settings/preferences` · `/settings/keys` | Profile and password / default model and behaviour / API key issue and revoke |
+| `/settings` · `/settings/preferences` · `/settings/keys` · `/settings/access` | Profile and password / default model and behaviour / API key issue and revoke / sign-ins and security changes on this account |
 | `/agent-setup` | Coding agent connection — address, key, model (account menu) |
-| `/admin/system` | Enabled surfaces, branding, backend integration, LiteLLM, SMTP (admin) |
+| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` | LiteLLM / automatic model routing / enabled surfaces and integrations / shared templates / branding / SMTP (admin) |
 
 ### What each surface does differently
 
@@ -206,15 +228,17 @@ without a translation fall back to Korean.
   Thumbnail grid, speaker notes, per-slide text editing. Exports to pptx, PDF
   and Markdown — preview and both exports share one 960×540 geometry, so what
   you saw is what the file contains.
-- **Image** — an option bar above the composer (aspect ratio, style, count),
-  with results inline in the conversation.
-- **Audio / video** — chosen with a type toggle. Only video shows a job card.
-  Picking resolution, audio and duration updates the quote in place. A failure
-  states the cause and that **nothing was charged**.
+- **Image** — an option bar above the composer (aspect ratio, style, count).
+  The prompt and the picture read as an ordinary turn: the sentence where it
+  was typed, the picture under it.
+- **Audio / video** — chosen with a type toggle. The same turn shape, with a
+  job card standing in the answer's place while a clip is made. Picking
+  resolution, audio and duration updates the quote in place. A failure states
+  the cause and that **nothing was charged**.
 
-**Outputs can be shared by link** — either to workspace members or to people
-without an account. Links are read-only and revocable at any time. Project
-files and memories are never included.
+**Outputs can be shared by link** — either to anyone with an account on this
+instance or to people without one. Links are read-only, revocable at any time,
+and record who opened them. Project files and memories are never included.
 
 **The microphone in the composer** transcribes through the backend's
 speech-to-text. The transcript fills the composer rather than being sent.
@@ -222,6 +246,11 @@ speech-to-text. The transcript fills the composer rather than being sent.
 Chat has a **model comparison** mode: the same question goes to two or three
 models at once, each column showing its credit cost, and the conversation
 continues from whichever answer you pick.
+
+**A turn outlives the tab it was started in.** Closing the page or losing the
+connection does not throw the answer away — it is still written, charged and
+titled. Stopping is a separate act: 중단 tells the server before it closes the
+connection, and the partial answer is kept and marked as cut off.
 
 ## Repository layout
 

@@ -1,0 +1,305 @@
+<!doctype html>
+<!--
+  KloudChat deck seed — editorial.
+
+  A seminar talk with room to breathe. The slide is organised by one horizontal
+  hairline: the title sits in a band across the top, an accent rule crosses the
+  page under it, and the body drops into the left seven of twelve columns. The
+  right five stay empty on every slide — on a projector that is air, and on the
+  A4 handout it is where somebody writes. That emptiness is the design; there
+  is no vertical accent bar down the left edge, because a rule that lies down
+  is the one thing that tells this deck apart from the lecture deck at a
+  glance.
+
+  Colour is derived, never literal: every neutral is a `color-mix` of `--ink`
+  and every tinted surface a `color-mix` of `--accent`, so the deck answers the
+  same way to any accent hue and to a serif or a sans body face. The accent
+  itself appears exactly twice on a slide — the rule under the title, and the
+  hanging dash in front of a list item. Nothing else is painted.
+
+  No script, by design: artifacts render in a `sandbox=""` iframe, so a
+  keyboard runtime would be dead code that still had to be trusted. The deck
+  navigates by CSS scroll-snap, which works in the panel, in a new tab, and
+  in the downloaded file alike.
+
+  `@media print` puts one slide on one landscape page, so "print to PDF" is
+  the export path rather than a rendering engine in the API image.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    /* Every neutral is a mix of the ink the design system chose. A literal
+       grey stops following when the ink changes, which is how a template
+       drifts out of its own design system without anybody editing it. */
+    --paper: color-mix(in srgb, var(--ink) 2%, #fff);
+    --band: color-mix(in srgb, var(--ink) 5%, #fff);
+    --hair: color-mix(in srgb, var(--ink) 12%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 55%, transparent);
+    /* The slide's own measurements, named so print can restate them in mm
+       and the step number can find the title's baseline in either. */
+    --gut: 8vw;
+    --pad-y: 12vh;
+    --h2-size: clamp(1.75rem, 3.2vw, 2.6rem);
+    /* Seven of twelve columns. The `rem` half caps the measure on a wide
+       projector; the percentage half keeps it an actual column fraction. */
+    --measure: min(42rem, 58.33%);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    scroll-snap-type: y mandatory;
+    overflow-y: auto;
+    height: 100vh;
+  }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    /* Not centred. The title starts at a measured height on every slide, so
+       the rule under it lands in the same place each time and the deck reads
+       as one page turned rather than five boxes. */
+    justify-content: flex-start;
+    padding: var(--pad-y) var(--gut) 9vh;
+    border-bottom: 1px solid var(--hair);
+    position: relative;
+    /* The slide's own `1em`: the body voice, so that every subordinate voice
+       under it — a caption, a source line, a definition — lands at 0.84 of
+       what it is subordinate *to* rather than 0.84 of a browser default
+       nothing on this slide is set in. */
+    font-size: clamp(1.05rem, 1.45vw, 1.2rem);
+  }
+  /* The body column: the left seven of twelve. The right five are left empty
+     on purpose — margin on the handout, air on the projector. */
+  .slide > * { max-width: var(--measure); }
+  /* The heading is the one thing that is *not* on the seven columns — it runs
+     the width of the slide so its rule can. Written at this specificity on
+     purpose: a bare `h2 { max-width: none }` loses to the line above it. */
+  .slide > h2 { max-width: none; }
+
+  /* ── the rule ──────────────────────────────────────────────────── */
+  /* The title band. Negative margins take the heading out to both edges so
+     its underline is full bleed; the padding puts the words back on the
+     column. The right padding reserves the corner the step number sits in. */
+  h2 {
+    margin: 0 calc(-1 * var(--gut)) 2.4rem;
+    padding: 0 calc(var(--gut) + 4rem) 0.5em var(--gut);
+    border-bottom: 1px solid var(--accent);
+    font-size: var(--h2-size);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.021em;
+    text-wrap: balance;
+  }
+  /* Sits at the right end of the rule, on the title's first baseline: the
+     0.86em is the heading's ascent, the 0.62rem the number's own. */
+  .num {
+    position: absolute;
+    right: var(--gut);
+    top: calc(var(--pad-y) + var(--h2-size) * 0.86 - 0.62rem);
+    font-size: 0.78rem;
+    line-height: 1;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  /* ── body ──────────────────────────────────────────────────────── */
+  /* Korean has no upper case, so a kicker is made of tracking and colour
+     rather than `text-transform`, which would do nothing to Hangul and
+     shout at the Latin words mixed into it. */
+  h3 {
+    margin: 0 0 0.6em;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  p { margin: 0 0 0.9em; font-size: clamp(1.05rem, 1.45vw, 1.2rem); font-weight: 400;
+      line-height: 1.6; text-wrap: pretty; }
+  li { font-size: clamp(1.05rem, 1.45vw, 1.2rem); font-weight: 400; line-height: 1.6;
+       text-wrap: pretty; }
+  /* No dots. A hanging accent dash marks the item and the text keeps one left
+     edge, which is what makes five lines read as a list of statements rather
+     than a bulleted slide. */
+  ul { list-style: none; margin: 0; padding: 0; }
+  ul > li { position: relative; padding-left: 1.15em; }
+  ul > li::before {
+    content: "–";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+  }
+  ol { margin: 0; padding-left: 1.5em; }
+  ol > li::marker { color: var(--accent); font-variant-numeric: tabular-nums; }
+  li + li { margin-top: 0.55em; }
+  strong { font-weight: 650; }
+  blockquote {
+    margin: 0;
+    font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+    font-weight: 400;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+  table { width: 100%; border-collapse: collapse;
+          font-size: clamp(0.95rem, 1.3vw, 1.1rem); }
+  th, td { padding: 0.55em 0.9em 0.55em 0; border-bottom: 1px solid var(--hair);
+           text-align: left; vertical-align: top; }
+  /* Figures in a column are read down, not across; without this they
+     wander by a fraction of a character each row. */
+  td { font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.1em;
+       border-bottom: 1px solid var(--rule); }
+
+  /* ── the subordinate voice ─────────────────────────────────────── */
+  /* One behaviour for every voice that explains something else: 0.84em,
+     muted, upright, a short measure, 0.5rem under what it explains.
+     Recognising this is how somebody knows a third KloudChat document
+     without being told which template it came from. */
+  figcaption, small, dd, .lead {
+    font-size: 0.84em;
+    line-height: 1.55;
+    color: var(--muted);
+    font-style: normal;
+    max-width: 54ch;
+  }
+  figcaption { margin-top: 0.5rem; }
+  p + small, blockquote + small, figure + small, ul + small, table + small {
+    display: block;
+    margin-top: 0.5rem;
+  }
+
+  /* ── cover ─────────────────────────────────────────────────────── */
+  /* The one inverted slide: the rule goes above the title and the block sits
+     in the bottom third, so the deck opens on the move it then repeats. */
+  .slide.cover {
+    background: var(--band);
+    justify-content: flex-end;
+    /* The local scale the lead is 0.84em of. */
+    font-size: clamp(1.25rem, 2vw, 1.5rem);
+  }
+  .slide.cover h2 {
+    margin: 0 calc(-1 * var(--gut));
+    padding: 0.55em calc(var(--gut) + 12%) 0 var(--gut);
+    border-bottom: 0;
+    border-top: 1px solid var(--accent);
+    font-size: clamp(2.1rem, 4.6vw, 3.2rem);
+  }
+  .slide.cover .lead { margin: 0.5rem 0 0; }
+  .slide.cover .num {
+    position: static;
+    order: -1;
+    align-self: flex-end;
+    margin: 0 0 0.55rem;
+  }
+
+  /* ── quote ─────────────────────────────────────────────────────── */
+  /* The rule comes off. One sentence on the seven columns and nothing else —
+     the only slide where the accent is a piece of punctuation rather than a
+     structure. */
+  .slide.quote { justify-content: center; }
+  .slide.quote > h2 {
+    max-width: var(--measure);
+    margin: 0 0 1.6rem;
+    padding: 0;
+    border-bottom: 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  .slide.quote small { display: block; }
+  .slide.quote small::before { content: "— "; color: var(--accent); }
+
+  /* ── split ─────────────────────────────────────────────────────── */
+  /* Five columns, two empty, five. The gap is the divider; a drawn line
+     between them would be a second rule competing with the one above. */
+  .slide.split .cols {
+    display: grid;
+    grid-template-columns: 5fr 5fr;
+    column-gap: 16.66%;
+    max-width: none;
+  }
+  @media (max-width: 720px) {
+    .slide.split .cols { grid-template-columns: 1fr; row-gap: 1.8rem; column-gap: 0; }
+  }
+
+  /* ── table ─────────────────────────────────────────────────────── */
+  /* The only layout that uses all twelve columns. The change of width is
+     what stops five slides looking like the same slide five times. */
+  .slide.table > * { max-width: none; }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0.5rem 0 0.9rem; }
+  hr { border: 0; border-top: 1px solid var(--hair); margin: 1.6rem 0; }
+  /* A line of code is a quotation from a machine, so it has to survive being
+     copied out of the page character for character: a fixed-width face, and a
+     field that shows where it starts and where it stops. Inline only — `pre`
+     is not in the vocabulary, so nothing here can grow into a wall. */
+  code {
+    font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    font-size: 0.88em;
+    padding: 0.05em 0.32em;
+    background: var(--band);
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  /* A slide is one screen. A portrait picture at full width is twice that,
+     and it takes the slide's own box with it — scroll-snap stops landing on
+     slide boundaries and print puts one slide across two pages. Height is
+     what has to be capped here, not width. */
+  figure img { display: block; max-width: 100%; max-height: 52vh;
+               width: auto; height: auto; }
+
+  @page { size: A4 landscape; margin: 12mm; }
+  @media print {
+    body { height: auto; overflow: visible; scroll-snap-type: none;
+           background: #fff; }
+    .slide, .slide.cover {
+      --gut: 10mm;
+      --pad-y: 9mm;
+      min-height: auto;
+      height: auto;
+      justify-content: flex-start;
+      page-break-after: always;
+      break-after: page;
+      border-bottom: 0;
+      padding: var(--pad-y) var(--gut) 8mm;
+    }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    /* The handout is black and white, four copies of it; the band would print
+       as a grey wash over a whole page for no gain. */
+    .slide.cover { background: #fff; }
+    figure img { max-height: 92mm; }
+  }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

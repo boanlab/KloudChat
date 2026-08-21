@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Badge, Card } from '@/components/ui'
+import { DesignRail } from '@/components/chat/DesignRail'
 import { kindMeta, kindOrder } from '@/lib/kinds'
-import { relativeTime } from '@/lib/utils'
+import { madeLine, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -57,6 +58,10 @@ export function HomePage() {
             )
           })}
         </div>
+
+        {/* Under the five kinds and above the work already done: what to make
+            and what it can look like are one decision, taken together. */}
+        <DesignRail />
 
         {running.length > 0 && (
           <section className="mb-8">
@@ -111,8 +116,14 @@ export function HomePage() {
                   <Icon size={15} className="shrink-0" style={{ color: meta.color }} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-base font-medium">{s.title}</p>
+                    {/* 그림과 영상 화면은 turn 을 남기지 않아 preview 가 늘 비어
+                        있었다. 제목이 이미 사람이 쓴 문장이므로, 그 아래에는
+                        되돌아온 것 — 몇 장인지, 몇 초인지 — 을 적는다. */}
                     <p className="truncate text-xs text-muted">
-                      {s.messages.at(-1)?.content.slice(0, 80) ?? s.preview ?? t('아직 주고받은 메시지가 없습니다')}
+                      {s.messages.at(-1)?.content.slice(0, 80) ??
+                        s.preview ??
+                        madeLine(s.made, t) ??
+                        t('아직 주고받은 메시지가 없습니다')}
                     </p>
                   </div>
                   {project && <Badge>{project.emoji}</Badge>}

@@ -143,12 +143,26 @@ class Settings(BaseSettings):
     # Hits scraped in full. Each is a page fetch: answer quality against latency.
     web_search_results: int = 5
     web_search_scrape: int = 3
-    # Names conversations. Empty falls back to the session's own model, which
-    # is correct but wasteful on an expensive one.
-    title_model: str = "local/glm-4.7-flash"
+    # Names conversations and extracts memories. Empty falls back to the
+    # session's own model, which is correct but wasteful on an expensive one —
+    # as is naming an expensive one here. 3B-active is what this wants.
+    title_model: str = "local/qwen3.6-35b"
     #: Conversation model when the user has not chosen one. Absent from the
     #: catalogue, the surface falls back to its cheapest.
-    default_chat_model: str = "local/qwen3.6-35b"
+    default_chat_model: str = "strict-local/qwen3.6-35b"
+
+    #: The instance's wall clock, as an IANA name. Used for the date given to
+    #: the model and for nothing else — every timestamp in the database stays
+    #: UTC. A model told "today is 2026-08-20" in UTC at 07:00 KST would be a
+    #: day behind for every reader in Seoul, which is the whole reason this is
+    #: configurable rather than hardcoded to UTC.
+    timezone: str = "Asia/Seoul"
+
+    #: Path to a MaxMind GeoLite2 City database. Empty disables region lookup
+    #: entirely — see `services/geoip.py`. Never a network service: resolving
+    #: addresses through a third party would send every visitor's address off
+    #: this instance.
+    geoip_database: str = ""
 
     @property
     def cookie_samesite(self) -> Literal["lax", "none"]:
