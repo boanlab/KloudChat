@@ -31,8 +31,8 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
+from app.services import grounding, settings_store
 from app.services import outline as plan_rules
-from app.services import settings_store
 from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
@@ -92,8 +92,7 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 {theme_rule}- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
   하나의 발표가 되어야 한다.
 - 내용은 쓰지 마라. 제목과 layout 만.
-- 요청이 한 단어여도 되묻지 마라. 주제만 주어졌으면 그 주제를 처음 접하는
-  사람에게 설명하는 발표로 네가 알아서 구성하라. 자료가 부족하다는 답은 하지 마라.
+{ask_rule}
 - 참고할 자료에 발표 양식·서식 문서가 있으면 그 문서의 장 순서를 그대로 따라라.
   장수도 그 양식을 따르고, 일반적인 발표 구성으로 바꾸지 마라.
 
@@ -315,116 +314,25 @@ def _clean_bullets(value: Any) -> list[str]:
     return out[:6]
 
 
-async def write(
+async def _write_slides(
     *,
+    plan: list[dict[str, Any]],
+    title: str,
+    subtitle: str,
+    accent: str,
     request: str,
     model: str,
     api_key: str,
-    trusted_context: list[str] | None = None,
-    untrusted_context: list[str] | None = None,
-    tokens: dict[str, str] | None = None,
-    #: The model that plans, when an administrator has named one. The outline
-    #: is one call and decides the shape of every call after it, so it is the
-    #: one place where a stronger model changes the result out of proportion
-    #: to what it costs. Empty means the same model writes and plans.
-    outline_model: str = "",
+    trusted_context: list[str] | None,
+    untrusted_context: list[str] | None,
+    usage: dict[str, int],
 ) -> AsyncIterator[dict[str, Any]]:
-    """Streams `step`, `title`, `slide`, a final `deck` and one `usage` event.
+    """Writes the bodies for an outline that has already been agreed to.
 
-    The caller owns persistence, billing and the artifact — this only writes.
-    A slide that fails is marked and the rest continues, because eight slides
-    and a gap is worth more than nothing.
-
-    `tokens` is the project's design system, when it wears one. Its accent
-    replaces the model's colour choice outright rather than being offered as a
-    default: a deck that is nearly the project's colour is worse than one that
-    is plainly not.
+    Lifted out of `write` so the approved-plan path and the plan-it-now path
+    reach exactly the same code. Two copies of this loop would be two decks
+    that differ in ways nobody chose.
     """
-    # Planning is counted apart from writing, because it can run on another
-    # model — and a call billed at the wrong model's price is a ledger that
-    # says the wrong thing about where the money went. Empty when the same
-    # model does both, which is the shape every caller already handles.
-    usage = {
-        "inputTokens": 0,
-        "outputTokens": 0,
-        "outlineInputTokens": 0,
-        "outlineOutputTokens": 0,
-    }
-    wanted = requested_slides(request)
-    fixed_accent = (tokens or {}).get("accent") or ""
-
-    async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
-        return await _complete(
-            outline_model or model,
-            build_document_messages(
-                SessionKind.slides,
-                _OUTLINE_PROMPT.format(
-                    lo=wanted or _MIN_SLIDES,
-                    hi=wanted or _DEFAULT_MAX,
-                    theme_rule=(
-                        "" if fixed_accent else _THEME_RULE.format(themes=" / ".join(_THEMES))
-                    ),
-                    theme_example="" if fixed_accent else '"theme": "청록",\n  ',
-                    request=request[:2000],
-                )
-                + nudge,
-                trusted_context=trusted_context,
-                untrusted_context=untrusted_context,
-            ),
-            api_key,
-            # Scaled with the slide count: a fixed ceiling truncates the JSON
-            # on a long deck and the parse fails.
-            max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
-        )
-
-    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
-    try:
-        text, spent = await ask()
-    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        log.warning("deck outline failed: %s", exc)
-        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
-        yield {"type": "error", "message": "슬라이드 구성을 만들지 못했습니다."}
-        yield {"type": "usage", **usage}
-        return
-
-    plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-    title, subtitle, plan = _parse_outline(text)
-    accent = fixed_accent or _theme_accent(text)
-
-    # Four layouts on offer, and the answer is usually `bullets` all the way
-    # down. One more call, naming the ones it skipped, is the cheapest place
-    # to fix that — the slides themselves have not been written yet.
-    missing = plan_rules.flat_layouts(plan, _LAYOUTS[1:]) if plan else []
-    if missing:
-        log.info("deck outline flat, unused: %s", ",".join(missing))
-        try:
-            retry_text, retry_spent = await ask(
-                "\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
-                "다음 layout 을 최소 한 번씩 쓰고, 같은 layout 을 세 장 연속으로 쓰지 마라: "
-                + " / ".join(missing)
-            )
-        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-            log.warning("deck outline retry failed: %s", exc)
-        else:
-            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
-            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
-            if retry_plan and not plan_rules.flat_layouts(retry_plan, _LAYOUTS[1:]):
-                title = retry_title or title
-                subtitle = retry_subtitle or subtitle
-                plan = retry_plan
-                accent = fixed_accent or _theme_accent(retry_text) or accent
-            else:
-                log.info("deck outline still flat, keeping the first")
-    # Only an empty outline is a failure; a short one is a narrow topic.
-    if not plan:
-        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
-        yield {
-            "type": "error",
-            "message": "슬라이드 구성을 만들지 못했습니다. 요청을 조금 더 구체적으로 적어 주세요.",
-        }
-        yield {"type": "usage", **usage}
-        return
-
     yield {
         "type": "step",
         "id": "outline",
@@ -552,6 +460,187 @@ async def write(
         yield {"type": "slide", "slide": slide, "done": True}
 
     yield {"type": "deck", "slides": slides}
+    yield {"type": "usage", **usage}
+
+async def write(
+    *,
+    request: str,
+    model: str,
+    api_key: str,
+    trusted_context: list[str] | None = None,
+    untrusted_context: list[str] | None = None,
+    tokens: dict[str, str] | None = None,
+    #: The model that plans, when an administrator has named one. The outline
+    #: is one call and decides the shape of every call after it, so it is the
+    #: one place where a stronger model changes the result out of proportion
+    #: to what it costs. Empty means the same model writes and plans.
+    outline_model: str = "",
+    #: The outline somebody has already seen and approved.
+    #:
+    #: Absent, this plans and stops: it emits `proposal` — or `needs`, when the
+    #: material cannot carry the request — and writes nothing. Present, it
+    #: skips planning entirely and writes exactly what was approved, because a
+    #: second planning call would produce a different deck from the one that
+    #: was agreed to and quietly replace it.
+    approved_plan: dict[str, Any] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Streams `step`, `title`, `slide`, a final `deck` and one `usage` event.
+
+    Two passes over two requests. The first plans and offers; the second writes
+    what came back approved. Nothing is written on the first, which is what
+    keeps a deck already on screen safe from a run nobody confirmed.
+
+    The caller owns persistence, billing and the artifact — this only writes.
+    A slide that fails is marked and the rest continues, because eight slides
+    and a gap is worth more than nothing.
+
+    `tokens` is the project's design system, when it wears one. Its accent
+    replaces the model's colour choice outright rather than being offered as a
+    default: a deck that is nearly the project's colour is worse than one that
+    is plainly not.
+    """
+    # Planning is counted apart from writing, because it can run on another
+    # model — and a call billed at the wrong model's price is a ledger that
+    # says the wrong thing about where the money went. Empty when the same
+    # model does both, which is the shape every caller already handles.
+    usage = {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "outlineInputTokens": 0,
+        "outlineOutputTokens": 0,
+    }
+    wanted = requested_slides(request)
+    fixed_accent = (tokens or {}).get("accent") or ""
+
+    if approved_plan is not None:
+        title = str(approved_plan.get("title") or "")
+        subtitle = str(approved_plan.get("subtitle") or "")
+        accent = fixed_accent or str(approved_plan.get("accent") or "")
+        plan = [
+            {"title": str(item.get("title") or ""), "layout": str(item.get("layout") or "bullets")}
+            for item in (approved_plan.get("slides") or [])
+            if str(item.get("title") or "").strip()
+        ]
+        if not plan:
+            yield {"type": "error", "message": "승인된 구성이 비어 있습니다."}
+            yield {"type": "usage", **usage}
+            return
+        async for event in _write_slides(
+            plan=plan,
+            title=title,
+            subtitle=subtitle,
+            accent=accent,
+            request=request,
+            model=model,
+            api_key=api_key,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
+            usage=usage,
+        ):
+            yield event
+        return
+
+    async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
+        return await _complete(
+            outline_model or model,
+            build_document_messages(
+                SessionKind.slides,
+                _OUTLINE_PROMPT.format(
+                    ask_rule=grounding.ASK_RULE,
+                    lo=wanted or _MIN_SLIDES,
+                    hi=wanted or _DEFAULT_MAX,
+                    theme_rule=(
+                        "" if fixed_accent else _THEME_RULE.format(themes=" / ".join(_THEMES))
+                    ),
+                    theme_example="" if fixed_accent else '"theme": "청록",\n  ',
+                    request=request[:2000],
+                )
+                + nudge,
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+            ),
+            api_key,
+            # Scaled with the slide count: a fixed ceiling truncates the JSON
+            # on a long deck and the parse fails.
+            max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
+        )
+
+    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
+    try:
+        text, spent = await ask()
+    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+        log.warning("deck outline failed: %s", exc)
+        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
+        yield {"type": "error", "message": "슬라이드 구성을 만들지 못했습니다."}
+        yield {"type": "usage", **usage}
+        return
+
+    plan_rules.count(usage, spent, planned_apart=bool(outline_model))
+    # The model may answer the outline call with a question instead. Only when
+    # the request names material it cannot find — see `grounding.ASK_RULE`; a
+    # bare topic is still planned without being asked about.
+    if asked := grounding.parse_needs(text):
+        yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+        yield {"type": "needs", "questions": [q.wire() for q in asked]}
+        yield {"type": "usage", **usage}
+        return
+    title, subtitle, plan = _parse_outline(text)
+    accent = fixed_accent or _theme_accent(text)
+
+    # Four layouts on offer, and the answer is usually `bullets` all the way
+    # down. One more call, naming the ones it skipped, is the cheapest place
+    # to fix that — the slides themselves have not been written yet.
+    missing = plan_rules.flat_layouts(plan, _LAYOUTS[1:]) if plan else []
+    if missing:
+        log.info("deck outline flat, unused: %s", ",".join(missing))
+        try:
+            retry_text, retry_spent = await ask(
+                "\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
+                "다음 layout 을 최소 한 번씩 쓰고, 같은 layout 을 세 장 연속으로 쓰지 마라: "
+                + " / ".join(missing)
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline retry failed: %s", exc)
+        else:
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            if retry_plan and not plan_rules.flat_layouts(retry_plan, _LAYOUTS[1:]):
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text) or accent
+            else:
+                log.info("deck outline still flat, keeping the first")
+    # Only an empty outline is a failure; a short one is a narrow topic.
+    if not plan:
+        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
+        yield {
+            "type": "error",
+            "message": "슬라이드 구성을 만들지 못했습니다. 요청을 조금 더 구체적으로 적어 주세요.",
+        }
+        yield {"type": "usage", **usage}
+        return
+
+    yield {
+        "type": "step",
+        "id": "outline",
+        "label": f"구성 {len(plan)}장",
+        "status": "done",
+        "detail": " · ".join(item["title"] for item in plan),
+    }
+    # Planned, and that is where this stops. The deck is offered rather than
+    # written: the caller stores it, shows it, and calls back with it approved.
+    yield {
+        "type": "proposal",
+        "plan": {
+            "title": title[:200],
+            "subtitle": subtitle[:200],
+            "accent": accent,
+            "slides": [
+                {"title": item["title"], "layout": item["layout"]} for item in plan
+            ],
+        },
+    }
     yield {"type": "usage", **usage}
 
 

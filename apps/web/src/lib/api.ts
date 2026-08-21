@@ -9,6 +9,8 @@ import type {
   Preferences,
   Message,
   ModelInfo,
+  PendingPlan,
+  PendingQuestion,
   PrivacyAction,
   PrivacyRouting,
   CostRouting,
@@ -715,6 +717,8 @@ export interface SessionRow {
   model: string
   routingMode: Session['routingMode']
   artifactId: string | null
+  /** A generation waiting to be answered or approved, or null. */
+  pending: PendingPlan | null
   /** The rendering template this session writes into, if one was picked. */
   renderTemplateId: string | null
   pinned: boolean
@@ -1516,6 +1520,10 @@ export type StreamEvent =
   /** The finished single file. Arrives once, after the last block. */
   | { type: 'page'; html: string; blocks: { title: string; layout: string }[]; templateId: string }
   | { type: 'title'; title: string }
+  /** The outline a document intends to write, offered before it writes it. */
+  | { type: 'proposal'; plan: NonNullable<PendingPlan['plan']> }
+  /** What it needs to know before it can plan at all. */
+  | { type: 'needs'; questions: PendingQuestion[] }
   /** The reference shelf a report's sections cite from, sent once, up front. */
   | { type: 'sources'; sources: Source[] }
   | { type: 'artifact'; artifactId: string }
@@ -1562,6 +1570,10 @@ export async function* streamSession(
     startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    /** Write the outline waiting on this session instead of planning another. */
+    approve?: boolean
+    /** Answers to a stopped turn's questions, keyed by question id. */
+    answers?: Record<string, string>
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {

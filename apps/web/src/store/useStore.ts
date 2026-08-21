@@ -60,6 +60,7 @@ import type {
   ModelInfo,
   Project,
   ProjectFile,
+  PendingPlan,
   Session,
   Preferences,
   PrivacyAction,
@@ -255,6 +256,16 @@ interface State {
       startingTemplate?: StartingPoint
       privacyAction?: PrivacyAction
       privacyDecisionToken?: string
+      /**
+       * Write the outline waiting on this session rather than planning another.
+       *
+       * What 이대로 생성 sends. Everything else — an answer, a note, a plain
+       * sentence — plans again, so what finally gets written is always
+       * something somebody looked at first.
+       */
+      approve?: boolean
+      /** Answers to a stopped turn's questions, keyed by question id. */
+      answers?: Record<string, string>
       /**
        * Run this one turn on a named model, whatever the conversation is set
        * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
@@ -1169,7 +1180,15 @@ export const useStore = create<State>((set, get) => ({
     const shownInTranscript =
       (session?.kind === 'image' || session?.kind === 'av') && session.messageCount > 0
     const artifactId = shownInTranscript ? null : (session?.artifactId ?? null)
-    set({ activeSessionId: id, openArtifactId: artifactId })
+    set((state) => ({
+      activeSessionId: id,
+      openArtifactId: artifactId,
+      // Comparison belongs to the conversation somebody turned it on in.
+      // Held globally it followed them everywhere: switch to another chat and
+      // every question there is silently answered by three models, at three
+      // times the cost, with no chip on screen until the composer renders.
+      compareMode: id === state.activeSessionId ? state.compareMode : false,
+    }))
         // Opening a panel means fetching the document. The listing carries cards:
         // a report's card has empty `sources` and sections cut to 400 characters,
         // so a panel drawn from one contradicts itself. Whole copies are kept.
@@ -1358,6 +1377,7 @@ export const useStore = create<State>((set, get) => ({
           opts.activatedSkillIds,
           opts.renderTemplateId,
           opts.startingTemplate?.id,
+          { approve: opts.approve, answers: opts.answers },
         )
         return id
       }
@@ -1371,6 +1391,7 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.startingTemplate?.id,
+          { approve: opts.approve, answers: opts.answers },
         )
         return id
       }
@@ -1384,6 +1405,7 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.startingTemplate?.id,
+          { approve: opts.approve, answers: opts.answers },
         )
         return id
       }
@@ -2672,6 +2694,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     model: raw.model,
     routingMode: raw.routingMode ?? 'manual',
     artifactId: raw.artifactId,
+    pending: raw.pending ?? null,
     renderTemplateId: raw.renderTemplateId ?? null,
     pinned: raw.pinned,
     createdAt: raw.createdAt,
@@ -3292,6 +3315,25 @@ async function runComparison(
  * denominator from the start; sections fill in after. The artifact is built
  * locally while streaming and swapped for the server's copy at the end.
  */
+/**
+ * Puts the waiting generation on the session, or takes it off.
+ *
+ * The server owns this row — it is what a reload reads — but the browser has
+ * just watched the events that produced it, and waiting for a round trip to
+ * redraw would leave the proposal invisible for as long as that took.
+ */
+function setPending(
+  set: Set,
+  sessionId: string,
+  next: (current: PendingPlan | null) => PendingPlan | null,
+) {
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId ? { ...c, pending: next(c.pending ?? null) } : c,
+    ),
+  }))
+}
+
 async function streamReport(
   set: Set,
   get: Get,
@@ -3300,6 +3342,15 @@ async function streamReport(
   model: string,
   activatedSkillIds?: string[],
   startingTemplateId?: string,
+  /**
+   * The approval, when this run is the second half of one.
+   *
+   * `approve` is what turns a proposal into a document, and it is also what
+   * decides whether to put a draft artifact on screen at all: a planning pass
+   * writes nothing, so an empty panel opening over the deck already there
+   * would say the opposite of what is happening.
+   */
+  gate: { approve?: boolean; answers?: Record<string, string> } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3320,15 +3371,18 @@ async function streamReport(
     wordCount: 0,
   }
 
+  // A planning pass produces no document, so it must not open one. Before
+  // this, every request put an empty panel over whatever was already there —
+  // which is the picture somebody sees a second before their deck is replaced.
+  const willWrite = gate.approve === true
   set((s) => ({
     streaming: true,
-    artifacts: [draft, ...s.artifacts],
-    openArtifactId: draftId,
+    ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
     sessions: s.sessions.map((c) =>
       c.id === sessionId
         ? {
             ...c,
-            artifactId: draftId,
+            ...(willWrite ? { artifactId: draftId } : {}),
             messages: [
               ...c.messages,
               { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
@@ -3353,10 +3407,40 @@ async function streamReport(
   try {
     for await (const e of streamSession(
       sessionId,
-      { content: text, model, activatedSkillIds, startingTemplateId },
+      {
+        content: text,
+        model,
+        activatedSkillIds,
+        startingTemplateId,
+        approve: gate.approve,
+        answers: gate.answers,
+      },
       controller.signal,
     )) {
       switch (e.type) {
+        // The turn stopped on purpose: it planned, or it asked. Neither wrote
+        // anything, so the session keeps whatever document it already had and
+        // simply carries the offer until somebody answers it.
+        case 'proposal':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'outline',
+            request: text,
+            attachments: p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            plan: e.plan,
+          }))
+          break
+        case 'needs':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'clarify',
+            request: text,
+            attachments: p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            questions: e.questions,
+          }))
+          break
         case 'skills_applied':
           patchMessage(set, sessionId, assistantId, (message) => ({
             ...message,
@@ -3471,6 +3555,15 @@ async function streamPage(
   activatedSkillIds?: string[],
   renderTemplateId?: string,
   startingTemplateId?: string,
+  /**
+   * The approval, when this run is the second half of one.
+   *
+   * `approve` is what turns a proposal into a document, and it is also what
+   * decides whether to put a draft artifact on screen at all: a planning pass
+   * writes nothing, so an empty panel opening over the deck already there
+   * would say the opposite of what is happening.
+   */
+  gate: { approve?: boolean; answers?: Record<string, string> } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3489,15 +3582,18 @@ async function streamPage(
     content: '',
   }
 
+  // A planning pass produces no document, so it must not open one. Before
+  // this, every request put an empty panel over whatever was already there —
+  // which is the picture somebody sees a second before their deck is replaced.
+  const willWrite = gate.approve === true
   set((s) => ({
     streaming: true,
-    artifacts: [draft, ...s.artifacts],
-    openArtifactId: draftId,
+    ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
     sessions: s.sessions.map((c) =>
       c.id === sessionId
         ? {
             ...c,
-            artifactId: draftId,
+            ...(willWrite ? { artifactId: draftId } : {}),
             messages: [
               ...c.messages,
               { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
@@ -3525,10 +3621,41 @@ async function streamPage(
   try {
     for await (const e of streamSession(
       sessionId,
-      { content: text, model, activatedSkillIds, renderTemplateId, startingTemplateId },
+      {
+        content: text,
+        model,
+        activatedSkillIds,
+        renderTemplateId,
+        startingTemplateId,
+        approve: gate.approve,
+        answers: gate.answers,
+      },
       controller.signal,
     )) {
       switch (e.type) {
+        // The turn stopped on purpose: it planned, or it asked. Neither wrote
+        // anything, so the session keeps whatever document it already had and
+        // simply carries the offer until somebody answers it.
+        case 'proposal':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'outline',
+            request: text,
+            attachments: p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            plan: e.plan,
+          }))
+          break
+        case 'needs':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'clarify',
+            request: text,
+            attachments: p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            questions: e.questions,
+          }))
+          break
         case 'skills_applied':
           patchMessage(set, sessionId, assistantId, (message) => ({
             ...message,
@@ -3623,6 +3750,15 @@ async function streamDeck(
   model: string,
   activatedSkillIds?: string[],
   startingTemplateId?: string,
+  /**
+   * The approval, when this run is the second half of one.
+   *
+   * `approve` is what turns a proposal into a document, and it is also what
+   * decides whether to put a draft artifact on screen at all: a planning pass
+   * writes nothing, so an empty panel opening over the deck already there
+   * would say the opposite of what is happening.
+   */
+  gate: { approve?: boolean; answers?: Record<string, string> } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3641,15 +3777,18 @@ async function streamDeck(
     slides: [],
   }
 
+  // A planning pass produces no document, so it must not open one. Before
+  // this, every request put an empty panel over whatever was already there —
+  // which is the picture somebody sees a second before their deck is replaced.
+  const willWrite = gate.approve === true
   set((s) => ({
     streaming: true,
-    artifacts: [draft, ...s.artifacts],
-    openArtifactId: draftId,
+    ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
     sessions: s.sessions.map((c) =>
       c.id === sessionId
         ? {
             ...c,
-            artifactId: draftId,
+            ...(willWrite ? { artifactId: draftId } : {}),
             messages: [
               ...c.messages,
               { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
@@ -3672,10 +3811,40 @@ async function streamDeck(
   try {
     for await (const e of streamSession(
       sessionId,
-      { content: text, model, activatedSkillIds, startingTemplateId },
+      {
+        content: text,
+        model,
+        activatedSkillIds,
+        startingTemplateId,
+        approve: gate.approve,
+        answers: gate.answers,
+      },
       controller.signal,
     )) {
       switch (e.type) {
+        // The turn stopped on purpose: it planned, or it asked. Neither wrote
+        // anything, so the session keeps whatever document it already had and
+        // simply carries the offer until somebody answers it.
+        case 'proposal':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'outline',
+            request: text,
+            attachments: p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            plan: e.plan,
+          }))
+          break
+        case 'needs':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'clarify',
+            request: text,
+            attachments: p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            questions: e.questions,
+          }))
+          break
         case 'skills_applied':
           patchMessage(set, sessionId, assistantId, (message) => ({
             ...message,
