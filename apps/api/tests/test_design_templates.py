@@ -17,6 +17,7 @@ code it guards:
 from __future__ import annotations
 
 import re
+import time
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -969,3 +970,27 @@ def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(
     with pytest.raises(HTTPException) as raised:
         workspace_router._validated_render_templates(defaults)
     assert raised.value.status_code == expected
+
+
+def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
+    """A padded fragment is sanitised in the time a fragment takes.
+
+    `\\s+` before an attribute name is quadratic — the engine consumes a whole
+    run of whitespace at every position in it and then fails on the next
+    literal. Model output reaching a regex like that is a request that costs
+    the server seconds of CPU and the caller one space bar.
+
+    The ceiling is generous on purpose: what it catches is the difference
+    between linear and quadratic, not a slow machine.
+    """
+    padded = "<p" + " " * 60_000 + 'onclick="steal()" style="color:red" href="http://x">hi</p>'
+
+    started = time.perf_counter()
+    cleaned = dt.sanitise(padded)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 1.0, f"{elapsed:.1f}s"
+    # And it is still doing the job it was slow at.
+    assert "onclick" not in cleaned
+    assert "style=" not in cleaned
+    assert "href=" not in cleaned
