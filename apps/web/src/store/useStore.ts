@@ -699,9 +699,15 @@ export const useStore = create<State>((set, get) => ({
       setAccessToken(session.accessToken)
       set({ authenticated: true, user: session.user, authLoading: false })
       scheduleRefresh(session.expiresIn, () => void get().bootstrap())
-      void get().loadModels()
-      void get().loadSessions()
-      void get().loadWorkspace()
+      // Only for an account that can use them. `/models`, `/sessions` and the
+      // workspace are all gated on `active`, so a pending account asking is a
+      // guaranteed refusal — and one of those refusals used to leave the
+      // picker calling the catalogue partial for the rest of the session.
+      if (session.user.status === 'active') {
+        void get().loadModels()
+        void get().loadSessions()
+        void get().loadWorkspace()
+      }
     } catch (err) {
       set({ authError: err instanceof ApiError ? err.detail : 'network_error' })
       throw err
@@ -765,7 +771,17 @@ export const useStore = create<State>((set, get) => ({
 
   refreshMe: async () => {
     try {
-      set({ user: await auth.me() })
+      const before = get().user?.status
+      const user = await auth.me()
+      set({ user })
+      // The waiting screen polls this, so this is the moment an approval
+      // becomes true for a tab that has been sitting on it. Nothing else runs
+      // then, and the screen it advances to needs a workspace to draw.
+      if (before !== 'active' && user.status === 'active') {
+        void get().loadModels()
+        void get().loadSessions()
+        void get().loadWorkspace()
+      }
     } catch (err) {
       if (err instanceof UnauthorizedError) await get().bootstrap()
     }
@@ -957,7 +973,16 @@ export const useStore = create<State>((set, get) => ({
       }))
     } catch {
       // Leave whatever is already loaded; the picker keeps working offline.
-      set({ modelsLoading: false, litellmAvailable: false })
+      //
+      // And leave the flag alone when there is a catalogue to leave. It says
+      // whether the *list* is complete, not whether *this request* worked: a
+      // refresh that fails behind a list the server already sent in full does
+      // not make that list partial, and saying so put "일부 모델만 고를 수
+      // 있습니다" above every model the instance has.
+      set((s) => ({
+        modelsLoading: false,
+        litellmAvailable: s.models.length > 0 ? s.litellmAvailable : false,
+      }))
     }
   },
 
