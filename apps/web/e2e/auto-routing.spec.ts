@@ -634,7 +634,10 @@ test('관리자 라우팅 설정은 실패를 성공으로 표시하지 않고 �
 
   state.failGovernance = true
   await page.getByRole('button', { name: '라우팅 설정 저장' }).click()
-  await expect(page.getByRole('alert')).toContainText('invalid_auto_routing_policy')
+  // Said as a failure, not shown as the API's own code: `detail` here is a
+  // machine string, and an administrator is a reader too. What has to hold is
+  // that the refusal is visible and the save is not claimed.
+  await expect(page.getByRole('alert')).toContainText('라우팅 설정을 저장하지 못했습니다.')
   await expect(page.getByText('저장했습니다.')).toHaveCount(0)
 
   state.failGovernance = false

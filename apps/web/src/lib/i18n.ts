@@ -850,6 +850,8 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
   '계정이 있는 사람': 'Anyone with an account',
+  '길이와 형식을 정해 만들고 대화 안에서 바로 확인합니다':
+    'Set the length and format, then watch it arrive in the conversation',
   '{n}개 선택됨': '{n} selected',
   '전체 해제': 'Clear all',
   '선택 삭제': 'Delete selected',

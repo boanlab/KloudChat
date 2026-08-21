@@ -51,7 +51,16 @@ export class ApiError extends Error {
  * written for whoever reads the logs, and so is a network error's message.
  */
 /** A bare status code, which is what `readDetail` falls back to. */
-const STATUS_CODE = /^http_\d{3}$/
+/**
+ * A machine code rather than a sentence: `not_found`, `upstream_failed`,
+ * `http_502`. This API answers 4xx with them by design, and `readDetail`
+ * invents one when the body is not JSON at all.
+ *
+ * Recognised by shape rather than by a list, because the list grows: a code is
+ * lowercase ASCII with underscores and no spaces, and a sentence written for a
+ * reader has neither property — it has spaces, or it is Korean.
+ */
+const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
 
 /**
  * What to put on screen for a failed request.
@@ -60,12 +69,28 @@ const STATUS_CODE = /^http_\d{3}$/
  * carrying the reason a picture was refused, and a generic fallback would
  * throw away the only sentence that said why.
  *
- * What never reaches a reader is `readDetail`'s invented `http_502` — what a
- * gateway between here and the API produces while it is down. Not a message;
- * the absence of one.
+ * What never reaches a reader is a machine code — `upstream_failed`,
+ * `not_found`, or the `http_502` `readDetail` invents when a gateway between
+ * here and the API answers with something that is not JSON. Not messages; the
+ * absence of one.
  */
+/**
+ * The machine code behind a failure, for the callers that have to branch on it.
+ *
+ * Separate from `errorMessage` on purpose: one answers "what do I put on the
+ * screen", the other "which failure was this". A caller that reads the screen
+ * string and compares it to a code gets whichever the humanising rule happened
+ * to let through.
+ */
+export function errorCode(err: unknown): string {
+  if (err instanceof ApiError && err.detail && MACHINE_CODE.test(err.detail)) {
+    return err.detail
+  }
+  return ''
+}
+
 export function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError && err.detail && !STATUS_CODE.test(err.detail)) {
+  if (err instanceof ApiError && err.detail && !MACHINE_CODE.test(err.detail)) {
     return err.detail
   }
   return fallback

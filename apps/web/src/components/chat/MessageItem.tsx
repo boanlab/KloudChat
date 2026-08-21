@@ -174,6 +174,7 @@ export function MessageItem({
     openArtifact,
     rateMessage,
     retryMediaTurn,
+    send,
     models,
     user,
     sessions,
@@ -310,15 +311,22 @@ export function MessageItem({
             >
               <TriangleAlert size={14} className="shrink-0" />
               <span>{failed}</span>
-              {madeHere && (
-                <Button
-                  size="sm"
-                  onClick={() => void retryMediaTurn(sessionId, message.content)}
-                >
-                  <RotateCcw size={13} />
-                  {t('다시 시도')}
-                </Button>
-              )}
+              {/* A clip's job card has always had a retry; a conversation turn
+                  had none, so the only way back from a question nobody
+                  answered was to type it again. Asked again rather than
+                  repaired: the turn that went unanswered stays in the record
+                  beside the one that did not. */}
+              <Button
+                size="sm"
+                onClick={() =>
+                  madeHere
+                    ? void retryMediaTurn(sessionId, message.content)
+                    : void send(sessionId, session?.kind ?? 'chat', message.content)
+                }
+              >
+                <RotateCcw size={13} />
+                {t(madeHere ? '다시 시도' : '다시 물어보기')}
+              </Button>
             </div>
           )}
           {redacted.length > 0 && (

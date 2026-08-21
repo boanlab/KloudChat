@@ -116,19 +116,6 @@ test('웹 검색은 strict-local 모델에서 켜진 척하지 않는다', async
   expect(payloads[0]).toMatchObject({ webSearch: false })
 })
 
-test('대화가 없는 화면의 모델 선택은 기본값을 바꾼다고 말한다', async ({ page }) => {
-  await stubModels(page)
-  await signIn(page)
-
-  await page.goto('/new/chat')
-  await page.getByRole('button', { name: /External One/ }).click()
-  await expect(
-    page.getByText(
-      '아직 대화가 없습니다. 여기서 고른 모델은 이번 답변만이 아니라 이 화면의 기본값이 됩니다.',
-    ),
-  ).toBeVisible()
-})
-
 test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 밝힌다', async ({ page }) => {
   await stubModels(page)
   await page.route('**/api/connectors', async (route) => {

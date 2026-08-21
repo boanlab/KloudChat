@@ -11,9 +11,40 @@ import { signIn } from './helpers'
 
 const PAGE = 60
 
+const AS_USER = `async (path, init) => {
+  const login = await fetch('/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'e2e-personas@example.com', password: 'personas-playwright-pass' }),
+  })
+  const { accessToken } = await login.json()
+  const r = await fetch(path, { ...init, headers: { ...(init?.headers || {}), Authorization: 'Bearer ' + accessToken } })
+  return r.ok ? await r.json() : null
+}`
+
 test('결과물 목록은 한 페이지씩 오고, 개수와 검색은 전체를 본다', async ({ page }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(240_000)
   await signIn(page)
+
+  // The claim is about a workspace larger than one page, so the spec makes
+  // one rather than assuming the account already is. Cleared history leaves a
+  // gallery this test would otherwise pass by never exercising paging.
+  await page.evaluate(
+    async ([fn, page_]) => {
+      const have = ((await eval(fn as string)('/api/artifacts/counts')) as { total: number }).total
+      for (let i = have; i <= (page_ as number); i++) {
+        await eval(fn as string)('/api/artifacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'code',
+            title: `목록 채우기 ${i}`,
+            data: { kind: 'code', content: `print(${i})`, language: 'python' },
+          }),
+        })
+      }
+    },
+    [AS_USER, PAGE] as const,
+  )
 
   // Measured on a reload rather than on the first navigation: signing in
   // already asks for this page, and navigating mid-flight aborts that request

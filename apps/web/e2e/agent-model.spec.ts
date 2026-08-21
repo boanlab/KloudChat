@@ -80,7 +80,11 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
   const other = labels.find((label) => label !== pinned)
   if (other) {
     await page.getByRole('button', { name: pinned! }).click()
-    await page.getByRole('menu').getByRole('button', { name: other }).first().click()
+    // The editor's <select> names a model in full — "Qwen · Qwen3.6 35b" —
+    // while the picker's rows sit under a vendor heading and print the name
+    // alone. Same model, and this is the half the menu shows.
+    const rowName = other.split(' · ').pop()!
+    await page.getByRole('menu').getByRole('button', { name: rowName, exact: false }).first().click()
     await expect(page.getByRole('button', { name: other })).toBeVisible({ timeout: 20_000 })
     // And it survives a reload, because it was written to the conversation
     // rather than held in the picker.
