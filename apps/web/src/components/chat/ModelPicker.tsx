@@ -53,20 +53,6 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
 }
 
 /**
- * The routing provider, in the word a reader needs from it.
- *
- * `hosted_vllm` and `openrouter` are LiteLLM's names for how a request is
- * dispatched, and a person choosing a model is not asking that — they are
- * asking whose machine answers. Anything the product has not been taught keeps
- * its slug rather than being guessed at, which is the same rule the data
- * boundary follows.
- */
-const PROVIDER_LABEL: Record<string, string> = {
-  hosted_vllm: 'internal',
-  openrouter: 'external',
-}
-
-/**
  * Where this model's text goes, as a sentence rather than a chip.
  *
  * The one fact that decides whether a prompt may leave the building must not
@@ -382,7 +368,6 @@ function ModelMenu({
               <span className="truncate text-base font-medium">
                 {groups.length > 1 ? m.name : m.label}
               </span>
-              <Badge>{PROVIDER_LABEL[m.provider] ?? m.provider}</Badge>
               {m.adapter && (
                 <Badge tone="warn">
                   <Plug size={10} />
