@@ -22,7 +22,14 @@ import { downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import {
+  MemoryEditor,
+  emptyMemory,
+  memoryTypeTone,
+} from '@/components/memory/MemoryEditor'
+import { useFileDrop } from '@/lib/useFileDrop'
 import { useStore } from '@/store/useStore'
+import type { MemoryEntry } from '@/types'
 import { useT } from '@/lib/useT'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
@@ -44,6 +51,8 @@ export function ProjectDetailPage() {
     loadWorkspace,
     uploadFile,
     deleteFile,
+    moveSessionToProject,
+    deleteMemory,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
   const [tab, setTab] = useState<Tab>('sessions')
@@ -54,9 +63,23 @@ export function ProjectDetailPage() {
     emoji: string
     description: string
   } | null>(null)
+  const [memoryDraft, setMemoryDraft] = useState<MemoryEntry | null>(null)
   const [uploading, setUploading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  /**
+   * The drop target for 지식.
+   *
+   * Declared up here because the page returns early when the project has not
+   * arrived yet, and the uploader it calls is defined past that return — it
+   * needs the project's id. The ref is what lets the hook sit above the branch
+   * without moving a function that cannot move.
+   */
+  const addKnowledgeRef = useRef<(files: File[]) => void>(() => {})
+  const knowledgeDrop = useFileDrop(
+    (files) => addKnowledgeRef.current(files),
+    tab === 'knowledge',
+  )
 
   // Reached directly by URL as often as by click, so it loads its own data.
   useEffect(() => {
@@ -82,6 +105,11 @@ export function ProjectDetailPage() {
   }
 
   const projectSessions = sessions.filter((c) => c.projectId === project.id)
+  // What can still be brought in. Newest first, because the conversation
+  // somebody wants to file is almost always the one they just had.
+  const outsideSessions = [...sessions.filter((c) => c.projectId !== project.id)].sort(
+    (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
+  )
   const projectSkills = skills.filter((s) => project.skillIds.includes(s.id))
   const validProjectSkillIds = project.skillIds.filter((id) =>
     skills.some((skill) => skill.id === id && skill.enabled),
@@ -97,6 +125,20 @@ export function ProjectDetailPage() {
   const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
   const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
+
+  /** The picker and a drop take the same path; only the source differs. */
+  const addKnowledgeFiles = async (picked: File[]) => {
+    if (!picked.length) return
+    setUploading(true)
+    try {
+      for (const file of picked) {
+        await uploadFile(file, { projectId: project.id }).catch(() => null)
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+  addKnowledgeRef.current = addKnowledgeFiles
 
   const openFile = async (id: string, name: string) => {
     setFileError(null)
@@ -374,11 +416,50 @@ export function ProjectDetailPage() {
         />
 
         <div className="pt-4">
-          {tab === 'sessions' &&
-            (projectSessions.length === 0 ? (
-              <EmptyState icon={<Plus size={18} />} title={t('아직 작업이 없습니다')} />
-            ) : (
-              <div className="space-y-2">
+          {tab === 'sessions' && (
+            <div className="space-y-3">
+              {/* Filing work that already exists. Until now a project could
+                  only be filled by starting inside it, so anything begun the
+                  ordinary way was stranded outside — and using a project meant
+                  redoing the work, which is why nobody did. */}
+              <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
+                <div>
+                  <p className="text-base font-medium">{t('기존 대화 편입')}</p>
+                  <p className="text-sm text-muted">
+                    {t('다른 곳에서 시작한 대화를 이 프로젝트로 옮깁니다. 지침·지식·메모리를 그때부터 함께 받습니다.')}
+                  </p>
+                </div>
+                <Dropdown
+                  align="right"
+                  className="max-h-80 min-w-72"
+                  trigger={() => (
+                    <Button size="sm" disabled={outsideSessions.length === 0}>
+                      <Plus size={14} />
+                      {t('대화 추가')}
+                    </Button>
+                  )}
+                >
+                  <MenuLabel>{t('어떤 대화를 옮길까요?')}</MenuLabel>
+                  {outsideSessions.map((c) => {
+                    const meta = kindMeta[c.kind]
+                    const KindIcon = meta.icon
+                    return (
+                      <MenuItem
+                        key={c.id}
+                        icon={<KindIcon size={14} style={{ color: meta.color }} />}
+                        hint={relativeTime(c.updatedAt)}
+                        onClick={() => void moveSessionToProject(c.id, project.id)}
+                      >
+                        {c.title || t('제목 없음')}
+                      </MenuItem>
+                    )
+                  })}
+                </Dropdown>
+              </div>
+              {projectSessions.length === 0 ? (
+                <EmptyState icon={<Plus size={18} />} title={t('아직 작업이 없습니다')} />
+              ) : (
+                <div className="space-y-2">
                 {projectSessions.map((c) => {
                   const meta = kindMeta[c.kind]
                   const KindIcon = meta.icon
@@ -399,15 +480,37 @@ export function ProjectDetailPage() {
                         <span className="shrink-0 text-xs text-faint">
                           {relativeTime(c.updatedAt)}
                         </span>
+                        {/* Out again, from the row it is on. A conversation
+                            filed into the wrong project was otherwise stuck
+                            there. */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t('{name} 프로젝트에서 빼기').replace('{name}', c.title)}
+                          title={t('프로젝트에서 빼기')}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void moveSessionToProject(c.id, null)
+                          }}
+                        >
+                          <X size={13} />
+                        </Button>
                       </div>
                     </Card>
                   )
                 })}
-              </div>
-            ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {tab === 'knowledge' && (
-            <div className="space-y-3">
+            <div className="relative space-y-3" {...knowledgeDrop.handlers}>
+              {knowledgeDrop.over && (
+                <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-card border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
+                  {t('여기에 놓으면 참고 파일로 추가됩니다')}
+                </div>
+              )}
               <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
                 <div>
                   <p className="text-base font-medium">{t('참고 파일')}</p>
@@ -422,18 +525,10 @@ export function ProjectDetailPage() {
                   multiple
                   className="hidden"
                   aria-label={t('지식 파일 선택')}
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const picked = Array.from(e.target.files ?? [])
                     e.target.value = ''
-                    if (!picked.length) return
-                    setUploading(true)
-                    try {
-                      for (const file of picked) {
-                        await uploadFile(file, { projectId: project.id }).catch(() => null)
-                      }
-                    } finally {
-                      setUploading(false)
-                    }
+                    void addKnowledgeFiles(picked)
                   }}
                 />
                 <Button size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>
@@ -541,28 +636,81 @@ export function ProjectDetailPage() {
             </div>
           )}
 
-          {tab === 'memory' &&
-            (projectMemories.length === 0 ? (
-              <EmptyState
-                icon={<Brain size={18} />}
-                title={t('이 프로젝트에 저장된 메모리가 없습니다')}
-                description={t('대화 중 확인된 사실이 여기에 쌓이고, 이후 대화에서 근거로 쓰입니다.')}
-              />
-            ) : (
-              <div className="space-y-2">
-                {projectMemories.map((m) => (
-                  <Card key={m.id} className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-accent">{m.name}</span>
-                      <Badge>{m.type}</Badge>
-                    </div>
-                    <p className="mt-1 text-base text-muted">{m.description}</p>
-                  </Card>
-                ))}
+          {tab === 'memory' && (
+            <div className="space-y-3">
+              {/* The tab used to be a read-only list, which made a project a
+                  place facts landed in and could not be corrected. It is also
+                  where an agent's `share_note` writes, so this is the screen
+                  where one agent's finding becomes something a person can
+                  check, fix, or hand on deliberately. */}
+              <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
+                <div>
+                  <p className="text-base font-medium">{t('공유 메모리')}</p>
+                  <p className="text-sm text-muted">
+                    {t('이 프로젝트의 모든 대화와 에이전트가 다음 요청부터 이 내용을 함께 받습니다. 에이전트가 남긴 결론도 여기에 쌓입니다.')}
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setMemoryDraft(emptyMemory(project.id))}>
+                  <Plus size={14} />
+                  {t('메모리 추가')}
+                </Button>
               </div>
-            ))}
+              {projectMemories.length === 0 ? (
+                <EmptyState
+                  icon={<Brain size={18} />}
+                  title={t('이 프로젝트에 저장된 메모리가 없습니다')}
+                  description={t('대화 중 확인된 사실이 여기에 쌓이고, 이후 대화에서 근거로 쓰입니다.')}
+                />
+              ) : (
+                <div className="space-y-2">
+                  {projectMemories.map((m) => (
+                    <Card key={m.id} className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 truncate font-mono text-sm text-accent">
+                          {m.name}
+                        </span>
+                        <Badge tone={memoryTypeTone[m.type]}>{m.type}</Badge>
+                        <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('{name} 편집').replace('{name}', m.name)}
+                            onClick={() => setMemoryDraft(m)}
+                          >
+                            <Pencil size={13} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('{name} 삭제').replace('{name}', m.name)}
+                            onClick={() => void deleteMemory(m.id)}
+                          >
+                            <Trash2 size={13} />
+                          </Button>
+                        </span>
+                      </div>
+                      <p className="mt-1 text-base text-muted">{m.description}</p>
+                      {m.body && (
+                        <p className="mt-1 line-clamp-3 text-sm whitespace-pre-wrap text-faint">
+                          {m.body}
+                        </p>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </PageBody>
+
+      <MemoryEditor
+        draft={memoryDraft}
+        onDraft={setMemoryDraft}
+        onClose={() => setMemoryDraft(null)}
+        // The project is on the page; asking which one is a way to get it wrong.
+        lockScope
+      />
     </>
   )
 }

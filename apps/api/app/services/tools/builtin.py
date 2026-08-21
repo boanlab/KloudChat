@@ -567,6 +567,107 @@ CREATE_CHART = Tool(
 )
 
 
+#: How much of one finding is worth carrying to the next agent. A handoff is a
+#: conclusion, not a transcript: past this the note stops being something the
+#: next turn can act on and starts being context it has to read first.
+_NOTE_MAX_CHARS = 4000
+
+
+async def share_note(args: dict, ctx: ToolContext) -> ToolResult:
+    """Leaves a finding where whatever runs next will read it.
+
+    The gap this closes: agents in this product could each do their own work and
+    hand back their own answer, and there was no way for one of them to give
+    another anything. A researcher agent's sources, a reviewer's verdict, the
+    schema somebody's analyst worked out — all of it ended when the turn ended,
+    and the person had to copy it into the next conversation by hand. Sequential
+    execution with a human clipboard in between is not orchestration.
+
+    Scope is not asked of the model, it is decided by where the turn is running.
+    Inside a project the note is the project's, which is what makes it a handoff:
+    every conversation and every agent in that project is given it from then on.
+    Outside a project it is scoped to this conversation, so a note is never
+    quietly broadcast into work it has nothing to do with.
+
+    `key` makes a note revisable. The same key overwrites — a running total, a
+    verdict that changed after more evidence — rather than leaving the reader to
+    work out which of four notes is current.
+    """
+    title = str(args.get("title") or "").strip()
+    body = str(args.get("body") or "").strip()
+    if not title:
+        return ToolResult(content="오류: title 이 필요합니다.", failed=True)
+    if not body:
+        return ToolResult(content="오류: body 가 비어 있습니다.", failed=True)
+    if len(body) > _NOTE_MAX_CHARS:
+        return ToolResult(
+            content=(
+                f"오류: body 가 {_NOTE_MAX_CHARS}자를 넘습니다. 다음 단계가 바로 쓸 수 "
+                "있는 결론만 남기고, 근거 전체는 답변이나 아티팩트에 두세요."
+            ),
+            failed=True,
+        )
+
+    key = str(args.get("key") or "").strip() or title
+    ctx.pending_notes.append(
+        {
+            "key": key[:120],
+            "title": title[:120],
+            "body": body,
+            "author": ctx.agent_name,
+        }
+    )
+    where = "이 프로젝트의 모든 대화와 에이전트" if ctx.project_id else "이 대화의 다음 요청"
+    return ToolResult(
+        content=(
+            f"'{title}' 을 공유 메모에 남겼습니다. {where}가 다음 요청부터 이 내용을 "
+            "함께 받습니다. 사용자에게는 무엇을 남겼는지 한 줄로 알려 주세요."
+        ),
+        detail=title,
+    )
+
+
+SHARE_NOTE = Tool(
+    name="share_note",
+    description=(
+        "다음 단계나 다른 에이전트가 이어받아야 할 결론을 공유 메모에 남깁니다. "
+        "프로젝트 안에서는 그 프로젝트의 모든 대화와 에이전트가, 프로젝트 밖에서는 "
+        "이 대화의 다음 요청이 이 내용을 자동으로 받습니다. "
+        "조사 결과, 확정된 사실, 정해진 방침, 다음 사람이 지켜야 할 제약처럼 "
+        "이 요청이 끝난 뒤에도 유효한 것만 남기세요. "
+        "이번 답변으로 끝나는 설명이나 사용자에게 할 말은 남기지 마세요. "
+        "같은 key 로 다시 부르면 이전 내용을 덮어씁니다."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "한 줄 제목. 목록에서 이것만 보고 고를 수 있게.",
+            },
+            "body": {
+                "type": "string",
+                "description": (
+                    "다음 단계가 그대로 쓸 수 있는 결론. 과정이 아니라 결과를 적으세요."
+                ),
+            },
+            "key": {
+                "type": "string",
+                "description": (
+                    "고쳐 쓸 수 있게 하는 이름. 같은 key 는 덮어씁니다. "
+                    "비우면 title 을 씁니다."
+                ),
+            },
+        },
+        "required": ["title", "body"],
+    },
+    run=share_note,
+    label="공유 메모 남기는 중",
+    read_only=False,
+    wants_context=True,
+)
+
+
 async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     """The built-in tools this deployment can actually run.
 
@@ -589,6 +690,7 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     # No backend required — these write rows this instance already owns.
     tools.append(CREATE_ARTIFACT)
     tools.append(CREATE_CHART)
+    tools.append(SHARE_NOTE)
     return tools
 
 

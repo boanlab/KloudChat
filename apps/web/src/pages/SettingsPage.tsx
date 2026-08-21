@@ -22,7 +22,9 @@ const tabs = [
   { to: '/settings', label: '프로필', end: true },
   { to: '/settings/preferences', label: '환경설정', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
-  { to: '/settings/access', label: '접속기록', end: false },
+  // Was 접속기록, when the tab held only the record. It now leads with the
+  // live sign-ins and what to do about them.
+  { to: '/settings/access', label: '보안', end: false },
 ]
 
 export function SettingsPage() {

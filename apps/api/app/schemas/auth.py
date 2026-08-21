@@ -172,3 +172,37 @@ class AccessEventOut(Wire):
             user_agent=e.user_agent,
             severity=e.severity,
         )
+
+
+class ActiveSessionOut(Wire):
+    """One live sign-in: a refresh-token family, described.
+
+    Keyed on the family rather than the token, because a token is replaced
+    every quarter of an hour and nobody thinks of that as a new session. The
+    identity a person recognises is "the browser on the lab PC", which is what
+    a family is.
+
+    `current` marks the one asking. It is the session the screen is being read
+    from, and the only one whose 종료 also signs the reader out — so it says so
+    rather than looking like the others.
+
+    `ip`, `region` and `userAgent` are empty for families that predate the
+    columns. Empty, never guessed: the reason to read this list is to find the
+    one entry that was not you.
+    """
+
+    family_id: str
+    started_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    ip: str
+    region: str
+    user_agent: str
+    current: bool
+
+
+class SessionRevokeResult(Wire):
+    """How many sign-ins the revoke ended."""
+
+    revoked: int
+

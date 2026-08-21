@@ -27,7 +27,9 @@ import { useStore } from '@/store/useStore'
 import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
+import { RetryActions } from './RetryActions'
 import { StepTimeline } from './StepTimeline'
+import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
@@ -174,7 +176,6 @@ export function MessageItem({
     openArtifact,
     rateMessage,
     retryMediaTurn,
-    send,
     models,
     user,
     sessions,
@@ -316,17 +317,18 @@ export function MessageItem({
                   answered was to type it again. Asked again rather than
                   repaired: the turn that went unanswered stays in the record
                   beside the one that did not. */}
-              <Button
-                size="sm"
-                onClick={() =>
-                  madeHere
-                    ? void retryMediaTurn(sessionId, message.content)
-                    : void send(sessionId, session?.kind ?? 'chat', message.content)
-                }
-              >
-                <RotateCcw size={13} />
-                {t(madeHere ? '다시 시도' : '다시 물어보기')}
-              </Button>
+              {madeHere ? (
+                <Button size="sm" onClick={() => void retryMediaTurn(sessionId, message.content)}>
+                  <RotateCcw size={13} />
+                  {t('다시 시도')}
+                </Button>
+              ) : (
+                <RetryActions
+                  sessionId={sessionId}
+                  prompt={message.content}
+                  kind={session?.kind ?? 'chat'}
+                />
+              )}
             </div>
           )}
           {redacted.length > 0 && (
@@ -360,6 +362,20 @@ export function MessageItem({
   const shown = linked.filter(isMedia)
   const named = linked.filter((a) => !isMedia(a))
   const failed = turnFailureNotice(message, madeHere, t)
+  /**
+   * The question this answer was for.
+   *
+   * Read back off the transcript rather than carried on the message: an
+   * assistant row does not know its prompt, and a retry that had to guess it
+   * would ask the wrong thing.
+   */
+  const askedAbove = (() => {
+    const list = session?.messages ?? []
+    const at = list.findIndex((m) => m.id === message.id)
+    if (at < 0) return undefined
+    for (let i = at - 1; i >= 0; i--) if (list[i].role === 'user') return list[i].content
+    return undefined
+  })()
 
   return (
     <div className="animate-fade-up group flex gap-3">
@@ -423,7 +439,11 @@ export function MessageItem({
           </div>
         )}
         {message.steps && message.steps.length > 0 && (
-          <StepTimeline steps={message.steps} live={!!streaming} />
+          <StepTimeline
+            steps={message.steps}
+            live={!!streaming}
+            startedAt={new Date(message.createdAt).getTime()}
+          />
         )}
 
         {message.variants ? (
@@ -443,10 +463,13 @@ export function MessageItem({
           !failed &&
           shown.length === 0 &&
           named.length === 0 && (
-            <p className="animate-blink text-md text-faint">
-              {/* 그림과 클립은 생각하는 게 아니라 만들어진다. */}
-              {madeHere ? t('만드는 중…') : t('생각하는 중…')}
-            </p>
+            <TurnProgress
+              sessionId={sessionId}
+              startedAt={new Date(message.createdAt).getTime()}
+              /* 그림과 클립은 생각하는 게 아니라 만들어진다. */
+              label={madeHere ? t('만드는 중…') : t('생각하는 중…')}
+              model={message.model}
+            />
           )
         )}
         {streaming && message.content && (
@@ -470,7 +493,18 @@ export function MessageItem({
             className="mt-3 flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger"
           >
             <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-            <span>{failed}</span>
+            <span className="min-w-0 flex-1">{failed}</span>
+            {/* The retry lives here too, not only under the question. This is
+                where the reader's eye already is when the turn fails, and the
+                sentence that asked can be scrolled off the top of a long
+                answer that broke halfway. */}
+            {!madeHere && askedAbove && (
+              <RetryActions
+                sessionId={sessionId}
+                prompt={askedAbove}
+                kind={session?.kind ?? 'chat'}
+              />
+            )}
           </div>
         )}
 

@@ -251,6 +251,30 @@ export function AdminGovernancePage() {
                 </Card>
 
                 <Card className="p-4">
+                  <p className="text-base font-medium">{t('유휴 자동 로그아웃')}</p>
+                  <p className="text-base text-muted">
+                    {t('지정한 시간 동안 아무 조작이 없으면 브라우저가 스스로 로그아웃합니다. 실습실·도서관처럼 여러 사람이 쓰는 PC에서 이전 사용자의 대화가 그대로 남는 것을 막습니다. 0 은 사용하지 않음.')}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={1440}
+                      defaultValue={governance.idleTimeoutMinutes}
+                      aria-label={t('유휴 시간(분)')}
+                      className="max-w-28"
+                      onBlur={(e) => {
+                        const mins = Math.min(1440, Math.max(0, Number(e.target.value) || 0))
+                        if (mins !== governance.idleTimeoutMinutes) {
+                          void apply({ idleTimeoutMinutes: mins })
+                        }
+                      }}
+                    />
+                    <span className="text-base text-muted">{t('분')}</span>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
                   <p className="text-base font-medium">{t('대화 보존 기간')}</p>
                   <p className="text-base text-muted">
                     {t('지정한 일수가 지난 대화 본문을 지웁니다. 모델·토큰·크레딧 기록과 감사 로그는 남습니다 — 무엇이 있었는지가 아니라 내용만 지우는 것입니다. 0 은 계속 보관.')}
