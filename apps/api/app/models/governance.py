@@ -73,6 +73,15 @@ class Governance(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
+    #: Sign an idle browser out after this many minutes. 0 keeps a session
+    #: alive until its refresh cookie expires, which is what every install
+    #: started with. Enforced in the browser — it stops renewing and ends the
+    #: session — because idleness is a fact only the browser has: the silent
+    #: refresh runs on a timer whether or not anybody is at the keyboard, so
+    #: the server cannot tell a working tab from an abandoned one.
+    idle_timeout_minutes: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default="0")
+    )
     #: Delete message bodies older than this. 0 keeps everything.
     retention_days: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")

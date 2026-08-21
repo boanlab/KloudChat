@@ -83,3 +83,6 @@ class GovernanceIn(Wire):
     blocked_categories: list[str] | None = None
     #: 0 keeps everything. Anything above it clears bodies older than that.
     retention_days: int | None = Field(default=None, ge=0, le=3650)
+    #: 0 is off. Capped at a day: past that the refresh cookie's own lifetime
+    #: is the shorter bound and the setting stops meaning anything.
+    idle_timeout_minutes: int | None = Field(default=None, ge=0, le=1440)

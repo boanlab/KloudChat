@@ -25,6 +25,7 @@ from app.services.tools.builtin import (
     CREATE_CHART,
     EXECUTE_CODE,
     FETCH_URL,
+    SHARE_NOTE,
     WEB_SEARCH,
     available_builtins,
     knowledge_tool,
@@ -141,6 +142,10 @@ async def build_tools(
         # settings on a privacy route.  These are the only built-ins whose
         # current runners stay in this API process; knowledge is added below
         # with vector retrieval forcibly disabled.
+        # `share_note` is deliberately absent, though it reaches no network.
+        # A note is injected into every later turn in its scope, and a later
+        # turn may run on an external model — so a strict-local answer could
+        # leave the building one hop after it was routed to stay inside it.
         tools = [CREATE_ARTIFACT, CREATE_CHART]
         include_connectors = False
         knowledge_collection = ""
@@ -174,7 +179,14 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
     available = {tool.name: tool for tool in await build_tools(db, user, web_search=True)}
     known: dict[str, tuple[str, bool]] = {
         tool.name: (tool.label or tool.name, tool.name in available)
-        for tool in (WEB_SEARCH, FETCH_URL, EXECUTE_CODE, CREATE_ARTIFACT, CREATE_CHART)
+        for tool in (
+            WEB_SEARCH,
+            FETCH_URL,
+            EXECUTE_CODE,
+            CREATE_ARTIFACT,
+            CREATE_CHART,
+            SHARE_NOTE,
+        )
     }
 
     # Registered connector names stay valid while a server is disconnected;

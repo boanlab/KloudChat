@@ -144,6 +144,14 @@ class RefreshToken(SQLModel, table=True):
     revoked_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     revoked_reason: RevokeReason | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
+    #: Where the family was signed in from, carried on every token in it so the
+    #: session list can name a device without joining the audit trail. Empty on
+    #: rows written before this was recorded — never guessed.
+    ip: str = Field(default="")
+    user_agent: str = Field(default="", max_length=400)
+    #: Last rotation. The browser refreshes on a timer, so this is "still
+    #: open", not "still being used" — which is what a session list means.
+    last_used_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     def is_usable(self, now: datetime | None = None) -> bool:
         now = now or utcnow()

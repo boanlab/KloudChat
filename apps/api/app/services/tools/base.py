@@ -57,12 +57,24 @@ class ToolContext:
     api_key: str = ""
     #: Tool names the caller enabled for this turn. Empty means "all available".
     allowed: set[str] = field(default_factory=set)
+    #: Which project this turn is running inside, if any. What decides how far
+    #: a shared note reaches: inside a project it is the project's, and outside
+    #: one it belongs to this conversation alone.
+    project_id: str = ""
+    #: The agent doing the work, for the byline on a shared note. Empty on a
+    #: plain conversation, which is the note saying nobody in particular wrote
+    #: it rather than inventing an author.
+    agent_name: str = ""
     #: Artifacts the model asked to create this turn, in call order.
     #:
     #: Collected rather than written on the spot: the turn owns one database
     #: session, opened after the stream finishes, and a tool reaching for its own
     #: would commit rows for a turn that may still fail.
     pending_artifacts: list[dict] = field(default_factory=list)
+    #: Notes this turn wants left for whatever runs next. Same deferral, and for
+    #: the same reason: a handoff written by a turn that then failed would be a
+    #: finding nobody actually produced.
+    pending_notes: list[dict] = field(default_factory=list)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:
