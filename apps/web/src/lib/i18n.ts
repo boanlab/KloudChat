@@ -850,6 +850,68 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
   '계정이 있는 사람': 'Anyone with an account',
+  'Auto 일시 중지 · 비교할 모델을 직접 실행':
+    'Auto paused — the models being compared run as chosen',
+  'self-hosted · strict 미확인': 'self-hosted · strict unconfirmed',
+  'strict-local 모델로 전환': 'Switch to a strict-local model',
+  'strict-local 안전 모델': 'Strict-local safe model',
+  'strict-local로 보호됨': 'Kept strict-local',
+  '{n}단계 완료': '{n} steps done',
+  '가린 뒤 기존 모델 사용': 'Mask, then use the chosen model',
+  '개인정보 전용': 'Privacy only',
+  '개인정보가 감지된 요청': 'A request with personal data in it',
+  '개인정보가 포함된 요청입니다': 'This request contains personal data',
+  '개인정보를 가려 전송함': 'Sent with personal data masked',
+  '개인정보를 가린 뒤 기존 모델 사용': 'Mask the personal data, then use the chosen model',
+  '경계 미확인': 'Boundary unconfirmed',
+  '고칠 대목': 'Worth fixing',
+  '관리자가 설정한 strict-local 모델이 없어 마스킹하거나 내용을 편집해야 합니다.':
+    'No administrator has configured a strict-local model, so this has to be masked or edited.',
+  '기본 처리 방법': 'What to do by default',
+  '도구 결과 {n}건 추가 마스킹': '{n} more masked in tool results',
+  '만드는 중…': 'Making it…',
+  '만들지 못했습니다.': 'Could not make it.',
+  '매번 확인': 'Ask every time',
+  '모델 비교는 아직 시작되지 않았습니다. 안전 모델을 선택하면 비교 대신 strict-local 모델 1개로 실행합니다.':
+    'The comparison has not started. Choosing the safe model runs one strict-local model instead of comparing.',
+  '모델 설정 저장 중…': 'Saving the model setting…',
+  '모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
+    'Switching models applies only when a strict-local model with no external fallback is actually available.',
+  '모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다':
+    'This model\'s data boundary or price could not be established',
+  '모든 대화를 삭제할까요?': 'Delete every conversation?',
+  '사용자가 경고 후 원문 전송을 선택할 수 있게 합니다. 개인정보 마스킹 정책이 켜져 있으면 항상 금지됩니다.':
+    'Lets somebody send the original after a warning. Always refused while PII masking is on.',
+  '실제 실행 모델': 'Model that answered',
+  '안전한 로컬 모델로 전환': 'Switch to a safe local model',
+  '외부 모델 개인정보 보호': 'Privacy on external models',
+  '외부 모델로 보내기 전에 처리 방법을 선택하세요. 탐지된 실제 값은 표시하거나 기록하지 않습니다.':
+    'Choose what to do before this leaves for an external model. The detected values are neither shown nor logged.',
+  '외부 모델로 전송하기 전에 서버가 전체 대화 맥락을 검사하고 이 동작을 적용합니다.':
+    'The server inspects the whole outbound context and applies this before anything reaches an external model.',
+  '외부 전환 가능': 'May switch to external',
+  '외부 제공': 'External provider',
+  '외부 제공자가 무료로 제공하는 모델입니다': 'An external provider offers this model free of charge',
+  '요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.':
+    'Could not send the request. Try again in a moment.',
+  '요청한 만큼 만들어지지 않았습니다.': 'Fewer were made than asked for.',
+  '원문 외부 전송 허용': 'Allow sending the original outside',
+  '원문을 외부 모델로 전송': 'Send the original to the external model',
+  '자체 운영 경로지만 외부 모델로 전환될 수 있습니다':
+    'A self-hosted route that may switch to an external model',
+  '저장했습니다.': 'Saved.',
+  '전체 선택': 'Select all',
+  '채팅과 모델 비교의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.':
+    'Inspects everything chat and model comparison would send, and where personal data is found asks whether to switch model, mask, or edit.',
+  '크게 보기': 'View larger',
+  '탐지된 개인정보 범주': 'Categories found',
+  '편집으로 돌아가기': 'Back to editing',
+  '프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
+    'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
+  '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
+    'The proxy currently declares no strict-local model, so masking and editing are the only choices.',
+  '확인 후 외부 원문 전송': 'Original sent outside after confirmation',
+  '확인 후 요청 원문은 외부 전송': 'After confirmation, the original request goes outside',
   '길이와 형식을 정해 만들고 대화 안에서 바로 확인합니다':
     'Set the length and format, then watch it arrive in the conversation',
   '{n}개 선택됨': '{n} selected',
