@@ -31,7 +31,12 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
 
   // Both sentences, in the order they were written: theirs first, because it
   // is the one they were still working on.
-  await expect(composer).toHaveValue(new RegExp(`^${mine.replace(/\./g, '\\.')}`))
+  // `startsWith` rather than a regex built from the string: escaping one
+  // metacharacter and not the rest is the kind of half-measure that passes
+  // until somebody puts a `(` in a fixture.
+  await expect
+    .poll(async () => ((await composer.inputValue()) ?? '').startsWith(mine))
+    .toBe(true)
   await expect(composer).toHaveValue(/포스터 그림/)
 
   // And the arriving half is selected, so the one keystroke that takes it back

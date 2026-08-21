@@ -9,6 +9,7 @@ import pytest
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
+from app.core import logs
 from app.models.chat import ChatSession
 from app.models.governance import Governance
 from app.models.user import User
@@ -18,7 +19,7 @@ from app.routers import sessions as sessions_router
 from app.routers.sessions import _PrivacyResolution, _resolve_privacy
 from app.schemas.auth import ProfilePatch
 from app.schemas.chat import CompareRequest, SendMessage
-from app.services import agent, auto_memory, chat, governance
+from app.services import agent, auto_memory, chat, governance, index_client
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services.models import _shape
@@ -3351,3 +3352,111 @@ async def test_comparison_masks_variants_and_persists_provider_actual_model(
     assert message.routing["dataBoundary"] == "hybrid"
     assert message.routing["actualModels"] == ["provider/[이메일]"]
     assert raw_actual in events
+
+
+# ── log lines ──────────────────────────────────────────────────────────
+
+
+def test_a_value_from_outside_cannot_forge_a_log_entry():
+    """A newline in a logged value ends the entry and starts another.
+
+    The forged line carries the server's own timestamp and level, and nothing
+    downstream can tell it from a real one — so the characters that structure a
+    log never reach one from outside.
+    """
+    forged = "hello\nERROR:kchat:admin password reset by nobody"
+
+    cleaned = logs.safe(forged)
+
+    assert "\n" not in cleaned
+    assert "\r" not in cleaned
+    # Legible, not silently glued together: the words stay two words.
+    assert cleaned.startswith("hello ERROR")
+
+
+def test_a_logged_value_cannot_push_the_line_out_of_a_viewer():
+    assert len(logs.safe("x" * 5_000)) < 250
+    assert logs.safe("x" * 5_000).endswith("…")
+
+
+def test_a_short_clean_value_is_left_exactly_as_it_is():
+    assert logs.safe("https://example.com/a?b=c") == "https://example.com/a?b=c"
+
+
+@pytest.mark.anyio
+async def test_the_index_refuses_a_document_id_that_is_not_one(monkeypatch):
+    """The id lands in a URL path, so it decides where the request goes.
+
+    Every caller passes a `files.id`, which is 32 hex characters. The check is
+    made rather than assumed, because `../` is a legal filename and a value
+    that reaches a URL chooses the host as well as the path.
+    """
+    called: list[str] = []
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def delete(self, url, **_):
+            called.append(url)
+            raise AssertionError("the request should never have been made")
+
+    monkeypatch.setattr(index_client.httpx, "AsyncClient", lambda **_: _Client())
+    monkeypatch.setattr(index_client, "_base", _always("http://index.internal"))
+
+    assert await index_client.forget_document(collection="c", doc_id="../../secrets") is False
+    assert await index_client.forget_document(collection="c", doc_id="http://evil/x") is False
+    assert called == []
+
+
+def _always(value):
+    """A zero-argument coroutine that answers with `value`."""
+
+    async def _inner():
+        return value
+
+    return _inner
+
+
+@pytest.mark.anyio
+async def test_the_index_refuses_a_collection_name_that_is_not_one(monkeypatch):
+    """Same rule for the shelf's name, which also lands in a URL path."""
+    called: list[str] = []
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def delete(self, url, **_):
+            called.append(url)
+            raise AssertionError("the request should never have been made")
+
+    monkeypatch.setattr(index_client.httpx, "AsyncClient", lambda **_: _Client())
+    monkeypatch.setattr(index_client, "_base", _always("http://index.internal"))
+
+    assert await index_client.forget_collection(collection="../../drop-everything") is False
+    assert await index_client.forget_collection(collection="") is False
+    assert called == []
+
+    # And a real key still goes through.
+    real = index_client.new_collection_key()
+
+    class _Ok(_Client):
+        async def delete(self, url, **_):
+            called.append(url)
+
+            class _R:
+                def raise_for_status(self):
+                    return None
+
+            return _R()
+
+    monkeypatch.setattr(index_client.httpx, "AsyncClient", lambda **_: _Ok())
+    assert await index_client.forget_collection(collection=real) is True
+    assert called == [f"http://index.internal/collections/{real}"]
