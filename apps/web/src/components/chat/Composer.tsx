@@ -578,6 +578,9 @@ export function Composer({
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  //: A generation waiting to be answered or approved. Only the document
+  //: surfaces ever have one; everywhere else this is null and nothing changes.
+  const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
   /**
    * The rendering template this turn will use: the one just picked, or the one
@@ -1013,6 +1016,20 @@ export function Composer({
                 {compareModels
                   .map((id) => models.find((m) => m.id === id)?.label ?? id)
                   .join(' vs ')}
+                {/* The way out, on the thing that shows the state. There was a
+                    toggle for this, buried in the ⧉ menu, and every other chip
+                    in this row carries its own × — so the one mode you could
+                    not obviously leave was the one that doubles the cost of
+                    every request until you do. */}
+                <button
+                  type="button"
+                  onClick={toggleCompareMode}
+                  aria-label={t('모델 비교 끄기')}
+                  title={t('모델 비교 끄기')}
+                  className="ml-0.5 text-faint hover:text-fg"
+                >
+                  <X size={10} />
+                </button>
               </Badge>
             )}
             {webSearch &&
@@ -1183,11 +1200,18 @@ export function Composer({
           // untouched — the handler returns unless the clipboard holds files.
           onPaste={onPasteFiles}
           placeholder={
-            // What this 시작점 needs, rather than what the surface generally
-            // does — the half of the template the person still has to supply.
-            startingTemplate && startingTemplate.fills.length > 0
-              ? t('{list} 적어 주세요').replace('{list}', bringList(startingTemplate.fills))
-              : t(placeholders[kind])
+            // A proposal is waiting, so this box is not where a new document
+            // starts — it is where this one gets adjusted. Saying so is what
+            // stops somebody typing a question and watching a deck appear.
+            pending
+              ? pending.stage === 'clarify'
+                ? t('답을 적거나, 위에서 고르세요')
+                : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
+              : // What this 시작점 needs, rather than what the surface generally
+                // does — the half of the template the person still has to supply.
+                startingTemplate && startingTemplate.fills.length > 0
+                ? t('{list} 적어 주세요').replace('{list}', bringList(startingTemplate.fills))
+                : t(placeholders[kind])
           }
           aria-label={t('프롬프트 입력')}
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none"

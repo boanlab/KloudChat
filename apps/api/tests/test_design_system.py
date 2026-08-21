@@ -16,6 +16,7 @@ import re
 import zipfile
 
 import pytest
+from conftest import both_passes
 from fastapi import HTTPException
 
 from app.models.chat import SessionKind
@@ -172,12 +173,9 @@ async def _run_deck(monkeypatch, tokens):
     monkeypatch.setattr(
         deck_service.httpx, "AsyncClient", lambda **_kwargs: _OutlineClient(responses, posts)
     )
-    events = [
-        event
-        async for event in deck_service.write(
-            request="발표 자료를 만들어줘", model="m", api_key="k", tokens=tokens
-        )
-    ]
+    events = await both_passes(
+        deck_service, request="발표 자료를 만들어줘", model="m", api_key="k", tokens=tokens
+    )
     return events, posts
 
 

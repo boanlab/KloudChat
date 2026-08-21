@@ -90,6 +90,7 @@ _DDL = (
         routing_mode TEXT,
         artifact_id TEXT,
         render_template_id TEXT,
+        pending TEXT,
         pinned BOOLEAN DEFAULT 0,
         created_at DATETIME,
         updated_at DATETIME

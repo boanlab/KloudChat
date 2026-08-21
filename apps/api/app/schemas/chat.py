@@ -243,6 +243,13 @@ class SessionOut(Wire):
     artifact_id: str | None
     #: The rendering template this session writes into, if one was picked.
     render_template_id: str | None = None
+    #: A generation waiting to be answered or approved, or null.
+    #:
+    #: Travels with the session rather than with the message that announced it,
+    #: because that is where it lives: a reload has to find it, and the screen
+    #: has to know that the next thing typed is a note on this rather than a
+    #: fresh document.
+    pending: dict | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime
@@ -356,6 +363,18 @@ class SendMessage(Wire):
     #: the session, so a follow-up turn keeps the shape without resending it.
     #: `""` clears it, which is how somebody goes back to the built-in track.
     render_template_id: str | None = Field(default=None, max_length=60)
+    #: Write the outline that is waiting on this session rather than planning
+    #: another one. What 이대로 생성 sends. Ignored where nothing is pending,
+    #: and on the surfaces that do not plan first.
+    #:
+    #: The point of it is that approval is explicit: without this flag every
+    #: request plans and offers, so nothing a person has not looked at can
+    #: replace a document they already have.
+    approve: bool = False
+    #: Answers to the questions a stopped turn asked, keyed by question id.
+    #: Folded into the request as conditions on it — never substituted for it,
+    #: because the sentence they typed is the thing they asked for.
+    answers: dict[str, str] | None = None
     privacy_action: Literal[
         "route_strict_local", "mask_external", "send_raw_external"
     ] | None = None

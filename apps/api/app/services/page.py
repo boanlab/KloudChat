@@ -30,8 +30,8 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
+from app.services import grounding, settings_store
 from app.services import outline as plan_rules
-from app.services import settings_store
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
 
@@ -63,8 +63,7 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 {noun}의 제목과 구성을 만�
 - 각 {unit}의 제목은 거기서 말할 내용을 가리키는 짧은 구절로. 순서대로 읽으면
   하나가 되어야 한다.
 - 내용은 쓰지 마라. 제목과 layout 만.
-- 요청이 한 단어여도 되묻지 마라. 주제만 주어졌으면 그 주제를 처음 접하는
-  사람에게 설명하는 것으로 네가 알아서 구성하라. 자료가 부족하다는 답은 하지 마라.
+{ask_rule}
 
 JSON 객체로만 답하라.
 예: {{"title": "전이학습의 소량 데이터 효율성",
@@ -225,6 +224,13 @@ async def write(
     #: one place where a stronger model changes the result out of proportion
     #: to what it costs. Empty means the same model writes and plans.
     outline_model: str = "",
+    #: The shape somebody has already seen and approved.
+    #:
+    #: Absent, this plans and stops: it emits `proposal` — or `needs`, when the
+    #: material cannot carry the request — and writes nothing. Present, it
+    #: skips planning and writes exactly what was approved, because planning
+    #: again would produce a different document from the one agreed to.
+    approved_plan: dict[str, Any] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `block`, a final `page` and one `usage` event.
 
@@ -252,6 +258,7 @@ async def write(
             build_document_messages(
                 surface,
                 _OUTLINE_PROMPT.format(
+                    ask_rule=grounding.ASK_RULE,
                     noun=noun,
                     unit=unit,
                     lo=wanted or _MIN_BLOCKS,
@@ -268,62 +275,100 @@ async def write(
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
         )
 
-    yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
-    try:
-        text, spent = await ask()
-    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        log.warning("page outline failed: %s", exc)
-        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
-        yield {"type": "error", "message": "구성을 만들지 못했습니다."}
-        yield {"type": "usage", **usage}
-        return
-
-    plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-    title, plan = _parse_outline(text, template)
-
-    # A flat plan is the one thing a small model gets wrong that costs nothing
-    # to notice and one call to fix: the seed styles five layouts, and a deck
-    # that uses one of them is the seed's fault only in the sense that nobody
-    # asked for the others. Asked once more, naming exactly what is missing —
-    # and the second answer is kept only if it is actually less flat.
-    missing = plan_rules.flat_layouts(plan, template.layouts[1:]) if plan else []
-    if missing:
-        log.info("page outline flat for %s, unused: %s", template.id, ",".join(missing))
+    if approved_plan is None:
+        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
         try:
-            retry_text, retry_spent = await ask(
-                f"\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
-                f"다음 layout 을 최소 한 번씩 쓰고, 같은 layout 을 세 {unit} 연속으로 쓰지 마라: "
-                + " / ".join(missing)
-            )
+            text, spent = await ask()
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-            log.warning("page outline retry failed: %s", exc)
-        else:
-            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
-            retry_title, retry_plan = _parse_outline(retry_text, template)
-            if retry_plan and not plan_rules.flat_layouts(retry_plan, template.layouts[1:]):
-                title, plan = retry_title or title, retry_plan
+            log.warning("page outline failed: %s", exc)
+            yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
+            yield {"type": "error", "message": "구성을 만들지 못했습니다."}
+            yield {"type": "usage", **usage}
+            return
+
+        plan_rules.count(usage, spent, planned_apart=bool(outline_model))
+        # A question instead of a plan — see `grounding.ASK_RULE`. Only when the
+        # request names material the sources do not carry.
+        if asked := grounding.parse_needs(text):
+            yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+            yield {"type": "needs", "questions": [q.wire() for q in asked]}
+            yield {"type": "usage", **usage}
+            return
+        title, plan = _parse_outline(text, template)
+
+        # A flat plan is the one thing a small model gets wrong that costs nothing
+        # to notice and one call to fix: the seed styles five layouts, and a deck
+        # that uses one of them is the seed's fault only in the sense that nobody
+        # asked for the others. Asked once more, naming exactly what is missing —
+        # and the second answer is kept only if it is actually less flat.
+        missing = plan_rules.flat_layouts(plan, template.layouts[1:]) if plan else []
+        if missing:
+            log.info("page outline flat for %s, unused: %s", template.id, ",".join(missing))
+            try:
+                retry_text, retry_spent = await ask(
+                    f"\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
+                    f"다음 layout 을 최소 한 번씩 쓰고, "
+                    f"같은 layout 을 세 {unit} 연속으로 쓰지 마라: " + " / ".join(missing)
+                )
+            except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+                log.warning("page outline retry failed: %s", exc)
             else:
-                log.info("page outline still flat for %s, keeping the first", template.id)
-    if not plan:
-        # The failure with no exception behind it: the call succeeded and the
-        # turn ends with no artifact. What the model actually said is the only
-        # way to tell a refusal from a malformed answer.
-        log.warning("page outline unparseable for %s: %s", template.id, text[:300])
-        yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
+                plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+                retry_title, retry_plan = _parse_outline(retry_text, template)
+                if retry_plan and not plan_rules.flat_layouts(retry_plan, template.layouts[1:]):
+                    title, plan = retry_title or title, retry_plan
+                else:
+                    log.info("page outline still flat for %s, keeping the first", template.id)
+        if not plan:
+            # The failure with no exception behind it: the call succeeded and the
+            # turn ends with no artifact. What the model actually said is the only
+            # way to tell a refusal from a malformed answer.
+            log.warning("page outline unparseable for %s: %s", template.id, text[:300])
+            yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
+            yield {
+                "type": "error",
+                "message": "구성을 만들지 못했습니다. 요청을 조금 더 구체적으로 적어 주세요.",
+            }
+            yield {"type": "usage", **usage}
+            return
+
         yield {
-            "type": "error",
-            "message": "구성을 만들지 못했습니다. 요청을 조금 더 구체적으로 적어 주세요.",
+            "type": "step",
+            "id": "outline",
+            "label": f"구성 {len(plan)}개",
+            "status": "done",
+            "detail": " · ".join(item["title"] for item in plan),
+        }
+        # Planned, and that is where this stops. The shape is offered rather
+        # than written into: the caller stores it, shows it, and calls back
+        # with it approved. Nothing is written here, which is what keeps the
+        # document already on screen safe from a run nobody confirmed.
+        yield {
+            "type": "proposal",
+            "plan": {
+                "title": title[:200],
+                "blocks": [
+                    {"title": item["title"], "layout": item["layout"]} for item in plan
+                ],
+            },
         }
         yield {"type": "usage", **usage}
         return
 
-    yield {
-        "type": "step",
-        "id": "outline",
-        "label": f"구성 {len(plan)}개",
-        "status": "done",
-        "detail": " · ".join(item["title"] for item in plan),
-    }
+    title = str(approved_plan.get("title") or "")
+    fallback_layout = template.layouts[0] if template.layouts else "section"
+    plan = [
+        {
+            "title": str(item.get("title") or "").strip(),
+            "layout": str(item.get("layout") or fallback_layout),
+        }
+        for item in (approved_plan.get("blocks") or [])
+        if str(item.get("title") or "").strip()
+    ]
+    if not plan:
+        yield {"type": "error", "message": "승인된 구성이 비어 있습니다."}
+        yield {"type": "usage", **usage}
+        return
     if title:
         yield {"type": "title", "title": title[:200]}
 

@@ -4,6 +4,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from conftest import both_passes
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -912,16 +913,14 @@ async def test_report_upstream_payloads_keep_workspace_context_role_separated(mo
 
     trusted = "TRUSTED_REPORT_INSTRUCTION"
     untrusted = "UNTRUSTED_REPORT_ATTACHMENT"
-    events = [
-        event
-        async for event in report_service.write(
-            request="보고서를 작성해줘",
-            model="mock-model",
-            api_key="mock-key",
-            trusted_context=[trusted],
-            untrusted_context=[untrusted],
-        )
-    ]
+    events = await both_passes(
+        report_service,
+        request="보고서를 작성해줘",
+        model="mock-model",
+        api_key="mock-key",
+        trusted_context=[trusted],
+        untrusted_context=[untrusted],
+    )
 
     assert responses == []
     assert any(event["type"] == "report" for event in events)
@@ -953,16 +952,14 @@ async def test_deck_upstream_payloads_keep_workspace_context_role_separated(monk
 
     trusted = "TRUSTED_DECK_INSTRUCTION"
     untrusted = "UNTRUSTED_DECK_ATTACHMENT"
-    events = [
-        event
-        async for event in deck_service.write(
-            request="발표 자료를 만들어줘",
-            model="mock-model",
-            api_key="mock-key",
-            trusted_context=[trusted],
-            untrusted_context=[untrusted],
-        )
-    ]
+    events = await both_passes(
+        deck_service,
+        request="발표 자료를 만들어줘",
+        model="mock-model",
+        api_key="mock-key",
+        trusted_context=[trusted],
+        untrusted_context=[untrusted],
+    )
 
     assert responses == []
     assert any(event["type"] == "deck" for event in events)

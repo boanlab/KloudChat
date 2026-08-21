@@ -25,8 +25,8 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
+from app.services import grounding, settings_store
 from app.services import outline as plan_rules
-from app.services import settings_store
 from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
@@ -48,8 +48,7 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - 섹션 {lo}~{hi}개.
 - 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다.
 - 섹션은 제목만. 내용은 쓰지 마라.
-- 요청이 한 단어여도 되묻지 마라. 주제만 주어졌으면 그 주제를 처음 접하는
-  사람에게 설명하는 글로 네가 알아서 목차를 세워라. 자료가 부족하다는 답은 하지 마라.
+{ask_rule}
 - 참고할 자료에 양식·서식 문서가 있으면 그 문서의 항목 순서를 그대로 목차로 써라.
   개수도 그 양식을 따르고, 일반적인 보고서 목차로 바꾸지 마라.
 
@@ -242,6 +241,13 @@ async def write(
     #: 목차 is the same kind of decision a deck's layouts are: one call that
     #: every call after it is written against. Empty plans with `model`.
     outline_model: str = "",
+    #: The 목차 somebody has already seen and approved.
+    #:
+    #: Absent, this plans and stops: it emits `proposal` — or `needs`, when the
+    #: material cannot carry the request — and writes nothing. Present, it
+    #: skips planning and writes exactly what was approved, because planning
+    #: again would produce a different report from the one agreed to.
+    approved_plan: dict[str, Any] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -258,46 +264,72 @@ async def write(
         "outlineOutputTokens": 0,
     }
 
-    yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
-    try:
-        text, spent = await _complete(
-            outline_model or model,
-            build_document_messages(
-                SessionKind.report,
-                _OUTLINE_PROMPT.format(
-                    lo=_MIN_SECTIONS, hi=_MAX_SECTIONS, request=request[:2000]
+    if approved_plan is None:
+        yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
+        try:
+            text, spent = await _complete(
+                outline_model or model,
+                build_document_messages(
+                    SessionKind.report,
+                    _OUTLINE_PROMPT.format(
+                        ask_rule=grounding.ASK_RULE,
+                        lo=_MIN_SECTIONS,
+                        hi=_MAX_SECTIONS,
+                        request=request[:2000],
+                    ),
+                    trusted_context=trusted_context,
+                    untrusted_context=untrusted_context,
                 ),
-                trusted_context=trusted_context,
-                untrusted_context=untrusted_context,
-            ),
-            api_key,
-            400,
-        )
-    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        log.warning("report outline failed: %s", exc)
-        yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
-        yield {"type": "error", "message": "보고서 개요를 만들지 못했습니다."}
-        yield {"type": "usage", **usage}
-        return
+                api_key,
+                400,
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("report outline failed: %s", exc)
+            yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
+            yield {"type": "error", "message": "보고서 개요를 만들지 못했습니다."}
+            yield {"type": "usage", **usage}
+            return
 
-    plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-    title, headings = _parse_outline(text)
-    if len(headings) < _MIN_SECTIONS:
-        yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
+        plan_rules.count(usage, spent, planned_apart=bool(outline_model))
+        # A question instead of a 목차 — see `grounding.ASK_RULE`. Only when the
+        # request names material the sources do not carry; a bare topic is still
+        # planned without anybody being asked about it.
+        if asked := grounding.parse_needs(text):
+            yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+            yield {"type": "needs", "questions": [q.wire() for q in asked]}
+            yield {"type": "usage", **usage}
+            return
+        title, headings = _parse_outline(text)
+        if len(headings) < _MIN_SECTIONS:
+            yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
+            yield {
+                "type": "error",
+                "message": "보고서 개요를 만들지 못했습니다. 요청을 조금 더 구체적으로 적어 주세요.",
+            }
+            yield {"type": "usage", **usage}
+            return
+
         yield {
-            "type": "error",
-            "message": "보고서 개요를 만들지 못했습니다. 요청을 조금 더 구체적으로 적어 주세요.",
+            "type": "step",
+            "id": "outline",
+            "label": f"개요 {len(headings)}개 섹션",
+            "status": "done",
+            "detail": " · ".join(headings),
         }
+        # Planned, and that is where this stops. The 목차 is offered rather
+        # than written against: the caller stores it, shows it, and calls back
+        # with it approved. Nothing has been written, which is what keeps the
+        # report already on screen safe from a run nobody confirmed.
+        yield {"type": "proposal", "plan": {"title": title[:200], "sections": headings}}
         yield {"type": "usage", **usage}
         return
 
-    yield {
-        "type": "step",
-        "id": "outline",
-        "label": f"개요 {len(headings)}개 섹션",
-        "status": "done",
-        "detail": " · ".join(headings),
-    }
+    title = str(approved_plan.get("title") or "")
+    headings = [str(h).strip() for h in (approved_plan.get("sections") or []) if str(h).strip()]
+    if not headings:
+        yield {"type": "error", "message": "승인된 개요가 비어 있습니다."}
+        yield {"type": "usage", **usage}
+        return
     # Emitted only when the model produced one, so the caller keeps its fallback.
     if title:
         yield {"type": "title", "title": title[:200]}

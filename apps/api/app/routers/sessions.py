@@ -10,6 +10,7 @@ Ordering rules for a streaming turn:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -69,6 +70,7 @@ from app.services import (
     audiogen,
     design_templates,
     governance,
+    grounding,
     imagegen,
     lint,
     settings_store,
@@ -1559,11 +1561,272 @@ async def list_messages(session_id: str, user: CurrentUser, db: DbSession):
     return [MessageOut.of(m) for m in await _history(db, session_id)]
 
 
+def _regeneration_summary(request: str) -> str:
+    """What the version list says about the copy this run replaced.
+
+    The request rather than a timestamp: a history of "재생성" repeated six times
+    is a list nobody can choose from, and the sentence that produced each
+    version is the only thing that tells them apart.
+    """
+    # The first line only: everything after it is the conditions block that
+    # `merge_answers` appends, which is already reflected in the version it
+    # produced and reads as noise in a list of choices.
+    said = " ".join(request.split("덧붙인 조건:")[0].split())[:80]
+    return f"재생성 전 · {said}" if said else "재생성 전"
+
+
+async def _store_document(
+    db: AsyncSession,
+    session: ChatSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    kind: ArtifactKind,
+    title: str,
+    data: dict,
+    summary: str,
+) -> str:
+    """Writes a generated document, keeping the one it replaces.
+
+    Regenerating used to create a fresh artifact row and move the session's
+    pointer to it. The old row survived in the gallery, so nothing was deleted
+    — but from inside the conversation the previous document was simply gone,
+    with no way back to it. A deck somebody had built over an afternoon could
+    be displaced by one request and there was no 되돌리기 anywhere on the screen.
+
+    Editing an artifact has always snapshotted the old body into
+    `artifact_versions` first. Generating never did, although it is the more
+    destructive of the two. So it does now: a document produced into a session
+    that already holds one of the same kind becomes the next version of that
+    artifact rather than a new one, and every version before it stays
+    restorable through the history the panel already draws.
+
+    A different kind — a report in a session that last made a deck — is a
+    different thing and gets its own artifact, because a version history that
+    alternates between two documents is not a history of either.
+    """
+    existing = (
+        await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+    )
+    if (
+        existing is not None
+        and existing.kind is kind
+        and existing.user_id == user_id
+        and existing.session_id == session.id
+    ):
+        db.add(
+            ArtifactVersion(
+                artifact_id=existing.id,
+                version=existing.version,
+                data=existing.data,
+                storage_key=existing.storage_key,
+                summary=summary,
+            )
+        )
+        existing.version += 1
+        existing.title = title
+        existing.data = data
+        existing.updated_at = utcnow()
+        db.add(existing)
+        return existing.id
+
+    artifact = Artifact(
+        user_id=user_id,
+        session_id=session.id,
+        project_id=project_id,
+        kind=kind,
+        title=title,
+        data=data,
+    )
+    db.add(artifact)
+    await db.flush()
+    return artifact.id
+
+
+async def _settle_plan_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    request: str,
+    attachments: list[str],
+    answers: dict[str, str],
+    model: dict,
+    outline_model: dict | None,
+    usage: dict[str, int],
+    proposal: dict | None,
+    questions: list[dict] | None,
+) -> None:
+    """Stores a turn that planned or asked, and charged for doing so.
+
+    The planning call is a real model call whether or not a document came out
+    of it, and the ledger has to say so — the old formula billed zero when
+    nothing was written, which was right when nothing written meant nothing
+    run, and is wrong now that a turn can stop on purpose.
+
+    No artifact is created and `session.artifact_id` is not touched. That is
+    the entire protection: whatever the session already holds stays the thing
+    the session holds until somebody approves a replacement.
+    """
+    credits = charge_for_tokens(model, usage.get("inputTokens", 0), usage.get("outputTokens", 0))
+    credits += charge_for_tokens(
+        outline_model or model,
+        usage.get("outlineInputTokens", 0),
+        usage.get("outlineOutputTokens", 0),
+    )
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        user = await db.get(User, user_id)
+        if session is None or user is None:
+            return
+        session.pending = {
+            "stage": "clarify" if questions else "outline",
+            "request": request,
+            "attachments": attachments,
+            "answers": answers,
+            **({"questions": questions} if questions else {}),
+            **({"plan": proposal} if proposal else {}),
+        }
+        db.add(
+            Message(
+                session_id=session_id,
+                role=Role.assistant,
+                content=(
+                    "시작하기 전에 확인할 것이 있습니다."
+                    if questions
+                    else "이렇게 구성하려고 합니다. 확인해 주세요."
+                ),
+                usage={**usage, "credits": credits},
+                model=model["id"],
+            )
+        )
+        settle(
+            db,
+            user,
+            credits,
+            reason="document.plan",
+            session_id=session_id,
+            model=(outline_model or model)["id"],
+        )
+        session.updated_at = utcnow()
+        db.add(session)
+        await db.commit()
+
+
+async def _ask_before_writing(
+    db: DbSession,
+    session: ChatSession,
+    *,
+    request: str,
+    typed: str,
+    attachments: list[str],
+    questions: list[grounding.Question],
+) -> JSONResponse:
+    """Stops the turn on a question, and writes no document.
+
+    The whole defence is in the last half of that sentence. A request whose
+    material came up short used to produce a deck anyway — the outline prompt
+    told the model in so many words not to say the material was thin — and that
+    deck replaced whatever the session already had. Somebody attached a paper
+    and got a presentation about presentations where their afternoon's work had
+    been.
+
+    Now the turn ends here. The question is stored on the session so a reload
+    finds it, and an assistant message carries it into the transcript so the
+    conversation reads as a conversation rather than as a request that vanished.
+
+    Answered as JSON rather than as a stream: nothing is being generated, and a
+    one-event SSE response would make the browser wait on a socket to be told
+    that nothing is coming.
+    """
+    session.pending = {
+        "stage": "clarify",
+        "request": request,
+        "attachments": attachments,
+        "questions": [q.wire() for q in questions],
+        "answers": {},
+    }
+    session.updated_at = utcnow()
+    db.add(session)
+    db.add(
+        Message(
+            session_id=session.id,
+            role=Role.user,
+            content=typed,
+            attachments=None,
+        )
+    )
+    db.add(
+        Message(
+            session_id=session.id,
+            role=Role.assistant,
+            content="시작하기 전에 확인할 것이 있습니다.",
+        )
+    )
+    await db.commit()
+    return JSONResponse({"pending": session.pending})
+
+
+def _plans_first(session: ChatSession) -> bool:
+    """Whether this surface offers an outline before it writes.
+
+    The two that produce a document somebody keeps. Chat has always been a
+    conversation, and the media surfaces are jobs with their own endpoints —
+    neither has an outline to show or an artifact to overwrite.
+    """
+    return session.kind in (SessionKind.report, SessionKind.slides)
+
+
 @router.post("/{session_id}/messages")
 async def send_message(
     session_id: str, payload: SendMessage, request: Request, user: CurrentUser, db: DbSession
 ):
     session = await _owned(db, user, session_id)
+
+    # A document surface no longer writes on the first request. It stops to show
+    # what it intends to write, and stops earlier still to ask when the material
+    # cannot carry the request; `session.pending` is where that half-finished
+    # turn waits between the two.
+    #
+    # So a message arriving while something is pending is a note on it — the
+    # person adjusting the outline in front of them — rather than a fresh
+    # document that would replace what is already there. That is the ping-pong
+    # these surfaces never had: until now every sentence typed here, including
+    # a question, regenerated the deck.
+    pending = dict(session.pending or {}) if _plans_first(session) else {}
+    #: Set only by `/continue` below, which re-enters this handler with the
+    #: outline already agreed to. A plain message never carries one — typing
+    #: while a proposal is up is a revision, and revising means planning again.
+    approved_plan: dict | None = None
+    focus = ""
+    #: What this person typed just now, as opposed to the merged request the
+    #: model is given. The transcript shows the first: nobody wrote the merge.
+    typed_content = payload.content
+    if pending:
+        answers = {**(pending.get("answers") or {}), **(payload.answers or {})}
+        pending["answers"] = answers
+        focus = grounding.focus_terms(answers)
+        # Approval is the one path that does not plan again. Everything else —
+        # an answer, a note, a plain sentence — goes back through planning, so
+        # what finally gets written is always something somebody saw first.
+        if payload.approve and pending.get("plan"):
+            approved_plan = dict(pending["plan"])
+        payload = payload.model_copy(
+            update={
+                "content": grounding.merge_answers(
+                    str(pending.get("request") or ""),
+                    # An approval is not a condition on the request. Folding
+                    # "이대로 생성" in put it into the writing prompts as
+                    # something the person had asked for, and into the version
+                    # history as the reason the previous document was replaced.
+                    answers if payload.approve else {**answers, "_note": typed_content},
+                ),
+                # The attachments belong to the request being revised. A reply
+                # carries none of its own, and re-planning without them would
+                # quietly drop the paper the whole thing is about.
+                "attachments": payload.attachments or list(pending.get("attachments") or []),
+            }
+        )
+
     if session.kind not in (SessionKind.chat, SessionKind.report, SessionKind.slides):
         # Image and a/v are jobs with their own endpoints, not this path.
         raise HTTPException(
@@ -1733,6 +1996,10 @@ async def send_message(
             attachment_ids=payload.attachments,
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
+            # What the person said to concentrate on, when they were told the
+            # file would not fit whole and answered. Empty takes the head, which
+            # is what an unasked request has always got.
+            focus=focus,
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -1742,6 +2009,25 @@ async def send_message(
         )
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
+
+    # The first gate, and it costs nothing: the server already knows exactly
+    # what became of every attachment, so where a file arrived short there is
+    # no reason to spend a planning call discovering it — and a question built
+    # from the real numbers is a better question than one a model infers from a
+    # gap in its context. This is also what stops the model explaining the
+    # failure wrongly, which is what it did: told nothing, it announced the file
+    # had never arrived and asked for the text to be pasted in.
+    if _plans_first(session) and not pending.get("answers"):
+        short = grounding.file_shortfalls(workspace.attachments)
+        if questions := grounding.questions_for(short):
+            return await _ask_before_writing(
+                db,
+                session,
+                request=content,
+                typed=typed_content,
+                attachments=list(payload.attachments or []),
+                questions=questions,
+            )
 
     if session.kind is SessionKind.chat:
         privacy_sources = _privacy_sources(content, history, workspace.blocks)
@@ -1973,7 +2259,11 @@ async def send_message(
     user_message = Message(
         session_id=session.id,
         role=Role.user,
-        content=stored_content,
+        # What they typed, not the merge. A reply to a proposal carries the
+        # original request and every answer so far folded in behind it, and
+        # putting that blob in the transcript would attribute to somebody a
+        # paragraph they never wrote.
+        content=typed_content if pending else stored_content,
         attachments=attachment_meta,
         routing=privacy_resolution.routing if privacy_resolution else document_routing,
         started_from=workspace.started_from,
@@ -2065,6 +2355,11 @@ async def send_message(
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
+                # Set only on the second pass, when somebody has approved what
+                # the first pass offered. `None` plans and offers again.
+                approved_plan=approved_plan,
+                attachments=list(payload.attachments or []),
+                answers=dict(pending.get("answers") or {}),
                 model=model,
                 request=content,
                 project_id=session.project_id,
@@ -2091,6 +2386,11 @@ async def send_message(
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
+                # Set only on the second pass, when somebody has approved what
+                # the first pass offered. `None` plans and offers again.
+                approved_plan=approved_plan,
+                attachments=list(payload.attachments or []),
+                answers=dict(pending.get("answers") or {}),
                 model=model,
                 request=content,
                 project_id=session.project_id,
@@ -2118,6 +2418,11 @@ async def send_message(
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
+                # Set only on the second pass, when somebody has approved what
+                # the first pass offered. `None` plans and offers again.
+                approved_plan=approved_plan,
+                attachments=list(payload.attachments or []),
+                answers=dict(pending.get("answers") or {}),
                 model=model,
                 request=content,
                 project_id=session.project_id,
@@ -2196,7 +2501,62 @@ async def send_message(
 
 #: Turns generating right now, by session. Read only by the stop button:
 #: 중단 and a closed tab are the same event on a socket, opposite intentions.
-_STOPPING: dict[str, asyncio.Event] = {}
+#:
+#: A *set* per session, not one event. It used to be one, so a second turn
+#: starting on a session replaced the first turn's signal — and the first turn,
+#: still running detached, could no longer be stopped by anything. That is half
+#: of why a cancelled answer turned up later underneath an unrelated question.
+_STOPPING: dict[str, set[asyncio.Event]] = {}
+
+
+async def _until_stopped(
+    events: AsyncIterator[dict[str, Any]], stopping: asyncio.Event
+) -> AsyncIterator[dict[str, Any]]:
+    """Relays a turn's events, and gives up the moment 중단 is pressed.
+
+    The other half of the same bug. The stop used to be checked between events:
+
+        async for event in run_turn(...):
+            if stopping.is_set():
+                break
+
+    which only runs when the next event arrives. A model that has accepted the
+    request and gone quiet produces no next event, so the check never ran, the
+    turn stayed alive against a 15-minute upstream timeout, and when it finally
+    spoke it wrote its answer into a conversation that had moved on — appearing
+    under whatever had been typed since. Pressing 중단 stopped the screen and
+    nothing else.
+
+    Racing the two means the stop is acted on while the turn is silent, which is
+    exactly when somebody presses it. Closing the generator propagates
+    `GeneratorExit` down through the agent loop to the streaming request, so the
+    upstream call is actually abandoned rather than left running unread.
+    """
+    iterator = events.__aiter__()
+    waiting = asyncio.ensure_future(stopping.wait())
+    try:
+        while not stopping.is_set():
+            nxt = asyncio.ensure_future(anext(iterator))
+            done, _ = await asyncio.wait(
+                {nxt, waiting}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if nxt not in done:
+                # Stopped while this one was still in the air. Cancelling it is
+                # what releases the socket underneath — and it has to be waited
+                # on before the generator is closed below, or `aclose()` finds
+                # it still running and raises instead of unwinding it.
+                nxt.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await nxt
+                return
+            try:
+                event = nxt.result()
+            except StopAsyncIteration:
+                return
+            yield event
+    finally:
+        waiting.cancel()
+        await iterator.aclose()
 
 #: Strong references to tasks whose reader has gone — otherwise the loop is
 #: the only thing holding them and they are collectible mid-turn.
@@ -2340,7 +2700,13 @@ async def _run_turn(
     # Pressing 중단 sets this. A closed tab does not — that is the whole point
     # of it being a separate signal from the socket.
     stopping = asyncio.Event()
-    _STOPPING[session_id] = stopping
+    # Anything still running on this session is superseded by this turn. Two
+    # turns writing into one conversation interleave into a transcript neither
+    # of them wrote, which is the state the browser sees as an old answer
+    # arriving under a new question.
+    for earlier in _STOPPING.get(session_id, set()):
+        earlier.set()
+    _STOPPING.setdefault(session_id, set()).add(stopping)
 
     ctx = ToolContext(
         user_id=user_id,
@@ -2373,25 +2739,23 @@ async def _run_turn(
     for step in context_steps or ():
         yield chat_service.sse(_step_event(step))
     try:
-        async for event in agent_service.run_turn(
-            model["id"],
-            messages,
-            tools,
-            ctx,
-            tool_definitions=tool_definitions,
-            temperature=temperature,
-            sanitize_tool_output=(masker if sanitize_tool_output else None),
-            sanitize_step_detail=masker if protect_enrichment else None,
-            classify_tool_output=classify_tool_output if protect_enrichment else None,
-            strict_local=strict_local,
-            disable_fallbacks=disable_fallbacks,
-            redact_logging=mask_at_rest,
+        async for event in _until_stopped(
+            agent_service.run_turn(
+                model["id"],
+                messages,
+                tools,
+                ctx,
+                tool_definitions=tool_definitions,
+                temperature=temperature,
+                sanitize_tool_output=(masker if sanitize_tool_output else None),
+                sanitize_step_detail=masker if protect_enrichment else None,
+                classify_tool_output=classify_tool_output if protect_enrichment else None,
+                strict_local=strict_local,
+                disable_fallbacks=disable_fallbacks,
+                redact_logging=mask_at_rest,
+            ),
+            stopping,
         ):
-            if stopping.is_set():
-                # Stop, but fall through to the settling below: the partial answer is worth
-                # keeping and the spent tokens worth charging. Only the label differs.
-                failed = "stopped"
-                break
             if event["type"] == "delta":
                 text_parts.append(event["text"])
             elif event["type"] == "step":
@@ -2444,6 +2808,12 @@ async def _run_turn(
                 yield chat_service.sse({"type": "privacy_route", **routing})
                 continue
             yield chat_service.sse(event)
+        # Stopped, and the settling below still runs: the partial answer is
+        # worth keeping and the spent tokens worth charging. Only the label
+        # differs. Set here rather than inside the loop, because a stopped turn
+        # is exactly the one that does not go round the loop again.
+        if stopping.is_set():
+            failed = "stopped"
     except chat_service.ChatStreamError as exc:
         log.warning("chat stream failed for session %s: %s", session_id, exc)
         failed = str(exc)
@@ -2657,8 +3027,11 @@ async def _run_turn(
 
     # Only if it is still ours: a second turn on this session has already
     # replaced it, and popping then would leave that one unstoppable.
-    if _STOPPING.get(session_id) is stopping:
-        del _STOPPING[session_id]
+    live = _STOPPING.get(session_id)
+    if live is not None:
+        live.discard(stopping)
+        if not live:
+            del _STOPPING[session_id]
 
 
 @router.post("/{session_id}/stop", status_code=status.HTTP_204_NO_CONTENT)
@@ -2673,8 +3046,9 @@ async def stop_turn(session_id: str, user: CurrentUser, db: DbSession):
     lands the turn has often just finished.
     """
     await _owned(db, user, session_id)
-    signal = _STOPPING.get(session_id)
-    if signal is not None:
+    # Every turn on this session, not the newest: a turn that was superseded is
+    # still running and still the one somebody may be waiting on.
+    for signal in _STOPPING.get(session_id, set()):
         signal.set()
 
 
@@ -3218,6 +3592,16 @@ async def _audit_policy(
 async def _run_page(
     *,
     outline_model: dict | None = None,
+    #: The outline somebody approved, when this run is the second half of one.
+    #: `None` means plan and offer; anything else means write exactly this.
+    approved_plan: dict | None = None,
+    #: The attachments the request was made with, carried so a proposal stored
+    #: now can be written against the same files later.
+    attachments: list[str] | None = None,
+    #: What has been answered so far. Carried for the same reason: a proposal
+    #: stored without them would forget which part of the file was asked for,
+    #: and the next revision would quietly go back to reading the beginning.
+    answers: dict[str, str] | None = None,
     user_id: str,
     api_key: str,
     session_id: str,
@@ -3240,6 +3624,8 @@ async def _run_page(
     absent from it, which is what the reader sees and can ask to fix.
     """
     blocks: list[dict] = []
+    proposal: dict | None = None
+    questions: list[dict] | None = None
     html = ""
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
@@ -3255,6 +3641,7 @@ async def _run_page(
     try:
         stream = page_service.write(
             request=request,
+            approved_plan=approved_plan,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -3264,6 +3651,16 @@ async def _run_page(
             untrusted_context=untrusted_context,
         )
         async for event in stream:
+            if event["type"] in ("proposal", "needs"):
+                # The turn stopped on purpose. Passed on so the browser can
+                # draw it, and held so the block below stores it in place of an
+                # artifact — which is what leaves the existing document alone.
+                if event["type"] == "proposal":
+                    proposal = event["plan"]
+                else:
+                    questions = event["questions"]
+                yield chat_service.sse(event)
+                continue
             if event["type"] == "page":
                 html = event["html"]
                 blocks = event["blocks"]
@@ -3277,6 +3674,27 @@ async def _run_page(
     except Exception:  # noqa: BLE001 — the turn must still settle
         log.exception("page generation crashed for session %s", session_id)
         yield chat_service.sse({"type": "error", "message": "문서를 만들지 못했습니다."})
+
+    # Planned or asked, and nothing written. Stored on the session and settled
+    # here, and then the artifact block below is skipped entirely — which is
+    # what actually keeps the document already on screen from being replaced by
+    # a run nobody confirmed.
+    if proposal is not None or questions is not None:
+        await _settle_plan_turn(
+            session_id=session_id,
+            user_id=user_id,
+            request=request,
+            attachments=list(attachments or []),
+            answers=dict(answers or {}),
+            model=model,
+            outline_model=outline_model,
+            usage=usage,
+            proposal=proposal,
+            questions=questions,
+        )
+        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
+        yield chat_service.sse({"type": "done"})
+        return
 
     written = page_service.filled(blocks)
     credits = (
@@ -3298,12 +3716,14 @@ async def _run_page(
         if session is not None and user is not None:
             title = (doc_title or session.title or request.strip()[:60] or template.name)[:200]
             if written and html:
-                artifact = Artifact(
+                artifact_id = await _store_document(
+                    db,
+                    session,
                     user_id=user_id,
-                    session_id=session_id,
                     project_id=project_id,
                     kind=ArtifactKind.html,
                     title=title,
+                    summary=_regeneration_summary(request),
                     data={
                         "kind": "html",
                         "language": "html",
@@ -3328,10 +3748,11 @@ async def _run_page(
                         **({"design": design_tokens} if design_tokens else {}),
                     },
                 )
-                db.add(artifact)
-                await db.flush()
-                artifact_id = artifact.id
                 session.artifact_id = artifact_id
+                # The proposal has become the document. Nothing is waiting any
+                # more, and leaving it set would make the next plain message
+                # read as a note on an outline that has already been written.
+                session.pending = None
 
                 db.add(
                     Message(
@@ -3365,6 +3786,16 @@ async def _run_page(
 async def _run_deck(
     *,
     outline_model: dict | None = None,
+    #: The outline somebody approved, when this run is the second half of one.
+    #: `None` means plan and offer; anything else means write exactly this.
+    approved_plan: dict | None = None,
+    #: The attachments the request was made with, carried so a proposal stored
+    #: now can be written against the same files later.
+    attachments: list[str] | None = None,
+    #: What has been answered so far. Carried for the same reason: a proposal
+    #: stored without them would forget which part of the file was asked for,
+    #: and the next revision would quietly go back to reading the beginning.
+    answers: dict[str, str] | None = None,
     user_id: str,
     api_key: str,
     session_id: str,
@@ -3383,6 +3814,8 @@ async def _run_deck(
     Same contract as `_run_report`: the deck is an artifact, not a chat message.
     """
     slides: list[dict] = []
+    proposal: dict | None = None
+    questions: list[dict] | None = None
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
 
@@ -3397,6 +3830,7 @@ async def _run_deck(
     try:
         stream = deck_service.write(
             request=request,
+            approved_plan=approved_plan,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -3405,6 +3839,16 @@ async def _run_deck(
             tokens=design_tokens,
         )
         async for event in stream:
+            if event["type"] in ("proposal", "needs"):
+                # The turn stopped on purpose. Passed on so the browser can
+                # draw it, and held so the block below stores it in place of an
+                # artifact — which is what leaves the existing document alone.
+                if event["type"] == "proposal":
+                    proposal = event["plan"]
+                else:
+                    questions = event["questions"]
+                yield chat_service.sse(event)
+                continue
             if event["type"] == "deck":
                 slides = event["slides"]
                 continue
@@ -3417,6 +3861,27 @@ async def _run_deck(
     except Exception:  # noqa: BLE001 — the turn must still settle
         log.exception("deck generation crashed for session %s", session_id)
         yield chat_service.sse({"type": "error", "message": "슬라이드를 만들지 못했습니다."})
+
+    # Planned or asked, and nothing written. Stored on the session and settled
+    # here, and then the artifact block below is skipped entirely — which is
+    # what actually keeps the document already on screen from being replaced by
+    # a run nobody confirmed.
+    if proposal is not None or questions is not None:
+        await _settle_plan_turn(
+            session_id=session_id,
+            user_id=user_id,
+            request=request,
+            attachments=list(attachments or []),
+            answers=dict(answers or {}),
+            model=model,
+            outline_model=outline_model,
+            usage=usage,
+            proposal=proposal,
+            questions=questions,
+        )
+        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
+        yield chat_service.sse({"type": "done"})
+        return
 
     written = deck_service.filled(slides)
     credits = (
@@ -3438,12 +3903,14 @@ async def _run_deck(
         if session is not None and user is not None:
             title = (doc_title or session.title or request.strip()[:60] or "슬라이드")[:200]
             if written:
-                artifact = Artifact(
+                artifact_id = await _store_document(
+                    db,
+                    session,
                     user_id=user_id,
-                    session_id=session_id,
                     project_id=project_id,
                     kind=ArtifactKind.deck,
                     title=title,
+                    summary=_regeneration_summary(request),
                     data={
                         "kind": "deck",
                         "theme": "기본",
@@ -3458,10 +3925,11 @@ async def _run_deck(
                         "slides": slides,
                     },
                 )
-                db.add(artifact)
-                await db.flush()
-                artifact_id = artifact.id
                 session.artifact_id = artifact_id
+                # The proposal has become the document. Nothing is waiting any
+                # more, and leaving it set would make the next plain message
+                # read as a note on an outline that has already been written.
+                session.pending = None
 
                 db.add(
                     Message(
@@ -3495,6 +3963,16 @@ async def _run_deck(
 async def _run_report(
     *,
     outline_model: dict | None = None,
+    #: The outline somebody approved, when this run is the second half of one.
+    #: `None` means plan and offer; anything else means write exactly this.
+    approved_plan: dict | None = None,
+    #: The attachments the request was made with, carried so a proposal stored
+    #: now can be written against the same files later.
+    attachments: list[str] | None = None,
+    #: What has been answered so far. Carried for the same reason: a proposal
+    #: stored without them would forget which part of the file was asked for,
+    #: and the next revision would quietly go back to reading the beginning.
+    answers: dict[str, str] | None = None,
     user_id: str,
     api_key: str,
     session_id: str,
@@ -3514,6 +3992,8 @@ async def _run_report(
     on the artifacts screen.
     """
     sections: list[dict] = []
+    proposal: dict | None = None
+    questions: list[dict] | None = None
     usage = {"inputTokens": 0, "outputTokens": 0}
     failed = False
     #: Written by the outline step. Empty when the model gave no title.
@@ -3533,6 +4013,7 @@ async def _run_report(
     try:
         stream = report_service.write(
             request=request,
+            approved_plan=approved_plan,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -3540,6 +4021,16 @@ async def _run_report(
             untrusted_context=untrusted_context,
         )
         async for event in stream:
+            if event["type"] in ("proposal", "needs"):
+                # The turn stopped on purpose. Passed on so the browser can
+                # draw it, and held so the block below stores it in place of an
+                # artifact — which is what leaves the existing document alone.
+                if event["type"] == "proposal":
+                    proposal = event["plan"]
+                else:
+                    questions = event["questions"]
+                yield chat_service.sse(event)
+                continue
             if event["type"] == "report":
                 sections = event["sections"]
                 continue
@@ -3561,6 +4052,27 @@ async def _run_report(
         log.exception("report generation crashed for session %s", session_id)
         failed = True
         yield chat_service.sse({"type": "error", "message": "보고서를 만들지 못했습니다."})
+
+    # Planned or asked, and nothing written. Stored on the session and settled
+    # here, and then the artifact block below is skipped entirely — which is
+    # what actually keeps the document already on screen from being replaced by
+    # a run nobody confirmed.
+    if proposal is not None or questions is not None:
+        await _settle_plan_turn(
+            session_id=session_id,
+            user_id=user_id,
+            request=request,
+            attachments=list(attachments or []),
+            answers=dict(answers or {}),
+            model=model,
+            outline_model=outline_model,
+            usage=usage,
+            proposal=proposal,
+            questions=questions,
+        )
+        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
+        yield chat_service.sse({"type": "done"})
+        return
 
     written = [s for s in sections if (s.get("content") or "").strip()]
     credits = (
@@ -3584,12 +4096,14 @@ async def _run_report(
             # model's output and reads as the raw prompt on a cover page.
             title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
             if written:
-                artifact = Artifact(
+                artifact_id = await _store_document(
+                    db,
+                    session,
                     user_id=user_id,
-                    session_id=session_id,
                     project_id=project_id,
                     kind=ArtifactKind.report,
                     title=title,
+                    summary=_regeneration_summary(request),
                     data={
                         "sections": [
                             {
@@ -3610,10 +4124,11 @@ async def _run_report(
                         "wordCount": report_service.word_count(sections),
                     },
                 )
-                db.add(artifact)
-                await db.flush()
-                artifact_id = artifact.id
                 session.artifact_id = artifact_id
+                # The proposal has become the document. Nothing is waiting any
+                # more, and leaving it set would make the next plain message
+                # read as a note on an outline that has already been written.
+                session.pending = None
 
                 # Short transcript entry, so a reopened session shows what was
                 # asked and what came of it.

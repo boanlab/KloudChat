@@ -8,6 +8,7 @@ from being promoted to a system instruction.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlmodel import col, select
@@ -222,12 +223,60 @@ async def _project_blocks(
     return instructions, knowledge, used
 
 
-def _knowledge_block(files: list[StoredFile], header: str) -> tuple[str, list[ContextFile]]:
+def _excerpt(text: str, budget: int, focus: str) -> str:
+    """The `budget` characters of `text` most likely to be about `focus`.
+
+    Long documents are cut to fit, and the cut has always been the first N
+    characters — fine for a memo, useless for a paper whose results are on page
+    nine. When somebody has been asked which part matters and has answered,
+    that answer has to change which part is sent, or asking was theatre.
+
+    Lexical, not semantic, and deliberately so: this runs inside the request
+    that assembles the turn, an embedding round trip does not belong here, and
+    a reader who typed "평가 결과" is naming words that are in the document.
+    Nothing is dropped silently — the caller still reports the file as
+    truncated, because it is.
+    """
+    terms = [t for t in re.split(r"[\s,·]+", focus) if len(t) >= 2][:8]
+    if not terms:
+        return text[:budget]
+
+    # Score fixed windows and keep the run of them that scores highest. A
+    # window rather than a sentence: a paragraph two lines before the match is
+    # usually what makes the match readable.
+    window = 1_000
+    windows = [text[i : i + window] for i in range(0, len(text), window)]
+    scores = [sum(w.lower().count(term.lower()) for term in terms) for w in windows]
+    span = max(1, budget // window)
+    if len(windows) <= span:
+        return text[:budget]
+
+    best_at, best = 0, -1
+    for start in range(0, len(windows) - span + 1):
+        total = sum(scores[start : start + span])
+        if total > best:
+            best_at, best = start, total
+    if best <= 0:
+        # Nothing matched. The head is a better guess than an arbitrary middle.
+        return text[:budget]
+
+    picked = "".join(windows[best_at : best_at + span])
+    lead = "" if best_at == 0 else f"…(앞 {best_at * window:,}자 생략)\n\n"
+    return (lead + picked)[:budget]
+
+
+def _knowledge_block(
+    files: list[StoredFile], header: str, focus: str = ""
+) -> tuple[str, list[ContextFile]]:
     """The block, and what each file gave up to fit in it.
 
     The second half is the honest account of the first: the budget runs out
     mid-list, and whoever attached the last document is entitled to hear that
     it never went out.
+
+    `focus` is what the person said to concentrate on when they were told the
+    file would not fit whole. Empty means the head of the document, which is
+    what every request that was never asked gets.
     """
     if not files:
         return "", []
@@ -249,7 +298,7 @@ def _knowledge_block(files: list[StoredFile], header: str) -> tuple[str, list[Co
         kept = total
         if total > budget:
             kept = budget
-            text = text[:budget] + f"\n…(이하 {total - budget:,}자 생략)"
+            text = _excerpt(stored.text, budget, focus) + f"\n…(전체 {total:,}자 중 일부입니다)"
         budget -= len(text)
         parts.append(f"## {stored.name}\n{text}")
         used.append(
@@ -420,6 +469,56 @@ def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None
     )
 
 
+def _file_report(
+    attachments: tuple[ContextFile, ...], knowledge: tuple[ContextFile, ...]
+) -> str:
+    """What became of every file, told to the model as fact.
+
+    The model used to be left to infer this from its own context, and it
+    inferred wrongly in the worst direction: handed a paper truncated to a third,
+    it announced that no file had arrived at all and asked for the text to be
+    pasted in. The system knew exactly what had happened — name, characters
+    kept, characters there — and none of it was ever said.
+
+    A trusted block rather than a line inside the data, because it is the
+    server's own statement and not something the document says about itself. The
+    reference material is explicitly untrusted; a fact buried in it carries no
+    more weight than a sentence the paper's author wrote.
+
+    Every file is listed, including the ones that arrived whole. Silence about a
+    complete file is what leaves room for "I don't seem to have received it".
+    """
+    rows = [*attachments, *knowledge]
+    if not rows:
+        return ""
+
+    lines = [
+        "# 파일 처리 결과",
+        "아래는 시스템이 기록한 사실이다. 파일이 도착했는지 추측하지 말고 "
+        "이 목록만 근거로 답하라. 목록에 있는 파일은 모두 시스템에 도착했으므로 "
+        "받지 못했다고 말해서는 안 된다.",
+    ]
+    for file in rows:
+        if file.state == "included":
+            lines.append(f"- {file.name} — 전체 {file.total_chars:,}자 전달됨")
+        elif file.state == "truncated":
+            lines.append(
+                f"- {file.name} — 전체 {file.total_chars:,}자 중 {file.kept_chars:,}자만 "
+                "전달됨. 전달되지 않은 부분은 알 수 없으므로 그 내용을 지어내지 마라."
+            )
+        elif file.state == "omitted":
+            lines.append(
+                f"- {file.name} — 분량 때문에 이번 요청에는 내용이 전달되지 않음. "
+                "내용이 필요하면 사용자에게 물어보라."
+            )
+        else:
+            lines.append(
+                f"- {file.name} — 파일은 도착했으나 텍스트를 꺼내지 못함. "
+                "스캔본이면 OCR 이 필요하다고 안내하라."
+            )
+    return "\n".join(lines)
+
+
 async def assemble(
     db: AsyncSession,
     user: User,
@@ -429,6 +528,9 @@ async def assemble(
     activated_skill_ids: list[str] | None = None,
     starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
+    #: What to concentrate a long attachment's excerpt on, when the person has
+    #: been asked which part matters and has answered. Empty takes the head.
+    focus: str = "",
 ) -> WorkspaceContext:
     """Build one authorised context without auto-activating installed skills."""
     agent = await _load_agent(db, user, session)
@@ -481,7 +583,9 @@ async def assemble(
         ordered = [by_id[file_id] for file_id in attachment_ids if file_id in by_id]
         readable = [stored for stored in ordered if stored.text]
         unreadable = [stored for stored in ordered if not stored.text]
-        attached, used = _knowledge_block(readable, header="# 이번 요청에 첨부된 파일")
+        attached, used = _knowledge_block(
+            readable, header="# 이번 요청에 첨부된 파일", focus=focus
+        )
         # Reported back in the order the person attached them rather than in
         # the two groups the block is built from — the list on their screen is
         # the one they will read this against. `used` follows `readable`, which
@@ -503,6 +607,10 @@ async def assemble(
             blocks.append(ContextBlock("attachment", attached, False))
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))
+    # Last among the trusted blocks, so it sits closest to the material it is
+    # describing without being part of it.
+    if report := _file_report(attached_files, knowledge_files):
+        blocks.append(ContextBlock("files.report", report, True))
 
     applied = tuple(
         AppliedSkill(

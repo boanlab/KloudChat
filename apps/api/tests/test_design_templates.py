@@ -20,6 +20,7 @@ import re
 import time
 
 import pytest
+from conftest import both_passes
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -548,16 +549,14 @@ async def _write(monkeypatch, template, replies, **kwargs):
 
     monkeypatch.setattr(page.settings_store, "litellm_config", litellm_config)
     monkeypatch.setattr(page.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
-    events = [
-        event
-        async for event in page.write(
-            request="연구실 장비 관리 발표 자료",
-            model="mock-model",
-            api_key="mock-key",
-            template=template,
-            **kwargs,
-        )
-    ]
+    events = await both_passes(
+        page,
+        request="연구실 장비 관리 발표 자료",
+        model="mock-model",
+        api_key="mock-key",
+        template=template,
+        **kwargs,
+    )
     return events, posts
 
 
