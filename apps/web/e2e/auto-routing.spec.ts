@@ -623,7 +623,7 @@ test('관리자 라우팅 설정은 실패를 성공으로 표시하지 않고 �
   page,
 }) => {
   const state = await mockApp(page)
-  await page.goto('/admin/system')
+  await page.goto('/admin/system/routing')
 
   await page.getByRole('switch', { name: 'Auto 비용 절약 라우팅' }).click()
   await page.getByLabel('난이도 분류 모델').selectOption('strict-local/classifier')
@@ -634,7 +634,10 @@ test('관리자 라우팅 설정은 실패를 성공으로 표시하지 않고 �
 
   state.failGovernance = true
   await page.getByRole('button', { name: '라우팅 설정 저장' }).click()
-  await expect(page.getByRole('alert')).toContainText('invalid_auto_routing_policy')
+  // Said as a failure, not shown as the API's own code: `detail` here is a
+  // machine string, and an administrator is a reader too. What has to hold is
+  // that the refusal is visible and the save is not claimed.
+  await expect(page.getByRole('alert')).toContainText('라우팅 설정을 저장하지 못했습니다.')
   await expect(page.getByText('저장했습니다.')).toHaveCount(0)
 
   state.failGovernance = false
@@ -670,7 +673,7 @@ test('사라진 모델이 남은 정책도 식별자를 다시 보내지 않고 
     state.governancePuts.push(route.request().postDataJSON() as Record<string, unknown>)
     await route.fulfill({ json: { clearedMessages: 0 } })
   })
-  await page.goto('/admin/system')
+  await page.goto('/admin/system/routing')
 
   await expect(page.getByLabel('난이도 분류 모델')).toHaveValue('strict-local/deleted')
   await expect(page.getByText('external/deleted')).toBeVisible()

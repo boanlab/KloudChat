@@ -30,6 +30,12 @@
   --success: #0a7048;
   --warn: #8a5300;
   --danger: #b4322a;
+  /* Two facts a model row states about itself, and neither is a state of the
+     app: what a turn costs, and where its text goes. Kept apart from the
+     accent — which means "this one is chosen" — so a price never reads as a
+     selection, and apart from `warn`, which the rest of the product spends on
+     things a person can put right. */
+  --free: #1a56c4;
 
   --elevation-1: 0 1px 2px rgb(16 24 48 / 0.06);
   --elevation-2: 0 4px 12px rgb(16 24 48 / 0.08);
@@ -55,6 +61,9 @@
   --success: #4fbf8c;
   --warn: #e0a44a;
   --danger: #f0736a;
+  /* Lifted off the dark ground rather than inverted: the same hues at this
+     lightness are unreadable on #13151c. */
+  --free: #7aa7ff;
 
   /* Depth on a dark ground comes from the shadow being darker than the
      surface, which needs far more opacity than the same step in light. */
@@ -80,6 +89,7 @@
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+  --color-free: var(--free);
 
   --font-sans: 'Pretendard', 'Pretendard Variable', ui-sans-serif, system-ui,
     -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;

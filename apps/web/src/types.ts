@@ -102,6 +102,24 @@ export interface ModelInfo {
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
 export type RoutingMode = 'manual' | 'auto'
 
+/**
+ * What a session produced, when that is all it has to show for itself.
+ *
+ * A picture or clip session whose turn predates message recording holds none,
+ * so `preview` is null. Measurements rather than a sentence, so the sentence
+ * can be written in the reader's language.
+ */
+export interface SessionMade {
+  /** The noun the row prints. Speech and music are separate although both are
+   *  `audio` artifacts: "내레이션 3개" and "음악 3곡" are not the same row. */
+  kind: 'image' | 'video' | 'narration' | 'music'
+  count: number
+  /** Zero where unknown, and where the artifacts disagree — an unmeasured MP3,
+   *  or two batches shot at two ratios. Nothing is printed for a zero. */
+  seconds: number
+  aspect: string
+}
+
 export interface Session {
   id: string
   kind: SessionKind
@@ -122,8 +140,19 @@ export interface Session {
    */
   preview: string | null
   messageCount: number
+  /** What this conversation made, for the rows `preview` cannot serve. Null
+   *  wherever there is a transcript: the last thing said beats a count of it. */
+  made: SessionMade | null
   /** Artifact this session is currently producing, if any. */
   artifactId: string | null
+  /**
+   * The rendering template this session writes into.
+   *
+   * Sticky: picked once, it shapes every turn until it is cleared, the way the
+   * model choice does. Null means the surface's built-in track — markdown
+   * sections for a report, JSON slides for a deck.
+   */
+  renderTemplateId: string | null
 }
 
 export interface Preferences {
@@ -198,6 +227,19 @@ export interface Step {
     catalogKey: string | null
     estimatedTokens: number
   }[]
+  /** Names of the memories this turn was given. Never their bodies. */
+  memories?: string[]
+  /** How much of each file reached the model. */
+  files?: {
+    name: string
+    state: 'included' | 'truncated' | 'omitted' | 'unreadable'
+    keptChars: number
+    totalChars: number
+  }[]
+  /** Memories the extractor wrote out of this turn. */
+  memoriesWritten?: number
+  /** How many memories exist, when only the most recent were loaded. */
+  totalMemories?: number
   estimatedTokens?: number
 }
 
@@ -214,6 +256,18 @@ export interface Variant {
   chosen?: boolean
 }
 
+/**
+ * A 시작점 waiting on the next turn: what the chip says, what the composer
+ * asks the person to bring, and the id the turn carries.
+ *
+ * Not the prompt — the framing is the server's to add.
+ */
+export interface StartingPoint {
+  id: string
+  title: string
+  fills: string[]
+}
+
 export interface Message {
   id: string
   role: Role
@@ -225,14 +279,32 @@ export interface Message {
   routing?: PrivacyRouting
   steps?: Step[]
   artifactIds?: string[]
-  attachments?: { name: string; size: string; type: string }[]
+  /**
+   * What was uploaded with this turn. `id` names the stored blob, so a reader
+   * can take the file back out of the conversation months later; it is absent
+   * only for the optimistic row drawn while the upload is still in flight.
+   */
+  attachments?: { id?: string; name: string; size: number | string; type: string }[]
   usage?: { inputTokens: number; outputTokens: number; credits: number }
   liked?: 'up' | 'down' | null
+    /**
+     * The 시작점 this turn began from, by title rather than prompt: the
+     * transcript keeps the person's own words, not the product's framing.
+     */
+  startedFrom?: { templateId: string; title: string }
   /**
    * Why the turn ended badly. Separate from `content`: a turn can fail after
    * writing something, and that half an answer is worth keeping.
    */
   error?: string
+    /**
+     * How the turn ended, as the server recorded it. `error` is this tab's live
+     * account and wins while it is on screen; this is what a reload leaves.
+     *
+     * `no_answer` sits on the question — nothing spoke. `interrupted` sits on
+     * the reply — some of it arrived.
+     */
+  failure?: 'no_answer' | 'interrupted'
 }
 
 /* ── jobs ───────────────────────────────────────────────────────────── */
@@ -283,6 +355,53 @@ interface ArtifactBase {
   updatedAt: string
   sessionId: string | null
   projectId: string | null
+  /**
+   * True while this is the listing's copy, whose body was cut down to what a
+   * card needs. Anything that renders or edits the whole document fetches it
+   * by id first — `refreshArtifact` is what clears this.
+   */
+  partial?: boolean
+  /**
+   * What the linter found when this was written. Stored on the artifact, so a
+   * document that was fine when it was made does not start reporting problems
+   * because the rules were tightened afterwards.
+   */
+  lint?: LintFinding[]
+  /**
+   * One reading by somebody who did not write it. Absent until asked for — it
+   * costs a model call, unlike the linter beside it.
+   */
+  critique?: Critique
+}
+
+/**
+ * A review, not a gate.
+ *
+ * The score is an opinion with a number on it; nothing is blocked by it, and
+ * the findings are the part worth acting on. They carry the linter's shape so
+ * the panel shows one list of things to look at rather than two.
+ */
+export interface Critique {
+  score: number
+  findings: LintFinding[]
+  model: string
+  at: string
+}
+
+/**
+ * One thing worth looking at before this goes anywhere.
+ *
+ * `P0` means the document is wrong — a placeholder nobody replaced, a figure
+ * nobody could have sourced. `P1` means it reads badly. Nothing is corrected
+ * automatically: the check is free, and the rewrite is a decision.
+ */
+export interface LintFinding {
+  severity: 'P0' | 'P1'
+  /** `placeholder` · `invented-metric` · `filler` · `empty` · … */
+  rule: string
+  message: string
+  /** The heading it was found under, or empty for the whole document. */
+  where: string
 }
 
 /** A citation the model attached to a claim, surfaced beside the prose. */
@@ -365,6 +484,12 @@ export interface Slide {
   notes?: string
   accent?: string
   factCheck?: FactCheck
+  /**
+   * A picture made on the image surface, embedded rather than linked — the
+   * `src` is a `data:` URI, which is what makes the deck one file that prints
+   * and exports with the picture in it.
+   */
+  image?: { src: string; caption?: string }
 }
 
 export interface DeckArtifact extends ArtifactBase {
@@ -424,6 +549,10 @@ export interface CodeArtifact extends ArtifactBase {
   kind: 'code' | 'html'
   language?: string
   content: string
+  /** Set when this was written into a rendering template. */
+  templateId?: string
+  /** The plan behind the file — what is in it, without parsing the markup. */
+  blocks?: { title: string; layout: string }[]
 }
 
 export type Artifact =
@@ -446,6 +575,13 @@ export interface Project {
   files: ProjectFile[]
   sessionIds: string[]
   skillIds: string[]
+  /** The design system this project's output wears. Null is the default look. */
+  designSystemId: string | null
+  /**
+   * Surface → rendering template: the shape work started here comes out in.
+   * A surface with no entry uses the built-in track.
+   */
+  renderTemplates: Record<string, string>
   updatedAt: string
 }
 

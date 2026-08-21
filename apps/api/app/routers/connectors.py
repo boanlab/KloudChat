@@ -15,6 +15,7 @@ from app.core.deps import CurrentUser, DbSession
 from app.models.user import User, utcnow
 from app.models.workspace import Connector, ConnectorStatus, ConnectorTool, Transport
 from app.schemas.workspace import (
+    BulkDelete,
     ConnectorIn,
     ConnectorOut,
     ConnectorPatch,
@@ -291,6 +292,27 @@ async def toggle_tool(
     db.add(row)
     await db.commit()
     return await _out(db, connector)
+
+
+@router.post("/delete")
+async def uninstall_many(payload: BulkDelete, user: CurrentUser, db: DbSession):
+    """Several at once. Credentials go with the rows they belong to."""
+    if not payload.ids:
+        return {"deleted": 0}
+    rows = (
+        await db.exec(
+            select(Connector).where(
+                col(Connector.id).in_(payload.ids), Connector.user_id == user.id
+            )
+        )
+    ).all()
+    if not rows:
+        return {"deleted": 0}
+    ids = [row.id for row in rows]
+    await db.exec(delete(ConnectorTool).where(col(ConnectorTool.connector_id).in_(ids)))
+    await db.exec(delete(Connector).where(col(Connector.id).in_(ids)))
+    await db.commit()
+    return {"deleted": len(ids)}
 
 
 @router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)

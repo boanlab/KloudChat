@@ -34,6 +34,17 @@ def _json(**kwargs) -> Column:
 
 
 class Project(SQLModel, table=True):
+    """The work, and the defaults everything started inside it begins with.
+
+    `render_templates` maps surface → template id rather than a column per
+    surface: only two of five surfaces have a rendering track, and the only reader
+    holds the kind of the session being created, which a map answers with a lookup.
+
+    The values are ids in the shipped catalogue and deliberately not foreign keys,
+    as `sessions.render_template_id` is not — the catalogue lives in the image, so
+    an id an upgrade removes degrades to "no format".
+    """
+
     __tablename__ = "projects"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
@@ -44,6 +55,53 @@ class Project(SQLModel, table=True):
     #: Prepended to every turn in this project. The whole point of a project.
     instructions: str = Field(default="")
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: The look everything this project produces wears. Null means the surface
+    #: defaults stand — the model picks the deck accent and the exporters use
+    #: their own fonts, exactly as before design systems existed.
+    design_system_id: str | None = Field(default=None, foreign_key="design_systems.id")
+    #: Surface → rendering template: the format a new session on that surface
+    #: starts in. Null and `{}` both mean the built-in track, which is what a
+    #: project that never chose a format has always produced.
+    render_templates: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class DesignSystem(SQLModel, table=True):
+    """One look, shared by every surface a project produces.
+
+    Split in two on purpose.
+
+    `tokens` is what the **renderers** read — four values that all three
+    exporters (`.pptx`, `.pdf`, `.hwpx`) and the browser preview can each
+    express. Anything a renderer cannot draw does not belong here: a token that
+    only survives to PowerPoint is a preview that lies.
+
+    `body` is what the **model** reads, and it is capped short. A design system
+    is the rule several projects share; anything longer than a few lines is that
+    one project's instructions, which already have a field of their own.
+
+    `image_style` is separate from `body` because it leaves in a different
+    language — image prompts are composed in English phrases alongside
+    `imagegen._STYLE_PHRASE`, and Korean prose dropped into one is noise.
+    """
+
+    __tablename__ = "design_systems"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    owner_id: str = Field(foreign_key="users.id", index=True)
+    name: str
+    description: str = Field(default="")
+    #: `{accent, ink, muted, font}`. Normalised on write by `services.design`.
+    tokens: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Voice, vocabulary, things not to write. Reaches the model as one block.
+    body: str = Field(default="")
+    #: English phrase appended to every image prompt in this project.
+    image_style: str = Field(default="")
+    #: Which brand-agnostic craft rules to carry — keys of `design.CRAFT`.
+    craft: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Offered to every account. Administrator-only, like `Template.shared`.
+    shared: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -315,6 +373,42 @@ class Share(SQLModel, table=True):
     revoked_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
 
 
+class ShareView(SQLModel, table=True):
+    """Who opened a shared link, and when.
+
+    What can honestly be said about a reader depends on how they arrived. A
+    signed-in one has an account, so the row names it. A `link`-scope reader has
+    none by design, and their address is the only thing this server ever learns.
+
+    Name and email are copies rather than a join: an account can be renamed or
+    deleted, and a log that rewrites itself is not a log. `viewer_id` stays for
+    the cases where the live account is what the reader wants.
+
+    One row per reader per hour — twenty refreshes are one visit, and twenty rows
+    would bury the other readers.
+    """
+
+    __tablename__ = "share_views"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    share_id: str = Field(foreign_key="shares.id", index=True)
+    #: First open of this visit; `last_at` moves as it continues.
+    at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    last_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    opens: int = Field(default=1)
+    #: Set when the reader was signed in. Null is an anonymous `link` reader.
+    viewer_id: str | None = Field(default=None, foreign_key="users.id", index=True)
+    viewer_name: str = Field(default="")
+    viewer_email: str = Field(default="")
+    #: First hop of `X-Forwarded-For`. Empty when the server sits behind a
+    #: proxy that strips it — said as empty rather than as a proxy's own IP.
+    ip: str = Field(default="")
+    #: Raw `User-Agent`. Stored whole and shortened for display: the readable
+    #: form drops everything that would matter if the question ever became a
+    #: serious one.
+    user_agent: str = Field(default="")
+
+
 # ── connectors (MCP) ───────────────────────────────────────────────────
 
 
@@ -440,6 +534,7 @@ __all__ = [
     "ConnectorCredential",
     "ConnectorStatus",
     "ConnectorTool",
+    "DesignSystem",
     "Memory",
     "MemoryType",
     "Project",

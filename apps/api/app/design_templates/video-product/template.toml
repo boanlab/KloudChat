@@ -1,0 +1,50 @@
+kind = "video"
+name = "제품 사용 장면"
+description = "무엇이 어떻게 쓰이는지 한 장면으로 보여주는 짧은 클립"
+category = "홍보"
+fills = ["대상", "장소", "카메라", "분위기"]
+example_prompt = "{subject}을 {place}에서 사용하는 장면. 카메라는 {camera}, {mood} 분위기. 자막이나 글자는 넣지 말 것."
+name_en = "Product in use"
+description_en = "One short shot of what it is and how it is used"
+category_en = "Promotion"
+fills_en = ["Subject", "Setting", "Camera", "Mood"]
+example_prompt_en = "{subject} being used in {place}. Camera {camera}, {mood} mood. No captions or on-screen text."
+
+[defaults]
+mode = "video"
+aspect = "16:9"
+seconds = 4
+resolution = "720p"
+audio = false
+
+[[arguments]]
+name = "subject"
+label = "무엇을"
+label_en = "Subject"
+default = "손에 쥔 휴대용 측정기"
+default_en = "a handheld meter"
+
+[[arguments]]
+name = "place"
+label = "어디서"
+label_en = "Setting"
+default = "밝은 실험실 작업대"
+default_en = "a bright lab bench"
+
+[[arguments]]
+name = "camera"
+label = "카메라"
+label_en = "Camera"
+default = "고정된 클로즈업"
+default_en = "a locked-off close-up"
+options = ["고정된 클로즈업", "천천히 미는 트래킹", "위에서 내려다보는 각도"]
+options_en = ["a locked-off close-up", "a slow push-in", "a top-down angle"]
+
+[[arguments]]
+name = "mood"
+label = "분위기"
+label_en = "Mood"
+default = "차분하고 정확한"
+default_en = "calm and precise"
+options = ["차분하고 정확한", "밝고 경쾌한", "묵직하고 진지한"]
+options_en = ["calm and precise", "bright and light", "weighty and serious"]

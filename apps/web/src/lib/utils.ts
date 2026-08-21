@@ -1,4 +1,11 @@
 import clsx, { type ClassValue } from 'clsx'
+import type {
+  Artifact,
+  AudioArtifact,
+  ImageArtifact,
+  SessionMade,
+  VideoArtifact,
+} from '@/types'
 import { currentLang, currentLocale, translate } from './i18n'
 
 export function cn(...inputs: ClassValue[]) {
@@ -55,6 +62,69 @@ export function formatDateTime(iso: string | null | undefined) {
   return d.toLocaleString(currentLocale())
 }
 
+/**
+ * The line under a media session's title: what it made.
+ *
+ * The title is already the prompt somebody typed, so this says the other half
+ * — how many came back, how long, what shape — which is what tells seven clips
+ * of one request apart.
+ *
+ * Assembled here rather than on the server: it is interface text and has to
+ * read in whichever language is on, and "이미지 4장" and "영상 4초 · 16:9"
+ * are one shape with different parts in it.
+ *
+ * An unknown part is left out rather than defaulted — a shorter true line
+ * beats "영상 0초", which reads as a clip that failed.
+ */
+export function madeLine(made: SessionMade | null | undefined, t: (s: string) => string) {
+  if (!made || made.count < 1) return null
+  const counted: Record<SessionMade['kind'], string> = {
+    image: '이미지 {n}장',
+    video: '영상 {n}개',
+    narration: '내레이션 {n}개',
+    music: '음악 {n}곡',
+  }
+  const bare: Record<SessionMade['kind'], string> = {
+    image: '이미지',
+    video: '영상',
+    narration: '내레이션',
+    music: '음악',
+  }
+  const head =
+    made.count === 1
+      ? t(bare[made.kind])
+      : t(counted[made.kind]).replace('{n}', String(made.count))
+  const seconds = made.seconds > 0 ? t('{n}초').replace('{n}', String(made.seconds)) : ''
+  // 하나뿐이면 길이는 그 하나를 꾸미는 말이라 "영상 4초" 한 마디로 읽힌다.
+  // 여러 개면 개수가 먼저 와서 붙일 자리가 없으므로 가운뎃점으로 나눈다.
+  const parts = made.count === 1 && seconds ? [`${head} ${seconds}`] : [head, seconds]
+  // A ratio reads the same in both languages, so it goes through untranslated.
+  return [...parts, made.aspect].filter(Boolean).join(' · ')
+}
+
+/**
+ * An artifact that can be looked at where it stands.
+ *
+ * The line a transcript draws between showing a result and naming one: a
+ * picture, a clip and a player are the reply, so they are rendered in the turn;
+ * a report or a deck has to be opened, so it is offered as a chip.
+ */
+export function isMedia(a: Artifact): a is ImageArtifact | AudioArtifact | VideoArtifact {
+  return a.kind === 'image' || a.kind === 'audio' || a.kind === 'video'
+}
+
+/**
+ * A saved row put back where it already was, or added on top when it is new.
+ *
+ * An edit has to land in place: a corrected row that jumps to the front of the
+ * list reads as a second copy of itself.
+ */
+export function upsertById<T extends { id: string }>(rows: T[], row: T): T[] {
+  return rows.some((r) => r.id === row.id)
+    ? rows.map((r) => (r.id === row.id ? row : r))
+    : [row, ...rows]
+}
+
 /** Buckets chats into today / last 7 days / older groups for the sidebar. */
 export function groupByRecency<T extends { updatedAt: string }>(items: T[]) {
   const now = Date.now()
@@ -73,4 +143,57 @@ export function groupByRecency<T extends { updatedAt: string }>(items: T[]) {
     else groups[2].items.push(item)
   }
   return groups.filter((g) => g.items.length > 0)
+}
+
+/**
+ * A byte count as somebody would say it out loud.
+ *
+ * The server sends `size` as a plain integer. Binary units, matching what a
+ * file manager shows for the same file; one decimal below 10, so 2.4 MB does
+ * not round to 2.
+ */
+export function fileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
+/**
+ * A `User-Agent` string as a person would name the thing.
+ *
+ * Order matters: every browser's UA claims to be several others, so specific
+ * tokens are tested before the ones they impersonate — Edge before Chrome,
+ * Chrome before Safari.
+ *
+ * `''` for anything unrecognised rather than a mangled guess. The raw string
+ * is on hover either way, since the readable form drops what would matter if
+ * the question became a serious one.
+ */
+export function browserName(ua: string): string {
+  if (!ua) return ''
+  const browser =
+    /Edg\//.test(ua) ? 'Edge'
+    : /OPR\/|Opera/.test(ua) ? 'Opera'
+    : /SamsungBrowser/.test(ua) ? 'Samsung Internet'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari'
+    : /curl\//.test(ua) ? 'curl'
+    : /python-requests|httpx|axios|Go-http/i.test(ua) ? '스크립트'
+    : ''
+  const platform =
+    /iPhone|iPad/.test(ua) ? 'iOS'
+    : /Android/.test(ua) ? 'Android'
+    : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
+    : /Windows/.test(ua) ? 'Windows'
+    : /Linux/.test(ua) ? 'Linux'
+    : ''
+  return [browser, platform].filter(Boolean).join(' · ')
 }

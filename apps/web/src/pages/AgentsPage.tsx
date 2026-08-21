@@ -21,6 +21,7 @@ import { kindMeta, kindOrder } from '@/lib/kinds'
 import { useStableOrder } from '@/lib/useStableOrder'
 import { cn, relativeTime, uid } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Agent } from '@/types'
 import { errorMessage } from '@/lib/api'
@@ -62,6 +63,7 @@ export function AgentsPage() {
     availableTools,
     upsertAgent,
     deleteAgent,
+    deleteMany,
     forkAgent,
     newSession,
     loadWorkspace,
@@ -92,6 +94,8 @@ export function AgentsPage() {
   const ordered = useStableOrder(agents)
   const all = tab === 'store' ? ordered.filter((a) => a.visibility === 'org') : ordered
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
+  // Mine only: somebody else's shared agent is read-only.
+  const pick = useBulkSelect(visible.filter((a) => a.ownerId === user?.id))
 
   // Attached first, then matches; capped, with `skills.length` in the
   // placeholder saying what is hidden. A disabled existing selection remains
@@ -135,7 +139,7 @@ export function AgentsPage() {
       <PageBody>
         <PageHeader
           title={t('에이전트')}
-          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 워크스페이스에 공유합니다.')}
+          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.')}
           action={
             <Button
               variant="primary"
@@ -160,10 +164,36 @@ export function AgentsPage() {
           ]}
         />
 
-        <div className="grid gap-3 pt-4 sm:grid-cols-2">
+        <div className="pt-4">
+          <BulkBar
+            count={pick.count}
+            allPicked={pick.allPicked}
+            onToggleAll={pick.toggleAll}
+            onClear={pick.clear}
+            title={t('에이전트')}
+            note={t('붙여 둔 자료와 검색 색인도 함께 지워집니다.')}
+            onDelete={async () => {
+              await deleteMany('agents', pick.ids)
+              pick.clear()
+            }}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
           {visible.map((a) => (
             <Card key={a.id} className="flex flex-col p-4">
               <div className="flex items-start gap-3">
+                {/* Somebody else's shared agent is read-only, so it gets no
+                    checkbox — the delete behind it would 403. */}
+                {a.ownerId === user?.id ? (
+                  <PickBox
+                    checked={pick.picked.has(a.id)}
+                    onChange={() => pick.toggle(a.id)}
+                    label={t('{name} 선택').replace('{name}', t(a.name))}
+                    className="mt-2.5"
+                  />
+                ) : (
+                  <span className="size-4 shrink-0" />
+                )}
                 <span
                   className="grid size-9 shrink-0 place-items-center rounded-card text-white"
                   style={{ background: a.color }}
@@ -376,7 +406,7 @@ export function AgentsPage() {
                 {(
                   [
                     { id: 'private', label: t('개인'), icon: Lock },
-                    { id: 'org', label: t('워크스페이스 공유'), icon: Globe },
+                    { id: 'org', label: t('모두에게 공개'), icon: Globe },
                   ] as const
                 ).map((o) => (
                   <button
@@ -453,6 +483,13 @@ export function AgentsPage() {
                   onChange={(e) => setDraft({ ...draft, model: e.target.value })}
                   className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
+                  {/* 고정하지 않는 것도 하나의 상태다 — 카드가 '화면 기본
+                      모델' 이라고 그리는 그 상태이고, 씨앗 에이전트는 전부
+                      거기에 있다. 그런데 목록에 그 항목이 없어서, 값이 빈
+                      에이전트를 열면 브라우저가 첫 모델을 대신 골라 보여
+                      주었다. 고르지도 않은 모델이 편집기에 적혀 있는 것이고,
+                      한 번 건드리면 그대로 박힌다. */}
+                  <option value="">{t('화면 기본 모델')}</option>
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.label}
@@ -460,7 +497,12 @@ export function AgentsPage() {
                   ))}
                 </select>
               </Field>
-              <Field label={`Temperature — ${draft.temperature}`}>
+              {/* 무엇에 닿는지까지 적는다 — 이 값은 대화 턴의 표본 추출로만
+                  내려가고, 보고서·슬라이드는 각자의 생성 절차를 따른다. */}
+              <Field
+                label={`Temperature — ${draft.temperature}`}
+                hint={t('낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.')}
+              >
                 <input
                   type="range"
                   min={0}
@@ -478,13 +520,13 @@ export function AgentsPage() {
                 없었습니다 — 워크스페이스 스토어 탭이 영원히 비어 있던 이유. */}
             <Field
               label={t('공개 범위')}
-              hint={t('워크스페이스에 공유하면 같은 조직 구성원이 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
+              hint={t('공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
             >
               <div className="flex gap-1.5">
                 {(
                   [
                     { id: 'private', label: t('나만 쓰기'), icon: Lock },
-                    { id: 'org', label: t('워크스페이스에 공유'), icon: Globe },
+                    { id: 'org', label: t('모두에게 공개'), icon: Globe },
                   ] as const
                 ).map((o) => {
                   const Icon = o.icon

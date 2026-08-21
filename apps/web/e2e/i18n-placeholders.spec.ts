@@ -15,9 +15,11 @@ const PLACEHOLDER = /\{(n|name|email|date|when|title|kind|style|list|low|high|in
 const ROUTES = [
   '/', '/new/chat', '/new/report', '/new/slides', '/new/image', '/new/av',
   '/projects', '/artifacts', '/agents', '/skills', '/memory', '/history',
-  '/usage', '/connectors', '/agent-setup', '/settings', '/settings/preferences',
-  '/settings/keys', '/settings/system', '/admin/users', '/admin/usage',
-  '/admin/system', '/admin/governance',
+  '/usage', '/connectors', '/agent-setup', '/designs', '/settings',
+  '/settings/preferences', '/settings/keys', '/admin/users', '/admin/usage',
+  '/admin/system', '/admin/system/routing', '/admin/system/features',
+  '/admin/system/templates', '/admin/system/branding', '/admin/system/mail',
+  '/admin/governance',
 ]
 
 async function scan(page: Page, where: string) {
@@ -57,12 +59,18 @@ for (const lang of ['ko', 'en'] as const) {
     await page.waitForTimeout(1800)
 
     const found: { where: string; text: string }[] = []
+    const gone: string[] = []
     for (const path of ROUTES) {
       await page.goto(path)
       found.push(...(await scan(page, path)))
+      // A path that lands somewhere else is a screen that no longer exists,
+      // and the scan just read a neighbour a second time under its name — which
+      // is how `/settings/system` stayed on this list, green, after it was gone.
+      if (new URL(page.url()).pathname !== path) gone.push(path)
     }
     console.log(`\n=== ${lang}: ${found.length}건 ===`)
     for (const f of found) console.log(`  [${f.where}] ${f.text}`)
     expect(found, `${found.length}건`).toEqual([])
+    expect(gone, `${gone.join(', ')} 는 없는 화면입니다`).toEqual([])
   })
 }

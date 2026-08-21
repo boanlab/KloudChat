@@ -71,6 +71,7 @@ async def create_key(payload: ApiKeyCreate, request: Request, user: CurrentUser,
             target=user.email,
             detail=row.name,
             ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
         )
     )
     await db.commit()
@@ -100,6 +101,7 @@ async def revoke_key(key_id: str, request: Request, user: CurrentUser, db: DbSes
             target=user.email,
             detail=row.name,
             ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
         )
     )
     await db.commit()

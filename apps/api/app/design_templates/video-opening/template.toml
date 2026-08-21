@@ -1,0 +1,41 @@
+kind = "video"
+name = "발표 오프닝"
+description = "발표를 시작하기 직전 화면에 거는 4초짜리 배경 클립"
+category = "발표"
+fills = ["주제", "움직임", "색조"]
+example_prompt = "{topic}을 암시하는 추상적인 배경 영상. {motion}, {palette} 색조. 가운데는 제목을 얹을 수 있게 비우고, 글자는 넣지 말 것."
+name_en = "Talk opener"
+description_en = "A four-second backdrop to hold the room before you begin"
+category_en = "Presentation"
+fills_en = ["Topic", "Motion", "Palette"]
+example_prompt_en = "An abstract backdrop suggesting {topic}. {motion}, {palette} tones. Keep the centre clear for a title and add no text."
+
+[defaults]
+mode = "video"
+aspect = "16:9"
+seconds = 4
+resolution = "1080p"
+audio = false
+
+[[arguments]]
+name = "topic"
+label = "주제"
+label_en = "Topic"
+default = "데이터가 쌓이고 정리되는 과정"
+default_en = "data gathering and settling into order"
+
+[[arguments]]
+name = "motion"
+label = "움직임"
+label_en = "Motion"
+default = "아주 느린 흐름"
+default_en = "very slow drift"
+options = ["아주 느린 흐름", "가볍게 떠다니는 입자", "부드럽게 번지는 빛"]
+options_en = ["very slow drift", "lightly floating particles", "softly blooming light"]
+
+[[arguments]]
+name = "palette"
+label = "색조"
+label_en = "Palette"
+default = "짙은 남색과 청록"
+default_en = "deep navy and teal"

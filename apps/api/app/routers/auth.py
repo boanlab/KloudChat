@@ -17,11 +17,11 @@ from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import CurrentIdentity, DbSession, client_ip, user_count
+from app.core.deps import CurrentIdentity, CurrentUser, DbSession, client_ip, user_count
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -45,6 +45,7 @@ from app.models.user import (
     PasswordReset as PasswordResetRow,
 )
 from app.schemas.auth import (
+    AccessEventOut,
     LoginRequest,
     PasswordChange,
     PasswordForgot,
@@ -107,6 +108,20 @@ async def _issue_session(
     return SessionOut(access_token=token, expires_in=expires_in, user=UserOut.of(user))
 
 
+#: What belongs on somebody's own 접속기록. The admin trail carries everything;
+#: this screen is about access to this account, so a branding change or another
+#: person's suspension is noise on it.
+_ACCOUNT_ACTIONS = (
+    "login",
+    "signup",
+    "password.change",
+    "password.reset",
+    "password.reset_requested",
+    "key.create",
+    "key.revoke",
+)
+
+
 async def _audit(db: AsyncSession, request: Request, action: str, actor: str | None, **kw) -> None:
     db.add(
         AuditEvent(
@@ -115,6 +130,7 @@ async def _audit(db: AsyncSession, request: Request, action: str, actor: str | N
             target=kw.get("target", ""),
             detail=kw.get("detail", ""),
             ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
             severity=kw.get("severity", "info"),
         )
     )
@@ -369,6 +385,30 @@ RESET_TTL_MINUTES = 30
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+@router.get("/me/access", response_model=list[AccessEventOut])
+async def my_access_log(user: CurrentUser, db: DbSession):
+    """This account's own security events, newest first.
+
+    Deliberately not "sessions": there is no live session list to revoke from
+    here, and a screen that looked like one would imply a button that does not
+    exist. This is the record of what happened — signed in, failed to sign in,
+    changed a password, made a key — which is what somebody checks when they
+    want to know whether anyone else has been in.
+
+    Failed attempts included, and they are the point: a run of them from an
+    address nobody recognises is the one thing on this screen worth acting on.
+    """
+    rows = (
+        await db.exec(
+            select(AuditEvent)
+            .where(AuditEvent.actor_id == user.id, col(AuditEvent.action).in_(_ACCOUNT_ACTIONS))
+            .order_by(col(AuditEvent.at).desc())
+            .limit(100)
+        )
+    ).all()
+    return [AccessEventOut.of(e) for e in rows]
 
 
 @router.get("/config")

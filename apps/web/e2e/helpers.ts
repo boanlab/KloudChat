@@ -59,25 +59,42 @@ export async function signIn(page: Page) {
 /**
  * Creates an account that stays `pending`, for the admin approval screens.
  * Idempotent: a duplicate signup answers 409 and that is fine.
+ *
+ * Safe to call on a page already signed in as somebody else: a signup that
+ * lands in `pending` is issued no session, so the caller's cookies survive.
+ * The password is a parameter because a caller that afterwards signs *into*
+ * the account has to know which one the row was created with, whether this
+ * call made it or found it.
  */
 export async function seedPendingUser(
   page: Page,
   email = 'e2e-pending@example.com',
+  password = 'pending-playwright-pass',
 ): Promise<string> {
   await page.request.post('/api/auth/signup', {
-    data: { email, password: 'pending-playwright-pass', name: '승인 대기' },
+    data: { email, password, name: '승인 대기' },
     failOnStatusCode: false,
   })
   return email
 }
 
-/** Opens the sidebar on viewports where it starts collapsed. */
+/**
+ * Opens the sidebar on viewports where it starts collapsed.
+ *
+ * The wait on the toggle is not politeness — it is the whole correctness of
+ * this. Asked the instant a navigation resolves, `isVisible()` says no because
+ * nothing is drawn yet, and on a desktop, where the sidebar was already open,
+ * the answer was to press the toggle and *close* it. Waiting for the shell
+ * first means the question is asked of a rendered page.
+ */
 export async function openSidebar(page: Page) {
+  const toggle = page.getByRole('button', { name: '사이드바 토글' })
+  await expect(toggle).toBeVisible({ timeout: 20_000 })
   const nav = page.getByRole('link', { name: '커넥터' })
   if (!(await nav.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: '사이드바 토글' }).click()
+    await toggle.click()
   }
-  await expect(nav).toBeVisible()
+  await expect(nav).toBeVisible({ timeout: 10_000 })
 }
 
 export async function gotoSurface(page: Page, kind: string) {
@@ -93,4 +110,32 @@ export async function gotoSurface(page: Page, kind: string) {
  */
 export function answerText(page: Page, text: string | RegExp) {
   return page.locator('p').filter({ hasText: text }).first()
+}
+
+/**
+ * Picks a conversation model that has tools.
+ *
+ * The screen default is a strict-local model, and a strict-local turn is given
+ * only the two built-ins that never leave this process — no web search, no
+ * code execution, no connectors. Any spec whose subject is a tool has to say
+ * which model it means.
+ *
+ * Chosen by excluding the Strict Local group rather than by naming an id: a
+ * picker row prints the model's name, not its route.
+ */
+export async function pickToolModel(page: Page, name = /qwen3\.6/i) {
+  await page
+    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
+    .first()
+    .click()
+  const rows = page.getByRole('button', { name })
+  const count = await rows.count()
+  for (let i = 0; i < count; i++) {
+    const label = (await rows.nth(i).getAttribute('aria-label')) ?? (await rows.nth(i).innerText())
+    if (!/strict/i.test(label)) {
+      await rows.nth(i).click()
+      return
+    }
+  }
+  throw new Error('도구를 쓸 수 있는 모델을 고르지 못했습니다')
 }

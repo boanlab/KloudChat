@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+from html import unescape
 from typing import Any
 
 import httpx
@@ -231,6 +233,56 @@ EXECUTE_CODE = Tool(
 #: regenerated or exported by those screens.
 _ARTIFACT_KINDS = {"html", "code"}
 
+#: Tags that only mark up running text. Markup drawn from nothing but these is
+#: prose in an HTML costume. `table`, `main`, `div` and the rest stay out:
+#: they suggest a page, and letting a page through is the cheaper mistake.
+_PROSE_TAGS = frozenset(
+    {
+        "p", "br", "hr", "span", "a", "b", "i", "u", "em", "strong", "small",
+        "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6",
+    }
+)
+
+#: Languages that name prose rather than something a program reads back. Only
+#: honoured when the model states one: `language` defaults to "text" further
+#: down, so treating an absent value as prose would refuse the short shell
+#: script whose author simply left the field off.
+_PROSE_LANGUAGES = frozenset({"text", "txt", "plain", "md", "markdown"})
+
+#: Prose shorter than this is an answer even when the user said "만들어 줘" —
+#: reading it is the whole use, and a panel puts a click in front of that. Set
+#: generously: refusing a real document costs more than one needless click.
+_PROSE_MAX_CHARS = 1000
+
+#: Below this the panel holds so little that the answer can carry it too, and
+#: above it repeating the body would double the turn's output for a reader who
+#: is going to scroll the panel anyway.
+_ECHO_MAX_CHARS = 600
+
+_TAG_NAME = re.compile(r"<\s*/?\s*([A-Za-z][\w-]*)")
+_ANY_TAG = re.compile(r"<[^>]*>")
+
+
+def _visible_length(kind: str, content: str) -> int:
+    """How much a reader actually sees, markup and entities discounted."""
+    text = _ANY_TAG.sub(" ", content) if kind == "html" else content
+    return len(" ".join(unescape(text).split()))
+
+
+def _is_prose(kind: str, content: str, language: str) -> bool:
+    """Whether this is writing to be read rather than a file to be used.
+
+    The question a length test cannot answer: a four-line docker-compose.yml is
+    a document because a program reads it back, and twelve paragraphs of an
+    explanation are an answer because reading them is the point. So this asks
+    what the payload is made of, and leaves length to the caller.
+    """
+    if kind == "code":
+        return language in _PROSE_LANGUAGES
+    if "<!doctype" in content.lower():
+        return False
+    return {tag.group(1).lower() for tag in _TAG_NAME.finditer(content)} <= _PROSE_TAGS
+
 
 async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     """Records an artifact for the turn to store once it finishes.
@@ -254,6 +306,28 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     if not title:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
 
+    visible = _visible_length(kind, content)
+        # The one call the description cannot prevent, the model having already
+        # decided by the time it reads one. Only the model's own guess is
+        # overruled; `userRequested` carries an explicit ask through. Not `failed`,
+        # because nothing went wrong — an errored step paints the whole turn 중단됨.
+    if (
+        not bool(args.get("userRequested"))
+        and visible < _PROSE_MAX_CHARS
+        and _is_prose(kind, content, language)
+    ):
+        return ToolResult(
+            content=(
+                f"'{title}' 은 문서로 만들지 않았습니다. 실행하거나 다른 프로그램이 "
+                f"읽어 갈 파일이 아니라 {visible}자 남짓한 글이라, 옆 패널에 두면 "
+                "읽으려고 패널을 여는 수고만 늘어납니다. 본문을 답변에 그대로 "
+                "적어 주고, 끝에 한 줄로 파일이나 문서로 따로 만들어 드릴 수도 "
+                "있다고 덧붙이세요. 사용자가 그렇게 해 달라고 하면 그때 "
+                "userRequested 를 true 로 두고 다시 부르세요."
+            ),
+            detail="답변에 직접 적기",
+        )
+
     ctx.pending_artifacts.append(
         {
             "kind": kind,
@@ -265,13 +339,23 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             },
         }
     )
-    # Terse by design: the content is already in the panel, and echoing it into
-    # the transcript doubles the tokens.
+    # What the answer still owes the reader, which is never nothing. A panel is
+    # where a deliverable is kept, not where it is read: a person who asked for
+    # three sentences and got one sentence about three sentences was not
+    # answered at all.
+    if visible < _ECHO_MAX_CHARS:
+        carry = (
+            "짧으니 답변에도 본문을 그대로 옮겨 적으세요. 패널은 내보내고 버전을 "
+            "남기려고 있는 것이고, 읽는 일은 대화 안에서 끝나야 합니다."
+        )
+    else:
+        carry = (
+            "길이가 있으니 본문을 다시 옮길 필요는 없지만, 무엇을 만들었고 그 안에 "
+            "무엇이 들어 있는지는 답변에 적으세요. '만들었습니다' 한 줄로 끝내지 "
+            "마세요."
+        )
     return ToolResult(
-        content=(
-            f"'{title}' 아티팩트를 만들었습니다. 사용자 화면에 이미 열려 있으니 "
-            "내용을 다시 적지 말고, 무엇을 만들었는지만 한두 문장으로 설명하세요."
-        ),
+        content=f"'{title}' 문서를 만들어 사용자 화면에 띄웠습니다. {carry}",
         detail=title,
     )
 
@@ -279,9 +363,16 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
 CREATE_ARTIFACT = Tool(
     name="create_artifact",
     description=(
-        "완성된 결과물을 별도 문서로 만들어 사용자 화면 옆에 띄웁니다. 웹페이지, "
-        "실행할 수 있는 스크립트, 설정 파일처럼 사용자가 '만들어 달라'고 요청한 "
-        "산출물에 사용하세요. 답변 중 설명을 위한 짧은 예시 코드에는 쓰지 마세요."
+        "완성된 결과물을 별도 문서로 만들어 사용자 화면 옆에 띄웁니다. 기준은 "
+        "길이가 아니라 쓰임새입니다. 대화 밖으로 나가 파일로 저장되거나 실행·"
+        "렌더링·불러오기 되는 것만 문서입니다. 웹페이지, 스크립트, 설정 파일, "
+        "데이터 파일이 그렇고, 네 줄짜리 docker-compose.yml 도 문서입니다. "
+        "읽고 나면 쓰임이 끝나는 글은 사용자가 '만들어 달라'고 했어도 답변에 "
+        "그대로 적으세요. 메일 초안, 요약, 번역, 개요, 사과문, 회신 문구가 "
+        "그렇습니다. 예외는 절이 여러 개로 나뉜 긴 문서처럼 대화에 그대로 실으면 "
+        "읽기 어려운 분량뿐입니다. 애매하면 이렇게 물어 보세요. 사용자가 이 "
+        "결과를 다른 프로그램에 넣습니까, 읽고 끝냅니까. 읽고 끝나면 답변입니다. "
+        "설명을 위한 짧은 예시 코드에도 쓰지 마세요."
     ),
     parameters={
         "type": "object",
@@ -301,6 +392,13 @@ CREATE_ARTIFACT = Tool(
             "language": {
                 "type": "string",
                 "description": "kind 가 code 일 때의 언어 (python, bash, yaml 등).",
+            },
+            "userRequested": {
+                "type": "boolean",
+                "description": (
+                    "사용자가 문서·파일·내보내기를 직접 요구했을 때만 true. 짧은 "
+                    "글이라도 그때는 문서로 만듭니다. 스스로 판단해 켜지 마세요."
+                ),
             },
         },
         "required": ["kind", "title", "content"],
@@ -507,11 +605,11 @@ def knowledge_tool(
     에이전트에는 자료가 없습니다" teaches the model to stop calling it, and then
     it is ignored on the agent that does have a shelf.
     """
-    # Contents list per document. Filenames are often meaningless, and a model
-    # choosing tools by description needs to know what the shelf covers.
-    #
-    # Headings, not an excerpt: given a sample the model reads it as the
-    # material and rules the shelf out without searching.
+        # Contents list per document: filenames are often meaningless, and a model
+        # choosing tools by description needs to know what the shelf covers.
+        #
+        # Headings, not an excerpt — given a sample the model reads it as the
+        # material and rules the shelf out without searching.
     def _outline(text: str, limit: int = 12) -> str:
         seen: list[str] = []
         for line in text.splitlines():

@@ -158,6 +158,141 @@ test.describe('슬라이드 패널', () => {
 })
 
 /**
+ * A deck that came out of a 서식, on the same panel as the JSON one.
+ *
+ * Picking a shape turns a slides session into one HTML document, and for as
+ * long as that document could only be previewed and read as source, choosing
+ * the better-looking deck cost the ability to show it to anybody. The markup
+ * here is what `design_templates.assemble` writes — one `<section class=
+ * "slide">` per slide inside a seed that carries its own stylesheet — so what
+ * this walks is the panel, not the writing.
+ */
+const PAGE_DECK = `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>학과 서버 교체</title>
+<style>
+  body { margin: 0; scroll-snap-type: y mandatory; font-family: sans-serif; }
+  .slide { scroll-snap-align: start; min-height: 100vh; padding: 7vh 8vw; border-left: 6px solid #5b5bd6; }
+  .slide h2 { font-size: 2.4rem; letter-spacing: -0.02em; }
+</style>
+</head>
+<body>
+<section class="slide cover"><h2>학과 서버 교체</h2><p class="lead">2026년 상반기 계획</p><span class="num">1</span></section>
+<section class="slide"><h2>지금의 문제</h2><ul><li>디스크가 매주 찬다</li><li>야간 배치가 밀린다</li></ul><span class="num">2</span></section>
+<section class="slide quote"><h2>제안</h2><blockquote>고칠 것은 장비가 아니라 주기다</blockquote><span class="num">3</span></section>
+</body>
+</html>`
+
+const PAGE_DOC = `<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8" /><title>한 장 요약</title></head>
+<body>
+<div class="cover"><h1>한 장 요약</h1></div>
+<section><h2>결정할 것</h2><p>교체 주기를 3년으로 줄일지.</p></section>
+</body>
+</html>`
+
+test.describe('서식으로 만든 덱', () => {
+  let deckId = ''
+  let docId = ''
+  const title = `패널 확인 서식 덱 ${Date.now().toString(36)}`
+  const docTitle = `패널 확인 서식 문서 ${Date.now().toString(36)}`
+
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage()
+    await signIn(page)
+    const deck = await post(page, {
+      kind: 'html',
+      title,
+      data: { kind: 'html', content: PAGE_DECK, templateId: 'deck-editorial', blocks: [] },
+    })
+    deckId = (deck as { id: string }).id
+    const doc = await post(page, {
+      kind: 'html',
+      title: docTitle,
+      data: { kind: 'html', content: PAGE_DOC, templateId: 'doc-brief', blocks: [] },
+    })
+    docId = (doc as { id: string }).id
+    await page.close()
+  })
+
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage()
+    await signIn(page)
+    if (deckId) await remove(page, deckId)
+    if (docId) await remove(page, docId)
+    await page.close()
+  })
+
+  test('덱은 서식으로 만들었어도 발표할 수 있다', async ({ page }) => {
+    await signIn(page)
+    const panel = await openPreview(page, title)
+    await expect(panel.getByRole('button', { name: '미리보기' })).toBeVisible()
+
+    await panel.getByRole('button', { name: '발표' }).click()
+    const stage = page.getByRole('dialog', { name: '발표 모드' })
+    await expect(stage).toBeVisible()
+    await expect(stage.getByText('1 / 3')).toBeVisible()
+
+    // What is on the wall is the file, not a redrawing of it: the seed's own
+    // stylesheet travels with the slide, and only that slide is in the page.
+    // Read off `srcdoc` rather than through the frame — it is `sandbox=""`,
+    // which is what makes model-written markup safe to show at all.
+    const shown = async () => (await stage.locator('iframe').getAttribute('srcdoc')) ?? ''
+    let doc = await shown()
+    expect(doc).toContain('scroll-snap-align')
+    expect(doc).toContain('2026년 상반기 계획')
+    expect((doc.match(/<section/g) ?? []).length).toBe(1)
+
+    await page.keyboard.press('ArrowRight')
+    await expect(stage.getByText('2 / 3')).toBeVisible()
+    doc = await shown()
+    expect(doc).toContain('야간 배치가 밀린다')
+    expect(doc).not.toContain('고칠 것은 장비가 아니라 주기다')
+
+    await page.keyboard.press('Escape')
+    await expect(stage).toBeHidden()
+    // Escape ends the presentation, not the panel behind it.
+    await expect(panel.getByRole('button', { name: '발표' })).toBeVisible()
+  })
+
+  test('장 목록으로 원하는 장에 바로 간다', async ({ page }) => {
+    await signIn(page)
+    const panel = await openPreview(page, title)
+    await panel.getByRole('button', { name: '발표' }).click()
+    const stage = page.getByRole('dialog', { name: '발표 모드' })
+
+    // Twenty slides are not walked one at a time with a room waiting, so the
+    // deck's own order is on the presenter's screen.
+    await stage.getByRole('button', { name: '장 목록' }).click()
+    const list = stage.getByRole('navigation', { name: '장 목록' })
+    await expect(list.getByText('지금의 문제')).toBeVisible()
+    await list.getByRole('button', { name: '3번 장' }).click()
+    await expect(stage.getByText('3 / 3')).toBeVisible()
+    expect(await stage.locator('iframe').getAttribute('srcdoc')).toContain(
+      '고칠 것은 장비가 아니라 주기다',
+    )
+  })
+
+  test('문서 서식에는 발표 버튼이 없다', async ({ page }) => {
+    await signIn(page)
+    const panel = await openPreview(page, docTitle)
+    // The listing carries no markup for an HTML artifact, so wait until the
+    // document itself is on screen — otherwise "no 발표 button" is only a
+    // statement about an artifact that had not arrived yet.
+    await expect(panel.locator('iframe')).toHaveAttribute('srcdoc', /한 장 요약/, {
+      timeout: 15_000,
+    })
+    // The same panel, and the same reading the exporter makes: a one-pager has
+    // no slides, so offering to present it would be a button with no room.
+    await expect(panel.getByRole('button', { name: '내보내기', exact: true })).toBeVisible()
+    await expect(panel.getByRole('button', { name: '발표' })).toHaveCount(0)
+  })
+})
+
+/**
  * The work log, live and then settled.
  *
  * Steps are not stored on the message, so the only place this card exists is
@@ -185,6 +320,13 @@ test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page 
   await expect(page.locator('.line-through').first()).toBeVisible({ timeout: 180_000 })
 
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 360_000 })
+
+  // The finished deck opens its panel, and below 1024px that panel covers the
+  // conversation rather than sitting beside it — so the work log is behind it.
+  // Put it away first, the way somebody looking back at what ran would.
+  const closePanel = page.locator('[data-panel="artifact"]').getByRole('button', { name: '닫기' })
+  if (await closePanel.first().isVisible().catch(() => false)) await closePanel.first().click()
+
   const done = page.getByRole('button', { name: /작업 완료|중단됨/ }).first()
   await expect(done).toBeVisible()
   // Settled, so it is a one-line summary until asked otherwise.

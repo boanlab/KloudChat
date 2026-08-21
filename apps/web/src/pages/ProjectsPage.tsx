@@ -15,6 +15,7 @@ import {
   ReloadNotice,
   Textarea,
 } from '@/components/ui'
+import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { relativeTime } from '@/lib/utils'
 import { PROJECT_EMOJIS } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
@@ -26,7 +27,9 @@ import { useT } from '@/lib/useT'
 export function ProjectsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const { projects, createProject, loadWorkspace, workspaceLoading, workspaceFailed } = useStore()
+  const { projects, createProject, deleteMany, loadWorkspace, workspaceLoading, workspaceFailed } =
+    useStore()
+  const pick = useBulkSelect(projects)
 
   useEffect(() => {
     void loadWorkspace()
@@ -71,6 +74,19 @@ export function ProjectsPage() {
             }
           />
         ) : (
+          <>
+          <BulkBar
+            count={pick.count}
+            allPicked={pick.allPicked}
+            onToggleAll={pick.toggleAll}
+            onClear={pick.clear}
+            title={t('프로젝트')}
+            note={t('붙여 둔 자료도 함께 지워집니다. 대화는 남고, 프로젝트에서만 빠집니다.')}
+            onDelete={async () => {
+              await deleteMany('projects', pick.ids)
+              pick.clear()
+            }}
+          />
           <div className="grid gap-3 sm:grid-cols-2">
             {projects.map((p) => (
               <Card
@@ -79,6 +95,12 @@ export function ProjectsPage() {
                 className="cursor-pointer p-4 transition-colors hover:border-line-strong hover:bg-elevated"
               >
                 <div className="flex items-start gap-3">
+                  <PickBox
+                    checked={pick.picked.has(p.id)}
+                    onChange={() => pick.toggle(p.id)}
+                    label={t('{name} 선택').replace('{name}', p.name)}
+                    className="mt-2.5"
+                  />
                   <span className="grid size-9 shrink-0 place-items-center rounded-card bg-elevated text-lg">
                     {p.emoji}
                   </span>
@@ -101,6 +123,7 @@ export function ProjectsPage() {
               </Card>
             ))}
           </div>
+          </>
         )}
       </PageBody>
 

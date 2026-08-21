@@ -6,22 +6,25 @@ import { signIn } from './helpers'
  * a twenty-fifth. The document an organisation actually produces — its 공문,
  * its 발표 양식 — was the one document with no starting point.
  */
-test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들어가고, 지울 수 있다', async ({ page }) => {
+test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고, 고치고 지울 수 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
 
   const openGallery = async () => {
-    await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+    await page.getByRole('button', { name: '시작점 고르기' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
   }
 
   await openGallery()
-  const builtIn = await page.getByRole('dialog').locator('button:has(p)').count()
-  expect(builtIn, '기본 템플릿이 없다').toBeGreaterThan(0)
+  // Waited for rather than counted on the spot: the built-in 시작점 come from
+  // the server now, so on a cold screen the grid fills a moment after the
+  // dialog opens instead of arriving with the bundle.
+  const cards = page.getByRole('dialog').locator('button:has(p)')
+  await expect(cards.first(), '기본 시작점이 없다').toBeVisible({ timeout: 20_000 })
 
   // Write one down.
-  await page.getByRole('button', { name: '템플릿 추가' }).click()
+  await page.getByRole('button', { name: '시작점 추가' }).click()
   const name = `공문 초안 ${Date.now()}`
   await page.getByLabel('이름').fill(name)
   await page.getByLabel('설명').fill('기관 공문 양식에 맞춘 초안')
@@ -34,10 +37,12 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   await expect(card).toBeVisible({ timeout: 15_000 })
   await expect(card.getByText('수신처')).toBeVisible()
 
-  // Picking it fills the composer and never sends.
+  // Picking it attaches to the turn and never sends. What the person brings —
+  // 준비물 — is what the empty box now asks for.
   await card.getByRole('button').first().click()
   const composer = page.getByLabel('프롬프트 입력')
-  await expect(composer).toHaveValue(/수신:/)
+  await expect(composer).toHaveValue('')
+  await expect(composer).toHaveAttribute('placeholder', /수신처, 제목/)
   await expect(page).not.toHaveURL(/\/s\/[0-9a-f]{32}/)
 
   // It survives a reload — it is a row, not a tab's memory.
@@ -46,9 +51,30 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
   const again = page.getByRole('dialog').locator('div.group', { hasText: name })
   await expect(again).toBeVisible({ timeout: 15_000 })
 
+  // A typo in it is a typo, not a reason to start over. The form opens on what
+  // was written, and saving writes over the same card.
+  await again.getByRole('button', { name: `${name} 수정` }).click()
+  await expect(page.getByLabel('이름')).toHaveValue(name)
+  await expect(page.getByLabel('준비물')).toHaveValue('수신처, 제목')
+  const fixed = `${name} 개정`
+  await page.getByLabel('이름').fill(fixed)
+  await page.getByLabel('문구').fill('아래 양식에 맞춰 공문을 써 줘.\n\n수신자: ')
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+
+  const edited = page.getByRole('dialog').locator('div.group', { hasText: fixed })
+  await expect(edited).toBeVisible({ timeout: 15_000 })
+  // One card, not two: the correction replaced the row rather than adding one.
+  await expect(page.getByRole('dialog').locator('div.group', { hasText: name })).toHaveCount(1)
+
+  // And the corrected card is the one that attaches.
+  await edited.getByRole('button').first().click()
+  await expect(page.getByRole('button', { name: `${fixed} 시작점 해제` })).toBeVisible()
+
   // And it can be thrown away, which is what makes adding one safe.
-  await again.getByRole('button', { name: `${name} 삭제` }).click()
-  await expect(again).toHaveCount(0, { timeout: 15_000 })
+  await openGallery()
+  const doomed = page.getByRole('dialog').locator('div.group', { hasText: fixed })
+  await doomed.getByRole('button', { name: `${fixed} 삭제` }).click()
+  await expect(doomed).toHaveCount(0, { timeout: 15_000 })
 
   // The built-ins are not deletable — they are not this person's to remove.
   const shipped = page.getByRole('dialog').locator('div.group', { hasText: '업무·기술 보고서' })
@@ -63,15 +89,15 @@ test('내가 만든 템플릿이 갤러리에 서고, 고르면 입력창에 들
  * document, so the form rides along as an attachment and the draft is written
  * against the real thing.
  */
-test('양식 파일을 붙인 템플릿을 고르면 그 파일이 첨부로 따라온다', async ({ page }) => {
+test('양식 파일을 붙인 시작점을 고르면 그 파일이 첨부로 따라온다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
 
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
-  await page.getByRole('button', { name: '템플릿 추가' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
+  await page.getByRole('button', { name: '시작점 추가' }).click()
 
-  const name = `양식 템플릿 ${Date.now()}`
+  const name = `양식 시작점 ${Date.now()}`
   await page.getByLabel('이름').fill(name)
   await page.getByLabel('문구').fill('이 양식에 맞춰 써 줘.\n\n수신: ')
   await page.getByLabel('양식 파일').setInputFiles({
@@ -89,14 +115,14 @@ test('양식 파일을 붙인 템플릿을 고르면 그 파일이 첨부로 따
   await expect(card.getByText('gongmun-form.txt')).toBeVisible()
 
   await card.getByRole('button').first().click()
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/수신:/)
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   // …and the form is on the turn, where the model will read it.
   await expect(page.getByTitle(/토큰|내용 없음/).filter({ hasText: 'gongmun-form.txt' })).toBeVisible({
     timeout: 15_000,
   })
 
   // Clean up so the gallery does not fill with test rows.
-  await page.getByRole('button', { name: '템플릿에서 시작' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   const again = page.getByRole('dialog').locator('div.group', { hasText: name })
   await again.getByRole('button', { name: `${name} 삭제` }).click()
   await expect(again).toHaveCount(0, { timeout: 15_000 })

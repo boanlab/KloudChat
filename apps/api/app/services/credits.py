@@ -92,18 +92,36 @@ def settle(
     *,
     reason: str,
     session_id: str | None = None,
+    model: str | None = None,
+    surface: str | None = None,
 ) -> None:
     """Deducts on completion. Caller commits.
 
     Allowed to overshoot: the tokens were already spent upstream, and the next
     request is refused by `has_headroom`.
+
+    Pass `model` wherever one model earned the charge — it is what lets the
+    usage screens say where the money went instead of filing it under "other".
+    Leave it out when nothing single is true: a comparison bills several models
+    on one row, and a design extraction belongs to no conversation at all.
+
+    `surface` is the same bargain for the other axis. Read off the row rather
+    than through `session_id`, so a deleted conversation does not take its
+    spend into 기타 with it.
     """
     if credits <= 0:
         return
     user.credits_used += credits
     db.add(user)
     db.add(
-        CreditLedger(user_id=user.id, delta=-credits, reason=reason, session_id=session_id)
+        CreditLedger(
+            user_id=user.id,
+            delta=-credits,
+            reason=reason,
+            session_id=session_id,
+            model=model,
+            surface=surface,
+        )
     )
 
 

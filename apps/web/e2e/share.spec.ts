@@ -27,6 +27,13 @@ test('링크를 만들면 로그인하지 않은 사람도 열 수 있다', asyn
   const url = await field.inputValue()
   expect(url).toMatch(/\/share\/[\w-]{20,}$/)
 
+  // Said in the top bar, on a page nobody has asked a question of. A shared
+  // conversation that looks private is how one gets left open.
+  await modal.getByRole('button', { name: '완료' }).click()
+  await expect(page.getByText('링크 공개 중')).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('링크 공개 중')).toBeVisible({ timeout: 20_000 })
+
   // A brand-new context: no cookie, no token, nothing this instance has ever
   // seen. This is the customer the sales persona hands the link to.
   const stranger = await browser.newContext()
@@ -41,8 +48,11 @@ test('링크를 만들면 로그인하지 않은 사람도 열 수 있다', asyn
   await expect(guest.getByRole('link', { name: '아티팩트' })).toHaveCount(0)
 
   // Revoked links stop working, and say nothing about having existed.
+  await page.getByRole('button', { name: '공유', exact: true }).click()
   await page.getByRole('button', { name: '링크 철회' }).click()
   await expect(page.getByRole('button', { name: '링크 만들기' })).toBeVisible({ timeout: 20_000 })
+  await modal.getByRole('button', { name: '완료' }).click()
+  await expect(page.getByText('링크 공개 중')).toHaveCount(0)
   await guest.goto(url)
   await expect(guest.getByText('열 수 없는 링크입니다')).toBeVisible({ timeout: 20_000 })
   await stranger.close()

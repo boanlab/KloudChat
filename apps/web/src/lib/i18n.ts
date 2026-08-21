@@ -30,7 +30,6 @@ const EN: Record<string, string> = {
   '직접 지정': 'Set here',
   '서버 주소 사용': 'From server',
   '기본값': 'Default',
-  '미기동': 'Not running',
 
   // ── navigation ──────────────────────────────────────────────────────
   '홈': 'Home',
@@ -205,7 +204,6 @@ const EN: Record<string, string> = {
   '공유됨': 'Shared',
   '관리': 'Manage',
   '관리자': 'Admin',
-  '구성원만': 'Members only',
   '권한 변경': 'Role change',
   '근거 없음': 'No source',
   '근거 열기': 'Open source',
@@ -250,7 +248,6 @@ const EN: Record<string, string> = {
   '메일 발송': 'Outgoing mail',
   '모델': 'Model',
   '모델 비교': 'Compare models',
-  '모델 지정': 'Model selection',
   '모델별': 'By model',
   '모두 삭제': 'Delete all',
   '목차': 'Contents',
@@ -303,7 +300,6 @@ const EN: Record<string, string> = {
   '소스': 'Source',
   '수채화': 'Watercolour',
   '스킬 관리': 'Manage skills',
-  '스킬 연결': 'Attach skills',
   '스킬 편집': 'Edit skill',
   '스타일': 'Style',
   '공용': 'Shared',
@@ -335,7 +331,6 @@ const EN: Record<string, string> = {
     'Documents this agent searches for evidence. Not pushed into every turn — looked up when needed.',
   'URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.':
     'A URL is stored as it read at the time. It does not follow later changes.',
-  '템플릿 추가': 'Add template',
   '준비물': 'You bring',
   '문구': 'Prompt',
   '양식 파일': 'Form file',
@@ -344,8 +339,6 @@ const EN: Record<string, string> = {
   '무엇이 나오는지 한 줄로': 'One line on what comes out',
   '쉼표로 구분. 고르기 전에 보이는 항목입니다':
     'Comma separated. Shown on the card before it is picked.',
-  '입력창에 채워집니다. 이어서 쓸 수 있게 문장 중간에서 끝내세요':
-    'Fills the composer. End mid-sentence so there is somewhere to carry on.',
   '올리면 그 양식에 맞춰 씁니다. 선택 사항입니다':
     'Upload one and the draft follows its shape. Optional.',
   '예: 공문 초안': 'e.g. Official letter draft',
@@ -471,7 +464,6 @@ const EN: Record<string, string> = {
   '월 한도는 계정에 걸려 있습니다. 키를 여러 개 만들어도 한도가 늘지 않고, 다 쓰면 요청이 거부됩니다.':
     'The monthly limit sits on the account. Extra keys do not raise it, and requests are refused once it is spent.',
   '키를 폐기하면 즉시 막힙니다. 도구 쪽 설정도 함께 지우세요.': 'Revoking a key blocks it immediately — clear it from the tool as well.',
-  '이 주소는 브라우저에서 접속한 것과 같은 곳입니다. 사내망 밖에서 쓰려면 그 망에 연결한 뒤 사용하세요.': 'This is the same address you reach in the browser. From outside the network, connect to it first.',
   '대화에서 끝나지 않는': 'More than a',
   '생성형 AI 워크스페이스': 'generative AI workspace',
   '등록된 계정으로 이어서 작업합니다.': 'Sign in to pick up where you left off.',
@@ -523,7 +515,6 @@ const EN: Record<string, string> = {
   '이 모델은 이 조합을 만들지 않습니다': 'This model does not produce that combination',
   '비교할 모델 (2~3개)': 'Models to compare (2–3)',
   '에이전트로 새 대화': 'New conversation with an agent',
-  '이 화면에서 쓸 수 있는 스킬': 'Skills available on this surface',
   '이번 요청에 적용할 스킬 (최대 3개)': 'Skills for this request (up to 3)',
   '프로젝트 추천': 'Project suggestion',
   '추천': 'Suggested',
@@ -557,16 +548,14 @@ const EN: Record<string, string> = {
   '이전': 'Earlier',
   'Codex · OpenAI 호환 도구': 'Codex · OpenAI-compatible tools',
   '이 계정이 쓴 크레딧입니다. 매달 1일에 배정량으로 다시 채워집니다.': 'What this account has spent. It refills to the allowance on the 1st of each month.',
-  '크레딧. 로컬 모델은 크레딧을 쓰지': 'credits. Local models cost nothing',
   '이전 대화': 'Earlier conversations',
   '더 보기': 'Show more',
   '가입 승인과 월 크레딧 한도를 관리합니다. 한도는 매달 1일에 자동으로 리필되며, 남은 크레딧은 이월되지 않습니다.': 'Approve sign-ups and set monthly credit limits. Limits refill on the 1st; leftover credits do not carry over.',
   '누가 언제 무엇을 했는지 남은 기록입니다. 로그인, 승인, 정지, 권한 변경, 설정 변경이 남습니다.': 'A record of who did what and when — sign-ins, approvals, suspensions, role changes and setting changes.',
   '실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.': 'Totalled from real usage. Empty means nobody has spent anything yet.',
-  '모델 프록시와 메일 발송 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.': 'Model proxy and outgoing mail. Saved settings apply at once — no restart.',
-  '조직 전체 사용량': 'Organisation usage',
+  '이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.':
+    'Settings that apply to the whole instance. Saved settings apply at once — no restart.',
   '본인 사용량': 'Your usage',
-  '가입 승인, 월 크레딧 한도 배정, 정지': 'Approvals, monthly limits, suspension',
   '현재 비밀번호': 'Current password',
   '비밀번호 확인': 'Confirm password',
   '개 더 보기': ' more',
@@ -623,7 +612,6 @@ const EN: Record<string, string> = {
   'CSV 내보내기': 'Export CSV',
   '서버 직접 추가': 'Add a server',
   '모든 대화 삭제': 'Delete all conversations',
-  '템플릿에서 시작': 'Start from a template',
   '구성을 잡는 중…': 'Outlining…',
   '원본 작업 열기 →': 'Open the original →',
   '그릴 수 있는 값이 없습니다': 'Nothing to plot',
@@ -665,8 +653,6 @@ const EN: Record<string, string> = {
   'MCP 서버 추가': 'Add MCP server',
   'MCP 서버를 붙여 외부 시스템을 도구로 씁니다. 인증 정보는 서버에만 저장되고, 도구 단위로 켜고 끌 수 있습니다.':
     'Attach an MCP server to use outside systems as tools. Credentials stay on the server, and each tool can be turned on or off.',
-  'OpenRouter 가 무료로 제공하는 모델입니다': 'OpenRouter serves this model free of charge',
-  'OpenRouter 무료': 'Free on OpenRouter',
   'PDF (발표용)': 'PDF (for presenting)',
   'PDF, 마크다운, CSV를 올려 두면 이 프로젝트의 모든 대화에서 참조합니다.':
     'Upload PDF, Markdown or CSV and every conversation in this project can draw on it.',
@@ -675,8 +661,6 @@ const EN: Record<string, string> = {
   '{date}에 {n} 크레딧으로 리필됩니다. 남은 크레딧은 이월되지 않습니다. 한도 변경은 관리자에게 문의하세요.':
     'Refills to {n} credits on {date}. Anything left does not carry over. Ask an administrator to change the limit.',
   '{done}/{total} 섹션 · {words} 단어': '{done}/{total} sections · {words} words',
-  '{kind}은(는) 아래 입력창의 만들기 버튼으로 시작해 주세요. 길이와 목소리를 여기서는 정할 수 없습니다.':
-    'Start {kind} with the create button in the composer below. Length and voice cannot be set here.',
   '{list}번 장': 'Slides {list}',
   '{low}~{high} 크레딧 / 초': '{low}–{high} credits / sec',
   '{name} ({email}) 의 대화·프로젝트·아티팩트·메모리·크레딧 기록이 모두 사라지고 LiteLLM 키도 폐기됩니다. 되돌릴 수 없습니다.':
@@ -723,10 +707,6 @@ const EN: Record<string, string> = {
     'Your request is in. Once an administrator approves it and assigns monthly credits you can start straight away — we will email you when that happens.',
   '계정 없이 열림': 'Opens without an account',
   '계정이 정지되었습니다': 'This account is suspended',
-  '고르면 입력창에 채워집니다. 나머지는 직접 적으면 됩니다.':
-    'Pick one and it fills the composer. Write the rest yourself.',
-  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 워크스페이스에 공유합니다.':
-    'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and share the good ones with the workspace.',
   '공유된 결과물': 'Shared artifact',
   '공유된 자료입니다. 원본은 공유한 사람만 수정할 수 있습니다.':
     'Shared with you. Only the person who shared it can edit the original.',
@@ -740,6 +720,44 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
+  '{name} 서식 해제': 'Clear the {name} format',
+  '이 서식으로 시작': 'Start with this',
+  '서식 고르기': 'Pick a format',
+  '서식에서 시작': 'Start from a format',
+  '고른 색과 서체로 문서를 만들면 나오는 모양입니다.': 'What a document made in these colours and this typeface comes out looking like.',
+  '이 서식이 확인하는 것': 'What this template checks',
+  '되돌릴 수 없습니다. 이 디자인을 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.': 'This cannot be undone. {n} project(s) using it go back to the default look.',
+  '되돌릴 수 없습니다. 이 디자인을 쓰는 프로젝트는 없습니다.': 'This cannot be undone. No project is using this design.',
+  '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
+  '모델 목록을 다시 읽었습니다 · 모델 {n}종': 'Model list reloaded · {n} models',
+  '모델 목록 새로고침': 'Refresh model list',
+  '파일을 내려받지 못했습니다.': 'Could not download the file.',
+  '{name} 수정': 'Edit {name}',
+  '작업을 취소하지 못했습니다.': 'Could not cancel the job.',
+  '목소리': 'Voice',
+  '그림': 'Picture',
+  '그림 바꾸기': 'Replace the picture',
+  '이 장': 'this slide',
+  '아티팩트 검색': 'Search artifacts',
+  '찾는 결과물이 없습니다': 'Nothing matches',
+  '제목의 다른 부분으로 찾아보세요.': 'Try another part of the title.',
+  '구성 단계 모델': 'Planning model',
+  '보고서·슬라이드는 구성을 한 번 잡고 그 뒤에 한 절씩 씁니다. 구성 호출은 문서당 한 번뿐이라 여기만 다른 모델로 두어도 비용은 거의 그대로입니다. 다만 이 인스턴스에서 재어 보니 레이아웃 다양성 같은 구조 지표는 달라지지 않았습니다 — 그 부분은 프롬프트 쪽에서 이미 해결됐습니다.':
+    'Reports and decks are planned once and then written a section at a time. The planning call happens once per document, so another model here costs almost nothing extra. Measured on this instance, though, the structural numbers — layout variety and the like — did not move: the prompt had already fixed that part.',
+  '구성에 쓸 모델': 'Model that plans',
+  '비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다. 개인정보 때문에 strict-local 로 보낸 대화, 그리고 본문 모델보다 데이터 경계가 넓은 경우에는 이 설정이 적용되지 않습니다.':
+    'Left empty, each surface plans with its own model. The body is always written by the surface’s model. This setting does not apply to a turn privacy routed to a strict-local model, nor to a planner whose data boundary is wider than the writer’s.',
+  '화면의 모델을 그대로 사용': 'Use the surface’s own model',
+  '저장했습니다': 'Saved',
+  '그림을 넣지 못했습니다.': 'Could not add the picture.',
+  '그림 넣기': 'Add a picture',
+  '어느 자리에 넣을까요?': 'Where should it go?',
+  '{name} 에 그림 넣기': 'Add a picture to {name}',
+  '이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.':
+    'A picture you made on the image surface goes inside the document itself — not linked to, so it prints and travels with the file.',
+  '넣는 중…': 'Adding…',
+  '넣기': 'Add',
+  '그림 아래에 붙일 설명 (선택)': 'Caption, printed under the picture (optional)',
   '대화 {n}개와 그 안의 모든 메시지가 사라집니다.': '{n} conversations and every message in them will go.',
   '대화 중 확인된 사실이 여기에 쌓이고, 이후 대화에서 근거로 쓰입니다.':
     'Facts settled during a conversation collect here and back up later ones.',
@@ -831,13 +849,119 @@ const EN: Record<string, string> = {
   '예상 {n} 크레딧': '≈{n} credits',
   '예상 {n} 크레딧 · 완료 시에만 차감됩니다': '≈{n} credits · charged only on success',
   '외 {n}개 — 검색해서 찾으세요': 'and {n} more — search to find them',
-  '워크스페이스 공유': 'Shared with workspace',
-  '워크스페이스 구성원에게만 공개된 자료입니다. 로그인한 뒤 다시 열어 주세요.':
-    'This is open to workspace members only. Sign in and open it again.',
+  '계정이 있는 사람': 'Anyone with an account',
+  'Auto 일시 중지 · 비교할 모델을 직접 실행':
+    'Auto paused — the models being compared run as chosen',
+  'self-hosted · strict 미확인': 'self-hosted · strict unconfirmed',
+  'strict-local 모델로 전환': 'Switch to a strict-local model',
+  'strict-local 안전 모델': 'Strict-local safe model',
+  'strict-local로 보호됨': 'Kept strict-local',
+  '{n}단계 완료': '{n} steps done',
+  '가린 뒤 기존 모델 사용': 'Mask, then use the chosen model',
+  '개인정보 전용': 'Privacy only',
+  '개인정보가 감지된 요청': 'A request with personal data in it',
+  '개인정보가 포함된 요청입니다': 'This request contains personal data',
+  '개인정보를 가려 전송함': 'Sent with personal data masked',
+  '개인정보를 가린 뒤 기존 모델 사용': 'Mask the personal data, then use the chosen model',
+  '경계 미확인': 'Boundary unconfirmed',
+  '고칠 대목': 'Worth fixing',
+  '관리자가 설정한 strict-local 모델이 없어 마스킹하거나 내용을 편집해야 합니다.':
+    'No administrator has configured a strict-local model, so this has to be masked or edited.',
+  '기본 처리 방법': 'What to do by default',
+  '도구 결과 {n}건 추가 마스킹': '{n} more masked in tool results',
+  '만드는 중…': 'Making it…',
+  '만들지 못했습니다.': 'Could not make it.',
+  '매번 확인': 'Ask every time',
+  '모델 비교는 아직 시작되지 않았습니다. 안전 모델을 선택하면 비교 대신 strict-local 모델 1개로 실행합니다.':
+    'The comparison has not started. Choosing the safe model runs one strict-local model instead of comparing.',
+  '모델 설정 저장 중…': 'Saving the model setting…',
+  '모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
+    'Switching models applies only when a strict-local model with no external fallback is actually available.',
+  '모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다':
+    'This model\'s data boundary or price could not be established',
+  '모든 대화를 삭제할까요?': 'Delete every conversation?',
+  '사용자가 경고 후 원문 전송을 선택할 수 있게 합니다. 개인정보 마스킹 정책이 켜져 있으면 항상 금지됩니다.':
+    'Lets somebody send the original after a warning. Always refused while PII masking is on.',
+  '실제 실행 모델': 'Model that answered',
+  '안전한 로컬 모델로 전환': 'Switch to a safe local model',
+  '외부 모델 개인정보 보호': 'Privacy on external models',
+  '외부 모델로 보내기 전에 처리 방법을 선택하세요. 탐지된 실제 값은 표시하거나 기록하지 않습니다.':
+    'Choose what to do before this leaves for an external model. The detected values are neither shown nor logged.',
+  '외부 모델로 전송하기 전에 서버가 전체 대화 맥락을 검사하고 이 동작을 적용합니다.':
+    'The server inspects the whole outbound context and applies this before anything reaches an external model.',
+  '외부 전환 가능': 'May switch to external',
+  '외부 제공': 'External provider',
+  '외부 제공자가 무료로 제공하는 모델입니다': 'An external provider offers this model free of charge',
+  '요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.':
+    'Could not send the request. Try again in a moment.',
+  '요청한 만큼 만들어지지 않았습니다.': 'Fewer were made than asked for.',
+  '원문 외부 전송 허용': 'Allow sending the original outside',
+  '원문을 외부 모델로 전송': 'Send the original to the external model',
+  '자체 운영 경로지만 외부 모델로 전환될 수 있습니다':
+    'A self-hosted route that may switch to an external model',
+  '저장했습니다.': 'Saved.',
+  '전체 선택': 'Select all',
+  '채팅과 모델 비교의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.':
+    'Inspects everything chat and model comparison would send, and where personal data is found asks whether to switch model, mask, or edit.',
+  '크게 보기': 'View larger',
+  '탐지된 개인정보 범주': 'Categories found',
+  '편집으로 돌아가기': 'Back to editing',
+  '프록시가 self-hosted이며 외부 fallback이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
+    'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
+  '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
+    'The proxy currently declares no strict-local model, so masking and editing are the only choices.',
+  '확인 후 외부 원문 전송': 'Original sent outside after confirmation',
+  '확인 후 요청 원문은 외부 전송': 'After confirmation, the original request goes outside',
+  '길이와 형식을 정해 만들고 대화 안에서 바로 확인합니다':
+    'Set the length and format, then watch it arrive in the conversation',
+  '{n}개 선택됨': '{n} selected',
+  '전체 해제': 'Clear all',
+  '선택 삭제': 'Delete selected',
+  '{n}개를 삭제할까요?': 'Delete {n}?',
+  '{title} {n}개가 사라집니다.': '{n} {title} will be gone.',
+  '되돌릴 수 없습니다.': 'This cannot be undone.',
+  '{name} 선택': 'Select {name}',
+  '결과물': 'Artifacts',
+  '붙여 둔 자료도 함께 지워집니다. 대화는 남고, 프로젝트에서만 빠집니다.':
+    'Their knowledge files go too. Conversations stay, and simply leave the project.',
+  '결과물을 만든 대화는 그대로 남습니다.': 'The conversations that made them stay.',
+  '붙여 둔 자료와 검색 색인도 함께 지워집니다.': 'Their knowledge files and search index go too.',
+  '저장해 둔 인증 정보도 함께 지워집니다.': 'Their stored credentials go too.',
+  '이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.':
+    'Projects wearing them fall back to the default look.',
+  '삭제하지 못했습니다.': 'Could not delete.',
+  '이 대화들이 만든 결과물도 함께 삭제': 'Also delete what these conversations produced',
+  '보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.':
+    'Reports, slides, images, audio and video. Any shared links to them stop working.',
+  '접속기록': 'Access log',
+  '접속 위치': 'Where from',
+  '브라우저': 'Browser',
+  '비밀번호 재설정 요청': 'Password reset requested',
+  'API 키 폐기': 'API key revoked',
+  '로그인 실패': 'Sign-in failed',
+  '접속 기록을 불러오지 못했습니다.': 'Could not load the access log.',
+  '아직 기록이 없습니다.': 'Nothing recorded yet.',
+  '알 수 없음': 'Unknown',
+  '이 계정에 대한 접속과 보안 변경 기록입니다. 최근 100건까지 남습니다. 기억나지 않는 접속이 있으면 비밀번호를 바꾸세요.':
+    'Sign-ins and security changes on this account, most recent 100. If a line here was not you, change your password.',
+  '계정 필요': 'Account required',
+  '열람 기록': 'Who opened it',
+  '열람 기록을 불러오지 못했습니다.': 'Could not load the visits.',
+  '아직 아무도 열지 않았습니다.': 'Nobody has opened it yet.',
+  '계정 없는 방문자': 'Visitor without an account',
+  '주소 없음': 'No address',
+  '이 인스턴스에 로그인하면 누구나 열 수 있습니다.':
+    'Anyone signed in to this instance can open it.',
+  '이 인스턴스에 로그인한 사람은 누구나 이 대화를 열 수 있습니다.':
+    'Anyone signed in to this instance can open this conversation.',
+  '로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.':
+    'This one needs you signed in. Sign in and open it again.',
+  '모두에게 공개': 'Open to everyone',
+  '공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
+    'Once open, anyone signed in to this instance can copy it from the store. The original stays yours.',
+  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.':
+    'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and open the good ones in the store.',
   '워크스페이스 스토어': 'Workspace store',
-  '워크스페이스에 공유': 'Share with workspace',
-  '워크스페이스에 공유하면 같은 조직 구성원이 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
-    'Sharing lets colleagues copy it from the store. The original stays yours.',
   '원문': 'Source',
   '응답 대기 중…': 'Waiting for a reply…',
   '이 계정은 모델 {n}개로 제한되어 있습니다. 발급한 키도 같은 범위만 호출할 수 있습니다.':
@@ -862,7 +986,6 @@ const EN: Record<string, string> = {
   '일': 'days',
   '입력한 값은 서버에만 보관하며, 저장한 뒤에는 표시하지 않습니다.':
     'What you enter is kept on the server only and is not shown again.',
-  '자체 운영 · 무료': 'Self-hosted · free',
   '저장된 메모리가 없습니다': 'No memories saved',
   '저장하고 다시 연결': 'Save and reconnect',
   '저장하지 못했습니다.': 'Could not save.',
@@ -893,8 +1016,6 @@ const EN: Record<string, string> = {
   '크레딧이 차감되지 않았습니다': 'Nothing was charged',
   '키가 발급되었습니다': 'Key issued',
   '텍스트 (노트 포함)': 'Text (with notes)',
-  '특정 작업을 어떻게 처리할지 적어 둔 절차입니다. 관련된 요청이 오면 모델이 스스로 불러옵니다.':
-    'A written procedure for handling one kind of task. The model reaches for it when a request matches.',
   '설치해 둔 절차입니다. 입력창에서 이번 요청에 적용할 스킬을 최대 3개 고릅니다.':
     'Installed procedures. Select up to three for each request in the composer.',
   '{name} 설치 상태': '{name} installation status',
@@ -941,27 +1062,6 @@ const EN: Record<string, string> = {
   '개요를 잡고 절 단위로 써서 문서로 내보냅니다': 'Outline it, write section by section, export as a document',
   '발표 시간에 맞춰 장수를 정하고 노트를 붙입니다': 'Sized to your slot, with speaker notes attached',
   '비율과 스타일을 정해 여러 장을 한 번에 만듭니다': 'Set the ratio and style, get several at once',
-  '길이와 형식을 정해 만들고 작업 카드로 확인합니다': 'Set the length and format, then watch it on a job card',
-  '이 에러 로그에서 원인이 될 만한 것부터 짚어줘': 'Point out the likely causes in this error log first',
-  '올린 CSV에서 부서별 합계를 내줘': 'Total the CSV I uploaded by department',
-  '이 문단을 팀에 공유할 메일 한 통으로 줄여줘': 'Cut this paragraph down to one email for the team',
-  '두 계약서에서 달라진 조항만 찾아줘': 'Find only the clauses that differ between these two contracts',
-  '올린 설문 결과로 분석 보고서를 써줘': 'Write an analysis report from the survey results I uploaded',
-  '도입 후보 3종을 비교하는 기술 검토 보고서': 'A technical review comparing three candidates',
-  '어제 회의 메모를 회의록으로 정리해줘': 'Turn yesterday\'s meeting notes into proper minutes',
-  '지난 분기 운영 현황 보고서': 'Last quarter\'s operations report',
-  '신입 사원 교육용 보안 기초, 20분': 'Security basics for new hires, 20 minutes',
-  '이 보고서를 발표 자료로 바꿔줘': 'Turn this report into a deck',
-  '고객 미팅용 제안 발표, 10장 이내': 'A client pitch, ten slides or fewer',
-  '학회 발표용 5분 라이트닝 토크': 'A five-minute lightning talk for a conference',
-  '보고서 표지에 쓸 그림, 글자 없이': 'Cover art for a report, no text',
-  '발표 슬라이드 배경, 가운데는 비워서': 'A slide background with the centre left clear',
-  '서비스 구조를 보여주는 개념도': 'A concept diagram of the service architecture',
-  '사내 공지에 넣을 단순한 아이콘': 'A simple icon for an internal announcement',
-  '발표 오프닝에 쓸 4초 영상': 'A four-second opener for a talk',
-  '슬라이드에 얹을 30초 내레이션': 'Thirty seconds of narration over slides',
-  '제품 사용 장면을 보여주는 짧은 클립': 'A short clip of the product in use',
-  '영상 뒤에 깔 잔잔한 배경음악': 'Calm background music to sit under a video',
   '응답 스트리밍': 'Stream responses',
   '토큰이 도착하는 대로 표시합니다. 끄면 답변이 완성된 뒤 한 번에 나타납니다.':
     'Shows tokens as they arrive. Turned off, the whole answer appears at once.',
@@ -971,20 +1071,14 @@ const EN: Record<string, string> = {
   '토큰·크레딧 표시': 'Show tokens and credits',
   '각 응답 아래에 모델·토큰·크레딧을 표시합니다.': 'Puts the model, tokens and credits under each response.',
   '리포트 도우미': 'Report assistant',
-  '리포트-도우미': 'report-assistant',
   '업무·기술 보고서를 구조부터 잡아 근거 중심으로 작성합니다.':
     'Structures evidence-based business and technical reports.',
   '회의록 정리': 'Meeting minutes',
-  '회의록-정리': 'meeting-minutes',
   '회의 메모를 결정·조치·미결로 정리합니다.': 'Sorts meeting notes into decisions, actions and open items.',
   '데이터 분석 도우미': 'Data analysis assistant',
-  '데이터-분석-도우미': 'data-analysis-assistant',
   '표·설문 데이터를 집계하고 차트로 만듭니다.': 'Aggregates tabular and survey data and turns it into charts.',
-  '검산 도우미': 'Arithmetic checker',
-  '검산-도우미': 'arithmetic-checker',
   '전개를 단계별로 보여 주고 검산까지 합니다.': 'Shows each step of the working and checks the arithmetic.',
   '원문 읽기 도우미': 'Close reading assistant',
-  '원문-읽기-도우미': 'close-reading-assistant',
   '논문·기술 문서를 근거 중심으로 검토합니다.': 'Reviews papers and technical documents against their evidence.',
   '계산·단위 검증': 'Calculation & unit verification',
   '계산식과 단위, 분모, 기준 시점을 코드로 검산하고 근거를 남깁니다.':
@@ -1005,7 +1099,6 @@ const EN: Record<string, string> = {
   '공문-작성': 'official-correspondence',
   '대내외 공문과 결재 문서를 양식에 맞춰 씁니다.': 'Writes internal and external correspondence to the expected form.',
   '발표 노트 작성': 'Speaker notes',
-  '발표-노트-작성': 'speaker-notes',
   '장마다 실제로 말할 문장을 씁니다. 화면 글자를 반복하지 않습니다.':
     'Writes what you will actually say on each slide, rather than repeating what is on it.',
   '고객사에 맞춘 제안 슬라이드를 구성합니다.': 'Builds a pitch deck shaped around the client.',
@@ -1033,7 +1126,6 @@ const EN: Record<string, string> = {
     'Writes in the register and structure of institutional correspondence.',
   '대내외 공문, 협조 요청, 결재 상신 문서를 쓸 때.':
     'When writing correspondence, requests for cooperation, or documents going up for approval.',
-  '수치가 포함된 답을 낼 때': 'When an answer contains numbers',
   '회의 내용을 정리할 때. 받아쓴 텍스트나 메모를 넘겨받았을 때.':
     'When writing up a meeting, or handed a transcript or notes.',
   '슬라이드를 만든 뒤 발표 노트를 채울 때.': 'After building a deck, when filling in the speaker notes.',
@@ -1061,14 +1153,12 @@ const EN: Record<string, string> = {
   '수식 풀이': 'Worked equations',
   '논문 리뷰어': 'Paper reviewer',
   '미디어': 'Media',
-  '번역·용어': 'Translation & terms',
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
   // ── 작업 단계 카드 ───────────────────────────────────────────────────
   '작업 중': 'Working',
   '작업 완료': 'Done',
   '중단됨': 'Stopped',
-  '{done}/{total} 단계': '{done}/{total} steps',
   '{n}단계': '{n} steps',
   '{n}개 남음': '{n} left',
   '추론': 'Reasoning',
@@ -1078,7 +1168,6 @@ const EN: Record<string, string> = {
   '저장 시점': 'Save point',
   '넓게 보기': 'Widen',
   '패널 좁히기': 'Narrow',
-  '본문을 읽기 좋은 너비로 넓힙니다': 'Widens the panel to a reading width',
   '이 부분 고치기': 'Fix this passage',
   '선택 복사': 'Copy selection',
   '이 대목을 어떻게 바꿀지 적으세요. 예: 근거를 붙여서 두 문장으로.':
@@ -1114,6 +1203,245 @@ const EN: Record<string, string> = {
   '도구 백엔드 주소': 'Tool backend URL',
   '{name} 주소': '{name} URL',
   '이 결과물을 삭제합니다': 'Delete this artifact',
+
+
+
+
+  // ── 답을 받지 못한 턴, 그리고 지목할 모델이 없는 몫 ─────────────
+  '기타': 'Other',
+  '답변을 받지 못했습니다.': 'No answer came back.',
+  '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
+  '다시 물어보기': 'Ask again',
+
+  // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
+  '이미지 {n}장': '{n} pictures',
+  '영상 {n}개': '{n} clips',
+  '내레이션 {n}개': '{n} narrations',
+  '음악 {n}곡': '{n} tracks',
+
+  // ── 왜 눌리지 않는지 ────────────────────────────────────────────
+  '이 디자인을 삭제합니다': 'Delete this design',
+  '이번 요청에만 적용할 스킬을 고릅니다': 'Choose skills for this request only',
+  '절약 모델은 3개까지만 추가할 수 있습니다': 'At most three economy models',
+  '이미 가장 먼저 시도하는 모델입니다': 'Already tried first',
+  '한 칸 위로 올려 더 먼저 시도합니다': 'Move it up, so it is tried sooner',
+  '이미 가장 나중에 시도하는 모델입니다': 'Already tried last',
+  '한 칸 아래로 내려 더 나중에 시도합니다': 'Move it down, so it is tried later',
+  '이 모델을 절약 목록에서 뺍니다': 'Take this model off the economy list',
+
+  // ── 시작점 갤러리의 이름 ────────────────────────────────────────
+  '시작점 고르기': 'Pick a starting point',
+  '시작점 추가': 'Add a starting point',
+  '시작점 수정': 'Edit starting point',
+  '고친 내용은 다음에 이 시작점을 고를 때부터 반영됩니다.':
+    'Your edits apply the next time you pick this starting point.',
+
+  // ── 죽어 있던 컨트롤 ────────────────────────────────────────────
+  '이 답변이 도움이 되었습니다': 'This answer helped',
+  '이 답변이 잘못되었습니다': 'This answer was wrong',
+  '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.':
+    'Skills and knowledge files belong to whoever shared it and do not come along. Attach and upload your own.',
+
+  // ── 서식이 채워 둔 옵션 ─────────────────────────────────────────
+  '{name} 서식이 정한 값': 'Set by the {name} format',
+  '값을 직접 바꾸면 이 표시는 사라집니다': 'Change one by hand and this note goes away',
+
+  // ── 디자인 시스템이 실제로 닿는 곳 ──────────────────────────────
+  '말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
+    'The voice reaches chat, reports and slides; colour and type reach slides and report covers; style reaches pictures. Audio and video are untouched.',
+  '이 대화의 말투를 이 디자인에 맞춥니다': 'this conversation takes its voice from the design',
+  '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다':
+    'the report takes its voice, colour and type from the design',
+  '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다':
+    'the slides take their voice, colour and type from the design',
+  '그림의 색과 스타일을 이 디자인에 맞춥니다': 'pictures take their colour and style from the design',
+
+  // ── 이 턴에 들어간 것 ───────────────────────────────────────────
+  '외 {n}건': 'and {n} more',
+  '외 {n}개': 'and {n} more',
+  '메모리 {n}건 참고': 'Drew on {n} memories',
+  '메모리 {n}건 저장': 'Saved {n} memories',
+  '자동 메모리에 추가됨': 'Added to automatic memory',
+  '저장된 {total}건 중 최근 {n}건': 'the {n} most recent of {total} stored',
+  '첨부 파일': 'Attachments',
+  '프로젝트 지식': 'Project knowledge',
+  '{subject} {n}개 반영': '{n} {subject} used in full',
+  '{subject} {n}개 중': 'Of {n} {subject},',
+  '{n}개 잘림': '{n} cut short',
+  '{n}개 빠짐': '{n} left out',
+  '{name} {kept}자만 반영': '{name} — only {kept} characters used',
+  '{name} 분량을 넘겨 제외': '{name} — over budget, left out',
+  '{name} 읽지 못함': '{name} — could not be read',
+
+  // ── 이번 턴에만 적용되는 것과, 계정 전체에 적용되는 것 ──────────
+  'strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.':
+    'A strict-local model cannot use the web search tool.',
+  '웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다':
+    'No web search — this model does not reach outside',
+  '웹 검색 안 함 · 모델 비교는 검색 없이 실행합니다':
+    'No web search — a model comparison runs without it',
+  '이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다':
+    'This model does not reach outside, so web search is unavailable',
+  '모델 비교는 웹 검색 없이 실행합니다': 'A model comparison runs without web search',
+  '안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.':
+    'The safe local model does not reach outside. Choose it and this request runs without web search.',
+  '계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.':
+    'This is an account-wide setting. Turning it off here turns it off everywhere.',
+
+  // ── 공유 상태와 가려진 기록 ─────────────────────────────────────
+  '공유 중': 'Shared',
+  '링크 공개 중': 'Public link',
+  '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.':
+    'Anyone with the link can read this conversation without an account.',
+  '공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.':
+    'Turns added after sharing keep appearing on the link. Revoke it to stop at what is there now.',
+  '기록에는 가려진 채 저장됩니다. 이 대화를 다시 열면 여기에도 자리표시자만 남습니다.':
+    'The stored copy is masked. Reopen this conversation and only the placeholders remain here too.',
+  '전화번호': 'Phone number',
+  '주민 식별번호': 'National ID',
+  '결제카드': 'Payment card',
+  'IP 주소': 'IP address',
+  '개인키': 'Private key',
+
+  // ── 에이전트가 정하는 것 ────────────────────────────────────────
+  '낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.':
+    'Lower answers more consistently, higher more variously. Applies on the chat surface only.',
+
+  // ── 대화가 가지고 시작하는 것 ───────────────────────────────────
+  '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
+  '이 에이전트가 답합니다': 'answers here',
+  '이 프로젝트의 지침과 자료를 함께 씁니다': 'its instructions and files come along',
+  '결과물이 이 서식으로 나옵니다': 'the result comes out in this shape',
+  '이 에이전트로 대화를 시작합니다.': 'Starting this conversation with the agent.',
+  '{kind}에서 이 에이전트의 지시대로 답합니다.': 'It answers on {kind} the way this agent tells it to.',
+
+  // ── 시작점 ──────────────────────────────────────────────────────
+  '고르면 이번 요청에 붙습니다. 무엇을 만들지는 직접 적으면 됩니다.':
+    'Picking one attaches it to this request. What to make is still yours to write.',
+  '시작점으로 붙이기': 'Attach as a starting point',
+  '입력창에 채우기': 'Fill the composer',
+  '요청과 함께 전달됩니다. 입력창에는 나타나지 않습니다':
+    'Sent with the request. It never appears in the composer',
+  '{list} 적어 주세요': 'Write down {list}',
+  '{name} 시작점 해제': 'Clear the {name} starting point',
+  '시작점 {name}': 'From {name}',
+  '시작점 {name} · 서식 {title}': 'From {name} · in {title}',
+
+  // ── 관리자 화면의 탭 ────────────────────────────────────────────
+  '프록시': 'Proxy',
+  '라우팅': 'Routing',
+  '기능': 'Features',
+  '메일': 'Mail',
+
+  // ── 서식 카탈로그 ───────────────────────────────────────────────
+  '서식': 'Formats',
+  '{n}종 모두 보기': 'See all {n}',
+  '제품이 갖고 있는 결과물의 모양입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
+    'The shapes a result can come out in. Pick one and its screen opens with the example sentence in the composer.',
+  '보여 줄 서식이 없습니다': 'No formats to show',
+  '슬라이드나 보고서를 켜면 그 화면에서 쓸 수 있는 서식이 여기에 나옵니다.':
+    'Turn on slides or reports and the formats those screens can use will appear here.',
+
+  // ── 프로젝트의 기본 서식 ────────────────────────────────────────
+  '기본 서식': 'Default formats',
+  '이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
+    'Sets the shape work started in this project comes out in. Each conversation can still pick its own.',
+  '{kind} 서식': '{kind} format',
+
+  // ── 버전 기록 ───────────────────────────────────────────────────
+  '되돌리지 못했습니다.': 'Could not restore.',
+
+  // ── 디자인 현관 ─────────────────────────────────────────────────
+  '결과물이 어떤 모양으로 나올지 먼저 고릅니다': 'Choose the shape the result comes out in first',
+  '결과물이 어떤 모양으로 나올지 고릅니다': 'Choose the shape the result comes out in',
+  '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다. 공문 양식이나 지난 보고서에서 읽어 올 수도 있습니다.':
+    'Attach one to a project and its slides, reports and images come out in the same colour and type. One can also be read out of an official template or an earlier report.',
+
+  // ── 문서에서 디자인 읽기 ─────────────────────────────────────────
+  '문서에서 가져오기': 'Read from a document',
+  '문서에서 디자인 시스템을 읽어내지 못했습니다.': 'No design system could be read out of that.',
+  '공문 양식이나 지난 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.':
+    'Upload an official template or an earlier report, and its colours, type and voice become a draft. Nothing is saved until you have read it.',
+  '문서 올리기': 'Upload a document',
+  'hwpx · docx · pdf · 텍스트': 'hwpx · docx · pdf · text',
+  '주소에서 읽기': 'Read from a URL',
+  '이 인스턴스에 문서 가져오기가 연결되어 있어야 합니다.': 'This instance needs the page-fetching backend connected.',
+  '읽기': 'Read',
+  '읽는 중입니다…': 'Reading…',
+  '“{name}” 에서 읽었습니다. 확인하고 고친 뒤 저장하세요.':
+    'Read from “{name}”. Check it, change what is wrong, then save.',
+
+  '이 파일에서는 글자를 읽지 못했습니다.': 'No text could be read out of that file.',
+  '그 주소에서 내용을 읽지 못했습니다.': 'Nothing could be read from that URL.',
+  '이 인스턴스에는 문서 가져오기가 연결되어 있지 않습니다.': 'This instance has no page-fetching backend connected.',
+  '파일이나 주소 중 하나만 정하세요.': 'Give a file or a URL, not both.',
+  '남은 크레딧이 부족합니다.': 'Not enough credits left.',
+  '모델이 응답하지 않았습니다. 잠시 후 다시 시도하세요.': 'The model did not answer. Try again in a moment.',
+
+
+  '검토': 'Review',
+  '검토 받기': 'Ask for a review',
+  '다시 검토': 'Review again',
+  '자동 검사': 'Automatic checks',
+  '검토하지 못했습니다.': 'The review could not be produced.',
+  '고칠 곳을 찾지 못했습니다.': 'Nothing to fix was found.',
+  '쓰지 않은 사람의 눈으로 한 번 읽습니다. 모델을 한 번 호출합니다.':
+    'One reading by somebody who did not write it. Costs one model call.',
+
+  // ── 블록 다시 쓰기 ───────────────────────────────────────────────
+  '어느 부분을 다시 쓸까요?': 'Which part should be rewritten?',
+  '제목 없음': 'Untitled',
+  '무엇을 고칠지 적으면 그것만 반영합니다. 비워 두면 그냥 다시 씁니다.':
+    'Say what to change and only that is applied. Left empty, it simply writes it again.',
+  '다시 쓰는 중…': 'Rewriting…',
+  '고칠 내용': 'What to change',
+  '예: 숫자를 빼고 무엇을 결정해야 하는지만 남겨 주세요.': 'e.g. Drop the figures and leave only what has to be decided.',
+
+  // ── 결과물 검사 ─────────────────────────────────────────────────
+  '검사 결과': 'Checks',
+  '고칠 곳 {n}': '{n} to fix',
+  '볼 곳 {n}': '{n} to look at',
+
+  // ── 디자인 템플릿 ───────────────────────────────────────────────
+  '고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.':
+    'Picking one puts its example into the composer. The sentence is yours to change.',
+  '원본 HTML': 'Original HTML',
+  '텍스트': 'Text',
+  '문서를 만들지 못했습니다.': 'The document could not be produced.',
+  // ── 디자인 시스템 ───────────────────────────────────────────────
+  '디자인': 'Design',
+  '디자인 시스템': 'Design systems',
+  '디자인 추가': 'Add a design',
+  '사용 안 함 — 기본 모양': 'None — the default look',
+  '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
+    'Attach one to a project and its slides, reports and images come out in the same colour and type.',
+  '아직 디자인이 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.':
+    'No designs yet. Make one and you can pick it on a project.',
+  '한 줄 설명': 'One-line description',
+  '예: 학과 공식 문서': 'e.g. Department standard document',
+  '강조색': 'Accent',
+  '본문색': 'Body',
+  '보조색': 'Secondary',
+  '{label} 색상 코드': '{label} colour code',
+  '서체': 'Typeface',
+  '고딕 — 발표·화면': 'Gothic — slides and screen',
+  '명조 — 보고서·인쇄': 'Serif — reports and print',
+  '내보내는 파일에 실제로 쓰이는 두 가지입니다.': 'The two faces the exported files actually use.',
+  '문체 규율': 'Voice',
+  '이 프로젝트의 모든 턴에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.':
+    'Sent with every turn in the project. Anything longer belongs in the project instructions.',
+  '예: 제목은 명사구로 쓴다. 한 문장에 한 사실만 담는다.': 'e.g. Write headings as noun phrases. One fact per sentence.',
+  '이미지 스타일': 'Image style',
+  '이미지 프롬프트 뒤에 그대로 붙습니다. 영어로 적는 편이 잘 통합니다.':
+    'Appended to image prompts verbatim. English tends to work better.',
+  '함께 적용할 규칙': 'Rules to carry with it',
+  '군더더기 덜기': 'Cut the filler',
+  '이모지와 채움말을 빼고, 채울 내용이 없으면 분량을 줄입니다.':
+    'Drops emoji and filler words, and shortens rather than padding when there is nothing to say.',
+  '글의 결 맞추기': 'Keep one texture',
+  '강조 방법과 제목 단계를 문서 안에서 하나로 유지합니다.':
+    'Keeps emphasis and heading depth consistent through the document.',
+  '모든 사용자에게 제공': 'Offer to every account',
   '이 스킬을 삭제합니다': 'Delete this skill',
   '이 에이전트를 삭제합니다': 'Delete this agent',
   '고정하면 모든 대화에 먼저 전달됩니다': 'Pinned memories go into every conversation',

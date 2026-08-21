@@ -12,7 +12,8 @@ import {
   ReloadNotice,
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
-import { relativeTime } from '@/lib/utils'
+import { errorMessage } from '@/lib/api'
+import { madeLine, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -34,6 +35,12 @@ export function HistoryPage() {
   const [confirmAll, setConfirmAll] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  // Off by default. A conversation is a record of asking; an artifact is the
+  // thing that came out of it, and the gallery presents it as one — it may sit
+  // in a project or behind a shared link. Tidying the first should not be a
+  // silent way of destroying the second, so it is a decision made here.
+  const [alsoArtifacts, setAlsoArtifacts] = useState(false)
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -53,10 +60,13 @@ export function HistoryPage() {
 
   const removePicked = async () => {
     setBusy(true)
+    setError(null)
     try {
-      const count = await deleteSessions({ ids: [...picked] })
+      const count = await deleteSessions({ ids: [...picked], artifacts: alsoArtifacts })
       setPicked(new Set())
       setDone(count)
+    } catch (err) {
+      setError(errorMessage(err, t('삭제하지 못했습니다.')))
     } finally {
       setBusy(false)
     }
@@ -64,11 +74,16 @@ export function HistoryPage() {
 
   const removeAll = async () => {
     setBusy(true)
+    setError(null)
     try {
-      const count = await deleteSessions({ all: true })
+      const count = await deleteSessions({ all: true, artifacts: alsoArtifacts })
       setPicked(new Set())
       setConfirmAll(false)
       setDone(count)
+    } catch (err) {
+      // Said, not swallowed. A dialog that closes on failure and a dialog that
+      // does nothing on failure are equally unreadable from the outside.
+      setError(errorMessage(err, t('삭제하지 못했습니다.')))
     } finally {
       setBusy(false)
     }
@@ -146,6 +161,7 @@ export function HistoryPage() {
         ) : (
           shown.map((s) => {
             const meta = kindMeta[s.kind]
+            const made = madeLine(s.made, t)
             return (
               <Card key={s.id} className="flex items-center gap-3 px-3 py-2.5">
                 {/* 16px 사각형 하나가 전부이던 자리. 지울 대화를 여러 개 고르는
@@ -167,7 +183,13 @@ export function HistoryPage() {
                   <span className="block truncate text-base font-medium">
                     {s.title || t('제목 없는 대화')}
                   </span>
-                  <span className="text-xs text-faint">{relativeTime(s.updatedAt)}</span>
+                  {/* 여기서 고르는 것은 지울 대화다. 언제였는지만으로는 같은
+                      문장으로 만든 영상 일곱 개를 구별할 수 없어서, 무엇이
+                      나왔는지를 같은 줄에 붙인다. 줄 수는 그대로 둔다. */}
+                  <span className="block truncate text-xs text-faint">
+                    {relativeTime(s.updatedAt)}
+                    {made ? ` · ${made}` : ''}
+                  </span>
                 </button>
                 <Badge>{t(meta?.label ?? s.kind)}</Badge>
               </Card>
@@ -190,6 +212,21 @@ export function HistoryPage() {
             {t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')}
           </span>
         </div>
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-base">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-[var(--color-danger)]"
+            checked={alsoArtifacts}
+            onChange={(e) => setAlsoArtifacts(e.target.checked)}
+          />
+          <span>
+            {t('이 대화들이 만든 결과물도 함께 삭제')}
+            <span className="block text-sm text-muted">
+              {t('보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.')}
+            </span>
+          </span>
+        </label>
+        {error && <p className="mt-3 text-base text-danger">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button onClick={() => setConfirmAll(false)}>{t('취소')}</Button>
           <Button variant="danger" disabled={busy} onClick={() => void removeAll()}>

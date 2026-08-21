@@ -64,6 +64,10 @@ export function AdminUsagePage() {
   }, [loadUsage, days])
 
   const cr = (v: number) => `${v.toLocaleString()} cr`
+  // The ledger can charge against no conversation at all, which is a surface
+  // the five-kind table has no entry for.
+  const surface = (kind: string) =>
+    kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
   // Free local models cost nothing, so a credit chart for an instance that only
   // runs them is a row of zeroes. Plot what did happen instead of nothing.
   const byCredits = (usage?.totals.credits ?? 0) > 0
@@ -81,6 +85,9 @@ export function AdminUsagePage() {
       [],
       [t('모델'), t('크레딧'), t('요청'), t('사용자')],
       ...usage.byModel.map((m) => [m.model, String(m.credits), String(m.requests), String(m.users)]),
+      ...(usage.totals.otherCredits > 0
+        ? [[t('기타'), String(usage.totals.otherCredits), '', '']]
+        : []),
     ]
     const csv = rows.map((r) => r.join(',')).join('\n')
     const url = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv' }))
@@ -161,17 +168,23 @@ export function AdminUsagePage() {
                   </span>
                 )}
               </p>
-              <div className="flex h-40 items-end gap-1.5">
+              {/* The bar's percentage is of the space between the two labels,
+                  so that space has to be a box with a height of its own — a
+                  percentage against an auto-height parent resolves to nothing
+                  and the chart draws blank. */}
+              <div className="flex h-40 items-stretch gap-1.5">
                 {daily.map((d) => (
                   <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                     <span className="text-2xs tabular-nums text-faint">
                       {d.value > 0 ? d.value.toLocaleString() : ''}
                     </span>
-                    <div
-                      className="w-full rounded-t bg-accent"
-                      style={{ height: `${(d.value / maxDaily) * 100}%` }}
-                      title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
-                    />
+                    <div className="flex w-full flex-1 items-end">
+                      <div
+                        className="w-full rounded-t bg-accent"
+                        style={{ height: `${Math.max(2, (d.value / maxDaily) * 100)}%` }}
+                        title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
+                      />
+                    </div>
                     <span className="truncate text-2xs text-faint">{d.date.slice(5)}</span>
                   </div>
                 ))}
@@ -181,11 +194,18 @@ export function AdminUsagePage() {
             <Card className="mb-4 p-4">
               <p className="mb-3 text-base font-medium">{t('모델별')}</p>
               <Bars
-                rows={usage.byModel.map((m) => ({
-                  label: m.model,
-                  value: m.credits,
-                  sub: `${t('{n}회').replace('{n}', String(m.requests))} · ${t('{n}명').replace('{n}', String(m.users))}`,
-                }))}
+                rows={[
+                  ...usage.byModel.map((m) => ({
+                    label: m.model,
+                    value: m.credits,
+                    sub: `${t('{n}회').replace('{n}', String(m.requests))} · ${t('{n}명').replace('{n}', String(m.users))}`,
+                  })),
+                  // Named rather than dropped: a bar chart that quietly omits
+                  // part of the total is how the whole total ended up here.
+                  ...(usage.totals.otherCredits > 0
+                    ? [{ label: t('기타'), value: usage.totals.otherCredits }]
+                    : []),
+                ]}
                 format={cr}
               />
             </Card>
@@ -195,7 +215,7 @@ export function AdminUsagePage() {
                 <p className="mb-3 text-base font-medium">{t('화면별')}</p>
                 <Bars
                   rows={usage.bySurface.map((s) => ({
-                    label: t(kindMeta[s.kind as SessionKind]?.label ?? s.kind),
+                    label: surface(s.kind),
                     value: s.credits,
                     sub: t('{n}건').replace('{n}', String(s.requests)),
                     color: kindMeta[s.kind as SessionKind]?.color,

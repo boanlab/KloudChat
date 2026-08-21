@@ -1,11 +1,12 @@
-import { Bot, Boxes, PanelRight } from 'lucide-react'
+import { Bot, Boxes, Palette, PanelRight } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer } from '@/components/chat/Composer'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
+import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
@@ -15,49 +16,183 @@ import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Empty state shown before the first prompt of a fresh session. */
-function Intro({ kind }: { kind: SessionKind }) {
+/**
+ * What a project's design system does to each surface, in that surface's own
+ * terms.
+ *
+ * Four entries and not six: audio and video are rendered by something the
+ * design never reaches. Chat gets the voice alone — an accent colour is not
+ * something a sentence can be written in.
+ */
+const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
+  chat: '이 대화의 말투를 이 디자인에 맞춥니다',
+  report: '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다',
+  slides: '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다',
+  image: '그림의 색과 스타일을 이 디자인에 맞춥니다',
+}
+
+/**
+ * What this conversation is already carrying, before a word is typed.
+ *
+ * An agent, a project or a 디자인 is chosen on another screen and arrives here
+ * as a badge in the top bar. Pressing 실행 on an agent is the clearest case:
+ * the screen that opens looks exactly like a blank session. So it is said in
+ * the middle of the empty screen, in the terms the choice was made in — an
+ * agent's own description rather than its name repeated.
+ *
+ * A 서식 is deliberately absent: it lands as a named chip inside the composer
+ * carrying the × that takes it off again, so naming it here too would put the
+ * same two words at both ends of an empty screen with only the lower one
+ * actionable. The shared page keeps its 서식 row — no composer there.
+ */
+function StartingFrom({
+  sessionId,
+  kind,
+  withoutAgent,
+}: {
+  sessionId?: string | null
+  kind: SessionKind
+  /** The agent is the headline above, so listing it here would say it twice. */
+  withoutAgent?: boolean
+}) {
   const t = useT()
-  const { user, send, setDraft } = useStore()
-  const navigate = useNavigate()
-  const meta = kindMeta[kind]
-  const Icon = meta.icon
-  const start = (prompt: string) =>
-    void send(null, kind, prompt, {
-      onSession: (id) => navigate(`/s/${id}`, { replace: true }),
-    })
+  const session = useStore((s) => s.sessions.find((c) => c.id === sessionId))
+  const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
+  const agent = withoutAgent ? undefined : found
+  const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
+  // The design comes with the project or not at all, so it is looked up from
+  // the project rather than the session.
+  const design = useStore((s) => s.designs.find((d) => d.id === project?.designSystemId))
+  const designReach = DESIGN_REACHES[kind]
+
+  // The 디자인 row rides on the project, so a card with neither an agent nor a
+  // project has nothing of its own left to say.
+  if (!agent && !project) return null
+
+  // Each row says what the thing will *do* to this conversation rather than
+  // naming its category. "프로젝트" over a project's name says nothing the
+  // name did not; "이 프로젝트의 지침과 자료를 함께 씁니다" is the reason it
+  // is worth telling somebody about before they type.
+  const rows = [
+    agent && {
+      key: 'agent',
+      icon: <Bot size={13} />,
+      label: t('이 에이전트가 답합니다'),
+      name: agent.name,
+      says: agent.description,
+      colour: agent.color,
+    },
+    project && {
+      key: 'project',
+      icon: <Boxes size={13} />,
+      label: t('이 프로젝트의 지침과 자료를 함께 씁니다'),
+      name: `${project.emoji} ${project.name}`.trim(),
+      says: project.description,
+      colour: undefined,
+    },
+    design &&
+      designReach && {
+        key: 'design',
+        icon: <Palette size={13} />,
+        label: t(designReach),
+        name: design.name,
+        says: design.description,
+        colour: design.tokens.accent,
+      },
+  ].filter(Boolean) as {
+    key: string
+    icon: React.ReactNode
+    label: string
+    name: string
+    says: string
+    colour?: string
+  }[]
 
   return (
+    <div className="animate-fade-up mb-5 rounded-card border border-line bg-panel">
+      <p className="border-b border-line px-3.5 py-2 text-xs font-medium tracking-wide text-faint uppercase">
+        {t('이 대화가 가지고 시작하는 것')}
+      </p>
+      <div className="divide-y divide-line">
+        {rows.map((row) => (
+          <div key={row.key} className="flex items-start gap-2.5 px-3.5 py-2.5">
+            <span
+              className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-control text-white"
+              style={{ background: row.colour ?? 'var(--color-faint)' }}
+            >
+              {row.icon}
+            </span>
+            <div className="min-w-0">
+              <p className="text-base">
+                <span className="font-medium">{row.name}</span>
+                <span className="ml-1.5 text-sm text-faint">{row.label}</span>
+              </p>
+              {row.says && <p className="mt-0.5 text-sm text-muted">{row.says}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Empty state shown before the first prompt of a fresh session. */
+function Intro({
+  kind,
+  sessionId,
+  projectId,
+}: {
+  kind: SessionKind
+  sessionId?: string | null
+  projectId?: string | null
+}) {
+  const t = useT()
+  const user = useStore((s) => s.user)
+  const meta = kindMeta[kind]
+  const Icon = meta.icon
+  const agent = useStore((s) =>
+    s.agents.find((a) => a.id === s.sessions.find((c) => c.id === sessionId)?.agentId),
+  )
+  return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 pb-8">
+      {/* Pressing 실행 on an agent is a decision about what this conversation
+          is for, so the agent says who it is and the product does not greet
+          the person over the top of it. */}
       <div className="animate-fade-up mb-7 text-center">
         <div
           className="mx-auto mb-4 grid size-11 place-items-center rounded-panel text-white"
-          style={{ background: meta.color }}
+          style={{ background: agent ? agent.color : meta.color }}
         >
-          <Icon size={20} />
+          {agent ? <Bot size={20} /> : <Icon size={20} />}
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          {kind === 'chat' ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '') : t(meta.label)}
+          {agent
+            ? agent.name
+            : kind === 'chat'
+              ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')
+              : t(meta.label)}
         </h1>
         {/* 챗은 인사하고 나머지는 설명한다. 인사를 `tagline` 에 두면 홈 카드와
             로그인 목록이 기능 나열 한가운데서 독자에게 인사하게 된다. */}
         <p className="mt-1.5 text-base text-muted">
-          {kind === 'chat' ? t('무엇을 도와드릴까요?') : t(meta.tagline)}
+          {agent
+            ? agent.description || t('이 에이전트로 대화를 시작합니다.')
+            : kind === 'chat'
+              ? t('무엇을 도와드릴까요?')
+              : t(meta.tagline)}
         </p>
+        {agent && (
+          <p className="mt-2 text-sm text-faint">
+            {t('{kind}에서 이 에이전트의 지시대로 답합니다.').replace('{kind}', t(meta.label))}
+          </p>
+        )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {meta.examples.map((prompt) => (
-          <button
-            key={prompt}
-            onClick={() => start(prompt)}
-            className="animate-fade-up rounded-card border border-line bg-panel px-3.5 py-3 text-left text-base text-muted transition-colors hover:border-line-strong hover:bg-elevated hover:text-fg"
-          >
-            {t(prompt)}
-          </button>
-        ))}
-      </div>
-      <div className="mt-4 flex justify-center">
-        <TemplateGallery kind={kind} onPick={setDraft} />
+      <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <TemplateGallery kind={kind} />
+        {/* The cards are drawn in this project's look, which is the one the
+            composer under them will render the answer in. */}
+        <DesignGallery kind={kind} projectId={projectId} />
       </div>
     </div>
   )
@@ -81,6 +216,15 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
   } = useStore()
 
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+    /**
+     * A document named by whoever sent us here — the 작업 목록's 원본 작업 열기.
+     *
+     * The panel otherwise follows `session.artifactId`, this conversation's
+     * *latest* result: right while you are working, wrong when somebody arrives
+     * asking for a particular file.
+     */
+  const requestedArtifactId = searchParams.get('artifact')
   const session = sessions.find((s) => s.id === sessionId) ?? null
   const kind: SessionKind = session?.kind ?? newKind ?? 'chat'
   const meta = kindMeta[kind]
@@ -132,9 +276,33 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
     el.scrollTo({ top: el.scrollHeight, behavior: streaming ? 'auto' : 'smooth' })
   }, [timeline.length, lastLength, runningProgress, streaming])
 
+  /**
+   * Spent on arrival, and only once the session it names is in hand:
+   * `setActiveSession` above opens the panel on the session's own document,
+   * and that runs again when a reload finally loads the list. Clearing the
+   * query afterwards is what lets a closed panel stay closed.
+   */
+  useEffect(() => {
+    if (!requestedArtifactId || !session) return
+    openArtifact(requestedArtifactId)
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('artifact')
+        return next
+      },
+      { replace: true },
+    )
+    // The session is a dependency by id: its object identity changes on every
+    // streamed token, and reopening the panel mid-answer is not what this is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedArtifactId, session?.id, openArtifact, setSearchParams])
+
   const project = projects.find((p) => p.id === session?.projectId)
   const agent = agents.find((a) => a.id === session?.agentId)
-  const sessionArtifact = artifacts.find((a) => a.id === session?.artifactId)
+  const sessionArtifact = artifacts.find(
+    (a) => a.id === (requestedArtifactId ?? session?.artifactId),
+  )
   const Icon = meta.icon
 
   return (
@@ -216,7 +384,11 @@ export function SessionPage({ newKind }: { newKind?: SessionKind }) {
             </>
           ) : (
             <>
-              <Intro kind={kind} />
+              <Intro
+                kind={kind}
+                sessionId={session?.id ?? sessionId ?? null}
+                projectId={session?.projectId ?? null}
+              />
               {/* The URL is authoritative, not the store lookup. On `/s/:id`
                   the row may not have arrived yet — falling back to `null` there
                   makes the composer start a *new* conversation, silently

@@ -1,0 +1,32 @@
+kind = "audio"
+name = "슬라이드 내레이션"
+description = "발표 노트를 소리 내어 읽는 목소리. 속도와 어조를 정해 둡니다"
+category = "발표"
+fills = ["어조", "읽을 내용"]
+example_prompt = "{tone} 어조로 또박또박 읽어 줘. 문장 사이는 충분히 쉬고, 숫자는 자연스럽게 풀어 읽어 줘.\n\n읽을 내용:\n{script}"
+name_en = "Slide narration"
+description_en = "A voice reading your speaker notes, at a pace set in advance"
+category_en = "Presentation"
+fills_en = ["Tone", "Script"]
+example_prompt_en = "Read this clearly in {tone}. Leave room between sentences and speak numbers naturally.\n\nScript:\n{script}"
+
+[defaults]
+mode = "audio"
+audioKind = "narration"
+voice = "nova"
+
+[[arguments]]
+name = "tone"
+label = "어조"
+label_en = "Tone"
+default = "차분한 설명조"
+default_en = "a calm explanatory tone"
+options = ["차분한 설명조", "밝고 친근한", "단정한 공식 발표조"]
+options_en = ["a calm explanatory tone", "a bright and friendly tone", "a formal announcement tone"]
+
+[[arguments]]
+name = "script"
+label = "읽을 내용"
+label_en = "Script"
+default = "여기에 발표 노트를 붙여 넣으세요."
+default_en = "Paste your speaker notes here."

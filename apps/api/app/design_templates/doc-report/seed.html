@@ -1,0 +1,295 @@
+<!doctype html>
+<!--
+  KloudChat document seed — report.
+
+  A4 portrait. A cover that owns its page, then section after section down one
+  narrow measure, with a second, narrower column beside it that holds nothing
+  but the subordinate voice: the source, the caveat, the reading of a number.
+  A reviewer who stops at a figure and asks "where is this from" finds the
+  answer level with the sentence rather than at the foot of the page, and the
+  writer cannot skip it, because the typography leaves a visible hole.
+
+  That margin column is the one bold move, so the text column pays for it: no
+  boxes, no tints, no bar down the side of a heading. Sections are separated by
+  space and by an accent section number, and by nothing else.
+
+  Accent appears exactly four times — the rule at the foot of the cover, the
+  section number, the underline under a table head, and the list marker. Every
+  other non-colour is derived from `--ink`, so any accent hue and either body
+  face land the same way.
+
+  No script. Artifacts render in a `sandbox=""` iframe and the file is also
+  downloaded and opened offline. See `services/design_templates.py`.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    --paper: #ffffff;
+    /* Every neutral is a mix of the design system's ink; there is no grey
+       literal anywhere in this file. A hairline, a border and the wash the
+       paper floats on are one colour at three strengths. */
+    --hair: color-mix(in srgb, var(--ink) 10%, transparent);
+    --border: color-mix(in srgb, var(--ink) 14%, transparent);
+    --wash: color-mix(in srgb, var(--ink) 5%, #fff);
+    /* The one weakened accent: 2px of it under a table head reads as a rule
+       rather than as a second heading. */
+    --rule: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    /* The paper is white and the window is not, so the page floats. */
+    background: var(--wash);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: 1.78;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+  .page {
+    /* 34rem of text + 2rem of gutter + 9rem of margin column + the padding. */
+    max-width: 52rem;
+    margin: 0 auto;
+    padding: 0 3.5rem 6rem;
+    background: var(--paper);
+    min-height: 100vh;
+    counter-reset: sec;
+  }
+
+  /* ── cover ─────────────────────────────────────────────────────────
+     A page of its own. The title block sits on the one-third line, the facts
+     of the review sit under it, and the accent rule waits at the foot of the
+     page rather than under the title — the reader's eye is meant to arrive at
+     the title, not be stopped there. */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 3rem);
+    padding: 32vh 0 2.2rem;
+    margin: 0 0 3.4rem;
+  }
+  .cover h1 {
+    margin: 0 0 0.9rem;
+    max-width: 22ch;
+    font-size: clamp(1.9rem, 4vw, 2.7rem);
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  /* `.lead` is what the exporters read, but a cover paragraph is the lead
+     whether or not the model remembered to say so. */
+  .cover .lead, .cover > p {
+    margin: 0 0 2.6rem;
+    max-width: 52ch;
+    color: var(--muted);
+    font-size: 1.02rem;
+    line-height: 1.65;
+  }
+  /* 목적 · 독자 · 기간 · 작성. Two columns, because a reader scans the left
+     one and reads the right one. */
+  .cover dl {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 0.4rem 1.2rem;
+    margin: 0;
+    max-width: 30rem;
+    font-size: 0.88rem;
+    line-height: 1.6;
+  }
+  .cover dt { color: var(--muted); font-weight: 600; }
+  .cover dd { margin: 0; max-width: none; color: var(--ink); font-size: inherit; }
+  .cover::after {
+    content: "";
+    display: block;
+    margin-top: auto;
+    height: 3px;
+    background: var(--accent);
+  }
+
+  /* ── a section: text column, and the column beside it ──────────────
+     Auto-placement does the alignment. Everything is pinned to column 1, so
+     the placement cursor walks down that column; a `<small>` asks for column 2
+     and lands on the row the cursor is already on — the row of the paragraph
+     it follows. Write the note after the sentence it answers for, and it
+     appears beside that sentence. */
+  section {
+    display: grid;
+    grid-template-columns: minmax(0, 34rem) 9rem;
+    column-gap: 2rem;
+    margin: 0 0 2.6rem;
+  }
+  section > * { grid-column: 1; min-width: 0; }
+  h2 {
+    margin: 0 0 0.9rem;
+    font-size: 1.3rem;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  /* The section number is inline, in the accent, and smaller than the words it
+     numbers — a label, not a headline. No box and no bar: an accent bar down
+     the left of every heading is the default this template exists without. */
+  h2::before {
+    counter-increment: sec;
+    content: counter(sec) ".";
+    margin-right: 0.5rem;
+    color: var(--accent);
+    font-size: 0.95rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+  /* Ink rather than muted: a sub-heading fainter than its own paragraph reads
+     as a caption somebody left behind. */
+  h3 {
+    margin: 1.7rem 0 0.4rem;
+    font-size: 1.12rem;
+    font-weight: 650;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  /* Not justified. Korean with `keep-all` breaks at spaces, so justifying
+     stretches the few spaces a line has into rivers down the page. */
+  p { margin: 0 0 0.95rem; text-wrap: pretty; }
+  ul, ol { margin: 0 0 1.05rem; padding-left: 1.25rem; }
+  li { margin: 0 0 0.35rem; }
+  li::marker { color: var(--accent); }
+  blockquote {
+    margin: 1.3rem 0;
+    padding: 0.1rem 0 0.1rem 1.1rem;
+    border-left: 1px solid var(--hair);
+    color: var(--muted);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.1rem 0 1.2rem;
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+  th {
+    padding: 0.4em 0.7em 0.4em 0;
+    border-bottom: 2px solid var(--rule);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-align: left;
+  }
+  td {
+    padding: 0.5em 0.7em 0.5em 0;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── the subordinate voice ─────────────────────────────────────────
+     One size, one colour, one measure, everywhere in the catalogue: 0.84em,
+     line-height 1.55, `--muted`, at most 54ch, never italic, half a rem below
+     the thing it explains. Here it also decides which column it lives in. */
+  small, figcaption, dd {
+    color: var(--muted);
+    font-size: 0.84em;
+    line-height: 1.55;
+    font-style: normal;
+    max-width: 54ch;
+  }
+  section > small, section > figcaption {
+    grid-column: 2;
+    align-self: start;
+    display: block;
+    margin: 0.5rem 0 0.9rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--hair);
+  }
+  dl { margin: 0 0 1.1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0 0 0.6rem; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 1.6rem 0; }
+  /* A line of code is a quotation from a machine, so it has to survive being
+     copied out of the page character for character: a fixed-width face, and a
+     field that shows where it starts and where it stops. Inline only — `pre`
+     is not in the vocabulary, so nothing here can grow into a wall. */
+  code {
+    font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    font-size: 0.88em;
+    padding: 0.05em 0.32em;
+    background: var(--wash);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.3rem 0; break-inside: avoid; }
+  /* A page scrolls, so width is the constraint — but a picture taller than the
+     paper still breaks across two pages with nothing on the second. */
+  figure img { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; }
+  figcaption { margin-top: 0.5rem; }
+
+  /* ── narrow ────────────────────────────────────────────────────────
+     There is no margin to write in on a phone, so the note becomes an indented
+     annotation directly under its paragraph. Same voice, same distance from
+     what it explains; only the direction changes.
+
+     `screen and` is load-bearing. A width query is evaluated against the page
+     box when printing, and A4 is 794px — without it, printing a report took
+     this branch and the margin column, the whole point of the shape, collapsed
+     on exactly the output the shape is for. */
+  @media screen and (max-width: 900px) {
+    .page { padding: 0 1.4rem 4rem; }
+    .cover { padding-top: 22vh; }
+    section { display: block; }
+    section > small, section > figcaption {
+      margin: 0.5rem 0 1.1rem;
+      padding: 0 0 0 0.9rem;
+      border-top: 0;
+      border-left: 1px solid var(--hair);
+    }
+  }
+
+  @page { size: A4 portrait; margin: 20mm 18mm; }
+  @media print {
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; }
+    .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
+    /* `vh` is the page box on paper, so the cover is measured in millimetres
+       instead: a third of the way down A4, with the accent rule at the foot. */
+    .cover {
+      min-height: 232mm;
+      padding: 74mm 0 0;
+      margin: 0;
+      page-break-after: always;
+      break-after: page;
+    }
+    /* The margin column survives printing — it is the point of the shape — but
+       it narrows, because 18mm of paper margin is not 3.5rem of screen. */
+    section {
+      grid-template-columns: minmax(0, 1fr) 7rem;
+      column-gap: 1.4rem;
+      margin: 0 0 12mm;
+    }
+    h2 { page-break-after: avoid; break-after: avoid; }
+    table, figure, blockquote { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+{{BODY}}
+</div>
+</body>
+</html>

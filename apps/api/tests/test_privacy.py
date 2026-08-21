@@ -574,7 +574,7 @@ async def test_egress_catalogue_rechecks_hot_strict_alias_and_denies_remap(
             return _workspace([])
 
         async def no_settings(*_args, **_kwargs):
-            return None, []
+            return None, [], None
 
         async def no_audit(*_args, **_kwargs):
             return None
@@ -800,6 +800,54 @@ async def test_mask_raw_and_legacy_upper_bound_actions(monkeypatch) -> None:
     assert isinstance(legacy, _PrivacyResolution)
     assert legacy.action == "mask_external"
     assert legacy.mask_outbound is True
+
+
+@pytest.mark.asyncio
+async def test_raw_external_still_carries_what_the_record_was_masked_by(monkeypatch) -> None:
+    """Raw egress is not a raw record.
+
+    `send_raw_external` sends the sentence untouched and stores the Message
+    masked all the same. The transcript explains that substitution from the
+    findings kept on the routing, so they have to survive the one action whose
+    name says nothing was hidden.
+    """
+    monkeypatch.setattr(governance.settings, "jwt_secret", "test-secret-that-is-at-least-32-bytes")
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(user_id=user.id)
+    external = _external_model("external/model")
+    sources = {"current_input": "send person@example.com"}
+    policy = Governance(external_data_guard=True, allow_user_raw_external=True)
+
+    asked = await _resolve_privacy(
+        user=user,
+        session=session,
+        policy=policy,
+        catalogue=[external],
+        requested=[external],
+        sources=sources,
+        explicit_action=None,
+        decision_token=None,
+    )
+    assert isinstance(asked, JSONResponse)
+
+    raw = await _resolve_privacy(
+        user=user,
+        session=session,
+        policy=policy,
+        catalogue=[external],
+        requested=[external],
+        sources=sources,
+        explicit_action="send_raw_external",
+        decision_token=json.loads(asked.body)["decisionToken"],
+    )
+    assert isinstance(raw, _PrivacyResolution)
+    assert raw.mask_outbound is False
+    assert raw.findings
+    assert raw.routing["findingCounts"] == [
+        {"category": "email", "source": "current_input", "count": 1}
+    ]
+    # What is written where the person's sentence used to be.
+    assert governance.mask(sources["current_input"])[0] == "send [이메일]"
 
 
 @pytest.mark.asyncio
@@ -1130,7 +1178,7 @@ async def _patch_guard_dependencies(
         return _workspace(blocks)
 
     async def settings(*_args, **_kwargs):
-        return None, []
+        return None, [], None
 
     async def audit(*_args, **_kwargs):
         return None
@@ -1443,7 +1491,7 @@ async def test_auto_requires_persisted_quality_model_instead_of_agent_fallback(
     )
 
     async def settings(*_args, **_kwargs):
-        return agent_model["id"], []
+        return agent_model["id"], [], None
 
     monkeypatch.setattr(sessions_router, "agent_settings", settings)
 
@@ -1833,6 +1881,206 @@ async def test_send_stale_model_fallback_stays_inside_allowlist(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_a_revoked_model_says_so_and_does_not_become_the_session(monkeypatch) -> None:
+    """A fallback the person can see, and that ends when the revocation does.
+
+    The turn still runs — refusing it would be worse — but on another model at
+    another price, so the routing metadata reports the model that was asked for
+    rather than the one that answered, which is what the transcript's badge
+    compares. And the substitute is not written back: a session silently moved
+    to the cheapest row would stay there long after the allowlist was restored.
+    """
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        allowed_models=["external/allowed"],
+    )
+    revoked = _external_model("external/now-blocked")
+    allowed = _external_model("external/allowed")
+    session = ChatSession(user_id=user.id, model=revoked["id"])
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[revoked, allowed],
+        blocks=[],
+    )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    async def build_tools(*_args, **_kwargs):
+        return []
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "build_tools", build_tools)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean"),
+        _request(),
+        user,
+        db,
+    )
+
+    assert response.status_code == 200
+    assert session.model == revoked["id"]
+    user_message = next(
+        row
+        for row in db.added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.user
+    )
+    assert user_message.routing["requestedModels"] == [revoked["id"]]
+    assert user_message.routing["routedModels"] == [allowed["id"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "runner_name"),
+    [
+        (sessions_router.SessionKind.report, "_run_report"),
+        (sessions_router.SessionKind.slides, "_run_deck"),
+    ],
+)
+async def test_a_revoked_model_says_so_on_report_and_slides(
+    monkeypatch, kind, runner_name: str
+) -> None:
+    """A substitution is news on every surface, not only the one that resolves privacy.
+
+    Report and slide turns build no privacy resolution, so there was nothing on
+    the turn to carry the swap: the document came out written by a model nobody
+    chose and the transcript agreed with itself. The note the runner is handed
+    is what the reader's badge compares.
+    """
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        allowed_models=["external/allowed"],
+    )
+    revoked = {**_external_model("external/now-blocked"), "kinds": [kind.value]}
+    allowed = {**_external_model("external/allowed"), "kinds": [kind.value]}
+    session = ChatSession(user_id=user.id, kind=kind, model=revoked["id"])
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[revoked, allowed],
+        blocks=[],
+    )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    captured: dict = {}
+
+    async def run_document(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type":"done"}\n\n'
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, runner_name, run_document)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean"),
+        _request(),
+        user,
+        db,
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    routing = captured["routing"]
+    assert routing["requestedModels"] == [revoked["id"]]
+    assert routing["routedModels"] == [allowed["id"]]
+    # What `actualModelChanged` reads in the transcript.
+    assert routing["actualModel"] == allowed["id"]
+    assert routing["action"] == "none"
+    user_message = next(
+        row
+        for row in db.added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.user
+    )
+    assert user_message.routing["requestedModels"] == [revoked["id"]]
+    # The revocation owns this turn only, exactly as it does on chat.
+    assert session.model == revoked["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_document_turn_on_the_model_it_asked_for_carries_no_route_note(
+    monkeypatch,
+) -> None:
+    """Nothing happened, so the turn says nothing — an empty badge row is noise."""
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    allowed = {**_external_model("external/allowed"), "kinds": ["report"]}
+    session = ChatSession(
+        user_id=user.id,
+        kind=sessions_router.SessionKind.report,
+        model=allowed["id"],
+    )
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[allowed],
+        blocks=[],
+    )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    captured: dict = {}
+
+    async def run_document(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"type":"done"}\n\n'
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "_run_report", run_document)
+    db = AcceptedDb()
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="clean"),
+        _request(),
+        user,
+        db,
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    assert captured["routing"] is None
+
+
+@pytest.mark.asyncio
 async def test_strict_privacy_route_does_not_persist_over_requested_session_model(
     monkeypatch,
 ) -> None:
@@ -1909,6 +2157,85 @@ async def test_strict_privacy_route_does_not_persist_over_requested_session_mode
     assert user_message.routing["routedModels"] == [strict["id"]]
     assert tool_build["web_search"] is False
     assert tool_build["knowledge_collection"] == ""
+
+
+@pytest.mark.asyncio
+async def test_strict_local_turn_admits_it_could_not_search(monkeypatch) -> None:
+    """A privacy route removes the search tool; the answer has to say so.
+
+    Dropping the toggle quietly produced a turn indistinguishable from a
+    searched one, which is how a remembered fact ends up read as a checked one.
+    """
+    user = User(
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        preferences={"privacyDefaultAction": "route_strict_local"},
+    )
+    external = _external_model("external/requested")
+    external["supportsTools"] = True
+    strict = {
+        **_external_model("strict-local/safe"),
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "supportsTools": True,
+    }
+    session = ChatSession(user_id=user.id, model=external["id"])
+    await _patch_guard_dependencies(
+        monkeypatch,
+        session=session,
+        models=[external, strict],
+        blocks=[],
+    )
+
+    async def current(*_args, **_kwargs):
+        return Governance(
+            external_data_guard=True,
+            privacy_safe_model_ids=[strict["id"]],
+        )
+
+    async def ensure_key(*_args, **_kwargs):
+        return None
+
+    async def credentials(*_args, **_kwargs):
+        return "http://litellm.test", "key"
+
+    async def build_tools(*_args, **_kwargs):
+        return []
+
+    class AcceptedDb(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    captured: dict = {}
+
+    async def no_events():
+        return
+        yield b""  # pragma: no cover - shape only
+
+    def run_turn(**kwargs):
+        captured.update(kwargs)
+        return no_events()
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", current)
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "build_tools", build_tools)
+    monkeypatch.setattr(sessions_router, "_run_turn", run_turn)
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="send person@example.com", web_search=True),
+        _request(),
+        user,
+        AcceptedDb(),
+    )
+
+    assert response.status_code == 200
+    prompt = captured["messages"][0]["content"]
+    assert "검색 도구가 없습니다" in prompt
+    assert "web_search 를 최소 한 번" not in prompt
 
 
 @pytest.mark.asyncio
@@ -2017,7 +2344,7 @@ async def test_strict_route_revalidates_selected_skill_after_tools_are_removed(
         )
 
     async def settings(*_args, **_kwargs):
-        return None, None
+        return None, None, None
 
     async def runner(_arguments):
         return ToolResult(content="ok")
@@ -2261,7 +2588,7 @@ async def test_title_and_auto_memory_mask_every_prompt_and_harden_strict_calls(
     monkeypatch.setattr(chat.settings_store, "litellm_config", config)
     monkeypatch.setattr(auto_memory.settings_store, "litellm_config", config)
 
-    title = await chat.generate_title(
+    title, _ = await chat.generate_title(
         "strict-local/model",
         "current person@example.com",
         "reply +1 (415) 555-2671",
@@ -2278,7 +2605,7 @@ async def test_title_and_auto_memory_mask_every_prompt_and_harden_strict_calls(
         body="known owner@example.com",
         type=MemoryType.user,
     )
-    written = await auto_memory.extract(
+    written, _ = await auto_memory.extract(
         _MemoryDb([known]),
         user,
         user_message="current person@example.com",
@@ -2541,7 +2868,7 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
             return None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", ArtifactDb)
-    artifact_id = await sessions_router._enrich(
+    artifact_id, _memory_step = await sessions_router._enrich(
         user_id=user.id,
         session_id=session.id,
         content="safe assistant reply",
@@ -2674,7 +3001,7 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
             return None
 
     async def enrich(**_kwargs):
-        return None
+        return None, None
 
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
@@ -2734,6 +3061,182 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
     assert "[이메일]" in persisted
     assert "[API키]" in persisted
     assert run_kwargs["redact_logging"] is True
+
+
+@pytest.mark.asyncio
+async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
+    monkeypatch,
+) -> None:
+    """The stored answer is masked; the streamed one is not. Say so."""
+    raw_email = "answer-owner@example.com"
+    user = User(
+        id="user",
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        monthly_credits=10_000,
+    )
+    session = ChatSession(id="session", user_id=user.id)
+    added: list[object] = []
+
+    async def run_turn(*_args, **_kwargs):
+        yield {"type": "delta", "text": f"Write to {raw_email} and to {raw_email}"}
+        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+
+    class TurnDb:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, model, _id):
+            if model is ChatSession:
+                return session
+            if model is User:
+                return user
+            return None
+
+        def add(self, value):
+            added.append(value)
+
+        async def commit(self):
+            return None
+
+    async def enrich(**_kwargs):
+        # `(artifact_id, memory_step)`; neither matters here.
+        return None, None
+
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
+    monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
+    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    routing = {
+        "requestedModels": ["external/model"],
+        "routedModels": ["external/model"],
+        "effectiveModels": ["external/model"],
+        "actualModels": [],
+        "action": "mask_external",
+        "dataBoundary": "external",
+        "findingCounts": [{"category": "email", "source": "current_input", "count": 1}],
+    }
+    events = [
+        event
+        async for event in sessions_router._run_turn(
+            user_id=user.id,
+            api_key="key",
+            auto_memory=False,
+            session_id=session.id,
+            model=_external_model("external/model"),
+            messages=[{"role": "user", "content": "clean request"}],
+            tools=[],
+            tool_definitions=[],
+            first_user_message="clean request",
+            is_first_turn=False,
+            routing=routing,
+            mask_at_rest=True,
+        )
+    ]
+
+    announced = [
+        json.loads(line.removeprefix("data: ").strip())
+        for line in "".join(events).splitlines()
+        if line.startswith("data: ")
+    ]
+    answer = [
+        finding
+        for event in announced
+        if event["type"] == "privacy_route"
+        for finding in event.get("findingCounts", [])
+        if finding["source"] == "assistant_output"
+    ]
+    assert answer == [{"category": "email", "source": "assistant_output", "count": 2}]
+
+    message = next(
+        row
+        for row in added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
+    )
+    # The record is still masked — this test is about the silence, not the mask.
+    assert raw_email not in message.content
+    assert {"category": "email", "source": "assistant_output", "count": 2} in (
+        message.routing["findingCounts"]
+    )
+    # The prompt's own finding is not overwritten by the answer's.
+    assert {"category": "email", "source": "current_input", "count": 1} in (
+        message.routing["findingCounts"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_clean_answer_under_the_guard_announces_no_answer_findings(
+    monkeypatch,
+) -> None:
+    """No finding, no claim: an untouched answer must not grow a warning."""
+    user = User(
+        id="user",
+        email="person@example.test",
+        password_hash="hash",
+        name="Person",
+        monthly_credits=10_000,
+    )
+    session = ChatSession(id="session", user_id=user.id)
+    added: list[object] = []
+
+    async def run_turn(*_args, **_kwargs):
+        yield {"type": "delta", "text": "아무것도 가릴 것이 없는 답."}
+        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+
+    class TurnDb:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, model, _id):
+            if model is ChatSession:
+                return session
+            if model is User:
+                return user
+            return None
+
+        def add(self, value):
+            added.append(value)
+
+        async def commit(self):
+            return None
+
+    async def enrich(**_kwargs):
+        # `(artifact_id, memory_step)`; neither matters here.
+        return None, None
+
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
+    monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
+    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    _ = [
+        event
+        async for event in sessions_router._run_turn(
+            user_id=user.id,
+            api_key="key",
+            auto_memory=False,
+            session_id=session.id,
+            model=_external_model("external/model"),
+            messages=[{"role": "user", "content": "clean request"}],
+            tools=[],
+            tool_definitions=[],
+            first_user_message="clean request",
+            is_first_turn=False,
+            routing=None,
+            mask_at_rest=True,
+        )
+    ]
+
+    message = next(
+        row
+        for row in added
+        if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
+    )
+    assert message.routing is None
 
 
 @pytest.mark.asyncio

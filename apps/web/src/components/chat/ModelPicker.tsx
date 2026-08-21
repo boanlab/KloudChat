@@ -12,7 +12,7 @@ import {
 import { useState } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
-import { useStore } from '@/store/useStore'
+import { effectiveModelId, useStore } from '@/store/useStore'
 import type { ModelInfo, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
@@ -45,17 +45,45 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
       : t('{n} 크레딧').replace('{n}', m.creditCost.toLocaleString())
   }
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
-    return m.dataBoundary === 'self_hosted' ? t('자체 운영 · 무료') : t('외부 제공 · 무료')
+    return t('무료')
   }
   return t('1k당 입력 {in} · 출력 {out}')
     .replace('{in}', m.inputCreditCost.toLocaleString())
     .replace('{out}', m.creditCost.toLocaleString())
 }
 
+/**
+ * Where this model's text goes, as a sentence rather than a chip.
+ *
+ * The one fact that decides whether a prompt may leave the building must not
+ * read as one more coloured pill beside the vendor and the price tier. Under
+ * the name it is read rather than scanned, in the line that already carries
+ * what a turn costs.
+ *
+ * Still coloured — an external model must not read the same as a local one —
+ * but colour on words, not a card.
+ */
+function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone: string } | null {
+  if (m.strictLocal) return { text: 'strict-local', tone: 'text-success' }
+  if (m.dataBoundary === 'self_hosted') {
+    return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
+  }
+  // Amber, the same as `external` and `unknown`, because the server ranks the
+  // three together — `_BOUNDARY_RANK` in routers/sessions.py gives all of them
+  // 1. A colour that separated hybrid from external would be the screen
+  // inventing a distinction nothing else in the product makes.
+  if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
+  if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
+  if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
+  return null
+}
+
 export function ModelPicker({
   kind,
   sessionId,
   compact = false,
+  variant = 'toolbar',
+  label,
   modality,
   onEnableAuto,
   onBusyChange,
@@ -64,6 +92,19 @@ export function ModelPicker({
   /** When set, the picker reads and writes *this conversation's* model. */
   sessionId?: string | null
   compact?: boolean
+  /**
+   * `field` dresses the trigger as a form control so settings can pick the
+   * default for a surface out of this same menu. What a model costs and where
+   * its text goes decide the choice, and they were only ever on screen for the
+   * one-turn pick.
+   */
+  variant?: 'toolbar' | 'field'
+  /**
+   * The surface this picker sets the default for. A `<select>` carries its own
+   * label; a button names only the model, so the field variant has to say what
+   * it is a default for out loud.
+   */
+  label?: string
     /**
      * Narrows the list once more. Audio and video share the `av` surface, so
      * `kinds` alone would offer speech models where a video is being made.
@@ -75,10 +116,12 @@ export function ModelPicker({
   onBusyChange?: (busy: boolean) => void
 }) {
   const t = useT()
+  const field = variant === 'field'
   const [selectionPending, setSelectionPending] = useState(false)
   const {
     models,
     modelByKind,
+    agents,
     setModel,
     setSessionModel,
     setSessionRoutingMode,
@@ -92,11 +135,22 @@ export function ModelPicker({
     (m) => m.kinds.includes(kind) && (!modality || m.modality === modality),
   )
 
-    // Inside a conversation, that conversation's model — the surface default
-    // would name the wrong one on an old thread.
-  const currentId = session?.model || modelByKind[kind]
+    // Inside a conversation, whatever that conversation will actually run on —
+    // the surface default would name the wrong one on an old thread, and the
+    // wrong one again on a thread that is deferring to its agent.
+  const currentId = effectiveModelId(session, kind, agents, modelByKind)
   const active = usable.find((m) => m.id === currentId) ?? usable[0]
   const autoActive = kind === 'chat' && session?.routingMode === 'auto'
+  // Auto belongs to a conversation, so it is offered only where there is one to
+  // write it to — or a caller standing by to make one. Settings has neither,
+  // and an Auto row there would be a button that quietly does nothing.
+  const canRouteAuto = kind === 'chat' && (Boolean(sessionId) || Boolean(onEnableAuto))
+    /**
+     * Before the first turn there is no conversation to write a model to, so a
+     * pick lands on the surface default and every later conversation inherits
+     * it. Correct, but not what a picker in the composer looks like it does, so
+     * the menu says which of the two is happening.
+     */
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -112,7 +166,12 @@ export function ModelPicker({
   if (!active) {
     // An empty picker and a broken proxy look identical otherwise.
     return (
-      <span className="flex items-center gap-1.5 px-2 py-1.5 text-base text-faint">
+      <span
+        className={cn(
+          'flex items-center gap-1.5 text-base text-faint',
+          field ? 'h-9 w-full rounded-control border border-line bg-panel px-3' : 'px-2 py-1.5',
+        )}
+      >
         <Cpu size={14} />
         {modelsLoading ? t('모델 불러오는 중…') : t('사용 가능한 모델 없음')}
       </span>
@@ -121,23 +180,38 @@ export function ModelPicker({
 
   return (
     <Dropdown
-      align="right"
-      className="w-[calc(100vw-2rem)] max-w-[340px] min-w-0 sm:w-auto sm:min-w-[340px]"
+      align={field ? 'left' : 'right'}
+      className={
+        field
+          ? 'w-full min-w-0'
+          : 'w-[calc(100vw-2rem)] max-w-[340px] min-w-0 sm:w-auto sm:min-w-[340px]'
+      }
       trigger={({ open }) => (
         <button
           type="button"
           disabled={selectionPending}
           aria-busy={selectionPending}
+          aria-label={label ? `${label}: ${active.label}` : undefined}
           className={cn(
-            'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base font-medium transition-colors',
-            open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+            'flex h-9 items-center gap-1.5 rounded-control text-base font-medium transition-colors',
+            field
+              ? cn(
+                  'w-full justify-between border bg-panel px-3',
+                  open ? 'border-accent' : 'border-line hover:border-line-strong',
+                )
+              : cn(
+                  'shrink-0 px-2.5',
+                  open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+                ),
           )}
         >
-          {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
-          <span className="max-w-[220px] truncate">
-            {autoActive ? `${t('Auto · 비용 절약')} · ${active.label}` : active.label}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
+            <span className={cn('truncate', !field && 'max-w-[220px]')}>
+              {autoActive ? `${t('Auto · 비용 절약')} · ${active.label}` : active.label}
+            </span>
           </span>
-          {!compact && <ChevronDown size={14} className="text-faint" />}
+          {!compact && <ChevronDown size={14} className="shrink-0 text-faint" />}
         </button>
       )}
     >
@@ -146,7 +220,7 @@ export function ModelPicker({
         active={active}
         autoActive={autoActive}
         autoRouting={autoRouting}
-        showAuto={kind === 'chat'}
+        showAuto={canRouteAuto}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
         onAuto={() => {
@@ -265,7 +339,10 @@ function ModelMenu({
               {vendor}
             </div>
           )}
-          {rows.map((m) => (
+          {rows.map((m) => {
+            const boundaryOf = boundary(m, t)
+            const free = m.creditCost === 0 && m.inputCreditCost === 0
+            return (
         <button
           key={m.id}
           type="button"
@@ -283,25 +360,14 @@ function ModelMenu({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
-              <span className="truncate text-base font-medium">{m.label}</span>
-              <Badge>{m.provider}</Badge>
-              {m.strictLocal && (
-                <Badge tone="success">
-                  <ShieldCheck size={10} />
-                  strict-local
-                </Badge>
-              )}
-              {!m.strictLocal && m.dataBoundary === 'self_hosted' && (
-                <Badge tone="warn">{t('self-hosted · strict 미확인')}</Badge>
-              )}
-              {!m.strictLocal && m.dataBoundary === 'hybrid' && (
-                <Badge tone="warn">{t('외부 전환 가능')}</Badge>
-              )}
-              {m.dataBoundary === 'external' && <Badge tone="warn">{t('외부 제공')}</Badge>}
-              {m.dataBoundary === 'unknown' && (
-                <Badge tone="warn">{t('경계 미확인')}</Badge>
-              )}
-              {m.id.endsWith(':free') && <Badge tone="success">{t('무료')}</Badge>}
+              {/* The vendor is the heading this row sits under, so the row
+                  says the model. `label` carries both for the places that
+                  have no heading to lean on — a single-vendor catalogue draws
+                  no groups, and there the name alone would not say whose it
+                  is. */}
+              <span className="truncate text-base font-medium">
+                {groups.length > 1 ? m.name : m.label}
+              </span>
               {m.adapter && (
                 <Badge tone="warn">
                   <Plug size={10} />
@@ -311,14 +377,31 @@ function ModelMenu({
             </span>
             <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
             <span className="mt-1 flex items-center gap-2 text-xs text-faint">
-              <span>{rateLabel(m, t)}</span>
+              {/* Where the text goes and what it costs, joined rather than
+                  merely adjacent. They are the pair the choice is actually
+                  made on, and spaced apart on one line they read as two
+                  unrelated notes; the rate already spends `·` on its own two
+                  halves, so the join is a slash. The price keeps its own
+                  colour — free and not free is the difference being scanned
+                  for, and at this size a shade of grey does not carry it. */}
+              <span className="flex items-center gap-1">
+                {boundaryOf && (
+                  <span className={cn('flex items-center gap-1', boundaryOf.tone)}>
+                    {m.strictLocal && <ShieldCheck size={11} />}
+                    {boundaryOf.text}
+                  </span>
+                )}
+                {boundaryOf && <span aria-hidden>/</span>}
+                <span className={cn(free && 'text-free')}>{rateLabel(m, t)}</span>
+              </span>
               {m.contextWindow && <span>{formatTokens(m.contextWindow)} ctx</span>}
               {m.supportsVision && <Eye size={11} />}
               {m.supportsTools && <Wrench size={11} />}
             </span>
           </span>
         </button>
-          ))}
+            )
+          })}
         </div>
       ))}
     </>

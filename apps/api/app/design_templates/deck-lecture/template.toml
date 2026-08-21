@@ -1,0 +1,27 @@
+kind = "deck"
+name = "강의형 덱"
+description = "번호 알약이 장을 열고, 개념 한 가지에 예시 하나. 강의실 뒤에서도 읽히는 큰 글씨"
+category = "발표"
+fills = ["과목·주제", "수강생 수준", "수업 시간"]
+example_prompt = "수업에서 쓸 강의 자료를 만들어 줘. 개념을 하나 말할 때마다 예시를 하나 붙이고, 처음 나오는 용어는 쓰기 전에 뜻을 밝혀 줘.\n\n이번 시간 주제: "
+layouts = ["cover", "bullets", "example", "quote", "table"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Lecture deck"
+description_en = "A step pill opens every slide: one concept, one example, type big enough for the back row"
+category_en = "Presentation"
+fills_en = ["Course and topic", "Student level", "Class length"]
+example_prompt_en = "Make slides for a class. Pair every concept with one example, and define a term before using it.\n\nToday's topic: "
+
+# The shape this template's own instructions promise. `services/lint` reads
+# these instead of its general bounds, so the checklist and the checker
+# cannot disagree about what counts as a crowded slide.
+[limits]
+max_bullets = 4
+max_bullet_chars = 25
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

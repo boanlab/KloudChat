@@ -52,6 +52,19 @@ class Governance(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
+    #: The model that plans a document, when it should not be the one that
+    #: writes it.
+    #:
+    #: A deck is one outline call and N block calls. The outline is where the
+    #: shape is decided — how many slides, and which layout each one is — and
+    #: it is the call a small model gets visibly wrong: measured on this
+    #: instance, `bullets` was 77% of every body slide it planned. Naming a
+    #: stronger model here buys that one call per document and leaves the
+    #: per-block cost where it is. Empty keeps the surface's own model, which
+    #: is what every installation starts with.
+    outline_model_id: str | None = Field(
+        default=None, sa_column=Column(String, nullable=True)
+    )
     #: Refuse prompts whose intent falls in `blocked_categories`.
     intent_filter: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))

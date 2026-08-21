@@ -14,6 +14,7 @@ import type {
   CostRouting,
   Session,
   SessionKind,
+  SessionMade,
   Slide,
   Source,
   Step,
@@ -46,14 +47,50 @@ export class ApiError extends Error {
 /**
  * What to put on the screen when a call fails.
  *
- * A 4xx `detail` is written for the person who made the request — "이미 사용
- * 중인 이메일입니다" is the answer they need. A 5xx one is written for whoever
- * reads the logs, and putting it on screen hands somebody "upstream exploded"
- * as if it were an instruction. Same for a network error, whose message is the
- * browser's own English.
+ * A 4xx `detail` is written for the person who made the request; a 5xx one is
+ * written for whoever reads the logs, and so is a network error's message.
  */
+/** A bare status code, which is what `readDetail` falls back to. */
+/**
+ * A machine code rather than a sentence: `not_found`, `upstream_failed`,
+ * `http_502`. This API answers 4xx with them by design, and `readDetail`
+ * invents one when the body is not JSON at all.
+ *
+ * Recognised by shape rather than by a list, because the list grows: a code is
+ * lowercase ASCII with underscores and no spaces, and a sentence written for a
+ * reader has neither property — it has spaces, or it is Korean.
+ */
+const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
+
+/**
+ * What to put on screen for a failed request.
+ *
+ * A 5xx `detail` is shown when the API wrote it: an image route answers 502
+ * carrying the reason a picture was refused, and a generic fallback would
+ * throw away the only sentence that said why.
+ *
+ * What never reaches a reader is a machine code — `upstream_failed`,
+ * `not_found`, or the `http_502` `readDetail` invents when a gateway between
+ * here and the API answers with something that is not JSON. Not messages; the
+ * absence of one.
+ */
+/**
+ * The machine code behind a failure, for the callers that have to branch on it.
+ *
+ * Separate from `errorMessage` on purpose: one answers "what do I put on the
+ * screen", the other "which failure was this". A caller that reads the screen
+ * string and compares it to a code gets whichever the humanising rule happened
+ * to let through.
+ */
+export function errorCode(err: unknown): string {
+  if (err instanceof ApiError && err.detail && MACHINE_CODE.test(err.detail)) {
+    return err.detail
+  }
+  return ''
+}
+
 export function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.detail) {
+  if (err instanceof ApiError && err.detail && !MACHINE_CODE.test(err.detail)) {
     return err.detail
   }
   return fallback
@@ -259,7 +296,9 @@ export const authConfig = {
 
 export interface MyUsage {
   days: number
-  totals: { credits: number; requests: number }
+  /** `otherCredits` is spend no single model can be named for — a comparison
+   *  that ran several on one charge — not the part the breakdown forgot. */
+  totals: { credits: number; requests: number; otherCredits: number }
   /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
   daily: { date: string; credits: number; requests: number }[]
@@ -365,11 +404,36 @@ export const adminApi = {
 export interface UsageReport {
   days: number
   since: string
-  totals: { credits: number; requests: number; activeUsers: number; allocatedCredits: number }
+  totals: {
+    credits: number
+    requests: number
+    activeUsers: number
+    allocatedCredits: number
+    otherCredits: number
+  }
   daily: { date: string; credits: number; requests: number }[]
   byModel: { model: string; credits: number; requests: number; users: number }[]
-  bySurface: { kind: SessionKind; credits: number; requests: number }[]
+  /** `'other'` beside the five surfaces: spend charged against no session,
+   *  which is how the bars keep adding up to the total. */
+  bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]
   topUsers: { id: string; name: string; email: string; credits: number; allowance: number }[]
+}
+
+/** One line of somebody's own 접속기록. */
+export interface AccessEventRow {
+  id: string
+  at: string
+  action: string
+  detail: string
+  ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
+  severity: string
+}
+
+export const accessApi = {
+  mine: () => call<AccessEventRow[]>('/auth/me/access'),
 }
 
 export interface AuditRow {
@@ -380,6 +444,9 @@ export interface AuditRow {
   target: string
   detail: string
   ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
   severity: string
   metadata?: Record<string, unknown> | null
 }
@@ -396,6 +463,8 @@ export interface GovernancePolicy {
   adaptiveRoutingEnabled: boolean
   adaptiveClassifierModelId: string | null
   adaptiveEconomyModelIds: string[]
+  /** Plans documents when set; null lets each surface's own model plan. */
+  outlineModelId: string | null
 }
 
 export interface ApiKeyRow {
@@ -421,7 +490,7 @@ export const keysApi = {
  */
 export async function downloadArtifact(
   id: string,
-  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md',
+  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html',
   title: string,
 ) {
   const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {
@@ -479,6 +548,18 @@ export interface ShareRow {
 }
 
 /** What the public page gets. Deliberately narrow — see routers/shares.py. */
+/**
+ * What shaped a shared conversation: three names and nothing else.
+ *
+ * Never bodies — an agent's system prompt and a project's instructions are the
+ * owner's workspace, not part of what a share token buys.
+ */
+export interface SharedContext {
+  agent: string | null
+  project: string | null
+  format: { name: string; nameEn: string } | null
+}
+
 export type SharedPayload =
   | { kind: 'artifact'; title: string; artifactKind: string; data: unknown; updatedAt: string }
   | {
@@ -486,6 +567,8 @@ export type SharedPayload =
       title: string
       sessionKind: string
       messages: MessageRow[]
+      /** Absent on a share minted before this travelled. */
+      startedWith?: SharedContext | null
       /** What the conversation produced, when it produced something. */
       artifact: {
         title: string
@@ -496,11 +579,29 @@ export type SharedPayload =
       updatedAt: string
     }
 
+/** One visit to a shared link. */
+export interface ShareViewRow {
+  id: string
+  at: string
+  lastAt: string
+  opens: number
+  /** Empty for a reader with no account here — see `ip`. */
+  name: string
+  email: string
+  /** Empty when the proxy did not forward an address. */
+  ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
+}
+
 export const sharesApi = {
   list: () => call<ShareRow[]>('/shares'),
   create: (payload: { artifactId?: string; sessionId?: string; scope: 'workspace' | 'link' }) =>
     call<ShareRow>('/shares', body(payload)),
   revoke: (id: string) => call<void>(`/shares/${id}`, { method: 'DELETE' }),
+  /** Who has opened this link. Owner only; a revoked link keeps its visits. */
+  views: (id: string) => call<ShareViewRow[]>(`/shares/${id}/views`),
   /** The public read. No token of ours — the URL is the whole permission. */
   read: (token: string) => call<SharedPayload>(`/shared/${token}`),
 }
@@ -545,6 +646,21 @@ export interface MessageRow {
   usage: Message['usage'] | null
   model: string | null
   routing: PrivacyRouting | null
+  /**
+   * The 시작점 this turn was begun from, if there was one. Carries the title
+   * as it read that day, so a transcript opened a year later still names the
+   * template even after somebody deleted it.
+   */
+  startedFrom: { templateId: string; title: string } | null
+  /** What the reader thought of this answer. Null until somebody says. */
+  rating: 'up' | 'down' | null
+  /**
+   * What this turn made, where what it made is the answer — a picture, a clip,
+   * a piece of speech. Null on every turn that answered in words.
+   */
+  artifactIds: string[] | null
+  /** How the turn ended when it did not end in an answer. */
+  failure: 'no_answer' | 'interrupted' | null
   createdAt: string
 }
 
@@ -557,6 +673,8 @@ export interface SessionRow {
   model: string
   routingMode: Session['routingMode']
   artifactId: string | null
+  /** The rendering template this session writes into, if one was picked. */
+  renderTemplateId: string | null
   pinned: boolean
   createdAt: string
   updatedAt: string
@@ -565,9 +683,19 @@ export interface SessionRow {
   /** Latest message, one line. On list responses because `messages` is not. */
   preview: string | null
   messageCount: number
+  /** What the session produced. Sent only where there is no transcript. */
+  made: SessionMade | null
 }
 
 export const sessionsApi = {
+    /**
+     * Asks the turn on this session to stop where it is.
+     *
+     * Sent before the fetch is aborted, not instead of it: a closed socket is
+     * also what a changed tab looks like, and the server keeps generating for
+     * that one.
+     */
+  stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
   /** Which of a comparison's answers the conversation continues from. */
   chooseVariant: (sessionId: string, messageId: string, model: string) =>
     call<MessageRow>(`/sessions/${sessionId}/messages/${messageId}/variant`, body({ model })),
@@ -578,18 +706,34 @@ export const sessionsApi = {
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
   /** Many at once. `all` is resolved server-side, so a conversation started in
    *  another tab is not silently spared. */
-  deleteMany: (payload: { ids?: string[]; all?: boolean }) =>
-    call<{ deleted: number }>('/sessions/delete', body(payload)),
+  deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean }) =>
+    call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
   /** Pictures. Synchronous: the upstream is a completion whose answer is a
    *  PNG, so there is nothing to poll. */
   images: (
     sessionId: string,
-    payload: { prompt: string; model?: string; aspect: string; style: string; count: number },
+    payload: {
+      prompt: string
+      model?: string
+      aspect: string
+      style: string
+      count: number
+      /** An `image` design template. Shapes the prompt; produces no file of its own. */
+      templateId?: string
+    },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
   audio: (
     sessionId: string,
-    payload: { prompt: string; model?: string; audioKind: 'narration' | 'music'; voice?: string },
+    payload: {
+      prompt: string
+      model?: string
+      audioKind: 'narration' | 'music'
+      /** One of the gateway's six; narration only. */
+      voice?: string
+      /** Asked for in the prompt — no audio model here takes a duration. */
+      seconds?: number
+    },
   ) => call<ArtifactRow>(`/sessions/${sessionId}/audio`, body(payload)),
   create: (payload: {
     kind: string
@@ -600,10 +744,21 @@ export const sessionsApi = {
   }) => call<SessionRow>('/sessions', body(payload)),
   update: (
     id: string,
-    patch: Partial<Pick<Session, 'title' | 'pinned' | 'model' | 'routingMode'>>,
+    patch: Partial<Pick<Session, 'title' | 'pinned' | 'model' | 'routingMode'>> & {
+      /** A rendering template id, or `''` to take the template off. */
+      renderTemplateId?: string
+    },
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/sessions/${id}`, { method: 'DELETE' }),
+  /** 좋아요 / 싫어요, or `null` to take the verdict back. Addressed by message
+   *  rather than by session: the id is unique and the server checks the
+   *  transcript it belongs to anyway. */
+  rate: (messageId: string, rating: 'up' | 'down' | null) =>
+    call<MessageRow>(`/messages/${messageId}/rating`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rating }),
+    }),
 }
 
 /* ── workspace ──────────────────────────────────────────────────────────
@@ -660,6 +815,32 @@ export const filesApi = {
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
 }
 
+/**
+ * Hands a stored file back to whoever uploaded it, under its own name.
+ *
+ * A fetch and a blob rather than a link on `downloadUrl`: a click can carry
+ * the Authorization header an `<img>` cannot, so the token stays out of the
+ * URL and out of the proxy's access log.
+ */
+export async function downloadFile(id: string, name: string) {
+  const res = await fetch(filesApi.downloadUrl(id), {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export interface ProjectRow {
   id: string
   name: string
@@ -667,6 +848,11 @@ export interface ProjectRow {
   emoji: string
   instructions: string
   skillIds: string[]
+  /** The design system everything in this project wears. Null is the default look. */
+  designSystemId: string | null
+  /** Surface → rendering template. Sent whole: a missing key is that surface
+   *  going back to the built-in track. */
+  renderTemplates: Record<string, string>
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
@@ -674,6 +860,9 @@ export interface ProjectRow {
 }
 
 export const projectsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/projects/delete', body({ ids })),
   list: () => call<ProjectRow[]>('/projects'),
   get: (id: string) => call<ProjectRow>(`/projects/${id}`),
   create: (payload: Partial<ProjectRow> & { name: string }) =>
@@ -683,10 +872,33 @@ export const projectsApi = {
   remove: (id: string) => call<void>(`/projects/${id}`, { method: 'DELETE' }),
 }
 
+function artifactParams(params: ArtifactQuery = {}) {
+  const query = new URLSearchParams()
+  if (params.kind) query.set('kind', params.kind)
+  if (params.projectId) query.set('project_id', params.projectId)
+  if (params.q?.trim()) query.set('q', params.q.trim())
+  if (params.limit) query.set('limit', String(params.limit))
+  if (params.beforeAt) {
+    query.set('before_at', params.beforeAt)
+    query.set('before_id', params.beforeId ?? '')
+  }
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
 export const artifactsApi = {
-  list: (params?: { kind?: string; projectId?: string }) =>
-    call<ArtifactRow[]>(
-      `/artifacts${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/artifacts/delete', body({ ids })),
+  /**
+   * One page of the gallery, newest first, with the bodies cut down to what a
+   * card shows. `partial` marks those rows; `get` is the whole document.
+   */
+  list: (params?: ArtifactQuery) => call<ArtifactRow[]>(`/artifacts${artifactParams(params)}`),
+  /** How many of each kind exist, which a page of rows cannot say. */
+  counts: (q?: string) =>
+    call<{ counts: Record<string, number>; total: number }>(
+      `/artifacts/counts${q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`,
     ),
   get: (id: string) => call<ArtifactRow>(`/artifacts/${id}`),
   create: (payload: { kind: string; title?: string; data?: unknown; sessionId?: string | null }) =>
@@ -705,6 +917,22 @@ export const artifactsApi = {
   /** Rewrites one section. Costs a model call and snapshots the old text. */
   rewriteSection: (id: string, sectionId: string, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/rewrite`, body({ sectionId, note })),
+  /** One block of an HTML artifact, addressed by position and re-rendered. */
+  rewriteBlock: (id: string, index: number, note: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
+  /**
+   * Puts a picture made on the image surface into one block of a page.
+   *
+   * The bytes are inlined by the server, so the document stays one file that
+   * prints and downloads with the picture in it. Costs no model call.
+   */
+  addBlockImage: (id: string, index: number, artifactId: string, caption: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/blocks/image`, body({ index, artifactId, caption })),
+  /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
+  addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
+  /** One reading by a reviewer. Costs a model call; annotates, never edits. */
+  critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */
   restore: (id: string, version: number) =>
     call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),
@@ -726,20 +954,52 @@ export interface ArtifactRow {
   projectId: string | null
   createdAt: string
   updatedAt: string
+  /** Set on a listing row: the body was trimmed to what a card shows. */
+  partial?: boolean
+}
+
+/** One page of the gallery. The cursor is simply the last row it returned. */
+export interface ArtifactQuery {
+  kind?: string
+  projectId?: string
+  q?: string
+  limit?: number
+  beforeAt?: string
+  beforeId?: string
 }
 
 /**
- * A starting point somebody added. Same fields as a built-in `Template` so the
- * gallery can concatenate the two lists instead of branching on origin.
+ * A 시작점 the instance ships with.
+ *
+ * Server-side rather than bundled: a template the turn carries by id has to be
+ * one the server can resolve.
  */
-export interface TemplateRow {
+export interface PromptTemplateRow {
   id: string
   kind: SessionKind
   group: string
   title: string
+  /** What you get. One line, no feature list. */
   description: string
+  /** What you have to bring. The composer asks for these by name. */
   fills: string[]
+  /**
+   * The framing the turn carries. Read by the gallery only on the two media
+   * surfaces, where the sentence is the prompt rather than a preamble to it;
+   * everywhere else the server adds it and the composer never sees it.
+   */
   prompt: string
+}
+
+export const promptTemplatesApi = {
+  list: () => call<PromptTemplateRow[]>('/prompt-templates'),
+}
+
+/**
+ * A 시작점 somebody added. Same fields as a built-in one so the gallery can
+ * concatenate the two lists instead of branching on origin.
+ */
+export interface TemplateRow extends PromptTemplateRow {
   /** An uploaded form this template writes into, when there is one. */
   fileId: string | null
   fileName: string
@@ -761,7 +1021,189 @@ export const templatesApi = {
   remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
+/** The four values every renderer reads. Always complete on the wire. */
+export interface DesignTokens {
+  accent: string
+  ink: string
+  muted: string
+  font: 'gothic' | 'serif'
+}
+
+export interface DesignRow {
+  id: string
+  name: string
+  description: string
+  tokens: DesignTokens
+  /** Voice and vocabulary, capped short — it reaches the model on every turn. */
+  body: string
+  /** English phrase appended to this project's image prompts. */
+  imageStyle: string
+  /** Craft rule keys — see the API's `services/design.py`. */
+  craft: string[]
+  /** Offered to every account. Administrators only. */
+  shared: boolean
+  /** Whether the caller may edit or remove it. */
+  mine: boolean
+  updatedAt: string
+}
+
+/** A design system read out of a document — a proposal, not a row. */
+export interface DesignDraftRow {
+  name: string
+  description: string
+  tokens: DesignTokens
+  body: string
+  imageStyle: string
+  craft: string[]
+  /** What it was read from, so the draft can say so. */
+  source: string
+  credits: number
+}
+
+export const designsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/designs/delete', body({ ids })),
+  list: () => call<DesignRow[]>('/designs'),
+  /**
+   * Reads one out of an uploaded file or a page. Costs a model call and stores
+   * nothing — what comes back opens the editor, where a person decides.
+   */
+  extract: (payload: { fileId?: string; url?: string }) =>
+    call<DesignDraftRow>('/designs/extract', body(payload)),
+  create: (payload: Partial<DesignRow> & { name: string }) =>
+    call<DesignRow>('/designs', body(payload)),
+  update: (id: string, patch: Partial<DesignRow>) =>
+    call<DesignRow>(`/designs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
+}
+
+/**
+ * A shape the answer comes out in, rather than a sentence it starts from.
+ *
+ * Read-only: the catalogue ships inside the API image. What a person writes
+ * for themselves is a prompt template, which has a table.
+ */
+/** One blank in a media template's prompt, written `{name}` in the sentence. */
+export interface DesignArgumentRow {
+  name: string
+  label: string
+  labelEn: string
+  default: string
+  defaultEn: string
+  /** A closed list renders as a picker; empty renders as a text field. */
+  options: string[]
+  optionsEn: string[]
+}
+
+export interface DesignTemplateRow {
+  id: string
+  /** `deck` · `document` · `image` */
+  kind: string
+  /** The surface it is offered on — `slides`, `report` or `image`. */
+  surface: SessionKind
+  name: string
+  description: string
+  category: string
+  /** What you have to bring, shown as chips before you commit. */
+  fills: string[]
+  /** Ends mid-sentence, where the person takes over. */
+  examplePrompt: string
+  /** The English half of the same card; empty falls back to the Korean. */
+  nameEn: string
+  descriptionEn: string
+  categoryEn: string
+  fillsEn: string[]
+  examplePromptEn: string
+  /**
+   * What a review will read the finished thing against, one line each.
+   *
+   * Korean in both languages: these are the rubric a Korean critique scores
+   * against, so there is no English half to fall back to and none is faked.
+   * Media templates send an empty list — a picture has nothing to review.
+   */
+  checks: string[]
+  /** Blanks to fill before the sentence reaches the composer. */
+  arguments: DesignArgumentRow[]
+  /**
+   * Composer settings this template implies — aspect, duration, voice. Keys
+   * match the option stores: `aspect`, `style`, `count` for image; `mode`,
+   * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
+   */
+  defaults: Record<string, string | number | boolean>
+  hasPreview: boolean
+}
+
+/** One argument's text in the language on screen. */
+export function argumentText(argument: DesignArgumentRow, english: boolean) {
+  return {
+    label: (english && argument.labelEn) || argument.label,
+    initial: (english && argument.defaultEn) || argument.default,
+    options: english && argument.optionsEn.length ? argument.optionsEn : argument.options,
+  }
+}
+
+/** The sentence with its blanks filled. A blank left empty drops out. */
+export function fillPrompt(prompt: string, values: Record<string, string>) {
+  return prompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    name in values ? values[name] : whole,
+  )
+}
+
+/** One card's text in the language on screen, falling back rather than blanking. */
+export function templateText(row: DesignTemplateRow, english: boolean) {
+  return {
+    name: (english && row.nameEn) || row.name,
+    description: (english && row.descriptionEn) || row.description,
+    category: (english && row.categoryEn) || row.category,
+    fills: english && row.fillsEn.length ? row.fillsEn : row.fills,
+    examplePrompt: (english && row.examplePromptEn) || row.examplePrompt,
+  }
+}
+
+export const designTemplatesApi = {
+  list: (surface?: SessionKind) =>
+    call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
+}
+
+/**
+ * The preview document for a template card, in the look it will be made in.
+ *
+ * The tokens ride in the query string because an iframe asks for its document
+ * by address. The server validates all four the way the exporters read them,
+ * so a card cannot advertise a colour no file could come out in. No tokens is
+ * exactly what a project without a design system produces.
+ *
+ * Unauthenticated on purpose — see the route's docstring — and rendered in a
+ * sandboxed iframe.
+ */
+export const designTemplatePreviewUrl = (id: string, tokens?: DesignTokens | null) => {
+  const url = `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
+  if (!tokens) return url
+  const query = new URLSearchParams({
+    accent: tokens.accent,
+    ink: tokens.ink,
+    muted: tokens.muted,
+    font: tokens.font,
+  })
+  return `${url}?${query}`
+}
+
+/**
+ * The look a project wears, for a card standing in for its output.
+ *
+ * `null` where the project has no design system or has one this account can no
+ * longer see: both render in the default tokens.
+ */
+export const designTokensOf = (
+  designs: DesignRow[],
+  designSystemId: string | null | undefined,
+): DesignTokens | null => designs.find((d) => d.id === designSystemId)?.tokens ?? null
+
 export const skillsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/skills/delete', body({ ids })),
   list: () => call<SkillRow[]>('/skills'),
   create: (payload: Partial<SkillRow> & { name: string }) =>
     call<SkillRow>('/skills', body(payload)),
@@ -821,6 +1263,9 @@ export interface MemoryRow {
 }
 
 export const agentsApi = {
+  /** Several at once. Ids this account does not own are skipped. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/agents/delete', body({ ids })),
   list: () => call<AgentRow[]>('/agents'),
   create: (payload: Partial<AgentRow> & { name: string }) =>
     call<AgentRow>('/agents', body(payload)),
@@ -939,6 +1384,9 @@ export interface CatalogEntry {
 }
 
 export const connectorsApi = {
+  /** Several at once. Credentials go with the rows they belong to. */
+  removeMany: (ids: string[]) =>
+    call<{ deleted: number }>('/connectors/delete', body({ ids })),
   catalog: () => call<CatalogEntry[]>('/connectors/catalog'),
   list: () => call<ConnectorRow[]>('/connectors'),
   install: (slug: string, env: Record<string, string> = {}) =>
@@ -1015,6 +1463,14 @@ export type StreamEvent =
    * when a quote slide comes back without a usable line.
    */
   | { type: 'slide'; slide: Slide; done: boolean }
+  /**
+   * One block of an HTML artifact — a slide of a design-template deck, a
+   * section of a design-template document. Announced empty by the outline
+   * pass, then resent whole once written, the same way slides are.
+   */
+  | { type: 'block'; block: { title: string; layout: string; html: string }; done: boolean }
+  /** The finished single file. Arrives once, after the last block. */
+  | { type: 'page'; html: string; blocks: { title: string; layout: string }[]; templateId: string }
   | { type: 'title'; title: string }
   /** The reference shelf a report's sections cite from, sent once, up front. */
   | { type: 'sources'; sources: Source[] }
@@ -1052,6 +1508,14 @@ export async function* streamSession(
     webSearch?: boolean
     model?: string
     activatedSkillIds?: string[]
+    /** A rendering template. Sticky on the session; `''` clears it. */
+    renderTemplateId?: string
+    /**
+     * A 시작점, carried by this turn the way an activated skill is. Never
+     * sticky — unlike `renderTemplateId` it is not stored on the session,
+     * because a starting point starts one turn and then it is over.
+     */
+    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
   },
@@ -1070,6 +1534,7 @@ export async function* streamComparison(
     content: string
     models: string[]
     activatedSkillIds?: string[]
+    startingTemplateId?: string
     attachments?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string

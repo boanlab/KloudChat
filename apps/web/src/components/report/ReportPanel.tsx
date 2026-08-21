@@ -4,7 +4,6 @@ import {
   Download,
   ExternalLink,
   FileText,
-  History,
   Link2,
   ListTree,
   Loader2,
@@ -21,13 +20,15 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { PanelControls } from '@/components/artifacts/PanelControls'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { usePanelNarrow } from '@/lib/usePanelNarrow'
+import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
-import type { ArtifactVersionRow } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
-import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { cn, formatTokens } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, Source } from '@/types'
 import { copyText } from '@/lib/clipboard'
+import { LintFindings } from '@/components/artifacts/LintFindings'
+import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useT } from '@/lib/useT'
 
 /** A passage the reader picked out, and the section it belongs to. */
@@ -138,6 +139,28 @@ function statusIcon(status: ReportSection['status']) {
 }
 
 /**
+ * The document, without the envelope it arrived in.
+ *
+ * `data` is the body; the row around it carries the facts *about* the body —
+ * which version this is, when it was last written, which conversation it came
+ * from. The panel holds the two merged into one object, and PATCHing that
+ * object whole wrote a copy of the facts into the body. The store reads the
+ * body last, so from the first save onward every screen showed the version and
+ * the modified time the document had going *into* that save: a report rewritten
+ * five times still read 저장 시점 v1, which is the one number a reader has for
+ * telling this draft from the one they sent last week.
+ *
+ * `title` stays — the server reads it out of a snapshot when a restore puts one
+ * back, and a snapshot without one restores under the wrong name.
+ */
+function documentBody(report: ReportArtifact): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...report }
+  for (const fact of ['id', 'version', 'createdAt', 'updatedAt', 'sessionId', 'projectId', 'partial'])
+    delete body[fact]
+  return body
+}
+
+/**
  * Sections render as each one finishes rather than waiting for the document.
  * The table of contents doubles as the progress readout: pending sections are
  * visible from the start, greyed until written.
@@ -158,34 +181,11 @@ export function ReportPanel({
   //: Focus mode — 350px beside a transcript is not a reading width.
   const [focus, setFocus] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
-  // Below lg the rail becomes a drawer rather than vanishing: it carries the
-  // only signal that the report is still being written.
+  // In a panel narrower than the document asks for, the contents become a
+  // drawer rather than vanishing: they carry the only signal that the report
+  // is still being written.
+  const panel = usePanelNarrow<HTMLDivElement>()
   const [tocOpen, setTocOpen] = useState(false)
-  const [showVersions, setShowVersions] = useState(false)
-  //: Real history, fetched when the dialog opens — the version number alone
-  //: would print N identical rows.
-  const [versions, setVersions] = useState<ArtifactVersionRow[] | null>(null)
-  const [restoring, setRestoring] = useState<number | null>(null)
-
-  const openVersions = async () => {
-    setShowVersions(true)
-    setVersions(null)
-    setVersions(await artifactsApi.versions(report.id).catch(() => []))
-  }
-
-  const restore = async (version: number) => {
-    setRestoring(version)
-    try {
-      const row = await artifactsApi.restore(report.id, version)
-      const data = (row.data ?? {}) as { sections?: ReportSection[] }
-      report.title = row.title
-      report.version = row.version
-      if (data.sections) report.sections = data.sections
-      setShowVersions(false)
-    } finally {
-      setRestoring(null)
-    }
-  }
   //: Whole-document edit mode. Title, headings and the space between sections
   //: belong to no section, so a per-section editor cannot reach them.
   const [editing, setEditing] = useState(false)
@@ -301,7 +301,7 @@ export function ReportPanel({
       // PATCHing `data` whole is what snapshots the previous revision
       // server-side, which is the way back from a bad edit.
       const row = await artifactsApi.update(report.id, {
-        data: { ...report, title, sections: parsed.sections },
+        data: documentBody({ ...report, title, sections: parsed.sections }),
         title,
         summary: t('문서 편집'),
         // The version just read, not the one the panel is holding: the store's
@@ -394,15 +394,15 @@ export function ReportPanel({
   }
 
   return (
-    <div className="relative flex h-full min-h-0">
+    <div ref={panel.ref} className="relative flex h-full min-h-0">
       {/* Mounted with the panel, not on the print click: `window.print()` is
           synchronous, so a tree created in that handler is not on screen when
           the browser takes its snapshot. */}
       <PrintDocument report={report} />
-      {tocOpen && (
+      {panel.narrow && tocOpen && (
         <button
           aria-label={t('목차 닫기')}
-          className="absolute inset-0 z-10 bg-black/30 lg:hidden"
+          className="absolute inset-0 z-10 bg-black/30"
           onClick={() => setTocOpen(false)}
         />
       )}
@@ -411,7 +411,11 @@ export function ReportPanel({
       <nav
         className={cn(
           'w-52 shrink-0 flex-col border-r border-line bg-panel',
-          tocOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden lg:flex',
+          panel.narrow
+            ? tocOpen
+              ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
+              : 'hidden'
+            : 'flex',
         )}
       >
         <div className="border-b border-line px-3 py-2.5">
@@ -459,16 +463,16 @@ export function ReportPanel({
           <p className="min-w-0 flex-1 truncate text-base font-medium max-sm:basis-full">
             {report.title}
           </p>
-          <Button
-            size="sm"
-            className="lg:hidden"
-            aria-label={t('목차')}
-            onClick={() => setTocOpen((o) => !o)}
-          >
-            <ListTree size={13} />
-            {t('목차')} {done}/{report.sections.length}
-          </Button>
+          {/* Only where there is a drawer to open: with the contents standing
+              beside the document this button opens what is already on screen. */}
+          {panel.narrow && (
+            <Button size="sm" aria-label={t('목차')} onClick={() => setTocOpen((o) => !o)}>
+              <ListTree size={13} />
+              {t('목차')} {done}/{report.sections.length}
+            </Button>
+          )}
           <Badge>v{report.version}</Badge>
+          <LintFindings findings={report.lint} artifact={report} />
           {/* 편집 진입점. 항상 보이는 자리에 둔다 — hover 로만 드러나면 보고서가
               편집 가능하다는 것을 알아낼 방법이 마우스를 훑는 것뿐이 된다. */}
           {editing ? (
@@ -498,10 +502,12 @@ export function ReportPanel({
           </Button>
           {/* 저장 시점. 되돌릴 수 있다는 사실이 편집 버튼 옆에 붙어 있어야,
               고치기 전에 "잘못 고치면 어쩌지" 를 묻지 않는다. */}
-          <Button size="sm" aria-label={t('버전 기록')} onClick={() => void openVersions()}>
-            <History size={13} />
-            {t('저장 시점')} v{report.version}
-          </Button>
+          <VersionHistory
+            artifact={report}
+            // 되돌린 뒤에도 열려 있는 편집기는 되돌리기 이전의 글을 들고 있다.
+            // 그대로 저장하면 방금 되돌린 일이 취소된다.
+            onRestored={() => openEditor(false)}
+          />
           <PanelControls wide={focus} onToggleWide={onWideChange && toggleFocus} />
           <Button
             variant="ghost"
@@ -736,43 +742,6 @@ export function ReportPanel({
           )}
         </div>
       </div>
-
-      <Modal
-        open={showVersions}
-        onClose={() => setShowVersions(false)}
-        title={t('버전 기록')}
-        description={`${report.title} · ${t('현재')} v${report.version}`}
-      >
-        <div className="space-y-1.5">
-          {versions === null && <p className="text-base text-faint">{t('불러오는 중…')}</p>}
-          {versions?.length === 0 && (
-            <p className="text-base text-faint">{t('아직 저장된 이전 판이 없습니다.')}</p>
-          )}
-          {/* Only superseded revisions come back — the current one is the
-              document on screen, and offering to restore it would be a button
-              that does nothing. */}
-          {versions?.map(({ version: v, summary, createdAt }) => (
-            <div
-              key={v}
-              className="flex items-center gap-3 rounded-card border border-line px-3 py-2.5"
-            >
-              <Badge>v{v}</Badge>
-              <div className="min-w-0 flex-1">
-                <p className="text-base">{summary || t('편집')}</p>
-                <p className="text-xs text-faint">{relativeTime(createdAt)}</p>
-              </div>
-              <Button
-                size="sm"
-                disabled={restoring !== null}
-                aria-label={t('v{n} 로 되돌리기').replace('{n}', String(v))}
-                onClick={() => void restore(v)}
-              >
-                {restoring === v ? t('되돌리는 중…') : t('되돌리기')}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </Modal>
     </div>
   )
 }

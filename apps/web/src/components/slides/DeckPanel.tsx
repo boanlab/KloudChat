@@ -6,6 +6,7 @@ import {
   Download,
   ExternalLink,
   Grid2x2,
+  ImagePlus,
   Loader2,
   Play,
   Presentation,
@@ -15,13 +16,18 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/components/ui'
+import { usePanelNarrow } from '@/lib/usePanelNarrow'
+import { Badge, Button, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, FactCheck, Slide } from '@/types'
+import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
+import { LintFindings } from '@/components/artifacts/LintFindings'
+import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
 const verdictMeta = {
@@ -120,6 +126,10 @@ function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
       ) : (
         <div className="flex flex-1 flex-col" style={{ paddingLeft: px(16) }}>
           <h3 style={{ fontSize: px(19), fontWeight: 700, marginBottom: px(12) }}>{slide.title}</h3>
+          {/* Words left, picture right — the geometry `deck_export` uses, so
+              the preview and the .pptx put them in the same places. */}
+          <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
+          <div className="flex min-w-0 flex-1 flex-col">
           {slide.bullets && (
             <ul
               style={{
@@ -147,12 +157,143 @@ function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
             </p>
           )}
           {/* 아직 안 쓰인 장. 빈 흰 화면이면 다 만들어진 것처럼 보인다 */}
-          {pending && (
+          {pending && !slide.image && (
             <p style={{ fontSize: px(12), color: '#aaa', marginTop: px(6) }}>{t('쓰는 중…')}</p>
           )}
+          </div>
+          {slide.image?.src && (
+            <div
+              className="flex shrink-0 flex-col justify-center"
+              style={{ width: pending ? '100%' : '42%' }}
+            >
+              <img
+                src={slide.image.src}
+                alt={slide.image.caption || t('그림')}
+                className="max-h-full w-full object-contain"
+              />
+              {slide.image.caption && (
+                <p style={{ fontSize: px(10), color: '#666', marginTop: px(4) }}>
+                  {slide.image.caption}
+                </p>
+              )}
+            </div>
+          )}
+          </div>
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Putting a picture on a slide of a JSON deck.
+ *
+ * The same path an HTML document has, on the track that never was HTML: the
+ * picture was made on the image surface and the server embeds it as a `data:`
+ * URI, so the deck stays one thing that previews, presents and exports with
+ * the picture in it.
+ */
+function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [caption, setCaption] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const artifacts = useStore((s) => s.artifacts)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+
+  // The picture somebody made while writing this deck is almost always the one
+  // they want, so its own session comes first.
+  const pictures = artifacts
+    .filter((a) => a.kind === 'image')
+    .sort((a, b) => {
+      const mine =
+        Number(b.sessionId === deck.sessionId) - Number(a.sessionId === deck.sessionId)
+      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
+    })
+    .slice(0, 24)
+
+  if (pictures.length === 0) return null
+
+  const insert = async () => {
+    if (!picked) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.addSlideImage(deck.id, slide.id, picked, caption.trim())
+      await refreshArtifact(deck.id)
+      await loadArtifacts()
+      setOpen(false)
+      setPicked(null)
+      setCaption('')
+    } catch (err) {
+      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setPicked(null)
+          setCaption('')
+          setError(null)
+          setOpen(true)
+        }}
+      >
+        <ImagePlus size={13} />
+        {slide.image ? t('그림 바꾸기') : t('그림 넣기')}
+      </Button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={t('{name} 에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
+        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        footer={
+          <>
+            <Button onClick={() => setOpen(false)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
+              {busy ? t('넣는 중…') : t('넣기')}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
+          {pictures.map((picture) => (
+            <button
+              key={picture.id}
+              onClick={() => setPicked(picture.id)}
+              aria-label={picture.title}
+              aria-pressed={picked === picture.id}
+              className={cn(
+                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
+                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
+              )}
+            >
+              <ArtifactPreview artifact={picture} />
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <Input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            aria-label={t('설명')}
+            placeholder={t('그림 아래에 붙일 설명 (선택)')}
+          />
+        </div>
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
   )
 }
 
@@ -162,24 +303,36 @@ function toLines(slide: Slide): string {
 }
 
 /**
- * Full-screen rehearsal. A deck is checked by walking it at the speed it will
- * be shown at, which a 400px preview in a side panel cannot be — the text that
- * is too small to read from the back of the room is legible in a thumbnail.
+ * The room a deck is shown in: black, full-screen, and holding the keyboard.
+ *
+ * Shared with the HTML deck panel, where a deck is markup rather than slide
+ * objects. What stands on the stage differs; the counter, the keys and the way
+ * out are the same job.
  */
-function PresentMode({
-  deck,
+export function PresentStage({
+  title,
   index,
+  count,
   onIndex,
   onClose,
+  notes,
+  outline,
+  children,
 }: {
-  deck: DeckArtifact
+  title: string
   index: number
+  count: number
   onIndex: (i: number) => void
   onClose: () => void
+  /** The presenter's own screen. Left out by a deck that carries no notes. */
+  notes?: ReactNode
+  /** Slide titles, so a long deck can be jumped through rather than stepped. */
+  outline?: string[]
+  children: ReactNode
 }) {
   const t = useT()
   const [showNotes, setShowNotes] = useState(true)
-  const slide = deck.slides[index]
+  const [showList, setShowList] = useState(false)
 
   /**
    * Keyboard, owned while presenting. Capture phase and stopped here: an
@@ -192,16 +345,14 @@ function PresentMode({
       e.preventDefault()
       e.stopPropagation()
       if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowRight' || e.key === ' ')
-        onIndex(Math.min(index + 1, deck.slides.length - 1))
+      if (e.key === 'ArrowRight' || e.key === ' ') onIndex(Math.min(index + 1, count - 1))
       if (e.key === 'ArrowLeft') onIndex(Math.max(index - 1, 0))
       if (e.key.toLowerCase() === 'n') setShowNotes((s) => !s)
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [index, deck.slides.length, onIndex, onClose])
+  }, [index, count, onIndex, onClose])
 
-  if (!slide) return null
   /* Portalled to the body rather than left where the panel sits. The deck can
      be opened inside a dialog, and an animated ancestor makes `fixed` resolve
      against *that box* — which turns full-screen rehearsal into a slide shown
@@ -210,16 +361,27 @@ function PresentMode({
     <div role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2 text-white/70">
         <Presentation size={14} />
-        <span className="text-base">{deck.title}</span>
+        <span className="text-base">{title}</span>
         <span className="ml-auto text-base tabular-nums">
-          {index + 1} / {deck.slides.length}
+          {index + 1} / {count}
         </span>
-        <button
-          onClick={() => setShowNotes((s) => !s)}
-          className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
-        >
-          {t('노트')} (N)
-        </button>
+        {outline && (
+          <button
+            onClick={() => setShowList((s) => !s)}
+            aria-pressed={showList}
+            className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
+          >
+            {t('장 목록')}
+          </button>
+        )}
+        {notes !== undefined && (
+          <button
+            onClick={() => setShowNotes((s) => !s)}
+            className="rounded-control px-2 py-1 text-sm transition-colors hover:bg-white/10"
+          >
+            {t('노트')} (N)
+          </button>
+        )}
         <button
           onClick={onClose}
           aria-label={t('발표 끝내기')}
@@ -228,14 +390,38 @@ function PresentMode({
           <X size={16} />
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">
-        <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
-          <SlideView slide={slide} scale={2.4} />
-        </div>
+      <div className="flex min-h-0 flex-1">
+        {/* 어디까지 왔고 다음이 무엇인지. 스무 장짜리 덱을 한 장씩 넘겨
+            찾는 것은 방에 사람이 앉아 있을 때 할 일이 아니다. */}
+        {outline && showList && (
+          <nav
+            aria-label={t('장 목록')}
+            className="w-52 shrink-0 overflow-y-auto border-r border-white/10 py-2"
+          >
+            {outline.map((name, i) => (
+              <button
+                key={i}
+                onClick={() => onIndex(i)}
+                aria-current={i === index}
+                aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
+                className={cn(
+                  'flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm leading-snug transition-colors',
+                  i === index
+                    ? 'bg-white/15 text-white'
+                    : 'text-white/55 hover:bg-white/10 hover:text-white',
+                )}
+              >
+                <span className="shrink-0 text-white/40 tabular-nums">{i + 1}</span>
+                <span className="min-w-0 flex-1 line-clamp-2">{name || t('제목 없음')}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">{children}</div>
       </div>
-      {showNotes && (
+      {notes !== undefined && showNotes && (
         <div className="max-h-40 overflow-y-auto border-t border-white/10 px-6 py-3 text-base leading-relaxed text-white/75">
-          {slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
+          {notes}
         </div>
       )}
       <div className="flex items-center justify-center gap-2 pb-4 text-white/70">
@@ -249,8 +435,8 @@ function PresentMode({
         </button>
         <span className="text-sm">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
         <button
-          onClick={() => onIndex(Math.min(index + 1, deck.slides.length - 1))}
-          disabled={index >= deck.slides.length - 1}
+          onClick={() => onIndex(Math.min(index + 1, count - 1))}
+          disabled={index >= count - 1}
           aria-label={t('다음 장')}
           className="rounded-control p-2 transition-colors hover:bg-white/10 disabled:opacity-30"
         >
@@ -259,6 +445,41 @@ function PresentMode({
       </div>
     </div>,
     document.body,
+  )
+}
+
+/**
+ * Full-screen rehearsal. A deck is checked by walking it at the size it will
+ * be shown at — text too small to read from the back of the room is legible
+ * in a 400px thumbnail.
+ */
+function PresentMode({
+  deck,
+  index,
+  onIndex,
+  onClose,
+}: {
+  deck: DeckArtifact
+  index: number
+  onIndex: (i: number) => void
+  onClose: () => void
+}) {
+  const t = useT()
+  const slide = deck.slides[index]
+  if (!slide) return null
+  return (
+    <PresentStage
+      title={deck.title}
+      index={index}
+      count={deck.slides.length}
+      onIndex={onIndex}
+      onClose={onClose}
+      notes={slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
+    >
+      <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
+        <SlideView slide={slide} scale={2.4} />
+      </div>
+    </PresentStage>
   )
 }
 
@@ -296,6 +517,7 @@ export function DeckPanel({
 }) {
   const t = useT()
   const width = usePanelWidth(onWideChange)
+  const panel = usePanelNarrow<HTMLDivElement>()
   const stage = useStageScale()
   const [selected, setSelected] = useState(0)
   const [editing, setEditing] = useState(false)
@@ -309,9 +531,10 @@ export function DeckPanel({
   //: different questions — "which slide was the chart on" and "does the
   //: argument run in the right order".
   const [rail, setRail] = useState<'thumbs' | 'outline'>('thumbs')
-  //: Below lg the rail becomes a drawer, the same way the report's contents
-  //: do. Beside the stage it is 132px of a 390px screen, which leaves the
-  //: slide 119px — a picture of a slide rather than the slide.
+  //: In a panel narrower than the deck asks for, the rail becomes a drawer,
+  //: the same way the report's contents do. Beside the stage it is 132px of a
+  //: 390px panel, which leaves the slide 119px — a picture of a slide rather
+  //: than the slide.
   const [railOpen, setRailOpen] = useState(false)
 
   const runFactCheck = async (slideId: string) => {
@@ -435,7 +658,7 @@ export function DeckPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={panel.ref} className="flex h-full min-h-0 flex-col">
       {/* 접히는 머리말. 390px 에서는 이 줄이 화면보다 넓고, flex 는 그럴 때
           자식을 줄여서 "내보내기" 를 한 자씩 네 줄로 세운다. 제목은 줄어들되
           버튼은 줄어들지 않는 것이 옳은 순서다. */}
@@ -461,16 +684,20 @@ export function DeckPanel({
           </button>
         )}
         <Badge className="max-sm:hidden">{deck.theme}</Badge>
-        <Button
-          size="sm"
-          className="lg:hidden"
-          aria-label={t('장 목록')}
-          title={t('장 목록을 엽니다')}
-          onClick={() => setRailOpen((o) => !o)}
-        >
-          <Rows3 size={13} />
-          {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-        </Button>
+        <LintFindings findings={deck.lint} artifact={deck} />
+        {/* Only where there is a drawer to open: with the rail standing beside
+            the stage this button opens what is already on screen. */}
+        {panel.narrow && (
+          <Button
+            size="sm"
+            aria-label={t('장 목록')}
+            title={t('장 목록을 엽니다')}
+            onClick={() => setRailOpen((o) => !o)}
+          >
+            <Rows3 size={13} />
+            {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
+          </Button>
+        )}
         {/* 발표 모드. 덱은 방에서 보이는 크기로 한 번 넘겨 봐야 끝난다 */}
         <Button size="sm" disabled={writing} onClick={() => setPresenting(true)}>
           <Play size={13} />
@@ -496,14 +723,22 @@ export function DeckPanel({
             {t('텍스트 (노트 포함)')}
           </MenuItem>
         </Dropdown>
+        {/* 저장 시점. 한 장을 고쳐 놓고 원래가 나았다는 것은 고친 뒤에야
+            알게 되고, 그때 되돌릴 곳이 이 줄 말고는 없다. */}
+        <VersionHistory
+          artifact={deck}
+          // 되돌린 덱의 몇째 장인지는 편집기가 열릴 때 잡아 둔 것과 다르다.
+          // 열어 둔 초안을 그대로 저장하면 방금 되돌린 장을 덮어쓴다.
+          onRestored={() => setEditing(false)}
+        />
         <PanelControls wide={width.wide} onToggleWide={width.toggle} onClose={onClose} />
       </header>
 
       <div className="relative flex min-h-0 flex-1">
-        {railOpen && (
+        {panel.narrow && railOpen && (
           <button
             aria-label={t('장 목록 닫기')}
-            className="absolute inset-0 z-10 bg-black/30 lg:hidden"
+            className="absolute inset-0 z-10 bg-black/30"
             onClick={() => setRailOpen(false)}
           />
         )}
@@ -514,7 +749,11 @@ export function DeckPanel({
         <nav
           className={cn(
             'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
-            railOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden lg:flex',
+            panel.narrow
+              ? railOpen
+                ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
+                : 'hidden'
+              : 'flex',
           )}
         >
           <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1.5">
@@ -652,9 +891,12 @@ export function DeckPanel({
                       </Button>
                     </>
                   ) : (
-                    <Button variant="ghost" size="sm" onClick={() => void startEditing()} disabled={writing}>
-                      {t('텍스트 수정')}
-                    </Button>
+                    <>
+                      <SlidePicture deck={deck} slide={slide} />
+                      <Button variant="ghost" size="sm" onClick={() => void startEditing()} disabled={writing}>
+                        {t('텍스트 수정')}
+                      </Button>
+                    </>
                   )}
                 </div>
 

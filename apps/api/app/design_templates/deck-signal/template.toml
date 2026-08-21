@@ -1,0 +1,31 @@
+kind = "deck"
+name = "대비형 덱"
+description = "어두운 화면에 큰 글씨. 조명을 낮춘 방에서 읽히는 발표 자료"
+category = "발표"
+fills = ["주제", "청중", "장수"]
+example_prompt = "제품 소개 발표 자료를 만들어 줘. 화면이 큰 강당에서 쓰고, 한 장에 한 가지만 말했으면 좋겠어.\n\n소개할 것: "
+layouts = ["cover", "bullets", "quote", "split", "table"]
+# Presented on a dark ground; the `.pptx` follows, the `.pdf` inverts for paper
+# exactly as the seed's own print rules do. Above `[wrap]` on purpose — a key
+# after a table header belongs to that table.
+dark = true
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "High-contrast deck"
+description_en = "Large type on a dark ground, for a room with the lights down"
+category_en = "Presentation"
+fills_en = ["Topic", "Audience", "Slides"]
+example_prompt_en = "Make a product talk for a large hall. One idea per slide.\n\nWhat to present: "
+
+# The shape this template's own instructions promise. `services/lint` reads
+# these instead of its general bounds, so the checklist and the checker
+# cannot disagree about what counts as a crowded slide.
+[limits]
+max_bullets = 4
+max_bullet_chars = 25
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

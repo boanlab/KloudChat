@@ -47,7 +47,7 @@ export const personas: Persona[] = [
       { id: 'hum-citation', task: '인용 형식(시카고)을 만든다', where: '커넥터 · Zotero' },
       { id: 'hum-sources', task: '보고서 본문의 주장이 어디서 왔는지 확인한다', where: '보고서 패널 출처' },
       { id: 'hum-export-docx', task: '제출용 워드 파일로 내려받는다', where: '보고서 내보내기' },
-      { id: 'hum-template', task: '리포트 형식을 처음부터 잡지 않고 시작한다', where: '시작점 · 템플릿' },
+      { id: 'hum-template', task: '리포트 형식을 처음부터 잡지 않고 시작한다', where: '시작점' },
       { id: 'hum-compare', task: '같은 질문을 두 모델에 물어 답을 비교한다', where: '입력창 모델 비교' },
     ],
   },
@@ -146,7 +146,7 @@ export const personas: Persona[] = [
     viewport: 'laptop',
     needs: [
       { id: 'off-voice', task: '회의 내용을 말로 받아 적는다', where: '입력창 음성' },
-      { id: 'off-template', task: '공문 양식을 골라 시작한다', where: '시작점 · 템플릿' },
+      { id: 'off-template', task: '공문 양식을 골라 시작한다', where: '시작점' },
       { id: 'off-drive', task: '드라이브 문서를 불러온다', where: '커넥터 · Drive' },
       { id: 'off-docx', task: '워드로 내보내 결재 올린다', where: '보고서 내보내기' },
       { id: 'off-search', task: '지난 회의록을 찾는다', where: '검색' },
@@ -182,7 +182,7 @@ export const personas: Persona[] = [
     viewport: 'tablet',
     needs: [
       { id: 'sal-deck', task: '고객 맞춤 제안 덱을 만든다', where: '슬라이드' },
-      { id: 'sal-template', task: '제안서 양식으로 바로 시작한다', where: '시작점 · 템플릿' },
+      { id: 'sal-template', task: '제안서 양식으로 바로 시작한다', where: '시작점' },
       { id: 'sal-mobile', task: '태블릿에서 좁은 화면으로 쓴다', where: '반응형 레이아웃' },
       { id: 'sal-share', task: '고객에게 결과물을 공유한다', where: '공유' },
     ],

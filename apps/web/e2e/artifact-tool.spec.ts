@@ -45,7 +45,14 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
       await fetch('/api/artifacts', { headers: { Authorization: `Bearer ${accessToken}` } })
     ).json()
     const list = Array.isArray(rows) ? rows : rows.items
-    return list.find((a: { kind: string }) => a.kind === 'html') ?? null
+    const row = list.find((a: { kind: string }) => a.kind === 'html')
+    // The listing sends HTML documents without their markup. Fetch the file.
+    if (!row) return null
+    return await (
+      await fetch('/api/artifacts/' + row.id, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+    ).json()
   })
   expect(stored, 'html 아티팩트가 만들어지지 않았습니다').not.toBeNull()
   expect(String(stored.data.content).toLowerCase()).toContain('<html')

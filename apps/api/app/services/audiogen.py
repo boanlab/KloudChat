@@ -76,8 +76,29 @@ def _wav(pcm: bytes) -> bytes:
     )
 
 
+def compose_prompt(prompt: str, *, speech: bool, seconds: int = 0) -> str:
+    """The request as the model will read it.
+
+    Separate from the caller so the stored prompt stays what the person typed.
+    A length is a sentence here rather than a parameter: neither the speech nor
+    the music endpoint takes one, and asking for it in the prompt is what the
+    image surface already does with an aspect ratio.
+    """
+    text = prompt.strip()
+    if seconds > 0:
+        text += f" 약 {seconds}초 분량으로 읽어라." if speech else f" 길이는 약 {seconds}초."
+    return text
+
+
 async def generate(
-    *, base_url: str, api_key: str, model: str, prompt: str, speech: bool, voice: str = "alloy"
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    speech: bool,
+    voice: str = "alloy",
+    seconds: int = 0,
 ) -> GeneratedAudio:
     """One clip, or `AudioError`."""
     payload: dict = {
@@ -88,7 +109,9 @@ async def generate(
         # Without it the stream carries no usage block and the turn bills as
         # one credit regardless of what the clip cost.
         "stream_options": {"include_usage": True},
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {"role": "user", "content": compose_prompt(prompt, speech=speech, seconds=seconds)}
+        ],
     }
     if speech:
         payload["audio"] = {"voice": voice if voice in VOICES else "alloy", "format": "pcm16"}
@@ -176,4 +199,12 @@ def store(user_id: str, audio: GeneratedAudio) -> tuple[str, str]:
     return file_id, key
 
 
-__all__ = ["AudioError", "GeneratedAudio", "VOICES", "duration_seconds", "generate", "store"]
+__all__ = [
+    "VOICES",
+    "AudioError",
+    "GeneratedAudio",
+    "compose_prompt",
+    "duration_seconds",
+    "generate",
+    "store",
+]

@@ -1,0 +1,26 @@
+kind = "deck"
+name = "제안 덱"
+description = "문제·접근·근거를 차례로 놓고 마지막 장에서 무엇을 요청하는지 밝히는 심사용 발표 자료"
+category = "발표"
+fills = ["제안하는 것", "결정하는 사람", "요청 사항"]
+example_prompt = "심사에 낼 제안 발표 자료를 만들어 줘. 현행과 제안을 나란히 놓고, 마지막 장에는 누구에게 무엇을 언제까지 승인받아야 하는지 적어 줘.\n\n제안하는 것: "
+layouts = ["cover", "bullets", "compare", "figure", "table", "ask"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Proposal deck"
+description_en = "Problem, approach, evidence — and a last slide that states the ask"
+category_en = "Presentation"
+fills_en = ["What you propose", "Who decides", "The ask"]
+example_prompt_en = "Make a proposal deck for a review panel. Put the current state and the proposal side by side, and end with what has to be approved, by whom, and by when.\n\nProposal: "
+
+# The shape this template's own instructions promise. `services/lint` reads
+# these instead of its general bounds, so the checklist and the checker
+# cannot disagree about what counts as a crowded slide.
+[limits]
+max_bullets = 5
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

@@ -29,6 +29,7 @@ const ROUTES: [string, string][] = [
   ['/history', '대화 기록'],
   ['/usage', '내 사용량'],
   ['/connectors', '커넥터'],
+  ['/designs', '디자인'],
   ['/settings', '설정'],
   ['/settings/preferences', '설정 · 환경'],
   ['/settings/keys', '설정 · 키'],

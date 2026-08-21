@@ -22,6 +22,11 @@ services:
     environment:
       # Vite's dev proxy forwards /api in place of nginx.
       API_BASE_URL: ${KCHAT_API_URL:-http://kloudchat-api:8100}
+      # Hostnames the dev server will answer to, comma-separated. Needed when
+      # this overlay sits behind a proxy: the built image serves static files
+      # and does not care, while Vite refuses a Host header it was not told
+      # about. Set `KCHAT_WEB_HOST=kchat.example.org` before `make dev`.
+      WEB_ALLOWED_HOSTS: ${KCHAT_WEB_HOST:-}
     volumes:
       - ./apps/web:/app
     ports: !override

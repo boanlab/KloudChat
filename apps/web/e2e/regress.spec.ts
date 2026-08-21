@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, seedPendingUser, signIn } from './helpers'
+import { E2E_ADMIN, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -13,10 +13,8 @@ test.beforeEach(async ({ page }) => {
   await signIn(page)
 })
 
-async function pickLocal(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
-  await page.getByRole('button', { name: /qwen3\.6/i }).first().click()
-}
+const pickLocal = pickToolModel
+
 
 test('웹 검색을 켜도 화면이 살아 있다 (스텝 렌더 크래시)', async ({ page }) => {
   // A search turn behind a busy queue is minutes, not seconds.
@@ -54,6 +52,10 @@ test('웹 검색을 켜도 화면이 살아 있다 (스텝 렌더 크래시)', a
   // no step rendered at all.
   await expect(page.getByText('웹 검색 중').first()).toBeVisible({ timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  // And the shell around the conversation, which is the tree a step-render
+  // crash would have taken with it. Below 1024px the sidebar is a drawer, so
+  // it has to be opened before it can be read.
+  await openSidebar(page)
   await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible()
 
   await page.reload()
@@ -330,6 +332,28 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: 'Word 문서' }).click()
   expect((await download).suggestedFilename()).toMatch(/\.docx$/)
+})
+
+test('그림·클립 화면에는 보낼 곳 없는 첨부·스킬 버튼이 없다', async ({ page }) => {
+  // Neither control may render here. `generateImages`/`generateAudio`/
+  // `generateVideo` send the prompt and the option chips, and the endpoints
+  // behind them have no field an upload or a skill could ride in — so an
+  // attachment offered on these surfaces is silently dropped at submit, after
+  // 12,000–32,000 크레딧 and several minutes.
+  await page.goto('/new/chat')
+  await expect(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '스킬', exact: true }).first()).toBeVisible()
+
+  for (const surface of ['image', 'av'] as const) {
+    await page.goto(`/new/${surface}`)
+    await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+    await expect(page.getByRole('button', { name: '첨부' })).toHaveCount(0)
+    // The picker itself, not only its button: a hidden input is still reachable.
+    await expect(page.locator('input[type="file"]')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '스킬', exact: true })).toHaveCount(0)
+    // Web search was already held to this rule; these two now read the same.
+    await expect(page.getByRole('button', { name: '웹 검색' })).toHaveCount(0)
+  }
 })
 
 test('한국어 굵은 글씨가 별표로 새지 않는다', async ({ page }) => {

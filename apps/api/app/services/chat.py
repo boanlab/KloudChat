@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.models.chat import Message, Role, TurnFailure
 from app.services import settings_store
 
 log = logging.getLogger(__name__)
@@ -51,6 +52,81 @@ def step_label(tool_name: str) -> str:
 
 def sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+#: How much of the opening sentence a provisional title keeps. Long enough to
+#: tell two requests apart in a sidebar, short enough that the row does not
+#: have to truncate it a second time.
+TITLE_CHARS = 40
+
+
+def provisional_title(prompt: str) -> str:
+    """The name a session carries before anything better exists.
+
+    Chat, report and deck sessions overwrite this with `generate_title`'s
+    output once the turn has both halves to summarise. A picture, a clip or a
+    narration never gets that far — there is no reply to summarise, and the
+    prompt already *is* the sentence the person wrote — so on those surfaces
+    this is the final name. One rule rather than two, because two would drift
+    and the sidebar would start naming the same request differently depending
+    on which screen made it.
+    """
+    return " ".join((prompt or "").split())[:TITLE_CHARS]
+
+
+def media_prompt(session_id: str, prompt: str, *, unanswered: bool = False) -> Message:
+    """The person's own sentence, on a surface whose reply is not a sentence.
+
+    Stored for the same reason it is stored everywhere else: it is the half of
+    the conversation somebody wrote themselves, and a screen that swallows it
+    is a screen that lost what they asked for. That it was once left out here
+    is the whole of why these conversations opened blank.
+
+    `unanswered` marks the request that came back with nothing — the model
+    refused, the gateway was down — exactly as a chat turn that dies before its
+    first word marks the question rather than inventing a reply to carry the
+    bad news.
+    """
+    return Message(
+        session_id=session_id,
+        role=Role.user,
+        content=prompt,
+        failure=TurnFailure.no_answer if unanswered else None,
+    )
+
+
+def media_answer(
+    session_id: str,
+    artifact_ids: list[str],
+    *,
+    model: str = "",
+    credits: int = 0,
+    partial: bool = False,
+) -> Message:
+    """What came back, as the thing itself rather than a sentence about it.
+
+    The content is empty on purpose and must stay empty. A picture is not a
+    sentence, and prose written here — "이미지를 만들었습니다" — would be the
+    model quoted saying something no model said. The ids are the answer; the
+    transcript renders them where an answer goes.
+
+    `partial` is the batch that broke in the middle: three of four pictures
+    arrived and the fourth call failed. What arrived is kept and said to be
+    less than what was asked for, which is the same thing a half-written chat
+    answer does with `interrupted`.
+    """
+    return Message(
+        session_id=session_id,
+        role=Role.assistant,
+        content="",
+        artifact_ids=list(artifact_ids),
+        model=model or None,
+        # Only the charge. There are no tokens worth printing under a picture,
+        # and the figure a reader wants beside one they paid for is what it
+        # cost.
+        usage={"credits": credits},
+        failure=TurnFailure.interrupted if partial else None,
+    )
 
 
 async def stream_completion(
@@ -193,10 +269,15 @@ async def generate_title(
     strict_local: bool = False,
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
-) -> str | None:
-    """One short non-streaming call. Best effort — a session with no title is a
-    cosmetic problem, and blocking the turn on it would not be.
+) -> tuple[str | None, dict[str, int]]:
+    """`(title, usage)` from one short non-streaming call.
+
+    Best effort — a session with no title is a cosmetic problem, and blocking
+    the turn on it would not be. The tokens are reported either way: nobody
+    asks for a title, so the call that writes one has to be visible in the
+    ledger rather than absorbed.
     """
+    spent = {"inputTokens": 0, "outputTokens": 0}
     if masker is not None:
         first_user_message, user_hits = masker(first_user_message)
         first_reply, reply_hits = masker(first_reply)
@@ -240,13 +321,19 @@ async def generate_title(
             data = response.json()
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         log.info("title generation skipped: %s", exc)
-        return None
+        return None, spent
 
+    raw = data.get("usage") or {}
+    spent = {
+        "inputTokens": int(raw.get("prompt_tokens") or 0),
+        "outputTokens": int(raw.get("completion_tokens") or 0),
+    }
     choices = data.get("choices") or []
     if not choices:
-        return None
+        return None, spent
     title = (choices[0].get("message") or {}).get("content") or ""
     title = title.strip().strip("\"'").splitlines()[0].strip() if title.strip() else ""
     if masker is not None:
         title = masker(title)[0]
-    return title[:80] or None
+    # The tokens go back even when the reply was unusable: they were spent.
+    return title[:80] or None, spent
