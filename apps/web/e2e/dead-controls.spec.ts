@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openSidebar, signIn } from './helpers'
+import { openSidebar, pickToolModel, signIn } from './helpers'
 
 /**
  * Four controls that must do what they look like they do.
@@ -198,18 +198,7 @@ test('웹 검색은 켠 대화에만 남고 다음 대화로 따라오지 않는
   // The screen default is strict-local, which is given no web tool — so the
   // toggle this test is about is disabled until a model that can reach the
   // network is chosen.
-  await page
-    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
-    .first()
-    .click()
-  const rows = page.getByRole('button', { name: /qwen3\.6/i })
-  for (let i = 0; i < (await rows.count()); i++) {
-    const name = (await rows.nth(i).getAttribute('aria-label')) ?? (await rows.nth(i).innerText())
-    if (!/strict/i.test(name)) {
-      await rows.nth(i).click()
-      break
-    }
-  }
+  await pickToolModel(page)
 
   const search = page.getByRole('button', { name: '웹 검색' })
   await search.click()

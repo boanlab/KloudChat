@@ -14,7 +14,7 @@
 
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { answerText, signIn } from './helpers'
+import { answerText, pickToolModel, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -25,10 +25,7 @@ test.beforeEach(async ({ page }) => {
 const stamp = () => Math.random().toString(36).slice(2, 7)
 
 /** Local model: free, and the suite must not depend on an external provider. */
-async function useLocalModel(page: Page) {
-  await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
-  await page.getByRole('button', { name: /qwen3\.6/i }).first().click()
-}
+const useLocalModel = pickToolModel
 
 /**
  * Sends from `/new/chat`. The navigation only happens once the server has
