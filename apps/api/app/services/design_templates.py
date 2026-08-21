@@ -82,14 +82,22 @@ _TAG = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>")
 _SCRIPTISH = re.compile(
     r"<(script|style|iframe|object|embed|link|meta|h1|h2)\b.*?(</\1\s*>|$)", re.S | re.I
 )
-_EVENT_ATTR = re.compile(r"\s+on[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+#: The leading `\s` is one character rather than `\s+`, and the rest is
+#: possessive. `\s+` here is quadratic: at every position in a run of
+#: whitespace the engine consumes the whole run and then fails on the next
+#: literal, so a fragment padded with sixty thousand spaces took twenty-one
+#: seconds to sanitise — and these fragments are model-generated. One space is
+#: all the rule needs to know it is between attributes; the whitespace it
+#: leaves behind sits inside a tag, where it means nothing. Same attributes
+#: removed, 0.001s.
+_EVENT_ATTR = re.compile(r"\son[a-z]++\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 #: Inline presentation from the model. The seed owns every colour, size
 #: and space in the document; a `style=` written into a block is the one
 #: thing that can actually win against it, and it never agrees with the
 #: template around it. `class` survives — that is how a block reaches the
 #: names its own seed styles, such as `lead` and `cols`.
-_STYLE_ATTR = re.compile(r"\s+style\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
-_URL_ATTR = re.compile(r"\s+(href|src)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+_STYLE_ATTR = re.compile(r"\sstyle\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+_URL_ATTR = re.compile(r"\s(href|src)\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 #: What is inside a `<code>` is text. Every other rule below reads the
 #: fragment as markup, so left alone `<code><div></code>` becomes a real
 #: division. The closing tag is required, unlike `_SCRIPTISH`'s: an unclosed
