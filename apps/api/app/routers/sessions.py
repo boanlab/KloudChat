@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, update
 from sqlmodel import col, delete, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -40,6 +41,8 @@ from app.models.workspace import (
     ArtifactKind,
     ArtifactVersion,
     Job,
+    Memory,
+    MemoryType,
     Project,
     StoredFile,
 )
@@ -2143,6 +2146,9 @@ async def send_message(
                 api_key=api_key,
                 auto_memory=Preferences.of(user).auto_memory,
                 session_id=session.id,
+                # How far a shared note reaches, and whose byline it carries.
+                project_id=session.project_id or "",
+                agent_name=(agent_row.name if agent_row else ""),
                 model=model,
                 messages=messages,
                 tools=tools,
@@ -2229,12 +2235,74 @@ async def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
         yield event
 
 
+async def _store_notes(
+    db: AsyncSession,
+    user_id: str,
+    session_id: str,
+    project_id: str,
+    notes: list[dict],
+) -> None:
+    """Writes what one turn left for the next.
+
+    Stored as memories rather than as a table of their own, because that is
+    exactly what they are — a durable fact this account's work should keep
+    seeing — and because the context assembler already reads that table and
+    puts it in front of every turn. A parallel store would have needed its own
+    injection path, its own screen and its own retention rule to end up in the
+    same place.
+
+    The scope is what makes it a handoff. `project_id` reaches every
+    conversation and every agent in that project; without one it is this
+    conversation's own, which is a note to the next turn rather than a broadcast.
+
+    `key` is matched inside the scope, so the same finding revised twice leaves
+    one note that is current instead of three that disagree.
+    """
+    scope = project_id or session_id
+    for note in notes:
+        name = note["key"]
+        existing = (
+            await db.exec(
+                select(Memory).where(
+                    Memory.user_id == user_id,
+                    Memory.scope == scope,
+                    Memory.name == name,
+                )
+            )
+        ).first()
+        # The byline is on the description rather than in the body: the body is
+        # what the next agent acts on, and a sentence about who wrote it is not
+        # part of the finding.
+        author = note.get("author") or ""
+        description = f"{note['title']} — {author}" if author else note["title"]
+        if existing is not None:
+            existing.description = description[:400]
+            existing.body = note["body"]
+            existing.updated_at = utcnow()
+            db.add(existing)
+            continue
+        db.add(
+            Memory(
+                user_id=user_id,
+                name=name,
+                description=description[:400],
+                # `reference` rather than `project`: this is something the work
+                # found, not something the person told us about themselves.
+                type=MemoryType.reference,
+                body=note["body"],
+                scope=scope,
+            )
+        )
+
+
 async def _run_turn(
     *,
     user_id: str,
     api_key: str,
     auto_memory: bool,
     session_id: str,
+    project_id: str = "",
+    agent_name: str = "",
     model: dict,
     messages: list[dict],
     tools: list[Tool],
@@ -2274,7 +2342,13 @@ async def _run_turn(
     stopping = asyncio.Event()
     _STOPPING[session_id] = stopping
 
-    ctx = ToolContext(user_id=user_id, session_id=session_id, api_key=api_key)
+    ctx = ToolContext(
+        user_id=user_id,
+        session_id=session_id,
+        api_key=api_key,
+        project_id=project_id,
+        agent_name=agent_name,
+    )
     masker = governance.mask_legacy if legacy_masking else governance.mask
     strict_local = _strict_model(model)
     cost_routing = dict((routing or {}).get("costRouting") or {}) or None
@@ -2482,6 +2556,13 @@ async def _run_turn(
                         else TurnFailure.no_answer
                     )
                     db.add(question)
+            # Handoffs, written in the same transaction as the answer that
+            # produced them. Deliberately not gated on `content`: a turn can do
+            # real work through tools and end with an empty completion, and the
+            # finding is still worth passing on. Gated on `failed` — a note left
+            # by a turn that broke is a conclusion nobody reached.
+            if ctx.pending_notes and not failed:
+                await _store_notes(db, user_id, session_id, project_id, ctx.pending_notes)
             if title:
                 session.title = title
             # Its own ledger line: a different model may have run it, the message's

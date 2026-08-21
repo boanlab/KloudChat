@@ -1,4 +1,3 @@
-import { errorMessage } from '@/lib/api'
 import { Brain, Pin, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
@@ -11,49 +10,19 @@ import {
   EmptyState,
   LoadingState,
   ReloadNotice,
-  Field,
-  Input,
-  Modal,
   PageHeader,
   Tabs,
-  Textarea,
 } from '@/components/ui'
-import { cn, relativeTime, uid } from '@/lib/utils'
+import { MemoryEditor, emptyMemory, memoryTypeTone } from '@/components/memory/MemoryEditor'
+import { cn, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
-import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
-
-const typeTone: Record<MemoryType, 'accent' | 'success' | 'warn' | 'neutral'> = {
-  user: 'accent',
-  feedback: 'warn',
-  project: 'success',
-  reference: 'neutral',
-}
-
-const typeHelp: Record<MemoryType, string> = {
-  user: '사용자가 누구인지 — 역할, 전문성, 선호',
-  feedback: '작업 방식에 대한 지시 — 왜 그런지 함께',
-  project: '진행 중인 일과 제약 — 코드에서 유추할 수 없는 것',
-  reference: '외부 자료 포인터 — URL, 대시보드, 티켓',
-}
-
-const emptyDraft = (): MemoryEntry => ({
-  id: uid('m'),
-  name: '',
-  description: '',
-  type: 'project',
-  body: '',
-  scope: 'global',
-  links: [],
-  updatedAt: new Date().toISOString(),
-  pinned: false,
-})
 
 export function MemoryPage() {
   const t = useT()
-  const { memories, projects, upsertMemory, deleteMemory, togglePinMemory, loadWorkspace, workspaceLoading, workspaceFailed } =
+  const { memories, projects, deleteMemory, togglePinMemory, loadWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
 
   useEffect(() => {
@@ -62,9 +31,6 @@ export function MemoryPage() {
   const [filter, setFilter] = useState<MemoryType | 'all'>('all')
   const [draft, setDraft] = useState<MemoryEntry | null>(null)
   const [confirming, setConfirming] = useState<MemoryEntry | null>(null)
-  //: 저장이 실패해도 대화상자가 닫혀서, 방금 쓴 내용이 아무 말 없이 사라졌다.
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
 
   const visible = filter === 'all' ? memories : memories.filter((m) => m.type === filter)
   const ordered = [...visible].sort((a, b) => Number(b.pinned) - Number(a.pinned))
@@ -78,7 +44,7 @@ export function MemoryPage() {
           title={t('메모리')}
           description={t('대화에서 알게 된 사실을 하나씩 저장해 두면, 다음 대화에서 관련 있는 것만 골라 참고합니다.')}
           action={
-            <Button variant="primary" onClick={() => setDraft(emptyDraft())}>
+            <Button variant="primary" onClick={() => setDraft(emptyMemory())}>
               <Plus size={16} />
           {t('새 메모리')}
             </Button>
@@ -107,7 +73,7 @@ export function MemoryPage() {
               title={t('저장된 메모리가 없습니다')}
               description={t('반복해서 설명하게 되는 것을 하나 적어 두면, 다음 대화부터는 말하지 않아도 됩니다.')}
               action={
-                <Button variant="primary" onClick={() => setDraft(emptyDraft())}>
+                <Button variant="primary" onClick={() => setDraft(emptyMemory())}>
                   <Plus size={16} />
                   {t('첫 메모리 만들기')}
                 </Button>
@@ -130,7 +96,7 @@ export function MemoryPage() {
                       >
                         {m.name}
                       </button>
-                      <Badge tone={typeTone[m.type]}>{m.type}</Badge>
+                      <Badge tone={memoryTypeTone[m.type]}>{m.type}</Badge>
                       {project && <Badge>{project.emoji} {project.name}</Badge>}
                       {m.pinned && (
                         <Badge tone="accent">
@@ -191,107 +157,7 @@ export function MemoryPage() {
         description={t('되돌릴 수 없습니다. 다음 대화부터는 이 내용을 참고하지 않습니다.')}
       />
 
-      <Modal
-        open={!!draft}
-        onClose={() => {
-          setDraft(null)
-          setSaveError(null)
-        }}
-        title={memories.some((m) => m.id === draft?.id) ? t('메모리 편집') : t('새 메모리')}
-        description={t('한 번에 하나씩, 짧고 분명하게 적으세요.')}
-        width="max-w-xl"
-        footer={
-          <>
-            <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
-            <Button
-              variant="primary"
-              disabled={saving || !draft?.name.trim()}
-              onClick={async () => {
-                if (!draft) return
-                setSaving(true)
-                setSaveError(null)
-                try {
-                  await upsertMemory({ ...draft, updatedAt: new Date().toISOString() })
-                  setDraft(null)
-                } catch (err) {
-                  // The form stays open holding what was typed. Closing it and
-                  // saying nothing is how the text got lost.
-                  setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
-                } finally {
-                  setSaving(false)
-                }
-              }}
-            >
-              {saving ? t('저장 중…') : t('저장')}
-            </Button>
-          </>
-        }
-      >
-        {draft && (
-          <>
-            {saveError && (
-              <p role="status" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
-                {saveError}
-              </p>
-            )}
-            <Field label={t('이름')} hint={t('영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.')}>
-              <Input
-                value={draft.name}
-                maxLength={NAME_LIMIT}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="user-prefers-terse-answers"
-                className="font-mono"
-              />
-            </Field>
-            <Field label={t('유형')} hint={t(typeHelp[draft.type])}>
-              <div className="flex gap-1.5">
-                {(['user', 'feedback', 'project', 'reference'] as MemoryType[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setDraft({ ...draft, type: t })}
-                    className={cn(
-                      'rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                      draft.type === t
-                        ? 'border-accent bg-accent-soft text-accent'
-                        : 'border-line hover:bg-elevated',
-                    )}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field label={t('설명')} hint={t('이 메모리를 언제 참고할지 판단하는 한 줄 요약입니다.')}>
-              <Input
-                value={draft.description}
-                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-              />
-            </Field>
-            <Field label={t('범위')}>
-              <select
-                value={draft.scope}
-                onChange={(e) => setDraft({ ...draft, scope: e.target.value })}
-                className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
-              >
-                <option value="global">{t('전역')}</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.emoji} {p.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('본문')}>
-              <Textarea
-                rows={6}
-                value={draft.body}
-                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                placeholder={'**Why:** …\n\n**How to apply:** …'}
-              />
-            </Field>
-          </>
-        )}
-      </Modal>
+      <MemoryEditor draft={draft} onDraft={setDraft} onClose={() => setDraft(null)} />
     </>
   )
 }

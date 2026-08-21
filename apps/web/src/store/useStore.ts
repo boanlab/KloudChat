@@ -4,6 +4,7 @@ import { errorMessage } from '@/lib/api'
 import {
   ApiError,
   PrivacyDecisionError,
+  StreamStalledError,
   UnauthorizedError,
   adminApi,
   agentsApi,
@@ -134,10 +135,19 @@ interface State {
   authLoading: boolean
   /** Backend `detail` code from the last failed auth call, for the form to render. */
   authError: string | null
+  /**
+   * Why the last session ended, when it did not end by somebody pressing
+   * 로그아웃. The sign-in screen says so rather than looking like an ordinary
+   * visit: a person who walked away and came back to a login form deserves to
+   * know it was the timeout and not a fault.
+   */
+  signedOutReason: 'idle' | null
+  /** Minutes of inactivity this instance allows. 0 is off. */
+  idleTimeoutMinutes: number
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
-  logout: () => Promise<void>
+  logout: (reason?: 'idle') => Promise<void>
   /** Re-reads the caller's own row. The approval-waiting screen polls this. */
   refreshMe: () => Promise<void>
   updateProfile: (patch: {
@@ -245,6 +255,14 @@ interface State {
       startingTemplate?: StartingPoint
       privacyAction?: PrivacyAction
       privacyDecisionToken?: string
+      /**
+       * Run this one turn on a named model, whatever the conversation is set
+       * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
+       * the session carries is the moment somebody wants to try another one,
+       * and making them change the picker first — then change it back — is
+       * three steps for one question.
+       */
+      model?: string
             /**
              * Called as soon as a session id exists. Waiting for the stream to
              * finish would lose the conversation on a refresh mid-answer.
@@ -261,6 +279,15 @@ interface State {
      * the row too.
      */
   setSessionTemplate: (id: string, templateId: string | null) => Promise<void>
+  /**
+   * Files an existing conversation into a project, or takes it out of one.
+   *
+   * A project could only ever be filled by starting work inside it. Anything
+   * begun in the ordinary way — which is how work begins — could not be moved
+   * in afterwards, so using a project meant doing it all again from scratch,
+   * and the feature went unused for the most ordinary reason there is.
+   */
+  moveSessionToProject: (id: string, projectId: string | null) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   /** Bulk removal from the history screen. Returns how many the server removed. */
   deleteSessions: (payload: {
@@ -583,6 +610,66 @@ function cancelRefresh() {
 }
 
 /**
+ * Signs an abandoned browser out.
+ *
+ * The silent refresh above runs on a timer whether or not anybody is at the
+ * keyboard, so on its own it keeps a session alive indefinitely — which on a
+ * lab or library PC is the next person opening the previous person's
+ * conversations. Idleness is a fact only the browser has, so the browser is
+ * what enforces it: the instance policy names a number of minutes and this
+ * ends the session when nothing has happened for that long.
+ *
+ * `pointerdown`/`keydown`/`scroll` rather than `mousemove`: a nudged desk
+ * should not count as somebody being there. A tab returning to the foreground
+ * does count — that is a person coming back — and the clock is re-checked on
+ * the way in, because a laptop asleep for an hour fires no timer at all.
+ */
+let idleTimer: ReturnType<typeof setTimeout> | null = null
+let idleTeardown: (() => void) | null = null
+
+function armIdleWatch(minutes: number, onIdle: () => void) {
+  disarmIdleWatch()
+  if (minutes <= 0) return
+  const limitMs = minutes * 60_000
+  let lastSeen = Date.now()
+
+  const fire = () => {
+    disarmIdleWatch()
+    onIdle()
+  }
+  const restart = () => {
+    lastSeen = Date.now()
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = setTimeout(fire, limitMs)
+  }
+  const onWake = () => {
+    // Timers do not run while the machine is suspended, so coming back is when
+    // the elapsed time is actually measured.
+    if (Date.now() - lastSeen >= limitMs) fire()
+    else restart()
+  }
+
+  const events = ['pointerdown', 'keydown', 'scroll'] as const
+  for (const name of events) window.addEventListener(name, restart, { passive: true })
+  document.addEventListener('visibilitychange', onWake)
+  window.addEventListener('focus', onWake)
+  restart()
+
+  idleTeardown = () => {
+    for (const name of events) window.removeEventListener(name, restart)
+    document.removeEventListener('visibilitychange', onWake)
+    window.removeEventListener('focus', onWake)
+  }
+}
+
+function disarmIdleWatch() {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = null
+  idleTeardown?.()
+  idleTeardown = null
+}
+
+/**
  * What to say when a conversational turn arrives on a job surface. Duration and
  * voice come from the composer's controls, so this points at them rather than
  * imitating an answer.
@@ -654,6 +741,8 @@ export const useStore = create<State>((set, get) => ({
   authenticated: false,
   authLoading: true,
   authError: null,
+  signedOutReason: null,
+  idleTimeoutMinutes: 0,
 
   /** Adopts a fresh session and arms the next silent refresh. */
   bootstrap: async () => {
@@ -673,7 +762,12 @@ export const useStore = create<State>((set, get) => ({
               dictationEnabled: c.dictationEnabled,
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
+              idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
             })
+            // Armed here rather than at login: a reload re-enters through
+            // bootstrap, and a tab left open across one is the case the policy
+            // exists for.
+            armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void get().logout('idle'))
           })
           .catch(() => {})
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
@@ -683,6 +777,7 @@ export const useStore = create<State>((set, get) => ({
       } catch {
         // No cookie, expired, or the account was suspended — all mean "log in".
         cancelRefresh()
+        disarmIdleWatch()
         setAccessToken(null)
         set({ authenticated: false, user: null, authLoading: false })
       } finally {
@@ -697,8 +792,9 @@ export const useStore = create<State>((set, get) => ({
     try {
       const session = await auth.login(email, password)
       setAccessToken(session.accessToken)
-      set({ authenticated: true, user: session.user, authLoading: false })
+      set({ authenticated: true, user: session.user, authLoading: false, signedOutReason: null })
       scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+      armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
       // Only for an account that can use them. `/models`, `/sessions` and the
       // workspace are all gated on `active`, so a pending account asking is a
       // guaranteed refusal — and one of those refusals used to leave the
@@ -736,13 +832,14 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  logout: async () => {
+  logout: async (reason) => {
     try {
       await auth.logout()
     } catch {
       // Already gone server-side; the local teardown below is what matters.
     }
     cancelRefresh()
+    disarmIdleWatch()
     setAccessToken(null)
     // Invalidates any workspace load still in the air: otherwise a response
     // requested by the previous account repopulates the screen after logout.
@@ -752,6 +849,7 @@ export const useStore = create<State>((set, get) => ({
       user: null,
       activeSessionId: null,
       authError: null,
+      signedOutReason: reason ?? null,
       // Never leave one account's work on screen for the next.
       sessions: [],
       users: [],
@@ -1201,12 +1299,14 @@ export const useStore = create<State>((set, get) => ({
     const now = new Date().toISOString()
     // The conversation's own model wins; the surface default would undo the
     // in-session picker every turn.
-    const model = effectiveModelId(
-      get().sessions.find((c) => c.id === id),
-      kind,
-      get().agents,
-      get().modelByKind,
-    )
+    const model =
+      opts.model ??
+      effectiveModelId(
+        get().sessions.find((c) => c.id === id),
+        kind,
+        get().agents,
+        get().modelByKind,
+      )
     const userMsg: Message = {
       id: uid('m'),
       role: 'user',
@@ -1321,6 +1421,7 @@ export const useStore = create<State>((set, get) => ({
       }
 
       await streamTurn(set, get, id, text, model, {
+        model: opts.model,
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
@@ -1383,6 +1484,15 @@ export const useStore = create<State>((set, get) => ({
     await sessionsApi
       .update(id, { renderTemplateId: templateId ?? '' })
       .catch(() => get().loadSessions())
+  },
+
+  moveSessionToProject: async (id, projectId) => {
+    // Optimistic, like every other session patch here: the row moves between
+    // lists at once and a failed call reloads the truth.
+    set((s) => ({
+      sessions: s.sessions.map((c) => (c.id === id ? { ...c, projectId } : c)),
+    }))
+    await sessionsApi.update(id, { projectId }).catch(() => get().loadSessions())
   },
 
   renameSession: async (id, title) => {
@@ -2297,6 +2407,37 @@ const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
 
 /**
+ * Why the turn failed, in a sentence somebody can act on.
+ *
+ * 응답을 받지 못했습니다 was the whole vocabulary, and it covers a model this
+ * instance cannot serve, a backend that never answered, an account out of
+ * credits and a proxy that is down — four situations with four different next
+ * moves. Naming which one it was is the difference between "pick another
+ * model" and "wait and try again", and a person who cannot tell them apart
+ * reads every one of them as the service being broken.
+ */
+function turnFailure(err: unknown): string {
+  if (err instanceof StreamStalledError) {
+    return '모델이 응답하지 않아 요청을 중단했습니다. 다른 모델로 다시 생성해 보세요.'
+  }
+  const code = err instanceof ApiError ? err.detail : ''
+  switch (code) {
+    case 'model_unavailable':
+      return '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.'
+    case 'model_not_allowed':
+      return '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.'
+    case 'no_models_available':
+      return '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.'
+    case 'insufficient_credits':
+      return '이번 달 크레딧이 부족합니다.'
+  }
+  if (err instanceof ApiError && err.status >= 500) {
+    return '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.'
+  }
+  return '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.'
+}
+
+/**
  * Delete held for a few seconds before it is sent: the row leaves the screen
  * at once and undo cancels the call before anything is destroyed.
  *
@@ -2750,6 +2891,8 @@ async function streamTurn(
   text: string,
   model: string,
   opts: {
+    /** Turn-only model override; absent means the conversation's own. */
+    model?: string
     webSearch?: boolean
     attachments?: string[]
     attachmentNames?: string[]
@@ -2809,6 +2952,7 @@ async function streamTurn(
       sessionId,
       {
         content: text,
+        model: opts.model,
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         activatedSkillIds: opts.activatedSkillIds,
@@ -2946,7 +3090,11 @@ async function streamTurn(
       throw err
     } else {
       settled = true
-      patch((m) => ({ ...m, error: '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.' }))
+      patch((m) => ({ ...m, error: tr(turnFailure(err)) }))
+      // A stall is the turn ending, not the session breaking. Swallowed here so
+      // the composer does not also put the sentence back in the box — the
+      // failed turn already carries its own retry.
+      if (err instanceof StreamStalledError) return
       throw err
     }
   } finally {

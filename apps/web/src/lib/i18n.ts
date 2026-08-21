@@ -933,7 +933,69 @@ const EN: Record<string, string> = {
   '이 대화들이 만든 결과물도 함께 삭제': 'Also delete what these conversations produced',
   '보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.':
     'Reports, slides, images, audio and video. Any shared links to them stop working.',
+  '다른 모델로': 'Another model',
+  '이 요청만 다른 모델로': 'Run this one on',
+  '현재 모델': 'Current',
+  '모델이 응답하지 않아 요청을 중단했습니다. 다른 모델로 다시 생성해 보세요.':
+    'The model stopped responding, so the request was cancelled. Try another model.',
+  '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.':
+    'That model cannot be used on this surface right now. Pick another and try again.',
+  '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.':
+    'This account may not use that model. Pick another and try again.',
+  '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.':
+    'No model is available right now. Ask an administrator.',
+  '이번 달 크레딧이 부족합니다.': 'Out of credits for this month.',
+  '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.':
+    'The model server is not responding. Try again in a moment.',
+  '중단': 'Stop',
+  '기존 대화 편입': 'Bring in existing work',
+  '다른 곳에서 시작한 대화를 이 프로젝트로 옮깁니다. 지침·지식·메모리를 그때부터 함께 받습니다.':
+    'Move a conversation started elsewhere into this project. From then on it gets the instructions, knowledge and memory.',
+  '대화 추가': 'Add a conversation',
+  '어떤 대화를 옮길까요?': 'Which conversation?',
+  '프로젝트에서 빼기': 'Take out of the project',
+  '{name} 프로젝트에서 빼기': 'Take {name} out of the project',
+  '공유 메모리': 'Shared memory',
+  '이 프로젝트의 모든 대화와 에이전트가 다음 요청부터 이 내용을 함께 받습니다. 에이전트가 남긴 결론도 여기에 쌓입니다.':
+    'Every conversation and agent in this project is given these from their next request on. What an agent hands off lands here too.',
+  '메모리 추가': 'Add a memory',
+  '{name} 편집': 'Edit {name}',
+  '자산': 'Assets',
+  '에이전트에게 맡기기': 'Hand it to an agent',
+  '전체 보기': 'See all',
+  '지침·도구·자료를 갖춘 에이전트가 대신 진행합니다. 같은 프로젝트 안에서는 서로의 결론을 이어받습니다.':
+    'An agent with its own instructions, tools and documents does the work. Inside a project they pick up each other\u2019s conclusions.',
+  '여기에 놓으면 첨부됩니다': 'Drop to attach',
+  '여기에 놓으면 자료로 추가됩니다': 'Drop to add as a document',
+  '여기에 놓으면 참고 파일로 추가됩니다': 'Drop to add as a reference file',
   '접속기록': 'Access log',
+  '접속 기록': 'Access log',
+  '로그인된 기기': 'Where you are signed in',
+  '계정 메뉴': 'Account menu',
+  '현재 기기': 'This browser',
+  '알 수 없는 브라우저': 'Unknown browser',
+  '최근 사용': 'Last used',
+  '종료': 'End',
+  '다른 기기 모두 로그아웃': 'Sign out everywhere else',
+  '이 로그인 종료': 'End this sign-in',
+  '이 계정이 지금 로그인되어 있는 브라우저입니다. 실습실이나 도서관 PC처럼 기억나지 않는 항목이 있으면 여기서 바로 종료하세요.':
+    'Every browser this account is currently signed in on. If one of these is a lab or library PC you have walked away from, end it here.',
+  '{n}분 동안 사용하지 않으면 자동으로 로그아웃됩니다.':
+    'Signed out automatically after {n} minutes of inactivity.',
+  '현재 기기를 제외한 모든 로그인이 해제됩니다.':
+    'Every sign-in but this one ends immediately.',
+  '현재 사용 중인 기기입니다. 종료하면 이 화면에서도 로그아웃됩니다.':
+    'This is the browser you are reading from. Ending it signs you out here too.',
+  '해당 브라우저의 로그인이 즉시 해제됩니다.': 'That browser is signed out immediately.',
+  '로그인 목록을 불러오지 못했습니다.': 'Could not load the sign-in list.',
+  '로그아웃하지 못했습니다.': 'Could not sign out.',
+  '한동안 사용하지 않아 자동으로 로그아웃되었습니다. 다시 로그인하세요.':
+    'You were signed out after a period of inactivity. Sign in again to continue.',
+  '유휴 자동 로그아웃': 'Idle sign-out',
+  '유휴 시간(분)': 'Idle minutes',
+  '분': 'min',
+  '지정한 시간 동안 아무 조작이 없으면 브라우저가 스스로 로그아웃합니다. 실습실·도서관처럼 여러 사람이 쓰는 PC에서 이전 사용자의 대화가 그대로 남는 것을 막습니다. 0 은 사용하지 않음.':
+    'A browser signs itself out after this long with nothing happening. It is what keeps the previous person\u2019s conversations off a shared lab or library PC. 0 turns it off.',
   '접속 위치': 'Where from',
   '브라우저': 'Browser',
   '비밀번호 재설정 요청': 'Password reset requested',

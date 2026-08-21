@@ -8,10 +8,29 @@ import {
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { Step } from '@/types'
 import { useT } from '@/lib/useT'
+
+/**
+ * Seconds since the turn began, ticking.
+ *
+ * The header said 작업 중 and nothing else, which is true of a turn one second
+ * old and of one that has been wedged for four minutes. A number that keeps
+ * moving is what tells those apart without opening anything.
+ */
+function useElapsed(since: number | undefined, live: boolean) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!live || since === undefined) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [live, since])
+  if (since === undefined) return null
+  const seconds = Math.max(0, Math.floor((now - since) / 1000))
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
 
 const icons = { thinking: Brain, tool: Wrench, artifact: FileText }
 /** What kind of work this is, for the header once the list is showing. */
@@ -81,8 +100,18 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
  * a checklist that keeps finished steps visible. Open while live, collapsed
  * once the turn settles, reopenable either way.
  */
-export function StepTimeline({ steps, live }: { steps: Step[]; live: boolean }) {
+export function StepTimeline({
+  steps,
+  live,
+  startedAt,
+}: {
+  steps: Step[]
+  live: boolean
+  /** Epoch milliseconds the turn started. Drives the running clock. */
+  startedAt?: number
+}) {
   const t = useT()
+  const elapsed = useElapsed(startedAt, live)
   //: Reader's choice, and it wins over the liveness default — a card folded
   //: away must not spring open on the next step.
   const [manual, setManual] = useState<boolean | null>(null)
@@ -132,7 +161,17 @@ export function StepTimeline({ steps, live }: { steps: Step[]; live: boolean }) 
               ` · ${t('외 {n}개').replace('{n}', String(rest.length - COLLAPSED_NAMES))}`}
           </span>
         )}
-        <span className="ml-auto shrink-0 whitespace-nowrap text-faint tabular-nums">
+        {live && elapsed && (
+          <span className="ml-auto shrink-0 whitespace-nowrap text-faint tabular-nums">
+            {elapsed}
+          </span>
+        )}
+        <span
+          className={cn(
+            'shrink-0 whitespace-nowrap text-faint tabular-nums',
+            !(live && elapsed) && 'ml-auto',
+          )}
+        >
           {live && left !== null && left > 0
             ? t('{n}개 남음').replace('{n}', String(left))
             : live

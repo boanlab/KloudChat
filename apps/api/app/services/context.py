@@ -147,7 +147,39 @@ def build_messages(
             }
         )
     messages.extend(history)
-    return messages
+    return _alternating(messages)
+
+
+def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Merges neighbouring turns that share a role.
+
+    Chat templates are written for a transcript that alternates, and several of
+    the local ones — Qwen's among them — refuse or mangle a payload where two
+    user turns sit next to each other. Two things here produce exactly that.
+
+    The first is a turn that failed. A question is stored before the model
+    answers, so a request that times out or is refused leaves a user message
+    with nothing under it; the next question then follows it directly and the
+    whole conversation starts failing, no matter which model is picked
+    afterwards. That is what made a session unrecoverable rather than merely
+    unlucky: every later turn inherited the same malformed transcript, and only
+    a brand-new conversation escaped it.
+
+    The second is the reference block above, which is a user message by design
+    and lands immediately before a history that usually opens with one.
+
+    Merged rather than dropped, because the unanswered question is still what
+    the person asked, and losing it would make 다시 물어보기 answer a turn the
+    model can no longer see.
+    """
+    merged: list[dict[str, str]] = []
+    for message in messages:
+        if merged and merged[-1]["role"] == message["role"]:
+            joined = f"{merged[-1]['content']}\n\n{message['content']}".strip()
+            merged[-1] = {**merged[-1], "content": joined}
+            continue
+        merged.append(dict(message))
+    return merged
 
 
 def build_document_messages(

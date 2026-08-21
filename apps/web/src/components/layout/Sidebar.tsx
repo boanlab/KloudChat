@@ -1,12 +1,13 @@
-import { Bot, Boxes, Brain, ChartColumn, Terminal as TerminalIcon, ChevronDown, ChevronRight, History, Layers, LogOut, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Server, Settings, Shield, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Boxes, Brain, ChevronRight, FolderMinus, History, Layers, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn, groupByRecency } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { Session } from '@/types'
+import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
+import { AccountMenu } from './AccountMenu'
 import { Brand } from './Brand'
 
 /**
@@ -56,15 +57,51 @@ function NavSection({
 /** Unpinned conversations rendered per page. */
 const PAGE = 40
 
-const workspaceNav = [
-  { to: '/projects', label: '프로젝트', icon: Boxes },
-  { to: '/artifacts', label: '아티팩트', icon: Layers },
-  { to: '/designs', label: '디자인', icon: Palette },
-  { to: '/agents', label: '에이전트', icon: Bot },
-  { to: '/skills', label: '스킬', icon: Sparkles },
-  { to: '/memory', label: '메모리', icon: Brain },
-  { to: '/connectors', label: '커넥터', icon: Plug },
-  { to: '/history', label: '대화 기록', icon: History },
+interface NavRow {
+  to: string
+  label: string
+  icon: typeof Bot
+}
+
+/**
+ * The workspace, grouped by what a person is doing rather than listed.
+ *
+ * Eight rows in one flat column — 프로젝트, 아티팩트, 디자인, 에이전트, 스킬,
+ * 메모리, 커넥터, 대화 기록 — said nothing about how any of them relate. An
+ * agent and the skills and connectors it can reach are one subject; a finished
+ * report and the design it wears are another; and reading the list gave no way
+ * to tell which was which, so the connection between an agent and what it can
+ * do had to be learned rather than seen.
+ *
+ * Three groups, in the order work moves through them. **실행** is what does the
+ * work and what it is allowed to use. **자산** is what came out and what it is
+ * kept in. **기록** is where to go back and find it.
+ */
+const workspaceNav: { id: string; label: string; items: NavRow[] }[] = [
+  {
+    id: 'run',
+    label: '실행',
+    items: [
+      { to: '/agents', label: '에이전트', icon: Bot },
+      { to: '/skills', label: '스킬', icon: Sparkles },
+      { to: '/connectors', label: '커넥터', icon: Plug },
+      { to: '/memory', label: '메모리', icon: Brain },
+    ],
+  },
+  {
+    id: 'assets',
+    label: '자산',
+    items: [
+      { to: '/projects', label: '프로젝트', icon: Boxes },
+      { to: '/artifacts', label: '아티팩트', icon: Layers },
+      { to: '/designs', label: '디자인', icon: Palette },
+    ],
+  },
+  {
+    id: 'records',
+    label: '기록',
+    items: [{ to: '/history', label: '대화 기록', icon: History }],
+  },
 ]
 
 
@@ -72,17 +109,21 @@ function SessionRow({
   session,
   active,
   emoji,
+  projects,
   onOpen,
   onRename,
   onTogglePin,
+  onMove,
   onDelete,
 }: {
   session: Session
   active: boolean
   emoji?: string
+  projects: Project[]
   onOpen: () => void
   onRename: (title: string) => void
   onTogglePin: () => void
+  onMove: (projectId: string | null) => void
   onDelete: () => void
 }) {
   const t = useT()
@@ -172,6 +213,27 @@ function SessionRow({
         >
           {session.pinned ? t('고정 해제') : t('고정')}
         </MenuItem>
+        {/* Filing an existing conversation. A project could only be filled by
+            starting work inside it, so anything begun the ordinary way was
+            stranded outside — which is most of what anybody has. */}
+        {projects.length > 0 && (
+          <>
+            <MenuSeparator />
+            <MenuLabel>{t('프로젝트')}</MenuLabel>
+            {session.projectId && (
+              <MenuItem icon={<FolderMinus size={14} />} onClick={() => onMove(null)}>
+                {t('프로젝트에서 빼기')}
+              </MenuItem>
+            )}
+            {projects
+              .filter((p) => p.id !== session.projectId)
+              .map((p) => (
+                <MenuItem key={p.id} icon={<span>{p.emoji}</span>} onClick={() => onMove(p.id)}>
+                  {p.name}
+                </MenuItem>
+              ))}
+          </>
+        )}
         <MenuSeparator />
         <MenuItem danger icon={<Trash2 size={14} />} onClick={onDelete}>
           {t('삭제')}
@@ -190,16 +252,14 @@ export function Sidebar() {
   const {
     sessions,
     projects,
-    users,
     activeSessionId,
     deleteSession,
     renameSession,
     togglePinSession,
+    moveSessionToProject,
     user,
-    logout,
     sidebarOpen,
   } = useStore()
-  const pendingUsers = users.filter((u) => u.status === 'pending').length
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -227,9 +287,11 @@ export function Sidebar() {
       session={session}
       active={activeSessionId === session.id}
       emoji={projects.find((p) => p.id === session.projectId)?.emoji}
+      projects={projects}
       onOpen={() => navigate(`/s/${session.id}`)}
       onRename={(title) => void renameSession(session.id, title)}
       onTogglePin={() => togglePinSession(session.id)}
+      onMove={(projectId) => void moveSessionToProject(session.id, projectId)}
       onDelete={() => deleteSession(session.id)}
     />
   )
@@ -306,25 +368,27 @@ export function Sidebar() {
           shrink, and on a short window it pushes the credits and the account
           below the fold — the two things that must not go missing. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <NavSection id="workspace" label={t('워크스페이스')}>
-          {workspaceNav.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                  isActive
-                    ? 'bg-elevated font-medium text-fg'
-                    : 'text-muted hover:bg-elevated hover:text-fg',
-                )
-              }
-            >
-              <Icon size={15} />
-              {t(label)}
-            </NavLink>
-          ))}
-        </NavSection>
+        {workspaceNav.map((group) => (
+          <NavSection key={group.id} id={group.id} label={t(group.label)}>
+            {group.items.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
+                    isActive
+                      ? 'bg-elevated font-medium text-fg'
+                      : 'text-muted hover:bg-elevated hover:text-fg',
+                  )
+                }
+              >
+                <Icon size={15} />
+                {t(label)}
+              </NavLink>
+            ))}
+          </NavSection>
+        ))}
 
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
@@ -381,76 +445,7 @@ export function Sidebar() {
           </span>
         </button>
 
-        <Dropdown
-          align="left"
-          className="min-w-56"
-          trigger={() => (
-            <button className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated">
-              <span
-                className="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white"
-                style={{ background: user?.avatarColor }}
-              >
-                {user?.name?.[0] ?? 'U'}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-base font-medium">{user?.name}</span>
-                <span className="block truncate text-xs text-faint">{user?.email}</span>
-              </span>
-              {/* The queue, on the button that opens the menu holding it. Without
-                  this the only signal was inside the menu nobody had a reason to
-                  open. */}
-              {user?.role === 'admin' && pendingUsers > 0 && (
-                <span
-                  aria-label={t('승인 대기 {n}건').replace('{n}', String(pendingUsers))}
-                  className="shrink-0 rounded-control bg-warn/15 px-1.5 text-xs font-medium text-warn"
-                >
-                  {pendingUsers}
-                </span>
-              )}
-              <ChevronDown size={14} className="shrink-0 text-faint" />
-            </button>
-          )}
-        >
-          <MenuLabel>{t('계정')}</MenuLabel>
-          <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
-            {t('설정')}
-          </MenuItem>
-          <MenuItem icon={<TerminalIcon size={14} />} onClick={() => navigate('/agent-setup')}>
-            {t('AI 에이전트 연동')}
-          </MenuItem>
-          {user?.role === 'admin' && (
-            <>
-              <MenuSeparator />
-              <MenuLabel>{t('관리')}</MenuLabel>
-              <MenuItem
-                icon={<Shield size={14} />}
-                onClick={() => navigate('/admin/users')}
-                hint={pendingUsers > 0 ? `${t('승인')} ${pendingUsers}` : undefined}
-              >
-                {t('사용자 · 크레딧')}
-              </MenuItem>
-              <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/admin/usage')}>
-                {t('사용량')}
-              </MenuItem>
-              <MenuItem
-                icon={<ShieldCheck size={14} />}
-                onClick={() => navigate('/admin/governance')}
-              >
-                {t('보안 · 감사')}
-              </MenuItem>
-              {/* Instance configuration — the proxy and the mail relay. It used
-                  to be a tab inside 설정, behind an admin-only flag, next to the
-                  theme switch. */}
-              <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
-                {t('시스템')}
-              </MenuItem>
-            </>
-          )}
-          <MenuSeparator />
-          <MenuItem danger icon={<LogOut size={14} />} onClick={logout}>
-            {t('로그아웃')}
-          </MenuItem>
-        </Dropdown>
+        <AccountMenu />
       </div>
     </aside>
   )

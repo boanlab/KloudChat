@@ -46,19 +46,21 @@ from app.models.user import (
 )
 from app.schemas.auth import (
     AccessEventOut,
+    ActiveSessionOut,
     LoginRequest,
     PasswordChange,
     PasswordForgot,
     PasswordReset,
     ProfilePatch,
     SessionOut,
+    SessionRevokeResult,
     SignupRequest,
     SignupResponse,
     UserOut,
 )
+from app.services import geoip, settings_store, starter
 from app.services import governance as governance_service
 from app.services import mail as mail_service
-from app.services import settings_store, starter
 from app.services import transcribe as transcribe_service
 from app.services.credits import grant_initial_allowance
 from app.services.litellm import provision_user
@@ -90,15 +92,26 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 async def _issue_session(
-    db: AsyncSession, response: Response, user: User, family_id: str | None = None
+    db: AsyncSession,
+    response: Response,
+    user: User,
+    family_id: str | None = None,
+    request: Request | None = None,
 ) -> SessionOut:
     raw, digest = new_refresh_token()
+    # Carried on every token in the family, not only the first, so 세션 목록 can
+    # describe a chain from whichever row it happens to read — and so a family
+    # that started before this column existed becomes describable at its next
+    # rotation instead of staying blank forever.
     db.add(
         RefreshToken(
             user_id=user.id,
             token_hash=digest,
             family_id=family_id or new_family_id(),
             expires_at=refresh_expiry(),
+            ip=client_ip(request) if request else "",
+            user_agent=(request.headers.get("User-Agent", "")[:400] if request else ""),
+            last_used_at=utcnow(),
         )
     )
     await db.commit()
@@ -191,7 +204,11 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
     await db.commit()
     await db.refresh(user)
 
-    session = await _issue_session(db, response, user) if user_status is UserStatus.active else None
+    session = (
+        await _issue_session(db, response, user, request=request)
+        if user_status is UserStatus.active
+        else None
+    )
     return SignupResponse(user=UserOut.of(user), session=session)
 
 
@@ -226,7 +243,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
 
     # A pending user gets a real session: the waiting screen needs an identity
     # to poll with. `current_user` still blocks every other route.
-    return await _issue_session(db, response, user)
+    return await _issue_session(db, response, user, request=request)
 
 
 @router.post("/refresh", response_model=SessionOut)
@@ -257,7 +274,9 @@ async def refresh(request: Request, response: Response, db: DbSession):
             # the loser gets its own successor rather than a burned chain.
             if user.status is UserStatus.active:
                 await starter.sync_catalog(db, user.id)
-            return await _issue_session(db, response, user, family_id=row.family_id)
+            return await _issue_session(
+                db, response, user, family_id=row.family_id, request=request
+            )
 
         _clear_refresh_cookie(response)
         if row.revoked_reason is RevokeReason.rotated:
@@ -281,7 +300,7 @@ async def refresh(request: Request, response: Response, db: DbSession):
     row.revoked_at = utcnow()
     row.revoked_reason = RevokeReason.rotated
     db.add(row)
-    return await _issue_session(db, response, user, family_id=row.family_id)
+    return await _issue_session(db, response, user, family_id=row.family_id, request=request)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -375,7 +394,7 @@ async def change_password(
     await db.commit()
 
     # This session survives: a new refresh cookie replaces the revoked one.
-    await _issue_session(db, response, user)
+    await _issue_session(db, response, user, request=request)
 
 
 #: Long enough to reach a mail client, short enough that a link left in an
@@ -411,6 +430,160 @@ async def my_access_log(user: CurrentUser, db: DbSession):
     return [AccessEventOut.of(e) for e in rows]
 
 
+def _current_digest(request: Request) -> str | None:
+    """Hash of the refresh cookie the caller is holding, if it is holding one.
+
+    What marks "this browser" in the session list, and what 다른 기기 로그아웃
+    spares. A request arriving without the cookie — an API key, an expired tab —
+    simply has no current session, and every family is then somebody else's.
+    """
+    raw = request.cookies.get(settings.refresh_cookie_name)
+    return hash_refresh_token(raw) if raw else None
+
+
+@router.get("/me/sessions", response_model=list[ActiveSessionOut])
+async def my_sessions(user: CurrentUser, request: Request, db: DbSession):
+    """Every browser this account is currently signed in on.
+
+    One entry per refresh-token *family*, not per token: rotation writes a new
+    row every quarter of an hour, and a list that counted those would report
+    ninety-six sessions for one laptop left open overnight. The family is what
+    a person means by "signed in on the lab PC".
+
+    Newest first, and the one being read from is marked — ending that one signs
+    the reader out here and now, which is worth knowing before pressing it.
+    """
+    now = utcnow()
+    rows = (
+        await db.exec(
+            select(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                col(RefreshToken.revoked_at).is_(None),
+                col(RefreshToken.expires_at) > now,
+            )
+            .order_by(col(RefreshToken.created_at).desc())
+        )
+    ).all()
+
+    # A live family has exactly one unrevoked token — its newest. Grouping is
+    # still done rather than assumed: the concurrent-refresh grace window can
+    # briefly leave two, and a list that showed the same machine twice would
+    # read as an intruder.
+    current_digest = _current_digest(request)
+    by_family: dict[str, list[RefreshToken]] = {}
+    for row in rows:
+        by_family.setdefault(row.family_id, []).append(row)
+
+    out: list[ActiveSessionOut] = []
+    for family_id, tokens in by_family.items():
+        newest = max(tokens, key=lambda t: t.created_at)
+        # `created_at` of the oldest *live* token is not when the family began —
+        # its ancestors are revoked and still in the table — so the start is
+        # taken from the whole chain.
+        started = (
+            await db.exec(
+                select(RefreshToken.created_at)
+                .where(RefreshToken.family_id == family_id)
+                .order_by(col(RefreshToken.created_at).asc())
+                .limit(1)
+            )
+        ).first() or newest.created_at
+        # The description is whatever the chain last recorded. A family that
+        # started before these columns existed fills them in at its next
+        # rotation, so prefer any token in it that has one.
+        described = next(
+            (
+                t
+                for t in sorted(tokens, key=lambda t: t.created_at, reverse=True)
+                if t.user_agent or t.ip
+            ),
+            newest,
+        )
+        out.append(
+            ActiveSessionOut(
+                family_id=family_id,
+                started_at=started,
+                last_seen_at=newest.last_used_at or newest.created_at,
+                expires_at=newest.expires_at,
+                ip=described.ip,
+                region=geoip.lookup(described.ip),
+                user_agent=described.user_agent,
+                current=any(t.token_hash == current_digest for t in tokens),
+            )
+        )
+
+    out.sort(key=lambda s: s.last_seen_at, reverse=True)
+    return out
+
+
+@router.delete("/me/sessions/{family_id}", response_model=SessionRevokeResult)
+async def end_session(
+    family_id: str, user: CurrentUser, request: Request, response: Response, db: DbSession
+):
+    """End one sign-in, from anywhere.
+
+    Scoped to the caller's own rows: `family_id` arrives from a browser, so a
+    family belonging to somebody else must 404 rather than revoke. Ending the
+    current one is allowed and is the ordinary "sign out this browser" — the
+    cookie is cleared on the way out so the tab does not keep presenting a
+    token the server has already burned.
+    """
+    rows = (
+        await db.exec(
+            select(RefreshToken).where(
+                RefreshToken.family_id == family_id, RefreshToken.user_id == user.id
+            )
+        )
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_such_session")
+
+    await _revoke_family(db, family_id, RevokeReason.logout)
+    await _audit(db, request, "session.revoke", user.id, target=family_id)
+    await db.commit()
+    if any(t.token_hash == _current_digest(request) for t in rows):
+        _clear_refresh_cookie(response)
+    return SessionRevokeResult(revoked=1)
+
+
+@router.post("/me/sessions/revoke-others", response_model=SessionRevokeResult)
+async def end_other_sessions(user: CurrentUser, request: Request, db: DbSession):
+    """Sign out everywhere except here.
+
+    The button somebody presses after realising they left themselves signed in
+    somewhere and cannot remember where. Keeping the current family is what
+    makes it pressable at all — revoking everything would sign the person out
+    mid-action and leave them unsure whether it had worked.
+    """
+    now = utcnow()
+    current_digest = _current_digest(request)
+    keep = None
+    if current_digest:
+        row = (
+            await db.exec(select(RefreshToken).where(RefreshToken.token_hash == current_digest))
+        ).first()
+        if row and row.user_id == user.id:
+            keep = row.family_id
+
+    live = (
+        await db.exec(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id,
+                col(RefreshToken.revoked_at).is_(None),
+                col(RefreshToken.expires_at) > now,
+            )
+        )
+    ).all()
+    families = {r.family_id for r in live} - ({keep} if keep else set())
+    for family_id in families:
+        await _revoke_family(db, family_id, RevokeReason.logout)
+    if families:
+        await _audit(db, request, "session.revoke", user.id, detail=f"others={len(families)}")
+    await db.commit()
+    return SessionRevokeResult(revoked=len(families))
+
+
 @router.get("/config")
 async def auth_config():
     """What this instance is able to offer.
@@ -434,6 +607,10 @@ async def auth_config():
             "externalDataGuard": policy.external_data_guard,
             "allowUserRawExternal": (policy.allow_user_raw_external and not policy.pii_masking),
         },
+        # Served unauthenticated with the rest of the instance's shape. It is a
+        # duration, not a secret, and the browser has to know it before it can
+        # start counting.
+        "idleTimeoutMinutes": policy.idle_timeout_minutes,
     }
 
 
@@ -542,7 +719,7 @@ async def reset_password(
     await db.commit()
 
     # Signed in on the spot — holding the address has just been proved.
-    await _issue_session(db, response, user)
+    await _issue_session(db, response, user, request=request)
 
 
 def _within_grace(row: RefreshToken) -> bool:

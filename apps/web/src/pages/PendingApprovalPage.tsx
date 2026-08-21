@@ -70,7 +70,7 @@ export function PendingApprovalPage() {
             <Mail size={15} />
             {t('관리자에게 문의')}
           </Button>
-          <Button variant="ghost" onClick={logout}>
+          <Button variant="ghost" onClick={() => void logout()}>
             <LogOut size={15} />
             {t('로그아웃')}
           </Button>
