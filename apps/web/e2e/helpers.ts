@@ -111,3 +111,31 @@ export async function gotoSurface(page: Page, kind: string) {
 export function answerText(page: Page, text: string | RegExp) {
   return page.locator('p').filter({ hasText: text }).first()
 }
+
+/**
+ * Picks a conversation model that has tools.
+ *
+ * The screen default is a strict-local model, and a strict-local turn is given
+ * only the two built-ins that never leave this process — no web search, no
+ * code execution, no connectors. Any spec whose subject is a tool has to say
+ * which model it means.
+ *
+ * Chosen by excluding the Strict Local group rather than by naming an id: a
+ * picker row prints the model's name, not its route.
+ */
+export async function pickToolModel(page: Page, name = /qwen3\.6/i) {
+  await page
+    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
+    .first()
+    .click()
+  const rows = page.getByRole('button', { name })
+  const count = await rows.count()
+  for (let i = 0; i < count; i++) {
+    const label = (await rows.nth(i).getAttribute('aria-label')) ?? (await rows.nth(i).innerText())
+    if (!/strict/i.test(label)) {
+      await rows.nth(i).click()
+      return
+    }
+  }
+  throw new Error('도구를 쓸 수 있는 모델을 고르지 못했습니다')
+}

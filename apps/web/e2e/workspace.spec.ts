@@ -8,7 +8,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { answerText, signIn } from './helpers'
+import { answerText, pickToolModel, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -167,34 +167,9 @@ test('첨부한 파일의 내용을 모델이 읽는다', async ({ page }) => {
   await expect(answerText(page, token)).toBeVisible({ timeout: 120_000 })
 })
 
-/**
- * A conversation model that can reach the network.
- *
- * The screen default is a strict-local model, which is given no web tool at
- * all — so a spec about searching has to say which model it means. Picked by
- * excluding the Strict Local group rather than by naming an id, because the
- * row prints the model's name and not its route.
- */
-async function pickSearchable(page: import('@playwright/test').Page) {
-  await page
-    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
-    .first()
-    .click()
-  const rows = page.getByRole('button', { name: /qwen3\.6/i })
-  const count = await rows.count()
-  for (let i = 0; i < count; i++) {
-    const name = (await rows.nth(i).getAttribute('aria-label')) ?? (await rows.nth(i).innerText())
-    if (!/strict/i.test(name)) {
-      await rows.nth(i).click()
-      return
-    }
-  }
-  throw new Error('웹에 닿는 모델을 고르지 못했습니다')
-}
-
 test('웹 검색 토글을 켜면 실제로 검색 단계가 보인다', async ({ page }) => {
   await page.goto('/new/chat')
-  await pickSearchable(page)
+  await pickToolModel(page)
 
   await page.getByRole('button', { name: /웹 검색/ }).first().click()
   await askFromNew(page, '올해 노벨 물리학상 수상자를 웹에서 확인해줘.')

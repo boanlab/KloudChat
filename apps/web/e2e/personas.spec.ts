@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { gotoSurface, openSidebar, seedPendingUser, signIn } from './helpers'
+import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
 import { personas } from './personas'
 
 /**
@@ -424,19 +424,7 @@ test.describe('페르소나 커버리지', () => {
                 // at all, so the model comes first — the need is that the
                 // steps appear, not that the default can search.
                 await gotoSurface(page, 'chat')
-                await page
-                  .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi/i })
-                  .first()
-                  .click()
-                const rows = page.getByRole('button', { name: /qwen3\.6/i })
-                for (let i = 0; i < (await rows.count()); i++) {
-                  const label =
-                    (await rows.nth(i).getAttribute('aria-label')) ?? (await rows.nth(i).innerText())
-                  if (!/strict/i.test(label)) {
-                    await rows.nth(i).click()
-                    break
-                  }
-                }
+                await pickToolModel(page)
                 await page.getByRole('button', { name: '웹 검색' }).first().click()
                 await page.getByLabel('프롬프트 입력').fill('올해 노벨 물리학상 수상자를 웹에서 찾아줘.')
                 await page.getByLabel('프롬프트 입력').press('Enter')
