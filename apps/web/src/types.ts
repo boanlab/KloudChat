@@ -120,6 +120,34 @@ export interface SessionMade {
   aspect: string
 }
 
+/** One thing a stopped generation needs answered. */
+export interface PendingQuestion {
+  id: string
+  question: string
+  /** Suggested answers. Never a closed set — every question takes prose too. */
+  options: string[]
+  /** The fact behind the question: which file, how much of it arrived. */
+  detail: string
+}
+
+/** A generation waiting on the person who asked for it. */
+export interface PendingPlan {
+  /** `clarify` is holding a question; `outline` is holding what it will write. */
+  stage: 'clarify' | 'outline'
+  /** The request it began from, with any answers already folded in. */
+  request: string
+  attachments: string[]
+  answers: Record<string, string>
+  questions?: PendingQuestion[]
+  plan?: {
+    title?: string
+    /** Slides and template blocks carry a layout; report sections are titles. */
+    slides?: { title: string; layout: string }[]
+    blocks?: { title: string; layout: string }[]
+    sections?: string[]
+  }
+}
+
 export interface Session {
   id: string
   kind: SessionKind
@@ -145,6 +173,18 @@ export interface Session {
   made: SessionMade | null
   /** Artifact this session is currently producing, if any. */
   artifactId: string | null
+  /**
+   * A generation that has stopped and is waiting on the person.
+   *
+   * The document surfaces plan before they write and ask before they plan when
+   * the material cannot carry the request. Neither of those turns produces an
+   * artifact, which is what keeps whatever the session already holds from
+   * being replaced by a run nobody looked at.
+   *
+   * While this is set, typing is a note on what is waiting rather than a new
+   * request — the back-and-forth these surfaces never had.
+   */
+  pending: PendingPlan | null
   /**
    * The rendering template this session writes into.
    *
