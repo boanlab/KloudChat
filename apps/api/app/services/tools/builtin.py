@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from app.core import logs
 from app.core.config import settings
 from app.services import index_client, knowledge, settings_store
 from app.services.tools.base import Tool, ToolContext, ToolResult
@@ -77,7 +78,7 @@ async def _scrape(base_url: str, url: str) -> str:
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        log.info("scrape failed for %s: %s", url, exc)
+        log.info("scrape failed for %s: %s", logs.safe(url), logs.safe(exc))
         return ""
     data = payload.get("data") or payload
     return (data.get("markdown") or data.get("content") or "").strip()
