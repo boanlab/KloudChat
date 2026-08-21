@@ -485,6 +485,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "intentFilter": policy.intent_filter,
         "blockedCategories": list(policy.blocked_categories or []),
         "retentionDays": policy.retention_days,
+        "idleTimeoutMinutes": policy.idle_timeout_minutes,
     }
 
 

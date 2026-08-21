@@ -103,6 +103,23 @@ export class UnauthorizedError extends ApiError {
   }
 }
 
+/**
+ * The turn stopped arriving.
+ *
+ * Not an error the server sent — it is the absence of one. A model backend
+ * that accepts the request and then never answers leaves the connection open
+ * with nothing on it, and `reader.read()` waits for as long as that lasts,
+ * which is why a conversation could sit on 생각하는 중… until the tab was
+ * closed. A stall is now a failure like any other: it ends the turn, says what
+ * happened, and leaves a retry.
+ */
+export class StreamStalledError extends ApiError {
+  constructor(detail = 'stream_stalled') {
+    super(504, detail)
+    this.name = 'StreamStalledError'
+  }
+}
+
 export interface PrivacyDecision {
   code: 'privacy_decision_required'
   findings: { category: string; source: string; count: number }[]
@@ -288,6 +305,8 @@ export const authConfig = {
       brand: { name: string; logo: string }
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
+      /** Minutes of inactivity before the browser ends the session. 0 is off. */
+      idleTimeoutMinutes: number
     }>('/auth/config'),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
@@ -432,8 +451,29 @@ export interface AccessEventRow {
   severity: string
 }
 
+/** One browser this account is currently signed in on. */
+export interface ActiveSessionRow {
+  /** The refresh-token family. Stable for the life of the sign-in. */
+  familyId: string
+  startedAt: string
+  lastSeenAt: string
+  expiresAt: string
+  ip: string
+  /** Empty unless the server has a GeoLite2 database. Never a guess. */
+  region: string
+  userAgent: string
+  /** The session this screen is being read from. Ending it signs you out. */
+  current: boolean
+}
+
 export const accessApi = {
   mine: () => call<AccessEventRow[]>('/auth/me/access'),
+  sessions: () => call<ActiveSessionRow[]>('/auth/me/sessions'),
+  endSession: (familyId: string) =>
+    call<{ revoked: number }>(`/auth/me/sessions/${familyId}`, { method: 'DELETE' }),
+  /** Everywhere but here. */
+  endOtherSessions: () =>
+    call<{ revoked: number }>('/auth/me/sessions/revoke-others', { method: 'POST' }),
 }
 
 export interface AuditRow {
@@ -460,6 +500,8 @@ export interface GovernancePolicy {
   blockedCategories: string[]
   /** 0 keeps everything; anything above clears message bodies older than that. */
   retentionDays: number
+  /** Minutes of inactivity before a browser signs itself out. 0 is off. */
+  idleTimeoutMinutes: number
   adaptiveRoutingEnabled: boolean
   adaptiveClassifierModelId: string | null
   adaptiveEconomyModelIds: string[]
@@ -747,6 +789,8 @@ export const sessionsApi = {
     patch: Partial<Pick<Session, 'title' | 'pinned' | 'model' | 'routingMode'>> & {
       /** A rendering template id, or `''` to take the template off. */
       renderTemplateId?: string
+      /** Which project it belongs to. `null` takes it out of every project. */
+      projectId?: string | null
     },
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -1544,21 +1588,59 @@ export async function* streamComparison(
   yield* postStream(`/sessions/${sessionId}/compare`, payload, signal)
 }
 
+/**
+ * How long a turn may produce nothing at all before it is called stalled.
+ *
+ * Generous on purpose. A large local model can take a while to reach its first
+ * token, and a tool call is a round trip to something else — so this is not a
+ * response-time budget, it is the point past which silence stops being slow
+ * and starts being broken. The server emits deltas and step events throughout
+ * a healthy turn, and sends no heartbeat, so silence here really is silence.
+ */
+const STALL_MS = 120_000
+
+/** Rejects when the stream has produced nothing for {@link STALL_MS}. */
+function withStallGuard<T>(work: Promise<T>, onStall: () => void): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        // Closing the reader is what actually frees the connection; rejecting
+        // alone would leave the request running behind an abandoned generator.
+        onStall()
+        reject(new StreamStalledError())
+      }, STALL_MS)
+    }),
+  ]).finally(() => clearTimeout(timer)) as Promise<T>
+}
+
 async function* postStream(
   path: string,
   payload: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    signal,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify(payload),
-  })
+  // The stop button's signal, plus one of our own so the stall guard has
+  // something to pull. Forwarded rather than replaced: 중단 must still reach the
+  // request, and the server tells 중단 from a dropped tab by it.
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) abort()
+
+  const res = await withStallGuard(
+    fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      signal: controller.signal,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    }),
+    abort,
+  )
   // A refused turn (no credits, unbuilt surface) answers with JSON, not a
   // stream. Surfacing it as an ApiError keeps the caller's error path uniform.
   if (!res.ok) {
@@ -1585,18 +1667,22 @@ async function* postStream(
 
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += value
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const raw = line.slice(6).trim()
-      if (raw === '[DONE]') return
-      yield JSON.parse(raw) as StreamEvent
+  try {
+    while (true) {
+      const { done, value } = await withStallGuard(reader.read(), abort)
+      if (done) break
+      buffer += value
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const raw = line.slice(6).trim()
+        if (raw === '[DONE]') return
+        yield JSON.parse(raw) as StreamEvent
+      }
     }
+  } finally {
+    signal?.removeEventListener('abort', abort)
   }
 }
 

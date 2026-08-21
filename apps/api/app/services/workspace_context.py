@@ -269,12 +269,24 @@ def _knowledge_block(files: list[StoredFile], header: str) -> tuple[str, list[Co
 
 
 async def _memory_block(
-    db: AsyncSession, user: User, project: Project | None
+    db: AsyncSession, user: User, project: Project | None, session: ChatSession | None = None
 ) -> tuple[str, tuple[str, ...], int]:
-    """The block, the names that went into it, and how many memories exist."""
+    """The block, the names that went into it, and how many memories exist.
+
+    Three scopes, widest first. `global` is what the account knows everywhere.
+    The project's is what the work knows — and it is the one an agent's
+    `share_note` writes into, which is what lets one agent's finding reach the
+    next agent working in the same project.
+
+    The session's own scope is the narrow case: a handoff written outside any
+    project belongs to the conversation that produced it and nowhere else. A
+    note left in an unrelated chat has no business appearing in this one.
+    """
     scopes = ["global"]
     if project is not None:
         scopes.append(project.id)
+    if session is not None:
+        scopes.append(session.id)
     rows = (
         await db.exec(
             select(Memory).where(
@@ -423,7 +435,7 @@ async def assemble(
     project = await _load_project(db, user, session)
     design = await _load_design_system(db, user, project)
     instructions, knowledge, knowledge_files = await _project_blocks(db, user, project)
-    memories, memory_names, memory_total = await _memory_block(db, user, project)
+    memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     resolved = await _resolve_skills(
         db,
         user,

@@ -1,4 +1,4 @@
-import { ArrowRight, CircleCheck, Loader2, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CircleCheck, Clock, Loader2, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { Brand } from '@/components/layout/Brand'
@@ -31,7 +31,7 @@ const UNKNOWN_ERROR = '요청을 처리하지 못했습니다. 잠시 후 다시
 
 export function LoginPage() {
   const t = useT()
-  const { login, signup, authError, bootstrap } = useStore()
+  const { login, signup, authError, bootstrap, signedOutReason } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   //: A mailed link lands here with `?token=`. No router exists while signed
   //: out, so this page reads the query itself.
@@ -185,6 +185,17 @@ export function LoginPage() {
                   ? t('등록된 계정으로 이어서 작업합니다.')
                   : t('관리자 승인이 끝나면 크레딧이 배정되고 바로 쓸 수 있습니다.')}
           </p>
+
+          {/* Why the form is here at all, when the person had been signed in.
+              Without this the timeout is indistinguishable from a fault, and
+              somebody who stepped away for lunch reads it as "it logged me out
+              for no reason". */}
+          {signedOutReason === 'idle' && !resetToken && !forgotOpen && (
+            <div className="mt-5 flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
+              <Clock size={14} className="mt-0.5 shrink-0" />
+              <span>{t('한동안 사용하지 않아 자동으로 로그아웃되었습니다. 다시 로그인하세요.')}</span>
+            </div>
+          )}
 
           {/* ── 링크로 들어온 재설정 ─────────────────────────────── */}
           {resetToken && (

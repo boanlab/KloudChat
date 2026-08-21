@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import { effectiveModelId, useStore } from '@/store/useStore'
 import type { PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
 import { ModelPicker } from './ModelPicker'
+import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 
 //: One verb ending (`~세요`) across all five surfaces. They sit next to each
@@ -812,6 +813,45 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 280)}px`
   }, [value])
 
+  /**
+   * Takes files from wherever they came from — the picker, a drop, a paste.
+   *
+   * One path for all three. It used to live inline in the file input's own
+   * `onChange`, which is why dropping and pasting could not reuse it and, in
+   * practice, why neither existed.
+   */
+  const addFiles = async (picked: File[]) => {
+    if (!picked.length || isMedia) return
+    setUploading(true)
+    try {
+      for (const file of picked) {
+        const row = await uploadFile(file, {
+          projectId: projectId ?? undefined,
+          sessionId: sessionId ?? undefined,
+        }).catch(() => null)
+        if (row) {
+          setAttachments((current) => {
+            activeRestoreToken.current = null
+            const next = [...current, row]
+            liveAttachments.current = next
+            return next
+          })
+        }
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // Attachments are a chat/report/deck idea; the two media surfaces send a
+  // prompt and option chips and have nowhere to put a file, so they neither
+  // light up nor swallow the browser's default.
+  const { over: dragging, handlers: dropHandlers } = useFileDrop(
+    (files) => void addFiles(files),
+    !isMedia,
+  )
+  const onPasteFiles = usePasteFiles((files) => void addFiles(files))
+
   const submit = () => {
     const text = value.trim()
     if (!text || busy || modelSelectionPending || unsupportedVideo) return
@@ -925,7 +965,17 @@ export function Composer({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+    <div className="relative mx-auto w-full max-w-3xl px-4 pb-4" {...dropHandlers}>
+      {/* Shown only while something is actually over it. A permanent dashed
+          rectangle would be a second input competing with the real one. */}
+      {dragging && (
+        <div className="pointer-events-none absolute inset-x-4 inset-y-0 z-10 grid place-items-center rounded-3xl border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
+          <span className="flex items-center gap-2">
+            <Paperclip size={15} />
+            {t('여기에 놓으면 첨부됩니다')}
+          </span>
+        </div>
+      )}
       {/* 한 덩어리로 읽히는 입력 상자. 첨부·옵션·모델·전송이 모두 이 테두리
           안에 있고, 바깥에는 아무 버튼도 두지 않는다 — 프롬프트를 쓰는 동안
           눈이 갈 곳은 여기 하나면 된다. */}
@@ -1129,6 +1179,9 @@ export function Composer({
               submit()
             }
           }}
+          // A screenshot on the clipboard had nowhere to go. Text pastes are
+          // untouched — the handler returns unless the clipboard holds files.
+          onPaste={onPasteFiles}
           placeholder={
             // What this 시작점 needs, rather than what the surface generally
             // does — the half of the template the person still has to supply.
@@ -1159,30 +1212,11 @@ export function Composer({
                 multiple
                 className="hidden"
                 aria-label={t('파일 선택')}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const picked = Array.from(e.target.files ?? [])
                   // Reset immediately so picking the same file twice still fires.
                   e.target.value = ''
-                  if (!picked.length) return
-                  setUploading(true)
-                  try {
-                    for (const file of picked) {
-                      const row = await uploadFile(file, {
-                        projectId: projectId ?? undefined,
-                        sessionId: sessionId ?? undefined,
-                      }).catch(() => null)
-                      if (row) {
-                        setAttachments((current) => {
-                          activeRestoreToken.current = null
-                          const next = [...current, row]
-                          liveAttachments.current = next
-                          return next
-                        })
-                      }
-                    }
-                  } finally {
-                    setUploading(false)
-                  }
+                  void addFiles(picked)
                 }}
               />
               <button

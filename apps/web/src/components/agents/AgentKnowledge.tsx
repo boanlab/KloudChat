@@ -2,6 +2,7 @@ import { CircleAlert, FileText, Globe, Loader2, Paperclip, RefreshCw, Trash2, Tr
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { agentsApi, downloadFile, errorMessage, type FileRow } from '@/lib/api'
+import { useFileDrop } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 
 /**
@@ -31,6 +32,20 @@ export function AgentKnowledge({
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const rowsRef = useRef<FileRow[]>([])
+  /**
+   * 그림 4 in the review: a file dragged onto this screen produced no reaction
+   * at all, just the browser's own cursor — and dropping it navigated away.
+   *
+   * The hook has to run above the unsaved-agent early return below, and the
+   * uploader it calls is defined under that return because it needs the id. A
+   * ref bridges the two rather than reordering a function around a hook.
+   */
+  const addFilesRef = useRef<(files: File[]) => void>(() => {})
+  const { over: dragging, handlers: dropHandlers } = useFileDrop(
+    (files) => addFilesRef.current(files),
+    // No shelf to drop onto until the agent has an id.
+    !!agentId,
+  )
 
   const replaceRows = useCallback(
     (next: FileRow[]) => {
@@ -80,6 +95,13 @@ export function AgentKnowledge({
       if (fileInput.current) fileInput.current.value = ''
     }
   }
+
+  /** Several at once — a drop is rarely one file. Sequential so the list
+   *  arrives in the order they were dropped rather than in finishing order. */
+  const addFiles = async (picked: File[]) => {
+    for (const file of picked) await addFile(file)
+  }
+  addFilesRef.current = addFiles
 
   const addUrl = async () => {
     setBusy('url')
@@ -131,16 +153,22 @@ export function AgentKnowledge({
       label={t('자료')}
       hint={t('이 에이전트가 검색해서 근거로 쓸 문서입니다. 대화마다 통째로 들어가지 않고, 필요할 때 찾아 씁니다.')}
     >
-      <div className="space-y-2">
+      <div className="relative space-y-2" {...dropHandlers}>
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-card border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
+            {t('여기에 놓으면 자료로 추가됩니다')}
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <input
             ref={fileInput}
             type="file"
+            multiple
             aria-label={t('자료 파일')}
             className="block text-base file:mr-3 file:rounded-control file:border file:border-line file:bg-elevated file:px-3 file:py-1.5 file:text-base"
             onChange={(e) => {
-              const picked = e.target.files?.[0]
-              if (picked) void addFile(picked)
+              const picked = Array.from(e.target.files ?? [])
+              if (picked.length) void addFiles(picked)
             }}
           />
           {busy === 'file' && <Loader2 size={14} className="animate-spin self-center text-faint" />}
