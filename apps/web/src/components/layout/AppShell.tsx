@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
@@ -48,14 +49,37 @@ export function AppShell() {
 
   return (
     <div className="relative flex h-full overflow-hidden bg-bg text-fg">
-      {narrow && sidebarOpen && (
+      {/* The panel stays mounted and moves, rather than appearing and vanishing:
+          a drawer that is simply gone on the next frame reads as a glitch. Both
+          transitions collapse under the reduced-motion guard in index.css. */}
+      {narrow && (
         <button
           aria-label={t('사이드바 닫기')}
-          className="absolute inset-0 z-30 bg-black/40"
+          tabIndex={sidebarOpen ? 0 : -1}
+          aria-hidden={!sidebarOpen}
+          className={cn(
+            'absolute inset-0 z-30 bg-black/40 transition-opacity duration-200',
+            sidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
           onClick={toggleSidebar}
         />
       )}
-      <div className={narrow ? 'absolute inset-y-0 left-0 z-40 shadow-float' : 'contents'}>
+      <div
+        className={
+          narrow
+            ? cn(
+                'absolute inset-y-0 left-0 z-40 shadow-float transition-transform duration-300',
+                sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+              )
+            : cn(
+                'shrink-0 overflow-hidden transition-[width] duration-300',
+                sidebarOpen ? 'w-[268px]' : 'w-0',
+              )
+        }
+        // Off-screen is out of reach: without this the collapsed panel keeps
+        // every one of its rows in the tab order.
+        inert={!sidebarOpen ? true : undefined}
+      >
         <Sidebar />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
