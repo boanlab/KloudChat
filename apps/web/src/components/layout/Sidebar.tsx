@@ -313,6 +313,19 @@ export function Sidebar() {
         <Brand name={brand.name} logo={brand.logo} />
       </Link>
 
+      <div className="px-3 pb-2">
+        <div className="relative">
+          <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('검색')}
+            aria-label={t('대화 빠른 검색')}
+            className="h-8 bg-transparent pl-8 text-base"
+          />
+        </div>
+      </div>
+
       {/* 만들기 — 다섯 개 축 */}
       <nav className="space-y-0.5 px-3 pb-2">
         {kindOrder.filter((k) => enabledKinds.includes(k)).map((kind) => {
@@ -341,19 +354,6 @@ export function Sidebar() {
           )
         })}
       </nav>
-
-      <div className="px-3 pb-2">
-        <div className="relative">
-          <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('검색')}
-            aria-label={t('대화 빠른 검색')}
-            className="h-8 bg-transparent pl-8 text-base"
-          />
-        </div>
-      </div>
 
       {/* 관리자 항목은 계정 메뉴 안에 있다. 대기 건수는 계정 버튼에 붙어 있어,
           내비게이션을 한 벌 더 두지 않고도 승인 큐가 스스로 드러난다. */}
