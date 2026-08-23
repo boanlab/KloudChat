@@ -3,6 +3,7 @@ import {
   Brain,
   ChartColumn,
   ChevronDown,
+  History,
   LogOut,
   Palette,
   Plug,
@@ -57,6 +58,11 @@ function AccountItems() {
       </MenuItem>
       <MenuItem icon={<Palette size={14} />} onClick={() => navigate('/designs')}>
         {t('디자인')}
+      </MenuItem>
+      {/* 목록은 사이드바가 전부 보여줍니다. 이 화면이 남은 이유는 좁은 세로
+          칼럼에서 할 수 없는 것 — 여러 건을 골라 한 번에 지우는 일입니다. */}
+      <MenuItem icon={<History size={14} />} onClick={() => navigate('/history')}>
+        {t('대화 관리')}
       </MenuItem>
       <MenuSeparator />
       <MenuLabel>{t('계정')}</MenuLabel>
