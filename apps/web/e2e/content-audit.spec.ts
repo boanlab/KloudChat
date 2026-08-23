@@ -302,7 +302,9 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   await gotoWorkspace(page, '대화 관리')
   await page.waitForTimeout(3500)
   checks++
-  const historyText = await page.evaluate(() => document.body.innerText)
+  // Scoped to the content region: the sidebar prints the same empty line, and
+  // whether *it* is empty is not what this check is about.
+  const historyText = await page.getByRole('main').innerText()
   if (/아직 대화가 없습니다/.test(historyText)) {
     note('stale-navigation', '대화 기록', '/history',
       '빠르게 오가면 늦게 온 응답이 화면을 비운다')
