@@ -1,6 +1,6 @@
 import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { cn, groupByRecency } from '@/lib/utils'
@@ -191,7 +191,6 @@ export function Sidebar() {
   const {
     sessions,
     projects,
-    activeSessionId,
     deleteSession,
     renameSession,
     togglePinSession,
@@ -241,7 +240,7 @@ export function Sidebar() {
     <SessionRow
       key={session.id}
       session={session}
-      active={activeSessionId === session.id}
+      active={openSessionId === session.id}
       emoji={projects.find((p) => p.id === session.projectId)?.emoji}
       projects={projects}
       onOpen={() => navigate(`/s/${session.id}`)}
@@ -251,6 +250,14 @@ export function Sidebar() {
       onDelete={() => deleteSession(session.id)}
     />
   )
+
+  /**
+   * Which row is the screen you are on — a question about the route, not about
+   * store state. `activeSessionId` outlives the conversation screen: nothing
+   * clears it on the way out, so leaving a chat for 홈 left its row lit beside
+   * the newly lit 새로 만들기.
+   */
+  const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
 
   const rail = useStore((s) => s.sidebar) === 'rail'
 
