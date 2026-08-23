@@ -10,6 +10,18 @@ import { useT } from '@/lib/useT'
 import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
 
+/**
+ * How a navigation row says it is the one you are on: a ground that separates
+ * from the sidebar, and the full text colour at medium weight.
+ */
+const rowBase =
+  'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
+
+const rowState = (active: boolean) =>
+  active
+    ? 'bg-selected font-medium text-fg'
+    : 'text-muted hover:bg-elevated hover:text-fg'
+
 /** Unpinned conversations rendered per page. */
 const PAGE = 40
 
@@ -90,7 +102,9 @@ function SessionRow({
     <div
       className={cn(
         'group relative flex items-center rounded-control text-base transition-colors',
-        active ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+        active
+          ? 'bg-selected font-medium text-fg'
+          : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
       <button
@@ -268,7 +282,7 @@ export function Sidebar() {
                   cn(
                     'grid size-9 place-items-center rounded-control transition-colors',
                     isActive
-                      ? 'bg-elevated text-fg'
+                      ? 'bg-selected text-fg'
                       : 'text-muted hover:bg-elevated hover:text-fg',
                   )
                 }
@@ -311,12 +325,7 @@ export function Sidebar() {
           to="/"
           end
           className={({ isActive }) =>
-            cn(
-              'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-              isActive
-                ? 'bg-elevated font-medium text-fg'
-                : 'text-muted hover:bg-elevated hover:text-fg',
-            )
+            cn(rowBase, rowState(isActive))
           }
         >
           <Plus size={15} />
@@ -343,12 +352,7 @@ export function Sidebar() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                  isActive
-                    ? 'bg-elevated font-medium text-fg'
-                    : 'text-muted hover:bg-elevated hover:text-fg',
-                )
+                cn(rowBase, rowState(isActive))
               }
             >
               <Icon size={15} />
