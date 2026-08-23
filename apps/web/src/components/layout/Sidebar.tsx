@@ -1,58 +1,26 @@
-import { Bot, Boxes, Brain, ChevronRight, FolderMinus, History, Layers, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
-import { kindMeta, kindOrder } from '@/lib/kinds'
-import { cn, groupByRecency } from '@/lib/utils'
+import { kindMeta } from '@/lib/kinds'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
-import { AccountMenu } from './AccountMenu'
+import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
 
 /**
- * A collapsible group of navigation rows: too many fixed rows leave no height
- * for the conversation list. The collapsed state is remembered.
+ * How a navigation row says it is the one you are on: a ground that separates
+ * from the sidebar, and the full text colour at medium weight.
  */
-function NavSection({
-  id,
-  label,
-  children,
-  defaultOpen = true,
-}: {
-  id: string
-  label: string
-  children: ReactNode
-  defaultOpen?: boolean
-}) {
-  const storageKey = `kchat-nav-${id}`
-  const [open, setOpen] = useState(() => {
-    const saved = localStorage.getItem(storageKey)
-    return saved === null ? defaultOpen : saved === '1'
-  })
-  const toggle = () => {
-    setOpen((v) => {
-      localStorage.setItem(storageKey, v ? '0' : '1')
-      return !v
-    })
-  }
-  return (
-    <nav className="shrink-0 border-t border-line px-3 py-2">
-      <button
-        onClick={toggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1 px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase transition-colors hover:text-muted"
-      >
-        <ChevronRight
-          size={11}
-          className={cn('transition-transform', open && 'rotate-90')}
-        />
-        {label}
-      </button>
-      {open && <div className="space-y-0.5">{children}</div>}
-    </nav>
-  )
-}
+const rowBase =
+  'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
+
+const rowState = (active: boolean) =>
+  active
+    ? 'bg-selected font-medium text-fg'
+    : 'text-muted hover:bg-elevated hover:text-fg'
 
 /** Unpinned conversations rendered per page. */
 const PAGE = 40
@@ -64,44 +32,14 @@ interface NavRow {
 }
 
 /**
- * The workspace, grouped by what a person is doing rather than listed.
- *
- * Eight rows in one flat column — 프로젝트, 아티팩트, 디자인, 에이전트, 스킬,
- * 메모리, 커넥터, 대화 기록 — said nothing about how any of them relate. An
- * agent and the skills and connectors it can reach are one subject; a finished
- * report and the design it wears are another; and reading the list gave no way
- * to tell which was which, so the connection between an agent and what it can
- * do had to be learned rather than seen.
- *
- * Three groups, in the order work moves through them. **실행** is what does the
- * work and what it is allowed to use. **자산** is what came out and what it is
- * kept in. **기록** is where to go back and find it.
+ * What the sidebar keeps: the two places conversations are filed. Everything
+ * else the workspace holds — agents, skills, connectors, memory, designs — is
+ * set up once and then used from the composer, so it lives in the account menu
+ * and leaves this column to the list it exists for.
  */
-const workspaceNav: { id: string; label: string; items: NavRow[] }[] = [
-  {
-    id: 'run',
-    label: '실행',
-    items: [
-      { to: '/agents', label: '에이전트', icon: Bot },
-      { to: '/skills', label: '스킬', icon: Sparkles },
-      { to: '/connectors', label: '커넥터', icon: Plug },
-      { to: '/memory', label: '메모리', icon: Brain },
-    ],
-  },
-  {
-    id: 'assets',
-    label: '자산',
-    items: [
-      { to: '/projects', label: '프로젝트', icon: Boxes },
-      { to: '/artifacts', label: '아티팩트', icon: Layers },
-      { to: '/designs', label: '디자인', icon: Palette },
-    ],
-  },
-  {
-    id: 'records',
-    label: '기록',
-    items: [{ to: '/history', label: '대화 기록', icon: History }],
-  },
+const workspaceNav: NavRow[] = [
+  { to: '/projects', label: '프로젝트', icon: Boxes },
+  { to: '/artifacts', label: '아티팩트', icon: Layers },
 ]
 
 
@@ -164,7 +102,9 @@ function SessionRow({
     <div
       className={cn(
         'group relative flex items-center rounded-control text-base transition-colors',
-        active ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+        active
+          ? 'bg-selected font-medium text-fg'
+          : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
       <button
@@ -247,18 +187,15 @@ export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
   const brand = useStore((s) => s.brand)
-  const enabledKinds = useStore((s) => s.enabledKinds)
   const [query, setQuery] = useState('')
   const {
     sessions,
     projects,
-    activeSessionId,
     deleteSession,
     renameSession,
     togglePinSession,
     moveSessionToProject,
     user,
-    sidebarOpen,
   } = useStore()
 
   const filtered = useMemo(() => {
@@ -275,17 +212,34 @@ export function Sidebar() {
      * change. Search still looks at all of them.
      */
   const [shown, setShown] = useState(PAGE)
+  /**
+   * The list goes to the end of the history now that 대화 기록 is not a
+   * separate screen, so the last page has to arrive on its own rather than on
+   * a click every forty rows.
+   */
+  const moreRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const el = moreRef.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setShown((n) => n + PAGE)
+      },
+      { rootMargin: '200px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [shown, query])
+
   const visible = unpinned.slice(0, shown)
-  const groups = groupByRecency(visible)
   const hidden = unpinned.length - visible.length
 
-  if (!sidebarOpen) return null
 
   const renderRow = (session: Session) => (
     <SessionRow
       key={session.id}
       session={session}
-      active={activeSessionId === session.id}
+      active={openSessionId === session.id}
       emoji={projects.find((p) => p.id === session.projectId)?.emoji}
       projects={projects}
       onOpen={() => navigate(`/s/${session.id}`)}
@@ -296,51 +250,67 @@ export function Sidebar() {
     />
   )
 
+  /**
+   * Which row is the screen you are on — a question about the route, not about
+   * store state. `activeSessionId` outlives the conversation screen: nothing
+   * clears it on the way out, so leaving a chat for 홈 left its row lit beside
+   * the newly lit 새로 만들기.
+   */
+  const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
+
+  const rail = useStore((s) => s.sidebar) === 'rail'
+
   const used = user?.creditsUsed ?? 0
   const total = user?.monthlyCredits ?? 0
   const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0
 
-  return (
-    <aside className="flex w-[268px] shrink-0 flex-col border-r border-line bg-sidebar">
-      {/* The name is where everyone reaches for home. It looked like a header
-          and behaved like one, so the only way back was the 홈 item further
-          down — which is not where a hand goes. */}
-      <Link
-        to="/"
-        aria-label={t('홈')}
-        className="flex items-center gap-2 rounded-control px-3 py-3 transition-colors hover:bg-elevated"
-      >
-        <Brand name={brand.name} logo={brand.logo} />
-      </Link>
+  /**
+   * The collapsed state used to be no panel at all. What a rail keeps is the
+   * things you navigate *to*; what it gives up is the list, the search over it
+   * and the credit figure — none of which survive 64px, all of which are one
+   * press away. 계정 stays because the way out of an account cannot be behind
+   * a state the account is already in.
+   */
+  if (rail) {
+    return (
+      <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
+        <Brand name={brand.name} logo={brand.logo} markOnly />
+        <nav className="mt-3 flex flex-col items-center gap-1">
+          {[{ to: '/', label: '새로 만들기', icon: Plus, end: true }, ...workspaceNav].map(
+            ({ to, label, icon: Icon, ...rest }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={'end' in rest ? (rest as { end?: boolean }).end : undefined}
+                title={t(label)}
+                aria-label={t(label)}
+                className={({ isActive }) =>
+                  cn(
+                    'grid size-9 place-items-center rounded-control transition-colors',
+                    isActive
+                      ? 'bg-selected text-fg'
+                      : 'text-muted hover:bg-elevated hover:text-fg',
+                  )
+                }
+              >
+                <Icon size={17} />
+              </NavLink>
+            ),
+          )}
+        </nav>
+        <div className="mt-auto">
+          <AccountMenuCompact />
+        </div>
+      </aside>
+    )
+  }
 
-      {/* 만들기 — 다섯 개 축 */}
-      <nav className="space-y-0.5 px-3 pb-2">
-        {kindOrder.filter((k) => enabledKinds.includes(k)).map((kind) => {
-          const meta = kindMeta[kind]
-          const Icon = meta.icon
-          return (
-            <NavLink
-              key={kind}
-              to={`/new/${kind}`}
-              className={({ isActive }) =>
-                cn(
-                  'group flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                  isActive
-                    ? 'bg-elevated font-medium text-fg'
-                    : 'text-muted hover:bg-elevated hover:text-fg',
-                )
-              }
-            >
-              <Icon size={15} style={{ color: meta.color }} />
-              {t(meta.label)}
-              <Plus
-                size={13}
-                className="ml-auto text-faint opacity-0 transition-opacity group-hover:opacity-100"
-              />
-            </NavLink>
-          )
-        })}
-      </nav>
+  return (
+    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar transition-[width] duration-300">
+      {/* 이름은 이름일 뿐입니다. 시작하는 행동은 바로 아래 새로 만들기가 맡습니다. */}
+      <div className="flex items-center gap-2 px-3 py-3">
+        <Brand name={brand.name} logo={brand.logo} />
+      </div>
 
       <div className="px-3 pb-2">
         <div className="relative">
@@ -355,41 +325,42 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* 시작하는 곳 하나와 대화가 놓이는 두 곳. 세 줄이 한 덩어리로 읽히도록
+          같은 간격을 씁니다 — 예전에는 스크롤 경계가 사이에 있어 첫 줄과 둘째
+          줄만 16px 떨어져 있었습니다. 워크스페이스가 여덟 줄이던 시절 목록의
+          높이를 지키려고 스크롤 안에 두었던 것이고, 지금은 두 줄입니다. */}
+      <nav className="space-y-0.5 px-3 pb-2">
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            cn(rowBase, rowState(isActive))
+          }
+        >
+          <Plus size={15} />
+          {t('새로 만들기')}
+        </NavLink>
+        {workspaceNav.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              cn(rowBase, rowState(isActive))
+            }
+          >
+            <Icon size={15} />
+            {t(label)}
+          </NavLink>
+        ))}
+      </nav>
+
       {/* 관리자 항목은 계정 메뉴 안에 있다. 대기 건수는 계정 버튼에 붙어 있어,
           내비게이션을 한 벌 더 두지 않고도 승인 큐가 스스로 드러난다. */}
 
-      {/* 워크스페이스 + 최근 작업 — 사이드바의 본체입니다. */}
-      {/* One scroller for both, because pinning the workspace rows cost what the
-          conversations needed: on a 800px-tall laptop the eight fixed rows left
-          the list 125px, two conversations, and a row menu with nowhere to open
-          — it flipped upward into the clipped edge, where its items drew over
-          the navigation and a click on 이름 바꾸기 landed on 커넥터 instead.
-          `min-h-0`, not a floor: with a minimum height the region refuses to
+      {/* `min-h-0`, not a floor: with a minimum height the region refuses to
           shrink, and on a short window it pushes the credits and the account
           below the fold — the two things that must not go missing. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {workspaceNav.map((group) => (
-          <NavSection key={group.id} id={group.id} label={t(group.label)}>
-            {group.items.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                    isActive
-                      ? 'bg-elevated font-medium text-fg'
-                      : 'text-muted hover:bg-elevated hover:text-fg',
-                  )
-                }
-              >
-                <Icon size={15} />
-                {t(label)}
-              </NavLink>
-            ))}
-          </NavSection>
-        ))}
-
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
             <section className="mb-3">
@@ -399,16 +370,20 @@ export function Sidebar() {
               <div className="space-y-0.5">{pinned.map(renderRow)}</div>
             </section>
           )}
-          {groups.map((g) => (
-            <section key={g.label} className="mb-3">
+          {visible.length > 0 && (
+            <section className="mb-3">
               <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                {t(g.label)}
+                {t('작업 목록')}
               </p>
-              <div className="space-y-0.5">{g.items.map(renderRow)}</div>
+              <div className="space-y-0.5">{visible.map(renderRow)}</div>
             </section>
-          ))}
+          )}
+          {/* Reaching the end of the list is the request for more of it. The
+              count stays as the label, so a reader still knows how much is
+              behind them, and a keyboard can page without a pointer. */}
           {hidden > 0 && (
             <button
+              ref={moreRef}
               onClick={() => setShown((n) => n + PAGE)}
               className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
@@ -416,7 +391,9 @@ export function Sidebar() {
             </button>
           )}
           {filtered.length === 0 && (
-            <p className="px-2.5 py-6 text-center text-base text-faint">{t('검색 결과가 없습니다')}</p>
+            <p className="px-2.5 py-6 text-center text-base text-faint">
+              {query.trim() ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
+            </p>
           )}
         </div>
       </div>

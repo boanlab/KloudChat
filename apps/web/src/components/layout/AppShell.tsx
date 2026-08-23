@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
@@ -36,31 +37,64 @@ function UndoBar() {
 export function AppShell() {
   const t = useT()
   const narrow = useNarrowLayout()
-  const { sidebarOpen, toggleSidebar } = useStore()
+  const { sidebar, cycleSidebar } = useStore()
+  const open = sidebar !== 'hidden'
   const location = useLocation()
 
   // On narrow layouts the sidebar covers the content, so navigating has to
   // dismiss it — otherwise the user taps a link and sees the same panel.
   useEffect(() => {
-    if (narrow && sidebarOpen) toggleSidebar()
+    if (narrow && open) cycleSidebar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, narrow])
 
   return (
     <div className="relative flex h-full overflow-hidden bg-bg text-fg">
-      {narrow && sidebarOpen && (
+      {/* The panel stays mounted and moves, rather than appearing and vanishing:
+          a drawer that is simply gone on the next frame reads as a glitch. Both
+          transitions collapse under the reduced-motion guard in index.css. */}
+      {narrow && (
         <button
           aria-label={t('사이드바 닫기')}
-          className="absolute inset-0 z-30 bg-black/40"
-          onClick={toggleSidebar}
+          tabIndex={open ? 0 : -1}
+          aria-hidden={!open}
+          className={cn(
+            'absolute inset-0 z-30 bg-black/40 transition-opacity duration-200',
+            open ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+          onClick={cycleSidebar}
         />
       )}
-      <div className={narrow ? 'absolute inset-y-0 left-0 z-40 shadow-float' : 'contents'}>
+      <div
+        className={
+          narrow
+            ? cn(
+                'absolute inset-y-0 left-0 z-40 shadow-float transition-transform duration-300',
+                open ? 'translate-x-0' : '-translate-x-full',
+              )
+            : cn(
+                'shrink-0 transition-[width] duration-300',
+                // Clipping only where something has to be clipped. Applied at
+                // every width it would also cut off the menus the panel opens,
+                // which at 64px is the whole of them.
+                sidebar === 'hidden'
+                  ? 'w-0 overflow-hidden'
+                  : sidebar === 'rail'
+                    ? 'w-16'
+                    : 'w-[268px]',
+              )
+        }
+        // Off-screen is out of reach: without this the collapsed panel keeps
+        // every one of its rows in the tab order.
+        inert={!open ? true : undefined}
+      >
         <Sidebar />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* The one landmark the shell had no element for. A reader jumping by
+          landmark had the panel and nothing to jump *to*. */}
+      <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
-      </div>
+      </main>
       <UndoBar />
     </div>
   )

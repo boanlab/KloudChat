@@ -3,11 +3,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Badge, Card } from '@/components/ui'
+import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignRail } from '@/components/chat/DesignRail'
 import { kindMeta, kindOrder } from '@/lib/kinds'
-import { cn, madeLine, relativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
@@ -36,29 +36,54 @@ import { useT } from '@/lib/useT'
  * **The rest is below the fold it belongs under.** Work in progress and work
  * already done are things you come back for, not things you start with.
  */
-export function HomePage() {
+export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
-  const { user, sessions, jobs, projects, agents, enabledKinds, newSession } = useStore()
+  const { user, sessions, jobs, agents, enabledKinds, newSession } = useStore()
   //: Which surface the composer is currently writing for. Local, and only for
   //: as long as this screen is open — a session gets its kind at creation.
-  const [kind, setKind] = useState<SessionKind>('chat')
+  const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
 
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
+  /**
+   * A surface an administrator has switched off, asked for by name. The chip
+   * row simply would not contain it, so falling back silently would answer a
+   * request for 이미지 with a chat box and no reason given.
+   */
+  const offHere = initialKind !== undefined && !enabledKinds.includes(initialKind)
   //: The kind can be switched off by an administrator while this screen is
   //: open, or arrive disabled on a reload. Falling back keeps the composer on
   //: something that exists rather than on a surface that will refuse the turn.
   const active = surfaces.includes(kind) ? kind : (surfaces[0] ?? 'chat')
 
-  const recent = [...sessions]
-    .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
-    .slice(0, 6)
   const running = jobs.filter((j) => j.status === 'running' || j.status === 'queued')
   //: Only the ones that can take this surface, and only the ones switched on.
   //: An agent listed here and refused on click is worse than one not listed.
   const usableAgents = agents
     .filter((a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(active)))
     .slice(0, 6)
+
+  if (offHere) {
+    const meta = kindMeta[initialKind]
+    const Icon = meta.icon
+    return (
+      <>
+        <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
+        <PageBody>
+          <EmptyState
+            icon={<Icon size={18} />}
+            title={t('{kind} 기능이 꺼져 있습니다').replace('{kind}', t(meta.label))}
+            description={t('관리자가 이 워크스페이스에서 사용하지 않도록 설정했습니다. 필요하면 관리자에게 요청하세요.')}
+            action={
+              <Button variant="primary" onClick={() => navigate('/')}>
+                {t('홈으로')}
+              </Button>
+            }
+          />
+        </PageBody>
+      </>
+    )
+  }
 
   return (
     <>
@@ -189,41 +214,6 @@ export function HomePage() {
           </section>
         )}
 
-        <section>
-          <h2 className="mb-2.5 text-base font-semibold">{t('최근 작업')}</h2>
-          <div className="space-y-2">
-            {recent.map((s) => {
-              const meta = kindMeta[s.kind]
-              const Icon = meta.icon
-              const project = projects.find((p) => p.id === s.projectId)
-              return (
-                <Card
-                  key={s.id}
-                  onClick={() => navigate(`/s/${s.id}`)}
-                  className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-elevated"
-                >
-                  <Icon size={15} className="shrink-0" style={{ color: meta.color }} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-medium">{s.title}</p>
-                    {/* 그림과 영상 화면은 turn 을 남기지 않아 preview 가 늘 비어
-                        있었다. 제목이 이미 사람이 쓴 문장이므로, 그 아래에는
-                        되돌아온 것 — 몇 장인지, 몇 초인지 — 을 적는다. */}
-                    <p className="truncate text-xs text-muted">
-                      {s.messages.at(-1)?.content.slice(0, 80) ??
-                        s.preview ??
-                        madeLine(s.made, t) ??
-                        t('아직 주고받은 메시지가 없습니다')}
-                    </p>
-                  </div>
-                  {project && <Badge>{project.emoji}</Badge>}
-                  <span className="shrink-0 text-xs text-faint">
-                    {relativeTime(s.updatedAt)}
-                  </span>
-                </Card>
-              )
-            })}
-          </div>
-        </section>
       </PageBody>
     </>
   )

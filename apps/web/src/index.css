@@ -27,6 +27,11 @@
   --accent-hover: #1c3fc4;
   --accent-fg: #ffffff;
   --accent-soft: #e3eafd;
+  /* The row you are on. `--elevated` cannot say this from the sidebar: it is
+     tuned to lift off `--panel`, and against `--sidebar` it lands 1.03:1 away
+     — the same value the hover state uses, so selected and hovered were one
+     appearance. This is the accent laid over the sidebar itself. */
+  --selected: #cdd7f3;
   --success: #0a7048;
   --warn: #8a5300;
   --danger: #b4322a;
@@ -58,6 +63,7 @@
   --accent-hover: #9ab1ff;
   --accent-fg: #0f1116;
   --accent-soft: #1f2a47;
+  --selected: #2b334e;
   --success: #4fbf8c;
   --warn: #e0a44a;
   --danger: #f0736a;
@@ -86,6 +92,7 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
+  --color-selected: var(--selected);
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
