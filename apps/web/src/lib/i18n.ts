@@ -52,8 +52,10 @@ const EN: Record<string, string> = {
   '거버넌스': 'Governance',
   '아티팩트': 'Artifacts',
   '대화 기록': 'History',
+  '대화 관리': 'Manage conversations',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
+  '새로 만들기': 'New',
   '테마: 시스템 설정 따름': 'Theme: follow system',
   '테마: 밝게': 'Theme: light',
   '테마: 어둡게': 'Theme: dark',
@@ -491,6 +493,7 @@ const EN: Record<string, string> = {
   '10자 이상, 숫자와 기호 포함': '10+ characters, with a number and a symbol',
   '홍길동': 'Your name',
   '검색 결과가 없습니다': 'No results',
+  '아직 대화가 없습니다': 'No conversations yet',
   '아직 주고받은 메시지가 없습니다': 'No messages yet',
   '자료와 지침을 프로젝트에 모아 두면, 다섯 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.': 'Gather files and instructions into a project and every surface works from the same context. What you make is kept as artifacts and exports as documents.',
   '무엇이든 물어보세요': 'Ask anything',
@@ -1234,6 +1237,7 @@ const EN: Record<string, string> = {
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
   // ── 작업 단계 카드 ───────────────────────────────────────────────────
+  '작업 목록': 'Work',
   '작업 중': 'Working',
   '작업 완료': 'Done',
   '중단됨': 'Stopped',

@@ -1,11 +1,17 @@
 import {
+  Bot,
+  Brain,
   ChartColumn,
   ChevronDown,
+  History,
   LogOut,
+  Palette,
+  Plug,
   Server,
   Settings,
   Shield,
   ShieldCheck,
+  Sparkles,
   Terminal as TerminalIcon,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -35,6 +41,30 @@ function AccountItems() {
 
   return (
     <>
+      {/* 한 번 설정하고 나면 컴포저에서 쓰이는 것들. 사이드바의 세로는
+          대화 목록이 써야 하므로 여기에 둡니다. */}
+      <MenuLabel>{t('워크스페이스')}</MenuLabel>
+      <MenuItem icon={<Bot size={14} />} onClick={() => navigate('/agents')}>
+        {t('에이전트')}
+      </MenuItem>
+      <MenuItem icon={<Sparkles size={14} />} onClick={() => navigate('/skills')}>
+        {t('스킬')}
+      </MenuItem>
+      <MenuItem icon={<Plug size={14} />} onClick={() => navigate('/connectors')}>
+        {t('커넥터')}
+      </MenuItem>
+      <MenuItem icon={<Brain size={14} />} onClick={() => navigate('/memory')}>
+        {t('메모리')}
+      </MenuItem>
+      <MenuItem icon={<Palette size={14} />} onClick={() => navigate('/designs')}>
+        {t('디자인')}
+      </MenuItem>
+      {/* 목록은 사이드바가 전부 보여줍니다. 이 화면이 남은 이유는 좁은 세로
+          칼럼에서 할 수 없는 것 — 여러 건을 골라 한 번에 지우는 일입니다. */}
+      <MenuItem icon={<History size={14} />} onClick={() => navigate('/history')}>
+        {t('대화 관리')}
+      </MenuItem>
+      <MenuSeparator />
       <MenuLabel>{t('계정')}</MenuLabel>
       <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
         {t('설정')}
@@ -90,7 +120,10 @@ export function AccountMenu() {
       align="left"
       className="min-w-56"
       trigger={() => (
-        <button className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated">
+        <button
+          aria-label={`${t('계정 메뉴')} · ${user?.email ?? ''}`}
+          className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
+        >
           <span
             className="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white"
             style={{ background: user?.avatarColor }}
@@ -134,11 +167,11 @@ export function AccountMenuCompact() {
 
   return (
     <Dropdown
-      align="right"
+      align="left"
       className="min-w-56"
       trigger={() => (
         <button
-          aria-label={t('계정 메뉴')}
+          aria-label={`${t('계정 메뉴')} · ${user?.email ?? ''}`}
           title={user?.email ?? t('계정 메뉴')}
           className="relative grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-85"
           style={{ background: user?.avatarColor }}

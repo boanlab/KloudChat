@@ -3,11 +3,10 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
-import { AccountMenuCompact } from './AccountMenu'
 import { ThemeToggle } from './ThemeToggle'
 
 export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode }) {
-  const { toggleSidebar, lang, toggleLang } = useStore()
+  const { cycleSidebar, lang, toggleLang } = useStore()
   const t = useT()
 
   return (
@@ -21,7 +20,7 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
       <Button
         variant="ghost"
         size="icon"
-        onClick={toggleSidebar}
+        onClick={cycleSidebar}
         aria-label={t('사이드바 토글')}
         title={t('사이드바를 접거나 폅니다')}
       >
@@ -42,9 +41,6 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           <span className="text-sm font-medium">{lang === 'ko' ? 'EN' : '한'}</span>
         </Button>
         <ThemeToggle />
-        {/* 계정 — 로그아웃까지 포함해 모든 화면에서 두 번의 조작 안에 있다.
-            사이드바 접힘 상태나 좁은 화면에서는 이쪽이 유일한 경로다. */}
-        <AccountMenuCompact />
       </div>
     </header>
   )
