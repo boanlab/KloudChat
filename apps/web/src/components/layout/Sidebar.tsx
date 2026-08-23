@@ -1,5 +1,5 @@
 import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
@@ -199,6 +199,25 @@ export function Sidebar() {
      * change. Search still looks at all of them.
      */
   const [shown, setShown] = useState(PAGE)
+  /**
+   * The list goes to the end of the history now that 대화 기록 is not a
+   * separate screen, so the last page has to arrive on its own rather than on
+   * a click every forty rows.
+   */
+  const moreRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const el = moreRef.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setShown((n) => n + PAGE)
+      },
+      { rootMargin: '200px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [shown, query])
+
   const visible = unpinned.slice(0, shown)
   const groups = groupByRecency(visible)
   const hidden = unpinned.length - visible.length
@@ -312,8 +331,12 @@ export function Sidebar() {
               <div className="space-y-0.5">{g.items.map(renderRow)}</div>
             </section>
           ))}
+          {/* Reaching the end of the list is the request for more of it. The
+              count stays as the label, so a reader still knows how much is
+              behind them, and a keyboard can page without a pointer. */}
           {hidden > 0 && (
             <button
+              ref={moreRef}
               onClick={() => setShown((n) => n + PAGE)}
               className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
