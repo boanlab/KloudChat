@@ -321,7 +321,9 @@ export function Sidebar() {
             </button>
           )}
           {filtered.length === 0 && (
-            <p className="px-2.5 py-6 text-center text-base text-faint">{t('검색 결과가 없습니다')}</p>
+            <p className="px-2.5 py-6 text-center text-base text-faint">
+              {query.trim() ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
+            </p>
           )}
         </div>
       </div>
