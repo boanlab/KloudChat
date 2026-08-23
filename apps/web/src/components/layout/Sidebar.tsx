@@ -226,7 +226,7 @@ export function Sidebar() {
   const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0
 
   return (
-    <aside className="flex w-[268px] shrink-0 flex-col border-r border-line bg-sidebar">
+    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar">
       {/* 이름은 이름일 뿐입니다. 시작하는 행동은 바로 아래 새로 만들기가 맡습니다. */}
       <div className="flex items-center gap-2 px-3 py-3">
         <Brand name={brand.name} logo={brand.logo} />
