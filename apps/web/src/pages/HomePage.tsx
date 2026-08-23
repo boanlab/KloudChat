@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Badge, Card } from '@/components/ui'
+import { Badge, Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignRail } from '@/components/chat/DesignRail'
 import { kindMeta, kindOrder } from '@/lib/kinds'
@@ -36,15 +36,21 @@ import { useT } from '@/lib/useT'
  * **The rest is below the fold it belongs under.** Work in progress and work
  * already done are things you come back for, not things you start with.
  */
-export function HomePage() {
+export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
   const { user, sessions, jobs, projects, agents, enabledKinds, newSession } = useStore()
   //: Which surface the composer is currently writing for. Local, and only for
   //: as long as this screen is open — a session gets its kind at creation.
-  const [kind, setKind] = useState<SessionKind>('chat')
+  const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
 
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
+  /**
+   * A surface an administrator has switched off, asked for by name. The chip
+   * row simply would not contain it, so falling back silently would answer a
+   * request for 이미지 with a chat box and no reason given.
+   */
+  const offHere = initialKind !== undefined && !enabledKinds.includes(initialKind)
   //: The kind can be switched off by an administrator while this screen is
   //: open, or arrive disabled on a reload. Falling back keeps the composer on
   //: something that exists rather than on a surface that will refuse the turn.
@@ -59,6 +65,28 @@ export function HomePage() {
   const usableAgents = agents
     .filter((a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(active)))
     .slice(0, 6)
+
+  if (offHere) {
+    const meta = kindMeta[initialKind]
+    const Icon = meta.icon
+    return (
+      <>
+        <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
+        <PageBody>
+          <EmptyState
+            icon={<Icon size={18} />}
+            title={t('{kind} 기능이 꺼져 있습니다').replace('{kind}', t(meta.label))}
+            description={t('관리자가 이 워크스페이스에서 사용하지 않도록 설정했습니다. 필요하면 관리자에게 요청하세요.')}
+            action={
+              <Button variant="primary" onClick={() => navigate('/')}>
+                {t('홈으로')}
+              </Button>
+            }
+          />
+        </PageBody>
+      </>
+    )
+  }
 
   return (
     <>

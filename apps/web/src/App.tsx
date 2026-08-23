@@ -69,9 +69,10 @@ function Authenticated() {
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
 
-          {/* 다섯 개 생성 화면. /new/:kind 는 빈 세션, /s/:id 는 기존 세션. */}
+          {/* /new/:kind 는 홈을 그 화면이 골라진 상태로 엽니다. 링크와 북마크가
+              살아 있도록 경로는 남기고, 시작 화면은 하나로 둡니다. */}
           {kindOrder.map((kind) => (
-            <Route key={kind} path={`new/${kind}`} element={<SessionPage newKind={kind} />} />
+            <Route key={kind} path={`new/${kind}`} element={<HomePage initialKind={kind} />} />
           ))}
           <Route path="s/:sessionId" element={<SessionPage />} />
 

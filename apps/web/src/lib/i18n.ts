@@ -54,6 +54,7 @@ const EN: Record<string, string> = {
   '대화 기록': 'History',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
+  '새로 만들기': 'New',
   '테마: 시스템 설정 따름': 'Theme: follow system',
   '테마: 밝게': 'Theme: light',
   '테마: 어둡게': 'Theme: dark',
