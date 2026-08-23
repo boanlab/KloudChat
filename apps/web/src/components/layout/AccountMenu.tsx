@@ -121,7 +121,7 @@ export function AccountMenu() {
       className="min-w-56"
       trigger={() => (
         <button
-          aria-label={t('계정 메뉴')}
+          aria-label={`${t('계정 메뉴')} · ${user?.email ?? ''}`}
           className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
         >
           <span
@@ -171,7 +171,7 @@ export function AccountMenuCompact() {
       className="min-w-56"
       trigger={() => (
         <button
-          aria-label={t('계정 메뉴')}
+          aria-label={`${t('계정 메뉴')} · ${user?.email ?? ''}`}
           title={user?.email ?? t('계정 메뉴')}
           className="relative grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-85"
           style={{ background: user?.avatarColor }}

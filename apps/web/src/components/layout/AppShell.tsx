@@ -90,9 +90,11 @@ export function AppShell() {
       >
         <Sidebar />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* The one landmark the shell had no element for. A reader jumping by
+          landmark had the panel and nothing to jump *to*. */}
+      <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
-      </div>
+      </main>
       <UndoBar />
     </div>
   )
