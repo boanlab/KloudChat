@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
-import { cn, groupByRecency } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
@@ -232,7 +232,6 @@ export function Sidebar() {
   }, [shown, query])
 
   const visible = unpinned.slice(0, shown)
-  const groups = groupByRecency(visible)
   const hidden = unpinned.length - visible.length
 
 
@@ -326,8 +325,11 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 시작하는 곳은 하나. 어느 화면으로 만들지는 홈의 입력창 위에서 고릅니다. */}
-      <nav className="px-3 pb-2">
+      {/* 시작하는 곳 하나와 대화가 놓이는 두 곳. 세 줄이 한 덩어리로 읽히도록
+          같은 간격을 씁니다 — 예전에는 스크롤 경계가 사이에 있어 첫 줄과 둘째
+          줄만 16px 떨어져 있었습니다. 워크스페이스가 여덟 줄이던 시절 목록의
+          높이를 지키려고 스크롤 안에 두었던 것이고, 지금은 두 줄입니다. */}
+      <nav className="space-y-0.5 px-3 pb-2">
         <NavLink
           to="/"
           end
@@ -338,36 +340,27 @@ export function Sidebar() {
           <Plus size={15} />
           {t('새로 만들기')}
         </NavLink>
+        {workspaceNav.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              cn(rowBase, rowState(isActive))
+            }
+          >
+            <Icon size={15} />
+            {t(label)}
+          </NavLink>
+        ))}
       </nav>
 
       {/* 관리자 항목은 계정 메뉴 안에 있다. 대기 건수는 계정 버튼에 붙어 있어,
           내비게이션을 한 벌 더 두지 않고도 승인 큐가 스스로 드러난다. */}
 
-      {/* 워크스페이스 + 최근 작업 — 사이드바의 본체입니다. */}
-      {/* One scroller for both, because pinning the workspace rows cost what the
-          conversations needed: on a 800px-tall laptop the eight fixed rows left
-          the list 125px, two conversations, and a row menu with nowhere to open
-          — it flipped upward into the clipped edge, where its items drew over
-          the navigation and a click on 이름 바꾸기 landed on 커넥터 instead.
-          `min-h-0`, not a floor: with a minimum height the region refuses to
+      {/* `min-h-0`, not a floor: with a minimum height the region refuses to
           shrink, and on a short window it pushes the credits and the account
           below the fold — the two things that must not go missing. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <nav className="px-3 py-2">
-          {workspaceNav.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                cn(rowBase, rowState(isActive))
-              }
-            >
-              <Icon size={15} />
-              {t(label)}
-            </NavLink>
-          ))}
-        </nav>
-
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
             <section className="mb-3">
@@ -377,14 +370,14 @@ export function Sidebar() {
               <div className="space-y-0.5">{pinned.map(renderRow)}</div>
             </section>
           )}
-          {groups.map((g) => (
-            <section key={g.label} className="mb-3">
+          {visible.length > 0 && (
+            <section className="mb-3">
               <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                {t(g.label)}
+                {t('작업 목록')}
               </p>
-              <div className="space-y-0.5">{g.items.map(renderRow)}</div>
+              <div className="space-y-0.5">{visible.map(renderRow)}</div>
             </section>
-          ))}
+          )}
           {/* Reaching the end of the list is the request for more of it. The
               count stays as the label, so a reader still knows how much is
               behind them, and a keyboard can page without a pointer. */}

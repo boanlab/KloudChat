@@ -1237,6 +1237,7 @@ const EN: Record<string, string> = {
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
   // ── 작업 단계 카드 ───────────────────────────────────────────────────
+  '작업 목록': 'Work',
   '작업 중': 'Working',
   '작업 완료': 'Done',
   '중단됨': 'Stopped',
