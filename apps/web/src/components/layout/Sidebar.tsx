@@ -1,5 +1,5 @@
-import { Bot, Boxes, Brain, ChevronRight, FolderMinus, History, Layers, MoreHorizontal, Palette, Pencil, Pin, PinOff, Plug, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
+import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
@@ -9,50 +9,6 @@ import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
 import { AccountMenu } from './AccountMenu'
 import { Brand } from './Brand'
-
-/**
- * A collapsible group of navigation rows: too many fixed rows leave no height
- * for the conversation list. The collapsed state is remembered.
- */
-function NavSection({
-  id,
-  label,
-  children,
-  defaultOpen = true,
-}: {
-  id: string
-  label: string
-  children: ReactNode
-  defaultOpen?: boolean
-}) {
-  const storageKey = `kchat-nav-${id}`
-  const [open, setOpen] = useState(() => {
-    const saved = localStorage.getItem(storageKey)
-    return saved === null ? defaultOpen : saved === '1'
-  })
-  const toggle = () => {
-    setOpen((v) => {
-      localStorage.setItem(storageKey, v ? '0' : '1')
-      return !v
-    })
-  }
-  return (
-    <nav className="shrink-0 border-t border-line px-3 py-2">
-      <button
-        onClick={toggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1 px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase transition-colors hover:text-muted"
-      >
-        <ChevronRight
-          size={11}
-          className={cn('transition-transform', open && 'rotate-90')}
-        />
-        {label}
-      </button>
-      {open && <div className="space-y-0.5">{children}</div>}
-    </nav>
-  )
-}
 
 /** Unpinned conversations rendered per page. */
 const PAGE = 40
@@ -64,44 +20,14 @@ interface NavRow {
 }
 
 /**
- * The workspace, grouped by what a person is doing rather than listed.
- *
- * Eight rows in one flat column — 프로젝트, 아티팩트, 디자인, 에이전트, 스킬,
- * 메모리, 커넥터, 대화 기록 — said nothing about how any of them relate. An
- * agent and the skills and connectors it can reach are one subject; a finished
- * report and the design it wears are another; and reading the list gave no way
- * to tell which was which, so the connection between an agent and what it can
- * do had to be learned rather than seen.
- *
- * Three groups, in the order work moves through them. **실행** is what does the
- * work and what it is allowed to use. **자산** is what came out and what it is
- * kept in. **기록** is where to go back and find it.
+ * What the sidebar keeps: the two places conversations are filed. Everything
+ * else the workspace holds — agents, skills, connectors, memory, designs — is
+ * set up once and then used from the composer, so it lives in the account menu
+ * and leaves this column to the list it exists for.
  */
-const workspaceNav: { id: string; label: string; items: NavRow[] }[] = [
-  {
-    id: 'run',
-    label: '실행',
-    items: [
-      { to: '/agents', label: '에이전트', icon: Bot },
-      { to: '/skills', label: '스킬', icon: Sparkles },
-      { to: '/connectors', label: '커넥터', icon: Plug },
-      { to: '/memory', label: '메모리', icon: Brain },
-    ],
-  },
-  {
-    id: 'assets',
-    label: '자산',
-    items: [
-      { to: '/projects', label: '프로젝트', icon: Boxes },
-      { to: '/artifacts', label: '아티팩트', icon: Layers },
-      { to: '/designs', label: '디자인', icon: Palette },
-    ],
-  },
-  {
-    id: 'records',
-    label: '기록',
-    items: [{ to: '/history', label: '대화 기록', icon: History }],
-  },
+const workspaceNav: NavRow[] = [
+  { to: '/projects', label: '프로젝트', icon: Boxes },
+  { to: '/artifacts', label: '아티팩트', icon: Layers },
 ]
 
 
@@ -351,27 +277,25 @@ export function Sidebar() {
           shrink, and on a short window it pushes the credits and the account
           below the fold — the two things that must not go missing. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {workspaceNav.map((group) => (
-          <NavSection key={group.id} id={group.id} label={t(group.label)}>
-            {group.items.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                    isActive
-                      ? 'bg-elevated font-medium text-fg'
-                      : 'text-muted hover:bg-elevated hover:text-fg',
-                  )
-                }
-              >
-                <Icon size={15} />
-                {t(label)}
-              </NavLink>
-            ))}
-          </NavSection>
-        ))}
+        <nav className="px-3 py-2">
+          {workspaceNav.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
+                  isActive
+                    ? 'bg-elevated font-medium text-fg'
+                    : 'text-muted hover:bg-elevated hover:text-fg',
+                )
+              }
+            >
+              <Icon size={15} />
+              {t(label)}
+            </NavLink>
+          ))}
+        </nav>
 
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
