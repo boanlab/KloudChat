@@ -120,7 +120,10 @@ export function AccountMenu() {
       align="left"
       className="min-w-56"
       trigger={() => (
-        <button className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated">
+        <button
+          aria-label={t('계정 메뉴')}
+          className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
+        >
           <span
             className="grid size-7 shrink-0 place-items-center rounded-full text-sm font-semibold text-white"
             style={{ background: user?.avatarColor }}
