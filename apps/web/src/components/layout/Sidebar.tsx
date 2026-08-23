@@ -7,7 +7,7 @@ import { cn, groupByRecency } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
-import { AccountMenu } from './AccountMenu'
+import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
 
 /** Unpinned conversations rendered per page. */
@@ -238,12 +238,55 @@ export function Sidebar() {
     />
   )
 
+  const rail = useStore((s) => s.sidebar) === 'rail'
+
   const used = user?.creditsUsed ?? 0
   const total = user?.monthlyCredits ?? 0
   const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0
 
+  /**
+   * The collapsed state used to be no panel at all. What a rail keeps is the
+   * things you navigate *to*; what it gives up is the list, the search over it
+   * and the credit figure — none of which survive 64px, all of which are one
+   * press away. 계정 stays because the way out of an account cannot be behind
+   * a state the account is already in.
+   */
+  if (rail) {
+    return (
+      <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
+        <Brand name={brand.name} logo={brand.logo} markOnly />
+        <nav className="mt-3 flex flex-col items-center gap-1">
+          {[{ to: '/', label: '새로 만들기', icon: Plus, end: true }, ...workspaceNav].map(
+            ({ to, label, icon: Icon, ...rest }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={'end' in rest ? (rest as { end?: boolean }).end : undefined}
+                title={t(label)}
+                aria-label={t(label)}
+                className={({ isActive }) =>
+                  cn(
+                    'grid size-9 place-items-center rounded-control transition-colors',
+                    isActive
+                      ? 'bg-elevated text-fg'
+                      : 'text-muted hover:bg-elevated hover:text-fg',
+                  )
+                }
+              >
+                <Icon size={17} />
+              </NavLink>
+            ),
+          )}
+        </nav>
+        <div className="mt-auto">
+          <AccountMenuCompact />
+        </div>
+      </aside>
+    )
+  }
+
   return (
-    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar">
+    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar transition-[width] duration-300">
       {/* 이름은 이름일 뿐입니다. 시작하는 행동은 바로 아래 새로 만들기가 맡습니다. */}
       <div className="flex items-center gap-2 px-3 py-3">
         <Brand name={brand.name} logo={brand.logo} />

@@ -37,13 +37,14 @@ function UndoBar() {
 export function AppShell() {
   const t = useT()
   const narrow = useNarrowLayout()
-  const { sidebarOpen, toggleSidebar } = useStore()
+  const { sidebar, cycleSidebar } = useStore()
+  const open = sidebar !== 'hidden'
   const location = useLocation()
 
   // On narrow layouts the sidebar covers the content, so navigating has to
   // dismiss it — otherwise the user taps a link and sees the same panel.
   useEffect(() => {
-    if (narrow && sidebarOpen) toggleSidebar()
+    if (narrow && open) cycleSidebar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, narrow])
 
@@ -55,13 +56,13 @@ export function AppShell() {
       {narrow && (
         <button
           aria-label={t('사이드바 닫기')}
-          tabIndex={sidebarOpen ? 0 : -1}
-          aria-hidden={!sidebarOpen}
+          tabIndex={open ? 0 : -1}
+          aria-hidden={!open}
           className={cn(
             'absolute inset-0 z-30 bg-black/40 transition-opacity duration-200',
-            sidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+            open ? 'opacity-100' : 'pointer-events-none opacity-0',
           )}
-          onClick={toggleSidebar}
+          onClick={cycleSidebar}
         />
       )}
       <div
@@ -69,16 +70,23 @@ export function AppShell() {
           narrow
             ? cn(
                 'absolute inset-y-0 left-0 z-40 shadow-float transition-transform duration-300',
-                sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+                open ? 'translate-x-0' : '-translate-x-full',
               )
             : cn(
-                'shrink-0 overflow-hidden transition-[width] duration-300',
-                sidebarOpen ? 'w-[268px]' : 'w-0',
+                'shrink-0 transition-[width] duration-300',
+                // Clipping only where something has to be clipped. Applied at
+                // every width it would also cut off the menus the panel opens,
+                // which at 64px is the whole of them.
+                sidebar === 'hidden'
+                  ? 'w-0 overflow-hidden'
+                  : sidebar === 'rail'
+                    ? 'w-16'
+                    : 'w-[268px]',
               )
         }
         // Off-screen is out of reach: without this the collapsed panel keeps
         // every one of its rows in the tab order.
-        inert={!sidebarOpen ? true : undefined}
+        inert={!open ? true : undefined}
       >
         <Sidebar />
       </div>

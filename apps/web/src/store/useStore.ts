@@ -85,6 +85,7 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
 const tr = (text: string) => translate(currentLang(), text)
 
 type Theme = 'light' | 'dark' | 'system'
+export type SidebarMode = 'full' | 'rail' | 'hidden'
 
 /** A client refusal is returned before send/compare writes its first Message. */
 const isClientRefusal = (error: unknown): error is ApiError =>
@@ -163,8 +164,9 @@ interface State {
   toggleTheme: () => void
   lang: Lang
   toggleLang: () => void
-  sidebarOpen: boolean
-  toggleSidebar: () => void
+  sidebar: SidebarMode
+  /** full → rail → hidden → full. On a narrow layout there is no rail. */
+  cycleSidebar: () => void
 
   // ── data ──────────────────────────────────────────────────────────────
   users: User[]
@@ -916,9 +918,18 @@ export const useStore = create<State>((set, get) => ({
     applyLang(next)
     set({ lang: next })
   },
-  // Three columns do not fit under ~1024px; start collapsed there.
-  sidebarOpen: window.matchMedia('(min-width: 1024px)').matches,
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  // Three columns do not fit under ~1024px; start hidden there.
+  sidebar: window.matchMedia('(min-width: 1024px)').matches ? 'full' : 'hidden',
+  cycleSidebar: () =>
+    set((s) => {
+      // A 64px rail on a phone is a column of icons over the content it is
+      // covering, so the narrow layout keeps the two states it can use.
+      const order: SidebarMode[] = window.matchMedia('(min-width: 1024px)').matches
+        ? ['full', 'rail', 'hidden']
+        : ['full', 'hidden']
+      const at = order.indexOf(s.sidebar)
+      return { sidebar: order[(at + 1) % order.length] ?? 'full' }
+    }),
 
   // Every slice below starts empty and is filled from the API. Nothing is
   // seeded: a fresh install shows nothing.
