@@ -2,7 +2,7 @@ import { Bot, Boxes, Brain, ChevronRight, FolderMinus, History, Layers, MoreHori
 import { type ReactNode, useMemo, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
-import { kindMeta, kindOrder } from '@/lib/kinds'
+import { kindMeta } from '@/lib/kinds'
 import { cn, groupByRecency } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
@@ -247,7 +247,6 @@ export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
   const brand = useStore((s) => s.brand)
-  const enabledKinds = useStore((s) => s.enabledKinds)
   const [query, setQuery] = useState('')
   const {
     sessions,
@@ -326,33 +325,23 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 만들기 — 다섯 개 축 */}
-      <nav className="space-y-0.5 px-3 pb-2">
-        {kindOrder.filter((k) => enabledKinds.includes(k)).map((kind) => {
-          const meta = kindMeta[kind]
-          const Icon = meta.icon
-          return (
-            <NavLink
-              key={kind}
-              to={`/new/${kind}`}
-              className={({ isActive }) =>
-                cn(
-                  'group flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
-                  isActive
-                    ? 'bg-elevated font-medium text-fg'
-                    : 'text-muted hover:bg-elevated hover:text-fg',
-                )
-              }
-            >
-              <Icon size={15} style={{ color: meta.color }} />
-              {t(meta.label)}
-              <Plus
-                size={13}
-                className="ml-auto text-faint opacity-0 transition-opacity group-hover:opacity-100"
-              />
-            </NavLink>
-          )
-        })}
+      {/* 시작하는 곳은 하나. 어느 화면으로 만들지는 홈의 입력창 위에서 고릅니다. */}
+      <nav className="px-3 pb-2">
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors',
+              isActive
+                ? 'bg-elevated font-medium text-fg'
+                : 'text-muted hover:bg-elevated hover:text-fg',
+            )
+          }
+        >
+          <Plus size={15} />
+          {t('새로 만들기')}
+        </NavLink>
       </nav>
 
       {/* 관리자 항목은 계정 메뉴 안에 있다. 대기 건수는 계정 버튼에 붙어 있어,
