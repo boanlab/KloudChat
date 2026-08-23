@@ -183,7 +183,6 @@ export function Sidebar() {
     togglePinSession,
     moveSessionToProject,
     user,
-    sidebarOpen,
   } = useStore()
 
   const filtered = useMemo(() => {
@@ -204,7 +203,6 @@ export function Sidebar() {
   const groups = groupByRecency(visible)
   const hidden = unpinned.length - visible.length
 
-  if (!sidebarOpen) return null
 
   const renderRow = (session: Session) => (
     <SessionRow
