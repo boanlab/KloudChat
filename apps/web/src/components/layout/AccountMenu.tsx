@@ -1,11 +1,16 @@
 import {
+  Bot,
+  Brain,
   ChartColumn,
   ChevronDown,
   LogOut,
+  Palette,
+  Plug,
   Server,
   Settings,
   Shield,
   ShieldCheck,
+  Sparkles,
   Terminal as TerminalIcon,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -35,6 +40,25 @@ function AccountItems() {
 
   return (
     <>
+      {/* 한 번 설정하고 나면 컴포저에서 쓰이는 것들. 사이드바의 세로는
+          대화 목록이 써야 하므로 여기에 둡니다. */}
+      <MenuLabel>{t('워크스페이스')}</MenuLabel>
+      <MenuItem icon={<Bot size={14} />} onClick={() => navigate('/agents')}>
+        {t('에이전트')}
+      </MenuItem>
+      <MenuItem icon={<Sparkles size={14} />} onClick={() => navigate('/skills')}>
+        {t('스킬')}
+      </MenuItem>
+      <MenuItem icon={<Plug size={14} />} onClick={() => navigate('/connectors')}>
+        {t('커넥터')}
+      </MenuItem>
+      <MenuItem icon={<Brain size={14} />} onClick={() => navigate('/memory')}>
+        {t('메모리')}
+      </MenuItem>
+      <MenuItem icon={<Palette size={14} />} onClick={() => navigate('/designs')}>
+        {t('디자인')}
+      </MenuItem>
+      <MenuSeparator />
       <MenuLabel>{t('계정')}</MenuLabel>
       <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
         {t('설정')}
