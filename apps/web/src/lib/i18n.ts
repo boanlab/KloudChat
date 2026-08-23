@@ -52,6 +52,7 @@ const EN: Record<string, string> = {
   '거버넌스': 'Governance',
   '아티팩트': 'Artifacts',
   '대화 기록': 'History',
+  '대화 관리': 'Manage conversations',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
   '새로 만들기': 'New',
