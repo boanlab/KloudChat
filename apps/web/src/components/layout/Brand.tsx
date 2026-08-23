@@ -9,10 +9,13 @@ export function Brand({
   name,
   logo,
   size = 'sm',
+  markOnly = false,
 }: {
   name: string
   logo?: string
   size?: 'sm' | 'md'
+  /** The mark without the words, for the 64px rail. */
+  markOnly?: boolean
 }) {
   const box = size === 'md' ? 'size-8 rounded-card text-md' : 'size-7 rounded-control text-base'
   const label = size === 'md' ? 'font-semibold tracking-tight' : 'text-base font-semibold tracking-tight'
@@ -37,7 +40,7 @@ export function Brand({
           {(name.trim()[0] ?? 'K').toUpperCase()}
         </div>
       )}
-      <span className={label}>{name}</span>
+      {!markOnly && <span className={label}>{name}</span>}
     </div>
   )
 }

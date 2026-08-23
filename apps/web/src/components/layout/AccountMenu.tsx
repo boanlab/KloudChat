@@ -158,7 +158,7 @@ export function AccountMenuCompact() {
 
   return (
     <Dropdown
-      align="right"
+      align="left"
       className="min-w-56"
       trigger={() => (
         <button
