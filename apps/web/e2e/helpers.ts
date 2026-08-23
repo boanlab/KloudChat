@@ -90,11 +90,23 @@ export async function seedPendingUser(
 export async function openSidebar(page: Page) {
   const toggle = page.getByRole('button', { name: '사이드바 토글' })
   await expect(toggle).toBeVisible({ timeout: 20_000 })
-  const nav = page.getByRole('link', { name: '커넥터' })
-  if (!(await nav.isVisible().catch(() => false))) {
+  // The toggle walks full → rail → hidden, so reaching the full panel can take
+  // more than one press. 검색 is the probe because it is in the full panel and
+  // in neither of the other two.
+  const probe = page.getByLabel('대화 빠른 검색')
+  for (let i = 0; i < 3; i++) {
+    if (await probe.isVisible().catch(() => false)) break
     await toggle.click()
+    await page.waitForTimeout(350)
   }
-  await expect(nav).toBeVisible({ timeout: 10_000 })
+  await expect(probe).toBeVisible({ timeout: 10_000 })
+}
+
+/** 에이전트·스킬·커넥터·메모리·디자인·대화 관리 live in the account menu. */
+export async function gotoWorkspace(page: Page, name: string) {
+  await openSidebar(page)
+  await page.getByRole('button', { name: '계정 메뉴' }).first().click()
+  await page.getByRole('menuitem', { name, exact: true }).first().click()
 }
 
 export async function gotoSurface(page: Page, kind: string) {

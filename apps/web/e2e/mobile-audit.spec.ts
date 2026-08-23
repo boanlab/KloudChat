@@ -112,11 +112,11 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
       await toggle.click()
       await page.waitForTimeout(400)
     }
-    await page.getByRole('link', { name: '메모리', exact: true }).first().click()
+    await page.getByRole('link', { name: '프로젝트', exact: true }).first().click()
     await page.waitForTimeout(700)
     checks++
     if ((await page.getByRole('button', { name: '사이드바 닫기' }).count()) > 0) {
-      note('drawer-after-nav', '사이드바', '/memory', '이동한 뒤에도 서랍이 화면을 덮고 있다')
+      note('drawer-after-nav', '사이드바', '/projects', '이동한 뒤에도 서랍이 화면을 덮고 있다')
     }
   }
 

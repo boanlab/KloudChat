@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
-import { signIn } from './helpers'
+import { gotoWorkspace, signIn } from './helpers'
 
 /**
  * Round seven: what people actually paste, what they click twice, and what
@@ -295,11 +295,11 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     }
     await r.continue().catch(() => {})
   })
-  await page.getByRole('link', { name: '대화 기록', exact: true }).first().click()
+  await gotoWorkspace(page, '대화 관리')
   await page.waitForTimeout(300)
-  await page.getByRole('link', { name: '메모리', exact: true }).first().click()
+  await page.getByRole('link', { name: '프로젝트', exact: true }).first().click()
   await page.waitForTimeout(300)
-  await page.getByRole('link', { name: '대화 기록', exact: true }).first().click()
+  await gotoWorkspace(page, '대화 관리')
   await page.waitForTimeout(3500)
   checks++
   const historyText = await page.evaluate(() => document.body.innerText)
