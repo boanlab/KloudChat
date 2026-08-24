@@ -77,6 +77,7 @@ class GovernanceIn(Wire):
     adaptive_routing_enabled: bool | None = None
     adaptive_classifier_model_id: str | None = Field(default=None, max_length=200)
     adaptive_economy_model_ids: list[str] | None = Field(default=None, max_length=3)
+    adaptive_quality_enabled: bool | None = None
     adaptive_quality_model_ids: list[str] | None = Field(default=None, max_length=3)
     #: Empty string clears it, like the classifier above.
     outline_model_id: str | None = Field(default=None, max_length=200)

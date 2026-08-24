@@ -295,11 +295,11 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     }
     await r.continue().catch(() => {})
   })
-  await gotoWorkspace(page, '대화 관리')
+  await gotoWorkspace(page, '대화 기록')
   await page.waitForTimeout(300)
   await page.getByRole('link', { name: '프로젝트', exact: true }).first().click()
   await page.waitForTimeout(300)
-  await gotoWorkspace(page, '대화 관리')
+  await gotoWorkspace(page, '대화 기록')
   await page.waitForTimeout(3500)
   checks++
   // Scoped to the content region: the sidebar prints the same empty line, and

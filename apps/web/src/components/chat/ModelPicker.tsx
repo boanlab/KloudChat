@@ -293,7 +293,7 @@ function ModelMenu({
       ? t('strict-local 분류 모델을 사용할 수 없습니다.')
       : autoRouting.qualityReason === 'no_quality_models'
         ? t('관리자가 상향할 모델을 지정하지 않았습니다.')
-        : t('관리자가 Auto 를 켜지 않았습니다.')
+        : t('관리자가 Auto 품질 우선을 켜지 않았습니다.')
   /* One row per direction, drawn the same way: what separates them is only
      which way the same judgement may move the turn, and two rows that looked
      unlike each other would read as two unrelated features. */

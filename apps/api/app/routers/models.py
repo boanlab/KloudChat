@@ -71,11 +71,11 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             # The upgrade lane shares the classifier and the on/off switch; only
             # the candidate list is its own.
             "qualityAvailable": bool(
-                policy.adaptive_routing_enabled and classifier_ok and quality_ids
+                policy.adaptive_quality_enabled and classifier_ok and quality_ids
             ),
             "qualityReason": (
                 "disabled"
-                if not policy.adaptive_routing_enabled
+                if not policy.adaptive_quality_enabled
                 else "classifier_unavailable"
                 if not classifier_ok
                 else "no_quality_models"

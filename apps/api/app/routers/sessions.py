@@ -369,7 +369,12 @@ async def _resolve_cost_routing(
     """
     lane = str(getattr(mode, "value", mode))
     upgrading = lane == RoutingMode.auto_quality.value
-    if not policy.adaptive_routing_enabled:
+    #: Each direction is switched on separately — they are opposite decisions
+    #: about money, and an instance may want either without the other.
+    lane_enabled = (
+        policy.adaptive_quality_enabled if upgrading else policy.adaptive_routing_enabled
+    )
+    if not lane_enabled:
         return quality_model, _cost_routing(
             mode=lane,
             decision="bypassed",
