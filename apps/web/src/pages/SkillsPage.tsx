@@ -1,4 +1,4 @@
-import { FileCode2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ChevronRight, FileCode2, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Markdown } from '@/components/chat/Markdown'
 import { PageBody } from '@/components/layout/AppShell'
@@ -139,7 +139,10 @@ export function SkillsPage() {
         </div>
         <div className="space-y-2">
           {visible.map((s) => (
-            <Card key={s.id} className="flex items-start gap-3 p-4">
+            <Card
+              key={s.id}
+              className="group flex items-start gap-3 p-4 transition-colors hover:border-line-strong hover:bg-elevated"
+            >
               {/* Only where a delete is possible. A checkbox on a built-in
                   skill would put it in 전체 선택 and then refuse it. */}
               {s.source !== 'built-in' ? (
@@ -152,11 +155,11 @@ export function SkillsPage() {
               ) : (
                 <span className="size-4 shrink-0" />
               )}
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
-                <Sparkles size={15} />
-              </span>
+              {/* 아이콘은 모든 행이 같은 그림이라 어느 스킬인지 말해 주지 않으면서
+                  본문 앞에 40px 을 먹고 있었습니다. */}
               <button
                 onClick={() => setDetail(s)}
+                title={t('자세히 보기')}
                 className="min-w-0 flex-1 cursor-pointer text-left"
               >
                 <span className="flex flex-wrap items-center gap-2">
@@ -175,6 +178,13 @@ export function SkillsPage() {
                   {t('사용 시점')}: {t(s.whenToUse)} · {t('{when} 수정').replace('{when}', relativeTime(s.updatedAt))}
                 </span>
               </button>
+              {/* 카드 전체가 상세를 여는데 그렇게 보이는 데가 없었습니다. 호버로만
+                  드러내면 손가락으로 읽는 화면에서는 끝내 안 보입니다. */}
+              <ChevronRight
+                size={16}
+                aria-hidden
+                className="mt-1 shrink-0 text-faint transition-transform group-hover:translate-x-0.5"
+              />
               {/* Delete lives on the card, like memory and connectors. It used
                   to be reachable only by opening the detail modal, so the same
                   action sat in two different places depending on the screen. */}
@@ -214,24 +224,23 @@ export function SkillsPage() {
         title={detail?.name ?? ''}
         description={detail?.description}
         width="max-w-2xl"
+        /* 기본 스킬에는 편집도 삭제도 없습니다. 빈 조각을 넘기면 Modal 이
+           아무것도 안 든 바를 하나 그립니다. */
         footer={
-          <>
-            <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>
-            {detail?.source !== 'built-in' && (
-              <Button onClick={() => detail && startEdit(detail)}>{t('편집')}</Button>
-            )}
-            {detail?.source !== 'built-in' && (
+          detail && detail.source !== 'built-in' ? (
+            <>
+              <Button onClick={() => startEdit(detail)}>{t('편집')}</Button>
               <Button
                 variant="danger"
                 onClick={() => {
-                  if (detail) void deleteSkill(detail.id)
+                  void deleteSkill(detail.id)
                   setDetail(null)
                 }}
               >
                 {t('삭제')}
               </Button>
-            )}
-          </>
+            </>
+          ) : undefined
         }
       >
         {detail && (
@@ -257,7 +266,7 @@ export function SkillsPage() {
             )}
             <div>
               <p className="mb-1.5 text-base font-medium">{t('사용 시점')}</p>
-              <p className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
+              <p className="rounded-control border border-line bg-elevated px-3 py-2 text-md text-muted">
                 {t(detail.whenToUse)}
               </p>
             </div>
