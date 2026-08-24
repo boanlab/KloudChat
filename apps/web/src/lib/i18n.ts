@@ -966,6 +966,7 @@ const EN: Record<string, string> = {
   '{name} 편집': 'Edit {name}',
   '자산': 'Assets',
   '에이전트에게 맡기기': 'Hand it to an agent',
+  '자세히 보기': 'View details',
   '전체 보기': 'See all',
   '지침·도구·자료를 갖춘 에이전트가 대신 진행합니다. 같은 프로젝트 안에서는 서로의 결론을 이어받습니다.':
     'An agent with its own instructions, tools and documents does the work. Inside a project they pick up each other\u2019s conclusions.',
