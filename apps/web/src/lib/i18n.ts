@@ -267,6 +267,7 @@ const EN: Record<string, string> = {
   '발표 노트': 'Speaker notes',
   '배정 대비': 'Of allowance',
   '버전 기록': 'Version history',
+  '함께 오는 파일': 'Bundled with it',
   '번들 파일': 'Bundle',
   '범위': 'Scope',
   '벡터': 'Vector',
