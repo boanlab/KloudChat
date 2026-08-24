@@ -112,7 +112,7 @@ export async function openSidebar(page: Page) {
   await expect(probe).toBeInViewport({ timeout: 10_000 })
 }
 
-/** 에이전트·스킬·커넥터·메모리·디자인·대화 관리 live in the account menu. */
+/** 에이전트·스킬·커넥터·메모리·디자인·대화 기록 live in the account menu. */
 export async function gotoWorkspace(page: Page, name: string) {
   await openSidebar(page)
   await page.getByRole('button', { name: '계정 메뉴' }).first().click()

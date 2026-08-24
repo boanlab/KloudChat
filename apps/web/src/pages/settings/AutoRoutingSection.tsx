@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Gauge, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Gauge, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Card, Field, Switch } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
@@ -18,6 +18,7 @@ export function AutoRoutingSection() {
   const [enabled, setEnabled] = useState(false)
   const [classifierModelId, setClassifierModelId] = useState('')
   const [economyModelIds, setEconomyModelIds] = useState<string[]>([])
+  const [qualityEnabled, setQualityEnabled] = useState(false)
   const [qualityModelIds, setQualityModelIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -33,6 +34,7 @@ export function AutoRoutingSection() {
     setEnabled(governance.adaptiveRoutingEnabled ?? false)
     setClassifierModelId(governance.adaptiveClassifierModelId ?? '')
     setEconomyModelIds(governance.adaptiveEconomyModelIds ?? [])
+    setQualityEnabled(governance.adaptiveQualityEnabled ?? false)
     setQualityModelIds(governance.adaptiveQualityModelIds ?? [])
   }, [governance])
 
@@ -55,7 +57,12 @@ export function AutoRoutingSection() {
   //: a finding about which models answer better here, and on this instance a
   //: 122b failed an outline call a 35b completed. The order is the finding.
   const qualityModels = models.filter((model) => model.kinds.includes('chat'))
-  const canSave = !enabled || Boolean(classifierModelId && economyModelIds.length > 0)
+  //: Each lane is asked only about itself. Gating the upgrade list behind the
+  //: economy one made an administrator who wanted only the upgrade pick
+  //: 절약 모델 they had no use for, and told them so in the warning.
+  const canSave =
+    (!enabled || Boolean(classifierModelId && economyModelIds.length > 0)) &&
+    (!qualityEnabled || Boolean(classifierModelId && qualityModelIds.length > 0))
 
   const moveWithin = (
     setIds: (updater: (current: string[]) => string[]) => void,
@@ -260,11 +267,31 @@ export function AutoRoutingSection() {
           empty the lane simply is not offered, which is what every installation
           starts with — an upgrade path that turned itself on would spend money
           nobody agreed to. */}
-      <div className="border-t border-line pt-4">
-        <p className="text-base font-medium">{t('품질 우선 상향 모델')}</p>
-        <p className="mb-3 text-sm text-muted">
-          {t('복잡하다고 분류된 요청에만 씁니다. 비워 두면 품질 우선 Auto 를 제공하지 않습니다. 큰 모델이 늘 나은 것은 아니므로 실제로 결과가 좋았던 순서로 넣으세요.')}
-        </p>
+      {/* Drawn like the lane above it, because it is the same kind of thing
+          pointed the other way: two opposite decisions about money, sharing
+          only the classifier that judges the turn. A control that looked
+          different would suggest the two answer to different rules. */}
+      <div className="space-y-4 border-t border-line pt-4">
+        <div className="flex items-start gap-3">
+          <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
+            <Sparkles size={17} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-medium">{t('Auto 품질 우선 라우팅')}</p>
+            <p className="text-sm text-muted">
+              {t('복잡하다고 분류된 요청만 지정한 상위 모델로 보내고, 그 밖에는 사용자가 선택한 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.')}
+            </p>
+          </div>
+          <Switch
+            checked={qualityEnabled}
+            onChange={(value) => {
+              setQualityEnabled(value)
+              touched()
+            }}
+            label={t('Auto 품질 우선 라우팅')}
+          />
+        </div>
+
         <Field
           label={t('상향 모델 추가')}
           hint={t('최대 3개까지 추가할 수 있으며 위에서부터 사용 가능 여부를 확인합니다.')}
@@ -295,8 +322,9 @@ export function AutoRoutingSection() {
               ))}
           </select>
         </Field>
+        <p className="mb-2 text-sm font-medium">{t('상향 모델 우선순위')}</p>
         {qualityModelIds.length > 0 ? (
-          <ol className="mt-2 space-y-1.5">
+          <ol className="space-y-1.5">
             {qualityModelIds.map((id, index) => {
               const model = models.find((candidate) => candidate.id === id)
               return (
@@ -393,15 +421,14 @@ export function AutoRoutingSection() {
             try {
               await saveGovernance({
                 adaptiveRoutingEnabled: enabled,
-                ...(enabled
-                  ? {
-                      adaptiveClassifierModelId: classifierModelId || null,
-                      adaptiveEconomyModelIds: economyModelIds,
-                      // Sent whether or not it has entries: an emptied list is
-                      // how an administrator turns the upgrade lane back off.
-                      adaptiveQualityModelIds: qualityModelIds,
-                    }
+                adaptiveQualityEnabled: qualityEnabled,
+                // The classifier is shared, so it goes with either lane being
+                // on. The lists follow their own switch.
+                ...(enabled || qualityEnabled
+                  ? { adaptiveClassifierModelId: classifierModelId || null }
                   : {}),
+                ...(enabled ? { adaptiveEconomyModelIds: economyModelIds } : {}),
+                ...(qualityEnabled ? { adaptiveQualityModelIds: qualityModelIds } : {}),
               })
               dirty.current = false
               await loadModels()
@@ -416,9 +443,11 @@ export function AutoRoutingSection() {
           {busy ? t('저장 중…') : t('라우팅 설정 저장')}
         </Button>
         {saved && <span className="text-sm text-success">{t('저장했습니다.')}</span>}
-        {enabled && !canSave && (
+        {!canSave && (
           <span className="text-sm text-warn">
-            {t('분류 모델과 절약 모델을 한 개 이상 선택하세요.')}
+            {enabled && !(classifierModelId && economyModelIds.length > 0)
+              ? t('분류 모델과 절약 모델을 한 개 이상 선택하세요.')
+              : t('분류 모델과 상향 모델을 한 개 이상 선택하세요.')}
           </span>
         )}
         {!saved && autoRouting.enabled && !autoRouting.available && (

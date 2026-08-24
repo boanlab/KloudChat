@@ -481,6 +481,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveRoutingEnabled": policy.adaptive_routing_enabled,
         "adaptiveClassifierModelId": policy.adaptive_classifier_model_id,
         "adaptiveEconomyModelIds": list(policy.adaptive_economy_model_ids or []),
+        "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
         "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,
@@ -544,6 +545,7 @@ async def put_governance(
         "adaptive_routing_enabled",
         "adaptive_classifier_model_id",
         "adaptive_economy_model_ids",
+        "adaptive_quality_enabled",
         "adaptive_quality_model_ids",
     } & patch.keys():
         catalogue = await model_service.list_models_for_egress()
@@ -569,6 +571,9 @@ async def put_governance(
         )
         quality_ids = list(
             patch.get("adaptive_quality_model_ids", policy.adaptive_quality_model_ids) or []
+        )
+        quality_on = bool(
+            patch.get("adaptive_quality_enabled", policy.adaptive_quality_enabled)
         )
         if enabled and not classifier_id:
             raise HTTPException(
@@ -607,10 +612,26 @@ async def put_governance(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="adaptive_economy_models_invalid",
             )
-        # The quality list stays optional even with Auto on: an installation may
-        # run the cost lane alone, and an empty list means only that no session
-        # can be put in the upgrade lane. What is not optional is that the
-        # entries name models this instance actually serves.
+        # Each lane answers for itself. Turning one on without giving it
+        # anything to route to would leave a switch that reads as on and does
+        # nothing, which is the state this split exists to make impossible.
+        if quality_on and not classifier_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_classifier_required",
+            )
+        if quality_on and not quality_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_quality_models_required",
+            )
+        if quality_on and not adaptive_routing.classifier_is_usable(
+            by_id.get(classifier_id or ""), allowed_model_ids=set()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_classifier_must_be_zero_cost_strict_local",
+            )
         if len(quality_ids) > 3:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

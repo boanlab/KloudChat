@@ -697,10 +697,11 @@ async def test_models_catalogue_reports_user_scoped_auto_availability(monkeypatc
         "reason": None,
         "classifierModelId": "classifier",
         "economyModelIds": ["economy"],
-        # The upgrade lane is off until an administrator names candidates for
-        # it; the cost lane above is unaffected either way.
+        # The upgrade lane has a switch of its own and it is off, which is
+        # what every installation starts with; the cost lane above is
+        # unaffected either way.
         "qualityAvailable": False,
-        "qualityReason": "no_quality_models",
+        "qualityReason": "disabled",
         "qualityModelIds": [],
     }
 
@@ -879,7 +880,9 @@ async def test_run_turn_emits_only_full_auto_routes_and_persists_savings(monkeyp
 # does.
 
 
-async def _quality_route(monkeypatch, classification, *, candidates, quality=None, tools=None):
+async def _quality_route(
+    monkeypatch, classification, *, candidates, quality=None, tools=None, quality_on=True
+):
     """Runs one auto_quality turn and returns `(selected, route)`."""
     quality = quality or _model("quality", input_cost=10, output_cost=20)
     classifier = _model(
@@ -892,7 +895,11 @@ async def _quality_route(monkeypatch, classification, *, candidates, quality=Non
     )
     user = User(email="person@example.test", password_hash="hash", name="Person")
     policy = Governance(
-        adaptive_routing_enabled=True,
+        # The cost lane is deliberately left off: the upgrade lane answers to
+        # its own switch, and a test that turned both on could not tell which
+        # one the turn had been let through by.
+        adaptive_routing_enabled=False,
+        adaptive_quality_enabled=quality_on,
         adaptive_classifier_model_id=classifier["id"],
         adaptive_economy_model_ids=["economy"],
         adaptive_quality_model_ids=[model["id"] for model in candidates],
@@ -958,6 +965,24 @@ async def test_quality_lane_will_not_act_on_an_unconfident_high(monkeypatch) -> 
     assert selected["id"] == "quality"
     assert route["decision"] == "kept_quality"
     assert route["reasonCode"] == "low_confidence"
+
+
+async def test_the_quality_lane_is_off_until_it_is_switched_on(monkeypatch) -> None:
+    """Its own switch, not the cost lane's.
+
+    The two are opposite decisions about money. Sharing one flag meant an
+    upgrade path could only be had by turning cost routing on beside it.
+    """
+    stronger = _model("stronger", input_cost=40, output_cost=80)
+    selected, route = await _quality_route(
+        monkeypatch,
+        adaptive_routing.Classification("high", 0.99, "multi_step_reasoning", 12, 4),
+        candidates=[stronger],
+        quality_on=False,
+    )
+    assert selected["id"] == "quality"
+    assert route["decision"] == "bypassed"
+    assert route["reasonCode"] == "disabled"
 
 
 async def test_quality_lane_never_sends_further_than_the_chosen_model(monkeypatch) -> None:

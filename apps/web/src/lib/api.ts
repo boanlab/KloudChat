@@ -514,6 +514,7 @@ export interface GovernancePolicy {
   adaptiveRoutingEnabled: boolean
   adaptiveClassifierModelId: string | null
   adaptiveEconomyModelIds: string[]
+  adaptiveQualityEnabled: boolean
   adaptiveQualityModelIds: string[]
   /** Plans documents when set; null lets each surface's own model plan. */
   outlineModelId: string | null
