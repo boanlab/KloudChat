@@ -37,13 +37,20 @@ async function token(page: Page) {
  *
  * The alternative is to run a template turn for it, which writes an entire deck
  * for the sake of one column — and the column is the whole subject here.
+ *
+ * The title is stamped, and the stamp is the point: this creates a row every
+ * time it is called, once per project and again on the next run, and one of
+ * these conversations is later opened by clicking its name in the sidebar. A
+ * fixed title makes that click ambiguous the second time the file runs — the
+ * failure names strict mode and says nothing about the shape being tested.
  */
 async function wearing(
   page: Page,
   kind: 'slides' | 'report',
   templateId: string,
-  title: string,
+  name: string,
 ) {
+  const title = `${name} ${Date.now().toString(36)}`
   const headers = { Authorization: `Bearer ${await token(page)}` }
   const created = await page.request.post('/api/sessions', { headers, data: { kind } })
   const { id } = (await created.json()) as { id: string }
@@ -51,7 +58,7 @@ async function wearing(
     headers,
     data: { renderTemplateId: templateId, title },
   })
-  return id
+  return { id, title }
 }
 
 /** The gallery card for one 서식, once its preview has had time to arrive. */
@@ -65,7 +72,7 @@ async function card(page: Page, name: string) {
 test('세션이 입고 있는 서식은 새로고침해도 칩으로 남는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  const sessionId = await wearing(page, 'slides', 'deck-editorial', '편집형 덱을 입은 대화')
+  const { id: sessionId } = await wearing(page, 'slides', 'deck-editorial', '편집형 덱을 입은 대화')
 
   await page.goto(`/s/${sessionId}`)
   const chip = page.getByRole('button', { name: '편집형 덱 서식 해제' })
@@ -93,7 +100,7 @@ test('세션이 입고 있는 서식은 새로고침해도 칩으로 남는다',
 test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  const lecture = await wearing(page, 'slides', 'deck-lecture', '강의 자료 대화')
+  const { id: lecture, title: lectureTitle } = await wearing(page, 'slides', 'deck-lecture', '강의 자료 대화')
 
   // The turn is answered by a stub. A real one writes a deck block by block for
   // several minutes, and what is under test is where the pick goes at submit,
@@ -119,7 +126,7 @@ test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는
   // Opened from the sidebar rather than by address: a reload would clear the
   // pick whatever the code did, and the leak this is about happens without one.
   await openSidebar(page)
-  await page.getByRole('button', { name: '강의 자료 대화' }).click()
+  await page.getByRole('button', { name: lectureTitle }).click()
   await expect(page).toHaveURL(new RegExp(`/s/${lecture}`), { timeout: 20_000 })
 
   // The pick was spent on the turn that carried it, so this conversation shows

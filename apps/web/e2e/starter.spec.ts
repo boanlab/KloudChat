@@ -23,12 +23,19 @@ const AS_USER = `async (path) => {
 test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다', async ({ page }) => {
   await signIn(page)
 
-  const { agents, skills } = await page.evaluate(async (fn) => {
+  const { agents, skills, me } = await page.evaluate(async (fn) => {
     return {
       agents: await eval(fn)('/api/agents'),
       skills: await eval(fn)('/api/skills'),
+      me: await eval(fn)('/api/auth/me'),
     }
   }, AS_USER)
+
+  // What was seeded for *this* account. `/api/agents` also carries anything
+  // shared with the workspace, and somebody else's agent is not what "a new
+  // account starts with" means — its rows answer to their owner's shelf, not
+  // to this one's.
+  const mine = agents.filter((a: { ownerId: string }) => a.ownerId === me.id)
 
   expect(agents.length).toBeGreaterThanOrEqual(5)
   expect(skills.length).toBeGreaterThanOrEqual(5)
@@ -49,7 +56,7 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
   // Skills are attached by id. The seeder builds them from its own keys, and a
   // key left unresolved would point at nothing while looking wired.
   const ids = new Set(skills.map((s: { id: string }) => s.id))
-  const attached = agents.flatMap((a: { skillIds: string[] }) => a.skillIds ?? [])
+  const attached = mine.flatMap((a: { skillIds: string[] }) => a.skillIds ?? [])
   expect(attached.length).toBeGreaterThan(0)
   for (const id of attached) expect(ids.has(id), '연결된 스킬이 존재하지 않습니다').toBe(true)
 
