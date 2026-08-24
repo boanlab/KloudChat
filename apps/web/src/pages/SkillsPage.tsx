@@ -1,5 +1,6 @@
 import { FileCode2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Markdown } from '@/components/chat/Markdown'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import {
@@ -260,17 +261,33 @@ export function SkillsPage() {
                 {t(detail.whenToUse)}
               </p>
             </div>
-            <div>
-              <p className="mb-1.5 text-base font-medium">{t('번들 파일')}</p>
-              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
-                {detail.files.map((f) => (
-                  <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
-                    <FileCode2 size={14} className="text-faint" />
-                    <span className="font-mono">{f}</span>
-                  </div>
-                ))}
+            {/* 무엇을 지시하는 스킬인지는 이 본문이 전부인데, 여기에는 파일
+                이름만 있고 본문은 수정 폼 안에만 있었습니다 — 읽으려면 편집
+                모드로 들어가야 했습니다. */}
+            {detail.body.trim() && (
+              <div>
+                <p className="mb-1.5 flex items-center gap-1.5 text-base font-medium">
+                  <FileCode2 size={14} className="text-faint" />
+                  <span className="font-mono">{detail.files[0] ?? 'SKILL.md'}</span>
+                </p>
+                <div className="max-h-80 overflow-y-auto rounded-control border border-line bg-elevated px-3 py-2">
+                  <Markdown>{detail.body}</Markdown>
+                </div>
               </div>
-            </div>
+            )}
+            {detail.files.length > 1 && (
+              <div>
+                <p className="mb-1.5 text-base font-medium">{t('함께 오는 파일')}</p>
+                <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
+                  {detail.files.slice(1).map((f) => (
+                    <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
+                      <FileCode2 size={14} className="text-faint" />
+                      <span className="font-mono">{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </Modal>
