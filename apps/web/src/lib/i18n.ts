@@ -395,7 +395,7 @@ const EN: Record<string, string> = {
   '읽기 전용': 'Read only',
   '있음': 'Yes',
   '자격증명': 'Credentials',
-  '작업': 'Action',
+  '작업': 'Work',
   '장수': 'Count',
   '저장됨': 'Saved',
   '전송': 'Send',
