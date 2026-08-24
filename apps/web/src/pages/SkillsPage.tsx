@@ -1,5 +1,6 @@
-import { FileCode2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ChevronRight, FileCode2, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Markdown } from '@/components/chat/Markdown'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import {
@@ -93,6 +94,7 @@ export function SkillsPage() {
   const ordered = useStableOrder(skills)
   const all = filter === 'all' ? ordered : ordered.filter((s) => s.source === filter)
   const { visible, hidden, more } = usePaged(all, [filter, skills.length])
+  const anySelectable = visible.some((s) => s.source !== 'built-in')
   // Only the rows a delete can actually reach, so 전체 선택 does not pick a
   // built-in skill and then have the request refuse it.
   const pick = useBulkSelect(visible.filter((s) => s.source !== 'built-in'))
@@ -137,25 +139,32 @@ export function SkillsPage() {
           />
         </div>
         <div className="space-y-2">
+          {/* 기본 스킬은 지울 수 없어 고르는 칸이 없습니다. 목록이 전부 기본이면
+              그 칸은 아무것도 담지 못하면서 본문을 28px 밀어 좌우를 어긋나게
+              합니다. 고를 수 있는 것이 하나라도 있을 때만 칸을 둡니다. */}
           {visible.map((s) => (
-            <Card key={s.id} className="flex items-start gap-3 p-4">
+            <Card
+              key={s.id}
+              className="group flex items-start gap-3 p-4 transition-colors hover:border-line-strong hover:bg-elevated"
+            >
               {/* Only where a delete is possible. A checkbox on a built-in
                   skill would put it in 전체 선택 and then refuse it. */}
-              {s.source !== 'built-in' ? (
-                <PickBox
-                  checked={pick.picked.has(s.id)}
-                  onChange={() => pick.toggle(s.id)}
-                  label={t('{name} 선택').replace('{name}', t(s.name))}
-                  className="mt-2.5"
-                />
-              ) : (
-                <span className="size-4 shrink-0" />
-              )}
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
-                <Sparkles size={15} />
-              </span>
+              {anySelectable &&
+                (s.source !== 'built-in' ? (
+                  <PickBox
+                    checked={pick.picked.has(s.id)}
+                    onChange={() => pick.toggle(s.id)}
+                    label={t('{name} 선택').replace('{name}', t(s.name))}
+                    className="mt-2.5"
+                  />
+                ) : (
+                  <span className="size-4 shrink-0" />
+                ))}
+              {/* 아이콘은 모든 행이 같은 그림이라 어느 스킬인지 말해 주지 않으면서
+                  본문 앞에 40px 을 먹고 있었습니다. */}
               <button
                 onClick={() => setDetail(s)}
+                title={t('자세히 보기')}
                 className="min-w-0 flex-1 cursor-pointer text-left"
               >
                 <span className="flex flex-wrap items-center gap-2">
@@ -174,6 +183,8 @@ export function SkillsPage() {
                   {t('사용 시점')}: {t(s.whenToUse)} · {t('{when} 수정').replace('{when}', relativeTime(s.updatedAt))}
                 </span>
               </button>
+              {/* 카드 전체가 상세를 여는데 그렇게 보이는 데가 없었습니다. 호버로만
+                  드러내면 손가락으로 읽는 화면에서는 끝내 안 보입니다. */}
               {/* Delete lives on the card, like memory and connectors. It used
                   to be reachable only by opening the detail modal, so the same
                   action sat in two different places depending on the screen. */}
@@ -188,11 +199,26 @@ export function SkillsPage() {
                   <Trash2 size={14} />
                 </Button>
               )}
-              <Switch
-                checked={s.enabled}
-                onChange={() => toggleSkill(s.id)}
-                label={t('{name} 설치 상태').replace('{name}', t(s.name))}
-              />
+              {/* 켜고 끄는 것과 열어 보는 것을 세로로 겹쳐 둡니다. 나란히 놓으면
+                  카드 오른쪽이 그만큼 넓어지고, 세 줄짜리 카드의 세로는 비어
+                  있었습니다. */}
+              <div className="flex shrink-0 flex-col items-end justify-between self-stretch">
+                <ChevronRight
+                  size={16}
+                  aria-hidden
+                  className="mr-1.5 text-faint transition-transform group-hover:translate-x-0.5"
+                />
+                {/* 스위치의 히트 영역은 36px 인데 보이는 트랙은 그 안에서 20px
+                    입니다. 상자를 기준으로 맞추면 눈에는 아래가 8px 넓어 보여,
+                    그 8px 을 되돌려 트랙과 화살표의 여백을 같게 둡니다. */}
+                <span className="-mb-2 flex">
+                  <Switch
+                    checked={s.enabled}
+                    onChange={() => toggleSkill(s.id)}
+                    label={t('{name} 설치 상태').replace('{name}', t(s.name))}
+                  />
+                </span>
+              </div>
             </Card>
           ))}
         </div>
@@ -213,24 +239,23 @@ export function SkillsPage() {
         title={detail?.name ?? ''}
         description={detail?.description}
         width="max-w-2xl"
+        /* 기본 스킬에는 편집도 삭제도 없습니다. 빈 조각을 넘기면 Modal 이
+           아무것도 안 든 바를 하나 그립니다. */
         footer={
-          <>
-            <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>
-            {detail?.source !== 'built-in' && (
-              <Button onClick={() => detail && startEdit(detail)}>{t('편집')}</Button>
-            )}
-            {detail?.source !== 'built-in' && (
+          detail && detail.source !== 'built-in' ? (
+            <>
+              <Button onClick={() => startEdit(detail)}>{t('편집')}</Button>
               <Button
                 variant="danger"
                 onClick={() => {
-                  if (detail) void deleteSkill(detail.id)
+                  void deleteSkill(detail.id)
                   setDetail(null)
                 }}
               >
                 {t('삭제')}
               </Button>
-            )}
-          </>
+            </>
+          ) : undefined
         }
       >
         {detail && (
@@ -256,21 +281,37 @@ export function SkillsPage() {
             )}
             <div>
               <p className="mb-1.5 text-base font-medium">{t('사용 시점')}</p>
-              <p className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
+              <p className="rounded-control border border-line bg-elevated px-3 py-2 text-md text-muted">
                 {t(detail.whenToUse)}
               </p>
             </div>
-            <div>
-              <p className="mb-1.5 text-base font-medium">{t('번들 파일')}</p>
-              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
-                {detail.files.map((f) => (
-                  <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
-                    <FileCode2 size={14} className="text-faint" />
-                    <span className="font-mono">{f}</span>
-                  </div>
-                ))}
+            {/* 무엇을 지시하는 스킬인지는 이 본문이 전부인데, 여기에는 파일
+                이름만 있고 본문은 수정 폼 안에만 있었습니다 — 읽으려면 편집
+                모드로 들어가야 했습니다. */}
+            {detail.body.trim() && (
+              <div>
+                <p className="mb-1.5 flex items-center gap-1.5 text-base font-medium">
+                  <FileCode2 size={14} className="text-faint" />
+                  <span className="font-mono">{detail.files[0] ?? 'SKILL.md'}</span>
+                </p>
+                <div className="max-h-80 overflow-y-auto rounded-control border border-line bg-elevated px-3 py-2">
+                  <Markdown>{detail.body}</Markdown>
+                </div>
               </div>
-            </div>
+            )}
+            {detail.files.length > 1 && (
+              <div>
+                <p className="mb-1.5 text-base font-medium">{t('함께 오는 파일')}</p>
+                <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
+                  {detail.files.slice(1).map((f) => (
+                    <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
+                      <FileCode2 size={14} className="text-faint" />
+                      <span className="font-mono">{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </Modal>

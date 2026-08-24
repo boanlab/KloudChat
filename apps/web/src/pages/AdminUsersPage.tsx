@@ -215,7 +215,7 @@ export function AdminUsersPage() {
                 <th className="px-4 py-2.5 text-left font-semibold">{t('상태')}</th>
                 <th className="px-4 py-2.5 text-left font-semibold">{t('이번 달 크레딧')}</th>
                 <th className="px-4 py-2.5 text-left font-semibold">{t('마지막 활동')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{t('작업')}</th>
+                <th className="px-4 py-2.5 text-right font-semibold">{t('관리')}</th>
               </tr>
             </thead>
             <tbody>

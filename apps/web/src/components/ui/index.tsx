@@ -279,7 +279,12 @@ export function Modal({
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 py-[8vh]">
+    /* Centred, with `my-auto` on the panel rather than `items-center` alone:
+       a flex item centred in a scrolling container has its overflowing top cut
+       off and out of reach, and the edit forms here are taller than a short
+       window. Auto margins centre it while it fits and stop at the padding
+       when it does not. */
+    <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto p-4">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
         ref={panelRef}
@@ -290,7 +295,7 @@ export function Modal({
         // to be somewhere the keyboard can land.
         tabIndex={-1}
         className={cn(
-          'animate-fade-up relative w-full rounded-panel border border-line bg-panel shadow-float outline-none',
+          'animate-fade-up relative my-auto w-full rounded-panel border border-line bg-panel shadow-float outline-none',
           width,
         )}
       >
