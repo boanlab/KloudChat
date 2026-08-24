@@ -697,6 +697,11 @@ async def test_models_catalogue_reports_user_scoped_auto_availability(monkeypatc
         "reason": None,
         "classifierModelId": "classifier",
         "economyModelIds": ["economy"],
+        # The upgrade lane is off until an administrator names candidates for
+        # it; the cost lane above is unaffected either way.
+        "qualityAvailable": False,
+        "qualityReason": "no_quality_models",
+        "qualityModelIds": [],
     }
 
 
@@ -864,3 +869,120 @@ async def test_run_turn_emits_only_full_auto_routes_and_persists_savings(monkeyp
     assert assistant.usage["credits"] == 2
     assert assistant.routing["costRouting"]["executedModel"] == "provider/economy"
     assert assistant.routing["costRouting"]["estimatedCreditsSaved"] == 18
+
+
+# ── the quality lane ────────────────────────────────────────────────────
+#
+# Same classifier, same envelope, opposite half of the answer. What these pin
+# is that the upgrade is as unwilling to act on a guess as the downgrade is,
+# and that it never sends a turn further than the person's own model already
+# does.
+
+
+async def _quality_route(monkeypatch, classification, *, candidates, quality=None, tools=None):
+    """Runs one auto_quality turn and returns `(selected, route)`."""
+    quality = quality or _model("quality", input_cost=10, output_cost=20)
+    classifier = _model(
+        "classifier",
+        boundary="self_hosted",
+        input_cost=0,
+        output_cost=0,
+        strict=True,
+        privacy_only=True,
+    )
+    user = User(email="person@example.test", password_hash="hash", name="Person")
+    policy = Governance(
+        adaptive_routing_enabled=True,
+        adaptive_classifier_model_id=classifier["id"],
+        adaptive_economy_model_ids=["economy"],
+        adaptive_quality_model_ids=[model["id"] for model in candidates],
+    )
+
+    class Db:
+        def is_modified(self, _value):
+            return False
+
+    async def classify(**_kwargs):
+        return classification
+
+    monkeypatch.setattr(sessions_router.litellm_service, "user_key", lambda _user: "virtual-key")
+    monkeypatch.setattr(sessions_router.adaptive_routing, "classify", classify)
+
+    return await sessions_router._resolve_cost_routing(
+        mode=RoutingMode.auto_quality,
+        db=Db(),
+        user=user,
+        policy=policy,
+        catalogue=[quality, classifier, *candidates],
+        quality_model=quality,
+        classifier_messages=build_messages(SessionKind.chat, [{"role": "user", "content": "hi"}]),
+        classifier_tool_definitions=tools or [],
+        context_tokens=100,
+        unsupported_reason=None,
+    )
+
+
+async def test_quality_lane_routes_up_on_confident_high(monkeypatch) -> None:
+    stronger = _model("stronger", input_cost=40, output_cost=80)
+    selected, route = await _quality_route(
+        monkeypatch,
+        adaptive_routing.Classification("high", 0.95, "multi_step_reasoning", 12, 4),
+        candidates=[stronger],
+    )
+    assert selected["id"] == "stronger"
+    assert route["mode"] == "auto_quality"
+    assert route["decision"] == "routed"
+    assert route["reasonCode"] == "high_complexity"
+
+
+async def test_quality_lane_keeps_the_model_on_a_low_turn(monkeypatch) -> None:
+    """The half of the answer the cost lane acts on is the half this one ignores."""
+    stronger = _model("stronger", input_cost=40, output_cost=80)
+    selected, route = await _quality_route(
+        monkeypatch,
+        adaptive_routing.Classification("low", 0.99, "simple_factual", 12, 4),
+        candidates=[stronger],
+    )
+    assert selected["id"] == "quality"
+    assert route["decision"] == "kept_quality"
+    assert route["reasonCode"] == "low_complexity"
+
+
+async def test_quality_lane_will_not_act_on_an_unconfident_high(monkeypatch) -> None:
+    stronger = _model("stronger", input_cost=40, output_cost=80)
+    selected, route = await _quality_route(
+        monkeypatch,
+        adaptive_routing.Classification("high", 0.5, "specialized_analysis", 12, 4),
+        candidates=[stronger],
+    )
+    assert selected["id"] == "quality"
+    assert route["decision"] == "kept_quality"
+    assert route["reasonCode"] == "low_confidence"
+
+
+async def test_quality_lane_never_sends_further_than_the_chosen_model(monkeypatch) -> None:
+    """An upgrade is about capability, never about where the turn travels."""
+    local = _model("local-quality", boundary="self_hosted", strict=True)
+    external = _model("external-stronger", boundary="external")
+    selected, route = await _quality_route(
+        monkeypatch,
+        adaptive_routing.Classification("high", 0.99, "multi_step_reasoning", 12, 4),
+        candidates=[external],
+        quality=local,
+    )
+    assert selected["id"] == "local-quality"
+    assert route["decision"] == "kept_quality"
+    assert route["reasonCode"] == "no_quality_model"
+
+
+async def test_quality_lane_needs_a_candidate_that_keeps_the_tools(monkeypatch) -> None:
+    """Charging more for a turn stripped of its tools would be the wrong trade."""
+    toolless = _model("stronger-no-tools", input_cost=40, output_cost=80, tools=False)
+    selected, route = await _quality_route(
+        monkeypatch,
+        adaptive_routing.Classification("high", 0.99, "multi_step_reasoning", 12, 4),
+        candidates=[toolless],
+        tools=[{"type": "function", "function": {"name": "search"}}],
+    )
+    assert selected["id"] == "quality"
+    assert route["reasonCode"] == "no_quality_model"

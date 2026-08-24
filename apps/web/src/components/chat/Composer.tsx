@@ -321,6 +321,29 @@ function AvOptions() {
   )
 }
 
+/**
+ * What a composer was holding at the moment the session it belongs to came
+ * into existence.
+ *
+ * Creating a session moves the person from the start screen to the
+ * conversation, and those are two different screens — so this component is
+ * unmounted and a new one is mounted in its place. A ref inside it does not
+ * survive that, and neither does the staged-but-unsent work above all the
+ * attachments, which would be dropped in the gap without a word. Module scope
+ * is the one thing here that outlives the remount.
+ *
+ * Read once by the new composer and cleared, so it can never re-apply itself
+ * to a later conversation.
+ */
+let carriedComposer: {
+  sessionId: string
+  value: string
+  attachments: FileRow[]
+  startingTemplate: StartingPoint | null
+  activatedSkillIds: string[]
+  webSearch: boolean
+} | null = null
+
 export function Composer({
   sessionId,
   kind,
@@ -346,7 +369,6 @@ export function Composer({
   liveValue.current = value
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
-  const preserveComposerForSession = useRef<string | null>(null)
   //: idle → 'recording' while the mic is open, 'working' while Whisper reads it.
   const [dictation, setDictation] = useState<'off' | 'recording' | 'working'>('off')
   const [dictationError, setDictationError] = useState<string | null>(null)
@@ -483,6 +505,8 @@ export function Composer({
   const [galleryOpen, setGalleryOpen] = useState(false)
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
+  const composerRestore = useStore((s) => s.composerRestore)
+  const setComposerRestore = useStore((s) => s.setComposerRestore)
   useEffect(() => {
     if (!pendingAttachment) return
     // A picture or a clip is made from the prompt alone, so a form that
@@ -503,6 +527,39 @@ export function Composer({
     })
     setPendingAttachment(null)
   }, [isMedia, pendingAttachment, setPendingAttachment])
+  /**
+   * A refused turn, put back into the composer that is on screen now.
+   *
+   * The guards are the same ones the sending composer used to apply to itself,
+   * and they are applied here for the same reason: submit clears the box, so
+   * anything in it now was typed after the refusal left and outranks it. What
+   * changed is only where the question is asked — of the live composer, which
+   * on this path is a different instance from the one that sent the turn.
+   */
+  useEffect(() => {
+    if (!composerRestore || composerRestore.sessionId !== sessionId) return
+    setComposerRestore(null)
+    if (composerRestore.error) setChatError(composerRestore.error)
+    if (
+      liveValue.current ||
+      liveAttachments.current.length > 0 ||
+      liveActivatedSkillIds.current.length > 0 ||
+      liveStartingTemplate.current
+    ) {
+      return
+    }
+    activeRestoreToken.current = null
+    liveValue.current = composerRestore.value
+    liveAttachments.current = composerRestore.attachments
+    liveActivatedSkillIds.current = composerRestore.activatedSkillIds
+    liveStartingTemplate.current = composerRestore.startingTemplate
+    setValue(composerRestore.value)
+    setAttachments(composerRestore.attachments)
+    setActivatedSkillIds(composerRestore.activatedSkillIds)
+    setStartingTemplate(composerRestore.startingTemplate)
+    requestAnimationFrame(() => ref.current?.focus())
+  }, [composerRestore, sessionId, setComposerRestore])
+
   useEffect(() => {
     if (!pendingStartingTemplate) return
     activeRestoreToken.current = null
@@ -519,14 +576,60 @@ export function Composer({
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
+  //: Read from callbacks that outlive the render which armed them, for the
+  //: same reason the attachments and the draft each keep one.
+  const liveWebSearch = useRef(webSearch)
+  liveWebSearch.current = webSearch
+  /**
+   * Everything staged for a turn that has not been sent, addressed to the
+   * session that has just been created for it. Built from the live refs rather
+   * than the render's values: the callers are `onSession` callbacks, which fire
+   * after the render that armed them has gone.
+   */
+  const heldComposer = (id: string) => ({
+    sessionId: id,
+    value: liveValue.current,
+    attachments: liveAttachments.current,
+    startingTemplate: liveStartingTemplate.current,
+    activatedSkillIds: liveActivatedSkillIds.current,
+    webSearch: liveWebSearch.current,
+  })
   // Switching surfaces keeps this composer mounted, so a choice made for the
   // last one would follow the person to the next — and an upload that walked
   // onto the picture or clip surface would be dropped at submit, after the
   // wait and the credits. The typed sentence stays; it is theirs to reuse
   // anywhere.
   useEffect(() => {
-    if (sessionId && preserveComposerForSession.current === sessionId) {
-      preserveComposerForSession.current = null
+    if (sessionId && carriedComposer?.sessionId === sessionId) {
+      // Put back rather than merely left alone, because on a remount there is
+      // nothing to leave alone — but only where it carries something. This is
+      // captured when the session comes into existence, which on a send is
+      // *after* the composer was cleared, so half of it is empty by then; a
+      // refusal arriving in the same commit has already put the real work back
+      // through the store, and assigning these over it would clear the very
+      // thing both paths exist to keep.
+      const held = carriedComposer
+      carriedComposer = null
+      // Empty on a send, which clears the box before the session exists; full
+      // on the paths that create one without sending — turning Auto on is the
+      // whole of somebody's unsent sentence surviving a change of screen.
+      if (held.value) {
+        liveValue.current = held.value
+        setValue(held.value)
+      }
+      if (held.attachments.length) {
+        liveAttachments.current = held.attachments
+        setAttachments(held.attachments)
+      }
+      if (held.startingTemplate) {
+        liveStartingTemplate.current = held.startingTemplate
+        setStartingTemplate(held.startingTemplate)
+      }
+      if (held.activatedSkillIds.length) {
+        liveActivatedSkillIds.current = held.activatedSkillIds
+        setActivatedSkillIds(held.activatedSkillIds)
+      }
+      if (held.webSearch) setWebSearch(true)
       return
     }
     liveActivatedSkillIds.current = []
@@ -729,7 +832,7 @@ export function Composer({
         privacyDecisionToken: decisionToken,
         onSession: (id) => {
           attemptedSessionId = id
-          preserveComposerForSession.current = id
+          carriedComposer = heldComposer(id)
           navigate(`/s/${id}`, { replace: true })
         },
       })
@@ -753,37 +856,28 @@ export function Composer({
         })
         return
       }
-      // Submit clears the composer optimistically. Restore this failed request
-      // only while it is still empty; a newer draft or attachment selection
-      // always wins over a late network failure.
-      if (
-        restoreToken !== undefined &&
-        activeRestoreToken.current === restoreToken &&
-        !liveValue.current &&
-        liveAttachments.current.length === 0 &&
-        liveActivatedSkillIds.current.length === 0 &&
-        !liveStartingTemplate.current
-      ) {
-        activeRestoreToken.current = null
-        liveValue.current = text
-        liveAttachments.current = files
-        liveActivatedSkillIds.current = skillIds
-        liveStartingTemplate.current = startedFrom
-        setValue(text)
-        setAttachments(files)
-        setActivatedSkillIds(skillIds)
-        setStartingTemplate(startedFrom)
-        requestAnimationFrame(() => ref.current?.focus())
-      }
       setReusableSessionId((current) => current ?? attemptedSessionId)
       // The code, not the sentence: `errorMessage` is what goes on screen and
       // deliberately swallows machine strings, so branching on its output
       // depended on one leaking through.
-      setChatError(
+      const notice =
         errorCode(error) === 'auto_quality_model_required'
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
-          : errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')),
-      )
+          : errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.'))
+      // Handed back through the store rather than through this component's own
+      // setters. A turn that created a session has already moved the person to
+      // the conversation, and the composer that sent it is unmounted by the
+      // time the refusal lands — the sentence, the uploads and the reason all
+      // went to a screen nobody was looking at. Whichever composer is on the
+      // session now is the one that has to receive them.
+      setComposerRestore({
+        sessionId: attemptedSessionId,
+        value: text,
+        attachments: files,
+        activatedSkillIds: skillIds,
+        startingTemplate: startedFrom,
+        error: notice,
+      })
       throw error
     }
   }
@@ -925,6 +1019,9 @@ export function Composer({
     // into the next conversation and outrank the shape that one was wearing.
     const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
     setPendingTemplate(null)
+    //: Which session the refusal below has to be addressed to. Reassigned by
+    //: `onSession` when the turn is the one that brings the session into being.
+    let landedSessionId = sessionId
     void send(sessionId, kind, text, {
       projectId,
       webSearch: effectiveWebSearch,
@@ -938,26 +1035,28 @@ export function Composer({
       startingTemplate: sentStartingTemplate ?? undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
-        preserveComposerForSession.current = id
+        landedSessionId = id
+        carriedComposer = heldComposer(id)
         navigate(`/s/${id}`, { replace: true })
       },
     })
       .catch(() => {
         // A policy/permission refusal happens before the server stores the
         // turn. Restore the exact draft instead of making the user reconstruct
-        // the sentence, uploads, and one-turn skill choice. Do not overwrite a
-        // newer draft typed while the request was in flight.
-        setValue((current) => current || text)
-        setAttachments((current) => (current.length > 0 ? current : sentAttachments))
-        setActivatedSkillIds((current) => {
-          const next = current.length > 0 ? current : sentSkillIds
-          liveActivatedSkillIds.current = next
-          return next
-        })
-        setStartingTemplate((current) => {
-          const next = current ?? sentStartingTemplate
-          liveStartingTemplate.current = next
-          return next
+        // the sentence, uploads, and one-turn skill choice.
+        //
+        // Through the store, for the same reason the chat path does it: a turn
+        // that created a session has already moved the person to it, and the
+        // composer that sent this one is gone by the time the refusal lands.
+        // The guard about a newer draft is applied where it can be answered —
+        // on whichever composer is actually on screen.
+        setComposerRestore({
+          sessionId: landedSessionId,
+          value: text,
+          attachments: sentAttachments,
+          activatedSkillIds: sentSkillIds,
+          startingTemplate: sentStartingTemplate,
+          error: '',
         })
         // A refused turn never reached the server, so the session row was
         // rolled back with it and the shape is nobody's record now. Hand the
@@ -1529,17 +1628,17 @@ export function Composer({
                 kind={kind}
                 sessionId={sessionId ?? reusableSessionId}
                 modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
-                onEnableAuto={async () => {
+                onEnableAuto={async (mode) => {
                   setChatError(null)
                   try {
                     let id = sessionId ?? reusableSessionId
                     if (!id) {
-                      id = await newSession(kind, { projectId, routingMode: 'auto' })
-                      preserveComposerForSession.current = id
+                      id = await newSession(kind, { projectId, routingMode: mode })
+                      carriedComposer = heldComposer(id)
                       setReusableSessionId(id)
                       navigate(`/s/${id}`, { replace: true })
                     } else {
-                      await setSessionRoutingMode(id, 'auto')
+                      await setSessionRoutingMode(id, mode)
                     }
                   } catch (error) {
                     setChatError(

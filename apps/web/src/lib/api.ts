@@ -229,6 +229,13 @@ export interface ModelCatalogue {
     reason: 'disabled' | 'classifier_unavailable' | 'no_economy_models' | null
     classifierModelId: string | null
     economyModelIds: string[]
+    /** The upgrade lane shares the switch and the classifier; only the
+     *  candidate list is its own. Coarse: whether a candidate is usable also
+     *  depends on the model the turn is already on, which the catalogue cannot
+     *  know — the server decides that per turn. */
+    qualityAvailable: boolean
+    qualityReason: 'disabled' | 'classifier_unavailable' | 'no_quality_models' | null
+    qualityModelIds: string[]
   }
 }
 
@@ -507,6 +514,7 @@ export interface GovernancePolicy {
   adaptiveRoutingEnabled: boolean
   adaptiveClassifierModelId: string | null
   adaptiveEconomyModelIds: string[]
+  adaptiveQualityModelIds: string[]
   /** Plans documents when set; null lets each surface's own model plan. */
   outlineModelId: string | null
 }

@@ -18,6 +18,7 @@ export function AutoRoutingSection() {
   const [enabled, setEnabled] = useState(false)
   const [classifierModelId, setClassifierModelId] = useState('')
   const [economyModelIds, setEconomyModelIds] = useState<string[]>([])
+  const [qualityModelIds, setQualityModelIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +33,7 @@ export function AutoRoutingSection() {
     setEnabled(governance.adaptiveRoutingEnabled ?? false)
     setClassifierModelId(governance.adaptiveClassifierModelId ?? '')
     setEconomyModelIds(governance.adaptiveEconomyModelIds ?? [])
+    setQualityModelIds(governance.adaptiveQualityModelIds ?? [])
   }, [governance])
 
   const classifiers = models.filter(
@@ -49,10 +51,18 @@ export function AutoRoutingSection() {
       model.dataBoundary !== 'hybrid' &&
       model.dataBoundary !== 'unknown',
   )
+  //: Every chat model. Deliberately unfiltered by price — an upgrade list is
+  //: a finding about which models answer better here, and on this instance a
+  //: 122b failed an outline call a 35b completed. The order is the finding.
+  const qualityModels = models.filter((model) => model.kinds.includes('chat'))
   const canSave = !enabled || Boolean(classifierModelId && economyModelIds.length > 0)
 
-  const updateOrder = (id: string, offset: -1 | 1) => {
-    setEconomyModelIds((current) => {
+  const moveWithin = (
+    setIds: (updater: (current: string[]) => string[]) => void,
+    id: string,
+    offset: -1 | 1,
+  ) => {
+    setIds((current) => {
       const at = current.indexOf(id)
       const to = at + offset
       if (at < 0 || to < 0 || to >= current.length) return current
@@ -62,6 +72,14 @@ export function AutoRoutingSection() {
       next[to] = moved
       return next
     })
+    dirty.current = true
+    setSaved(false)
+    setError(null)
+  }
+  const updateOrder = (id: string, offset: -1 | 1) =>
+    moveWithin(setEconomyModelIds, id, offset)
+
+  const touched = () => {
     dirty.current = true
     setSaved(false)
     setError(null)
@@ -238,6 +256,119 @@ export function AutoRoutingSection() {
         )}
       </div>
 
+      {/* The other direction, on the same switch and the same classifier. Left
+          empty the lane simply is not offered, which is what every installation
+          starts with — an upgrade path that turned itself on would spend money
+          nobody agreed to. */}
+      <div className="border-t border-line pt-4">
+        <p className="text-base font-medium">{t('품질 우선 상향 모델')}</p>
+        <p className="mb-3 text-sm text-muted">
+          {t('복잡하다고 분류된 요청에만 씁니다. 비워 두면 품질 우선 Auto 를 제공하지 않습니다. 큰 모델이 늘 나은 것은 아니므로 실제로 결과가 좋았던 순서로 넣으세요.')}
+        </p>
+        <Field
+          label={t('상향 모델 추가')}
+          hint={t('최대 3개까지 추가할 수 있으며 위에서부터 사용 가능 여부를 확인합니다.')}
+        >
+          <select
+            value=""
+            disabled={qualityModelIds.length >= 3}
+            title={
+              qualityModelIds.length >= 3 ? t('상향 모델은 3개까지만 추가할 수 있습니다') : undefined
+            }
+            onChange={(event) => {
+              const id = event.target.value
+              if (!id || qualityModelIds.includes(id)) return
+              setQualityModelIds((current) => [...current, id].slice(0, 3))
+              touched()
+            }}
+            className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent disabled:opacity-50"
+          >
+            <option value="">
+              {qualityModelIds.length >= 3 ? t('최대 3개를 선택했습니다') : t('상향 모델 선택')}
+            </option>
+            {qualityModels
+              .filter((model) => !qualityModelIds.includes(model.id))
+              .map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label} · {model.inputCreditCost}/{model.creditCost}
+                </option>
+              ))}
+          </select>
+        </Field>
+        {qualityModelIds.length > 0 ? (
+          <ol className="mt-2 space-y-1.5">
+            {qualityModelIds.map((id, index) => {
+              const model = models.find((candidate) => candidate.id === id)
+              return (
+                <li
+                  key={id}
+                  className="flex min-w-0 items-center gap-2 rounded-control border border-line px-2.5 py-2"
+                >
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-elevated text-xs font-semibold">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-base">{model?.label ?? id}</span>
+                  {model && (
+                    <Badge
+                      className="hidden sm:inline-flex"
+                      tone={model.dataBoundary === 'self_hosted' ? 'success' : 'neutral'}
+                    >
+                      {model.dataBoundary === 'self_hosted' ? 'self-hosted' : t('외부 제공')}
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={index === 0}
+                    aria-label={t('{name} 우선순위 올리기').replace('{name}', model?.label ?? id)}
+                    title={
+                      index === 0
+                        ? t('이미 가장 먼저 시도하는 모델입니다')
+                        : t('한 칸 위로 올려 더 먼저 시도합니다')
+                    }
+                    onClick={() => moveWithin(setQualityModelIds, id, -1)}
+                  >
+                    <ArrowUp size={14} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={index === qualityModelIds.length - 1}
+                    aria-label={t('{name} 우선순위 내리기').replace('{name}', model?.label ?? id)}
+                    title={
+                      index === qualityModelIds.length - 1
+                        ? t('이미 가장 나중에 시도하는 모델입니다')
+                        : t('한 칸 아래로 내려 더 나중에 시도합니다')
+                    }
+                    onClick={() => moveWithin(setQualityModelIds, id, 1)}
+                  >
+                    <ArrowDown size={14} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('{name} 제거').replace('{name}', model?.label ?? id)}
+                    title={t('이 모델을 상향 목록에서 뺍니다')}
+                    onClick={() => {
+                      setQualityModelIds((current) =>
+                        current.filter((candidate) => candidate !== id),
+                      )
+                      touched()
+                    }}
+                  >
+                    <X size={14} />
+                  </Button>
+                </li>
+              )
+            })}
+          </ol>
+        ) : (
+          <p className="rounded-control border border-dashed border-line px-3 py-3 text-sm text-faint">
+            {t('선택한 상향 모델이 없습니다. 품질 우선 Auto 는 표시되지 않습니다.')}
+          </p>
+        )}
+      </div>
+
       {enabled && classifiers.length === 0 && (
         <p className="flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
@@ -266,6 +397,9 @@ export function AutoRoutingSection() {
                   ? {
                       adaptiveClassifierModelId: classifierModelId || null,
                       adaptiveEconomyModelIds: economyModelIds,
+                      // Sent whether or not it has entries: an emptied list is
+                      // how an administrator turns the upgrade lane back off.
+                      adaptiveQualityModelIds: qualityModelIds,
                     }
                   : {}),
               })

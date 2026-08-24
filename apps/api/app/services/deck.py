@@ -483,6 +483,15 @@ async def write(
     #: second planning call would produce a different deck from the one that
     #: was agreed to and quietly replace it.
     approved_plan: dict[str, Any] | None = None,
+    #: Whether this pass may stop to ask.
+    #:
+    #: False on the pass that follows "있는 자료로 진행" — the button whose whole
+    #: promise is that it will not be asked again. Without it the answer folds
+    #: back into a request identical to the one that raised the question, the
+    #: planner asks it again, and the button loops for as long as somebody
+    #: keeps pressing it. Only this one pass is silenced; a later request that
+    #: genuinely cannot be grounded is still allowed to say so.
+    may_ask: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `slide`, a final `deck` and one `usage` event.
 
@@ -546,7 +555,7 @@ async def write(
             build_document_messages(
                 SessionKind.slides,
                 _OUTLINE_PROMPT.format(
-                    ask_rule=grounding.ASK_RULE,
+                    ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
                     lo=wanted or _MIN_SLIDES,
                     hi=wanted or _DEFAULT_MAX,
                     theme_rule=(
@@ -579,7 +588,7 @@ async def write(
     # The model may answer the outline call with a question instead. Only when
     # the request names material it cannot find — see `grounding.ASK_RULE`; a
     # bare topic is still planned without being asked about.
-    if asked := grounding.parse_needs(text):
+    if may_ask and (asked := grounding.parse_needs(text)):
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
         yield {"type": "usage", **usage}
@@ -611,6 +620,29 @@ async def write(
                 accent = fixed_accent or _theme_accent(retry_text) or accent
             else:
                 log.info("deck outline still flat, keeping the first")
+    # One more call before calling it a failure. What the parse trips over is a
+    # shape, not the request — a fenced block, a sentence of preamble, a list
+    # where an object belongs — and the same prompt usually lands it the second
+    # time. The machinery is already here for the flat-layout retry above, and
+    # the alternative is charging for a call and showing nothing for it.
+    if not plan:
+        log.info("deck outline unreadable, asking once more")
+        try:
+            retry_text, retry_spent = await ask(
+                "\n\n앞선 답을 읽을 수 없었다. 설명도 머리말도 코드펜스도 없이 "
+                "JSON 객체 하나만 출력하라."
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline retry failed: %s", exc)
+        else:
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            if retry_plan:
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text) or accent
+
     # Only an empty outline is a failure; a short one is a narrow topic.
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
