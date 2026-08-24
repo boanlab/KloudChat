@@ -88,6 +88,11 @@ async def test_refresh_models_keeps_user_scoped_auto_catalogue_contract(monkeypa
         "reason": None,
         "classifierModelId": classifier["id"],
         "economyModelIds": [economy["id"]],
+        # The upgrade lane is off until an administrator names candidates for
+        # it; the cost lane above is unaffected either way.
+        "qualityAvailable": False,
+        "qualityReason": "no_quality_models",
+        "qualityModelIds": [],
     }
 
 

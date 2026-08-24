@@ -1,11 +1,13 @@
 import { ArrowRight, Bot, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
+import { DesignGallery } from '@/components/chat/DesignGallery'
 import { DesignRail } from '@/components/chat/DesignRail'
+import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -40,9 +42,24 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
   const { user, sessions, jobs, agents, enabledKinds, newSession } = useStore()
+  //: The 서식 already picked for this surface, if any. Read here only to
+  //: decide whether the rail below would be repeating it.
+  const pendingTemplate = useStore((s) => s.pendingTemplate)
   //: Which surface the composer is currently writing for. Local, and only for
   //: as long as this screen is open — a session gets its kind at creation.
   const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
+
+  /**
+   * The route can change while this screen stays mounted. `/` and `/new/:kind`
+   * both render this component, so React keeps it in place and the initial
+   * value above is read once — 서식에서 시작 navigates from one to the other,
+   * and without this the surface stays whatever it already was. The pick then
+   * lands on a composer of the wrong kind, where `shownTemplate` discards it
+   * for not matching and the chip never appears.
+   */
+  useEffect(() => {
+    if (initialKind) setKind(initialKind)
+  }, [initialKind])
 
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
   /**
@@ -129,6 +146,15 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             aspect chips into a report is not a saved draft, it is a bug. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />
 
+        {/* The composer carries these only once a turn has been taken; before
+            that the empty screen is what offers them. `/new/:kind` used to be
+            that screen and now lands here, so this is the only place left
+            that can — without them a starting point cannot be picked at all. */}
+        <div className="mx-auto mb-8 mt-3 flex w-full max-w-3xl flex-wrap justify-center gap-2 px-4">
+          <TemplateGallery kind={active} />
+          <DesignGallery kind={active} />
+        </div>
+
         {usableAgents.length > 0 && (
           <section className="mx-auto mb-8 w-full max-w-3xl px-4">
             <div className="mb-2 flex items-baseline justify-between">
@@ -174,8 +200,12 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
         )}
 
         {/* What to make and what it can look like are one decision, taken
-            together — so this stays with the making, under the composer. */}
-        <DesignRail />
+            together — so this stays with the making, under the composer.
+            It folds away once that decision is made: the composer's chip is
+            already naming the pick, and the card it came from would print the
+            same two words a second time on one empty screen — only the chip
+            carries the × that undoes it, so only the chip should say it. */}
+        {pendingTemplate?.surface !== active && <DesignRail />}
 
         {running.length > 0 && (
           <section className="mb-8">

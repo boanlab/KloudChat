@@ -75,6 +75,20 @@ const EN: Record<string, string> = {
 
   // ── Auto cost routing ──────────────────────────────────────────────
   'Auto · 비용 절약': 'Auto · Save credits',
+  'Auto · 품질 우선': 'Auto · Favour quality',
+  '품질 우선 상향 모델': 'Models to upgrade to',
+  '복잡하다고 분류된 요청에만 씁니다. 비워 두면 품질 우선 Auto 를 제공하지 않습니다. 큰 모델이 늘 나은 것은 아니므로 실제로 결과가 좋았던 순서로 넣으세요.':
+    'Used only for requests classified as demanding. Left empty, the quality lane is not offered at all. A larger model is not reliably a better one — order these by what actually answered better here.',
+  '상향 모델 추가': 'Add a model to upgrade to',
+  '상향 모델은 3개까지만 추가할 수 있습니다': 'At most three models can be added',
+  '상향 모델 선택': 'Choose a model',
+  '이 모델을 상향 목록에서 뺍니다': 'Remove this model from the upgrade list',
+  '선택한 상향 모델이 없습니다. 품질 우선 Auto 는 표시되지 않습니다.':
+    'No models chosen. Auto · Favour quality will not be offered.',
+  '복잡한 요청만 관리자가 지정한 상위 모델로 보내고, 그 밖에는 현재 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.':
+    'Sends only demanding requests to a stronger model the administrator named, and keeps the current model for everything else. Nothing travels further than it already does.',
+  '관리자가 상향할 모델을 지정하지 않았습니다.': 'The administrator has named no model to upgrade to.',
+  '관리자가 Auto 를 켜지 않았습니다.': 'The administrator has not turned Auto on.',
   'Auto 비용 절약 라우팅': 'Auto cost-saving routing',
   '모델 자동 라우팅': 'Automatic model routing',
   '질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.':
@@ -1295,7 +1309,6 @@ const EN: Record<string, string> = {
   '기타': 'Other',
   '답변을 받지 못했습니다.': 'No answer came back.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
-  '다시 물어보기': 'Ask again',
 
   // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
   '이미지 {n}장': '{n} pictures',

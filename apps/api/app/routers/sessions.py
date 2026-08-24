@@ -233,25 +233,15 @@ def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dic
 
 
 #: How far a model's answers travel, lowest first. `hybrid` sits with the
-#: external ones because it may fall back to them mid-turn, and `unknown` with
-#: them because a boundary nobody could establish is not a boundary.
-_BOUNDARY_RANK = {"self_hosted": 0, "hybrid": 1, "external": 1, "unknown": 1}
+#: The rule lives with the candidate filters that use it, in `adaptive_routing`.
+#: Routing may change what answers a turn; it may never change how far the turn
+#: travels, and the outline model answers to the same rule for the same reason.
+_widens_boundary = adaptive_routing.widens_boundary
 
-
-def _widens_boundary(candidate: dict, chosen: dict) -> bool:
-    """True when `candidate` would send further than `chosen` already does.
-
-    Used for the outline model, which is the one call in a document a policy
-    row can redirect. The person picked the writer, or privacy did; neither
-    should be undone by a setting on another screen.
-    """
-    if _BOUNDARY_RANK.get(str(candidate.get("dataBoundary")), 1) > _BOUNDARY_RANK.get(
-        str(chosen.get("dataBoundary")), 1
-    ):
-        return True
-    # Strict-local is a stronger claim than self-hosted: no external fallback
-    # exists for it at all.
-    return bool(chosen.get("strictLocal")) and not candidate.get("strictLocal")
+#: Both Auto lanes. Everything that gates Auto — chat-only, the quality ceiling
+#: it routes from, the ceiling surviving a turn-only override — is true of the
+#: quality lane for exactly the reasons it is true of the cost one.
+_AUTO_MODES = frozenset({RoutingMode.auto, RoutingMode.auto_quality})
 
 
 def _planner_model(
@@ -323,11 +313,17 @@ def _cost_routing(
     reason_code: str,
     requested_model: dict,
     selected_model: dict,
+    mode: str = "auto",
     classifier_model: str | None = None,
     classification: adaptive_routing.Classification | None = None,
 ) -> dict[str, Any]:
+    """One turn's routing decision, whichever direction it went.
+
+    The wire key stays `costRouting` across both lanes: it is the envelope every
+    reader already knows, and `mode` inside it says which lane wrote it.
+    """
     route: dict[str, Any] = {
-        "mode": "auto",
+        "mode": mode,
         "decision": decision,
         "reasonCode": reason_code,
         "requestedModel": requested_model["id"],
@@ -350,6 +346,9 @@ def _cost_routing(
 
 async def _resolve_cost_routing(
     *,
+    #: The column behind this is a plain String, so a bare `str` is as ordinary
+    #: an argument here as the enum. Compared by value throughout for that reason.
+    mode: RoutingMode | str = RoutingMode.auto,
     db: DbSession,
     user: User,
     policy,
@@ -360,9 +359,19 @@ async def _resolve_cost_routing(
     context_tokens: int,
     unsupported_reason: str | None,
 ) -> tuple[dict, dict[str, Any]]:
-    """Returns an Auto turn's effective model and value-free route metadata."""
+    """Returns an Auto turn's effective model and value-free route metadata.
+
+    Both lanes run the same classifier over the same envelope and read a
+    different half of its answer: cost acts on `low`, quality on `high`.
+    Everything else — an unusable classifier, an empty candidate list, a
+    confidence under the bar, any refusal at all — keeps the model the
+    person chose. Neither lane has a way to act on a guess.
+    """
+    lane = str(getattr(mode, "value", mode))
+    upgrading = lane == RoutingMode.auto_quality.value
     if not policy.adaptive_routing_enabled:
         return quality_model, _cost_routing(
+            mode=lane,
             decision="bypassed",
             reason_code="disabled",
             requested_model=quality_model,
@@ -370,6 +379,7 @@ async def _resolve_cost_routing(
         )
     if unsupported_reason:
         return quality_model, _cost_routing(
+            mode=lane,
             decision="bypassed",
             reason_code=unsupported_reason,
             requested_model=quality_model,
@@ -383,6 +393,7 @@ async def _resolve_cost_routing(
         classifier_model, allowed_model_ids=allowed
     ):
         return quality_model, _cost_routing(
+            mode=lane,
             decision="classifier_unavailable",
             reason_code="classifier_unavailable",
             requested_model=quality_model,
@@ -390,20 +401,34 @@ async def _resolve_cost_routing(
             classifier_model=classifier_id or None,
         )
 
-    candidates = adaptive_routing.economy_candidates(
-        catalogue,
-        list(policy.adaptive_economy_model_ids or [])[:3],
-        quality_model=quality_model,
-        allowed_model_ids=allowed,
-        context_tokens=context_tokens,
-        # A routed economy call deliberately receives no tools. This prevents
-        # an unbounded tool result from invalidating the preflight context fit.
-        requires_tools=False,
-    )
+    if upgrading:
+        candidates = adaptive_routing.quality_candidates(
+            catalogue,
+            list(policy.adaptive_quality_model_ids or [])[:3],
+            quality_model=quality_model,
+            allowed_model_ids=allowed,
+            context_tokens=context_tokens,
+            # Kept, unlike the economy lane's. Routing up to answer a turn the
+            # smaller model could not, and removing its tools on the way, would
+            # charge more for less.
+            requires_tools=bool(classifier_tool_definitions),
+        )
+    else:
+        candidates = adaptive_routing.economy_candidates(
+            catalogue,
+            list(policy.adaptive_economy_model_ids or [])[:3],
+            quality_model=quality_model,
+            allowed_model_ids=allowed,
+            context_tokens=context_tokens,
+            # A routed economy call deliberately receives no tools. This prevents
+            # an unbounded tool result from invalidating the preflight context fit.
+            requires_tools=False,
+        )
     if not candidates:
         return quality_model, _cost_routing(
+            mode=lane,
             decision="kept_quality",
-            reason_code="no_economy_model",
+            reason_code="no_quality_model" if upgrading else "no_economy_model",
             requested_model=quality_model,
             selected_model=quality_model,
             classifier_model=classifier_id,
@@ -415,6 +440,7 @@ async def _resolve_cost_routing(
     )
     if classifier_input is None:
         return quality_model, _cost_routing(
+            mode=lane,
             decision="kept_quality",
             reason_code="input_too_long",
             requested_model=quality_model,
@@ -428,6 +454,7 @@ async def _resolve_cost_routing(
     api_key = litellm_service.user_key(user) or await litellm_service.ensure_key(user)
     if not api_key:
         return quality_model, _cost_routing(
+            mode=lane,
             decision="classifier_unavailable",
             reason_code="classifier_key_unavailable",
             requested_model=quality_model,
@@ -445,23 +472,28 @@ async def _resolve_cost_routing(
     )
     if classification is None:
         return quality_model, _cost_routing(
+            mode=lane,
             decision="classifier_unavailable",
             reason_code="classifier_unavailable",
             requested_model=quality_model,
             selected_model=quality_model,
             classifier_model=classifier_id,
         )
-    if (
-        classification.complexity != "low"
-        or classification.confidence < adaptive_routing.MIN_LOW_CONFIDENCE
-    ):
-        if classification.complexity == "high":
-            reason = "high_complexity"
-        elif classification.complexity == "uncertain":
+    wanted = "high" if upgrading else "low"
+    bar = (
+        adaptive_routing.MIN_HIGH_CONFIDENCE
+        if upgrading
+        else adaptive_routing.MIN_LOW_CONFIDENCE
+    )
+    if classification.complexity != wanted or classification.confidence < bar:
+        if classification.complexity == "uncertain":
             reason = "uncertain"
+        elif classification.complexity != wanted:
+            reason = f"{classification.complexity}_complexity"
         else:
             reason = "low_confidence"
         return quality_model, _cost_routing(
+            mode=lane,
             decision="kept_quality",
             reason_code=reason,
             requested_model=quality_model,
@@ -472,8 +504,9 @@ async def _resolve_cost_routing(
 
     selected = candidates[0]
     return selected, _cost_routing(
+        mode=lane,
         decision="routed",
-        reason_code="low_complexity",
+        reason_code=f"{wanted}_complexity",
         requested_model=quality_model,
         selected_model=selected,
         classifier_model=classifier_id,
@@ -1104,7 +1137,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         project_id=payload.project_id,
         agent_id=payload.agent_id,
     )
-    if payload.routing_mode == RoutingMode.auto and payload.kind is not SessionKind.chat:
+    if payload.routing_mode in _AUTO_MODES and payload.kind is not SessionKind.chat:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -1114,7 +1147,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_is_not_a_model_id",
         )
-    if payload.routing_mode == RoutingMode.auto:
+    if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
     session = ChatSession(
         user_id=user.id,
@@ -1178,7 +1211,7 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_is_not_a_model_id",
         )
-    if changes.get("routing_mode") == RoutingMode.auto and session.kind is not SessionKind.chat:
+    if changes.get("routing_mode") in _AUTO_MODES and session.kind is not SessionKind.chat:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -1189,7 +1222,7 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         changes["routing_mode"] = RoutingMode.manual
     # Validate the effective post-patch state, including an unrelated update to
     # a session that is already Auto. A model-only patch becomes manual above.
-    if changes.get("routing_mode", session.routing_mode) == RoutingMode.auto:
+    if changes.get("routing_mode", session.routing_mode) in _AUTO_MODES:
         await _require_auto_quality_model(user, changes.get("model", session.model))
     if "render_template_id" in changes:
         changes["render_template_id"] = _resolved_template_id(
@@ -1801,6 +1834,17 @@ async def send_message(
     #: What this person typed just now, as opposed to the merged request the
     #: model is given. The transcript shows the first: nobody wrote the merge.
     typed_content = payload.content
+    #: "있는 자료로 진행" — the card's second button, which sends an empty answers
+    #: object where a typed note sends none at all. Folded back into the
+    #: request it changes nothing, so the planner meets the same sentence and
+    #: asks the same question; the button then loops for as long as anybody
+    #: keeps pressing it. This is what tells the next pass not to ask.
+    proceed_as_is = bool(
+        pending
+        and not payload.approve
+        and payload.answers is not None
+        and not payload.answers
+    )
     if pending:
         answers = {**(pending.get("answers") or {}), **(payload.answers or {})}
         pending["answers"] = answers
@@ -1834,7 +1878,7 @@ async def send_message(
         )
     auto_turn = bool(
         session.kind is SessionKind.chat
-        and session.routing_mode == RoutingMode.auto
+        and session.routing_mode in _AUTO_MODES
         and payload.model is None
     )
 
@@ -2218,6 +2262,7 @@ async def send_message(
             untrusted_context=untrusted_context,
         )
         routed_model, cost_routing = await _resolve_cost_routing(
+            mode=session.routing_mode,
             db=db,
             user=user,
             policy=policy,
@@ -2241,7 +2286,13 @@ async def send_message(
         resolved.routing = {**resolved.routing, "costRouting": cost_routing}
         privacy_resolution = resolved
         model = routed_model
-        if cost_routing.get("decision") == "routed":
+        # Only downwards. The economy envelope is the tool-free one the
+        # classifier was shown; an upgraded turn keeps the envelope it already
+        # had, tools included, because that is what it was routed up to use.
+        if (
+            cost_routing.get("decision") == "routed"
+            and session.routing_mode != RoutingMode.auto_quality
+        ):
             tools = []
             tool_definitions = []
             messages = economy_messages
@@ -2271,7 +2322,7 @@ async def send_message(
     db.add(user_message)
     # A strict privacy route and SendMessage.model are turn-only. An Auto
     # session's persisted model is its ceiling, changed through PATCH.
-    if session.routing_mode != RoutingMode.auto or payload.model is None:
+    if session.routing_mode not in _AUTO_MODES or payload.model is None:
         # A substitute is for this turn only: written back, it would outlive the
         # revocation that caused it and nothing would move the session back.
         if revoked_model is None:
@@ -2352,6 +2403,7 @@ async def send_message(
     if render_template is not None:
         return StreamingResponse(
             _run_page(
+                may_ask=not proceed_as_is,
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
@@ -2383,6 +2435,7 @@ async def send_message(
     if session.kind is SessionKind.report:
         return StreamingResponse(
             _run_report(
+                may_ask=not proceed_as_is,
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
@@ -2415,6 +2468,7 @@ async def send_message(
     if session.kind is SessionKind.slides:
         return StreamingResponse(
             _run_deck(
+                may_ask=not proceed_as_is,
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
@@ -3595,6 +3649,9 @@ async def _run_page(
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
     approved_plan: dict | None = None,
+    #: False on the pass that follows "있는 자료로 진행", so the button that
+    #: promises not to ask again keeps that promise. See the writers.
+    may_ask: bool = True,
     #: The attachments the request was made with, carried so a proposal stored
     #: now can be written against the same files later.
     attachments: list[str] | None = None,
@@ -3642,6 +3699,7 @@ async def _run_page(
         stream = page_service.write(
             request=request,
             approved_plan=approved_plan,
+            may_ask=may_ask,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -3789,6 +3847,9 @@ async def _run_deck(
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
     approved_plan: dict | None = None,
+    #: False on the pass that follows "있는 자료로 진행", so the button that
+    #: promises not to ask again keeps that promise. See the writers.
+    may_ask: bool = True,
     #: The attachments the request was made with, carried so a proposal stored
     #: now can be written against the same files later.
     attachments: list[str] | None = None,
@@ -3831,6 +3892,7 @@ async def _run_deck(
         stream = deck_service.write(
             request=request,
             approved_plan=approved_plan,
+            may_ask=may_ask,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
@@ -3950,6 +4012,25 @@ async def _run_deck(
                     session_id=session_id,
                     model=model["id"],
                 )
+            else:
+                # Nothing was written, and until now nothing was recorded of it
+                # either: the error went out as one SSE frame and the turn left
+                # no trace at all. On the next load the person found their own
+                # question, no answer, and no way to tell whether it had been
+                # asked — after a model call they had already paid for. The
+                # surfaces already know how to draw this; it only had to be
+                # written down.
+                db.add(
+                    Message(
+                        session_id=session_id,
+                        role=Role.assistant,
+                        content="",
+                        failure=TurnFailure.no_answer,
+                        model=model["id"],
+                        steps=_prelude_steps(skills_event, context_steps) or None,
+                        routing=routing,
+                    )
+                )
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
@@ -3966,6 +4047,9 @@ async def _run_report(
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
     approved_plan: dict | None = None,
+    #: False on the pass that follows "있는 자료로 진행", so the button that
+    #: promises not to ask again keeps that promise. See the writers.
+    may_ask: bool = True,
     #: The attachments the request was made with, carried so a proposal stored
     #: now can be written against the same files later.
     attachments: list[str] | None = None,
@@ -4014,6 +4098,7 @@ async def _run_report(
         stream = report_service.write(
             request=request,
             approved_plan=approved_plan,
+            may_ask=may_ask,
             model=model["id"],
             outline_model=(outline_model or {}).get("id", ""),
             api_key=api_key,
