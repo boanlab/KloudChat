@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
+import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -316,6 +316,10 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   await page.getByLabel('프롬프트 입력').fill('전이학습이 소량 데이터에서 왜 효과적인지 짧은 기술 검토 보고서.')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
+
+  // The first pass plans and stops; nothing is written until it is approved, so
+  // there is no panel and no denominator before this.
+  await approvePlan(page, 480_000)
 
   // The outline lands before any section is written, so the panel has a real
   // denominator from the start. Asserting the *initial* 0/N would race the first

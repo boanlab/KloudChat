@@ -100,7 +100,9 @@ export interface ModelInfo {
  * card, and the surface produces an `audio` or `video` artifact by mode.
  */
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
-export type RoutingMode = 'manual' | 'auto'
+//: `auto` spends less, `auto_quality` spends more. One classifier decides
+//: both — the cost lane acts on its `low`, the quality lane on its `high`.
+export type RoutingMode = 'manual' | 'auto' | 'auto_quality'
 
 /**
  * What a session produced, when that is all it has to show for itself.

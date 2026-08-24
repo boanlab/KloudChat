@@ -52,7 +52,6 @@ const EN: Record<string, string> = {
   '거버넌스': 'Governance',
   '아티팩트': 'Artifacts',
   '대화 기록': 'History',
-  '대화 관리': 'Manage conversations',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
   '새로 만들기': 'New',
@@ -75,6 +74,25 @@ const EN: Record<string, string> = {
 
   // ── Auto cost routing ──────────────────────────────────────────────
   'Auto · 비용 절약': 'Auto · Save credits',
+  'Auto · 품질 우선': 'Auto · Favour quality',
+  'Auto 품질 우선 라우팅': 'Auto · favour quality',
+  '복잡하다고 분류된 요청만 지정한 상위 모델로 보내고, 그 밖에는 사용자가 선택한 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.':
+    'Sends only requests classified as demanding to a stronger model you name, and keeps the chosen model for everything else. Nothing travels further than it already does.',
+  '상향 모델 우선순위': 'Upgrade model priority',
+  '분류 모델과 상향 모델을 한 개 이상 선택하세요.':
+    'Choose a classifier and at least one model to upgrade to.',
+  '품질 우선 상향 모델': 'Models to upgrade to',
+  '상향 모델 추가': 'Add a model to upgrade to',
+  '상향 모델은 3개까지만 추가할 수 있습니다': 'At most three models can be added',
+  '상향 모델 선택': 'Choose a model',
+  '이 모델을 상향 목록에서 뺍니다': 'Remove this model from the upgrade list',
+  '선택한 상향 모델이 없습니다. 품질 우선 Auto 는 표시되지 않습니다.':
+    'No models chosen. Auto · Favour quality will not be offered.',
+  '복잡한 요청만 관리자가 지정한 상위 모델로 보내고, 그 밖에는 현재 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.':
+    'Sends only demanding requests to a stronger model the administrator named, and keeps the current model for everything else. Nothing travels further than it already does.',
+  '관리자가 상향할 모델을 지정하지 않았습니다.': 'The administrator has named no model to upgrade to.',
+  '관리자가 Auto 품질 우선을 켜지 않았습니다.':
+    'The administrator has not turned Auto · favour quality on.',
   'Auto 비용 절약 라우팅': 'Auto cost-saving routing',
   '모델 자동 라우팅': 'Automatic model routing',
   '질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.':
@@ -1295,7 +1313,6 @@ const EN: Record<string, string> = {
   '기타': 'Other',
   '답변을 받지 못했습니다.': 'No answer came back.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
-  '다시 물어보기': 'Ask again',
 
   // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
   '이미지 {n}장': '{n} pictures',

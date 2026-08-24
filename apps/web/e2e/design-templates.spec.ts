@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
-import { signIn } from './helpers'
+import { approvePlan, signIn } from './helpers'
 
 /**
  * The names in a zip's central directory, without pulling in a zip library.
@@ -200,7 +200,8 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   // artifact exists from the first event, so its button is on screen while the
   // blocks are still being written — and reading the stored artifact then
   // aborts the stream that would have saved it.
-  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
+  // The turn ends on a proposal and writes nothing; the card is what writes.
+  await approvePlan(page, 480_000)
   const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   await expect(exportButton).toBeVisible({ timeout: 20_000 })
 
@@ -336,7 +337,8 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
   const sessionId = page.url().split('/s/')[1]
 
-  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
+  // The turn ends on a proposal and writes nothing; the card is what writes.
+  await approvePlan(page, 480_000)
   await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({
     timeout: 20_000,
   })
@@ -444,6 +446,9 @@ test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
   const sessionId = page.url().split('/s/')[1]
+  // The built-in path plans and stops like every other one; what this checks is
+  // the shape of what it writes, which only exists after the approval.
+  await approvePlan(page, 480_000)
 
   await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeEnabled({
     timeout: 480_000,

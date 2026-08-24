@@ -481,6 +481,8 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveRoutingEnabled": policy.adaptive_routing_enabled,
         "adaptiveClassifierModelId": policy.adaptive_classifier_model_id,
         "adaptiveEconomyModelIds": list(policy.adaptive_economy_model_ids or []),
+        "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
+        "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
         "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,
         "blockedCategories": list(policy.blocked_categories or []),
@@ -543,6 +545,8 @@ async def put_governance(
         "adaptive_routing_enabled",
         "adaptive_classifier_model_id",
         "adaptive_economy_model_ids",
+        "adaptive_quality_enabled",
+        "adaptive_quality_model_ids",
     } & patch.keys():
         catalogue = await model_service.list_models_for_egress()
         models = catalogue["models"]
@@ -553,6 +557,10 @@ async def put_governance(
         if "adaptive_economy_model_ids" in patch:
             economy_ids = list(patch["adaptive_economy_model_ids"] or [])
             patch["adaptive_economy_model_ids"] = economy_ids
+        if "adaptive_quality_model_ids" in patch:
+            patch["adaptive_quality_model_ids"] = list(
+                patch["adaptive_quality_model_ids"] or []
+            )
 
         enabled = patch.get("adaptive_routing_enabled", policy.adaptive_routing_enabled)
         classifier_id = patch.get(
@@ -560,6 +568,12 @@ async def put_governance(
         )
         economy_ids = list(
             patch.get("adaptive_economy_model_ids", policy.adaptive_economy_model_ids) or []
+        )
+        quality_ids = list(
+            patch.get("adaptive_quality_model_ids", policy.adaptive_quality_model_ids) or []
+        )
+        quality_on = bool(
+            patch.get("adaptive_quality_enabled", policy.adaptive_quality_enabled)
         )
         if enabled and not classifier_id:
             raise HTTPException(
@@ -597,6 +611,41 @@ async def put_governance(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="adaptive_economy_models_invalid",
+            )
+        # Each lane answers for itself. Turning one on without giving it
+        # anything to route to would leave a switch that reads as on and does
+        # nothing, which is the state this split exists to make impossible.
+        if quality_on and not classifier_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_classifier_required",
+            )
+        if quality_on and not quality_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_quality_models_required",
+            )
+        if quality_on and not adaptive_routing.classifier_is_usable(
+            by_id.get(classifier_id or ""), allowed_model_ids=set()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_classifier_must_be_zero_cost_strict_local",
+            )
+        if len(quality_ids) > 3:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_quality_models_max_three",
+            )
+        if len(quality_ids) != len(set(quality_ids)):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_quality_models_must_be_distinct",
+            )
+        if any(model_id not in by_id for model_id in quality_ids):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="adaptive_quality_models_invalid",
             )
     if patch.get("pii_masking", policy.pii_masking):
         # The legacy policy has no raw-delivery exception. Persist the effective

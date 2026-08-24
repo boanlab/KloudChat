@@ -36,7 +36,10 @@ class _Client:
     """Answers with canned replies and records what was asked."""
 
     def __init__(self, replies, posts, **_):
-        self._replies = list(replies)
+        #: Taken by reference. A new client is opened per call, so a copy would
+        #: restart the script on every one of them and a retry would be handed
+        #: the answer that made it retry.
+        self._replies = replies
         self._posts = posts
 
     async def __aenter__(self):
@@ -205,6 +208,69 @@ async def test_a_deck_that_asks_writes_nothing_either(gateway):
     assert "needs" in kinds
     assert "proposal" not in kinds
     assert "deck" not in kinds
+
+
+async def test_going_with_what_was_read_is_not_asked_again(gateway):
+    """The button's whole promise, and it was a loop without this.
+
+    "있는 자료로 진행" folds no answer into the request, so the planner meets the
+    same sentence it asked about and asks again — and again, for as long as
+    anybody keeps pressing. The pass that follows it is not allowed to stop.
+    """
+    posts: list[dict] = []
+    gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client([_PLAN], posts, **kw))
+
+    events = [
+        e
+        async for e in deck.write(
+            request="이 논문으로 발표", model="m", api_key="k", may_ask=False
+        )
+    ]
+
+    kinds = [e["type"] for e in events]
+    assert "needs" not in kinds, "물음이 다시 나왔습니다"
+    assert "proposal" in kinds
+    # Told where it is listening, not filtered after the fact: a question
+    # suppressed at this end comes back as a question where a plan belongs, and
+    # the parse fails instead of the loop.
+    sent = "\n".join(str(m) for post in posts for m in post.get("messages", []))
+    assert "있는 자료로 진행" in sent
+    assert "되물어라" not in sent
+
+
+async def test_an_unreadable_outline_is_asked_for_once_more(gateway):
+    """A shape the parser cannot read is not a request it cannot plan.
+
+    What trips it is a fenced block or a line of preamble, and the same prompt
+    usually lands the second time — so the alternative to one more call is
+    charging for the first and showing nothing for it.
+    """
+    posts: list[dict] = []
+    unreadable = "구성은 다음과 같습니다:\n```\n(설명만 있고 JSON 이 없음)\n```"
+    # Shared across clients on purpose: a new one is opened per call, so a list
+    # built inside the factory would hand the retry the same first answer and
+    # the test would pass whether or not the retry happened.
+    replies = [unreadable, _PLAN]
+    gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
+
+    events = [e async for e in deck.write(request="가상환경 발표", model="m", api_key="k")]
+
+    kinds = [e["type"] for e in events]
+    assert "error" not in kinds, "한 번 더 물어보지 않고 포기했습니다"
+    assert "proposal" in kinds
+    assert len(posts) == 2, "재시도가 일어나지 않았습니다"
+
+
+async def test_an_outline_unreadable_twice_still_gives_up(gateway):
+    """Bounded. One more call is a retry; asking forever is a bill."""
+    posts: list[dict] = []
+    replies = ["설명뿐, JSON 없음", "여전히 설명뿐"]
+    gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
+
+    events = [e async for e in deck.write(request="가상환경 발표", model="m", api_key="k")]
+
+    assert [e["type"] for e in events].count("error") == 1
+    assert len(posts) == 2
 
 
 # ── answering has to change something ──────────────────────────────────

@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 CLASSIFIER_VERSION = "auto-cost-2026-08-18.v1"
 MAX_CLASSIFIER_CHARS = 8_000
 MIN_LOW_CONFIDENCE = 0.9
+#: The same bar in the other direction. Both lanes fail closed to the model
+#: the person chose, so neither gets to act on a guess the other would not.
+MIN_HIGH_CONFIDENCE = 0.9
 # Space for KloudChat's system wrapper and a useful answer. Candidate selection
 # fails closed rather than discovering the smaller window after classification.
 _CONTEXT_RESERVE_TOKENS = 2_048
@@ -135,6 +138,80 @@ def economy_is_baseline_usable(
         and model.get("privacyOnly") is not True
         and model.get("dataBoundary") not in {"hybrid", "unknown", None}
     )
+
+
+#: Kept beside the candidate filters that use it. `hybrid` ranks with the
+#: external boundaries because it may fall back to them mid-turn, and `unknown`
+#: with them because a boundary nobody could establish is not a boundary.
+_BOUNDARY_RANK = {"self_hosted": 0, "hybrid": 1, "external": 1, "unknown": 1}
+
+
+def widens_boundary(candidate: dict[str, Any], chosen: dict[str, Any]) -> bool:
+    """True when `candidate` would send further than `chosen` already does.
+
+    The person picked the model, or privacy picked it for them. Routing is
+    allowed to change what answers the turn; it is never allowed to change how
+    far the turn travels.
+    """
+    if _BOUNDARY_RANK.get(str(candidate.get("dataBoundary")), 1) > _BOUNDARY_RANK.get(
+        str(chosen.get("dataBoundary")), 1
+    ):
+        return True
+    # Strict-local is a stronger claim than self-hosted: no external fallback
+    # exists for it at all.
+    return bool(chosen.get("strictLocal")) and not candidate.get("strictLocal")
+
+
+def quality_candidates(
+    catalogue: list[dict[str, Any]],
+    ordered_ids: list[str],
+    *,
+    quality_model: dict[str, Any],
+    allowed_model_ids: set[str],
+    context_tokens: int,
+    requires_tools: bool,
+) -> list[dict[str, Any]]:
+    """Upgrade candidates, in the administrator's explicit order.
+
+    Deliberately not a price sort. A larger model is not reliably a better one
+    — measured on this instance a 122b failed an outline call a 35b completed —
+    so which models are worth paying more for is a finding somebody had to make,
+    and this returns them in the order they made it.
+
+    Unlike the economy lane, an upgraded call keeps its tools: the point of
+    routing up is to answer a turn the small model could not, and taking away
+    its capabilities while charging more for it would do the opposite.
+    """
+    by_id = {str(model.get("id")): model for model in catalogue}
+    valid: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for model_id in ordered_ids:
+        if model_id in seen:
+            continue
+        seen.add(model_id)
+        model = by_id.get(model_id)
+        if model is None:
+            continue
+        if allowed_model_ids and model_id not in allowed_model_ids:
+            continue
+        if "chat" not in model.get("kinds", []):
+            continue
+        # The one rule that is not the administrator's to relax.
+        if widens_boundary(model, quality_model):
+            continue
+        if model_id == str(quality_model.get("id")):
+            continue
+        context_window = _non_negative_int(model.get("contextWindow")) or 0
+        # A model whose window the catalogue does not state is admitted: the
+        # economy lane refuses it because overflowing a *smaller* model loses
+        # the turn, and nothing here is smaller than what the person already
+        # had. Where a window is stated it is still respected.
+        if context_window and context_tokens + _CONTEXT_RESERVE_TOKENS > context_window:
+            continue
+        if requires_tools and model.get("supportsTools") is not True:
+            continue
+        valid.append(model)
+    return valid
 
 
 def economy_candidates(
@@ -299,6 +376,7 @@ async def classify(
 
 __all__ = [
     "CLASSIFIER_VERSION",
+    "MIN_HIGH_CONFIDENCE",
     "MIN_LOW_CONFIDENCE",
     "Classification",
     "classifier_context",
@@ -307,4 +385,6 @@ __all__ = [
     "economy_candidates",
     "economy_is_baseline_usable",
     "estimated_context_tokens",
+    "quality_candidates",
+    "widens_boundary",
 ]

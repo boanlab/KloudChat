@@ -55,10 +55,13 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
      taught these screens to wait; this asks what they say when the answer
      never arrives at all — because "아직 아티팩트가 없습니다" to somebody on a
      dropped connection is the app reporting their work destroyed. */
-  for (const [route, where, link] of [
-    ['/artifacts', '아티팩트', '아티팩트'],
-    ['/memory', '메모리', '메모리'],
-    ['/projects', '프로젝트', '프로젝트'],
+  // 메모리 is not a sidebar row any more — it moved into the account menu, and
+  // the sidebar is left to the conversation list. The route under test is the
+  // same; only the control that reaches it changed.
+  for (const [route, where, link, via] of [
+    ['/artifacts', '아티팩트', '아티팩트', 'sidebar'],
+    ['/memory', '메모리', '메모리', 'account'],
+    ['/projects', '프로젝트', '프로젝트', 'sidebar'],
   ] as const) {
     // Loaded online first, then cut off, then navigated *inside* the app. A
     // cold `goto` while offline never reaches the app at all — it lands on the
@@ -70,7 +73,14 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     // test is the only thing the cut connection touches.
     await openSidebar(page)
     await page.context().setOffline(true)
-    await page.getByRole('link', { name: link, exact: true }).first().click()
+    if (via === 'sidebar') {
+      await page.getByRole('link', { name: link, exact: true }).first().click()
+    } else {
+      // Opening the menu asks nothing of the network, so the navigation it
+      // fires is still the only thing the cut connection has to answer for.
+      await page.getByRole('button', { name: '계정 메뉴' }).first().click()
+      await page.getByRole('menuitem', { name: link, exact: true }).first().click()
+    }
     await page.waitForTimeout(1800)
     const text = await page.evaluate(() => document.body.innerText).catch(() => '')
     checks++

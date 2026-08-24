@@ -39,7 +39,14 @@ class SessionKind(StrEnum):
 
 class RoutingMode(StrEnum):
     manual = "manual"
+    #: Auto, spending less: a turn a small model can answer is routed down.
     auto = "auto"
+    #: Auto, spending more: a turn that needs the reasoning is routed up.
+    #:
+    #: The same classifier decides both. Cost reads its `low`; quality reads
+    #: its `high` — one judgement, two directions, so a turn can never be
+    #: called simple by one lane and hard by the other.
+    auto_quality = "auto_quality"
 
 
 class Role(StrEnum):

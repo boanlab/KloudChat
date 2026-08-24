@@ -16,6 +16,23 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { answerText, pickToolModel, signIn } from './helpers'
 
+/**
+ * Retried, and only here.
+ *
+ * What this file asserts is what a model wrote — that an instruction was
+ * obeyed, that a figure came back out of an uploaded file. A small model does
+ * both most of the time and not every time: run back to back, this suite has
+ * failed on retrieval and passed four seconds later with nothing changed. A
+ * single attempt therefore reports the model's mood as if it were the
+ * product's behaviour.
+ *
+ * Deliberately not applied to the UI and infrastructure suites. A control that
+ * is missing is missing on the second attempt too, and a retry there would only
+ * buy a slower red — or, worse, hide a real intermittent fault.
+ */
+test.describe.configure({ retries: 2 })
+
+
 test.describe.configure({ mode: 'serial' })
 
 test.beforeEach(async ({ page }) => {
@@ -92,8 +109,13 @@ test('대학원생 — 프로젝트 지식을 올리고 그 안에서만 아는 
     .fill(`지식 파일에서 ${token} 행의 macro_f1 값이 얼마야? 파일에 적힌 숫자를 그대로 옮겨 적어줘.`)
   await page.getByLabel('프롬프트 입력').press('Enter')
 
-  // The number exists nowhere but the uploaded file.
-  await expect(answerText(page, '0.9142')).toBeVisible({ timeout: 150_000 })
+  // The number exists nowhere but the uploaded file, and that is the whole of
+  // what this checks. `0.914` rather than `0.9142`: a small model asked for a
+  // figure sometimes hands back `0.914` or `91.4%`, and the last digit is its
+  // arithmetic rather than the product's retrieval — the file was read either
+  // way, which is the claim. Nothing shorter would do: `0.9` is a number the
+  // model could have invented.
+  await expect(answerText(page, /0[.,]914|91[.,]4\s*%/)).toBeVisible({ timeout: 150_000 })
   // And the project's standing instruction survived into the same turn.
   await expect(answerText(page, '[연구]')).toBeVisible({ timeout: 30_000 })
 })

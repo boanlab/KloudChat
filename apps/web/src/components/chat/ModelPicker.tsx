@@ -13,7 +13,7 @@ import { useState } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
 import { effectiveModelId, useStore } from '@/store/useStore'
-import type { ModelInfo, SessionKind } from '@/types'
+import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /**
@@ -111,7 +111,7 @@ export function ModelPicker({
      */
   modality?: ModelInfo['modality']
   /** On a fresh `/new/chat`, the composer creates a real session first. */
-  onEnableAuto?: () => void | Promise<void>
+  onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
   /** Prevents a turn from racing the session PATCH/creation behind a choice. */
   onBusyChange?: (busy: boolean) => void
 }) {
@@ -140,7 +140,10 @@ export function ModelPicker({
     // wrong one again on a thread that is deferring to its agent.
   const currentId = effectiveModelId(session, kind, agents, modelByKind)
   const active = usable.find((m) => m.id === currentId) ?? usable[0]
-  const autoActive = kind === 'chat' && session?.routingMode === 'auto'
+  const autoLane = kind === 'chat' && session?.routingMode !== 'manual'
+    ? session?.routingMode
+    : undefined
+  const autoActive = autoLane === 'auto' || autoLane === 'auto_quality'
   // Auto belongs to a conversation, so it is offered only where there is one to
   // write it to — or a caller standing by to make one. Settings has neither,
   // and an Auto row there would be a button that quietly does nothing.
@@ -208,7 +211,9 @@ export function ModelPicker({
           <span className="flex min-w-0 items-center gap-1.5">
             {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
             <span className={cn('truncate', !field && 'max-w-[220px]')}>
-              {autoActive ? `${t('Auto · 비용 절약')} · ${active.label}` : active.label}
+              {autoActive
+                ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${active.label}`
+                : active.label}
             </span>
           </span>
           {!compact && <ChevronDown size={14} className="shrink-0 text-faint" />}
@@ -218,15 +223,15 @@ export function ModelPicker({
       <ModelMenu
         usable={usable}
         active={active}
-        autoActive={autoActive}
+        autoLane={autoLane}
         autoRouting={autoRouting}
         showAuto={canRouteAuto}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
-        onAuto={() => {
+        onAuto={(mode) => {
           return persistSelection(() => {
-            if (onEnableAuto) return onEnableAuto()
-            if (sessionId) return setSessionRoutingMode(sessionId, 'auto')
+            if (onEnableAuto) return onEnableAuto(mode)
+            if (sessionId) return setSessionRoutingMode(sessionId, mode)
           })
         }}
         onPick={(id) => {
@@ -250,7 +255,7 @@ export function ModelPicker({
 function ModelMenu({
   usable,
   active,
-  autoActive,
+  autoLane,
   autoRouting,
   showAuto,
   litellmAvailable,
@@ -260,12 +265,12 @@ function ModelMenu({
 }: {
   usable: ModelInfo[]
   active: ModelInfo
-  autoActive: boolean
+  autoLane: RoutingMode | undefined
   autoRouting: ReturnType<typeof useStore.getState>['autoRouting']
   showAuto: boolean
   litellmAvailable: boolean
   selectionPending: boolean
-  onAuto: () => void | Promise<void>
+  onAuto: (mode: RoutingMode) => void | Promise<void>
   onPick: (id: string) => void | Promise<void>
 }) {
   const t = useT()
@@ -283,39 +288,65 @@ function ModelMenu({
       : autoRouting.reason === 'no_economy_models'
         ? t('사용 가능한 절약 모델이 없습니다.')
         : t('관리자가 Auto 비용 절약을 켜지 않았습니다.')
+  const qualityReason =
+    autoRouting.qualityReason === 'classifier_unavailable'
+      ? t('strict-local 분류 모델을 사용할 수 없습니다.')
+      : autoRouting.qualityReason === 'no_quality_models'
+        ? t('관리자가 상향할 모델을 지정하지 않았습니다.')
+        : t('관리자가 Auto 품질 우선을 켜지 않았습니다.')
+  /* One row per direction, drawn the same way: what separates them is only
+     which way the same judgement may move the turn, and two rows that looked
+     unlike each other would read as two unrelated features. */
+  const lanes: { mode: RoutingMode; title: string; available: boolean; blurb: string }[] = [
+    {
+      mode: 'auto',
+      title: t('Auto · 비용 절약'),
+      available: autoRouting.available,
+      blurb: autoRouting.available
+        ? t('간단한 질문은 관리자가 지정한 절약 모델로 보내고, 복잡하면 현재 모델을 유지합니다.')
+        : autoReason,
+    },
+    {
+      mode: 'auto_quality',
+      title: t('Auto · 품질 우선'),
+      available: autoRouting.qualityAvailable,
+      blurb: autoRouting.qualityAvailable
+        ? t('복잡한 요청만 관리자가 지정한 상위 모델로 보내고, 그 밖에는 현재 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.')
+        : qualityReason,
+    },
+  ]
   return (
     <>
       {showAuto && (
         <div className="border-b border-line p-1.5">
-          <button
-            type="button"
-            disabled={!autoRouting.available || selectionPending}
-            onClick={() => {
-              void onAuto()
-              closeMenu()
-            }}
-            className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
-          >
-            <span className="mt-0.5 w-4 shrink-0 text-accent">
-              {autoActive ? <Check size={14} /> : <Gauge size={14} />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-1.5">
-                <span className="text-base font-semibold">{t('Auto · 비용 절약')}</span>
-                <Badge tone={autoRouting.available ? 'success' : 'neutral'}>
-                  {autoRouting.available ? t('사용 가능') : t('사용 불가')}
-                </Badge>
+          {lanes.map((lane) => (
+            <button
+              key={lane.mode}
+              type="button"
+              disabled={!lane.available || selectionPending}
+              onClick={() => {
+                void onAuto(lane.mode)
+                closeMenu()
+              }}
+              className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              <span className="mt-0.5 w-4 shrink-0 text-accent">
+                {autoLane === lane.mode ? <Check size={14} /> : <Gauge size={14} />}
               </span>
-              <span className="mt-0.5 block text-sm text-muted">
-                {autoRouting.available
-                  ? t('간단한 질문은 관리자가 지정한 절약 모델로 보내고, 복잡하면 현재 모델을 유지합니다.')
-                  : autoReason}
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-base font-semibold">{lane.title}</span>
+                  <Badge tone={lane.available ? 'success' : 'neutral'}>
+                    {lane.available ? t('사용 가능') : t('사용 불가')}
+                  </Badge>
+                </span>
+                <span className="mt-0.5 block text-sm text-muted">{lane.blurb}</span>
+                <span className="mt-1 block truncate text-xs text-faint">
+                  {t('품질 모델')}: {active.label}
+                </span>
               </span>
-              <span className="mt-1 block truncate text-xs text-faint">
-                {t('품질 모델')}: {active.label}
-              </span>
-            </span>
-          </button>
+            </button>
+          ))}
         </div>
       )}
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
