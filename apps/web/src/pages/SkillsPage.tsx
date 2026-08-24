@@ -94,6 +94,7 @@ export function SkillsPage() {
   const ordered = useStableOrder(skills)
   const all = filter === 'all' ? ordered : ordered.filter((s) => s.source === filter)
   const { visible, hidden, more } = usePaged(all, [filter, skills.length])
+  const anySelectable = visible.some((s) => s.source !== 'built-in')
   // Only the rows a delete can actually reach, so 전체 선택 does not pick a
   // built-in skill and then have the request refuse it.
   const pick = useBulkSelect(visible.filter((s) => s.source !== 'built-in'))
@@ -138,6 +139,9 @@ export function SkillsPage() {
           />
         </div>
         <div className="space-y-2">
+          {/* 기본 스킬은 지울 수 없어 고르는 칸이 없습니다. 목록이 전부 기본이면
+              그 칸은 아무것도 담지 못하면서 본문을 28px 밀어 좌우를 어긋나게
+              합니다. 고를 수 있는 것이 하나라도 있을 때만 칸을 둡니다. */}
           {visible.map((s) => (
             <Card
               key={s.id}
@@ -145,16 +149,17 @@ export function SkillsPage() {
             >
               {/* Only where a delete is possible. A checkbox on a built-in
                   skill would put it in 전체 선택 and then refuse it. */}
-              {s.source !== 'built-in' ? (
-                <PickBox
-                  checked={pick.picked.has(s.id)}
-                  onChange={() => pick.toggle(s.id)}
-                  label={t('{name} 선택').replace('{name}', t(s.name))}
-                  className="mt-2.5"
-                />
-              ) : (
-                <span className="size-4 shrink-0" />
-              )}
+              {anySelectable &&
+                (s.source !== 'built-in' ? (
+                  <PickBox
+                    checked={pick.picked.has(s.id)}
+                    onChange={() => pick.toggle(s.id)}
+                    label={t('{name} 선택').replace('{name}', t(s.name))}
+                    className="mt-2.5"
+                  />
+                ) : (
+                  <span className="size-4 shrink-0" />
+                ))}
               {/* 아이콘은 모든 행이 같은 그림이라 어느 스킬인지 말해 주지 않으면서
                   본문 앞에 40px 을 먹고 있었습니다. */}
               <button
@@ -180,11 +185,6 @@ export function SkillsPage() {
               </button>
               {/* 카드 전체가 상세를 여는데 그렇게 보이는 데가 없었습니다. 호버로만
                   드러내면 손가락으로 읽는 화면에서는 끝내 안 보입니다. */}
-              <ChevronRight
-                size={16}
-                aria-hidden
-                className="mt-1 shrink-0 text-faint transition-transform group-hover:translate-x-0.5"
-              />
               {/* Delete lives on the card, like memory and connectors. It used
                   to be reachable only by opening the detail modal, so the same
                   action sat in two different places depending on the screen. */}
@@ -199,11 +199,26 @@ export function SkillsPage() {
                   <Trash2 size={14} />
                 </Button>
               )}
-              <Switch
-                checked={s.enabled}
-                onChange={() => toggleSkill(s.id)}
-                label={t('{name} 설치 상태').replace('{name}', t(s.name))}
-              />
+              {/* 켜고 끄는 것과 열어 보는 것을 세로로 겹쳐 둡니다. 나란히 놓으면
+                  카드 오른쪽이 그만큼 넓어지고, 세 줄짜리 카드의 세로는 비어
+                  있었습니다. */}
+              <div className="flex shrink-0 flex-col items-end justify-between self-stretch">
+                <ChevronRight
+                  size={16}
+                  aria-hidden
+                  className="mr-1.5 text-faint transition-transform group-hover:translate-x-0.5"
+                />
+                {/* 스위치의 히트 영역은 36px 인데 보이는 트랙은 그 안에서 20px
+                    입니다. 상자를 기준으로 맞추면 눈에는 아래가 8px 넓어 보여,
+                    그 8px 을 되돌려 트랙과 화살표의 여백을 같게 둡니다. */}
+                <span className="-mb-2 flex">
+                  <Switch
+                    checked={s.enabled}
+                    onChange={() => toggleSkill(s.id)}
+                    label={t('{name} 설치 상태').replace('{name}', t(s.name))}
+                  />
+                </span>
+              </div>
             </Card>
           ))}
         </div>
