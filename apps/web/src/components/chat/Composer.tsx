@@ -972,7 +972,7 @@ export function Composer({
       {/* Shown only while something is actually over it. A permanent dashed
           rectangle would be a second input competing with the real one. */}
       {dragging && (
-        <div className="pointer-events-none absolute inset-x-4 inset-y-0 z-10 grid place-items-center rounded-3xl border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
+        <div className="pointer-events-none absolute inset-x-4 inset-y-0 z-10 grid place-items-center rounded-panel border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
           <span className="flex items-center gap-2">
             <Paperclip size={15} />
             {t('여기에 놓으면 첨부됩니다')}
@@ -982,7 +982,7 @@ export function Composer({
       {/* 한 덩어리로 읽히는 입력 상자. 첨부·옵션·모델·전송이 모두 이 테두리
           안에 있고, 바깥에는 아무 버튼도 두지 않는다 — 프롬프트를 쓰는 동안
           눈이 갈 곳은 여기 하나면 된다. */}
-      <div className="rounded-3xl border border-line bg-panel shadow-raised transition-colors focus-within:border-line-strong">
+      <div className="rounded-panel border border-line bg-panel shadow-raised transition-colors focus-within:border-line-strong">
         {(project ||
           attachments.length > 0 ||
           webSearch ||
