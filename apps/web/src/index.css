@@ -9,7 +9,14 @@
  * same white, which made every `hover:bg-elevated` a no-op in light mode.
  *
  * Text tokens clear WCAG AA (4.5:1) against all four surfaces in both themes;
- * the tightest pairing is `--faint` on `--sidebar` at 4.77:1.
+ * the tightest pairing is `--faint` on `--elevated` at 4.77:1 in light and
+ * 4.82:1 in dark.
+ *
+ * Dark has an upper bound as well. Near-white on near-black measured 16.26:1,
+ * more than three times the floor, and at that distance the glyphs bloom into
+ * their own background. The ground comes up, the text comes down, and body
+ * text sits at 12.43:1. Light keeps its 16.09:1 — the same number does not
+ * cost anything on a bright ground.
  */
 :root {
   color-scheme: light;
@@ -50,20 +57,20 @@
 .dark {
   color-scheme: dark;
 
-  --bg: #0f1116;
-  --panel: #181b23;
-  --elevated: #232833;
-  --sidebar: #13151c;
-  --border: #2a303d;
-  --border-strong: #3d4554;
-  --fg: #ebeef5;
-  --muted: #b6bfce;
-  --faint: #8a93a7;
+  --bg: #171b23;
+  --panel: #1e222c;
+  --elevated: #282d39;
+  --sidebar: #1a1e27;
+  --border: #30363f;
+  --border-strong: #434b5a;
+  --fg: #d6dbe6;
+  --muted: #aeb7c6;
+  --faint: #9099ad;
   --accent: #7e9cff;
   --accent-hover: #9ab1ff;
-  --accent-fg: #0f1116;
+  --accent-fg: #171b23;
   --accent-soft: #1f2a47;
-  --selected: #2b334e;
+  --selected: #313a56;
   --success: #4fbf8c;
   --warn: #e0a44a;
   --danger: #f0736a;
