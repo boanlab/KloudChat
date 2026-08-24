@@ -94,12 +94,22 @@ export async function openSidebar(page: Page) {
   // more than one press. 검색 is the probe because it is in the full panel and
   // in neither of the other two.
   const probe = page.getByLabel('대화 빠른 검색')
+  // Asked by position, not by visibility. Below 1024px the closed panel is not
+  // removed — it stays mounted and slides off-screen — so `isVisible()` answers
+  // yes for a drawer nobody can reach, this loop presses nothing, and the first
+  // click on a row fails fifteen seconds later with "element is outside of the
+  // viewport". Where the panel *is* separates the two states; whether it exists
+  // no longer does.
+  const reachable = async () => {
+    const box = await probe.boundingBox().catch(() => null)
+    return Boolean(box && box.width > 0 && box.x >= 0)
+  }
   for (let i = 0; i < 3; i++) {
-    if (await probe.isVisible().catch(() => false)) break
+    if (await reachable()) return
     await toggle.click()
     await page.waitForTimeout(350)
   }
-  await expect(probe).toBeVisible({ timeout: 10_000 })
+  await expect(probe).toBeInViewport({ timeout: 10_000 })
 }
 
 /** 에이전트·스킬·커넥터·메모리·디자인·대화 관리 live in the account menu. */
@@ -107,6 +117,81 @@ export async function gotoWorkspace(page: Page, name: string) {
   await openSidebar(page)
   await page.getByRole('button', { name: '계정 메뉴' }).first().click()
   await page.getByRole('menuitem', { name, exact: true }).first().click()
+}
+
+/**
+ * Presses a document surface through the plan it stops on.
+ *
+ * 슬라이드 and 보고서 do not write from the sentence they were given. They plan
+ * and stop — `clarify` when they need something answered, `outline` when they
+ * have the shape ready — and *nothing is stored* until a button on that card is
+ * pressed. So a test that types, waits for the stream to end and then looks for
+ * the document is waiting for a write that was never going to start.
+ *
+ * Both stages are pressed through, and the wait is on either side of each: the
+ * approval opens a second stream, and that is the one the artifact comes out of.
+ * Returns once a turn ends with no card left, which is the only state in which
+ * there is something to export.
+ *
+ * `approveOnce` presses and returns straight away, for the tests that are about
+ * what happens *while* the run goes; `approvePlan` keeps pressing until a turn
+ * ends with no card left, which is the only state that has a finished document
+ * in it.
+ */
+export async function approveOnce(page: Page, timeout = 480_000): Promise<boolean> {
+  const stop = page.getByLabel('중지')
+  const approve = page.getByRole('button', { name: '이대로 생성' })
+  // The unconditional one. 이대로 계속 needs every question answered first, and
+  // what these tests are about is the document, not the questions.
+  const carryOn = page.getByRole('button', { name: '있는 자료로 진행' })
+  const card = approve.or(carryOn).first()
+
+  // Both questions are asked together, every half second. "Not streaming" is
+  // true before a turn starts as well as after it ends, so waiting on it alone
+  // can be satisfied by the wrong silence and hand the next wait a request that
+  // is still being planned. And a card on screen is not yet a card that can be
+  // pressed — it is drawn while the store still holds the turn that produced
+  // it, and its buttons are disabled for as long as that lasts. Only both
+  // conditions together mean there is something here to press.
+  const deadline = Date.now() + timeout
+  let quiet = 0
+  while (Date.now() < deadline) {
+    const streaming = await stop.isVisible().catch(() => false)
+    if (!streaming && (await card.isVisible().catch(() => false))) break
+    // ~15s with neither a stream nor a card: this surface does not propose, or
+    // the proposal has already been dealt with. Neither is a failure.
+    quiet = streaming ? 0 : quiet + 1
+    if (quiet >= 30) return false
+    await page.waitForTimeout(500)
+  }
+
+  const button = (await approve.isVisible().catch(() => false)) ? approve : carryOn
+  if (!(await button.isVisible().catch(() => false))) return false
+  await expect(button).toBeEnabled({ timeout: 30_000 })
+  await button.click()
+  // Returns as soon as it is pressed. Waiting for the card to go would wait out
+  // the run it just started — the card is drawn from the stored plan and only
+  // clears when that plan has been written — and the callers that use this
+  // directly are the ones whose subject is what happens *while* it runs.
+  return true
+}
+
+export async function approvePlan(page: Page, timeout = 480_000) {
+  // clarify can precede outline, so more than one press may be needed. Bounded,
+  // because a card that never goes away is a failure to report rather than a
+  // loop to keep running.
+  const card = page
+    .getByRole('button', { name: '이대로 생성' })
+    .or(page.getByRole('button', { name: '있는 자료로 진행' }))
+    .first()
+  for (let round = 0; round < 3; round++) {
+    if (!(await approveOnce(page, timeout))) return
+    // Only here. Coming straight back round would find the same card — still up
+    // because the run it started has not finished — and press it again, and the
+    // turns that produces are a second and third document nobody asked for.
+    await card.waitFor({ state: 'hidden', timeout }).catch(() => undefined)
+  }
+  throw new Error('제안 카드가 세 번을 눌러도 사라지지 않았습니다.')
 }
 
 export async function gotoSurface(page: Page, kind: string) {

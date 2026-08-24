@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { openSidebar, signIn } from './helpers'
 
 /**
  * The 관리 section belongs to administrators.
@@ -56,9 +56,17 @@ test('일반 사용자에게는 계정 메뉴에 관리 항목이 없다', async
     page.locator('form').getByRole('button', { name: '로그인' }).click(),
   ])
   await expect(page.getByRole('button', { name: '사이드바 토글' })).toBeVisible({ timeout: 20_000 })
+  // The menu lives in the sidebar, and below 1024px that sidebar is a drawer
+  // this account has never opened. Off-screen it is still visible to a locator
+  // and still refuses the click — "element is outside of the viewport" is the
+  // whole of what a reader would have had to work out from a timeout.
+  await openSidebar(page)
 
-  // The account menu is the whole subject: it is where 관리 lives.
-  await page.getByRole('button', { name: new RegExp(account.name) }).click()
+  // The account menu is the whole subject: it is where 관리 lives. Its trigger
+  // carries an `aria-label` of 계정 메뉴 · <email>, which replaces the name
+  // rendered inside it as the accessible name — so the email is what identifies
+  // whose menu this is, and matching on the display name finds nothing.
+  await page.getByRole('button', { name: `계정 메뉴 · ${account.email}` }).click()
   await expect(page.getByText('AI 에이전트 연동')).toBeVisible()
   await expect(page.getByText('관리', { exact: true })).toHaveCount(0)
   await expect(page.getByText('사용자 · 크레딧')).toHaveCount(0)

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { approvePlan, signIn } from './helpers'
 
 /**
  * The names in a zip's central directory, without pulling in a zip library.
@@ -48,6 +48,10 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
   const sessionId = page.url().split('/s/')[1]
+
+  // The first pass plans and stops, and nothing is written until the plan is
+  // approved — so the deck cannot appear before this.
+  await approvePlan(page)
 
   // The outline lands first, so the whole deck is on screen — greyed out —
   // before any of it is written. That is the point of the two-pass split.
