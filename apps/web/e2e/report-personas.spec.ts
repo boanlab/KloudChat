@@ -12,7 +12,24 @@
 import { readFileSync } from 'node:fs'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { approvePlan, signIn } from './helpers'
+
+/**
+ * Retried, and only here.
+ *
+ * What this file asserts is what a model wrote — that an instruction was
+ * obeyed, that a figure came back out of an uploaded file. A small model does
+ * both most of the time and not every time: run back to back, this suite has
+ * failed on retrieval and passed four seconds later with nothing changed. A
+ * single attempt therefore reports the model's mood as if it were the
+ * product's behaviour.
+ *
+ * Deliberately not applied to the UI and infrastructure suites. A control that
+ * is missing is missing on the second attempt too, and a retry there would only
+ * buy a slower red — or, worse, hide a real intermittent fault.
+ */
+test.describe.configure({ retries: 2 })
+
 
 /**
  * The text a reader sees when they open the .hwpx, pulled straight out of the
@@ -113,6 +130,9 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
   await page.getByLabel('프롬프트 입력').fill(request)
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
+  // Planned first and written only once approved, so neither the panel nor its
+  // denominator exists before this.
+  await approvePlan(page, 480_000)
   await expect(page.getByText(/\d+\/[3-8] 섹션/)).toBeVisible({ timeout: 180_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 

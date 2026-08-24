@@ -148,6 +148,15 @@ ASK_RULE = """- 주제만 주어졌으면 되묻지 말고 그 주제를 처음 
                 "options": ["고를 만한 답", "다른 답"]}}]}}
   질문은 최대 3개. 사용자가 한 번에 답할 수 있는 것만 물어라."""
 
+#: What replaces it on the pass after "있는 자료로 진행".
+#:
+#: Suppressing the question at the other end is not enough: what comes back is
+#: then a question where a plan was expected, and the parse fails instead of the
+#: loop. The model has to be told, in the one place it is listening.
+PROCEED_RULE = """- 되묻지 마라. 참고 자료가 부족해도 그 자리에서 알아서 구성하라.
+  사용자는 이미 "있는 자료로 진행"을 골랐다. 자료에 없는 대목은 지어내지 말고
+  일반적인 설명으로 채우되, 무엇을 그렇게 채웠는지는 구성에 드러나게 하라."""
+
 
 def parse_needs(text: str) -> list[Question] | None:
     """The outline call's questions, when it asked instead of planning.

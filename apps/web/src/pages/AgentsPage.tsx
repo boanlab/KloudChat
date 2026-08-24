@@ -207,11 +207,22 @@ export function AgentsPage() {
                   </div>
                   <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(a.description)}</p>
                 </div>
-                <Switch
-                  checked={a.enabled}
-                  onChange={(v) => upsertAgent({ ...a, enabled: v })}
-                  label={t('{name} 활성화').replace('{name}', t(a.name))}
-                />
+                {/* And for the same reason as the checkbox above: the write
+                    behind this one is a PATCH of somebody else's row, which
+                    comes back 404 and leaves the switch flicking back with
+                    nothing said. Whether their agent is on is still worth
+                    reading — it is the control that does not belong here. */}
+                {a.ownerId === user?.id ? (
+                  <Switch
+                    checked={a.enabled}
+                    onChange={(v) => upsertAgent({ ...a, enabled: v })}
+                    label={t('{name} 활성화').replace('{name}', t(a.name))}
+                  />
+                ) : (
+                  <Badge tone={a.enabled ? 'success' : 'neutral'}>
+                    {a.enabled ? t('사용 가능') : t('꺼짐')}
+                  </Badge>
+                )}
               </div>
 
               <div className="mt-3 flex flex-wrap gap-1.5">

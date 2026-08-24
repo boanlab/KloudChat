@@ -52,6 +52,25 @@ class Governance(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
+    #: The upgrade lane's own switch.
+    #:
+    #: Separate from `adaptive_routing_enabled`, which governs the lane that
+    #: saves. The two are opposite decisions about money and an instance may
+    #: want either without the other; one flag for both meant the upgrade path
+    #: could only be had by turning cost routing on beside it.
+    adaptive_quality_enabled: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
+    )
+    #: Ordered upgrade candidates, revalidated every turn for the same reasons
+    #: as the economy list above.
+    #:
+    #: Curated rather than derived. "Bigger is better" does not hold — measured
+    #: on this instance a 122b failed the outline call a 35b completed — so the
+    #: order here is an administrator's finding, not a price sort.
+    adaptive_quality_model_ids: list = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    )
     #: The model that plans a document, when it should not be the one that
     #: writes it.
     #:

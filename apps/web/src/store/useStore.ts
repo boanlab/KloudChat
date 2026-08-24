@@ -391,6 +391,28 @@ interface State {
   pendingAttachment: FileRow | null
   setPendingAttachment: (file: FileRow | null) => void
   /**
+   * A refused turn, handed back to whichever composer is on screen now.
+   *
+   * Submit clears the composer optimistically and, when the turn creates a
+   * session, moves the person from the start screen to the conversation — two
+   * different screens, so the composer that sent the turn is unmounted before
+   * the refusal arrives. Restoring through its own setters put the draft and
+   * the uploads back into a component nobody was looking at any more, and the
+   * work was gone with no error shown either.
+   *
+   * Addressed to a session rather than broadcast: a refusal belongs to the
+   * conversation it was sent to, not to whatever is open when it lands.
+   */
+  composerRestore: {
+    sessionId: string | null
+    value: string
+    attachments: FileRow[]
+    activatedSkillIds: string[]
+    startingTemplate: StartingPoint | null
+    error: string
+  } | null
+  setComposerRestore: (restore: State['composerRestore']) => void
+  /**
    * Rendering template picked in the gallery, waiting for the turn that will
    * use it. Held here rather than on the session because the session may not
    * exist yet — the server makes it sticky once the first turn arrives.
@@ -954,6 +976,9 @@ export const useStore = create<State>((set, get) => ({
     reason: 'disabled',
     classifierModelId: null,
     economyModelIds: [],
+    qualityAvailable: false,
+    qualityReason: 'disabled',
+    qualityModelIds: [],
   },
 
   sessions: [],
@@ -1086,6 +1111,9 @@ export const useStore = create<State>((set, get) => ({
           reason: 'disabled',
           classifierModelId: null,
           economyModelIds: [],
+          qualityAvailable: false,
+          qualityReason: 'disabled',
+          qualityModelIds: [],
         },
         modelsLoading: false,
         modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel),
@@ -1870,6 +1898,8 @@ export const useStore = create<State>((set, get) => ({
   setDraft: (draft) => set({ draft }),
   pendingAttachment: null,
   setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
+  composerRestore: null,
+  setComposerRestore: (composerRestore) => set({ composerRestore }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   pendingStartingTemplate: null,

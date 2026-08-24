@@ -99,15 +99,13 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
 
   // And it plays, in the app — not only by opening the file.
   //
-  // Two players carry the finished clip and both are right: the job card keeps
-  // the one the wait was watched in, and the panel opens on the artifact the
-  // moment the job succeeds. Which of them is on screen is the width's answer,
-  // not the app's — below the desktop breakpoint the panel is a full-bleed
-  // overlay rather than a column beside the conversation, so the card sits
-  // behind it by design. `.first()` took the card either way and asserted the
-  // visibility of something a tablet reader cannot see; the panel's player is
-  // the one being watched at every width.
-  const player = page.locator('aside[data-panel="artifact"] video[controls]')
+  // In the transcript, which is where a clip now lives: a picture or a clip is
+  // what the turn *said*, so `setActiveSession` leaves the artifact panel shut
+  // for image and av sessions that have one and lets the answer carry the
+  // player. The panel's copy was the one watched while this test was written;
+  // it is not opened for these two surfaces any more, and asserting on it was
+  // waiting for a column the app had stopped drawing here.
+  const player = page.locator('video[controls]').first()
   await expect(player).toBeVisible({ timeout: 30_000 })
   await expect(player).toHaveAttribute('src', /\/api\/files\/[0-9a-f]+\/content/)
   await expect

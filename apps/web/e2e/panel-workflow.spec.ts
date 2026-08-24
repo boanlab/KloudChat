@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signIn } from './helpers'
+import { approveOnce, approvePlan, signIn } from './helpers'
 
 /**
  * The report and deck panels as working surfaces.
@@ -308,6 +308,11 @@ test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page 
   await page.getByLabel('프롬프트 입력').fill('파이썬 가상환경을 설명하는 짧은 발표 슬라이드')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
+
+  // The first pass plans and stops; approving it is what starts the run this
+  // test watches. Pressed and left running — waiting for it to finish would
+  // hand this test a screen with nothing left on it to count.
+  await approveOnce(page, 360_000)
 
   // Open while it runs, and counting down against the outline's own total —
   // not against the steps that happen to have arrived.

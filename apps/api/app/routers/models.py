@@ -39,6 +39,18 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             by_id.get(model_id), allowed_model_ids=allowed
         )
     ]
+    # Coarse on purpose. Whether an upgrade candidate is usable also depends on
+    # the model the person is currently on — an upgrade may not send a turn
+    # further than that model already does — and this endpoint serves a
+    # catalogue, not a turn. The per-turn check in `quality_candidates` is the
+    # one that decides; this only says whether an administrator set the lane up.
+    quality_ids = [
+        model_id
+        for model_id in list(policy.adaptive_quality_model_ids or [])[:3]
+        if model_id in by_id
+        and (not allowed or model_id in allowed)
+        and "chat" in by_id[model_id].get("kinds", [])
+    ]
     if not policy.adaptive_routing_enabled:
         reason = "disabled"
     elif not classifier_ok:
@@ -56,6 +68,21 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             "reason": reason,
             "classifierModelId": classifier_id if classifier_ok else None,
             "economyModelIds": economy_ids,
+            # The upgrade lane shares the classifier and the on/off switch; only
+            # the candidate list is its own.
+            "qualityAvailable": bool(
+                policy.adaptive_quality_enabled and classifier_ok and quality_ids
+            ),
+            "qualityReason": (
+                "disabled"
+                if not policy.adaptive_quality_enabled
+                else "classifier_unavailable"
+                if not classifier_ok
+                else "no_quality_models"
+                if not quality_ids
+                else None
+            ),
+            "qualityModelIds": quality_ids,
         },
     }
 

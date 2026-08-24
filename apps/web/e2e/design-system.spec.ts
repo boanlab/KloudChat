@@ -1,7 +1,22 @@
 import { readFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { approvePlan, signIn } from './helpers'
+
+/**
+ * Retried once, and only here among the design suites.
+ *
+ * This is the longest test in the file by an order of magnitude: one run makes
+ * a deck outline, a slide per page, a report outline, a section per heading and
+ * two exports — a dozen model calls whose success has to multiply out. Each of
+ * them lands almost always; all of them landing is a coin that comes up tails
+ * often enough to report the model's afternoon as a product defect.
+ *
+ * Once rather than twice: at nine minutes a run, a second retry buys a little
+ * and costs half an hour.
+ */
+test.describe.configure({ retries: 1 })
+
 
 /**
  * A design system, from the screen it is written on to the file it comes out of.
@@ -120,6 +135,9 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
 
   await page.getByLabel('프롬프트 입력').fill('연구실 세미나에서 쓸 발표 슬라이드를 만들어줘')
   await page.getByLabel('프롬프트 입력').press('Enter')
+  // Planned first and written only once approved — there is no deck, and so no
+  // export, before this.
+  await approvePlan(page, 480_000)
 
   const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   await expect(exportButton).toBeEnabled({ timeout: 480_000 })
@@ -171,7 +189,8 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
 
   await page.getByLabel('프롬프트 입력').fill('연구실 장비 관리 현황을 정리한 짧은 보고서를 써줘')
   await page.getByLabel('프롬프트 입력').press('Enter')
-  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
+  // The turn ends on a proposal and writes nothing; the card is what writes.
+  await approvePlan(page, 480_000)
 
   const report = await page.evaluate(
     async ([fn, id]) => {

@@ -115,7 +115,7 @@ test('답변이 오지 않은 질문은 다시 열어도 그 사실과 다시 �
   await expect(page.getByText('답변을 받지 못했습니다.')).toBeVisible()
 
   // A video job has had a retry all along; a conversation turn had none.
-  await page.getByRole('button', { name: '다시 물어보기' }).click()
+  await page.getByRole('button', { name: '다시 시도' }).click()
   await expect.poll(() => sent, { timeout: 30_000 }).toEqual([QUESTION])
   // Asked again, not repaired: the question that went unanswered stays in the
   // record beside the one that did not.
@@ -144,9 +144,12 @@ test('중간에 끊긴 답변은 쓰다 만 내용과 함께 끊겼다고 말한
   await expect(page.getByText('보조금은 지자체마다')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('답변이 중간에 끊겨 여기까지만 남았습니다.')).toBeVisible()
   // The notice belongs to the half-written answer, so the question above it
-  // must not grow a second one — nor a way back that would ask twice.
+  // must not grow a second one — nor a second way back, which is what asking
+  // twice would take. One is the point: an answer that broke halfway is the
+  // case the retry beside it was put there for, and the sentence that asked it
+  // may be scrolled off the top by then.
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '다시 물어보기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(1)
 })
 
 test('답변이 온 대화는 실패한 것처럼 보이지 않는다', async ({ page }) => {
@@ -162,7 +165,7 @@ test('답변이 온 대화는 실패한 것처럼 보이지 않는다', async ({
 
   await expect(page.getByText('지자체마다 다릅니다.')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '다시 물어보기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(0)
 })
 
 test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', async ({ page }) => {
@@ -180,7 +183,7 @@ test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', asyn
   await expect.poll(() => sent, { timeout: 30_000 }).toEqual([QUESTION])
   await expect(page.getByText(QUESTION).last()).toBeVisible()
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '다시 물어보기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(0)
 
   // And once it does arrive, it is an answer and not a failure either.
   await expect(page.getByText('지자체마다 다릅니다.')).toBeVisible({ timeout: 30_000 })

@@ -248,6 +248,15 @@ async def write(
     #: skips planning and writes exactly what was approved, because planning
     #: again would produce a different report from the one agreed to.
     approved_plan: dict[str, Any] | None = None,
+    #: Whether this pass may stop to ask.
+    #:
+    #: False on the pass that follows "있는 자료로 진행" — the button whose whole
+    #: promise is that it will not be asked again. Without it the answer folds
+    #: back into a request identical to the one that raised the question, the
+    #: planner asks it again, and the button loops for as long as somebody
+    #: keeps pressing it. Only this one pass is silenced; a later request that
+    #: genuinely cannot be grounded is still allowed to say so.
+    may_ask: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -272,7 +281,7 @@ async def write(
                 build_document_messages(
                     SessionKind.report,
                     _OUTLINE_PROMPT.format(
-                        ask_rule=grounding.ASK_RULE,
+                        ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
                         lo=_MIN_SECTIONS,
                         hi=_MAX_SECTIONS,
                         request=request[:2000],
@@ -294,7 +303,7 @@ async def write(
         # A question instead of a 목차 — see `grounding.ASK_RULE`. Only when the
         # request names material the sources do not carry; a bare topic is still
         # planned without anybody being asked about it.
-        if asked := grounding.parse_needs(text):
+        if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
             yield {"type": "usage", **usage}
