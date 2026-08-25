@@ -339,11 +339,11 @@ async def approve(
     user.status = UserStatus.active
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
-    # A starting workspace. The agents and skills screens are real features that
-    # need something written into them to be worth opening, and "write your own
-    # system prompt" is the part the people this is for are asking us to know.
-    # Everything seeded is editable and deletable — see services/starter.py.
-    await starter.seed(db, user.id)
+    # A look to start from, and nothing else. The agents and skills a new
+    # account used to be handed are one shared catalogue now, owned by the
+    # administrator and taken from the store when they are wanted — see
+    # services/starter.py.
+    await starter.seed_designs(db, user.id)
     db.add(user)
 
     _audit(db, request, admin, "user.approve", user.email, f"credits={allowance}")

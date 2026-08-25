@@ -221,7 +221,7 @@ test('웹 검색은 켠 대화에만 남고 다음 대화로 따라오지 않는
 
 // ── 4. 에이전트 가져오기 ────────────────────────────────────────────────
 
-test('공유된 에이전트를 가져오면 함께 오지 않은 것을 사본이 밝힌다', async ({ page }) => {
+test('공유된 에이전트를 가져오면 서버가 사본을 만들고 함께 오지 않은 것을 밝힌다', async ({ page }) => {
   await signIn(page)
 
   const shared = {
@@ -234,8 +234,9 @@ test('공유된 에이전트를 가져오면 함께 오지 않은 것을 사본�
     model: 'external/one',
     systemPrompt: '너는 검토자다',
     tools: null,
-    // Rows in the other account. Nothing here can resolve them, which is the
-    // half of the agent that cannot travel.
+    // Rows in the other account. The install route copies the shared ones and
+    // rewrites this list against the copies — which is why the copy below
+    // carries an id of its own rather than this one.
     skillIds: ['skill-theirs'],
     kinds: ['chat'],
     temperature: 0.7,
@@ -243,38 +244,53 @@ test('공유된 에이전트를 가져오면 함께 오지 않은 것을 사본�
     enabled: true,
     visibility: 'org',
     installs: 3,
+    catalogKey: null,
+    originId: null,
+    official: false,
+    installed: false,
     runs: 12,
     hasKnowledge: false,
     updatedAt: NOW,
   }
+  const copy = {
+    ...shared,
+    id: 'agent-mine',
+    ownerId: 'me',
+    ownerName: '나',
+    visibility: 'private',
+    installs: 0,
+    originId: 'agent-shared',
+    skillIds: ['skill-mine'],
+    description: `${shared.description} · 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요.`,
+  }
 
-  let created: Record<string, unknown> | null = null
+  let installed = false
   await page.route('**/api/agents', async (route) => {
-    if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(created ? [shared, { ...shared, ...created, id: 'agent-mine' }] : [shared]),
-      })
-      return
-    }
-    created = route.request().postDataJSON() as Record<string, unknown>
     await route.fulfill({
-      status: 201,
+      status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ ...shared, ...created, id: 'agent-mine', ownerId: 'me' }),
+      body: JSON.stringify(
+        installed ? [{ ...shared, installed: true }, copy] : [shared],
+      ),
     })
+  })
+  // The copy is made server-side now: the allow-list is a list of rows in the
+  // author's account, and only the server can install their shared skills and
+  // point the copy at the results.
+  await page.route('**/api/agents/agent-shared/install', async (route) => {
+    installed = true
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(copy) })
   })
 
   await page.goto('/agents')
   await page.getByRole('button', { name: '가져오기' }).click()
 
-  await expect
-    .poll(() => (created?.description as string | undefined) ?? '')
-    .toContain('스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다')
+  await expect.poll(() => installed).toBe(true)
   // Said where the copy lands, not in a toast: the question it answers — why
   // is my copy worse than the one I tried? — is asked days afterwards.
   await expect(
-    page.getByText('스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.'),
+    page.getByText('지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요.'),
   ).toBeVisible()
+  // And the card it came from stops offering an import that is already done.
+  await expect(page.getByRole('button', { name: '가져옴' })).toBeVisible()
 })

@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import Column, DateTime, Index
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -240,6 +241,17 @@ class ArtifactVersion(SQLModel, table=True):
 # ── skills ─────────────────────────────────────────────────────────────
 
 
+class Visibility(StrEnum):
+    private = "private"
+    org = "org"
+
+
+#: Agents named this enum first and own its Postgres type. Skills share both:
+#: a second type with the same two labels would be one more migration to keep
+#: in step for nothing.
+AgentVisibility = Visibility
+
+
 class SkillSource(StrEnum):
     built_in = "built-in"
     workspace = "workspace"
@@ -267,6 +279,23 @@ class Skill(SQLModel, table=True):
     #: Stable identity for a shipped skill. Null for user-authored skills.
     catalog_key: str | None = Field(default=None)
     source: SkillSource = Field(default=SkillSource.personal)
+    #: Shared to the workspace store, exactly as an agent is. A skill is only
+    #: ever *run* out of its owner's account, so sharing means "copyable",
+    #: never "usable in place" — see `visibility` on Agent below.
+    visibility: Visibility = Field(
+        default=Visibility.private,
+        sa_column=Column(
+            PgEnum(Visibility, name="agentvisibility", create_type=False),
+            nullable=False,
+            server_default=Visibility.private.value,
+        ),
+    )
+    #: How many accounts took a copy. Written by the install route only.
+    installs: int = Field(default=0)
+    #: The shared row this one was copied from. Kept so the store can say
+    #: "이미 가져옴" without comparing bodies, and so a second install is a
+    #: no-op rather than a duplicate.
+    origin_id: str | None = Field(default=None, index=True)
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: Tool names that must survive the agent's hard allowlist for this skill.
     required_tools: list | None = Field(default=None, sa_column=_json(nullable=True))
@@ -308,11 +337,6 @@ class Memory(SQLModel, table=True):
 # ── agents ─────────────────────────────────────────────────────────────
 
 
-class AgentVisibility(StrEnum):
-    private = "private"
-    org = "org"
-
-
 class Agent(SQLModel, table=True):
     __tablename__ = "agents"
 
@@ -333,12 +357,26 @@ class Agent(SQLModel, table=True):
     temperature: float = Field(default=0.7)
     color: str = Field(default="#5b53e8")
     enabled: bool = Field(default=True)
-    visibility: AgentVisibility = Field(default=AgentVisibility.private)
+    #: Named explicitly now that skills share the type: the enum class was
+    #: renamed and an inferred name would have drifted off `agentvisibility`.
+    visibility: Visibility = Field(
+        default=Visibility.private,
+        sa_column=Column(
+            PgEnum(Visibility, name="agentvisibility", create_type=False),
+            nullable=False,
+            server_default=Visibility.private.value,
+        ),
+    )
     #: Names this agent's collection in the retrieval index. Minted on first
     #: use, never derived from `id` — see migration 0015: the collection name is
     #: the whole authorisation over there, and `id` travels too widely to be one.
     index_key: str | None = Field(default=None)
     installs: int = Field(default=0)
+    #: Stable identity for an agent shipped in the starter catalogue, matching
+    #: `Skill.catalog_key`. Null for anything a person wrote.
+    catalog_key: str | None = Field(default=None)
+    #: The shared agent this one was copied from. Same contract as on Skill.
+    origin_id: str | None = Field(default=None, index=True)
     runs: int = Field(default=0)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -527,6 +565,7 @@ __all__ = [
     "JobStatus",
     "Agent",
     "AgentVisibility",
+    "Visibility",
     "Artifact",
     "ArtifactKind",
     "ArtifactVersion",

@@ -195,9 +195,12 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         # After the insert is safe: provisioning first orphans a LiteLLM user
         # behind every failed signup.
         await provision_user(user)
-        # Same starting workspace as an approved account. The bootstrap admin
-        # skips approval, so it has to be seeded here too.
-        await starter.seed(db, user.id)
+        # Same starting workspace as an approved account.
+        await starter.seed_designs(db, user.id)
+        # The first account on an instance is its administrator, and nobody
+        # else can put the shared catalogue there.
+        if user.role is UserRole.admin:
+            await starter.seed_catalog(db, user.id)
         db.add(user)
 
     await _audit(db, request, "signup", user.id, target=email, detail=f"status={user_status}")
@@ -231,10 +234,10 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
         user.password_hash = hash_password(payload.password)
 
     if user.status is UserStatus.active:
-        # Versioned, idempotent catalogue sync for accounts created before a
-        # shipped skill existed. It fills metadata and missing rows only; user
-        # edits are never overwritten.
-        await starter.sync_catalog(db, user.id)
+        # Versioned, idempotent catalogue sync. Only the administrator holding
+        # the shared catalogue touches the database here; for everyone else it
+        # returns immediately.
+        await starter.sync_catalog(db, user)
 
     user.last_active_at = utcnow()
     db.add(user)
@@ -273,7 +276,7 @@ async def refresh(request: Request, response: Response, db: DbSession):
             # Concurrent refresh: both clients hold the cookie legitimately, so
             # the loser gets its own successor rather than a burned chain.
             if user.status is UserStatus.active:
-                await starter.sync_catalog(db, user.id)
+                await starter.sync_catalog(db, user)
             return await _issue_session(
                 db, response, user, family_id=row.family_id, request=request
             )
@@ -292,11 +295,11 @@ async def refresh(request: Request, response: Response, db: DbSession):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session_ended")
 
     if user.status is UserStatus.active:
-        # A browser can remain signed in indefinitely by rotating refresh
-        # tokens and never visit `/login`. Catalogue sync belongs in this same
-        # transaction as the successful rotation so those accounts receive new
-        # shipped skills too.
-        await starter.sync_catalog(db, user.id)
+        # An administrator can remain signed in indefinitely by rotating
+        # refresh tokens and never visit `/login`. Catalogue sync belongs in
+        # this same transaction as the successful rotation, so a release's new
+        # entries reach the store without anybody signing in again.
+        await starter.sync_catalog(db, user)
     row.revoked_at = utcnow()
     row.revoked_reason = RevokeReason.rotated
     db.add(row)

@@ -1268,6 +1268,10 @@ export const skillsApi = {
     call<SkillRow>(`/skills/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   toggle: (id: string) => call<SkillRow>(`/skills/${id}/toggle`, { method: 'POST' }),
   remove: (id: string) => call<void>(`/skills/${id}`, { method: 'DELETE' }),
+  /** Shared by the rest of the workspace, minus whatever is already yours. */
+  store: () => call<StoreSkillRow[]>('/skills/store'),
+  /** Takes a copy. Idempotent — a second press returns the copy you have. */
+  install: (id: string) => call<SkillRow>(`/skills/${id}/install`, { method: 'POST' }),
 }
 
 export interface SkillRow {
@@ -1284,7 +1288,17 @@ export interface SkillRow {
   estimatedTokens: number
   version: string
   enabled: boolean
+  visibility: string
+  installs: number
+  originId: string | null
   updatedAt: string
+}
+
+export interface StoreSkillRow extends SkillRow {
+  ownerId: string
+  ownerName: string
+  official: boolean
+  installed: boolean
 }
 
 export interface ToolCatalogRow {
@@ -1329,6 +1343,13 @@ export const agentsApi = {
   update: (id: string, patch: Partial<AgentRow>) =>
     call<AgentRow>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/agents/${id}`, { method: 'DELETE' }),
+  /**
+   * Takes a copy of a shared agent, with the shared skills it runs on.
+   *
+   * Server-side because the copy is more than the prompt: the skill allow-list
+   * is a list of rows in the author's account, and the copy needs its own.
+   */
+  install: (id: string) => call<AgentRow>(`/agents/${id}/install`, { method: 'POST' }),
 
   /**
    * An agent's own documents, which it searches through the `search_knowledge`
@@ -1380,6 +1401,10 @@ export interface AgentRow {
   enabled: boolean
   visibility: string
   installs: number
+  catalogKey: string | null
+  originId: string | null
+  official: boolean
+  installed: boolean
   runs: number
   /** True only when this caller has readable documents on this agent's shelf. */
   hasKnowledge: boolean
