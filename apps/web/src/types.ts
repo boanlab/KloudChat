@@ -654,6 +654,11 @@ export interface Skill {
   /** Which surfaces this skill applies to. */
   kinds: SessionKind[]
   enabled: boolean
+  /** `org` puts it in the store for everyone in the workspace to copy. */
+  visibility: 'private' | 'org'
+  installs: number
+  /** The shared skill this one was copied from, if it was copied. */
+  originId: string | null
   version: string
   files: string[]
   updatedAt: string
@@ -732,6 +737,14 @@ export interface Agent {
   /** `org` agents appear in the shared store for everyone in the workspace. */
   visibility: 'private' | 'org'
   installs: number
+  /** Stable identity for an agent the workspace ships with. */
+  catalogKey: string | null
+  /** The shared agent this one was copied from, if it was copied. */
+  originId: string | null
+  /** Published by an administrator. Meaningful on store rows. */
+  official: boolean
+  /** You already hold a copy of this shared agent. */
+  installed: boolean
   name: string
   slug: string
   description: string
@@ -749,6 +762,23 @@ export interface Agent {
   /** Whether this caller can build the agent-only `search_knowledge` tool. */
   hasKnowledge: boolean
   updatedAt: string
+}
+
+/**
+ * A skill in the store: somebody else's, and not yet yours.
+ *
+ * Separate from the skills list because that one is what the composer offers
+ * for a turn, and a skill only ever runs out of its owner's account. A shared
+ * row mixed into it would be a picker entry that fails at the moment it is
+ * used.
+ */
+export interface StoreSkill extends Skill {
+  ownerId: string
+  ownerName: string
+  /** Published by an administrator — what the workspace ships with. */
+  official: boolean
+  /** This account already holds a copy, so 가져오기 has nothing to do. */
+  installed: boolean
 }
 
 export interface ToolCatalogEntry {

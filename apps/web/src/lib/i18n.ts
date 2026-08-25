@@ -208,6 +208,9 @@ const EN: Record<string, string> = {
   '가입 승인': 'Approve',
   '가입 요청': 'Sign-up requests',
   '가져오기': 'Import',
+  '가져옴': 'Imported',
+  '가져오는 중…': 'Importing…',
+  '가져오지 못했습니다.': 'Could not import.',
   '감사 로그': 'Audit log',
   '개인': 'Personal',
   '계정': 'Account',
@@ -218,10 +221,29 @@ const EN: Record<string, string> = {
   '고정 해제': 'Unpin',
   '고정됨': 'Pinned',
   '공개 범위': 'Visibility',
+  '나만 사용': 'Only me',
   '공식': 'Official',
   '공유 링크': 'Share link',
   '공유된 대화': 'Shared conversation',
   '공유됨': 'Shared',
+  '아직 스킬이 없습니다':
+    'No skills yet',
+  '워크스페이스 스토어에서 필요한 절차를 가져오거나, 직접 하나 만들어 시작하세요.':
+    'Import one from the workspace store, or write your own.',
+  '스토어 둘러보기':
+    'Browse the store',
+  '아직 에이전트가 없습니다':
+    'No agents yet',
+  '워크스페이스 스토어에서 가져오거나, 직접 하나 만들어 시작하세요.':
+    'Import one from the workspace store, or make your own.',
+  '공유된 에이전트가 없습니다':
+    'Nothing shared yet',
+  '내 에이전트를 편집해 모두에게 공개하면 여기에 올라갑니다.':
+    'Edit one of your agents and share it to list it here.',
+  '아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.':
+    'Nothing shared yet. Edit one of your skills to share it with the workspace.',
+  '공유하면 워크스페이스 스토어에 올라가고, 다른 사용자가 각자 사본을 가져갑니다. 내가 고쳐도 이미 가져간 사본은 그대로입니다.':
+    'Sharing lists it in the workspace store, where others take their own copy. Editing yours afterwards leaves those copies alone.',
   '관리': 'Manage',
   '관리자': 'Admin',
   '권한 변경': 'Role change',
@@ -715,6 +737,7 @@ const EN: Record<string, string> = {
   '{n}초': '{n}s',
   '{n}회': '{n} calls',
   '{n}회 실행': '{n} runs',
+  '{n}회 설치': '{n} imports',
   '{n}회 열람': '{n} views',
   '{shown} / {total}건': '{shown} / {total}',
   '{style} 형식 · {n}건': '{style} style · {n} sources',
