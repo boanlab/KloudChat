@@ -28,6 +28,7 @@ from app.models.workspace import (
     StoredFile,
     Template,
     Transport,
+    Visibility,
 )
 from app.schemas.auth import Wire
 from app.services import design as design_service
@@ -318,6 +319,11 @@ class SkillOut(Wire):
     estimated_tokens: int = 0
     version: str
     enabled: bool
+    #: Shared to the store, exactly as an agent is.
+    visibility: Visibility = Visibility.private
+    installs: int = 0
+    #: The shared row this one was copied from, if it was copied.
+    origin_id: str | None = None
     updated_at: datetime
 
     @classmethod
@@ -325,6 +331,39 @@ class SkillOut(Wire):
         out = cls.model_validate(s, from_attributes=True)
         out.kinds = list(s.kinds or [])
         out.required_tools = list(s.required_tools or [])
+        return out
+
+
+class StoreSkillOut(SkillOut):
+    """A skill as the store lists it: somebody else's, and not yet yours.
+
+    `installed` is what the card reads. Without it the only way to know a copy
+    is already sitting on the skills screen is to take a second one and find
+    out, which is the mistake the flag exists to make impossible.
+    """
+
+    owner_id: str
+    owner_name: str = ""
+    #: Published by an administrator, so the store can separate the entries the
+    #: workspace ships with from the ones colleagues wrote.
+    official: bool = False
+    installed: bool = False
+
+    @classmethod
+    def store(
+        cls,
+        s: Skill,
+        *,
+        owner_name: str = "",
+        official: bool = False,
+        installed: bool = False,
+    ) -> StoreSkillOut:
+        out = cls.model_validate(s, from_attributes=True)
+        out.kinds = list(s.kinds or [])
+        out.required_tools = list(s.required_tools or [])
+        out.owner_name = owner_name
+        out.official = official
+        out.installed = installed
         return out
 
 
@@ -336,6 +375,7 @@ class SkillIn(Wire):
     kinds: list[str] | None = None
     required_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
+    visibility: Visibility = Visibility.private
 
 
 # ── memories ───────────────────────────────────────────────────────────
@@ -383,6 +423,13 @@ class AgentOut(Wire):
     enabled: bool
     visibility: AgentVisibility
     installs: int
+    catalog_key: str | None = None
+    origin_id: str | None = None
+    #: Published by an administrator. Store-only; false on your own rows.
+    official: bool = False
+    #: This caller already holds a copy. Store-only, for the same reason as on
+    #: a skill: a second copy is not what the button was pressed for.
+    installed: bool = False
     runs: int
     #: Runtime-only: the caller has readable text on this agent's shelf, so
     #: `search_knowledge` can actually be built for a chat turn.
@@ -395,11 +442,19 @@ class AgentOut(Wire):
 
     @classmethod
     def of(
-        cls, a: Agent, owner_name: str = "", *, has_knowledge: bool = False
+        cls,
+        a: Agent,
+        owner_name: str = "",
+        *,
+        has_knowledge: bool = False,
+        official: bool = False,
+        installed: bool = False,
     ) -> AgentOut:
         out = cls.model_validate(a, from_attributes=True)
         out.owner_name = owner_name
         out.has_knowledge = has_knowledge
+        out.official = official
+        out.installed = installed
         out.tools = None if a.tools is None else list(a.tools)
         out.skill_ids = None if a.skill_ids is None else list(a.skill_ids)
         out.kinds = list(a.kinds or [])

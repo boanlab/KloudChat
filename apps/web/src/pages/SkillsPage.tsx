@@ -1,4 +1,4 @@
-import { ChevronRight, FileCode2, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronRight, Download, FileCode2, Globe, Lock, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Markdown } from '@/components/chat/Markdown'
 import { PageBody } from '@/components/layout/AppShell'
@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   ConfirmDialog,
+  EmptyState,
   Field,
   Input,
   Modal,
@@ -22,12 +23,12 @@ import { cn, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
-import type { Skill } from '@/types'
+import type { Skill, StoreSkill } from '@/types'
 import { errorMessage } from '@/lib/api'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
-type Filter = 'all' | 'built-in' | 'workspace' | 'personal'
+type Filter = 'all' | 'built-in' | 'workspace' | 'personal' | 'store'
 
 const sourceLabel: Record<Skill['source'], string> = {
   'built-in': '기본',
@@ -35,14 +36,91 @@ const sourceLabel: Record<Skill['source'], string> = {
   personal: '개인',
 }
 
+/**
+ * One shared skill, and the button that makes it yours.
+ *
+ * A copy rather than a reference: the author keeps editing theirs, and an edit
+ * over there never rewrites a procedure somebody here is relying on. Which is
+ * also why an installed entry stays on this list, greyed — the store is a
+ * catalogue of originals, not a list of things you are missing.
+ */
+function StoreCard({ skill }: { skill: StoreSkill }) {
+  const t = useT()
+  const { installSkill } = useStore()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  return (
+    <Card className="flex items-start gap-3 p-4">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base font-medium">{t(skill.name)}</span>
+          <span className="font-mono text-xs text-faint">{skill.slug}</span>
+          {/* 누가 올린 것인지가 이 화면에서 가장 먼저 필요한 정보입니다 —
+              관리자가 올린 기본 목록과 동료가 쓴 것은 다르게 읽힙니다. */}
+          <Badge tone={skill.official ? 'accent' : 'neutral'}>
+            {skill.official ? t('공식') : skill.ownerName || t('워크스페이스')}
+          </Badge>
+          {skill.kinds.map((k) => (
+            <Badge key={k} tone="accent">
+              {t(kindMeta[k].label)}
+            </Badge>
+          ))}
+        </div>
+        <p className="mt-1 text-base text-muted">{t(skill.description)}</p>
+        <p className="mt-1.5 text-xs text-faint">
+          {t('사용 시점')}: {t(skill.whenToUse)} ·{' '}
+          {t('약 {n} 토큰').replace('{n}', skill.estimatedTokens.toLocaleString())} ·{' '}
+          {t('{n}회 설치').replace('{n}', String(skill.installs))}
+        </p>
+        {error && (
+          <p role="status" className="mt-1.5 text-xs text-danger">
+            {error}
+          </p>
+        )}
+      </div>
+      <Button
+        size="sm"
+        variant={skill.installed ? 'ghost' : 'primary'}
+        disabled={skill.installed || busy}
+        onClick={async () => {
+          setBusy(true)
+          setError(null)
+          try {
+            await installSkill(skill.id)
+          } catch (err) {
+            setError(errorMessage(err, t('가져오지 못했습니다.')))
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        {skill.installed ? <Check size={13} /> : <Download size={13} />}
+        {skill.installed ? t('가져옴') : busy ? t('가져오는 중…') : t('가져오기')}
+      </Button>
+    </Card>
+  )
+}
+
 export function SkillsPage() {
   const t = useT()
-  const { skills, availableTools, toggleSkill, upsertSkill, deleteSkill, deleteMany, loadWorkspace } =
-    useStore()
+  const {
+    skills,
+    skillStore,
+    skillStoreLoading,
+    availableTools,
+    toggleSkill,
+    upsertSkill,
+    deleteSkill,
+    deleteMany,
+    loadWorkspace,
+    loadSkillStore,
+  } = useStore()
 
   useEffect(() => {
     void loadWorkspace()
-  }, [loadWorkspace])
+    void loadSkillStore()
+  }, [loadWorkspace, loadSkillStore])
   const [filter, setFilter] = useState<Filter>('all')
   const [detail, setDetail] = useState<Skill | null>(null)
   const [creating, setCreating] = useState(false)
@@ -58,6 +136,7 @@ export function SkillsPage() {
     whenToUse: '',
     body: '',
     requiredTools: [] as string[],
+    visibility: 'private' as Skill['visibility'],
   })
   const [editing, setEditing] = useState<string | null>(null)
   //: 지우기 전에 무엇을 지우는지 묻는다. 되돌릴 곳이 서버에 없다.
@@ -70,7 +149,14 @@ export function SkillsPage() {
   ]
 
   const reset = () => {
-    setDraft({ name: '', description: '', whenToUse: '', body: '', requiredTools: [] })
+    setDraft({
+      name: '',
+      description: '',
+      whenToUse: '',
+      body: '',
+      requiredTools: [],
+      visibility: 'private',
+    })
     setEditing(null)
   }
   const startEdit = (s: Skill) => {
@@ -80,6 +166,7 @@ export function SkillsPage() {
       whenToUse: s.whenToUse,
       body: s.body,
       requiredTools: s.requiredTools,
+      visibility: s.visibility,
     })
     setEditing(s.id)
     setDetail(null)
@@ -92,8 +179,10 @@ export function SkillsPage() {
   // save — but re-ranking on every write moved the card out from under the
   // switch that had just been flipped.
   const ordered = useStableOrder(skills)
-  const all = filter === 'all' ? ordered : ordered.filter((s) => s.source === filter)
+  const all =
+    filter === 'all' || filter === 'store' ? ordered : ordered.filter((s) => s.source === filter)
   const { visible, hidden, more } = usePaged(all, [filter, skills.length])
+  const storePaged = usePaged(skillStore, [filter, skillStore.length])
   const anySelectable = visible.some((s) => s.source !== 'built-in')
   // Only the rows a delete can actually reach, so 전체 선택 does not pick a
   // built-in skill and then have the request refuse it.
@@ -122,9 +211,28 @@ export function SkillsPage() {
             { id: 'built-in', label: t('기본') },
             { id: 'workspace', label: t('워크스페이스') },
             { id: 'personal', label: t('개인') },
+            // The one tab that is not a filter over your own rows: these are
+            // somebody else's, and nothing here happens until you take a copy.
+            { id: 'store', label: t('워크스페이스 스토어'), count: skillStore.length },
           ]}
         />
 
+        {filter === 'store' ? (
+          <div className="space-y-2 pt-4">
+            {storePaged.visible.map((skill) => (
+              <StoreCard key={skill.id} skill={skill} />
+            ))}
+            {skillStore.length === 0 && (
+              <p className="py-10 text-center text-base text-muted">
+                {skillStoreLoading
+                  ? t('불러오는 중…')
+                  : t('아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.')}
+              </p>
+            )}
+            <ShowMore hidden={storePaged.hidden} onMore={storePaged.more} />
+          </div>
+        ) : (
+          <>
         <div className="pt-4">
           <BulkBar
             count={pick.count}
@@ -172,6 +280,14 @@ export function SkillsPage() {
                   <span className="font-mono text-xs text-faint">{s.slug}</span>
                   <Badge>{t(sourceLabel[s.source])}</Badge>
                   <Badge>v{s.version}</Badge>
+                  {/* 공유한 것만 배지를 답니다. 개인이 기본값이라 모든 행에
+                      "개인" 을 붙이면 알려 주는 것 없이 줄만 길어집니다. */}
+                  {s.visibility === 'org' && (
+                    <Badge tone="success">
+                      <Globe size={10} />
+                      {t('공유됨')}
+                    </Badge>
+                  )}
                   {s.kinds.map((k) => (
                     <Badge key={k} tone="accent">
                       {t(kindMeta[k].label)}
@@ -221,8 +337,26 @@ export function SkillsPage() {
               </div>
             </Card>
           ))}
+          {/* 승인만 받으면 스킬 여덟 개가 들어와 있던 시절이 끝났습니다. 빈
+              화면이 "기능이 없다" 로 읽히지 않도록, 나머지가 어디 있는지 여기서
+              말합니다. */}
+          {all.length === 0 && (
+            <EmptyState
+              icon={<FileCode2 size={18} />}
+              title={t('아직 스킬이 없습니다')}
+              description={t('워크스페이스 스토어에서 필요한 절차를 가져오거나, 직접 하나 만들어 시작하세요.')}
+              action={
+                <Button variant="primary" onClick={() => setFilter('store')}>
+                  <Download size={16} />
+                  {t('스토어 둘러보기')}
+                </Button>
+              }
+            />
+          )}
         </div>
         <ShowMore hidden={hidden} onMore={more} />
+          </>
+        )}
       </PageBody>
 
       <ConfirmDialog
@@ -264,6 +398,10 @@ export function SkillsPage() {
               <Badge tone="accent">{detail.slug}</Badge>
               <Badge>{t(sourceLabel[detail.source])}</Badge>
               <Badge>v{detail.version}</Badge>
+              <Badge tone={detail.visibility === 'org' ? 'success' : 'neutral'}>
+                {detail.visibility === 'org' ? <Globe size={10} /> : <Lock size={10} />}
+                {detail.visibility === 'org' ? t('공유됨') : t('개인')}
+              </Badge>
               <Badge tone={detail.enabled ? 'success' : 'neutral'}>
                 {detail.enabled ? t('설치됨') : t('사용 중지')}
               </Badge>
@@ -355,6 +493,8 @@ export function SkillsPage() {
                     version: current?.version ?? '1.0.0',
                     files: current?.files ?? ['SKILL.md'],
                     estimatedTokens: current?.estimatedTokens ?? 0,
+                    installs: current?.installs ?? 0,
+                    originId: current?.originId ?? null,
                     updatedAt: new Date().toISOString(),
                     ...draft,
                   })
@@ -416,6 +556,38 @@ export function SkillsPage() {
             onChange={(e) => setDraft({ ...draft, body: e.target.value })}
             placeholder={t('1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다')}
           />
+        </Field>
+        {/* 공개 범위. 에이전트 화면과 같은 두 상태이고, 같은 뜻입니다 — 공유는
+            "여기서 쓰라" 가 아니라 "가져다 쓰라" 입니다. 스킬은 언제나 소유자의
+            계정에서 실행되므로, 공유된 스킬은 복사할 수 있을 뿐입니다. */}
+        <Field
+          label={t('공개 범위')}
+          hint={t('공유하면 워크스페이스 스토어에 올라가고, 다른 사용자가 각자 사본을 가져갑니다. 내가 고쳐도 이미 가져간 사본은 그대로입니다.')}
+        >
+          <div className="flex gap-2">
+            {([
+              { id: 'private', label: t('나만 사용'), icon: Lock },
+              { id: 'org', label: t('모두에게 공개'), icon: Globe },
+            ] as const).map((o) => {
+              const Icon = o.icon
+              return (
+                <button
+                  type="button"
+                  key={o.id}
+                  onClick={() => setDraft({ ...draft, visibility: o.id })}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-control border px-3 py-2 text-base transition-colors',
+                    draft.visibility === o.id
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted hover:bg-elevated',
+                  )}
+                >
+                  <Icon size={14} />
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
         </Field>
         <Field
           label={t('필수 도구')}

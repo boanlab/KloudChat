@@ -202,8 +202,8 @@ without a translation fall back to Korean.
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, member sessions, linked skills and memories |
 | `/artifacts` | Gallery of every output. Filter by kind, jump back to the originating session |
 | `/designs` · `?tab=template` | Design systems you make — colour, type, voice — and the 서식 catalogue the product ships, grouped by surface |
-| `/agents` | System prompt, model, tool permissions, and which surfaces an agent applies to |
-| `/skills` | `SKILL.md` front matter, applicable surfaces, enable toggle |
+| `/agents` | System prompt, model, tool permissions, surfaces — plus the workspace store, where shared agents are copied into your own account |
+| `/skills` | `SKILL.md` front matter, applicable surfaces, enable toggle, and the same store for shared procedures |
 | `/memory` | user / feedback / project / reference types, global or project scope, `[[links]]` |
 | `/connectors` | MCP servers — verified catalogue, per-tool permissions, custom server registration |
 | `/history` | Conversation history — selective and bulk deletion |

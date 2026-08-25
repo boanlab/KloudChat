@@ -129,7 +129,7 @@ reason.
 
 ## 5. Data model
 
-Thirty-one migrations under `alembic/versions/`. The principal tables:
+Thirty-seven migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
@@ -630,6 +630,43 @@ account.
 
 The router sits **above** the auth gate, or a share link would land on the
 sign-in screen.
+
+### The workspace store
+
+Agents and skills used to be written into every account at approval: one
+catalogue, N copies, so improving an entry reached nobody who already had it
+and a twenty-person workspace held twenty copies of the same eight procedures.
+
+They live in one account now — the oldest administrator's, resolved by
+`starter.catalog_owner_id`, derived rather than stored — shared to the
+workspace, and taken from `/agents` and `/skills/store` a copy at a time.
+`POST /agents/{id}/install` and `POST /skills/{id}/install` do the copying, and
+both are idempotent: pressing 가져오기 twice returns the row you already have
+rather than a second one with the same name.
+
+**Sharing means copyable, not usable in place.** A skill is only ever resolved
+out of its owner's account (`workspace_context._resolve_skills`), so a shared
+row is inert until copied. This is why the store is its own endpoint and not a
+wider `GET /skills`: mixed into the composer's list, a shared skill would be a
+picker entry that fails at the moment it is used.
+
+Installing an agent installs the shared skills it names and rewrites its
+allow-list against the copies. Copying the prompt alone left an agent pointing
+at rows in the author's account, which resolve to nothing here — the copy
+answered differently from the card and said nothing about why. An allow-list
+emptied by the copy becomes `null` (inherit) rather than `[]`, which is a hard
+deny that would refuse every skill the new owner ever switched on. Knowledge
+shelves never travel: those are the author's documents, and copying their agent
+is not a grant over their files.
+
+`official` is computed per request from the publisher's current role rather
+than stamped on the row, so an entry does not go on claiming to be official
+after the administrator who published it was demoted.
+
+Existing accounts keep the copies they were seeded with. `_copy_of` matches
+them by catalogue key — and, for agents, which never carried one, by slug — so
+an account that has held these procedures for months is not told it holds none
+of them.
 
 ### Coding agents
 

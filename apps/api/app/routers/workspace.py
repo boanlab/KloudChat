@@ -32,8 +32,10 @@ from app.models.workspace import (
     Memory,
     Project,
     Skill,
+    SkillSource,
     StoredFile,
     Template,
+    Visibility,
 )
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
@@ -65,6 +67,7 @@ from app.schemas.workspace import (
     SkillOut,
     SlideFactCheck,
     SlideImage,
+    StoreSkillOut,
     TemplateIn,
     TemplateOut,
     ToolCatalogOut,
@@ -1239,6 +1242,127 @@ async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession
 # ══ skills ═════════════════════════════════════════════════════════════
 
 
+# ══ the store ══════════════════════════════════════════════════════════
+#
+# Agents and skills are shared the same way and copied the same way, so both
+# halves of it live here rather than once per resource.
+
+
+async def _admin_ids(db: DbSession, owner_ids: set[str]) -> set[str]:
+    """Which of these accounts are administrators.
+
+    Read per request rather than stamped on the row: an entry published by
+    somebody who is later made an administrator is an official entry from that
+    day, and one published by an administrator who is later demoted stops
+    claiming to be. A stored flag would have to be rewritten by the role change
+    to say the same thing, and would quietly lie until it was.
+    """
+    if not owner_ids:
+        return set()
+    rows = await db.exec(
+        select(User.id).where(col(User.id).in_(owner_ids), User.role == UserRole.admin)
+    )
+    return set(rows.all())
+
+
+async def _owner_names(db: DbSession, owner_ids: set[str]) -> dict[str, str]:
+    if not owner_ids:
+        return {}
+    rows = await db.exec(select(User).where(col(User.id).in_(owner_ids)))
+    return {u.id: u.name for u in rows.all()}
+
+
+async def _shared(db: DbSession, model, user: User, item_id: str):
+    """One row from the store: shared, and somebody else's.
+
+    Your own row is refused rather than copied. Nothing good comes of an
+    account holding two of the same procedure with the same name, and the
+    button that would do it is not offered.
+    """
+    row = await db.get(model, item_id)
+    if row is None or row.visibility is not Visibility.org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if row.owner_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="already_yours"
+        )
+    return row
+
+
+def _copy_of(rows: list, origin) -> Any | None:
+    """This account's copy of one shared row, if it has taken one.
+
+    Matched on `origin_id` first and then on the catalogue key, because the two
+    answer different questions: the first is "I copied this row", the second is
+    "I already have this procedure" — which is still true for a copy taken
+    before origins were recorded, or taken from a different account's copy of
+    the same catalogue entry.
+    """
+    for row in rows:
+        if row.origin_id == origin.id:
+            return row
+    if origin.catalog_key:
+        for row in rows:
+            if row.catalog_key == origin.catalog_key:
+                return row
+        # Seeded into this account back when every account got its own copy of
+        # the catalogue. Those rows carry no key — agents never had one — so
+        # without this every existing account would be told it holds none of
+        # the entries it has held all along, and 가져오기 would hand it a
+        # second row with the same name. Only ever consulted for a catalogue
+        # entry, so a personal item that happens to share a name is safe.
+        for row in rows:
+            if row.slug == origin.slug:
+                return row
+    return None
+
+
+async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
+    """Copies one shared skill into this account, or returns the copy already there.
+
+    A copy, not a reference: the original's owner keeps editing theirs, and an
+    edit over there never reaches a procedure somebody is relying on over here.
+    Idempotent, so pressing 가져오기 twice is not two rows.
+    """
+    mine = list(
+        (await db.exec(select(Skill).where(Skill.owner_id == user.id))).all()
+    )
+    if (existing := _copy_of(mine, origin)) is not None:
+        return existing
+
+    copy = Skill(
+        owner_id=user.id,
+        name=origin.name,
+        slug=origin.slug,
+        description=origin.description,
+        when_to_use=origin.when_to_use,
+        body=origin.body,
+        catalog_key=origin.catalog_key,
+        # Where it came from, in the source column the screen already reads:
+        # a shipped procedure stays 기본, anything a colleague wrote arrives as
+        # 워크스페이스 rather than pretending this account authored it.
+        source=(
+            SkillSource.built_in
+            if origin.source is SkillSource.built_in
+            else SkillSource.workspace
+        ),
+        kinds=list(origin.kinds or []),
+        required_tools=list(origin.required_tools or []),
+        estimated_tokens=origin.estimated_tokens
+        or starter.estimate_tokens(origin.when_to_use, origin.body, origin.description),
+        version=origin.version,
+        enabled=True,
+        # Copies are private. Publishing is a decision the new owner makes, and
+        # a store that fills up with copies of its own entries is not a store.
+        visibility=Visibility.private,
+        origin_id=origin.id,
+    )
+    db.add(copy)
+    origin.installs += 1
+    db.add(origin)
+    return copy
+
+
 @router.get("/skills", response_model=list[SkillOut])
 async def list_skills(user: CurrentUser, db: DbSession):
     rows = (
@@ -1252,6 +1376,49 @@ async def list_skills(user: CurrentUser, db: DbSession):
 @router.get("/tools", response_model=list[ToolCatalogOut])
 async def list_tool_catalog(user: CurrentUser, db: DbSession):
     return [ToolCatalogOut(**row) for row in await tool_registry.tool_catalog(db, user)]
+
+
+@router.get("/skills/store", response_model=list[StoreSkillOut])
+async def list_skill_store(user: CurrentUser, db: DbSession):
+    """Everything shared with the workspace that is not already yours.
+
+    Deliberately not folded into `GET /skills`: that list is what the composer
+    offers for a turn, and a skill is only ever run out of its owner's account.
+    A shared row mixed into it would be a picker entry that resolves to
+    `skill_not_found` at the moment it matters.
+    """
+    rows = (
+        await db.exec(
+            select(Skill)
+            .where(Skill.visibility == Visibility.org, Skill.owner_id != user.id)
+            .order_by(col(Skill.name))
+        )
+    ).all()
+    owner_ids = {row.owner_id for row in rows}
+    names = await _owner_names(db, owner_ids)
+    admins = await _admin_ids(db, owner_ids)
+    mine = list((await db.exec(select(Skill).where(Skill.owner_id == user.id))).all())
+    return [
+        StoreSkillOut.store(
+            row,
+            owner_name=names.get(row.owner_id, ""),
+            official=row.owner_id in admins,
+            installed=_copy_of(mine, row) is not None,
+        )
+        for row in rows
+    ]
+
+
+@router.post(
+    "/skills/{skill_id}/install",
+    response_model=SkillOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def install_skill(skill_id: str, user: CurrentUser, db: DbSession):
+    copy = await _install_skill(db, user, await _shared(db, Skill, user, skill_id))
+    await db.commit()
+    await db.refresh(copy)
+    return SkillOut.of(copy)
 
 
 @router.post("/skills", response_model=SkillOut, status_code=status.HTTP_201_CREATED)
@@ -1404,12 +1571,12 @@ async def list_agents(user: CurrentUser, db: DbSession):
         )
     ).all()
 
-    # One lookup for the page: the store shows who made each agent.
+    # One lookup for the page: the store shows who made each agent, and
+    # whether that was an administrator publishing an official one.
     owner_ids = {a.owner_id for a in rows}
-    names = {
-        u.id: u.name
-        for u in (await db.exec(select(User).where(col(User.id).in_(owner_ids)))).all()
-    }
+    names = await _owner_names(db, owner_ids)
+    admins = await _admin_ids(db, owner_ids)
+    mine = [a for a in rows if a.owner_id == user.id]
     # Knowledge search is turn-local and only receives files readable by the
     # caller. A shared agent's owner's shelf is intentionally not implied by
     # the agent row, so it remains unavailable until the agent is copied and
@@ -1430,6 +1597,12 @@ async def list_agents(user: CurrentUser, db: DbSession):
             agent,
             owner_name=names.get(agent.owner_id, ""),
             has_knowledge=agent.id in readable_shelves,
+            official=agent.owner_id in admins,
+            # Only meaningful for somebody else's row, and false on your own so
+            # a card never tells you that you have a copy of yourself.
+            installed=(
+                agent.owner_id != user.id and _copy_of(mine, agent) is not None
+            ),
         )
         for agent in rows
     ]
@@ -1446,6 +1619,101 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     return AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+    )
+
+
+@router.post(
+    "/agents/{agent_id}/install",
+    response_model=AgentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
+    """Copies a shared agent into this account, with the skills it runs on.
+
+    The prompt used to travel alone. It arrived working differently from the
+    agent it was copied from and said nothing about why: an allow-list of skill
+    ids is a list of rows in the author's account, and the same ids resolve to
+    nothing here. So the shared ones among them are installed too and the list
+    is rewritten against the copies — the agent answers the way the card
+    promised, out of procedures this account owns and can edit.
+
+    Knowledge stays behind. A shelf is the author's documents, readable by
+    them; copying an agent is not a grant over the files it was given.
+    """
+    origin = await _shared(db, Agent, user, agent_id)
+    mine = list((await db.exec(select(Agent).where(Agent.owner_id == user.id))).all())
+    if (existing := _copy_of(mine, origin)) is not None:
+        return AgentOut.of(
+            existing,
+            has_knowledge=await _agent_has_knowledge(db, user.id, existing.id),
+        )
+
+    skill_ids: list[str] | None = None
+    if origin.skill_ids is not None:
+        wanted = list(origin.skill_ids)
+        rows = (
+            (await db.exec(select(Skill).where(col(Skill.id).in_(wanted)))).all()
+            if wanted
+            else []
+        )
+        by_id = {row.id: row for row in rows}
+        copied: list[str] = []
+        for skill_id in wanted:
+            source = by_id.get(skill_id)
+            # Unshared, or deleted since the agent was written. Silently
+            # dropped: the alternative is refusing the whole install over a
+            # procedure the author never offered.
+            if source is None or source.visibility is not Visibility.org:
+                continue
+            if source.owner_id == user.id:
+                copied.append(source.id)
+                continue
+            copy = await _install_skill(db, user, source)
+            await db.flush()
+            copied.append(copy.id)
+        # `[]` is not "none of them survived" — it is a hard deny that would
+        # refuse every skill the new owner ever switches on. An allow-list
+        # emptied by the copy becomes 상속 instead, which grants nothing they
+        # could not grant themselves in the editor.
+        skill_ids = copied if copied or not wanted else None
+
+    # What did not travel, said on the copy rather than in a toast: the
+    # question it answers — why does my copy answer worse than the one I tried?
+    # — is asked days afterwards. Only when there was a shelf to miss, and in an
+    # ordinary editable field, so wiring up your own documents and deleting the
+    # line is how it is dismissed.
+    description = origin.description
+    if await _agent_has_knowledge(db, origin.owner_id, origin.id):
+        note = "지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요."
+        description = f"{description} · {note}" if description else note
+
+    copy = Agent(
+        owner_id=user.id,
+        name=origin.name,
+        slug=origin.slug,
+        description=description,
+        model=origin.model,
+        system_prompt=origin.system_prompt,
+        tools=None if origin.tools is None else list(origin.tools),
+        skill_ids=skill_ids,
+        kinds=list(origin.kinds or []),
+        temperature=origin.temperature,
+        color=origin.color,
+        enabled=True,
+        # Private, for the same reason a copied skill is: the store lists
+        # originals, not everybody's copy of one.
+        visibility=Visibility.private,
+        catalog_key=origin.catalog_key,
+        origin_id=origin.id,
+    )
+    db.add(copy)
+    origin.installs += 1
+    db.add(origin)
+    await db.commit()
+    await db.refresh(copy)
+    return AgentOut.of(
+        copy,
+        has_knowledge=await _agent_has_knowledge(db, user.id, copy.id),
     )
 
 

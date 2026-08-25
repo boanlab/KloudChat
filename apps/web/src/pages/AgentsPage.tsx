@@ -1,4 +1,4 @@
-import { Bot, Download, Globe, Lock, Play, Plus, Trash2 } from 'lucide-react'
+import { Bot, Check, Download, Globe, Lock, Play, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   ConfirmDialog,
+  EmptyState,
   Field,
   Input,
   Modal,
@@ -45,6 +46,10 @@ const emptyAgent = (model: string): Agent => ({
   ownerId: '',
   ownerName: '',
   installs: 0,
+  catalogKey: null,
+  originId: null,
+  official: false,
+  installed: false,
   temperature: 0.5,
   color: '#5b53e8',
   enabled: true,
@@ -64,7 +69,7 @@ export function AgentsPage() {
     upsertAgent,
     deleteAgent,
     deleteMany,
-    forkAgent,
+    installAgent,
     newSession,
     loadWorkspace,
     user,
@@ -82,7 +87,9 @@ export function AgentsPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   // The store is what makes one person's agent reusable by the workspace.
-  const shared = agents.filter((a) => a.visibility === 'org')
+  // Your own shared agents are not in it: there is nothing to import from
+  // yourself, and the button on such a card would refuse.
+  const shared = agents.filter((a) => a.visibility === 'org' && a.ownerId !== user?.id)
   // Cheapest model that can hold a conversation, the same rule the surface
   // defaults use.
   const defaultModel =
@@ -92,7 +99,10 @@ export function AgentsPage() {
   // Same reasoning as skills: newest first so a fresh agent is on the first
   // page, then held in place so toggling one does not move it.
   const ordered = useStableOrder(agents)
-  const all = tab === 'store' ? ordered.filter((a) => a.visibility === 'org') : ordered
+  const all =
+    tab === 'store'
+      ? ordered.filter((a) => a.visibility === 'org' && a.ownerId !== user?.id)
+      : ordered
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
   // Mine only: somebody else's shared agent is read-only.
   const pick = useBulkSelect(visible.filter((a) => a.ownerId === user?.id))
@@ -236,8 +246,12 @@ export function AgentsPage() {
                     </Badge>
                   )
                 })}
-                {a.ownerId !== user?.id && a.ownerName && (
-                  <Badge>{a.ownerName}</Badge>
+                {a.ownerId !== user?.id && (
+                  <Badge tone={a.official ? 'accent' : 'neutral'}>
+                    {/* 관리자가 올린 기본 목록과 동료가 만든 것은 같은 무게로
+                        읽히면 안 됩니다. */}
+                    {a.official ? t('공식') : a.ownerName || t('워크스페이스')}
+                  </Badge>
                 )}
                 <Badge tone={a.visibility === 'org' ? 'success' : 'neutral'}>
                   {a.visibility === 'org' ? <Globe size={10} /> : <Lock size={10} />}
@@ -288,9 +302,14 @@ export function AgentsPage() {
                       </Button>
                     </>
                   ) : (
-                    <Button size="sm" onClick={() => void forkAgent(a)}>
-                      <Download size={13} />
-                      {t('가져오기')}
+                    <Button
+                      size="sm"
+                      variant={a.installed ? 'ghost' : 'secondary'}
+                      disabled={a.installed}
+                      onClick={() => void installAgent(a)}
+                    >
+                      {a.installed ? <Check size={13} /> : <Download size={13} />}
+                      {a.installed ? t('가져옴') : t('가져오기')}
                     </Button>
                   )}
                   <Button
@@ -310,6 +329,27 @@ export function AgentsPage() {
             </Card>
           ))}
         </div>
+        {/* 새 계정은 이제 빈 화면으로 시작합니다. 나머지가 어디 있는지 말하지
+            않으면 빈 화면은 "기능이 없다" 로 읽힙니다. */}
+        {all.length === 0 && (
+          <EmptyState
+            icon={<Bot size={18} />}
+            title={tab === 'store' ? t('공유된 에이전트가 없습니다') : t('아직 에이전트가 없습니다')}
+            description={
+              tab === 'store'
+                ? t('내 에이전트를 편집해 모두에게 공개하면 여기에 올라갑니다.')
+                : t('워크스페이스 스토어에서 가져오거나, 직접 하나 만들어 시작하세요.')
+            }
+            action={
+              tab === 'store' ? undefined : (
+                <Button variant="primary" onClick={() => setTab('store')}>
+                  <Download size={16} />
+                  {t('스토어 둘러보기')}
+                </Button>
+              )
+            }
+          />
+        )}
         <ShowMore hidden={hidden} onMore={more} />
       </PageBody>
 

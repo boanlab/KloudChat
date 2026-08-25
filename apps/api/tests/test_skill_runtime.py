@@ -14,13 +14,21 @@ from app.core.db import get_session
 from app.core.deps import current_user
 from app.models.chat import ChatSession, Message, SessionKind
 from app.models.governance import Governance
-from app.models.user import CreditLedger, RefreshToken, User, UserStatus, utcnow
+from app.models.user import (
+    CreditLedger,
+    RefreshToken,
+    User,
+    UserRole,
+    UserStatus,
+    utcnow,
+)
 from app.models.workspace import (
     Agent,
     AgentVisibility,
     Project,
     Skill,
     SkillSource,
+    Visibility,
 )
 from app.routers import auth as auth_router
 from app.routers import sessions as sessions_router
@@ -67,19 +75,24 @@ class _SkillDb:
 
 
 class _SeedDb:
-    def __init__(self, rows: list[Skill], *, agent_count: int = 1):
-        self.rows = rows
-        self.agents: list[Agent] = []
-        self.agent_count = agent_count
-        self._calls = 0
+    """Answers the catalogue seeder by table rather than by call order.
 
-    async def exec(self, _query):
-        self._calls += 1
-        phase = self._calls % 3
-        if phase == 2:
-            return _Result(one=self.agent_count)
-        if phase == 0:
+    It used to count calls and hand back whatever the third one wanted, which
+    passed for exactly as long as the seeder asked its questions in the order
+    it was written in.
+    """
+
+    def __init__(self, rows: list[Skill], *, agents: list[Agent] | None = None):
+        self.rows = rows
+        self.agents: list[Agent] = list(agents or [])
+
+    async def exec(self, query):
+        table = _query_table(query)
+        if table == "skills":
             return _Result(rows=self.rows)
+        if table == "agents":
+            return _Result(rows=self.agents)
+        # The row lock the seeder takes on the owning account.
         return _Result()
 
     def add(self, row):
@@ -302,7 +315,7 @@ async def test_required_tool_and_surface_are_enforced():
 
 
 @pytest.mark.asyncio
-async def test_starter_backfill_is_idempotent_and_preserves_edited_body():
+async def test_catalog_backfill_is_idempotent_and_preserves_edited_body():
     legacy = _skill(
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
@@ -313,8 +326,8 @@ async def test_starter_backfill_is_idempotent_and_preserves_edited_body():
         estimated_tokens=0,
     )
     db = _SeedDb([legacy])
-    first = await starter.seed(db, "user-1")
-    second = await starter.seed(db, "user-1")
+    first = await starter.seed_catalog(db, "admin-1")
+    second = await starter.seed_catalog(db, "admin-1")
 
     assert first > 0
     assert second == 0
@@ -327,7 +340,7 @@ async def test_starter_backfill_is_idempotent_and_preserves_edited_body():
 
 
 @pytest.mark.asyncio
-async def test_starter_only_upgrades_an_exact_untouched_catalog_body():
+async def test_catalog_only_upgrades_an_exact_untouched_catalog_body():
     legacy = _skill(
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
@@ -337,7 +350,7 @@ async def test_starter_only_upgrades_an_exact_untouched_catalog_body():
         version="1.0.0",
         estimated_tokens=0,
     )
-    await starter.seed(_SeedDb([legacy]), "user-1")
+    await starter.seed_catalog(_SeedDb([legacy]), "admin-1")
 
     assert legacy.catalog_key == "citation"
     assert legacy.version == "1.1.0"
@@ -345,10 +358,126 @@ async def test_starter_only_upgrades_an_exact_untouched_catalog_body():
 
 
 @pytest.mark.asyncio
-async def test_existing_user_catalog_sync_does_not_recreate_deleted_agents():
-    db = _SeedDb([], agent_count=0)
-    assert await starter.sync_catalog(db, "user-1") > 0
-    assert db.agents == []
+async def test_the_catalog_is_published_and_its_agents_point_at_its_skills():
+    db = _SeedDb([])
+    assert await starter.seed_catalog(db, "admin-1") > 0
+
+    assert db.agents, "the catalogue ships agents, not only skills"
+    assert all(row.visibility is Visibility.org for row in db.rows)
+    assert all(agent.visibility is Visibility.org for agent in db.agents)
+    assert all(agent.catalog_key for agent in db.agents)
+    # Ids of rows that exist, not seeder slugs: an allow-list naming nothing
+    # applies no skill at all, and says nothing while it does.
+    ids = {row.id for row in db.rows}
+    referenced = {skill_id for agent in db.agents for skill_id in (agent.skill_ids or [])}
+    assert referenced and referenced <= ids
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_adopts_rows_seeded_before_it_existed():
+    """An instance that already ran the old per-account seeder.
+
+    The administrator's own copies *are* the catalogue. Creating a second set
+    beside them would leave the store listing two of everything, one of them
+    the one the admin has been editing.
+    """
+    legacy_agent = Agent(
+        id="agent-1",
+        owner_id="admin-1",
+        name="논문 리뷰어",
+        slug="논문-리뷰어",
+        system_prompt="내가 고친 프롬프트",
+    )
+    db = _SeedDb([], agents=[legacy_agent])
+    await starter.seed_catalog(db, "admin-1")
+
+    assert len(db.agents) == len(starter._AGENTS)
+    assert legacy_agent.catalog_key == "paper-reviewer"
+    assert legacy_agent.visibility is Visibility.org
+    assert legacy_agent.system_prompt == "내가 고친 프롬프트"
+
+
+@pytest.mark.asyncio
+async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
+    """The administrator's existing copies already carry catalogue keys.
+
+    An older sync wrote them, for backfill rather than for sharing. Reading a
+    key as "already set up" left every skill private while the agents beside
+    them published — a store with half a catalogue in it, which is the one
+    outcome this whole change exists to avoid.
+    """
+    existing = _skill(
+        name="인용 형식 맞추기",
+        slug="인용-형식-맞추기",
+        catalog_key="citation",
+        source=SkillSource.built_in,
+    )
+    db = _SeedDb([existing])
+    await starter.seed_catalog(db, "admin-1")
+
+    assert existing.visibility is Visibility.org
+    assert all(row.visibility is Visibility.org for row in db.rows)
+
+
+@pytest.mark.asyncio
+async def test_an_entry_retired_after_setup_stays_retired():
+    """Switching a published entry back to 개인 is how one is withdrawn.
+
+    The next sign-in must not undo it, or the only way to withdraw an entry
+    would be to delete a row the catalogue puts straight back.
+    """
+    db = _SeedDb([])
+    await starter.seed_catalog(db, "admin-1")
+    retired = next(row for row in db.rows if row.catalog_key == "citation")
+    retired.visibility = Visibility.private
+
+    await starter.seed_catalog(db, "admin-1")
+
+    assert retired.visibility is Visibility.private
+
+
+@pytest.mark.asyncio
+async def test_catalog_sync_costs_an_ordinary_account_nothing():
+    """It runs on every sign-in and every rotation, for one account in the workspace.
+
+    A fake that raises on any query is the assertion: an ordinary user must not
+    reach the database here at all, let alone be handed a copy of the
+    catalogue the way every account used to be.
+    """
+
+    class _Forbidden:
+        async def exec(self, query):
+            raise AssertionError(f"an ordinary account queried: {query}")
+
+    ordinary = _user()
+    ordinary.role = UserRole.user
+    assert await starter.sync_catalog(_Forbidden(), ordinary) == 0
+
+
+@pytest.mark.asyncio
+async def test_catalog_sync_skips_an_admin_who_does_not_hold_the_catalog():
+    """A second administrator appointed later does not get a second catalogue."""
+    elder = User(id="admin-1", email="a@x", password_hash="x", name="A", role=UserRole.admin)
+
+    class _OneAdmin:
+        def __init__(self):
+            self.seeded = False
+
+        async def exec(self, query):
+            if _query_table(query) == "users":
+                return _Result(rows=[elder.id])
+            self.seeded = True
+            return _Result()
+
+        def add(self, row):
+            self.seeded = True
+
+    junior = _user()
+    junior.id = "admin-2"
+    junior.role = UserRole.admin
+    db = _OneAdmin()
+    assert await starter.sync_catalog(db, junior) == 0
+    assert not db.seeded
 
 
 @pytest.mark.asyncio
@@ -542,7 +671,7 @@ async def _call_turn_route(
 
 
 @pytest.mark.asyncio
-async def test_valid_refresh_backfills_catalog_once_without_overwriting_user_body(monkeypatch):
+async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatch):
     user = _route_user()
     edited = _skill(
         name="인용 형식 맞추기",
@@ -584,17 +713,17 @@ async def test_valid_refresh_backfills_catalog_once_without_overwriting_user_bod
         return await auth_router.refresh(request, Response(), db)
 
     assert (await rotate("first")).access_token == "access"
-    catalogue_size = len(db.skills)
+    # Rotation used to carry a catalogue sync for every account, which is how a
+    # sign-in came to write eight skill rows. The catalogue is one account's
+    # now: this one keeps the copies it holds, untouched and unclaimed.
+    assert len(db.skills) == 1
     assert edited.body == "내가 고친 절차"
-    assert edited.catalog_key == "citation"
-    keys = [skill.catalog_key for skill in db.skills if skill.catalog_key]
-    assert len(keys) == len(set(keys))
-    # The catalogue rows and token rotation are committed by the same
-    # `_issue_session` transaction: there is one commit per successful refresh.
+    assert edited.catalog_key is None
+    # One commit per successful refresh, from `_issue_session`.
     assert db.commits == 1
 
     assert (await rotate("second")).access_token == "access"
-    assert len(db.skills) == catalogue_size
+    assert len(db.skills) == 1
     assert edited.body == "내가 고친 절차"
     assert db.commits == 2
 

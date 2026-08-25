@@ -48,6 +48,7 @@ import type {
   PromptTemplateRow,
   SessionRow,
   SkillRow,
+  StoreSkillRow,
   UsageReport,
 } from '@/lib/api'
 import type {
@@ -74,6 +75,7 @@ import type {
   Variant,
   Skill,
   Step,
+  StoreSkill,
   ToolCatalogEntry,
   User,
 } from '@/types'
@@ -175,6 +177,14 @@ interface State {
   projects: Project[]
   artifacts: Artifact[]
   skills: Skill[]
+  /**
+   * The workspace store: shared skills this account has not taken yet.
+   *
+   * Loaded on its own rather than with the workspace. Every screen pays for
+   * `loadWorkspace`, and only one of them opens a store.
+   */
+  skillStore: StoreSkill[]
+  skillStoreLoading: boolean
   /** Looks this account can attach to a project: its own, plus shared ones. */
   designs: DesignRow[]
   /** Shapes the answer can come out in. Ships with the server; read-only. */
@@ -516,12 +526,15 @@ interface State {
   toggleSkill: (id: string) => Promise<void>
   upsertSkill: (s: Skill) => Promise<void>
   deleteSkill: (id: string) => Promise<void>
+  loadSkillStore: () => Promise<void>
+  /** Copies a shared skill into your own workspace. */
+  installSkill: (id: string) => Promise<void>
   upsertMemory: (m: MemoryEntry) => Promise<void>
   deleteMemory: (id: string) => Promise<void>
   togglePinMemory: (id: string) => Promise<void>
   upsertAgent: (a: Agent) => Promise<void>
-  /** Copies someone else's shared agent into your own workspace. */
-  forkAgent: (a: Agent) => Promise<void>
+  /** Copies someone else's shared agent, and the skills it runs on, into yours. */
+  installAgent: (a: Agent) => Promise<void>
   deleteAgent: (id: string) => Promise<void>
 
   // ── keys (KloudChat issues these against LiteLLM, server-side) ────────────
@@ -891,6 +904,7 @@ export const useStore = create<State>((set, get) => ({
       projects: [],
       artifacts: [],
       skills: [],
+      skillStore: [],
       designs: [],
       designTemplates: [],
       promptTemplates: [],
@@ -986,6 +1000,8 @@ export const useStore = create<State>((set, get) => ({
   projects: [],
   artifacts: [],
   skills: [],
+  skillStore: [],
+  skillStoreLoading: false,
   designs: [],
   designTemplates: [],
   promptTemplates: [],
@@ -2251,6 +2267,7 @@ export const useStore = create<State>((set, get) => ({
       kinds: skill.kinds,
       requiredTools: skill.requiredTools,
       enabled: skill.enabled,
+      visibility: skill.visibility,
     }
     const exists = get().skills.some((s) => s.id === skill.id)
     const row = exists ? await skillsApi.update(skill.id, payload) : await skillsApi.create(payload)
@@ -2258,6 +2275,28 @@ export const useStore = create<State>((set, get) => ({
       skills: exists
         ? s.skills.map((x) => (x.id === skill.id ? toSkill(row) : x))
         : [toSkill(row), ...s.skills],
+    }))
+  },
+  loadSkillStore: async () => {
+    set({ skillStoreLoading: true })
+    const rows = await skillsApi.store().catch(() => null)
+    set((st) => ({
+      skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
+      skillStoreLoading: false,
+    }))
+  },
+  installSkill: async (id) => {
+    touchWorkspace()
+    const row = await skillsApi.install(id)
+    const copy = toSkill(row)
+    set((st) => ({
+      // Idempotent on the server, so a double press returns the copy already
+      // held rather than a second row — and this has to agree with it.
+      skills: st.skills.some((x) => x.id === copy.id)
+        ? st.skills.map((x) => (x.id === copy.id ? copy : x))
+        : [copy, ...st.skills],
+      // The store card flips to 가져옴 without a second round trip.
+      skillStore: st.skillStore.map((x) => (x.id === id ? { ...x, installed: true } : x)),
     }))
   },
   deleteSkill: async (id) => {
@@ -2321,55 +2360,30 @@ export const useStore = create<State>((set, get) => ({
     if (row) set((s) => ({ memories: s.memories.map((m) => (m.id === id ? toMemory(row) : m)) }))
   },
 
-  forkAgent: async (a) => {
+  installAgent: async (a) => {
     touchWorkspace()
-        /*
-         * What the copy is, said on the copy.
-         *
-         * Only the prompt travels: skills are rows in the author's account and the
-         * knowledge shelf is theirs to grant. Neither omission shows on the card,
-         * so the copy would read as complete and answer differently.
-         *
-         * In the description rather than a toast — the question it answers is
-         * asked days later. An ordinary editable field, so wiring the missing
-         * pieces up and deleting the line is how it is dismissed.
-         *
-         * Translated on the way in: stored text from here on, and the card runs
-         * the whole description through `t()` as one string.
-         */
-    const note = translate(
-      get().lang,
-      '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.',
-    )
-    // A copy, not a reference: the original's owner keeps editing theirs.
-    const row = await agentsApi.create({
-      name: `${a.name} 사본`,
-      description: a.description ? `${a.description} · ${note}` : note,
-      model: a.model,
-      systemPrompt: a.systemPrompt,
-      tools: a.tools,
-            /*
-             * Skills as a policy, not as a list of the author's rows.
-             *
-             * `null` ("whatever you activate") and `[]` ("none, ever") name nothing
-             * and travel intact. A populated allow-list cannot: every id in it is a
-             * row in the author's workspace, and filtering it against this one
-             * empties it — which the turn reads as "never a skill", so the imported
-             * agent silently refuses every skill its new owner switches on.
-             *
-             * Inheriting is wider than the author's curation, taken deliberately:
-             * the copy grants nothing its owner could not grant themselves in the
-             * editor. The curation is theirs to rebuild under 허용 목록 지정.
-             */
-      skillIds: a.skillIds?.length ? null : a.skillIds,
-      kinds: a.kinds,
-      temperature: a.temperature,
-      color: a.color,
-      visibility: 'private',
-    })
-    set((s) => ({ agents: [toAgent(row), ...s.agents] }))
-    // Counts how useful the shared one turned out to be.
-    await agentsApi.update(a.id, { installs: a.installs + 1 }).catch(() => {})
+    /*
+     * The copy is made by the server, which is a change from doing it here.
+     *
+     * Only the prompt used to travel. A skill allow-list is a list of rows in
+     * the author's account and the same ids resolve to nothing here, so the
+     * copy answered differently from the agent on the card and said so only in
+     * a line appended to its description. The install route copies the shared
+     * skills too and rewrites the list against them.
+     *
+     * The knowledge shelf still stays behind — those are the author's
+     * documents, and copying their agent is not a grant over their files.
+     */
+    const row = await agentsApi.install(a.id)
+    const copy = toAgent(row)
+    set((s) => ({
+      agents: s.agents.some((x) => x.id === copy.id)
+        ? s.agents.map((x) => (x.id === copy.id ? copy : x))
+        : [copy, ...s.agents],
+    }))
+    // The store's own copy of the original: its install count moved, and the
+    // card it is on should stop offering an import that is already done.
+    await get().loadWorkspace()
   },
   upsertAgent: async (a) => {
     touchWorkspace()
@@ -2868,9 +2882,22 @@ function toSkill(s: SkillRow): Skill {
     source: (s.source as Skill['source']) ?? 'personal',
     kinds: (s.kinds ?? []) as SessionKind[],
     enabled: s.enabled,
+    visibility: (s.visibility as Skill['visibility']) ?? 'private',
+    installs: s.installs ?? 0,
+    originId: s.originId ?? null,
     version: s.version,
     files: ['SKILL.md'],
     updatedAt: s.updatedAt,
+  }
+}
+
+function toStoreSkill(s: StoreSkillRow): StoreSkill {
+  return {
+    ...toSkill(s),
+    ownerId: s.ownerId,
+    ownerName: s.ownerName,
+    official: s.official ?? false,
+    installed: s.installed ?? false,
   }
 }
 
@@ -2906,6 +2933,10 @@ function toAgent(a: AgentRow): Agent {
     enabled: a.enabled,
     visibility: a.visibility as Agent['visibility'],
     installs: a.installs,
+    catalogKey: a.catalogKey ?? null,
+    originId: a.originId ?? null,
+    official: a.official ?? false,
+    installed: a.installed ?? false,
     runs: a.runs,
     hasKnowledge: a.hasKnowledge,
     updatedAt: a.updatedAt,
