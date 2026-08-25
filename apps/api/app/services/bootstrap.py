@@ -48,7 +48,10 @@ async def seed_admin() -> None:
 
         grant_initial_allowance(db, user, settings.default_monthly_credits)
         await provision_user(user)
-        await starter.seed(db, user.id)
+        await starter.seed_designs(db, user.id)
+        # This account is the instance's administrator, so it is where the
+        # shared catalogue of agents and skills lives.
+        await starter.seed_catalog(db, user.id)
         db.add(user)
         await db.commit()
 

@@ -1,7 +1,9 @@
-"""The agents and skills a new account starts with.
+"""The shared catalogue of agents and skills the workspace ships with.
 
-Seeded at approval. Everything here is editable and deletable — a starting
-point, not a fixture.
+One account holds them — the oldest administrator's — shared to everyone, and
+each person takes copies of the ones they want from the store. Nobody is given
+eight procedures at approval any more, and a copy is theirs: editable,
+deletable, and unaffected by later edits to the original.
 
 **What earns a row.** A prompt you would type twice is a skill; a stance you
 would hold for a whole conversation is an agent. Both are drawn from the
@@ -18,8 +20,14 @@ from math import ceil
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.user import User
-from app.models.workspace import Agent, DesignSystem, Skill, SkillSource
+from app.models.user import User, UserRole
+from app.models.workspace import (
+    Agent,
+    DesignSystem,
+    Skill,
+    SkillSource,
+    Visibility,
+)
 
 #: Agents reference skills by this key, rewritten to real ids once the rows
 #: exist — a seeder slug would point at nothing on the first edit.
@@ -198,6 +206,7 @@ _LEGACY_CATALOG_BODIES = {
 #: `skills` holds `_SKILLS` keys; the seeder swaps them for row ids.
 _AGENTS: list[dict] = [
     {
+        "key": "paper-reviewer",
         "name": "논문 리뷰어",
         "description": "논문·기술 문서를 근거 중심으로 검토합니다.",
         "system_prompt": (
@@ -213,6 +222,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.3,
     },
     {
+        "key": "minutes-writer",
         "name": "회의록 정리",
         "description": "회의 메모를 결정·조치·미결로 정리합니다.",
         "system_prompt": (
@@ -228,6 +238,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.3,
     },
     {
+        "key": "data-analyst",
         "name": "데이터 분석 도우미",
         "description": "표·설문 데이터를 집계하고 차트로 만듭니다.",
         "system_prompt": (
@@ -244,6 +255,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.2,
     },
     {
+        "key": "code-reviewer",
         "name": "코드 리뷰어",
         "description": "PR·스택트레이스를 읽고 원인을 좁힙니다.",
         "system_prompt": (
@@ -260,6 +272,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.2,
     },
     {
+        "key": "official-writer",
         "name": "공문 작성",
         "description": "대내외 공문과 결재 문서를 양식에 맞춰 씁니다.",
         "system_prompt": (
@@ -274,6 +287,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.3,
     },
     {
+        "key": "proposal-deck",
         "name": "제안 발표 도우미",
         "description": "고객사에 맞춘 제안 슬라이드를 구성합니다.",
         "system_prompt": (
@@ -294,6 +308,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.5,
     },
     {
+        "key": "source-reader",
         "name": "원문 읽기 도우미",
         "description": "외국어 자료를 옮기고 용어를 정리합니다.",
         "system_prompt": (
@@ -309,6 +324,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.3,
     },
     {
+        "key": "math-solver",
         "name": "수식 풀이",
         "description": "전개를 단계별로 보여 주고 검산까지 합니다.",
         "system_prompt": (
@@ -326,6 +342,7 @@ _AGENTS: list[dict] = [
         "temperature": 0.1,
     },
     {
+        "key": "report-writer",
         "name": "리포트 도우미",
         "description": "업무·기술 보고서를 구조부터 잡아 근거 중심으로 작성합니다.",
         "system_prompt": (
@@ -402,26 +419,92 @@ _LEGACY_CATALOG_KEYS = {
     _slug(spec["name"]): spec["key"] for spec in _SKILLS
 }
 
+#: The same for agents, which never had a catalogue key at all. Rows seeded
+#: into the administrator's own account before this are adopted as the
+#: originals rather than duplicated beside them.
+_LEGACY_AGENT_KEYS = {
+    _slug(spec["name"]): spec["key"] for spec in _AGENTS
+}
 
-async def seed(
-    db: AsyncSession, user_id: str, *, include_agents: bool = True
-) -> int:
-    """Gives one account its starting agents and skills.
 
-    Idempotent by stable catalogue key and version. Missing catalogue rows and
-    metadata are filled, while user-edited procedures are never overwritten.
+async def seed_designs(db: AsyncSession, user_id: str) -> int:
+    """The three looks a new account starts with.
+
+    Personal, unlike the agents and skills next door: a look is a colour and a
+    typeface somebody edits until it is theirs, not a procedure worth one copy
+    for the whole workspace. Seeded once and never re-synced, so one deleted on
+    purpose stays deleted. The caller commits.
+    """
+    existing = (
+        await db.exec(
+            select(func.count())
+            .select_from(DesignSystem)
+            .where(DesignSystem.owner_id == user_id)
+        )
+    ).one()
+    if existing:
+        return 0
+    for spec in _DESIGNS:
+        db.add(DesignSystem(owner_id=user_id, **spec))
+    return len(_DESIGNS)
+
+
+async def catalog_owner_id(db: AsyncSession) -> str | None:
+    """Which account holds the shared catalogue: the oldest administrator.
+
+    Derived rather than stored. A column would need a migration to move and an
+    answer for the account that gets deleted; the oldest admin is the one
+    account an instance is guaranteed to have, and the answer survives a second
+    administrator being appointed later.
+    """
+    return (
+        await db.exec(
+            select(User.id)
+            .where(User.role == UserRole.admin)
+            .order_by(col(User.created_at), col(User.id))
+            .limit(1)
+        )
+    ).first()
+
+
+async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
+    """Puts the shipped agents and skills in one account, shared to everyone.
+
+    They used to be copied into every account at approval. That made the same
+    procedure N rows: improving one reached nobody, and every account carried
+    eight skills it had not asked for. Now one account holds the originals and
+    everyone else takes copies of the ones they want, through the store.
+
+    Idempotent by catalogue key, and it never overwrites an edit: a procedure
+    this account has rewritten keeps its body and its version. Sharing is set
+    on the first run and left alone afterwards, so an entry retired by
+    switching it back to 개인 stays retired — deleting one, on the other hand,
+    means the next sync ships it again, which is what a catalogue entry is.
     The caller commits.
     """
     # Serialise syncs for one account. Two browser logins can arrive together;
     # without the row lock both see a missing key and one loses to the unique
     # index, turning an otherwise valid login into a 500.
-    await db.exec(select(User.id).where(User.id == user_id).with_for_update())
-    existing_agents = (
-        await db.exec(select(func.count()).select_from(Agent).where(Agent.owner_id == user_id))
-    ).one()
-    existing_skills = list(
-        (await db.exec(select(Skill).where(col(Skill.owner_id) == user_id))).all()
+    await db.exec(select(User.id).where(User.id == owner_id).with_for_update())
+    existing_agents = list(
+        (await db.exec(select(Agent).where(col(Agent.owner_id) == owner_id))).all()
     )
+    existing_skills = list(
+        (await db.exec(select(Skill).where(col(Skill.owner_id) == owner_id))).all()
+    )
+    # Whether this account has been set up as the catalogue before.
+    #
+    # Agents carry a catalogue key only when this function put one there, which
+    # makes their absence the one honest signal of a first run. Skills cannot
+    # answer it: on an instance upgrading from the days when every account was
+    # handed its own copy, they already carry keys an older sync wrote for an
+    # unrelated purpose — and reading those as "already set up" left the skill
+    # half of the catalogue unpublished, which is the whole of the store.
+    #
+    # First run publishes everything this account holds that belongs to the
+    # catalogue. Afterwards only new entries are published, so one retired by
+    # switching it back to 개인 stays retired.
+    established = any(agent.catalog_key for agent in existing_agents)
     by_catalog = {s.catalog_key: s for s in existing_skills if s.catalog_key}
     legacy_builtins = {
         _LEGACY_CATALOG_KEYS[s.slug]: s
@@ -433,20 +516,22 @@ async def seed(
     made = 0
     for spec in _SKILLS:
         key = spec["key"]
-        skill = by_catalog.get(key) or legacy_builtins.get(key)
+        skill = by_catalog.get(key)
+        if skill is None and (adopted := legacy_builtins.get(key)) is not None:
+            # Seeded into this account before catalogue keys existed at all.
+            skill = adopted
+            skill.catalog_key = key
         if skill is not None:
+            if not established:
+                skill.visibility = Visibility.org
             # Metadata can be filled safely without touching a procedure the
             # account may have edited. An exact untouched v1 body can receive a
             # strengthened catalogue procedure; custom bodies retain their
             # original version instead of pretending they were upgraded.
-            skill.catalog_key = key
             if skill.required_tools is None:
                 skill.required_tools = list(spec.get("required_tools", []))
             previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
-            upgraded = bool(
-                previous
-                and skill.body.strip() == previous.strip()
-            )
+            upgraded = bool(previous and skill.body.strip() == previous.strip())
             if upgraded:
                 skill.body = spec["body"]
                 skill.version = spec.get("version", "1.0.0")
@@ -458,7 +543,7 @@ async def seed(
             ids[key] = skill.id
             continue
         skill = Skill(
-            owner_id=user_id,
+            owner_id=owner_id,
             name=spec["name"],
             slug=_slug(spec["name"]),
             description=spec["description"],
@@ -472,52 +557,68 @@ async def seed(
             # Marked built-in, so the screen can tell a starting point from
             # something the user wrote.
             source=SkillSource.built_in,
+            visibility=Visibility.org,
         )
         db.add(skill)
         ids[key] = skill.id
         made += 1
 
-    # Existing-account catalogue sync never recreates agents, including when a
-    # user intentionally deleted every starter agent. Signup and approval pass
-    # the default flag and still receive the initial set once.
-    if not include_agents or existing_agents:
-        return made
-
-    # Same rule for looks, and for the same reason: a design system deleted on
-    # purpose must not reappear at the next login.
-    existing_designs = (
-        await db.exec(
-            select(func.count()).select_from(DesignSystem).where(DesignSystem.owner_id == user_id)
-        )
-    ).one()
-    if not existing_designs:
-        for spec in _DESIGNS:
-            db.add(DesignSystem(owner_id=user_id, **spec))
-            made += 1
+    agents_by_catalog = {a.catalog_key: a for a in existing_agents if a.catalog_key}
+    legacy_agents = {
+        _LEGACY_AGENT_KEYS[a.slug]: a
+        for a in existing_agents
+        if not a.catalog_key and a.slug in _LEGACY_AGENT_KEYS
+    }
 
     for spec in _AGENTS:
-        agent = Agent(
-            owner_id=user_id,
-            name=spec["name"],
-            slug=_slug(spec["name"]),
-            description=spec["description"],
-            system_prompt=spec["system_prompt"],
-            kinds=spec["kinds"],
-            # Real ids, not seeder keys: a slug that is not a row applies no
-            # skills at all, silently.
-            skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],
-            tools=spec.get("tools", []),
-            temperature=spec.get("temperature", 0.5),
-            color=spec.get("color", "#5b53e8"),
+        key = spec["key"]
+        agent = agents_by_catalog.get(key)
+        if agent is None and not established and (adopted := legacy_agents.get(key)):
+            # Same adoption as the skills above: this account was seeded before
+            # there was a catalogue, and those rows are the catalogue. Only on
+            # the first run — afterwards an agent that merely shares a name with
+            # a new entry is somebody's own work, not a catalogue row.
+            agent = adopted
+            agent.catalog_key = key
+            agent.visibility = Visibility.org
+            db.add(agent)
+        if agent is not None:
+            continue
+        db.add(
+            Agent(
+                owner_id=owner_id,
+                name=spec["name"],
+                slug=_slug(spec["name"]),
+                description=spec["description"],
+                system_prompt=spec["system_prompt"],
+                kinds=spec["kinds"],
+                # Real ids, not seeder keys: a slug that is not a row applies no
+                # skills at all, silently.
+                skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],
+                tools=spec.get("tools", []),
+                temperature=spec.get("temperature", 0.5),
+                color=spec.get("color", "#5b53e8"),
+                catalog_key=key,
+                visibility=Visibility.org,
+            )
         )
-        db.add(agent)
         made += 1
     return made
 
 
-async def sync_catalog(db: AsyncSession, user_id: str) -> int:
-    """Install/backfill shipped skills without changing the user's agents."""
-    return await seed(db, user_id, include_agents=False)
+async def sync_catalog(db: AsyncSession, user: User) -> int:
+    """Keeps the shared catalogue current, for the one account that holds it.
+
+    Called on every sign-in and every token rotation, which is why it costs an
+    ordinary account nothing: the catalogue is one account's rows now, so
+    everybody else returns before touching the database. New entries in a
+    release reach the workspace the next time an administrator signs in.
+    """
+    if user.role is not UserRole.admin:
+        return 0
+    if await catalog_owner_id(db) != user.id:
+        return 0
+    return await seed_catalog(db, user.id)
 
 
 def runtime_metadata(skill: Skill) -> dict:
@@ -530,4 +631,11 @@ def runtime_metadata(skill: Skill) -> dict:
     }
 
 
-__all__ = ["estimate_tokens", "runtime_metadata", "seed", "sync_catalog"]
+__all__ = [
+    "catalog_owner_id",
+    "estimate_tokens",
+    "runtime_metadata",
+    "seed_catalog",
+    "seed_designs",
+    "sync_catalog",
+]
