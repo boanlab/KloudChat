@@ -9,6 +9,7 @@ from being promoted to a system instruction.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlmodel import col, select
@@ -469,8 +470,28 @@ def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None
     )
 
 
+def earlier_attachment_names(history, current: set[str]) -> tuple[str, ...]:
+    """Files this conversation carried before, that this turn does not.
+
+    Read out of the transcript rather than out of the database: `messages`
+    already records what was attached to each turn, and the history is already
+    loaded, so this costs nothing. A query on `files.session_id` would cost a
+    scan on an unindexed column for every turn that has no attachment at all —
+    which is nearly all of them.
+    """
+    names: list[str] = []
+    for message in history:
+        for item in getattr(message, "attachments", None) or []:
+            name = (item or {}).get("name") if isinstance(item, dict) else None
+            if name and name not in current and name not in names:
+                names.append(name)
+    return tuple(names)
+
+
 def _file_report(
-    attachments: tuple[ContextFile, ...], knowledge: tuple[ContextFile, ...]
+    attachments: tuple[ContextFile, ...],
+    knowledge: tuple[ContextFile, ...],
+    earlier: tuple[str, ...] = (),
 ) -> str:
     """What became of every file, told to the model as fact.
 
@@ -489,8 +510,9 @@ def _file_report(
     complete file is what leaves room for "I don't seem to have received it".
     """
     rows = [*attachments, *knowledge]
-    if not rows:
+    if not rows and not earlier:
         return ""
+
 
     lines = [
         "# 파일 처리 결과",
@@ -516,6 +538,22 @@ def _file_report(
                 f"- {file.name} — 파일은 도착했으나 텍스트를 꺼내지 못함. "
                 "스캔본이면 OCR 이 필요하다고 안내하라."
             )
+
+    # An attachment belongs to the turn it was sent with. Said out loud,
+    # because the alternative is a gap the model fills: asked about a file it
+    # answered from one turn ago and no longer has, it produces a number rather
+    # than a refusal, and a number is what the reader will believe.
+    # Filtered here as well as at the call site: a file cannot be both delivered
+    # and absent, and the one place that prints both sentences is the one place
+    # that can guarantee it.
+    absent = tuple(name for name in earlier if name not in {file.name for file in rows})
+    if absent:
+        lines.append(
+            "이전 요청에 첨부되었던 파일: " + ", ".join(absent) + "\n"
+            "이번 요청에는 그 내용이 오지 않았다. 앞선 대화에 남아 있는 부분만 "
+            "근거로 쓰고, 파일에서 읽은 것처럼 새 값을 지어내지 마라. 필요하면 "
+            "다시 첨부해 달라고 요청하라."
+        )
     return "\n".join(lines)
 
 
@@ -525,6 +563,10 @@ async def assemble(
     session: ChatSession,
     *,
     attachment_ids: list[str] | None = None,
+    #: The turns already in this conversation. Read only for what they carried:
+    #: an attachment belongs to the turn it was sent with, and a later question
+    #: about it has to be told that rather than left to infer it from a gap.
+    history: Sequence[object] = (),
     activated_skill_ids: list[str] | None = None,
     starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
@@ -609,7 +651,13 @@ async def assemble(
         blocks.append(ContextBlock("project.knowledge", knowledge, False))
     # Last among the trusted blocks, so it sits closest to the material it is
     # describing without being part of it.
-    if report := _file_report(attached_files, knowledge_files):
+    if report := _file_report(
+        attached_files,
+        tuple(knowledge_files),
+        earlier=earlier_attachment_names(
+            history, {file.name for file in attached_files}
+        ),
+    ):
         blocks.append(ContextBlock("files.report", report, True))
 
     applied = tuple(

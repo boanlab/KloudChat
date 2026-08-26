@@ -2043,6 +2043,7 @@ async def send_message(
             user,
             session,
             attachment_ids=payload.attachments,
+            history=history,
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
             # What the person said to concentrate on, when they were told the
@@ -2190,6 +2191,7 @@ async def send_message(
                 user,
                 session,
                 attachment_ids=payload.attachments,
+                history=history,
                 activated_skill_ids=payload.activated_skill_ids,
                 starting_template_id=payload.starting_template_id,
                 available_tool_names={tool.name for tool in tools},
