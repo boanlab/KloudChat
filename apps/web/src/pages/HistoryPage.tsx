@@ -156,7 +156,7 @@ export function HistoryPage() {
         ) : shown.length === 0 ? (
           <EmptyState
             icon={<MessageSquare size={18} />}
-            title={query ? t('검색 결과가 없습니다') : '아직 대화가 없습니다'}
+            title={query ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
           />
         ) : (
           shown.map((s) => {

@@ -136,7 +136,7 @@ function ActiveSessions() {
                   {r.region && (
                     <span className="inline-flex items-center gap-1">
                       <MapPin size={11} />
-                      {r.region}
+                      {t(r.region)}
                     </span>
                   )}
                   <span>
@@ -264,7 +264,7 @@ export function AccessTab() {
                           {e.region && (
                             <span className="ml-2 inline-flex items-center gap-1 text-muted">
                               <MapPin size={11} className="text-faint" />
-                              {e.region}
+                              {t(e.region)}
                             </span>
                           )}
                         </td>

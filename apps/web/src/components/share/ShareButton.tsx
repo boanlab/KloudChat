@@ -274,7 +274,7 @@ function ShareViews({ shareId }: { shareId: string }) {
                 {v.region && (
                   <span className="inline-flex items-center gap-1">
                     <MapPin size={11} className="text-faint" />
-                    {v.region}
+                    {t(v.region)}
                   </span>
                 )}
                 {/* The raw string on hover: the short form drops exactly what

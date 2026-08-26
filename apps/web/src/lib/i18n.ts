@@ -185,6 +185,7 @@ const EN: Record<string, string> = {
   '코드 실행': 'Run code',
   '심층 조사': 'Deep research',
   '음성 전사': 'Transcription',
+  '자료 검색': 'Knowledge search',
   '마스터 키': 'Master key',
   '주소 하나만 입력하면 아래 기능이 모두 연결됩니다.':
     'Enter one address and every feature below is connected.',
@@ -1073,6 +1074,12 @@ const EN: Record<string, string> = {
   '열람 기록을 불러오지 못했습니다.': 'Could not load the visits.',
   '아직 아무도 열지 않았습니다.': 'Nobody has opened it yet.',
   '계정 없는 방문자': 'Visitor without an account',
+  // Written by the server, not by a call site: `services/geoip.py` says this
+  // in place of a place name for an address inside RFC 1918. It reaches the
+  // screen as data, so the three screens that show a region put it through
+  // `t()` — a real place name has no entry here and falls through as itself,
+  // which is the intended behaviour rather than a gap.
+  '내부망': 'Private network',
   '주소 없음': 'No address',
   '이 인스턴스에 로그인하면 누구나 열 수 있습니다.':
     'Anyone signed in to this instance can open it.',
