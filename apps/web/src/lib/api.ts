@@ -1578,7 +1578,8 @@ export type StreamEvent =
       outputTokens: number
       error: string | null
     }
-  | { type: 'done'; credits?: number }
+  /** `messageId` is the stored answer's id — the one every later call must use. */
+  | { type: 'done'; credits?: number; messageId?: string }
 
 /**
  * Chat, report, and slides all stream from the same endpoint. Reports emit

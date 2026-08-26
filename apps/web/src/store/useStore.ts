@@ -2572,6 +2572,26 @@ function turnFailure(err: unknown): string {
  */
 const UNDO_MS = 6_000
 
+/**
+ * Swaps the id this tab made up for an answer for the one the server stored
+ * it under, once `done` says which that is.
+ *
+ * Everything addressed to a message afterwards — a rating, a comparison's
+ * 이 답변으로 계속 — used to go out under the made-up id, meet a 404, and fall
+ * back to reloading the session, which then showed the server's default in
+ * place of the click. The transcript only learned the real ids on reopen.
+ */
+function adoptServerId(set: Set, sessionId: string, localId: string, serverId: string) {
+  if (localId === serverId) return
+  set((s) => ({
+    sessions: s.sessions.map((c) =>
+      c.id === sessionId
+        ? { ...c, messages: c.messages.map((m) => (m.id === localId ? { ...m, id: serverId } : m)) }
+        : c,
+    ),
+  }))
+}
+
 /** Deletes whose requests have not been sent yet, so the page can flush them. */
 const pendingDeletes = new Set<() => void>()
 
@@ -3049,7 +3069,7 @@ async function streamTurn(
     onAccepted?: () => void
   } = {},
 ) {
-  const assistantId = uid('m')
+  let assistantId = uid('m')
   const controller = new AbortController()
 
   set((s) => ({
@@ -3212,6 +3232,14 @@ async function streamTurn(
           settled = true
           patch((m) => ({ ...m, error: event.message }))
           break
+        case 'done':
+          if (event.messageId) {
+            adoptServerId(set, sessionId, assistantId, event.messageId)
+            // Later patches — buffered text in `finally`, a late error — must
+            // find the row under its new name.
+            assistantId = event.messageId
+          }
+          break
       }
     }
   } catch (err) {
@@ -3280,7 +3308,7 @@ async function runComparison(
   } = {},
 ) {
   const models = get().compareModels
-  const assistantId = uid('m')
+  let assistantId = uid('m')
   const variants: Variant[] = models.map((model) => ({ model, content: '', status: 'streaming' }))
 
   set((s) => ({
@@ -3399,6 +3427,10 @@ async function runComparison(
         })
       } else if (e.type === 'done') {
         chargeCredits(set, get, e.credits ?? 0)
+        if (e.messageId) {
+          adoptServerId(set, sessionId, assistantId, e.messageId)
+          assistantId = e.messageId
+        }
       } else if (e.type === 'skills_applied') {
         patchMessage(set, sessionId, assistantId, (message) => ({
           ...message,

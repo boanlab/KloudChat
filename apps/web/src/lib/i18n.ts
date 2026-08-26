@@ -428,7 +428,6 @@ const EN: Record<string, string> = {
   '이름 바꾸기': 'Rename',
   '이메일': 'Email',
   '이번 달': 'This month',
-  '이어가는 중': 'Continuing',
   '인쇄': 'Print',
   '인증': 'Auth',
   '인증 필요': 'Auth required',
@@ -1111,6 +1110,7 @@ const EN: Record<string, string> = {
   '이 기간에 사용 기록이 없습니다': 'Nothing used in this period',
   '이 기간에는 과금되는 모델을 쓰지 않았습니다': 'no billed models were used in this period',
   '이 답변으로 계속': 'Continue with this one',
+  '이 답변으로 이어갑니다': 'Continuing from this one',
   '이 메모리를 언제 참고할지 판단하는 한 줄 요약입니다.': 'One line that decides when this memory gets pulled in.',
   '이 설명을 보고 모델이 스킬을 쓸지 판단합니다. 구체적일수록 좋습니다.':
     'The model reads this to decide whether to use the skill. The more specific the better.',
