@@ -23,6 +23,23 @@ import re
 #: this cannot draw is refused where it is chosen rather than where it fails.
 EMBEDDABLE = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
+#: The most a picture may weigh before a turn leaves it out.
+#:
+#: Base64 adds a third again on the way into a prompt, and a context window
+#: spent on one screenshot is a conversation that stops answering. Four
+#: megabytes is a full-page scan at a readable resolution.
+MAX_PICTURE_BYTES = 4_000_000
+
+
+def can_be_seen(mime: str, size: int) -> bool:
+    """Whether a model could be handed this file as a picture.
+
+    The same list a document is allowed to carry, for the same reason: raster
+    only, because `image/svg+xml` is a document that can carry script.
+    """
+    return (mime or "").lower() in EMBEDDABLE and 0 < size <= MAX_PICTURE_BYTES
+
+
 _DATA_URI = re.compile(r"^data:(image/(?:png|jpeg|jpg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$", re.I)
 
 
@@ -58,4 +75,12 @@ def decode(src: str) -> tuple[str, bytes] | None:
         return None
 
 
-__all__ = ["EMBEDDABLE", "data_uri", "decode", "encode", "is_embedded"]
+__all__ = [
+    "EMBEDDABLE",
+    "MAX_PICTURE_BYTES",
+    "can_be_seen",
+    "data_uri",
+    "decode",
+    "encode",
+    "is_embedded",
+]
