@@ -536,7 +536,7 @@ const EN: Record<string, string> = {
   '검색 결과가 없습니다': 'No results',
   '아직 대화가 없습니다': 'No conversations yet',
   '아직 주고받은 메시지가 없습니다': 'No messages yet',
-  '자료와 지침을 프로젝트에 모아 두면, 다섯 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.': 'Gather files and instructions into a project and every surface works from the same context. What you make is kept as artifacts and exports as documents.',
+  '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.': 'Gather files and instructions into a project and every surface works from the same context. What you make is kept as artifacts and exports as documents.',
   '무엇이든 물어보세요': 'Ask anything',
   '만들고 싶은 이미지를 설명하세요': 'Describe the image you want',
   '만들고 싶은 영상이나 오디오를 설명하세요': 'Describe the video or audio you want',
