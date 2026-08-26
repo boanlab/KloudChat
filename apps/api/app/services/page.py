@@ -205,9 +205,14 @@ def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[
     return title, blocks[:_MAX_BLOCKS]
 
 
-def _fragment(text: str) -> str:
-    """One block's markup, unfenced and reduced to the seed's vocabulary."""
-    return templates.sanitise(_FENCE.sub(r"\1", text.strip()))
+def _fragment(text: str, template: DesignTemplate) -> str:
+    """One block's markup, unfenced and reduced to the seed's vocabulary.
+
+    The template comes along for its layout names: a model that answers with
+    the layout it was handed before it writes anything would otherwise have
+    that word printed on the slide.
+    """
+    return templates.sanitise(_FENCE.sub(r"\1", text.strip()), template.layouts)
 
 
 async def write(
@@ -431,7 +436,7 @@ async def write(
 
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        block["html"] = _fragment(text)
+        block["html"] = _fragment(text, template)
         written.append(f"{heading}: {re.sub(r'<[^>]+>', ' ', block['html'])[:200]}")
         yield {"type": "block", "block": {k: v for k, v in block.items()}, "done": True}
         yield {
@@ -497,7 +502,7 @@ async def rewrite_block(
         api_key,
         1200,
     )
-    return _fragment(text), usage
+    return _fragment(text, template), usage
 
 
 def filled(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
