@@ -160,7 +160,8 @@ Thirty-seven migrations under `alembic/versions/`. The principal tables:
   these ids; the transcript renders the picture or the player where the answer
   goes. A chat turn that writes a file records it here too
 - `messages.failure` — how a turn ended when it did not end in an answer.
-  `no_answer` sits on the question, `interrupted` on a partial reply
+  `no_answer` sits on the question, `interrupted` on a partial reply, and
+  `stopped` on either when 중단 was pressed — same shape, the reader's choice
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
 - `system_settings` — LiteLLM address and master key, SMTP. Database values
@@ -203,7 +204,11 @@ response only relays what it emits, so closing the tab cancels the relay and
 not the turn — the answer is still stored, charged and titled. Which makes
 stopping a separate act rather than a dropped socket: `POST
 /sessions/{id}/stop` sets a flag the token loop checks, and the turn settles
-where it is with the partial answer kept and the row marked `interrupted`.
+where it is with the partial answer kept and the row marked `stopped` (a
+dropped connection marks it `interrupted`). The proxy reports usage on its
+final chunk, which a stopped stream never reaches, so a stopped turn's usage
+is estimated from what went up and what came down and stored with
+`estimated: true` — the tokens were spent either way.
 
 ### Report and slides
 
