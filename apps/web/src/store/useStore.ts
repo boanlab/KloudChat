@@ -279,6 +279,13 @@ interface State {
       /** Answers to a stopped turn's questions, keyed by question id. */
       answers?: Record<string, string>
       /**
+       * The failed question to run again in place, by its message id — what
+       * 다시 시도 sends. The bubble is not repeated and whatever failed under
+       * it is replaced; a plain send appends. Chat turns only: the document
+       * surfaces have their own retry paths.
+       */
+      retryOf?: string
+      /**
        * Run this one turn on a named model, whatever the conversation is set
        * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
        * the session carries is the moment somebody wants to try another one,
@@ -1392,6 +1399,21 @@ export const useStore = create<State>((set, get) => ({
         : undefined,
     }
 
+    // A retry keeps the question where it is and drops what failed under it;
+    // everything else appends. Falls back to appending if the row is not on
+    // screen, so a stale id never loses a sentence.
+    const retryOf =
+      kind === 'chat' && opts.retryOf && before?.messages.some((m) => m.id === opts.retryOf)
+        ? opts.retryOf
+        : undefined
+    const rerun = (messages: Message[]): Message[] => {
+      const at = messages.findIndex((m) => m.id === retryOf)
+      return [
+        ...messages.slice(0, at),
+        { ...messages[at], failure: undefined, error: undefined },
+      ]
+    }
+
     set((s) => ({
       sessions: s.sessions.map((c) =>
         c.id === id
@@ -1402,7 +1424,7 @@ export const useStore = create<State>((set, get) => ({
               ...c,
               title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
               updatedAt: now,
-              messages: [...c.messages, userMsg],
+              messages: retryOf ? rerun(c.messages) : [...c.messages, userMsg],
               // The turn carries the shape, so the row is about to wear it:
               // written here with the same optimism as the bubble above, and
               // the reason the composer can put its pick down at send without
@@ -1499,6 +1521,7 @@ export const useStore = create<State>((set, get) => ({
 
       await streamTurn(set, get, id, text, model, {
         model: opts.model,
+        retryOf,
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
@@ -2995,6 +3018,8 @@ async function streamTurn(
     startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    /** The failed question this turn reruns in place. See `send`. */
+    retryOf?: string
     onAccepted?: () => void
   } = {},
 ) {
@@ -3054,6 +3079,7 @@ async function streamTurn(
         startingTemplateId: opts.startingTemplateId,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        retryOf: opts.retryOf,
       },
       controller.signal,
     )) {

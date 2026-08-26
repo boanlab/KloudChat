@@ -325,6 +325,7 @@ export function MessageItem({
               ) : (
                 <RetryActions
                   sessionId={sessionId}
+                  messageId={message.id}
                   prompt={message.content}
                   kind={session?.kind ?? 'chat'}
                 />
@@ -373,7 +374,7 @@ export function MessageItem({
     const list = session?.messages ?? []
     const at = list.findIndex((m) => m.id === message.id)
     if (at < 0) return undefined
-    for (let i = at - 1; i >= 0; i--) if (list[i].role === 'user') return list[i].content
+    for (let i = at - 1; i >= 0; i--) if (list[i].role === 'user') return list[i]
     return undefined
   })()
 
@@ -501,7 +502,8 @@ export function MessageItem({
             {!madeHere && askedAbove && (
               <RetryActions
                 sessionId={sessionId}
-                prompt={askedAbove}
+                messageId={askedAbove.id}
+                prompt={askedAbove.content}
                 kind={session?.kind ?? 'chat'}
               />
             )}

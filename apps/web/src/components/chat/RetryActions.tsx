@@ -20,10 +20,13 @@ import type { SessionKind } from '@/types'
  */
 export function RetryActions({
   sessionId,
+  messageId,
   prompt,
   kind,
 }: {
   sessionId: string
+  /** The question's row, so the retry runs it again in place rather than asking twice. */
+  messageId: string
   prompt: string
   kind: SessionKind
 }) {
@@ -41,7 +44,11 @@ export function RetryActions({
 
   return (
     <span className="flex shrink-0 items-center gap-1.5">
-      <Button size="sm" disabled={streaming} onClick={() => void send(sessionId, kind, prompt)}>
+      <Button
+        size="sm"
+        disabled={streaming}
+        onClick={() => void send(sessionId, kind, prompt, { retryOf: messageId })}
+      >
         <RotateCcw size={13} />
         {t('다시 시도')}
       </Button>
@@ -60,7 +67,7 @@ export function RetryActions({
           {usable.map((m) => (
             <MenuItem
               key={m.id}
-              onClick={() => void send(sessionId, kind, prompt, { model: m.id })}
+              onClick={() => void send(sessionId, kind, prompt, { model: m.id, retryOf: messageId })}
               hint={m.id === currentId ? t('현재 모델') : undefined}
             >
               {m.label}
