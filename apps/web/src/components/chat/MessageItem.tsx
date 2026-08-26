@@ -17,7 +17,7 @@ import {
   TriangleAlert,
   Video,
 } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
 import { downloadFile, errorMessage, templateText } from '@/lib/api'
@@ -165,7 +165,18 @@ function turnFailureNotice(
   return undefined
 }
 
-export function MessageItem({
+/**
+ * One turn of the transcript.
+ *
+ * Memoised, and reading the store through selectors, for the same reason: a
+ * streamed delta patches one message, and everything else in the conversation
+ * must not re-render — and re-parse its markdown — for it. Subscribing to the
+ * whole store (`useStore()`) re-rendered every row on every chunk, and the
+ * `session` row it read changed identity on every chunk too, so a memo alone
+ * would not have held. The reads below are primitives or rows that only
+ * change when they change.
+ */
+function MessageItemInner({
   message,
   sessionId,
   streaming,
@@ -175,21 +186,36 @@ export function MessageItem({
   streaming?: boolean
 }) {
   const t = useT()
-  const {
-    artifacts,
-    openArtifact,
-    rateMessage,
-    retryMediaTurn,
-    models,
-    user,
-    sessions,
-    designTemplates,
-  } = useStore()
-  const session = sessions.find((s) => s.id === sessionId)
+  const artifacts = useStore((s) => s.artifacts)
+  const openArtifact = useStore((s) => s.openArtifact)
+  const rateMessage = useStore((s) => s.rateMessage)
+  const retryMediaTurn = useStore((s) => s.retryMediaTurn)
+  const models = useStore((s) => s.models)
+  const user = useStore((s) => s.user)
+  const designTemplates = useStore((s) => s.designTemplates)
+  const sessionKind = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.kind)
+  const renderTemplateId = useStore(
+    (s) => s.sessions.find((c) => c.id === sessionId)?.renderTemplateId,
+  )
+  /**
+   * The question this answer was for.
+   *
+   * Read back off the transcript rather than carried on the message: an
+   * assistant row does not know its prompt, and a retry that had to guess it
+   * would ask the wrong thing. Selected as the row itself — the retry needs
+   * its id — which keeps its identity until it changes.
+   */
+  const askedAbove = useStore((s) => {
+    const list = s.sessions.find((c) => c.id === sessionId)?.messages ?? []
+    const at = list.findIndex((m) => m.id === message.id)
+    if (at < 0) return undefined
+    for (let i = at - 1; i >= 0; i--) if (list[i].role === 'user') return list[i]
+    return undefined
+  })
   // The two surfaces whose answer is a thing rather than a sentence. They are
   // read differently at both ends of the turn: what a failure says, and what
   // stands where an answer would be.
-  const madeHere = session?.kind === 'image' || session?.kind === 'av'
+  const madeHere = sessionKind === 'image' || sessionKind === 'av'
   const [copied, setCopied] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
 
@@ -240,7 +266,7 @@ export function MessageItem({
      * name. The 서식 comes off the session because it is sticky there; the
      * 시작점 is stored on the turn, because it was only ever about this one.
      */
-    const shape = designTemplates.find((row) => row.id === session?.renderTemplateId)
+    const shape = designTemplates.find((row) => row.id === renderTemplateId)
     const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
     // What the detector found in this sentence, which is also what the stored
@@ -340,7 +366,7 @@ export function MessageItem({
                   sessionId={sessionId}
                   messageId={message.id}
                   prompt={message.content}
-                  kind={session?.kind ?? 'chat'}
+                  kind={sessionKind ?? 'chat'}
                 />
               )}
             </div>
@@ -377,20 +403,6 @@ export function MessageItem({
   const named = linked.filter((a) => !isMedia(a))
   const failed = turnFailureNotice(message, madeHere, t)
   const stopped = !message.error && message.failure === 'stopped'
-  /**
-   * The question this answer was for.
-   *
-   * Read back off the transcript rather than carried on the message: an
-   * assistant row does not know its prompt, and a retry that had to guess it
-   * would ask the wrong thing.
-   */
-  const askedAbove = (() => {
-    const list = session?.messages ?? []
-    const at = list.findIndex((m) => m.id === message.id)
-    if (at < 0) return undefined
-    for (let i = at - 1; i >= 0; i--) if (list[i].role === 'user') return list[i]
-    return undefined
-  })()
 
   return (
     <div className="animate-fade-up group flex gap-3">
@@ -529,7 +541,7 @@ export function MessageItem({
                 sessionId={sessionId}
                 messageId={askedAbove.id}
                 prompt={askedAbove.content}
-                kind={session?.kind ?? 'chat'}
+                kind={sessionKind ?? 'chat'}
               />
             )}
           </div>
@@ -631,3 +643,5 @@ export function MessageItem({
     </div>
   )
 }
+
+export const MessageItem = memo(MessageItemInner)
