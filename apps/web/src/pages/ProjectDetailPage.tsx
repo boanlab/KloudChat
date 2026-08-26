@@ -7,6 +7,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Dropdown,
   EmptyState,
   Field,
@@ -34,6 +35,14 @@ import { useT } from '@/lib/useT'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
+/**
+ * What a delete takes, in the same words in the card and in the question.
+ * Mirrors `_remove_project` on the server: knowledge files and the row go,
+ * sessions are detached, artifacts and memories are not touched.
+ */
+const DELETE_SCOPE =
+  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.'
+
 export function ProjectDetailPage() {
   const t = useT()
   const { projectId } = useParams()
@@ -58,6 +67,7 @@ export function ProjectDetailPage() {
   const [tab, setTab] = useState<Tab>('sessions')
   const [instructions, setInstructions] = useState(project?.instructions ?? '')
   const [dirty, setDirty] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [editing, setEditing] = useState<{
     name: string
     emoji: string
@@ -213,17 +223,6 @@ export function ProjectDetailPage() {
               >
                 <Pencil size={14} />
                 {t('이름 · 설명')}
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => {
-                  deleteProject(project.id)
-                  navigate('/projects')
-                }}
-              >
-                <Trash2 size={14} />
-                {t('프로젝트 삭제')}
               </Button>
             </div>
           }
@@ -702,7 +701,35 @@ export function ProjectDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Away from the routine controls. 프로젝트 삭제 used to sit beside
+            이름 · 설명 at the same size, one misclick from a permanent loss of
+            the instructions and knowledge files; the header keeps the edits and
+            the one thing that cannot be undone lives here, behind a question. */}
+        <Card className="mt-8 border-danger/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-medium text-danger">{t('프로젝트 삭제')}</p>
+              <p className="mt-0.5 text-sm text-muted">{t(DELETE_SCOPE)}</p>
+            </div>
+            <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={14} />
+              {t('프로젝트 삭제')}
+            </Button>
+          </div>
+        </Card>
       </PageBody>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          void deleteProject(project.id)
+          navigate('/projects')
+        }}
+        title={t('{name} 삭제').replace('{name}', project.name)}
+        description={t(DELETE_SCOPE)}
+      />
 
       <MemoryEditor
         draft={memoryDraft}
