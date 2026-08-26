@@ -35,7 +35,7 @@ export function ProposalCard({
 }) {
   const t = useT()
   const send = useStore((s) => s.send)
-  const streaming = useStore((s) => s.streaming)
+  const streaming = useStore((s) => !!s.running[sessionId])
   const [picked, setPicked] = useState<Record<string, string>>({})
 
   const run = (opts: { approve?: boolean; answers?: Record<string, string> }, label: string) =>

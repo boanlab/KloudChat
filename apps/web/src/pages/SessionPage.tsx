@@ -210,10 +210,12 @@ export function SessionPage() {
     artifacts,
     setActiveSession,
     openSession,
-    streaming,
+    running,
     openArtifactId,
     openArtifact,
   } = useStore()
+  // Whether *this* conversation has a turn in flight.
+  const streaming = !!sessionId && !!running[sessionId]
 
   const [searchParams, setSearchParams] = useSearchParams()
     /**
