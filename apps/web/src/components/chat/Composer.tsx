@@ -1507,7 +1507,7 @@ export function Composer({
                   <MenuItem
                     key={m.id}
                     checked={compareModels.includes(m.id)}
-                    hint={`${m.creditCost}`}
+                    hint={t('출력 1k당 {n} 크레딧').replace('{n}', m.creditCost.toLocaleString())}
                     onClick={() => toggleCompareModel(m.id)}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
