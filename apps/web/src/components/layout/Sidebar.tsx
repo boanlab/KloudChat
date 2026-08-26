@@ -1,7 +1,7 @@
 import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
+import { ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -213,6 +213,12 @@ export function Sidebar() {
      */
   const [shown, setShown] = useState(PAGE)
   /**
+   * The row waiting for a yes. 삭제 sits one row under 고정 in the same menu
+   * and the server delete is final — there is no soft delete to restore from
+   * — so the question is asked before the request goes, with the title in it.
+   */
+  const [confirming, setConfirming] = useState<Session | null>(null)
+  /**
    * The list goes to the end of the history now that 대화 기록 is not a
    * separate screen, so the last page has to arrive on its own rather than on
    * a click every forty rows.
@@ -246,7 +252,7 @@ export function Sidebar() {
       onRename={(title) => void renameSession(session.id, title)}
       onTogglePin={() => togglePinSession(session.id)}
       onMove={(projectId) => void moveSessionToProject(session.id, projectId)}
-      onDelete={() => deleteSession(session.id)}
+      onDelete={() => setConfirming(session)}
     />
   )
 
@@ -424,6 +430,14 @@ export function Sidebar() {
 
         <AccountMenu />
       </div>
+
+      <ConfirmDialog
+        open={!!confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => confirming && void deleteSession(confirming.id)}
+        title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
+        description={t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')}
+      />
     </aside>
   )
 }
