@@ -2883,8 +2883,16 @@ async def _run_turn(
                 text_parts.append(event["text"])
             elif event["type"] == "step":
                 # Stored without the SSE envelope key: `Step.type` in the UI is
-                # a display category, not the event name.
-                steps.append({k: v for k, v in event.items() if k != "type"})
+                # a display category, not the event name. One row per step: the
+                # running event and the done event share an id, and appending
+                # both stored every tool call twice — the first copy still
+                # saying 검색 중 after a reload.
+                row = {k: v for k, v in event.items() if k != "type"}
+                at = next((i for i, s in enumerate(steps) if s.get("id") == row.get("id")), None)
+                if at is None:
+                    steps.append(row)
+                else:
+                    steps[at] = row
             elif event["type"] == "usage":
                 usage = {k: v for k, v in event.items() if k != "type"}
                 continue  # re-emitted below with the credit figure
