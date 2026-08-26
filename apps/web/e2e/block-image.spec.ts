@@ -190,3 +190,53 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
   expect(file.suggestedFilename()).toMatch(/\.pptx$/)
   expect(bytes.toString('latin1')).toContain('ppt/media/image1.png')
 })
+
+/**
+ * The same control, on an account that has no pictures.
+ *
+ * It used to render only when there was something in it, which hid the one path
+ * a picture has into a document from exactly the person who had not found it:
+ * somebody who asked for pictures, got a document without any, and had nothing
+ * on screen suggesting the feature exists. On a stock install that state is
+ * permanent — the image surface is off by default, so no picture can be made at
+ * all — and the difference between a dead end and an instruction is whether the
+ * screen says which.
+ *
+ * The listing is filtered in flight rather than by deleting rows: this account
+ * is shared with every other suite here, and a test that empties it would be a
+ * trap rather than a check.
+ */
+test('그림이 없어도 넣을 자리는 보이고, 왜 없는지 말한다', async ({ page }) => {
+  test.setTimeout(120_000)
+  await signIn(page)
+
+  const seeded = await page.evaluate(
+    async ([fn, png]) => await eval(fn)(png),
+    [SETUP, PNG_BASE64],
+  )
+  expect(seeded, '문서를 만들지 못했습니다').not.toBeNull()
+  const { pageTitle } = seeded as { pageTitle: string }
+
+  // Every image row removed from the listing the store loads. The document
+  // itself is fetched by id on another path, so it still arrives.
+  await page.route('**/api/artifacts?*', async (route) => {
+    const response = await route.fetch()
+    const rows = await response.json()
+    await route.fulfill({
+      response,
+      json: Array.isArray(rows) ? rows.filter((row) => row.kind !== 'image') : rows,
+    })
+  })
+
+  await page.goto('/artifacts')
+  const card = page.getByRole('button', { name: `${pageTitle} 열기` })
+  await expect(card).toBeVisible({ timeout: 20_000 })
+  await card.click()
+
+  await page.getByRole('button', { name: '그림 넣기' }).click()
+  await page.getByRole('menuitem', { name: /표지/ }).click()
+
+  await expect(page.getByText(/그림이 없습니다|그림을 만들 수 없습니다/)).toBeVisible({
+    timeout: 10_000,
+  })
+})
