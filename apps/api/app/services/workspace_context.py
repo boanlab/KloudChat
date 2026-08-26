@@ -8,6 +8,7 @@ from being promoted to a system instruction.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -28,7 +29,10 @@ from app.models.workspace import (
     Template,
 )
 from app.services import design as design_service
-from app.services import prompt_templates, starter
+from app.services import files as file_service
+from app.services import pictures, prompt_templates, starter
+
+log = logging.getLogger(__name__)
 
 MAX_ACTIVE_SKILLS = 3
 _MAX_MEMORIES = 40
@@ -52,6 +56,35 @@ class ContextBlock:
     trusted: bool
 
 
+def reads_pictures(model: dict | None) -> bool:
+    """Whether this turn's model may be handed one.
+
+    Two conditions, and both are load-bearing.
+
+    **It has to say so.** Measured against the gateway, two commercial models
+    accepted an image and answered with an empty message rather than an error —
+    so trying and watching produces a blank answer, not a fallback. This is the
+    same rule the data boundary already follows: metadata is the authority, and
+    absence of a claim is a no.
+
+    **It has to be unable to leave.** The privacy guard reads text. An image is
+    egress it cannot inspect, and policy is applied before anything reaches a
+    model — so a picture on an external route would go past that gate with
+    nothing looking at it. The contained route is the one that carries them.
+    """
+    return bool(model and model.get("supportsVision") and model.get("strictLocal"))
+
+
+@dataclass(frozen=True, slots=True)
+class TurnPicture:
+    """One attached picture, ready to become a content part."""
+
+    name: str
+    mime: str
+    #: `data:<mime>;base64,…` — the form an upstream `image_url` part takes.
+    uri: str
+
+
 @dataclass(frozen=True, slots=True)
 class ContextFile:
     """How much of one file actually reached the model.
@@ -63,8 +96,10 @@ class ContextFile:
     """
 
     name: str
-    #: "included", "truncated", "omitted" — over budget — or "unreadable",
-    #: which is the file whose text extraction failed before any budget.
+    #: "included", "truncated", "omitted" — over budget — "unreadable", the
+    #: file whose text extraction failed before any budget, or one of the two
+    #: picture states: "picture" when this turn's model was handed it, and
+    #: "picture_unseen" when the picture is fine and this model cannot look.
     state: str
     kept_chars: int
     total_chars: int
@@ -114,6 +149,9 @@ class WorkspaceContext:
     #: in the order the character budget was spent on them.
     attachments: tuple[ContextFile, ...] = ()
     knowledge: tuple[ContextFile, ...] = ()
+    #: Pictures this turn's model can look at, in the order they were attached.
+    #: Empty whenever it cannot, so the caller never has to ask twice.
+    pictures: tuple[TurnPicture, ...] = ()
 
     @property
     def trusted(self) -> list[str]:
@@ -506,6 +544,17 @@ def _file_report(
                 f"- {file.name} — 전체 {file.total_chars:,}자 중 {file.kept_chars:,}자만 "
                 "전달됨. 전달되지 않은 부분은 알 수 없으므로 그 내용을 지어내지 마라."
             )
+        elif file.state == "picture":
+            lines.append(
+                f"- {file.name} — 그림으로 전달됨. 보이는 것만 말하고 "
+                "보이지 않는 것을 지어내지 마라."
+            )
+        elif file.state == "picture_unseen":
+            lines.append(
+                f"- {file.name} — 그림이며 파일은 온전하나, 지금 모델은 그림을 "
+                "보지 못한다. 내용을 지어내지 말고, 그림을 읽는 모델로 바꾸거나 "
+                "글자를 옮겨 달라고 안내하라."
+            )
         elif file.state == "omitted":
             lines.append(
                 f"- {file.name} — 분량 때문에 이번 요청에는 내용이 전달되지 않음. "
@@ -525,6 +574,10 @@ async def assemble(
     session: ChatSession,
     *,
     attachment_ids: list[str] | None = None,
+    #: Whether this turn's model may be handed a picture. `reads_pictures`
+    #: answers it; the caller passes the answer so this does not have to know
+    #: how a model is described.
+    vision: bool = False,
     activated_skill_ids: list[str] | None = None,
     starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
@@ -568,6 +621,7 @@ async def assemble(
         blocks.append(ContextBlock("memory", memories, False))
 
     attached_files: tuple[ContextFile, ...] = ()
+    turn_pictures: tuple[TurnPicture, ...] = ()
     if attachment_ids:
         rows = (
             await db.exec(
@@ -581,8 +635,31 @@ async def assemble(
         if len(by_id) != len(set(attachment_ids)):
             raise WorkspaceContextError("attachment_not_found")
         ordered = [by_id[file_id] for file_id in attachment_ids if file_id in by_id]
+        # A picture has no text and never will, so it is neither readable nor
+        # broken — it is a third thing, and which of its two states it lands in
+        # depends on the model rather than on the file.
+        looked_at: dict[str, TurnPicture] = {}
+        if vision:
+            for stored in ordered:
+                if stored.text or not pictures.can_be_seen(stored.mime, stored.size):
+                    continue
+                try:
+                    blob = file_service.read_blob(stored.storage_key)
+                except OSError as exc:
+                    # The row outlived its bytes. Reported as a file that could
+                    # not be read, which is what happened.
+                    log.warning("attached picture %s unreadable: %s", stored.id, exc)
+                    continue
+                looked_at[stored.id] = TurnPicture(
+                    stored.name, stored.mime, pictures.encode(stored.mime, blob)
+                )
+        def is_picture(stored) -> bool:
+            return not stored.text and pictures.can_be_seen(stored.mime, stored.size)
+
         readable = [stored for stored in ordered if stored.text]
-        unreadable = [stored for stored in ordered if not stored.text]
+        unreadable = [
+            stored for stored in ordered if not stored.text and not is_picture(stored)
+        ]
         attached, used = _knowledge_block(
             readable, header="# 이번 요청에 첨부된 파일", focus=focus
         )
@@ -591,9 +668,18 @@ async def assemble(
         # the one they will read this against. `used` follows `readable`, which
         # follows `ordered`, so stepping through it in place is enough.
         spent = iter(used)
-        attached_files = tuple(
-            next(spent) if stored.text else ContextFile(stored.name, "unreadable", 0, 0)
-            for stored in ordered
+
+        def _fate(stored) -> ContextFile:
+            if stored.text:
+                return next(spent)
+            if is_picture(stored):
+                state = "picture" if stored.id in looked_at else "picture_unseen"
+                return ContextFile(stored.name, state, 0, 0)
+            return ContextFile(stored.name, "unreadable", 0, 0)
+
+        attached_files = tuple(_fate(stored) for stored in ordered)
+        turn_pictures = tuple(
+            looked_at[stored.id] for stored in ordered if stored.id in looked_at
         )
         if unreadable:
             names = ", ".join(
@@ -634,6 +720,7 @@ async def assemble(
         total_memories=memory_total,
         attachments=attached_files,
         knowledge=tuple(knowledge_files),
+        pictures=turn_pictures,
     )
 
 
