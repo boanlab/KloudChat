@@ -1562,7 +1562,7 @@ export type StreamEvent =
   | { type: 'sources'; sources: Source[] }
   | { type: 'artifact'; artifactId: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
-  | { type: 'error'; message: string }
+  | { type: 'error'; message: string; code?: string; reason?: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
   | ({ type: 'model_route' } & CostRouting)
