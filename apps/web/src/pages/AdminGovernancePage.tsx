@@ -60,12 +60,14 @@ export function AdminGovernancePage() {
     const q = query.trim().toLowerCase()
     if (!q) return audit ?? []
     return (audit ?? []).filter((e) =>
-      [e.actor, e.action, ACTION_LABEL[e.action] ?? '', e.target, e.detail, e.ip, e.region]
+      // Both spellings of the region: somebody reading the trail in English
+      // searches for what the row shows them, not for its Korean source.
+      [e.actor, e.action, ACTION_LABEL[e.action] ?? '', e.target, e.detail, e.ip, e.region, t(e.region)]
         .join(' ')
         .toLowerCase()
         .includes(q),
     )
-  }, [audit, query])
+  }, [audit, query, t])
   const strictModels = models.filter(
     (model) =>
       model.dataBoundary === 'self_hosted' && model.strictLocal && model.kinds.includes('chat'),
@@ -358,7 +360,7 @@ export function AdminGovernancePage() {
                         and these three are read together or not at all. */}
                     <td className="px-4 py-2.5 text-xs whitespace-nowrap text-faint">
                       <span className="font-mono tabular-nums">{e.ip || '—'}</span>
-                      {e.region && <span className="ml-2">{e.region}</span>}
+                      {e.region && <span className="ml-2">{t(e.region)}</span>}
                       {browserName(e.userAgent) && (
                         <span className="ml-2" title={e.userAgent}>
                           {browserName(e.userAgent)}
