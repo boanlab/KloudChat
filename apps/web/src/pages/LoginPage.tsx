@@ -6,6 +6,7 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { applyBrand } from '@/lib/brand'
 import { ApiError, authConfig } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
+import type { SessionKind } from '@/types'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -45,6 +46,11 @@ export function LoginPage() {
   //: Null until asked: the link is not rendered on a guess, since an instance
   //: with no mail server has no reset to offer.
   const [resetEnabled, setResetEnabled] = useState<boolean | null>(null)
+  //: Which surfaces this instance actually serves. Null for the same reason as
+  //: the reset link above — image and audio/video default to off, and a list
+  //: drawn from a constant promised two things the account behind the form
+  //: could not do.
+  const [enabledKinds, setEnabledKinds] = useState<SessionKind[] | null>(null)
   // This renders before authentication, when the store is empty, so the
   // values come straight from the public configuration.
   const [brand, setBrand] = useState({ name: 'KloudChat', logo: '' })
@@ -54,6 +60,9 @@ export function LoginPage() {
       .get()
       .then((c) => {
         setResetEnabled(c.passwordResetEnabled)
+        // Ordered by `kindOrder` rather than by the server's array, so the list
+        // reads the same here as it does in the sidebar behind it.
+        setEnabledKinds(kindOrder.filter((kind) => c.enabledKinds.includes(kind)))
         if (c.brand) {
           setBrand(c.brand)
           applyBrand(c.brand)
@@ -137,10 +146,12 @@ export function LoginPage() {
               in is not choosing a proxy, and telling them which one runs the
               calls is an implementation detail wearing a marketing sentence. */}
           <p className="mt-3 text-base leading-relaxed text-muted">
-            {t('자료와 지침을 프로젝트에 모아 두면, 다섯 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.')}
+            {t('자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.')}
           </p>
+          {/* Nothing until the instance has said what it serves. An empty
+              moment is honest; two rows that then disappear are not. */}
           <ul className="mt-8 space-y-3">
-            {kindOrder.map((kind) => {
+            {(enabledKinds ?? []).map((kind) => {
               const meta = kindMeta[kind]
               const Icon = meta.icon
               return (
