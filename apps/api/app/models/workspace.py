@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Index
+from sqlalchemy import Column, DateTime, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -339,6 +339,9 @@ class Memory(SQLModel, table=True):
 
 class Agent(SQLModel, table=True):
     __tablename__ = "agents"
+    #: One @handle per owner. See `_claim_slug` in routers/workspace.py for the
+    #: sentence a duplicate gets; this is the backstop behind it.
+    __table_args__ = (UniqueConstraint("owner_id", "slug", name="ux_agents_owner_slug"),)
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     owner_id: str = Field(foreign_key="users.id", index=True)

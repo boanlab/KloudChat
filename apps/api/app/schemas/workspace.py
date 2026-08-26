@@ -463,6 +463,10 @@ class AgentOut(Wire):
 
 class AgentIn(Wire):
     name: str = Field(min_length=1, max_length=120)
+    #: The @handle. Slugified server-side, unique per owner. Omitted or empty
+    #: means "derive it from the name", which is what every row got before the
+    #: form's value was carried at all.
+    slug: str | None = Field(default=None, max_length=60)
     description: str = ""
     model: str = ""
     system_prompt: str = ""
