@@ -509,6 +509,8 @@ export function MenuItem({
   hint,
   disabled,
   checked,
+  keepOpen,
+  title,
 }: {
   children: ReactNode
   onClick?: () => void
@@ -523,6 +525,14 @@ export function MenuItem({
    * price had been, so the figure disappeared exactly when it was chosen.
    */
   checked?: boolean
+  /**
+   * Leave the menu up after this row is picked. A command closes its menu; a
+   * row in a multi-select does not — closing on every tick made choosing
+   * three skills three trips to the same menu.
+   */
+  keepOpen?: boolean
+  /** Why a row is disabled, on hover — instead of a sentence in the hint slot that pushed the name out. */
+  title?: string
 }) {
   const { close } = useContext(MenuCtx)
   return (
@@ -530,9 +540,10 @@ export function MenuItem({
       role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
       aria-checked={checked}
       disabled={disabled}
+      title={title}
       onClick={() => {
         onClick?.()
-        close()
+        if (!keepOpen) close()
       }}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-base transition-colors',

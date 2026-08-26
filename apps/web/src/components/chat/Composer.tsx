@@ -1437,20 +1437,21 @@ export function Composer({
                   <MenuItem
                     key={s.id}
                     checked={selected}
+                    keepOpen
                     disabled={!!unavailable || limitReached}
+                    // The limit is one sentence for the whole menu (the label
+                    // says 최대 3개) and a tooltip on the rows it disables —
+                    // not a hint that took the row's width and cut the name
+                    // down to 수치에 ….
+                    title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
                     // The figure stays once the row is chosen — that is when it
                     // is being spent. The mark is drawn by the row itself.
                     hint={
                       unavailable
                         ? unavailable
-                        : limitReached
-                          ? t('최대 3개까지 선택할 수 있습니다.')
-                          : recommended.has(s.id)
-                            ? t('프로젝트 추천')
-                            : t('약 {n} 토큰').replace(
-                                '{n}',
-                                s.estimatedTokens.toLocaleString(),
-                                )
+                        : recommended.has(s.id)
+                          ? t('프로젝트 추천')
+                          : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
                     }
                     onClick={() => {
                       activeRestoreToken.current = null
@@ -1509,6 +1510,7 @@ export function Composer({
                     checked={compareModels.includes(m.id)}
                     hint={`${m.creditCost}`}
                     onClick={() => toggleCompareModel(m.id)}
+                    keepOpen
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate">{m.label}</span>
