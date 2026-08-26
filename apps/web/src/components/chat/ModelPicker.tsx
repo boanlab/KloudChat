@@ -47,10 +47,15 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
     return t('무료')
   }
-  return t('1k당 입력 {in} · 출력 {out}')
+  // The unit, every time: a bare "7 · 28" beside a name is a price in
+  // nothing. Credits per thousand tokens, both directions.
+  return t('1k 토큰당 입력 {in} · 출력 {out} 크레딧')
     .replace('{in}', m.inputCreditCost.toLocaleString())
     .replace('{out}', m.creditCost.toLocaleString())
 }
+
+/** Rows before a search box earns its place. */
+const SEARCHABLE_FROM = 8
 
 /**
  * Where this model's text goes, as a sentence rather than a chip.
@@ -275,9 +280,18 @@ function ModelMenu({
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
+  /**
+   * A list past a screenful is read by searching, not scanning. Matched on
+   * the label and the id, so "gemma", "strict" and "openrouter" all find rows.
+   */
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const shown = needle
+    ? usable.filter((m) => `${m.label} ${m.id}`.toLowerCase().includes(needle))
+    : usable
   // Insertion order, so the catalogue's own ordering still decides which vendor
   // comes first rather than the alphabet.
-  const groups = [...usable.reduce((map, m) => {
+  const groups = [...shown.reduce((map, m) => {
     const vendor = m.vendor || m.provider
     map.set(vendor, [...(map.get(vendor) ?? []), m])
     return map
@@ -352,6 +366,26 @@ function ModelMenu({
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
         {showAuto ? t('모델 직접 선택') : t('모델')}
       </div>
+      {usable.length > SEARCHABLE_FROM && (
+        <div className="px-1.5 pb-1">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('모델 찾기')}
+            aria-label={t('모델 찾기')}
+            autoComplete="off"
+            className="h-8 w-full rounded-control border border-line bg-panel px-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
+            // Typing must not walk the menu's focus; Escape still closes it.
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') e.stopPropagation()
+            }}
+          />
+          {needle && shown.length === 0 && (
+            <p className="px-1 pt-1.5 text-sm text-faint">{t('맞는 모델이 없습니다.')}</p>
+          )}
+        </div>
+      )}
       {!litellmAvailable && (
         <div className="mx-1.5 mb-1 flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-2.5 py-2 text-sm text-warn">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />

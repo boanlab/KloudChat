@@ -101,10 +101,17 @@ _LOCAL_VENDORS = (
 )
 
 
+#: Route prefixes that say where a model runs rather than who built it. Both
+#: map to the real vendor for grouping, and both are named on the row: the
+#: same weights served two ways are two rows, and a picker that printed them
+#: identically left the reader to guess which one costs and which one leaves.
+_ROUTES = ("local", "strict-local")
+
+
 def _vendor(model_id: str, provider: str) -> str:
     """Company that built the model, for display next to its name."""
     head = model_id.split("/")[0] if "/" in model_id else ""
-    if head and head != "local":
+    if head and head not in _ROUTES:
         return _VENDORS.get(head, head.replace("-", " ").title())
     tail = model_id.split("/")[-1].lower()
     for needle, name in _LOCAL_VENDORS:
@@ -150,13 +157,17 @@ def _label(model_id: str) -> str:
     Only a fallback — anything whose generated label reads badly belongs in
     `MODEL_OVERRIDES` with a hand-written one.
     """
-    tail = model_id.split("/")[-1]
+    head, _, tail = model_id.rpartition("/")
     # OpenRouter's free-tier suffix is a price, not a name — stripped from the
     # label, conveyed as a cost of 0.
     if tail.endswith(":free"):
         tail = tail[: -len(":free")]
     if not tail:
         return model_id
+    # `local/` and `strict-local/` are routes, and a route is part of what the
+    # row is: without it, google/gemma-… and local/gemma-… printed the same
+    # words at different prices.
+    route = f" ({head})" if head in _ROUTES else ""
     out = []
     for word in tail.replace("_", "-").split("-"):
         if not word:
@@ -169,7 +180,7 @@ def _label(model_id: str) -> str:
             out.append(word[0].upper() + word[1:] if word[0].isalpha() else word)
         else:
             out.append(word.capitalize())
-    return " ".join(out) or model_id
+    return (" ".join(out) or model_id) + route
 
 
 def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
