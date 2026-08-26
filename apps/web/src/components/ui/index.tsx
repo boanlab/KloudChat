@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import {
   createContext,
   useCallback,
@@ -516,7 +516,12 @@ export function MenuItem({
   icon?: ReactNode
   hint?: ReactNode
   disabled?: boolean
-  /** Turns an ordinary menu command into an accessible toggle item. */
+  /**
+   * Turns an ordinary menu command into an accessible toggle item, and draws
+   * the mark itself, on the left. The mark used to be a '✓' passed as `hint`,
+   * which put it in the one right-hand slot — where the token estimate or the
+   * price had been, so the figure disappeared exactly when it was chosen.
+   */
   checked?: boolean
 }) {
   const { close } = useContext(MenuCtx)
@@ -538,6 +543,11 @@ export function MenuItem({
             : 'text-fg hover:bg-elevated',
       )}
     >
+      {checked !== undefined && (
+        <span className="grid size-4 shrink-0 place-items-center text-accent" aria-hidden>
+          {checked && <Check size={14} />}
+        </span>
+      )}
       {icon && <span className="shrink-0 text-muted">{icon}</span>}
       <span className="flex-1 truncate">{children}</span>
       {hint && <span className="shrink-0 text-sm text-faint">{hint}</span>}
