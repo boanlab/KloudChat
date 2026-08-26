@@ -11,6 +11,7 @@ import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
+import { startFailure } from '@/lib/failures'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
@@ -41,7 +42,7 @@ import { useT } from '@/lib/useT'
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
-  const { user, sessions, jobs, agents, enabledKinds, newSession } = useStore()
+  const { user, sessions, jobs, agents, enabledKinds, newSession, setNotice } = useStore()
   //: The 서식 already picked for this surface, if any. Read here only to
   //: decide whether the rail below would be repeating it.
   const pendingTemplate = useStore((s) => s.pendingTemplate)
@@ -176,9 +177,9 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
                   // Runs it, rather than navigating to a list where it would
                   // have to be found again. This card *is* the run button.
                   onClick={() =>
-                    void newSession(a.kinds[0] ?? active, { agentId: a.id }).then((id) =>
-                      navigate(`/s/${id}`),
-                    )
+                    void newSession(a.kinds[0] ?? active, { agentId: a.id })
+                      .then((id) => navigate(`/s/${id}`))
+                      .catch((err: unknown) => setNotice(startFailure(err, t)))
                   }
                   className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-elevated"
                 >

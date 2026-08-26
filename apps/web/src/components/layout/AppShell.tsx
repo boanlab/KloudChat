@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
@@ -29,6 +30,38 @@ function UndoBar() {
         className="shrink-0 font-medium text-accent hover:underline"
       >
         {t('실행 취소')}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * One sentence about something that failed with no screen of its own to say
+ * so on — a card that starts a conversation and is refused. Until now that
+ * refusal was an unhandled promise in the console and nothing on the page.
+ */
+function NoticeBar() {
+  const t = useT()
+  const notice = useStore((s) => s.notice)
+  const setNotice = useStore((s) => s.setNotice)
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 10_000)
+    return () => clearTimeout(timer)
+  }, [notice, setNotice])
+  if (!notice) return null
+  return (
+    <div
+      role="alert"
+      className="animate-fade-up absolute top-4 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-start gap-3 rounded-card border border-danger/30 bg-panel px-4 py-2.5 text-base text-danger shadow-float"
+    >
+      <span className="min-w-0">{notice}</span>
+      <button
+        onClick={() => setNotice(null)}
+        aria-label={t('닫기')}
+        className="shrink-0 rounded-control p-0.5 text-faint hover:bg-elevated hover:text-fg"
+      >
+        <X size={14} />
       </button>
     </div>
   )
@@ -96,6 +129,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <UndoBar />
+      <NoticeBar />
     </div>
   )
 }
