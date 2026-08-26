@@ -66,6 +66,11 @@ class TurnFailure(StrEnum):
 
     no_answer = "no_answer"
     interrupted = "interrupted"
+    #: 중단 was pressed. Same shape as `interrupted` — a partial reply, kept —
+    #: but the person did it, so the screen must not call it a failure. A
+    #: dropped connection and a pressed button used to share one value, and
+    #: the notice for both came up red.
+    stopped = "stopped"
 
 
 class MessageRating(StrEnum):

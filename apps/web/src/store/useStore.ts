@@ -3177,6 +3177,11 @@ async function streamTurn(
       throw err
     } else if (err instanceof DOMException && err.name === 'AbortError') {
       settled = true
+      // Said now, not after a reload. The server stores the same mark once the
+      // turn settles, but this tab only learns that by reopening the session —
+      // until then the answer just ended mid-sentence with nothing to say why,
+      // and the retry that belongs under it was nowhere.
+      patch((m) => ({ ...m, failure: 'stopped' }))
     } else if (isClientRefusal(err)) {
       settled = true
       patch((m) => ({ ...m, error: errorMessage(err, tr('요청을 처리하지 못했습니다.')) }))

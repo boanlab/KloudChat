@@ -2,6 +2,7 @@ import {
   AudioLines,
   BarChart3,
   Check,
+  CircleStop,
   Copy,
   Download,
   FileText,
@@ -150,6 +151,9 @@ function turnFailureNotice(
   t: (text: string) => string,
 ): string | undefined {
   if (message.error) return message.error
+  if (message.failure === 'stopped') {
+    return media ? t('요청한 만큼 만들어지지 않았습니다.') : t('여기서 멈췄습니다.')
+  }
   if (message.failure === 'interrupted') {
     return media
       ? t('요청한 만큼 만들어지지 않았습니다.')
@@ -308,9 +312,18 @@ export function MessageItem({
           {failed && (
             <div
               role="status"
-              className="flex items-center justify-end gap-2 text-base text-danger"
+              className={cn(
+                'flex items-center justify-end gap-2 text-base',
+                // Stopped before the first token is still the reader's own
+                // doing, and reads in the page's colours, not the error's.
+                message.failure === 'stopped' && !message.error ? 'text-muted' : 'text-danger',
+              )}
             >
-              <TriangleAlert size={14} className="shrink-0" />
+              {message.failure === 'stopped' && !message.error ? (
+                <CircleStop size={14} className="shrink-0" />
+              ) : (
+                <TriangleAlert size={14} className="shrink-0" />
+              )}
               <span>{failed}</span>
               {/* A clip's job card has always had a retry; a conversation turn
                   had none, so the only way back from a question nobody
@@ -362,6 +375,7 @@ export function MessageItem({
   const shown = linked.filter(isMedia)
   const named = linked.filter((a) => !isMedia(a))
   const failed = turnFailureNotice(message, madeHere, t)
+  const stopped = !message.error && message.failure === 'stopped'
   /**
    * The question this answer was for.
    *
@@ -490,9 +504,20 @@ export function MessageItem({
         {failed && (
           <div
             role="status"
-            className="mt-3 flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger"
+            className={cn(
+              'mt-3 flex items-start gap-2 rounded-card border px-3 py-2.5 text-base',
+              // A stop the reader chose is not an error, and must not look like
+              // one: the same box, in the page's own colours.
+              stopped
+                ? 'border-line bg-elevated text-muted'
+                : 'border-danger/30 bg-danger/5 text-danger',
+            )}
           >
-            <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+            {stopped ? (
+              <CircleStop size={14} className="mt-0.5 shrink-0" />
+            ) : (
+              <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+            )}
             <span className="min-w-0 flex-1">{failed}</span>
             {/* The retry lives here too, not only under the question. This is
                 where the reader's eye already is when the turn fails, and the
@@ -574,7 +599,10 @@ export function MessageItem({
                 did that just cost me" is not a detail you go looking for. */}
             {message.usage && user?.preferences.showUsage !== false && (
               <span className="ml-1 text-xs">
-                {model?.label ?? message.model} · {formatTokens(message.usage.inputTokens)} in ·{' '}
+                {model?.label ?? message.model} ·{' '}
+                {/* An estimate is said to be one. */}
+                {message.usage.estimated ? '≈ ' : ''}
+                {formatTokens(message.usage.inputTokens)} in ·{' '}
                 {formatTokens(message.usage.outputTokens)} out ·{' '}
                 {message.usage.credits > 0 ? (
                   t('{n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())
