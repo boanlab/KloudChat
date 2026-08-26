@@ -650,7 +650,7 @@ export function Composer({
   const {
     send,
     stopStreaming,
-    streaming,
+    running,
     skills,
     availableTools,
     sessions,
@@ -804,6 +804,8 @@ export function Composer({
   const jobRunning = jobs.some(
     (j) => j.sessionId === sessionId && (j.status === 'running' || j.status === 'queued'),
   )
+  // This conversation's own turn. Another session generating is its business.
+  const streaming = !!sessionId && !!running[sessionId]
   const busy = isMedia ? jobRunning : streaming
 
   const deliverChat = async (
@@ -1650,7 +1652,7 @@ export function Composer({
               />
             )}
             <button
-              onClick={streaming ? stopStreaming : submit}
+              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : submit}
               disabled={(!value.trim() && !streaming) || modelSelectionPending}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',

@@ -30,7 +30,7 @@ export function RetryActions({
   const t = useT()
   const send = useStore((s) => s.send)
   const models = useStore((s) => s.models)
-  const streaming = useStore((s) => s.streaming)
+  const streaming = useStore((s) => !!s.running[sessionId])
   const sessions = useStore((s) => s.sessions)
   const currentId = sessions.find((s) => s.id === sessionId)?.model
 

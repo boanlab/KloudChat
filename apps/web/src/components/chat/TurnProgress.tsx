@@ -70,7 +70,7 @@ export function TurnProgress({
       )}
       <span className="text-sm text-faint tabular-nums">{clock(elapsed)}</span>
       <button
-        onClick={stopStreaming}
+        onClick={() => stopStreaming(sessionId)}
         className="flex items-center gap-1 rounded-control px-1.5 py-0.5 text-sm text-faint transition-colors hover:bg-elevated hover:text-fg"
       >
         <Square size={9} fill="currentColor" />
