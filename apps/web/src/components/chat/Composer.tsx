@@ -344,6 +344,21 @@ let carriedComposer: {
   webSearch: boolean
 } | null = null
 
+/**
+ * What is typed and not yet sent, by the conversation it was typed in — or by
+ * the surface, on the home screen, where there is no conversation yet.
+ *
+ * Two opposite losses came from the sentence living in component state alone.
+ * The home screen remounts the composer on a tab change, so a draft written
+ * under 보고서 was gone the moment 슬라이드 was clicked. The conversation
+ * screen keeps one composer mounted across `/s/A` → `/s/B`, so a draft written
+ * in A turned up in B's box. Module scope outlives the remount, and the key
+ * keeps each sentence with the place it was typed. In memory only: a reload
+ * starts clean, the same as before.
+ */
+const drafts = new Map<string, string>()
+const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
+
 export function Composer({
   sessionId,
   kind,
@@ -364,9 +379,24 @@ export function Composer({
   //: handed no tools at all, so a lit globe there promised a search that was
   //: never going to happen — the same reason the two media surfaces hide it.
   const canWebSearch = kind === 'chat'
-  const [value, setValue] = useState('')
+  const draftKey = draftKeyFor(sessionId, kind)
+  const [value, setValue] = useState(() => drafts.get(draftKey) ?? '')
   const liveValue = useRef(value)
   liveValue.current = value
+  const draftKeyRef = useRef(draftKey)
+  useEffect(() => {
+    if (draftKeyRef.current !== draftKey) {
+      // The conversation changed under a mounted composer. What was typed has
+      // already been kept under the old key, keystroke by keystroke; this
+      // one's own draft comes up in its place — usually nothing.
+      draftKeyRef.current = draftKey
+      const own = drafts.get(draftKey) ?? ''
+      liveValue.current = own
+      setValue(own)
+      return
+    }
+    drafts.set(draftKey, value)
+  }, [draftKey, value])
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
   //: idle → 'recording' while the mic is open, 'working' while Whisper reads it.
