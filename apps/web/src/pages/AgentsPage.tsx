@@ -1,5 +1,5 @@
 import { Bot, Check, Download, Globe, Lock, Play, Plus, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { PageBody } from '@/components/layout/AppShell'
@@ -106,6 +106,16 @@ export function AgentsPage() {
   const [confirming, setConfirming] = useState<Agent | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  /**
+   * Said under the field, not by a greyed-out button. 저장 used to be
+   * disabled while the name was empty, at 45% opacity and with no word about
+   * why — pressing it did nothing, which read as the save failing silently.
+   */
+  const [nameError, setNameError] = useState<{ draftId: string; text: string } | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  // Keyed to the draft it was said on, so a new draft starts clean without an
+  // effect to clear it.
+  const nameNotice = draft && nameError?.draftId === draft.id ? nameError.text : null
 
   // The store is what makes one person's agent reusable by the workspace.
   // Your own shared agents are not in it: there is nothing to import from
@@ -408,9 +418,14 @@ export function AgentsPage() {
             <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
             <Button
               variant="primary"
-              disabled={saving || !draft?.name.trim() || slugTaken}
+              disabled={saving || slugTaken}
               onClick={async () => {
                 if (!draft) return
+                if (!draft.name.trim()) {
+                  setNameError({ draftId: draft.id, text: t('이름을 입력하세요.') })
+                  nameRef.current?.focus()
+                  return
+                }
                 setSaving(true)
                 setSaveError(null)
                 try {
@@ -449,14 +464,27 @@ export function AgentsPage() {
               </p>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('이름')}>
-                <Input
-                  value={draft.name}
-                  maxLength={NAME_LIMIT}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder={t('예: 기술 검토 도우미')}
-                />
-              </Field>
+              <div>
+                <Field label={t('이름')} hint={t('필수 항목입니다.')}>
+                  <Input
+                    ref={nameRef}
+                    value={draft.name}
+                    maxLength={NAME_LIMIT}
+                    aria-required
+                    aria-invalid={nameNotice ? true : undefined}
+                    onChange={(e) => {
+                      setNameError(null)
+                      setDraft({ ...draft, name: e.target.value })
+                    }}
+                    placeholder={t('예: 기술 검토 도우미')}
+                  />
+                </Field>
+                {nameNotice && (
+                  <p role="alert" className="mt-1 text-sm text-danger">
+                    {nameNotice}
+                  </p>
+                )}
+              </div>
               <div>
                 <Field label={t('슬러그')} hint={t('@슬러그로 호출합니다.')}>
                   <Input

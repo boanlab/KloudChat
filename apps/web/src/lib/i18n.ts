@@ -12,6 +12,8 @@ const EN: Record<string, string> = {
   // ── common ──────────────────────────────────────────────────────────
   '저장': 'Save',
   '취소': 'Cancel',
+  '이름을 입력하세요.': 'Enter a name.',
+  '필수 항목입니다.': 'Required.',
   '삭제': 'Delete',
   '닫기': 'Close',
   '확인': 'Confirm',
