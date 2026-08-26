@@ -97,14 +97,16 @@ export function CompareView({
               ) : (
                 <span className="text-xs text-faint">{t('집계 중')}</span>
               )}
+              {/* The chosen column's button is a statement, not a pending state:
+                  이어가는 중 read as a spinner that never resolved. */}
               <Button
                 size="sm"
                 variant={v.chosen ? 'primary' : 'secondary'}
                 className="ml-auto"
-                disabled={v.status !== 'done'}
+                disabled={v.status !== 'done' || v.chosen}
                 onClick={() => chooseVariant(sessionId, messageId, v.model)}
               >
-                {v.chosen ? t('이어가는 중') : t('이 답변으로 계속')}
+                {v.chosen ? t('이 답변으로 이어갑니다') : t('이 답변으로 계속')}
               </Button>
             </footer>
           </div>
