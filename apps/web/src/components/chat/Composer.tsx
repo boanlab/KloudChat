@@ -122,7 +122,7 @@ function OptionGroup<T extends string | number>({
       )}
     >
       {options.map((o) => (
-        <MenuItem key={String(o)} onClick={() => onChange(o)} hint={o === value ? '✓' : undefined}>
+        <MenuItem key={String(o)} onClick={() => onChange(o)} checked={o === value}>
           {format ? format(o) : String(o)}
         </MenuItem>
       ))}
@@ -1406,18 +1406,18 @@ export function Composer({
                     key={s.id}
                     checked={selected}
                     disabled={!!unavailable || limitReached}
+                    // The figure stays once the row is chosen — that is when it
+                    // is being spent. The mark is drawn by the row itself.
                     hint={
-                      selected
-                        ? '✓'
-                        : unavailable
-                          ? unavailable
-                          : limitReached
-                            ? t('최대 3개까지 선택할 수 있습니다.')
-                            : recommended.has(s.id)
-                              ? t('프로젝트 추천')
-                              : t('약 {n} 토큰').replace(
-                                  '{n}',
-                                  s.estimatedTokens.toLocaleString(),
+                      unavailable
+                        ? unavailable
+                        : limitReached
+                          ? t('최대 3개까지 선택할 수 있습니다.')
+                          : recommended.has(s.id)
+                            ? t('프로젝트 추천')
+                            : t('약 {n} 토큰').replace(
+                                '{n}',
+                                s.estimatedTokens.toLocaleString(),
                                 )
                     }
                     onClick={() => {
@@ -1474,7 +1474,8 @@ export function Composer({
                 .map((m) => (
                   <MenuItem
                     key={m.id}
-                    hint={compareModels.includes(m.id) ? '✓' : `${m.creditCost}`}
+                    checked={compareModels.includes(m.id)}
+                    hint={`${m.creditCost}`}
                     onClick={() => toggleCompareModel(m.id)}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
