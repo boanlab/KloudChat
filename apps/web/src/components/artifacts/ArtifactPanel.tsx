@@ -2,6 +2,7 @@ import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } fr
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
+import { NoPicturesYet } from '@/components/artifacts/NoPicturesYet'
 import { PanelControls } from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
@@ -399,7 +400,9 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
     })
     .slice(0, 24)
 
-  if (blocks.length === 0 || pictures.length === 0) return null
+  // Only the absence of somewhere to put one is a reason to draw nothing;
+  // having no pictures is a thing to say, not a thing to hide.
+  if (blocks.length === 0) return null
 
   const insert = async () => {
     if (target === null || !picked) return
@@ -465,6 +468,7 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
           </>
         }
       >
+        {pictures.length === 0 && <NoPicturesYet />}
         <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
           {pictures.map((picture) => (
             <button
@@ -481,14 +485,16 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
             </button>
           ))}
         </div>
-        <div className="mt-3">
-          <Input
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            aria-label={t('설명')}
-            placeholder={t('그림 아래에 붙일 설명 (선택)')}
-          />
-        </div>
+        {pictures.length > 0 && (
+          <div className="mt-3">
+            <Input
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              aria-label={t('설명')}
+              placeholder={t('그림 아래에 붙일 설명 (선택)')}
+            />
+          </div>
+        )}
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
     </>
