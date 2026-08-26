@@ -700,7 +700,7 @@ export function AgentsPage() {
                               : 'cursor-not-allowed border-line text-faint opacity-60',
                         )}
                       >
-                        {tool.label}
+                        {t(tool.label)}
                         <span className="ml-1 font-mono text-2xs text-faint">
                           {tool.name}
                         </span>

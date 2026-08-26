@@ -178,7 +178,9 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
     """
     available = {tool.name: tool for tool in await build_tools(db, user, web_search=True)}
     known: dict[str, tuple[str, bool]] = {
-        tool.name: (tool.label or tool.name, tool.name in available)
+        # The noun, not the progress label: this list is what a permission
+        # screen shows, and nothing on it is running.
+        tool.name: (tool.title or tool.label or tool.name, tool.name in available)
         for tool in (
             WEB_SEARCH,
             FETCH_URL,

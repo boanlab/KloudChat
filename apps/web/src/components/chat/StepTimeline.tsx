@@ -44,6 +44,7 @@ const COLLAPSED_NAMES = 3
 /** One checklist line. Finished work is struck through: the shape of the run
  *  stays readable without every line still being worth reading. */
 function StepRow({ step, live }: { step: Step; live: boolean }) {
+  const t = useT()
   const Icon = icons[step.type]
   const running = step.status === 'running'
   return (
@@ -78,7 +79,7 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
             running && (live ? 'font-medium text-fg' : 'text-fg'),
           )}
         >
-          {step.label}
+          {t(step.label)}
           {step.progress && (
             <span className="ml-1 tabular-nums text-faint no-underline">
               ({step.progress.current}/{step.progress.total})
@@ -150,13 +151,13 @@ export function StepTimeline({
         {/* Collapsed: the step name is the status line. Expanded: that line is
             already the highlighted row below, so name the kind of work. */}
         <span className="min-w-0 truncate text-fg">
-          {expanded ? t(kindLabel[head.type]) : head.label}
+          {expanded ? t(kindLabel[head.type]) : t(head.label)}
         </span>
         {/* The rest of the run, named rather than counted: "3단계" says a turn
             did something; the names say it searched the web. */}
         {!expanded && rest.length > 0 && (
           <span className="min-w-0 truncate text-faint">
-            · {rest.slice(0, COLLAPSED_NAMES).map((s) => s.label).join(' · ')}
+            · {rest.slice(0, COLLAPSED_NAMES).map((s) => t(s.label)).join(' · ')}
             {rest.length > COLLAPSED_NAMES &&
               ` · ${t('외 {n}개').replace('{n}', String(rest.length - COLLAPSED_NAMES))}`}
           </span>
@@ -175,8 +176,12 @@ export function StepTimeline({
           {live && left !== null && left > 0
             ? t('{n}개 남음').replace('{n}', String(left))
             : live
-              ? t('{n}단계 완료').replace('{n}', String(done))
-              : t('{n}단계').replace('{n}', String(steps.length))}
+              ? done === 1
+                ? t('1단계 완료')
+                : t('{n}단계 완료').replace('{n}', String(done))
+              : steps.length === 1
+                ? t('1단계')
+                : t('{n}단계').replace('{n}', String(steps.length))}
         </span>
       </button>
       {expanded && (
