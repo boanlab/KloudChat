@@ -208,174 +208,180 @@ export function AdminUsersPage() {
         </div>
 
         <Card className="overflow-hidden">
-          <table className="w-full text-base">
-            <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
-              <tr>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('사용자')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('상태')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('이번 달 크레딧')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{t('마지막 활동')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{t('관리')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.length === 0 && (
-                <tr className="border-t border-line">
-                  <td colSpan={5} className="px-4 py-10 text-center text-base text-faint">
-                    {usersLoading ? (
-                      <Loader2 size={16} className="mx-auto animate-spin" />
-                    ) : users.length === 0 ? (
-                      t('사용자를 불러오지 못했습니다.')
-                    ) : (
-                      t('조건에 맞는 사용자가 없습니다.')
-                    )}
-                  </td>
+          {/* Scrolls inside its own box rather than being clipped by it. The
+              controls that approve, limit and suspend an account are in the last
+              column, so a card that hides the overflow is a screen where they
+              cannot be reached at all. Same shape as settings/access. */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-base">
+              <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-semibold">{t('사용자')}</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">{t('상태')}</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">{t('이번 달 크레딧')}</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">{t('마지막 활동')}</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">{t('관리')}</th>
                 </tr>
-              )}
-              {visible.map((u) => (
-                <tr key={u.id} className="border-t border-line">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
-                        style={{ background: u.avatarColor }}
-                      >
-                        {u.name[0]}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-1.5 font-medium">
-                          {u.name}
-                          {u.role === 'admin' && (
-                            <Badge tone="accent">
-                              <Shield size={10} />
-                              {t('관리자')}
-                            </Badge>
-                          )}
-                        </p>
-                        <p className="truncate text-xs text-faint">{u.email}</p>
-                        {/* Whether the proxy can tell this person's calls apart
-                            from everyone else's. No key means their turns fall
-                            back to the shared master key and land unattributed. */}
-                        <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
-                          <KeyRound size={9} />
-                          {u.litellmKeyPreview ? (
-                            <span className="font-mono">{u.litellmKeyPreview}</span>
-                          ) : (
-                            <span className="text-warn">{t('전용 키 없음')}</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone={statusTone[u.status]}>{t(statusLabel[u.status])}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <CreditBar user={u} />
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted">
-                    {relativeTime(u.lastActiveAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1.5">
-                      {u.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => approveUser(u.id, PLANS[0].credits))}
-                        >
-                          {busy.includes(u.id) ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Check size={13} />
-                          )}
-                          {t('승인')}
-                        </Button>
-                      )}
-                      {u.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => rejectUser(u.id))}
-                        >
-                          <X size={13} />
-                          {t('반려')}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setEditing(u)
-                          setDraftCredits(String(u.monthlyCredits))
-                        }}
-                      >
-                        {t('크레딧')}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('{name} 모델 제한').replace('{name}', u.name)}
-                        title={t('이 계정이 쓸 수 있는 모델을 제한합니다')}
-                        disabled={busy.includes(u.id)}
-                        onClick={() => setRestricting(u)}
-                      >
-                        <SlidersHorizontal size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('계정 삭제')}
-                        title={t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')}
-                        disabled={busy.includes(u.id) || u.id === user?.id}
-                        onClick={() => setDeleting(u)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={u.litellmKeyPreview ? t('LiteLLM 키 재발급') : t('LiteLLM 키 발급')}
-                        title={
-                          u.litellmKeyPreview
-                            ? t('이 사용자의 LiteLLM 키를 새로 발급하고 기존 키를 폐기합니다')
-                            : t('이 사용자의 전용 LiteLLM 키를 발급합니다')
-                        }
-                        disabled={busy.includes(u.id)}
-                        onClick={() => void run(u.id, () => rotateLitellmKey(u.id))}
-                      >
-                        <KeyRound size={14} />
-                      </Button>
-                      {u.status !== 'suspended' ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t('정지')}
-                          title={t('이 계정의 접속을 막습니다')}
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => suspendUser(u.id))}
-                        >
-                          <UserX size={14} />
-                        </Button>
+              </thead>
+              <tbody>
+                {visible.length === 0 && (
+                  <tr className="border-t border-line">
+                    <td colSpan={5} className="px-4 py-10 text-center text-base text-faint">
+                      {usersLoading ? (
+                        <Loader2 size={16} className="mx-auto animate-spin" />
+                      ) : users.length === 0 ? (
+                        t('사용자를 불러오지 못했습니다.')
                       ) : (
+                        t('조건에 맞는 사용자가 없습니다.')
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {visible.map((u) => (
+                  <tr key={u.id} className="border-t border-line">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
+                          style={{ background: u.avatarColor }}
+                        >
+                          {u.name[0]}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1.5 font-medium">
+                            {u.name}
+                            {u.role === 'admin' && (
+                              <Badge tone="accent">
+                                <Shield size={10} />
+                                {t('관리자')}
+                              </Badge>
+                            )}
+                          </p>
+                          <p className="truncate text-xs text-faint">{u.email}</p>
+                          {/* Whether the proxy can tell this person's calls apart
+                              from everyone else's. No key means their turns fall
+                              back to the shared master key and land unattributed. */}
+                          <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
+                            <KeyRound size={9} />
+                            {u.litellmKeyPreview ? (
+                              <span className="font-mono">{u.litellmKeyPreview}</span>
+                            ) : (
+                              <span className="text-warn">{t('전용 키 없음')}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={statusTone[u.status]}>{t(statusLabel[u.status])}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <CreditBar user={u} />
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted">
+                      {relativeTime(u.lastActiveAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        {u.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={busy.includes(u.id)}
+                            onClick={() => void run(u.id, () => approveUser(u.id, PLANS[0].credits))}
+                          >
+                            {busy.includes(u.id) ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Check size={13} />
+                            )}
+                            {t('승인')}
+                          </Button>
+                        )}
+                        {u.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={busy.includes(u.id)}
+                            onClick={() => void run(u.id, () => rejectUser(u.id))}
+                          >
+                            <X size={13} />
+                            {t('반려')}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setEditing(u)
+                            setDraftCredits(String(u.monthlyCredits))
+                          }}
+                        >
+                          {t('크레딧')}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={t('정지 해제')}
-                          title={t('다시 접속할 수 있게 합니다')}
+                          aria-label={t('{name} 모델 제한').replace('{name}', u.name)}
+                          title={t('이 계정이 쓸 수 있는 모델을 제한합니다')}
                           disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => reinstateUser(u.id))}
+                          onClick={() => setRestricting(u)}
                         >
-                          <RefreshCw size={14} />
+                          <SlidersHorizontal size={14} />
                         </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t('계정 삭제')}
+                          title={t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')}
+                          disabled={busy.includes(u.id) || u.id === user?.id}
+                          onClick={() => setDeleting(u)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={u.litellmKeyPreview ? t('LiteLLM 키 재발급') : t('LiteLLM 키 발급')}
+                          title={
+                            u.litellmKeyPreview
+                              ? t('이 사용자의 LiteLLM 키를 새로 발급하고 기존 키를 폐기합니다')
+                              : t('이 사용자의 전용 LiteLLM 키를 발급합니다')
+                          }
+                          disabled={busy.includes(u.id)}
+                          onClick={() => void run(u.id, () => rotateLitellmKey(u.id))}
+                        >
+                          <KeyRound size={14} />
+                        </Button>
+                        {u.status !== 'suspended' ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('정지')}
+                            title={t('이 계정의 접속을 막습니다')}
+                            disabled={busy.includes(u.id)}
+                            onClick={() => void run(u.id, () => suspendUser(u.id))}
+                          >
+                            <UserX size={14} />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('정지 해제')}
+                            title={t('다시 접속할 수 있게 합니다')}
+                            disabled={busy.includes(u.id)}
+                            onClick={() => void run(u.id, () => reinstateUser(u.id))}
+                          >
+                            <RefreshCw size={14} />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
         <ShowMore hidden={hidden} onMore={more} />
       </PageBody>

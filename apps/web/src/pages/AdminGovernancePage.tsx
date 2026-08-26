@@ -329,46 +329,52 @@ export function AdminGovernancePage() {
           </Card>
         ) : (
           <Card className="overflow-hidden">
-            <table className="w-full text-base">
-              <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('계정')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('대상')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {rows.map((e) => (
-                  <tr key={e.id} className="hover:bg-elevated">
-                    <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted">
-                      {formatDateTime(e.at)}
-                    </td>
-                    <td className="max-w-[220px] truncate px-4 py-2.5">{t(e.actor)}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge tone={SEVERITY[e.severity] ?? 'neutral'}>
-                        {t(ACTION_LABEL[e.action] ?? e.action)}
-                      </Badge>
-                      {e.detail && <span className="ml-2 text-xs text-faint">{e.detail}</span>}
-                    </td>
-                    <td className="max-w-[240px] truncate px-4 py-2.5 text-muted">{e.target}</td>
-                    {/* Address, place and browser in one cell: three columns
-                        of mostly-empty would push 행위 off a laptop screen,
-                        and these three are read together or not at all. */}
-                    <td className="px-4 py-2.5 text-xs whitespace-nowrap text-faint">
-                      <span className="font-mono tabular-nums">{e.ip || '—'}</span>
-                      {e.region && <span className="ml-2">{e.region}</span>}
-                      {browserName(e.userAgent) && (
-                        <span className="ml-2" title={e.userAgent}>
-                          {browserName(e.userAgent)}
-                        </span>
-                      )}
-                    </td>
+            {/* Scrolls inside its own box rather than being clipped by it. The
+                controls that approve, limit and suspend an account are in the last
+                column, so a card that hides the overflow is a screen where they
+                cannot be reached at all. Same shape as settings/access. */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-base">
+                <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
+                    <th className="px-4 py-2.5 font-medium">{t('계정')}</th>
+                    <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
+                    <th className="px-4 py-2.5 font-medium">{t('대상')}</th>
+                    <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {rows.map((e) => (
+                    <tr key={e.id} className="hover:bg-elevated">
+                      <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted">
+                        {formatDateTime(e.at)}
+                      </td>
+                      <td className="max-w-[220px] truncate px-4 py-2.5">{t(e.actor)}</td>
+                      <td className="px-4 py-2.5">
+                        <Badge tone={SEVERITY[e.severity] ?? 'neutral'}>
+                          {t(ACTION_LABEL[e.action] ?? e.action)}
+                        </Badge>
+                        {e.detail && <span className="ml-2 text-xs text-faint">{e.detail}</span>}
+                      </td>
+                      <td className="max-w-[240px] truncate px-4 py-2.5 text-muted">{e.target}</td>
+                      {/* Address, place and browser in one cell: three columns
+                          of mostly-empty would push 행위 off a laptop screen,
+                          and these three are read together or not at all. */}
+                      <td className="px-4 py-2.5 text-xs whitespace-nowrap text-faint">
+                        <span className="font-mono tabular-nums">{e.ip || '—'}</span>
+                        {e.region && <span className="ml-2">{e.region}</span>}
+                        {browserName(e.userAgent) && (
+                          <span className="ml-2" title={e.userAgent}>
+                            {browserName(e.userAgent)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
 
