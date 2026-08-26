@@ -59,6 +59,26 @@ def _since(days: int) -> datetime:
     return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def _every_day(since: datetime, days: int, rows) -> list[dict]:
+    """One entry per day of the window, in order, zeros where nothing happened.
+
+    `GROUP BY day` returns only the days with events, so a thirty-day window
+    with three busy days came back as three rows — and the chart drew three
+    wide bars with nothing to say which days they were or that twenty-seven
+    were empty. A day with no requests is a fact about the period, not a gap
+    in the data.
+    """
+    by_date = {day.date().isoformat(): (int(c), int(n)) for day, c, n in rows}
+    return [
+        {
+            "date": date,
+            "credits": by_date.get(date, (0, 0))[0],
+            "requests": by_date.get(date, (0, 0))[1],
+        }
+        for date in ((since + timedelta(days=i)).date().isoformat() for i in range(days))
+    ]
+
+
 #: Which model a ledger row paid. Every route writes it now; the fallback is
 #: for rows older than 0027 that migration 0032 could not recover, and it
 #: stops at the media reasons — a media session is one generator with one price
@@ -246,10 +266,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             # recorded a model at all.
             "otherCredits": int(other_credits),
         },
-        "daily": [
-            {"date": day.date().isoformat(), "credits": int(c), "requests": int(n)}
-            for day, c, n in daily
-        ],
+        "daily": _every_day(since, days, daily),
         "byModel": [
             {"model": m, "credits": int(c), "requests": int(n), "users": int(u)}
             for m, c, n, u in by_model
@@ -405,10 +422,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
             "used": int(cycle_used),
             "remaining": max(0, int(user.monthly_credits or 0) - int(cycle_used)),
         },
-        "daily": [
-            {"date": day.date().isoformat(), "credits": int(c), "requests": int(n)}
-            for day, c, n in daily
-        ],
+        "daily": _every_day(since, days, daily),
         "byModel": [
             {"model": m, "credits": int(c), "requests": int(n)} for m, c, n in by_model
         ],

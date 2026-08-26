@@ -181,7 +181,10 @@ export function AdminUsagePage() {
                     <div className="flex w-full flex-1 items-end">
                       <div
                         className="w-full rounded-t bg-accent"
-                        style={{ height: `${Math.max(2, (d.value / maxDaily) * 100)}%` }}
+                        // An empty day is an empty column: the server now sends
+                        // every day of the window, and a two-pixel stub would
+                        // read as a small number rather than none.
+                        style={{ height: d.value > 0 ? `${Math.max(3, (d.value / maxDaily) * 100)}%` : 0 }}
                         title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
                       />
                     </div>
