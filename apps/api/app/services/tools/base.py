@@ -23,6 +23,11 @@ class Tool:
     run: Callable[[dict[str, Any]], Awaitable[str]]
     #: Shown in the UI while the call is in flight, e.g. "searching the web".
     label: str
+    #: The tool's name as a noun, e.g. "web search" — what a permission list
+    #: and a finished step show. `label` used to serve both, so 도구 권한 read
+    #: as if everything were running and a finished row still said 검색 중.
+    #: Empty falls back to `label`, for tools built before this existed.
+    title: str = ""
     #: Read-only tools run unattended. Write tools are gated — see connectors.
     read_only: bool = True
     #: Where it came from, for the audit trail and the UI badge.
