@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   Input,
   LoadingState,
@@ -33,6 +34,9 @@ export function HistoryPage() {
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirmAll, setConfirmAll] = useState(false)
+  // 모든 대화 삭제 has always asked first; 선택 삭제 went straight to the
+  // request. Same finality, same question.
+  const [confirmPicked, setConfirmPicked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -132,7 +136,7 @@ export function HistoryPage() {
           variant="danger"
           disabled={busy || picked.size === 0}
           title={picked.size === 0 ? t('먼저 지울 대화를 고르세요') : undefined}
-          onClick={() => void removePicked()}
+          onClick={() => setConfirmPicked(true)}
         >
           <Trash2 size={14} />
           {t('선택 {n}개 삭제').replace('{n}', String(picked.size))}
@@ -197,6 +201,18 @@ export function HistoryPage() {
           })
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmPicked}
+        onClose={() => setConfirmPicked(false)}
+        onConfirm={() => void removePicked()}
+        title={t('대화 {n}개를 삭제할까요?').replace('{n}', String(picked.size))}
+        description={
+          alsoArtifacts
+            ? t('되돌릴 수 없습니다. 이 대화들이 만든 결과물도 함께 지워집니다.')
+            : t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')
+        }
+      />
 
       <Modal
         open={confirmAll}
