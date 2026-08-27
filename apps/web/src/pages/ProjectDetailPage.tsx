@@ -618,7 +618,7 @@ export function ProjectDetailPage() {
                     return (
                       <MenuItem
                         key={skill.id}
-                        hint={selected ? '✓' : undefined}
+                        checked={selected}
                         onClick={() =>
                           void updateProject(project.id, {
                             skillIds: selected
