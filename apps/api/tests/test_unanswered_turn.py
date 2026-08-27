@@ -211,6 +211,38 @@ async def test_an_ordinary_turn_marks_neither_row(monkeypatch) -> None:
     assert turn.question.failure is None
 
 
+@pytest.mark.asyncio
+async def test_done_names_the_stored_answer(monkeypatch) -> None:
+    """The browser's made-up id is not one the server knows.
+
+    A rating or a comparison's choice sent under it met a 404 until the session
+    was reopened, and the reload then showed the server's default rather than
+    the click. `done` carries the row's id so the tab can adopt it.
+    """
+    turn = _Turn()
+    chunks = await _drain(
+        turn,
+        monkeypatch,
+        [
+            {"type": "delta", "text": "지자체마다 다릅니다."},
+            {"type": "usage", "inputTokens": 12, "outputTokens": 8},
+        ],
+    )
+
+    (done,) = [chunk for chunk in chunks if '"type": "done"' in chunk]
+    assert turn.answer is not None
+    assert f'"messageId": "{turn.answer.id}"' in done
+
+
+@pytest.mark.asyncio
+async def test_done_names_nothing_when_nothing_was_stored(monkeypatch) -> None:
+    turn = _Turn()
+    chunks = await _drain(turn, monkeypatch, [chat_service.ChatStreamError("upstream 502")])
+
+    (done,) = [chunk for chunk in chunks if '"type": "done"' in chunk]
+    assert "messageId" not in done
+
+
 # ── 중단 ───────────────────────────────────────────────────────────────
 
 
