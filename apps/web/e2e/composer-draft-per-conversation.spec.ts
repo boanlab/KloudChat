@@ -31,7 +31,7 @@ test('대화를 오가도 초안은 자기 대화에만 남는다', async ({ pag
 
   const stamp = Date.now().toString(36)
   const titles = [`초안 A ${stamp}`, `초안 B ${stamp}`]
-  await page.evaluate(async (names) => {
+  const [idA] = await page.evaluate(async (names) => {
     const login = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -42,18 +42,23 @@ test('대화를 오가도 초안은 자기 대화에만 남는다', async ({ pag
     })
     const { accessToken } = await login.json()
     const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` }
+    const ids: string[] = []
     for (const title of names) {
       const r = await fetch('/api/sessions', { method: 'POST', headers: H, body: JSON.stringify({ kind: 'chat' }) })
       const { id } = await r.json()
+      ids.push(id)
       await fetch(`/api/sessions/${id}`, { method: 'PATCH', headers: H, body: JSON.stringify({ title }) })
     }
+    return ids
   }, titles)
 
-  await page.goto('/')
-  await openSidebar(page)
-  await page.locator('aside').getByText(titles[0]).first().click()
-  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/)
+  // Opened by URL, not by the sidebar from 홈: the session screen is a lazy
+  // route, and for the first ~100ms after the URL changes the home screen —
+  // and its composer — is still what is mounted. Typing into that box put the
+  // draft under the home key, and the test read a bug the app does not have.
+  await page.goto(`/s/${idA}`)
   const composer = page.getByLabel('프롬프트 입력')
+  await expect(composer).toBeVisible()
   await composer.fill('A에서 쓰던 문장')
 
   // A route change, not a reload: the composer stays mounted, which is exactly
