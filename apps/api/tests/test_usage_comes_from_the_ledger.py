@@ -232,7 +232,7 @@ async def test_pictures_and_clips_are_where_the_money_went_not_other(db) -> None
         "image": 12_612,
         "av": 84_000,
     }
-    assert sorted(row["credits"] for row in report["daily"]) == [12_612, 84_000]
+    assert sorted(row["credits"] for row in report["daily"] if row["credits"]) == [12_612, 84_000]
 
 
 async def test_the_parts_add_up_to_the_total(db) -> None:
@@ -335,7 +335,7 @@ async def test_a_free_month_still_says_what_ran(db) -> None:
     assert report["byModel"] == [
         {"model": "local/gemma-4-26b-a4b", "credits": 0, "requests": 3}
     ]
-    assert [row["requests"] for row in report["daily"]] == [1, 2]
+    assert [row["requests"] for row in report["daily"] if row["requests"]] == [1, 2]
 
 
 async def test_a_priced_turn_is_counted_once(db) -> None:
@@ -386,3 +386,25 @@ async def test_settle_records_which_model_took_the_money(db) -> None:
 
     row = (await db.exec(sa.select(CreditLedger))).one()[0]
     assert (row.model, row.delta, row.reason) == ("vendor/quality", -900, "chat.completion")
+
+
+async def test_every_day_of_the_window_is_on_the_chart(db) -> None:
+    """A day with no requests is a fact about the period, not a gap.
+
+    `GROUP BY day` returned only the busy days, so a thirty-day window with
+    two of them came back as two rows and the chart drew two wide bars with
+    nothing to say which days they were.
+    """
+    user = await _account(db)
+    chat = await _session_row(db, user, kind="chat", model="local/gemma-4-26b-a4b")
+    for day in (0, 3):
+        await _turn(db, chat, model="local/gemma-4-26b-a4b", when=_at(day))
+
+    report = await usage_router.my_usage(user, db, days=7)
+
+    days = report["daily"]
+    assert len(days) == 7
+    dates = [row["date"] for row in days]
+    assert dates == sorted(dates)
+    assert dates[-1] == datetime.now(UTC).date().isoformat()
+    assert [row["requests"] for row in days] == [0, 0, 0, 1, 0, 0, 1]
