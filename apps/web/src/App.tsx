@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { Suspense, lazy, useEffect } from 'react'
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom'
+import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import { kindOrder } from '@/lib/kinds'
 import { HomePage } from '@/pages/HomePage'
@@ -89,10 +90,16 @@ function Authenticated() {
           <Route path="agent-setup" element={<AgentSetupPage />} />
           {/* Tabs live inside these pages, so the parent needs the splat. */}
           <Route path="settings/*" element={<SettingsPage />} />
-          <Route path="admin/users" element={<AdminUsersPage />} />
-          <Route path="admin/usage" element={<AdminUsagePage />} />
-          <Route path="admin/system/*" element={<AdminSystemPage />} />
-          <Route path="admin/governance" element={<AdminGovernancePage />} />
+          {/* One parent owns the role check so a new /admin route cannot be
+              added beside an existing page and accidentally skip it. */}
+          <Route path="admin" element={<RoleRoute roles={['admin']} />}>
+            <Route index element={<Navigate to="/admin/users" replace />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="usage" element={<AdminUsagePage />} />
+            <Route path="system/*" element={<AdminSystemPage />} />
+            <Route path="governance" element={<AdminGovernancePage />} />
+            <Route path="*" element={<Navigate to="/admin/users" replace />} />
+          </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -123,4 +130,3 @@ export default function App() {
     </Router>
   )
 }
-

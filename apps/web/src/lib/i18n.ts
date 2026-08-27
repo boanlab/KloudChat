@@ -52,6 +52,10 @@ const EN: Record<string, string> = {
   '시스템': 'System',
   '사용자': 'Users',
   '거버넌스': 'Governance',
+  '접근 제한': 'Access denied',
+  '이 페이지에 접근할 수 없습니다.': 'You cannot access this page.',
+  '관리자 권한이 필요한 화면입니다. 다른 작업은 계속 사용할 수 있습니다.':
+    'This page requires administrator access. You can continue using the rest of the workspace.',
   '아티팩트': 'Artifacts',
   '대화 기록': 'History',
   '워크스페이스': 'Workspace',
