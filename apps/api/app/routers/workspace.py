@@ -111,6 +111,24 @@ def _slug(name: str) -> str:
     return base[:60] or "item"
 
 
+async def _claim_slug(
+    db: DbSession, owner_id: str, wanted: str, *, except_id: str | None = None
+) -> str:
+    """The slug an agent may have: slugified, and no other agent of this owner's.
+
+    A handle that four agents share is not a handle. Nothing checked it — not
+    the column, not the route, not the form — and the form's value was not even
+    sent, so 회의록 정리 typed four times was @회의록-정리 four times. The
+    database now refuses the duplicate too (0038); this is the check that turns
+    that refusal into a sentence before the write.
+    """
+    slug = _slug(wanted)
+    rows = (await db.exec(select(Agent).where(Agent.owner_id == owner_id))).all()
+    if any(row.slug == slug and row.id != except_id for row in rows):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="slug_taken")
+    return slug
+
+
 async def _own(db: DbSession, model, owner_field: str, user: User, item_id: str):
     row = await db.get(model, item_id)
     if row is None or getattr(row, owner_field) != user.id:
@@ -1612,7 +1630,8 @@ async def list_agents(user: CurrentUser, db: DbSession):
 async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_tool_names(db, user, payload.tools)
-    agent = Agent(owner_id=user.id, slug=_slug(payload.name), **payload.model_dump())
+    slug = await _claim_slug(db, user.id, payload.slug or payload.name)
+    agent = Agent(owner_id=user.id, slug=slug, **payload.model_dump(exclude={"slug"}))
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
@@ -1735,9 +1754,13 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             changes["tools"],
             grandfathered=set(agent.tools or []),
         )
+    wanted = changes.pop("slug", None)
     for field, value in changes.items():
         setattr(agent, field, value)
-    agent.slug = _slug(agent.name)
+    # The typed handle wins; a rename with the field left blank re-derives it
+    # from the new name, as before. Either way it is checked against the rest
+    # of this owner's agents, this one excepted.
+    agent.slug = await _claim_slug(db, user.id, wanted or agent.name, except_id=agent.id)
     agent.updated_at = utcnow()
     db.add(agent)
     await db.commit()

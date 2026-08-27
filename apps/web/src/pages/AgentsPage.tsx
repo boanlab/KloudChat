@@ -25,7 +25,7 @@ import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Agent } from '@/types'
-import { errorMessage } from '@/lib/api'
+import { errorCode, errorMessage } from '@/lib/api'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
@@ -58,6 +58,20 @@ const emptyAgent = (model: string): Agent => ({
   updatedAt: new Date().toISOString(),
 })
 
+/**
+ * The server's slug rule (`_slug` in routers/workspace.py), mirrored so the
+ * form can show the handle a name will get and catch a collision before the
+ * round trip. The server still decides.
+ */
+function slugify(text: string): string {
+  const base = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+  return base.slice(0, 60) || 'item'
+}
+
 export function AgentsPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -80,6 +94,13 @@ export function AgentsPage() {
     void loadWorkspace()
   }, [loadWorkspace])
   const [draft, setDraft] = useState<Agent | null>(null)
+  /**
+   * The handle this draft will be stored under, and whether another of the
+   * person's agents already holds it. The server has the last word (409
+   * `slug_taken`); this says so before 저장 is pressed.
+   */
+  const draftSlug = draft ? slugify(draft.slug || draft.name) : ''
+  const slugTaken = !!draft && agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const [tab, setTab] = useState<'mine' | 'store'>('mine')
   //: 삭제는 되돌릴 수 없고, 시스템 프롬프트는 누군가 써 둔 것이다.
   const [confirming, setConfirming] = useState<Agent | null>(null)
@@ -387,7 +408,7 @@ export function AgentsPage() {
             <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
             <Button
               variant="primary"
-              disabled={saving || !draft?.name.trim()}
+              disabled={saving || !draft?.name.trim() || slugTaken}
               onClick={async () => {
                 if (!draft) return
                 setSaving(true)
@@ -395,14 +416,18 @@ export function AgentsPage() {
                 try {
                   await upsertAgent({
                     ...draft,
-                    slug: draft.slug || draft.name.toLowerCase().replace(/\s+/g, '-'),
+                    slug: draftSlug,
                     updatedAt: new Date().toISOString(),
                   })
                   setDraft(null)
                 } catch (err) {
                   // The form keeps what was typed. Closing it and saying
                   // nothing is how a system prompt somebody wrote disappears.
-                  setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+                  setSaveError(
+                    errorCode(err) === 'slug_taken'
+                      ? t('이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.')
+                      : errorMessage(err, t('저장하지 못했습니다.')),
+                  )
                 } finally {
                   setSaving(false)
                 }
@@ -432,14 +457,27 @@ export function AgentsPage() {
                   placeholder={t('예: 기술 검토 도우미')}
                 />
               </Field>
-              <Field label={t('슬러그')} hint={t('@슬러그로 호출합니다.')}>
-                <Input
-                  value={draft.slug}
-                  onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
-                  placeholder="paper-reviewer"
-                  className="font-mono"
-                />
-              </Field>
+              <div>
+                <Field label={t('슬러그')} hint={t('@슬러그로 호출합니다.')}>
+                  <Input
+                    value={draft.slug}
+                    aria-invalid={slugTaken || undefined}
+                    onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                    placeholder="paper-reviewer"
+                    className="font-mono"
+                  />
+                </Field>
+                {slugTaken ? (
+                  <p role="alert" className="mt-1 text-sm text-danger">
+                    {t('이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.')}
+                  </p>
+                ) : (
+                  draftSlug &&
+                  draftSlug !== draft.slug && (
+                    <p className="mt-1 font-mono text-sm text-faint">@{draftSlug}</p>
+                  )
+                )}
+              </div>
             </div>
 
             <Field label={t('설명')}>

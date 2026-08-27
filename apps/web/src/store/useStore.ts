@@ -2436,6 +2436,8 @@ export const useStore = create<State>((set, get) => ({
     touchWorkspace()
     const payload = {
       name: a.name,
+      // Carried at last: the form had a slug field whose value went nowhere.
+      slug: a.slug,
       description: a.description,
       model: a.model,
       systemPrompt: a.systemPrompt,

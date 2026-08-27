@@ -695,6 +695,7 @@ const EN: Record<string, string> = {
   '1k당 {in} / {out}': '{in} / {out} per 1k',
   '1k당 입력 {in} · 출력 {out}': 'Per 1k: {in} in · {out} out',
   '@슬러그로 호출합니다.': 'Called with @slug.',
+  '이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.': 'That slug is already in use. Pick another.',
   'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
