@@ -1829,6 +1829,25 @@ async def send_message(
 ):
     session = await _owned(db, user, session_id)
 
+    #: The question being run again in place, when 다시 시도 sent one. Its stored
+    #: words and attachments replace whatever the client echoed, so the turn
+    #: that reran is the turn that failed.
+    retry_of: Message | None = None
+    if payload.retry_of:
+        retry_of = await db.get(Message, payload.retry_of)
+        if retry_of is None or retry_of.session_id != session.id or retry_of.role is not Role.user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="retry_target_not_found"
+            )
+        payload = payload.model_copy(
+            update={
+                "content": retry_of.content,
+                "attachments": payload.attachments
+                or [a["id"] for a in (retry_of.attachments or []) if a.get("id")]
+                or None,
+            }
+        )
+
     # A document surface no longer writes on the first request. It stops to show
     # what it intends to write, and stops earlier still to ask when the material
     # cannot carry the request; `session.pending` is where that half-finished
@@ -1960,6 +1979,23 @@ async def send_message(
     requested_model = model
 
     history = await _history(db, session_id)
+    #: What a retry replaces: the failed reply, if any, under the question. The
+    #: question itself is reused, so neither may stay in the history the model
+    #: sees — it would meet the same sentence twice.
+    superseded: list[Message] = []
+    if retry_of is not None:
+        at = next((i for i, m in enumerate(history) if m.id == retry_of.id), None)
+        if at is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="retry_target_not_found"
+            )
+        # Only the latest question runs again in place. A later question means
+        # the conversation moved on, and rerunning an earlier turn would have to
+        # erase everything since to keep the transcript straight.
+        if any(m.role is Role.user for m in history[at + 1 :]):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="retry_not_latest")
+        superseded = history[at + 1 :]
+        history = history[:at]
 
     # Stored as id + name + readability: what the transcript renders later,
     # without a join per message. Resolve ownership before privacy assembly.
@@ -2328,18 +2364,30 @@ async def send_message(
         stored.session_id = session.id
         db.add(stored)
 
-    user_message = Message(
-        session_id=session.id,
-        role=Role.user,
-        # What they typed, not the merge. A reply to a proposal carries the
-        # original request and every answer so far folded in behind it, and
-        # putting that blob in the transcript would attribute to somebody a
-        # paragraph they never wrote.
-        content=typed_content if pending else stored_content,
-        attachments=attachment_meta,
-        routing=privacy_resolution.routing if privacy_resolution else document_routing,
-        started_from=workspace.started_from,
-    )
+    if retry_of is not None:
+        # The same question, run again: one row in the transcript, the failed
+        # reply under it gone, the mark that said nothing came cleared so the
+        # new answer is not born labelled.
+        for row in superseded:
+            await db.delete(row)
+        user_message = retry_of
+        user_message.failure = None
+        user_message.routing = (
+            privacy_resolution.routing if privacy_resolution else document_routing
+        )
+    else:
+        user_message = Message(
+            session_id=session.id,
+            role=Role.user,
+            # What they typed, not the merge. A reply to a proposal carries the
+            # original request and every answer so far folded in behind it, and
+            # putting that blob in the transcript would attribute to somebody a
+            # paragraph they never wrote.
+            content=typed_content if pending else stored_content,
+            attachments=attachment_meta,
+            routing=privacy_resolution.routing if privacy_resolution else document_routing,
+            started_from=workspace.started_from,
+        )
     db.add(user_message)
     # A strict privacy route and SendMessage.model are turn-only. An Auto
     # session's persisted model is its ceiling, changed through PATCH.
