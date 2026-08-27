@@ -1352,6 +1352,7 @@ const EN: Record<string, string> = {
   '기타': 'Other',
   '답변을 받지 못했습니다.': 'No answer came back.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
+  '여기서 멈췄습니다.': 'Stopped here.',
 
   // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
   '이미지 {n}장': '{n} pictures',

@@ -80,6 +80,7 @@ from app.services import auto_memory as auto_memory_service
 from app.services import chat as chat_service
 from app.services import deck as deck_service
 from app.services import design as design_service
+from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
@@ -2898,6 +2899,19 @@ async def _run_turn(
         yield chat_service.sse({"type": "error", "message": "요청 처리 중 오류가 발생했습니다."})
 
     content = "".join(text_parts)
+    if failed == "stopped" and not any(usage.values()):
+        # The proxy reports usage on its final chunk, and a stopped stream never
+        # reaches it — so a turn somebody cut off used to settle as 0 in · 0 out
+        # and cost nothing, while the tokens had been spent. What went up and
+        # what came down are both in hand; an estimate from them, marked as one,
+        # is the honest figure. Left alone when a completed hop already reported.
+        usage = {
+            "inputTokens": file_service.estimate_tokens(
+                "".join(str(m.get("content") or "") for m in messages)
+            ),
+            "outputTokens": file_service.estimate_tokens(content),
+            "estimated": True,
+        }
     stored_content = masker(content)[0] if mask_at_rest or tool_output_findings else content
     protect_persistence = mask_at_rest or bool(tool_output_findings)
     # What the guard took out of the answer. The browser keeps the streamed
@@ -2972,8 +2986,15 @@ async def _run_turn(
                     model=stored_actual_model,
                     routing=stored_routing,
                     # Half an answer is worth keeping, and worth labelling: the browser says the
-                    # stream broke, and storing it says the same thing tomorrow.
-                    failure=TurnFailure.interrupted if failed else None,
+                    # stream broke, and storing it says the same thing tomorrow. Which label
+                    # depends on who ended it — a pressed 중단 is not a broken stream.
+                    failure=(
+                        TurnFailure.stopped
+                        if failed == "stopped"
+                        else TurnFailure.interrupted
+                        if failed
+                        else None
+                    ),
                 )
                 db.add(answer)
                 answer_id = answer.id
@@ -2995,9 +3016,7 @@ async def _run_turn(
                     # unanswered: 답이 오지 않았습니다 under a prompt somebody
                     # cut off themselves reads as the product failing.
                     question.failure = (
-                        TurnFailure.interrupted
-                        if failed == "stopped"
-                        else TurnFailure.no_answer
+                        TurnFailure.stopped if failed == "stopped" else TurnFailure.no_answer
                     )
                     db.add(question)
             # Handoffs, written in the same transaction as the answer that
