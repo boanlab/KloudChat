@@ -84,7 +84,7 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
-from app.services.context import build_messages
+from app.services.context import build_messages, with_pictures
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.registry import build_tools
@@ -96,6 +96,7 @@ from app.services.workspace_context import (
     agent_settings,
     assemble,
     design_for,
+    reads_pictures,
 )
 
 log = logging.getLogger(__name__)
@@ -877,6 +878,10 @@ _FILE_NOTE = {
     "truncated": "{name} {kept:,}자만 반영",
     "omitted": "{name} 분량을 넘겨 제외",
     "unreadable": "{name} 읽지 못함",
+    # A picture this model cannot look at. Not the same as unreadable: the file
+    # is fine and another model would see it, which is the part somebody can
+    # act on.
+    "picture_unseen": "{name} 그림 · 이 모델은 보지 못함",
 }
 
 #: Enough names to recognise the turn by, before the line stops being a line.
@@ -895,7 +900,10 @@ def _named(notes: list[str], unit: str) -> str:
 def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...]) -> dict | None:
     if not files:
         return None
-    short = [file for file in files if file.state != "included"]
+    # A picture that was looked at gave nothing up, so it is not a shortfall —
+    # the same standing as a document that arrived whole.
+    whole = {"included", "picture"}
+    short = [file for file in files if file.state not in whole]
     # Cut and dropped are counted apart: half a document and no document are
     # different things to have been answered without.
     cut = sum(1 for file in short if file.state == "truncated")
@@ -2043,6 +2051,10 @@ async def send_message(
             user,
             session,
             attachment_ids=payload.attachments,
+            # Only a contained model that says it reads pictures gets one. The
+            # requested model is what is known here; the chat path re-assembles
+            # below against whatever privacy actually settled on.
+            vision=reads_pictures(requested_model),
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
             # What the person said to concentrate on, when they were told the
@@ -2190,6 +2202,7 @@ async def send_message(
                 user,
                 session,
                 attachment_ids=payload.attachments,
+                vision=reads_pictures(model),
                 activated_skill_ids=payload.activated_skill_ids,
                 starting_template_id=payload.starting_template_id,
                 available_tool_names={tool.name for tool in tools},
@@ -2245,6 +2258,8 @@ async def send_message(
         extra=trusted_context,
         untrusted_context=untrusted_context,
     )
+    # After `build_messages`, never inside it — see `context.with_pictures`.
+    messages = with_pictures(messages, [picture.uri for picture in workspace.pictures])
 
     if auto_turn and not auto_preflight_findings:
         unsupported = bool(

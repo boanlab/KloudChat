@@ -22,6 +22,7 @@ import zlib
 from pathlib import Path
 
 from app.core.config import settings
+from app.services import pictures
 
 log = logging.getLogger(__name__)
 
@@ -364,7 +365,17 @@ def extract_text(name: str, mime: str, data: bytes) -> str:
         return _from_hwp(data)
     if suffix in {".doc", ".ppt", ".xls"}:
         raise RuntimeError("구형 오피스 형식입니다. docx/pptx/xlsx 또는 PDF 로 변환해 주세요.")
-    if mime.startswith(("image/", "audio/", "video/")):
+    if mime.startswith("image/"):
+        # A picture is not a document that failed to parse — it has no text and
+        # does not need any. Whether it reaches a model is decided per turn by
+        # `workspace_context.reads_pictures`, so recording a failure here would
+        # put a warning on a file that is about to be read perfectly well.
+        if pictures.can_be_seen(mime, len(data)):
+            return ""
+        raise RuntimeError(
+            "이 그림은 읽을 수 없습니다. PNG·JPEG·GIF·WebP 로, 4MB 이하로 올려 주세요."
+        )
+    if mime.startswith(("audio/", "video/")):
         raise RuntimeError("이 파일 형식에서는 텍스트를 추출할 수 없습니다.")
 
     # Unknown extension: try text, and let the mojibake check below decide.

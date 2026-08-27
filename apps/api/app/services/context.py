@@ -11,6 +11,7 @@ note.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -148,6 +149,33 @@ def build_messages(
         )
     messages.extend(history)
     return _alternating(messages)
+
+
+def with_pictures(messages: list[dict], uris: Sequence[str]) -> list[dict]:
+    """The last user turn, carrying the pictures that were attached to it.
+
+    Applied after `build_messages` rather than inside it. `_alternating` joins
+    neighbouring turns by concatenating their `content`, and a list of parts
+    does not survive being put through an f-string — it would arrive upstream
+    as the text `[{'type': 'text', ...}]`. By the time this runs the transcript
+    already alternates, so the last user message is the one the pictures belong
+    to and nothing will be merged into it afterwards.
+
+    Addresses rather than files: the caller has already decided this turn may
+    carry them, and what reaches the wire is the `data:` URI it built.
+    """
+    if not uris:
+        return messages
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].get("role") != "user":
+            continue
+        turn = messages[index]
+        parts: list[dict] = [{"type": "text", "text": turn.get("content") or ""}]
+        parts.extend({"type": "image_url", "image_url": {"url": uri}} for uri in uris)
+        return [*messages[:index], {**turn, "content": parts}, *messages[index + 1 :]]
+    # No user turn to attach to. Nothing said, rather than a picture put
+    # somewhere it does not belong.
+    return messages
 
 
 def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
