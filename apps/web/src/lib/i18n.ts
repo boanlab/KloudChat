@@ -797,6 +797,11 @@ const EN: Record<string, string> = {
   '저장했습니다': 'Saved',
   '그림을 넣지 못했습니다.': 'Could not add the picture.',
   '그림 넣기': 'Add a picture',
+  '아직 만든 그림이 없습니다. 이미지 화면에서 만들면 여기에 나타납니다.':
+    'No pictures yet. Anything you make on the image surface appears here.',
+  '이미지 화면이 꺼져 있어 넣을 그림을 만들 수 없습니다. 관리자가 설정에서 켤 수 있습니다.':
+    'The image surface is switched off, so there is nothing to put here yet. An administrator can turn it on in the system settings.',
+  '이미지 만들러 가기': 'Make one',
   '어느 자리에 넣을까요?': 'Where should it go?',
   '{name} 에 그림 넣기': 'Add a picture to {name}',
   '이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.':

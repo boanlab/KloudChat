@@ -29,6 +29,7 @@ import { LintFindings } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { NoPicturesYet } from '@/components/artifacts/NoPicturesYet'
 
 const verdictMeta = {
   supported: { icon: BadgeCheck, tone: 'success' as const, label: '근거 있음', color: 'text-success' },
@@ -215,7 +216,8 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
     })
     .slice(0, 24)
 
-  if (pictures.length === 0) return null
+  // Nothing to pick is a thing to say, not a reason to hide the only path
+  // a picture has into a deck.
 
   const insert = async () => {
     if (!picked) return
@@ -267,6 +269,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
           </>
         }
       >
+        {pictures.length === 0 && <NoPicturesYet />}
         <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
           {pictures.map((picture) => (
             <button
@@ -283,14 +286,16 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
             </button>
           ))}
         </div>
-        <div className="mt-3">
-          <Input
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            aria-label={t('설명')}
-            placeholder={t('그림 아래에 붙일 설명 (선택)')}
-          />
-        </div>
+        {pictures.length > 0 && (
+          <div className="mt-3">
+            <Input
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              aria-label={t('설명')}
+              placeholder={t('그림 아래에 붙일 설명 (선택)')}
+            />
+          </div>
+        )}
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
     </>
