@@ -120,19 +120,42 @@ export function MyUsagePage() {
                 parent with a height, and an end-aligned flex item is only as
                 tall as its content. The column is the full 7rem and the bar
                 grows from its floor. */}
-            <div className="mt-3 flex h-28 items-stretch gap-1">
-              {daily.map((d) => (
-                <div key={d.date} className="group relative flex flex-1 flex-col justify-end">
+            {/* Every day of the range is a column now — the server fills the
+                empty ones — so the width of a bar means one day. Values sit on
+                the bars, dates run under them (each week and the last day, so
+                thirty of them do not overprint), and an empty day is an empty
+                column rather than a two-pixel stub pretending to be small. */}
+            <div className="mt-3 flex h-32 items-stretch gap-px sm:gap-1">
+              {daily.map((d, i) => {
+                const dated = i === daily.length - 1 || (daily.length - 1 - i) % 7 === 0
+                return (
                   <div
-                    className="rounded-t bg-accent/70 transition-colors group-hover:bg-accent"
-                    style={{ height: `${Math.max(2, (d.value / peak) * 100)}%` }}
-                  />
-                  <span className="pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 rounded bg-panel px-1.5 py-0.5 text-xs whitespace-nowrap shadow group-hover:block">
-                    {d.date.slice(5)} · {t('{n}회').replace('{n}', String(d.requests))} ·{' '}
-                    {t('{n} 크레딧').replace('{n}', d.credits.toLocaleString())}
-                  </span>
-                </div>
-              ))}
+                    key={d.date}
+                    className="group relative flex min-w-0 flex-1 flex-col"
+                    title={`${d.date} · ${t('{n}회').replace('{n}', String(d.requests))} · ${t('{n} 크레딧').replace('{n}', d.credits.toLocaleString())}`}
+                  >
+                    <span className="h-4 shrink-0 truncate text-center text-2xs tabular-nums text-faint">
+                      {d.value > 0 && daily.length <= 14 ? d.value.toLocaleString() : ''}
+                    </span>
+                    <div className="flex min-h-0 flex-1 items-end border-b border-line">
+                      <div
+                        className={cn(
+                          'w-full rounded-t transition-colors',
+                          d.value > 0 ? 'bg-accent/70 group-hover:bg-accent' : 'bg-transparent',
+                        )}
+                        style={{ height: d.value > 0 ? `${Math.max(3, (d.value / peak) * 100)}%` : 0 }}
+                      />
+                    </div>
+                    <span className="h-4 shrink-0 truncate text-center text-2xs tabular-nums text-faint">
+                      {dated ? d.date.slice(5) : ''}
+                    </span>
+                    <span className="pointer-events-none absolute -top-7 left-1/2 z-10 hidden -translate-x-1/2 rounded bg-panel px-1.5 py-0.5 text-xs whitespace-nowrap shadow group-hover:block">
+                      {d.date.slice(5)} · {t('{n}회').replace('{n}', String(d.requests))} ·{' '}
+                      {t('{n} 크레딧').replace('{n}', d.credits.toLocaleString())}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </Card>
 
