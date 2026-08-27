@@ -1,5 +1,57 @@
-import { expect, test } from '@playwright/test'
-import { openSidebar, signIn } from './helpers'
+import { expect, test, type Page } from '@playwright/test'
+import { E2E_ADMIN, openSidebar, signIn } from './helpers'
+
+type ListedUser = { id: string; email: string }
+
+const ADMIN_SCREENS = [
+  { path: '/admin/users', heading: '사용자 · 크레딧', api: '/api/admin/users' },
+  { path: '/admin/usage', heading: '사용량', api: '/api/admin/usage?days=7' },
+  { path: '/admin/system', heading: '시스템', api: '/api/admin/settings' },
+  { path: '/admin/governance', heading: '보안 · 감사', api: '/api/admin/governance' },
+] as const
+
+async function createOrdinaryAccount(page: Page) {
+  const account = {
+    email: `e2e-plain-${Date.now().toString(36)}@example.com`,
+    password: 'plain-playwright-pass',
+    name: '일반 사용자',
+  }
+
+  // Ensure the shared administrator exists before using its API authority.
+  await signIn(page)
+  const login = await page.request.post('/api/auth/login', {
+    data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
+  })
+  expect(login.ok(), 'E2E 관리자 로그인').toBeTruthy()
+  const { accessToken } = (await login.json()) as { accessToken: string }
+  const headers = { Authorization: `Bearer ${accessToken}` }
+
+  const signup = await page.request.post('/api/auth/signup', { data: account })
+  expect(signup.status(), '일반 사용자 가입').toBe(201)
+
+  const usersResponse = await page.request.get('/api/admin/users', { headers })
+  expect(usersResponse.ok(), '관리자 사용자 목록').toBeTruthy()
+  const body = (await usersResponse.json()) as ListedUser[] | { items: ListedUser[] }
+  const users = Array.isArray(body) ? body : body.items
+  const user = users.find((candidate) => candidate.email === account.email)
+  expect(user, '방금 가입한 일반 사용자').toBeTruthy()
+
+  const approval = await page.request.post(`/api/admin/users/${user!.id}/approve`, {
+    headers,
+    data: { monthlyCredits: 1_000 },
+  })
+  expect(approval.ok(), '일반 사용자 승인').toBeTruthy()
+
+  // This login both gives the API assertions an access token and puts the
+  // ordinary account's refresh cookie into the browser context.
+  const ordinaryLogin = await page.request.post('/api/auth/login', {
+    data: { email: account.email, password: account.password },
+  })
+  expect(ordinaryLogin.ok(), '일반 사용자 로그인').toBeTruthy()
+  const ordinarySession = (await ordinaryLogin.json()) as { accessToken: string }
+
+  return { account, accessToken: ordinarySession.accessToken }
+}
 
 /**
  * The 관리 section belongs to administrators.
@@ -8,53 +60,9 @@ import { openSidebar, signIn } from './helpers'
  * `user.role`, and what has to hold is that the server sends `user` for an
  * ordinary account and that nothing else on the way in promotes it.
  */
-test('일반 사용자에게는 계정 메뉴에 관리 항목이 없다', async ({ page }) => {
-  test.setTimeout(180_000)
-
-  const account = {
-    email: `e2e-plain-${Date.now().toString(36)}@example.com`,
-    password: 'plain-playwright-pass',
-    name: '일반 사용자',
-  }
-
-  // Created and approved by the administrator, which is the only way an
-  // account becomes usable on an approval-mode instance.
-  await signIn(page)
-  await page.evaluate(async (acct) => {
-    const login = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: 'e2e-personas@example.com',
-        password: 'personas-playwright-pass',
-      }),
-    })
-    const { accessToken } = await login.json()
-    const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` }
-    await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(acct),
-    })
-    const users = await (await fetch('/api/admin/users', { headers: H })).json()
-    const row = (users.items ?? users).find((u: { email: string }) => u.email === acct.email)
-    await fetch(`/api/admin/users/${row.id}/approve`, {
-      method: 'POST',
-      headers: H,
-      body: JSON.stringify({ monthlyCredits: 1000 }),
-    })
-  }, account)
-
-  await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST' }))
+test('일반 사용자는 관리 메뉴와 모든 관리자 deep link에서 거부된다', async ({ page }) => {
+  const { account, accessToken } = await createOrdinaryAccount(page)
   await page.goto('/')
-  await page.getByLabel('이메일').fill(account.email)
-  await page.getByLabel('비밀번호').fill(account.password)
-  await Promise.all([
-    page.waitForResponse(
-      (r) => r.url().includes('/api/auth/login') && r.request().method() === 'POST',
-    ),
-    page.locator('form').getByRole('button', { name: '로그인' }).click(),
-  ])
   await expect(page.getByRole('button', { name: '사이드바 토글' })).toBeVisible({ timeout: 20_000 })
   // The menu lives in the sidebar, and below 1024px that sidebar is a drawer
   // this account has never opened. Off-screen it is still visible to a locator
@@ -72,8 +80,38 @@ test('일반 사용자에게는 계정 메뉴에 관리 항목이 없다', async
   await expect(page.getByText('사용자 · 크레딧')).toHaveCount(0)
   await expect(page.getByText('보안 · 감사')).toHaveCount(0)
 
-  // And the screen itself is refused, not merely unlinked.
-  await page.goto('/admin/users')
-  await expect(page.getByText('사용자 · 크레딧')).toHaveCount(0)
-  console.log('일반 사용자 메뉴: 관리 항목 없음, /admin/users 도 열리지 않음')
+  // The server remains authoritative even though the route guard prevents the
+  // page components from making these calls.
+  const headers = { Authorization: `Bearer ${accessToken}` }
+  for (const screen of ADMIN_SCREENS) {
+    const response = await page.request.get(screen.api, { headers })
+    expect(response.status(), `${screen.api} 일반 사용자 응답`).toBe(403)
+  }
+
+  let adminRequests = 0
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/admin/')) adminRequests += 1
+  })
+
+  // Refusal is rendered at the requested URL. It is neither a login redirect
+  // nor a briefly mounted administrator page whose API later returns 403.
+  for (const screen of ADMIN_SCREENS) {
+    await page.goto(screen.path)
+    await expect(page.getByRole('heading', { name: '이 페이지에 접근할 수 없습니다.' })).toBeVisible()
+    expect(new URL(page.url()).pathname, '거부 화면이 요청 URL을 유지함').toBe(screen.path)
+    await expect(page.getByRole('heading', { name: screen.heading })).toHaveCount(0)
+  }
+  expect(adminRequests, 'role guard 뒤 관리자 API 호출 수').toBe(0)
+})
+
+test('관리자는 모든 관리자 deep link에 접근할 수 있다', async ({ page }) => {
+  await signIn(page)
+
+  for (const screen of ADMIN_SCREENS) {
+    await page.goto(screen.path)
+    await expect(page.getByRole('heading', { name: screen.heading })).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByRole('heading', { name: '이 페이지에 접근할 수 없습니다.' })).toHaveCount(0)
+  }
 })
