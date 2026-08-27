@@ -172,7 +172,7 @@ export function AgentsPage() {
       <PageBody>
         <PageHeader
           title={t('에이전트')}
-          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.')}
+          description={t('고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. 입력창의 @ 버튼으로 새 대화를 맡기고, 잘 만든 것은 스토어에 공개합니다.')}
           action={
             <Button
               variant="primary"
@@ -460,7 +460,7 @@ export function AgentsPage() {
                 />
               </Field>
               <div>
-                <Field label={t('슬러그')} hint={t('@슬러그로 호출합니다.')}>
+                <Field label={t('슬러그')} hint={t('입력창의 @ 버튼과 홈 화면 카드에 이 핸들로 보입니다.')}>
                   <Input
                     value={draft.slug}
                     aria-invalid={slugTaken || undefined}
@@ -517,7 +517,7 @@ export function AgentsPage() {
               </div>
             </Field>
 
-            <Field label={t('사용할 화면')} hint={t('여기서 선택한 화면의 입력창에서만 @로 호출됩니다.')}>
+            <Field label={t('사용할 화면')} hint={t('여기서 선택한 화면의 @ 버튼과 카드에만 나타납니다.')}>
               <div className="flex flex-wrap gap-1.5">
                 {kindOrder.map((k) => {
                   const on = draft.kinds.includes(k)

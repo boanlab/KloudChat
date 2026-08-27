@@ -693,8 +693,8 @@ const EN: Record<string, string> = {
     '1. Check the inputs and decision criteria\n2. Separate results, evidence, and unverified items',
   '1k당 {in} / {out}': '{in} / {out} per 1k',
   '1k당 입력 {in} · 출력 {out}': 'Per 1k: {in} in · {out} out',
-  '@슬러그로 호출합니다.': 'Called with @slug.',
   '이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.': 'That slug is already in use. Pick another.',
+  '입력창의 @ 버튼과 홈 화면 카드에 이 핸들로 보입니다.': "Shown under this handle on the composer's @ button and the home screen cards.",
   'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
@@ -890,7 +890,7 @@ const EN: Record<string, string> = {
     'Note what the key is for, so you know which one to revoke later.',
   '에이전트 편집': 'Edit agent',
   '엔드포인트 URL': 'Endpoint URL',
-  '여기서 선택한 화면의 입력창에서만 @로 호출됩니다.': 'Only callable with @ from the surfaces you pick here.',
+  '여기서 선택한 화면의 @ 버튼과 카드에만 나타납니다.': 'Offered only from the @ button and the cards on the surfaces you pick here.',
   '연결됨 · 모델 {n}종': 'Connected · {n} models',
   '열 수 없는 링크입니다': 'This link cannot be opened',
   '영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.':
@@ -1099,8 +1099,8 @@ const EN: Record<string, string> = {
   '모두에게 공개': 'Open to everyone',
   '공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
     'Once open, anyone signed in to this instance can copy it from the store. The original stays yours.',
-  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. @이름으로 불러오고, 잘 만든 것은 스토어에 공개합니다.':
-    'A specialist with a fixed system prompt, model and tool permissions. Call one with @name, and open the good ones in the store.',
+  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. 입력창의 @ 버튼으로 새 대화를 맡기고, 잘 만든 것은 스토어에 공개합니다.':
+    "A specialist with a fixed system prompt, model and tool permissions. Hand one a new conversation from the composer's @ button, and open the good ones in the store.",
   '워크스페이스 스토어': 'Workspace store',
   '원문': 'Source',
   '응답 대기 중…': 'Waiting for a reply…',
