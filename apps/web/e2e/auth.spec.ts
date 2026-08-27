@@ -1,16 +1,42 @@
 /**
  * Authentication against a real backend.
  *
- * Requires the API running and an empty `users` table — the first signup is
- * what creates the administrator.
+ * Requires the API running and `scripts/e2e-seed.sh` to have been run, like
+ * every other suite here. Only the first test wants an empty `users` table —
+ * bootstrap happens once per database — and it skips itself when it does not
+ * find one.
  *
  * Run: npx playwright test e2e/auth.spec.ts --project=desktop
  */
 
 import { expect, test } from '@playwright/test'
-import { seedPendingUser } from './helpers'
+import { E2E_ADMIN, seedPendingUser } from './helpers'
 
-const ADMIN = { email: 'e2e-admin@example.com', password: 'correct-horse-battery', name: '관리자' }
+/**
+ * The account this file signs in as for everything except the bootstrap test.
+ *
+ * `scripts/e2e-seed.sh` creates and approves it, which is what the setup
+ * instructions tell you to run first. It used to be an address of this file's
+ * own — one no seed script creates — so on any database that was not empty the
+ * second test in the file timed out on the approval screen while reporting
+ * that the model picker was missing, and `mode: 'serial'` then skipped the five
+ * after it. Password, refresh, logout and the approval flow all stopped being
+ * checked, and the red said nothing about the product.
+ */
+const ADMIN = E2E_ADMIN
+
+/**
+ * Only the bootstrap test uses this, and only on an empty database.
+ *
+ * It has to be an address nothing else claims: the account it creates is the
+ * instance's administrator on a fresh install, and reusing the seeded one would
+ * make the assertion pass for the wrong reason on every later run.
+ */
+const BOOTSTRAP = {
+  email: 'e2e-bootstrap@example.com',
+  password: 'correct-horse-battery',
+  name: '관리자',
+}
 // Unique per run: the pending-approval path only exists for an account that has
 // never been approved, so reusing one address makes the test pass once and then
 // report a regression that is really just leftover state.
@@ -64,7 +90,7 @@ async function fillAuthForm(
 
 test('첫 가입 계정은 관리자로 바로 입장한다', async ({ page }) => {
   await page.goto('/')
-  await fillAuthForm(page, 'signup', ADMIN)
+  await fillAuthForm(page, 'signup', BOOTSTRAP)
 
   // Bootstrap happens once per database. On an instance that already ran this
   // suite the account exists (409) or lands in `pending` — both mean "not a
@@ -138,9 +164,9 @@ test('관리자가 승인하면 대기 화면이 스스로 넘어간다', async 
   await fillAuthForm(adminPage, 'login', ADMIN)
   await adminPage.goto('/admin/users')
   // Named, because the failure it replaces was a button that never appeared:
-  // on an instance where this account signed up after bootstrap it is a plain
-  // user, the admin screen never renders, and the timeout says nothing about
-  // why. `scripts/e2e-seed.sh` is what grants the role.
+  // without the role the admin screen never renders and the timeout says
+  // nothing about why. `scripts/e2e-seed.sh` is what creates this account and
+  // grants it.
   await expect(
     adminPage.getByPlaceholder('이름 또는 이메일'),
     `${ADMIN.email} 에 관리자 권한이 없습니다 — scripts/e2e-seed.sh 를 실행하세요`,
