@@ -650,6 +650,8 @@ const EN: Record<string, string> = {
   '커넥터 관리': 'Manage connectors',
   '이름 · 설명': 'Name · description',
   '프로젝트 삭제': 'Delete project',
+  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.':
+    'This cannot be undone. The instructions and knowledge files are deleted. Conversations are kept and leave the project; artifacts and memories are untouched.',
   '상태 새로고침': 'Refresh status',
   'Word 문서': 'Word document',
   '마크다운 원문': 'Markdown source',
