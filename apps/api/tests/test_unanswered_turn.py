@@ -24,6 +24,8 @@ would be the dishonest repair. What these tests hold is the other half:
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.models.chat import ChatSession, Message, Role, TurnFailure
@@ -112,6 +114,10 @@ async def _drain(turn: _Turn, monkeypatch, events) -> list[str]:
                 raise event
             yield event
 
+    return await _drain_with(turn, monkeypatch, run_turn)
+
+
+async def _drain_with(turn: _Turn, monkeypatch, run_turn) -> list[str]:
     async def title(*_args, **_kwargs):
         return "제목", {"inputTokens": 0, "outputTokens": 0}
 
@@ -202,6 +208,85 @@ async def test_an_ordinary_turn_marks_neither_row(monkeypatch) -> None:
     assert answer is not None
     assert answer.failure is None
     assert turn.question.failure is None
+
+
+# ── 중단 ───────────────────────────────────────────────────────────────
+
+
+def _press_stop(session_id: str) -> None:
+    """What POST /sessions/{id}/stop does, from inside the turn."""
+    for signal in sessions_router._STOPPING.get(session_id, set()):
+        signal.set()
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_turn_is_marked_stopped_and_still_charged(monkeypatch) -> None:
+    """The person pressed 중단; the row must say so, and the tokens were spent.
+
+    Two things were wrong. A pressed button and a dropped socket were stored as
+    the same `interrupted`, so the notice for a stop the reader chose came up
+    in the error colour. And the proxy reports usage on its final chunk, which
+    a stopped stream never reaches — so the turn settled as 0 in · 0 out under
+    a paid model.
+    """
+    turn = _Turn()
+
+    async def run_turn(*_args, **_kwargs):
+        yield {"type": "delta", "text": "보조금은 지자체마다 다르고, "}
+        _press_stop(turn.session.id)
+        await asyncio.Event().wait()  # the model keeps going; the reader did not
+        yield {"type": "usage", "inputTokens": 500, "outputTokens": 400}  # never reached
+
+    await asyncio.wait_for(_drain_with(turn, monkeypatch, run_turn), timeout=2)
+
+    answer = turn.answer
+    assert answer is not None
+    assert answer.content == "보조금은 지자체마다 다르고, "
+    assert answer.failure is TurnFailure.stopped
+    assert turn.question.failure is None
+    # Estimated from what went up and what came down, and said to be.
+    assert answer.usage["estimated"] is True
+    assert answer.usage["inputTokens"] > 0
+    assert answer.usage["outputTokens"] > 0
+    assert answer.usage["credits"] > 0
+
+
+@pytest.mark.asyncio
+async def test_a_completed_hop_keeps_its_reported_usage_when_a_later_one_is_stopped(
+    monkeypatch,
+) -> None:
+    """An estimate fills a gap; it does not overwrite a figure the proxy gave."""
+    turn = _Turn()
+
+    async def run_turn(*_args, **_kwargs):
+        yield {"type": "delta", "text": "첫 번째 hop"}
+        yield {"type": "usage", "inputTokens": 120, "outputTokens": 30}
+        _press_stop(turn.session.id)
+        await asyncio.Event().wait()
+
+    await asyncio.wait_for(_drain_with(turn, monkeypatch, run_turn), timeout=2)
+
+    answer = turn.answer
+    assert answer is not None
+    assert answer.failure is TurnFailure.stopped
+    assert answer.usage["inputTokens"] == 120
+    assert answer.usage["outputTokens"] == 30
+    assert "estimated" not in answer.usage
+
+
+@pytest.mark.asyncio
+async def test_stopped_before_the_first_token_marks_the_question_stopped(monkeypatch) -> None:
+    turn = _Turn()
+
+    async def run_turn(*_args, **_kwargs):
+        _press_stop(turn.session.id)
+        await asyncio.Event().wait()
+        yield {"type": "delta", "text": "never"}
+
+    await asyncio.wait_for(_drain_with(turn, monkeypatch, run_turn), timeout=2)
+
+    assert turn.answer is None
+    assert turn.question.failure is TurnFailure.stopped
 
 
 def test_the_mark_travels_with_the_transcript() -> None:

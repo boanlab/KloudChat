@@ -327,7 +327,12 @@ export interface Message {
    * only for the optimistic row drawn while the upload is still in flight.
    */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
-  usage?: { inputTokens: number; outputTokens: number; credits: number }
+  /**
+   * `estimated` is set on a stopped turn: the proxy reports usage on its final
+   * chunk, which a stopped stream never reaches, so the server counts what it
+   * sent and what came back instead of writing 0 in · 0 out.
+   */
+  usage?: { inputTokens: number; outputTokens: number; credits: number; estimated?: boolean }
   liked?: 'up' | 'down' | null
     /**
      * The 시작점 this turn began from, by title rather than prompt: the
@@ -344,9 +349,10 @@ export interface Message {
      * account and wins while it is on screen; this is what a reload leaves.
      *
      * `no_answer` sits on the question — nothing spoke. `interrupted` sits on
-     * the reply — some of it arrived.
+     * the reply — some of it arrived. `stopped` is either, when 중단 was
+     * pressed: the same shape as the other two, but the reader's own doing.
      */
-  failure?: 'no_answer' | 'interrupted'
+  failure?: 'no_answer' | 'interrupted' | 'stopped'
 }
 
 /* ── jobs ───────────────────────────────────────────────────────────── */
