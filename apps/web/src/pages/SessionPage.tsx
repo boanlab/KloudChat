@@ -202,20 +202,20 @@ function Intro({
 export function SessionPage() {
   const t = useT()
   const { sessionId } = useParams()
-  const {
-    sessions,
-    jobs,
-    projects,
-    agents,
-    artifacts,
-    setActiveSession,
-    openSession,
-    running,
-    openArtifactId,
-    openArtifact,
-  } = useStore()
+  // Selectors, not the whole store: this screen re-renders on every streamed
+  // chunk regardless (the session row changes), but nothing here should make
+  // it re-render for a change in some other conversation or an unrelated
+  // slice, and the rows below are what `MessageItem`'s memo keys on.
+  const jobs = useStore((s) => s.jobs)
+  const projects = useStore((s) => s.projects)
+  const agents = useStore((s) => s.agents)
+  const artifacts = useStore((s) => s.artifacts)
+  const setActiveSession = useStore((s) => s.setActiveSession)
+  const openSession = useStore((s) => s.openSession)
   // Whether *this* conversation has a turn in flight.
-  const streaming = !!sessionId && !!running[sessionId]
+  const streaming = useStore((s) => !!sessionId && !!s.running[sessionId])
+  const openArtifactId = useStore((s) => s.openArtifactId)
+  const openArtifact = useStore((s) => s.openArtifact)
 
   const [searchParams, setSearchParams] = useSearchParams()
     /**
@@ -226,7 +226,7 @@ export function SessionPage() {
      * asking for a particular file.
      */
   const requestedArtifactId = searchParams.get('artifact')
-  const session = sessions.find((s) => s.id === sessionId) ?? null
+  const session = useStore((s) => s.sessions.find((c) => c.id === sessionId) ?? null)
   const kind: SessionKind = session?.kind ?? 'chat'
   const meta = kindMeta[kind]
 
