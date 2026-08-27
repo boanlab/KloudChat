@@ -101,6 +101,23 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
         "kinds": ["image"],
         "description": "OpenAI 이미지 생성. 텍스트 렌더링에 강함",
     },
+    # ── vision ─────────────────────────────────────────────────────────
+    #
+    # `/model/info` reports no capability flags for these, and the flag decides
+    # whether an attached picture is sent at all — so it is declared, the way
+    # every other fact this file exists for is.
+    #
+    # Measured against the gateway rather than assumed. `strict-local/qwen3.6-35b`
+    # transcribed two different screenshots exactly, for no credits and without
+    # the picture leaving the building. Two commercial models accepted the same
+    # request and answered with an empty message rather than an error, which is
+    # why absence of a claim here has to mean no: trying and watching produces a
+    # blank answer, not a fallback.
+    #
+    # Only contained models are listed. An image is egress the privacy guard
+    # cannot inspect — it reads text — so a picture may travel the one route
+    # that cannot leave. See `workspace_context.reads_pictures`.
+    "strict-local/qwen3.6-35b": {"supports_vision": True},
 }
 
 # Providers whose zero price is real: our own hardware. A remote model
