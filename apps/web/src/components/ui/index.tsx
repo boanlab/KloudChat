@@ -9,7 +9,7 @@ import {
   useState,
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
+  type ComponentProps,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react'
@@ -87,7 +87,9 @@ const fieldBase =
   'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
   'transition-colors focus:border-accent focus:outline-none'
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+// `ComponentProps` rather than `InputHTMLAttributes`: it carries `ref`, so a
+// form can focus the field it just said was missing.
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cn(fieldBase, 'h-9', className)} {...props} />
 }
 
