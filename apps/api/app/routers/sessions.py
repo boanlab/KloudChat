@@ -3192,7 +3192,11 @@ async def _run_turn(
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     if title:
         yield chat_service.sse({"type": "title", "title": title})
-    yield chat_service.sse({"type": "done"})
+    # The stored row's id travels with `done`. The browser made its own id for
+    # the answer while it streamed, and everything addressed to the message
+    # afterwards — a rating, a comparison's choice — went out under that made-up
+    # id and met a 404 until the session was reopened.
+    yield chat_service.sse({"type": "done", **({"messageId": answer_id} if answer_id else {})})
 
     # Only if it is still ours: a second turn on this session has already
     # replaced it, and popping then would leave that one unstoppable.
@@ -3549,19 +3553,18 @@ async def _run_comparison(
     if stored_prelude and mask_at_rest:
         stored_prelude = _mask_text_tree(stored_prelude, masker)
 
+    answer = Message(
+        session_id=session_id,
+        role=Role.assistant,
+        content=chosen["content"] if chosen else "",
+        variants=variants,
+        usage={"credits": total},
+        steps=stored_prelude or None,
+        model=chosen["actualModel"] if chosen else None,
+        routing=stored_routing,
+    )
     async with SessionLocal() as db:
-        db.add(
-            Message(
-                session_id=session_id,
-                role=Role.assistant,
-                content=chosen["content"] if chosen else "",
-                variants=variants,
-                usage={"credits": total},
-                steps=stored_prelude or None,
-                model=chosen["actualModel"] if chosen else None,
-                routing=stored_routing,
-            )
-        )
+        db.add(answer)
         settled = await db.get(User, user_id)
         if privacy_audit_id:
             privacy_audit = await db.get(AuditEvent, privacy_audit_id)
@@ -3578,7 +3581,9 @@ async def _run_comparison(
             settle(db, settled, total, reason="chat.compare", session_id=session_id)
         await db.commit()
 
-    yield chat_service.sse({"type": "done", "credits": total})
+    # With the stored id: 이 답변으로 계속 posts to this message, and the id the
+    # browser gave the row while it streamed is not one the server knows.
+    yield chat_service.sse({"type": "done", "credits": total, "messageId": answer.id})
 
 
 @router.post("/{session_id}/messages/{message_id}/variant", response_model=MessageOut)
