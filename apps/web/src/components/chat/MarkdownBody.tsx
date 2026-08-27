@@ -1,5 +1,5 @@
 import { Check, Copy } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkCjkFriendly from 'remark-cjk-friendly'
@@ -63,6 +63,8 @@ function normaliseMath(text: string): string {
 }
 
 export function MarkdownBody({ children, className }: { children: string; className?: string }) {
+  // The regex pass runs once per text, not once per render of a memoised row.
+  const source = useMemo(() => normaliseMath(children), [children])
   return (
     <div className={cn('text-md leading-[1.7] break-words', className)}>
       <ReactMarkdown
@@ -135,7 +137,7 @@ export function MarkdownBody({ children, className }: { children: string; classN
           pre: ({ children }) => <>{children}</>,
         }}
       >
-        {normaliseMath(children)}
+        {source}
       </ReactMarkdown>
     </div>
   )
