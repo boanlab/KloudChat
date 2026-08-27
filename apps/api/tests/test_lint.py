@@ -24,6 +24,57 @@ def _rules(findings: list[lint.Finding]) -> list[str]:
 # ── what it catches ────────────────────────────────────────────────────
 
 
+def test_markdown_that_never_rendered_is_a_regression():
+    """`**bold**` in an HTML block prints its own asterisks on the slide.
+
+    The document surfaces ask for markup and a small model sometimes answers in
+    Markdown. `sanitise` cannot help — there is no tag to drop, only characters
+    — so the asterisks travel all the way to the screen behind a speaker. This
+    is the one place left that can see them.
+    """
+    findings = lint.check(_one("측정 환경", "**발표 노트** 환경 통제에서 노이즈를 제거한다."))
+    assert _rules(findings) == ["markup"]
+    assert findings[0].severity == "P0"
+
+
+def test_the_envelope_the_model_was_shown_is_not_content():
+    """What survives when the answer was JSON and the JSON was truncated.
+
+    `sanitise` unwraps one that parses; one that does not arrives whole, and a
+    slide then opens with `{"layout":"bullets","body":"…`. This is what says so.
+    """
+    findings = lint.check(
+        _one("승인 규칙", '{"layout": "bullets", "body": "  승인 규칙의 구조 확인')
+    )
+    assert "envelope" in _rules(findings)
+    assert findings[0].severity == "P0"
+
+
+def test_a_line_that_merely_contains_a_brace_is_not_an_envelope():
+    assert "envelope" not in _rules(
+        _rules_for('설정은 {"retries": 3} 처럼 쓴다.')
+    )
+
+
+def _rules_for(line: str):
+    return lint.check(_one("표기", line))
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "곱셈 기호는 2*3 처럼 쓴다.",
+        "각주 표시(*)는 문단 끝에 둔다.",
+        "정규식 `a**b` 를 설명하는 줄이다.",
+    ],
+)
+def test_ordinary_asterisks_are_not_markdown(line):
+    """Paired, with words between them, and not inside code — anything else is
+    somebody's sentence."""
+    assert "markup" not in _rules(lint.check(_one("표기", line)))
+
+
+
 def test_a_placeholder_nobody_replaced_is_a_regression():
     findings = lint.check(_one("배경", "여기에 내용을 입력하세요.", "두 번째 줄입니다."))
     assert _rules(findings) == ["placeholder"]

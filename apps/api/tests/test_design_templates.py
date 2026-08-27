@@ -637,6 +637,88 @@ def test_a_heading_the_model_repeats_is_dropped_rather_than_printed_twice():
     assert dt.sanitise("<h3>세부</h3>") == "<h3>세부</h3>"
 
 
+def test_the_layout_name_the_model_was_given_is_not_printed_back():
+    """A small model answers the brief before it answers the request.
+
+    Asked for the inside of a `bullets` block it writes `bullets` and then the
+    list, and the wrapper puts that word straight after the heading — a slide
+    that reads `측정 환경과 방법` `bullets` on the screen behind a speaker.
+    Dropped for the same reason a repeated `<h2>` is: the wrapper already said
+    it, and the model was told it rather than asked for it.
+    """
+    assert dt.sanitise("bullets\n<ul><li>항목</li></ul>", layouts=("bullets",)) == (
+        "<ul><li>항목</li></ul>"
+    )
+    # Any name in the template's own vocabulary, not only this block's — the
+    # block that printed `layout: "bullets"` was a `table`.
+    assert dt.sanitise('layout: "bullets"\n<p>본문</p>', layouts=("table",)) == "<p>본문</p>"
+    assert dt.sanitise("layout = quote\n<p>본문</p>", layouts=("quote",)) == "<p>본문</p>"
+    # More than one line of preamble, which is what a model that restates the
+    # whole brief produces.
+    assert dt.sanitise(
+        'cover\nlayout: "cover"\n<p class="lead">부제</p>', layouts=("cover",)
+    ) == '<p class="lead">부제</p>'
+
+
+def test_a_word_that_happens_to_be_a_layout_name_is_left_alone():
+    """The rule is a line that is *only* the name, and only before the content.
+
+    A deck about presentation software says `bullets` in a sentence, and a
+    checker that reached into prose would quietly delete somebody's words.
+    """
+    assert dt.sanitise("<p>bullets 는 항목을 뜻한다</p>", layouts=("bullets",)) == (
+        "<p>bullets 는 항목을 뜻한다</p>"
+    )
+    assert dt.sanitise("<ul><li>bullets</li></ul>", layouts=("bullets",)) == (
+        "<ul><li>bullets</li></ul>"
+    )
+    # Trailing, not leading: past the content it is the model's own word.
+    assert dt.sanitise("<p>본문</p>\nbullets", layouts=("bullets",)) == "<p>본문</p>\nbullets"
+    # Nothing declared, nothing stripped.
+    assert dt.sanitise("bullets\n<p>본문</p>") == "bullets\n<p>본문</p>"
+
+
+def test_a_block_that_came_back_as_its_own_envelope_is_unwrapped():
+    """The model answers with the shape it was shown instead of filling it.
+
+    `page` already salvages an outline that will not parse rather than
+    abandoning a call somebody paid for, and this is the same trade one block
+    down: the words are there, wrapped in the schema. Left alone they print on
+    the slide as `{"layout":"bullets","body":"…` behind a speaker.
+    """
+    assert dt.sanitise(
+        '{"layout": "bullets", "body": "<ul><li>항목</li></ul>"}', layouts=("bullets",)
+    ) == "<ul><li>항목</li></ul>"
+    # Order is the model's, and so is the key name — nothing ever specified
+    # one, and the same model called it `body` in one run and `content` in the
+    # next. What is read is the shape: metadata out, one string left.
+    assert dt.sanitise('{"body": "<p>본문</p>", "layout": "quote"}') == "<p>본문</p>"
+    assert dt.sanitise('{"layout": "cover", "content": "<p>본문</p>"}') == "<p>본문</p>"
+
+
+def test_an_envelope_with_nothing_to_unwrap_is_left_alone():
+    """Metadata only, or two payloads: neither is one answer in a wrapper."""
+    only_meta = '{"layout": "table", "title": "비교"}'
+    assert dt.sanitise(only_meta) == only_meta
+    ambiguous = '{"layout": "quote", "body": "<p>a</p>", "notes": "b"}'
+    assert dt.sanitise(ambiguous) == ambiguous
+
+
+def test_an_envelope_that_will_not_parse_is_left_for_the_checker():
+    """Truncated JSON is not guessed at.
+
+    A block cut off at the token limit has no readable `body`, and inventing
+    where it ended would put words on a slide nobody wrote. It arrives intact
+    and `lint` names it instead.
+    """
+    cut = '{"layout": "bullets", "body": "<ul><li>항목'
+    assert dt.sanitise(cut, layouts=("bullets",)).startswith("{")
+
+
+def test_a_brace_in_somebody_s_writing_is_not_an_envelope():
+    assert dt.sanitise('<p>{"a": 1} 은 JSON 이다</p>') == '<p>{"a": 1} 은 JSON 이다</p>'
+
+
 # ── choosing and unchoosing ────────────────────────────────────────────
 
 

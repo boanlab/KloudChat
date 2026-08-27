@@ -34,8 +34,10 @@ therefore carries `@media print` rules that put one slide or section per page.
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -321,14 +323,92 @@ def _quoted_code(match: re.Match[str]) -> str:
     return f"{match.group(1)}{inner.replace('<', '&lt;').replace('>', '&gt;')}</code>"
 
 
-def sanitise(fragment: str) -> str:
+#: A first line that restates the brief rather than answering it —
+#: `layout: "bullets"`, `layout = quote`. Anchored at the start of the
+#: fragment, not per line: past the content it is the model's own word.
+_LAYOUT_DIRECTIVE = re.compile(r"^[ \t]*layout[ \t]*[:=][^\n]*\n", re.I)
+
+
+#: Fields of an envelope that describe the block rather than fill it. What is
+#: left after these is the answer, whatever the model decided to call it.
+_ENVELOPE_META = frozenset({"layout", "title", "heading", "n", "index", "id"})
+
+
+def _unwrapped(fragment: str) -> str:
+    """The prose out of an answer that came back as its own envelope.
+
+    The block prompt asks for `HTML 조각만` and shows no object at all — but the
+    outline call one step earlier answers in JSON, and a small model carries the
+    habit into the next call. The slide then opens with
+    `{"layout":"cover","content":"…` behind a speaker.
+
+    Read structurally rather than by key name, because there is no key to know:
+    nothing was ever specified, and the same model called it `body` in one run
+    and `content` in the next. So the metadata fields are dropped and what is
+    left has to be exactly one string — one object, one answer. Two payloads is
+    ambiguous and stays as it arrived.
+
+    Salvaged rather than refused, which is the trade `page._salvaged` already
+    makes one level up. What will not parse — a block cut off at the token
+    limit — is handed on whole, because guessing where it ended would put words
+    on a slide nobody wrote. `lint` names that one instead.
+    """
+    text = fragment.strip()
+    if not text.startswith("{"):
+        return fragment
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return fragment
+    if not isinstance(parsed, dict):
+        return fragment
+    payload = [
+        value
+        for key, value in parsed.items()
+        if key.lower() not in _ENVELOPE_META and isinstance(value, str) and value.strip()
+    ]
+    return payload[0] if len(payload) == 1 else fragment
+
+
+def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
+    """The fragment with the layout it was handed taken off the front.
+
+    A small model answers the brief before it answers the request: asked for
+    the inside of a `bullets` block it writes `bullets`, then the list — and
+    the wrapper puts that word straight after the heading, so the screen behind
+    a speaker reads `측정 환경과 방법` and then `bullets`.
+
+    Whole lines only, and only before any content. A deck about presentation
+    software may well say `bullets` in a sentence, and reaching into prose to
+    delete a word would be a worse slide than the one this fixes.
+    """
+    names = {name.strip().lower() for name in layouts if name and name.strip()}
+    text = fragment.lstrip("\n")
+    while True:
+        without = _LAYOUT_DIRECTIVE.sub("", text, count=1)
+        if without != text:
+            text = without.lstrip("\n")
+            continue
+        head, newline, rest = text.partition("\n")
+        # `newline` is required: a fragment that is *only* a layout name is an
+        # empty block, and `lint` says so better than a silent deletion would.
+        if newline and head.strip().strip("\"'`").lower() in names:
+            text = rest.lstrip("\n")
+            continue
+        return text
+
+
+def sanitise(fragment: str, layouts: Sequence[str] = ()) -> str:
     """One block of model-written HTML, reduced to what the seed styles.
 
     `sandbox=""` already stops a script from running, so this is the second
     lock rather than the only one. It exists because an artifact is also
     downloaded, opened outside the sandbox, and shared by link.
+
+    `layouts` is the template's own vocabulary. Empty — which is every caller
+    that has no template in hand — leaves the front of the fragment alone.
     """
-    text = _CODE.sub(_quoted_code, fragment)
+    text = _CODE.sub(_quoted_code, _without_layout_preamble(_unwrapped(fragment), layouts))
     text = _SCRIPTISH.sub("", text)
     text = _EVENT_ATTR.sub("", text)
     text = _STYLE_ATTR.sub("", text)

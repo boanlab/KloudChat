@@ -54,6 +54,29 @@ _INVENTED_METRIC = re.compile(
     r"(업계\s*(최고|최초|유일))",
 )
 
+#: Markdown emphasis that never became emphasis.
+#:
+#: The document surfaces ask for markup and a small model sometimes answers in
+#: Markdown, so `**발표 노트**` reaches the screen with its own asterisks on it.
+#: `sanitise` cannot help — there is no tag to drop, only characters — which
+#: leaves this as the only place that can see it.
+#:
+#: Paired, closed on the same line, and carrying a space or a Hangul syllable
+#: between them. That last condition is what keeps a `<code>` sample reading
+#: `**bold**` out of it, along with a multiplication sign and a footnote star.
+_STRAY_MARKDOWN = re.compile(r"\*\*(?=\S)(?=[^*\n]*[\s\uac00-\ud7a3])[^*\n]{1,80}?(?<=\S)\*\*")
+
+#: A line that opens with the envelope the answer was supposed to fill.
+#:
+#: `sanitise` unwraps one that parses. One that does not — a block cut off at
+#: the token limit — arrives whole, and this is what says so rather than
+#: letting `{"layout":"bullets","body":"…` reach the screen.
+#:
+#: Anchored at the start of a line: a slide may legitimately show a JSON
+#: fragment inside a sentence, and only a line that *begins* as the envelope is
+#: the envelope.
+_ENVELOPE = re.compile(r'^\s*\{\s*"(?:layout|body)"\s*:')
+
 #: Words that fill a line without saying anything. `P1`: a person may have
 #: meant one, and the fix is a rewrite rather than a correction.
 _FILLER = re.compile(
@@ -194,6 +217,26 @@ def check(
                     "P0",
                     "placeholder",
                     f"채우지 않은 자리가 남았습니다 — “{found.group(0).strip()}”.",
+                    where,
+                )
+            )
+        if any(_ENVELOPE.match(line) for line in part.lines):
+            findings.append(
+                Finding(
+                    "P0",
+                    "envelope",
+                    "답이 내용이 아니라 그것을 담을 껍데기로 왔습니다 — "
+                    "이 블록은 다시 써야 합니다.",
+                    where,
+                )
+            )
+        if found := _STRAY_MARKDOWN.search(text):
+            findings.append(
+                Finding(
+                    "P0",
+                    "markup",
+                    f"마크다운이 렌더되지 않고 그대로 남았습니다 — “{found.group(0).strip()}”. "
+                    "이 자리는 HTML 입니다.",
                     where,
                 )
             )
