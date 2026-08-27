@@ -657,6 +657,8 @@ const EN: Record<string, string> = {
   'CSV 내보내기': 'Export CSV',
   '서버 직접 추가': 'Add a server',
   '모든 대화 삭제': 'Delete all conversations',
+  '대화 {n}개를 삭제할까요?': 'Delete {n} conversation(s)?',
+  '되돌릴 수 없습니다. 이 대화들이 만든 결과물도 함께 지워집니다.': 'This cannot be undone. The outputs these conversations made are deleted with them.',
   '구성을 잡는 중…': 'Outlining…',
   '원본 작업 열기 →': 'Open the original →',
   '그릴 수 있는 값이 없습니다': 'Nothing to plot',
