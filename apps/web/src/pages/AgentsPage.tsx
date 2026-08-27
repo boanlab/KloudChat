@@ -24,6 +24,7 @@ import { cn, relativeTime, uid } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
+import { startFailure } from '@/lib/failures'
 import type { Agent } from '@/types'
 import { errorCode, errorMessage } from '@/lib/api'
 import { NAME_LIMIT } from '@/lib/limits'
@@ -85,6 +86,7 @@ export function AgentsPage() {
     deleteMany,
     installAgent,
     newSession,
+    setNotice,
     loadWorkspace,
     user,
   } = useStore()
@@ -337,9 +339,9 @@ export function AgentsPage() {
                     size="sm"
                     variant="primary"
                     onClick={() =>
-                      void newSession(a.kinds[0] ?? 'chat', { agentId: a.id }).then((id) =>
-                        navigate(`/s/${id}`),
-                      )
+                      void newSession(a.kinds[0] ?? 'chat', { agentId: a.id })
+                        .then((id) => navigate(`/s/${id}`))
+                        .catch((err: unknown) => setNotice(startFailure(err, t)))
                     }
                   >
                     <Play size={13} />

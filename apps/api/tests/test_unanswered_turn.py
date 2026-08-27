@@ -25,6 +25,7 @@ would be the dishonest repair. What these tests hold is the other half:
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -287,6 +288,64 @@ async def test_stopped_before_the_first_token_marks_the_question_stopped(monkeyp
 
     assert turn.answer is None
     assert turn.question.failure is TurnFailure.stopped
+
+
+def _error_events(chunks: list[str]) -> list[dict]:
+    out = []
+    for chunk in chunks:
+        for line in chunk.splitlines():
+            if line.startswith("data: "):
+                event = json.loads(line[len("data: ") :])
+                if event.get("type") == "error":
+                    out.append(event)
+    return out
+
+
+@pytest.mark.asyncio
+async def test_the_error_event_says_why(monkeypatch) -> None:
+    """The reason went to the log and a fixed sentence went to the screen.
+
+    A backend that is down, a model that is missing and a key that is wrong
+    all read as 모델 응답을 받지 못했습니다; the person could not tell which,
+    and neither could whoever they asked. The event now carries the machine
+    code and the upstream's own sentence — with any key in it blanked, because
+    it is about to be shown.
+    """
+    turn = _Turn()
+    chunks = await _drain(
+        turn,
+        monkeypatch,
+        [chat_service.ChatStreamError("upstream_502: overloaded; key sk-abc123XYZ rejected")],
+    )
+
+    (error,) = _error_events(chunks)
+    assert error["code"] == "upstream_502"
+    assert "overloaded" in error["reason"]
+    assert "sk-abc123XYZ" not in error["reason"]
+    assert error["message"] == "모델 응답을 받지 못했습니다."
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_backend_is_named_as_one(monkeypatch) -> None:
+    turn = _Turn()
+    chunks = await _drain(
+        turn, monkeypatch, [chat_service.ChatStreamError("upstream_unreachable: connect refused")]
+    )
+
+    (error,) = _error_events(chunks)
+    assert error["code"] == "upstream_unreachable"
+    assert error["reason"] == "connect refused"
+
+
+@pytest.mark.asyncio
+async def test_a_crash_still_carries_a_code(monkeypatch) -> None:
+    turn = _Turn()
+    chunks = await _drain(turn, monkeypatch, [RuntimeError("boom")])
+
+    (error,) = _error_events(chunks)
+    assert error["code"] == "internal_error"
+    # Not an upstream sentence, so nothing to quote — and nothing invented.
+    assert "reason" not in error
 
 
 def test_the_mark_travels_with_the_transcript() -> None:

@@ -22,6 +22,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
 import { DesignGalleryModal } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
+import { refusalSentence, startFailure } from '@/lib/failures'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
@@ -681,6 +682,7 @@ export function Composer({
     send,
     stopStreaming,
     running,
+    setNotice,
     skills,
     availableTools,
     sessions,
@@ -895,7 +897,8 @@ export function Composer({
       const notice =
         errorCode(error) === 'auto_quality_model_required'
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
-          : errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.'))
+          : (refusalSentence(errorCode(error), t) ??
+            errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
       // Handed back through the store rather than through this component's own
       // setters. A turn that created a session has already moved the person to
       // the conversation, and the composer that sent it is unmounted by the
@@ -1644,9 +1647,9 @@ export function Composer({
                   onClick={() =>
                     // An agent belongs to the session, not one message, so
                     // choosing one starts a conversation.
-                    void newSession(kind, { agentId: a.id, projectId }).then((id) =>
-                      navigate(`/s/${id}`),
-                    )
+                    void newSession(kind, { agentId: a.id, projectId })
+                      .then((id) => navigate(`/s/${id}`))
+                      .catch((err: unknown) => setNotice(startFailure(err, t)))
                   }
                 >
                   {a.name}

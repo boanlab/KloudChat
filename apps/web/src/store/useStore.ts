@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
-import { errorMessage } from '@/lib/api'
+import {
+  errorCode,
+  errorMessage,
+} from '@/lib/api'
+import { refusalSentence, streamFailureSentence } from '@/lib/failures'
 import {
   ApiError,
   PrivacyDecisionError,
@@ -451,6 +455,13 @@ interface State {
     error: string
   } | null
   setComposerRestore: (restore: State['composerRestore']) => void
+  /**
+   * One sentence for the shell to show when something with no screen of its
+   * own fails — a card that starts a conversation and is refused. Cleared by
+   * the bar that shows it.
+   */
+  notice: string | null
+  setNotice: (notice: string | null) => void
   /**
    * Rendering template picked in the gallery, waiting for the turn that will
    * use it. Held here rather than on the session because the session may not
@@ -1963,6 +1974,8 @@ export const useStore = create<State>((set, get) => ({
   setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
   composerRestore: null,
   setComposerRestore: (composerRestore) => set({ composerRestore }),
+  notice: null,
+  setNotice: (notice) => set({ notice }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   pendingStartingTemplate: null,
@@ -2546,17 +2559,13 @@ function turnFailure(err: unknown): string {
   if (err instanceof StreamStalledError) {
     return '모델이 응답하지 않아 요청을 중단했습니다. 다른 모델로 다시 생성해 보세요.'
   }
-  const code = err instanceof ApiError ? err.detail : ''
-  switch (code) {
-    case 'model_unavailable':
-      return '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.'
-    case 'model_not_allowed':
-      return '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.'
-    case 'no_models_available':
-      return '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.'
-    case 'insufficient_credits':
-      return '이번 달 크레딧이 부족합니다.'
-  }
+  // The vocabulary lives in lib/failures.ts, shared with the composer and the
+  // cards that start a conversation — one table, so a code is never named on
+  // one screen and blanked on another. Already translated, so the caller's
+  // `tr` finds nothing to do.
+  const named =
+    err instanceof ApiError && err.status < 500 ? refusalSentence(errorCode(err), tr) : undefined
+  if (named) return named
   if (err instanceof ApiError && err.status >= 500) {
     return '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.'
   }
@@ -3210,7 +3219,7 @@ async function streamTurn(
         case 'error':
           // Content is left alone: a partial answer beats none.
           settled = true
-          patch((m) => ({ ...m, error: event.message }))
+          patch((m) => ({ ...m, error: streamFailureSentence(event, tr) }))
           break
       }
     }
@@ -3235,7 +3244,12 @@ async function streamTurn(
       patch((m) => ({ ...m, failure: 'stopped' }))
     } else if (isClientRefusal(err)) {
       settled = true
-      patch((m) => ({ ...m, error: errorMessage(err, tr('요청을 처리하지 못했습니다.')) }))
+      patch((m) => ({
+        ...m,
+        error:
+          refusalSentence(errorCode(err), tr) ??
+          errorMessage(err, tr('요청을 처리하지 못했습니다.')),
+      }))
       // HTTP refusal means the server did not store the turn. Let the
       // composer restore its draft, attachments, and one-turn skill choice.
       throw err
