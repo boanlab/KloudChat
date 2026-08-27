@@ -119,6 +119,22 @@ function queueSessionPersistence(sessionId: string, persist: () => Promise<void>
   return queued
 }
 
+const noop = () => {}
+
+/** Marks a session as having a turn in flight, with the abort for that turn. */
+function beginRun(set: Set, sessionId: string, abort: () => void = noop) {
+  set((s) => ({ running: { ...s.running, [sessionId]: abort } }))
+}
+
+/** The turn is over, however it ended; other sessions' runs are untouched. */
+function endRun(set: Set, sessionId: string) {
+  set((s) => {
+    if (!(sessionId in s.running)) return {}
+    const { [sessionId]: _done, ...rest } = s.running
+    return { running: rest }
+  })
+}
+
 async function waitForSessionPersistence(sessionId: string): Promise<void> {
   // Another picker action can be queued while the previous PATCH is in flight.
   // Continue until the promise observed is still the last one for this session.
@@ -220,8 +236,14 @@ interface State {
 
   // ── session / generation ──────────────────────────────────────────────
   activeSessionId: string | null
-  streaming: boolean
-  abortStream: (() => void) | null
+  /**
+   * Sessions with a turn in flight, keyed by id, each holding the abort for
+   * its own stream. Per session rather than one flag: with a single boolean,
+   * every conversation looked busy while any one of them generated — a caret
+   * after a finished answer, a stop button where send belonged — and that
+   * stop went to whichever session was on screen, not the one running.
+   */
+  running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
   /** Changes one conversation's model. The surface default is left alone. */
@@ -293,7 +315,7 @@ interface State {
       onSession?: (id: string) => void
     },
   ) => Promise<string>
-  stopStreaming: () => void
+  stopStreaming: (sessionId: string) => void
   renameSession: (id: string, title: string) => Promise<void>
     /**
      * Puts a rendering template on a session, or takes it off.
@@ -1160,8 +1182,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   activeSessionId: null,
-  streaming: false,
-  abortStream: null,
+  running: {},
   modelByKind: initialModelByKind,
   setModel: (kind, id) =>
     set((s) => {
@@ -1482,7 +1503,7 @@ export const useStore = create<State>((set, get) => ({
         return id
       }
 
-      if (get().streaming) return id
+      if (get().running[id]) return id
 
       if (get().compareMode && get().compareModels.length >= 2) {
         await runComparison(set, get, id, text, {
@@ -1540,13 +1561,16 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  stopStreaming: () => {
+  stopStreaming: (sessionId) => {
     // Said out loud before the socket closes. The server cannot tell 중단 from
     // a closed tab, and it must: a reader who navigates away still wants the
     // answer when they come back, and a reader who pressed this does not.
-    const id = get().activeSessionId
-    if (id) void sessionsApi.stop(id).catch(() => undefined)
-    get().abortStream?.()
+    // Addressed to the session that is running, not the one on screen: the
+    // two differ whenever somebody opens another conversation mid-turn.
+    const abort = get().running[sessionId]
+    if (!abort) return
+    void sessionsApi.stop(sessionId).catch(() => undefined)
+    abort()
   },
 
   // Optimistic, then persisted.
@@ -1705,7 +1729,7 @@ export const useStore = create<State>((set, get) => ({
     // shown: the prompt, then an answer row waiting a few seconds for its
     // player. No job card — there is no server-side job to report on.
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
-    set({ streaming: true })
+    beginRun(set, id)
     try {
       const row = await sessionsApi.audio(id, {
         prompt,
@@ -1729,7 +1753,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('오디오를 만들지 못했습니다.')))
     } finally {
-      set({ streaming: false })
+      endRun(set, id)
     }
   },
   generateImages: async (sessionId, prompt, opts = {}) => {
@@ -1751,7 +1775,7 @@ export const useStore = create<State>((set, get) => ({
       opts.onSession?.(id)
     }
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
-    set({ streaming: true })
+    beginRun(set, id)
     // An image template is spent on the picture it shaped, not kept on the
     // session: unlike a deck or a document there is no file whose shape it has
     // to keep matching. Which is exactly why it has to be put down here — no
@@ -1789,7 +1813,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('이미지를 만들지 못했습니다.')))
     } finally {
-      set({ streaming: false })
+      endRun(set, id)
     }
   },
   deleteSessions: async (payload) => {
@@ -3002,8 +3026,7 @@ async function streamTurn(
   const controller = new AbortController()
 
   set((s) => ({
-    streaming: true,
-    abortStream: () => controller.abort(),
+    running: { ...s.running, [sessionId]: () => controller.abort() },
     sessions: s.sessions.map((c) =>
       c.id === sessionId
         ? {
@@ -3196,7 +3219,7 @@ async function streamTurn(
     // Buffered text lands here, including on abort or error.
     if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
     if (!settled) patch((m) => ({ ...m, error: CUT_OFF }))
-    set({ streaming: false, abortStream: null })
+    endRun(set, sessionId)
     // Ordering, pinning, and the generated title all live server-side.
     void get().loadSessions()
   }
@@ -3228,7 +3251,7 @@ async function runComparison(
   const variants: Variant[] = models.map((model) => ({ model, content: '', status: 'streaming' }))
 
   set((s) => ({
-    streaming: true,
+    running: { ...s.running, [sessionId]: noop },
     sessions: s.sessions.map((c) =>
       c.id === sessionId
         ? {
@@ -3265,7 +3288,7 @@ async function runComparison(
     }))
 
   const controller = new AbortController()
-  set({ abortStream: () => controller.abort() })
+  beginRun(set, sessionId, () => controller.abort())
   let accepted = false
   try {
     for await (const e of streamComparison(
@@ -3375,7 +3398,7 @@ async function runComparison(
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    set({ streaming: false, abortStream: null })
+    endRun(set, sessionId)
     void get().loadSessions()
   }
 }
@@ -3448,7 +3471,7 @@ async function streamReport(
   // which is the picture somebody sees a second before their deck is replaced.
   const willWrite = gate.approve === true
   set((s) => ({
-    streaming: true,
+    running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
     sessions: s.sessions.map((c) =>
       c.id === sessionId
@@ -3472,7 +3495,7 @@ async function streamReport(
     }))
 
   const controller = new AbortController()
-  set({ abortStream: () => controller.abort() })
+  beginRun(set, sessionId, () => controller.abort())
   //: Whether the turn ended on purpose. See CUT_OFF.
   let settled = false
 
@@ -3605,7 +3628,7 @@ async function streamReport(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
-    set({ streaming: false, abortStream: null })
+    endRun(set, sessionId)
     void get().loadSessions()
   }
 }
@@ -3659,7 +3682,7 @@ async function streamPage(
   // which is the picture somebody sees a second before their deck is replaced.
   const willWrite = gate.approve === true
   set((s) => ({
-    streaming: true,
+    running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
     sessions: s.sessions.map((c) =>
       c.id === sessionId
@@ -3687,7 +3710,7 @@ async function streamPage(
   const order: string[] = []
 
   const controller = new AbortController()
-  set({ abortStream: () => controller.abort() })
+  beginRun(set, sessionId, () => controller.abort())
   let settled = false
 
   try {
@@ -3794,7 +3817,7 @@ async function streamPage(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
-    set({ streaming: false, abortStream: null })
+    endRun(set, sessionId)
     void get().loadSessions()
   }
 }
@@ -3854,7 +3877,7 @@ async function streamDeck(
   // which is the picture somebody sees a second before their deck is replaced.
   const willWrite = gate.approve === true
   set((s) => ({
-    streaming: true,
+    running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
     sessions: s.sessions.map((c) =>
       c.id === sessionId
@@ -3876,7 +3899,7 @@ async function streamDeck(
     }))
 
   const controller = new AbortController()
-  set({ abortStream: () => controller.abort() })
+  beginRun(set, sessionId, () => controller.abort())
   //: Whether the turn ended on purpose. See CUT_OFF.
   let settled = false
 
@@ -3995,7 +4018,7 @@ async function streamDeck(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
-    set({ streaming: false, abortStream: null })
+    endRun(set, sessionId)
     void get().loadSessions()
   }
 }
