@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -2631,6 +2632,33 @@ async def send_message(
 #: of why a cancelled answer turned up later underneath an unrelated question.
 _STOPPING: dict[str, set[asyncio.Event]] = {}
 
+#: A proxy or provider key echoed back in an upstream error body. LiteLLM masks
+#: most of it, but the reason is about to be shown on a screen.
+_SECRET_IN_REASON = re.compile(r"sk-[A-Za-z0-9_\-]+")
+
+
+def _error_event(message: str, exc: BaseException | None = None) -> dict[str, Any]:
+    """The SSE `error` event, carrying the reason the log already had.
+
+    Every failure used to reach the screen as the one sentence in `message`,
+    while `ChatStreamError` — `upstream_502: <detail>`, `upstream_unreachable:
+    <exc>` — went to the log alone. A person could not tell a backend that is
+    down from a model that is missing from an account that is out of quota,
+    and neither could an operator reading over their shoulder. `code` is the
+    machine half, for the client's own vocabulary; `reason` is the upstream's
+    sentence, bounded and with any key blanked out. `message` stays for a
+    client that knows nothing else.
+    """
+    code, reason = "internal_error", ""
+    if isinstance(exc, chat_service.ChatStreamError):
+        head, _, tail = str(exc).partition(": ")
+        code = head.strip() or "upstream_failed"
+        reason = _SECRET_IN_REASON.sub("sk-…", tail.strip())[:200]
+    event: dict[str, Any] = {"type": "error", "code": code, "message": message}
+    if reason:
+        event["reason"] = reason
+    return event
+
 
 async def _until_stopped(
     events: AsyncIterator[dict[str, Any]], stopping: asyncio.Event
@@ -2940,11 +2968,11 @@ async def _run_turn(
     except chat_service.ChatStreamError as exc:
         log.warning("chat stream failed for session %s: %s", session_id, exc)
         failed = str(exc)
-        yield chat_service.sse({"type": "error", "message": "모델 응답을 받지 못했습니다."})
-    except Exception:  # noqa: BLE001 — turn still has to settle and close
+        yield chat_service.sse(_error_event("모델 응답을 받지 못했습니다.", exc))
+    except Exception as exc:  # noqa: BLE001 — turn still has to settle and close
         log.exception("chat stream crashed for session %s", session_id)
         failed = "internal_error"
-        yield chat_service.sse({"type": "error", "message": "요청 처리 중 오류가 발생했습니다."})
+        yield chat_service.sse(_error_event("요청 처리 중 오류가 발생했습니다.", exc))
 
     content = "".join(text_parts)
     if failed == "stopped" and not any(usage.values()):
@@ -3816,9 +3844,9 @@ async def _run_page(
                 usage = {k: v for k, v in event.items() if k != "type"}
                 continue
             yield chat_service.sse(event)
-    except Exception:  # noqa: BLE001 — the turn must still settle
+    except Exception as exc:  # noqa: BLE001 — the turn must still settle
         log.exception("page generation crashed for session %s", session_id)
-        yield chat_service.sse({"type": "error", "message": "문서를 만들지 못했습니다."})
+        yield chat_service.sse(_error_event("문서를 만들지 못했습니다.", exc))
 
     # Planned or asked, and nothing written. Stored on the session and settled
     # here, and then the artifact block below is skipped entirely — which is
@@ -4007,9 +4035,9 @@ async def _run_deck(
                 usage = {k: v for k, v in event.items() if k != "type"}
                 continue
             yield chat_service.sse(event)
-    except Exception:  # noqa: BLE001 — the turn must still settle
+    except Exception as exc:  # noqa: BLE001 — the turn must still settle
         log.exception("deck generation crashed for session %s", session_id)
-        yield chat_service.sse({"type": "error", "message": "슬라이드를 만들지 못했습니다."})
+        yield chat_service.sse(_error_event("슬라이드를 만들지 못했습니다.", exc))
 
     # Planned or asked, and nothing written. Stored on the session and settled
     # here, and then the artifact block below is skipped entirely — which is
@@ -4220,10 +4248,10 @@ async def _run_report(
             if event["type"] == "error":
                 failed = True
             yield chat_service.sse(event)
-    except Exception:  # noqa: BLE001 — the turn must still settle
+    except Exception as exc:  # noqa: BLE001 — the turn must still settle
         log.exception("report generation crashed for session %s", session_id)
         failed = True
-        yield chat_service.sse({"type": "error", "message": "보고서를 만들지 못했습니다."})
+        yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
 
     # Planned or asked, and nothing written. Stored on the session and settled
     # here, and then the artifact block below is skipped entirely — which is

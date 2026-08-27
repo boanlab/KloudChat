@@ -30,6 +30,7 @@ import {
 } from '@/components/memory/MemoryEditor'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { useStore } from '@/store/useStore'
+import { startFailure } from '@/lib/failures'
 import type { MemoryEntry } from '@/types'
 import { useT } from '@/lib/useT'
 
@@ -57,6 +58,7 @@ export function ProjectDetailPage() {
     updateProject,
     deleteProject,
     newSession,
+    setNotice,
     loadWorkspace,
     uploadFile,
     deleteFile,
@@ -190,9 +192,9 @@ export function ProjectDetailPage() {
                   key={k}
                   icon={<KindIcon size={14} style={{ color: meta.color }} />}
                   onClick={() =>
-                    void newSession(k, { projectId: project.id }).then((id) =>
-                      navigate(`/s/${id}`),
-                    )
+                    void newSession(k, { projectId: project.id })
+                      .then((id) => navigate(`/s/${id}`))
+                      .catch((err: unknown) => setNotice(startFailure(err, t)))
                   }
                 >
                   {t(meta.label)}

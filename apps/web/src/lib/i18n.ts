@@ -1352,6 +1352,29 @@ const EN: Record<string, string> = {
   // ── 답을 받지 못한 턴, 그리고 지목할 모델이 없는 몫 ─────────────
   '기타': 'Other',
   '답변을 받지 못했습니다.': 'No answer came back.',
+  '이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다. 에이전트 화면에서 다시 켜거나 다른 대화를 시작하세요.':
+    "This conversation's agent is switched off, so nothing can be sent. Turn it back on from Agents, or start another conversation.",
+  '이 대화의 에이전트를 더는 찾을 수 없습니다. 새 대화를 시작하세요.':
+    "This conversation's agent no longer exists. Start a new conversation.",
+  '이 에이전트는 이 화면에서 쓸 수 없습니다.': 'This agent is not available on this surface.',
+  '이 대화의 프로젝트를 더는 찾을 수 없습니다.':
+    "This conversation's project no longer exists.",
+  '이 대화를 더는 찾을 수 없습니다.': 'This conversation no longer exists.',
+  '첨부 파일을 찾을 수 없습니다. 다시 첨부하세요.': 'The attachment could not be found. Attach it again.',
+  '선택한 스킬을 이 요청에 적용할 수 없습니다. 스킬 선택을 바꿔 다시 시도하세요.': 'The chosen skills cannot be applied to this request. Change the selection and try again.',
+  '이번 달 크레딧을 모두 썼습니다.':
+    "This month's credits are used up.",
+  '이 화면은 아직 지원되지 않습니다.': 'This surface is not supported yet.',
+  '개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다. 잠시 후 다시 시도하세요.': 'The privacy check is unavailable, so the request was not sent. Try again shortly.',
+  '관리자 정책이 이 요청을 막았습니다 ({code}).': 'An administrator policy blocked this request ({code}).',
+  '요청이 거부되었습니다 ({code}).': 'The request was refused ({code}).',
+  '모델 서버에 연결할 수 없습니다. 관리자가 설정 → 시스템 → 연동의 게이트웨이 주소와 상태를 확인해야 합니다.': 'The model server cannot be reached. An administrator needs to check the gateway address and status under Settings → System → Integrations.',
+  '모델 서버가 인증을 거부했습니다. 관리자가 LiteLLM 키를 확인해야 합니다.': 'The model server refused the credentials. An administrator needs to check the LiteLLM key.',
+  '모델 서버에 이 모델이 없습니다. 모델을 바꿔 다시 시도하세요.': 'The model server does not have this model. Pick another model and try again.',
+  '모델 서버의 요청 한도를 넘었습니다. 잠시 후 다시 시도하세요.': 'The model server is rate-limiting requests. Try again shortly.',
+  '모델 서버가 요청을 거부했습니다.': 'The model server refused the request.',
+  '모델 서버 오류로 답변을 받지 못했습니다. 잠시 후 다시 시도하세요.': 'A model server error cut the answer short. Try again shortly.',
+  '대화를 시작하지 못했습니다.': 'The conversation could not be started.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
   '여기서 멈췄습니다.': 'Stopped here.',
 
