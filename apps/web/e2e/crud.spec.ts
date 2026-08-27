@@ -150,7 +150,18 @@ test('프로젝트의 이름과 아이콘을 바꾼다', async ({ page }) => {
 
   await page.goto(url)
   await expect(page.getByText(`📚 검수${tag}v2`).first()).toBeVisible({ timeout: 15_000 })
+
+  // Deletion moved out of the header into its own area, and asks first: the
+  // instructions and knowledge files do not come back.
   await page.getByRole('button', { name: '프로젝트 삭제' }).click()
+  await expect(dialog(page).getByRole('heading', { name: `검수${tag}v2 삭제` })).toBeVisible()
+  await dialog(page).getByRole('button', { name: '취소' }).click()
+  await expect(page).toHaveURL(url)
+
+  await page.getByRole('button', { name: '프로젝트 삭제' }).click()
+  await dialog(page).getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(page).toHaveURL(/\/projects$/, { timeout: 15_000 })
+  await expect(page.getByText(`검수${tag}v2`)).toHaveCount(0)
 })
 
 test('아티팩트를 카드에서 지운다', async ({ page }) => {
