@@ -371,6 +371,13 @@ class SendMessage(Wire):
     #: request plans and offers, so nothing a person has not looked at can
     #: replace a document they already have.
     approve: bool = False
+    #: The failed question to run again, by message id — what 다시 시도 sends.
+    #: The row is reused rather than written twice: the transcript keeps one
+    #: copy of the question, whatever failed under it is replaced, and the model
+    #: is not shown the same sentence twice in its history. Only the latest
+    #: question qualifies; anything after it would be a conversation that moved
+    #: on. `content` and `attachments` are taken from the stored row.
+    retry_of: str | None = Field(default=None, max_length=64)
     #: Answers to the questions a stopped turn asked, keyed by question id.
     #: Folded into the request as conditions on it — never substituted for it,
     #: because the sentence they typed is the thing they asked for.

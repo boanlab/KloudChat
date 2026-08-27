@@ -1608,6 +1608,12 @@ export async function* streamSession(
     approve?: boolean
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
+    /**
+     * The failed question to run again in place, by message id. The server
+     * reuses that row and replaces what failed under it, so the transcript
+     * keeps one copy of the question.
+     */
+    retryOf?: string
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
