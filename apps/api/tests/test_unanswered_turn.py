@@ -194,6 +194,30 @@ async def test_half_an_answer_is_kept_and_said_to_be_half(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_step_is_stored_once_with_the_words_it_finished_on(monkeypatch) -> None:
+    """The running event and the done event share an id.
+
+    Both were appended, so a reload showed every tool call twice — the first
+    copy still saying 검색 중 under a header that said 작업 완료.
+    """
+    turn = _Turn()
+    await _drain(
+        turn,
+        monkeypatch,
+        [
+            {"type": "step", "id": "s1", "label": "웹 검색 중", "status": "running"},
+            {"type": "step", "id": "s1", "label": "웹 검색", "status": "done", "detail": "5건"},
+            {"type": "delta", "text": "답"},
+            {"type": "usage", "inputTokens": 1, "outputTokens": 1},
+        ],
+    )
+
+    answer = turn.answer
+    assert answer is not None
+    assert answer.steps == [{"id": "s1", "label": "웹 검색", "status": "done", "detail": "5건"}]
+
+
+@pytest.mark.asyncio
 async def test_an_ordinary_turn_marks_neither_row(monkeypatch) -> None:
     turn = _Turn()
     await _drain(

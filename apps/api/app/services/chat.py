@@ -50,6 +50,25 @@ def step_label(tool_name: str) -> str:
     return _STEP_LABELS.get(base, base.replace("_", " "))
 
 
+# The same tools as nouns — what a finished step says. The progress form stays
+# on the running row only.
+_STEP_TITLES: dict[str, str] = {
+    "web_search": "웹 검색",
+    "search": "웹 검색",
+    "fetch_url": "문서 읽기",
+    "fetch": "문서 읽기",
+    "execute_code": "코드 실행",
+    "deep_research": "심층 조사",
+    "get_current_time": "현재 시각",
+    "my_usage": "사용량 조회",
+}
+
+
+def step_title(tool_name: str) -> str:
+    base = tool_name.split("__")[-1]
+    return _STEP_TITLES.get(base, base.replace("_", " "))
+
+
 def sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 

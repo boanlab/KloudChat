@@ -194,6 +194,7 @@ WEB_SEARCH = Tool(
     },
     run=web_search,
     label="웹 검색 중",
+    title="웹 검색",
 )
 
 FETCH_URL = Tool(
@@ -209,6 +210,7 @@ FETCH_URL = Tool(
     },
     run=fetch_url,
     label="문서 읽는 중",
+    title="문서 읽기",
 )
 
 EXECUTE_CODE = Tool(
@@ -227,6 +229,7 @@ EXECUTE_CODE = Tool(
     },
     run=execute_code,
     label="코드 실행 중",
+    title="코드 실행",
 )
 
 #: What chat can produce as a standalone document. Report and deck are excluded:
@@ -406,6 +409,7 @@ CREATE_ARTIFACT = Tool(
     },
     run=create_artifact,
     label="아티팩트 만드는 중",
+    title="아티팩트 생성",
     read_only=False,
     wants_context=True,
 )
@@ -562,6 +566,7 @@ CREATE_CHART = Tool(
     },
     run=create_chart,
     label="차트 그리는 중",
+    title="차트 그리기",
     read_only=False,
     wants_context=True,
 )
@@ -663,6 +668,7 @@ SHARE_NOTE = Tool(
     },
     run=share_note,
     label="공유 메모 남기는 중",
+    title="공유 메모",
     read_only=False,
     wants_context=True,
 )
@@ -787,4 +793,5 @@ def knowledge_tool(
         },
         run=run,
         label="자료 찾는 중",
+        title="자료 찾기",
     )

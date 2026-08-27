@@ -25,7 +25,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import settings_store
-from app.services.chat import ChatStreamError, step_label
+from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
@@ -234,8 +234,14 @@ async def run_turn(
     redact_next_request = redact_logging
     reported_models: set[str] = set()
 
-    def visible_label(tool: Tool | None, name: str) -> str:
-        label = tool.label if tool else step_label(name)
+    def visible_label(tool: Tool | None, name: str, *, done: bool = False) -> str:
+        # Progress form while it runs, noun once it is over: 웹 검색 중 under a
+        # spinner, 웹 검색 beside the check. One string for both left every
+        # finished row saying it was still running.
+        if done:
+            label = (tool.title or tool.label) if tool else step_title(name)
+        else:
+            label = tool.label if tool else step_label(name)
         if sanitize_step_detail is not None:
             label, _ = sanitize_step_detail(label)
         return label
@@ -379,7 +385,7 @@ async def run_turn(
             yield {
                 "type": "step",
                 "id": f"h{hop}_{index}",
-                "label": visible_label(tool, call["name"]),
+                "label": visible_label(tool, call["name"], done=True),
                 "status": "error" if result.failed else "done",
                 **({"detail": result.detail} if result.detail else {}),
             }
