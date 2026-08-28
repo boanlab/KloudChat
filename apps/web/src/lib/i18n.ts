@@ -61,6 +61,7 @@ const EN: Record<string, string> = {
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
   '새로 만들기': 'New',
+  '새 채팅 시작': 'Start a chat',
   '테마: 시스템 설정 따름': 'Theme: follow system',
   '테마: 밝게': 'Theme: light',
   '테마: 어둡게': 'Theme: dark',

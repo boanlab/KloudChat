@@ -14,6 +14,7 @@ import {
   Input,
   MenuItem,
   MenuLabel,
+  MenuSeparator,
   Modal,
   Tabs,
   Textarea,
@@ -194,36 +195,6 @@ export function ProjectDetailPage() {
             {t('프로젝트')}
           </button>
         }
-        right={
-          <Dropdown
-            align="right"
-            trigger={() => (
-              <Button variant="primary" size="sm">
-                <Plus size={14} />
-            {t('이 프로젝트에서 새로 만들기')}
-              </Button>
-            )}
-          >
-            <MenuLabel>{t('무엇을 만들까요?')}</MenuLabel>
-            {kindOrder.map((k) => {
-              const meta = kindMeta[k]
-              const KindIcon = meta.icon
-              return (
-                <MenuItem
-                  key={k}
-                  icon={<KindIcon size={14} style={{ color: meta.color }} />}
-                  onClick={() =>
-                    void newSession(k, { projectId: project.id })
-                      .then((id) => navigate(`/s/${id}`))
-                      .catch((err: unknown) => setNotice(startFailure(err, t)))
-                  }
-                >
-                  {t(meta.label)}
-                </MenuItem>
-              )
-            })}
-          </Dropdown>
-        }
       />
       {/* 클로드의 프로젝트 화면처럼: 왼쪽은 하는 일(대화·지식·스킬·메모리),
           오른쪽은 그 일에 매번 걸리는 설정(지침·디자인·서식). 셋이었던 카드가
@@ -254,19 +225,36 @@ export function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
-            <Button
-              size="sm"
-              onClick={() =>
-                setEditing({
-                  name: project.name,
-                  emoji: project.emoji,
-                  description: project.description,
-                })
-              }
+            {/* 최상단 바에 있던 것을 제목 옆으로 — 이 프로젝트를 보고 있을 때
+                쓰는 버튼이 이 프로젝트가 안 보이는 자리에 떠 있을 이유가 없다. */}
+            <Dropdown
+              align="right"
+              trigger={() => (
+                <Button variant="primary" size="sm">
+                  <Plus size={14} />
+                  {t('이 프로젝트에서 새로 만들기')}
+                </Button>
+              )}
             >
-              <Pencil size={14} />
-              {t('이름 · 설명')}
-            </Button>
+              <MenuLabel>{t('무엇을 만들까요?')}</MenuLabel>
+              {kindOrder.map((k) => {
+                const meta = kindMeta[k]
+                const KindIcon = meta.icon
+                return (
+                  <MenuItem
+                    key={k}
+                    icon={<KindIcon size={14} style={{ color: meta.color }} />}
+                    onClick={() =>
+                      void newSession(k, { projectId: project.id })
+                        .then((id) => navigate(`/s/${id}`))
+                        .catch((err: unknown) => setNotice(startFailure(err, t)))
+                    }
+                  >
+                    {t(meta.label)}
+                  </MenuItem>
+                )
+              })}
+            </Dropdown>
             <Dropdown
               align="right"
               trigger={() => (
@@ -275,6 +263,19 @@ export function ProjectDetailPage() {
                 </Button>
               )}
             >
+              <MenuItem
+                icon={<Pencil size={14} />}
+                onClick={() =>
+                  setEditing({
+                    name: project.name,
+                    emoji: project.emoji,
+                    description: project.description,
+                  })
+                }
+              >
+                {t('이름 · 설명')}
+              </MenuItem>
+              <MenuSeparator />
               {/* 되돌릴 수 없는 것 하나를 위해 카드 한 칸을 늘 띄워 두는 대신,
                   누르지 않으면 보이지 않는 자리에 둡니다. 확인 대화상자는 그대로라
                   실수로 지워지는 경로는 아닙니다. */}
@@ -499,7 +500,23 @@ export function ProjectDetailPage() {
                 </Dropdown>
               </div>
               {projectSessions.length === 0 ? (
-                <EmptyState icon={<Plus size={18} />} title={t('아직 작업이 없습니다')} />
+                <EmptyState
+                  icon={<Plus size={18} />}
+                  title={t('아직 작업이 없습니다')}
+                  action={
+                    <Button
+                      variant="primary"
+                      onClick={() =>
+                        void newSession('chat', { projectId: project.id })
+                          .then((id) => navigate(`/s/${id}`))
+                          .catch((err: unknown) => setNotice(startFailure(err, t)))
+                      }
+                    >
+                      <Plus size={16} />
+                      {t('새 채팅 시작')}
+                    </Button>
+                  }
+                />
               ) : (
                 <div className="space-y-2">
                 {projectSessions.map((c) => {
