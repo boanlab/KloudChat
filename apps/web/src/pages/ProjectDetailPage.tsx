@@ -500,23 +500,21 @@ export function ProjectDetailPage() {
                 </Dropdown>
               </div>
               {projectSessions.length === 0 ? (
-                <EmptyState
-                  icon={<Plus size={18} />}
-                  title={t('아직 작업이 없습니다')}
-                  action={
-                    <Button
-                      variant="primary"
-                      onClick={() =>
-                        void newSession('chat', { projectId: project.id })
-                          .then((id) => navigate(`/s/${id}`))
-                          .catch((err: unknown) => setNotice(startFailure(err, t)))
-                      }
-                    >
-                      <Plus size={16} />
-                      {t('새 채팅 시작')}
-                    </Button>
-                  }
-                />
+                // 아이콘과 "아직 작업이 없습니다" 는 버튼 하나를 설명하는 데
+                // 두 줄을 더 썼을 뿐이었다 — 버튼 자체가 이미 그 말이다.
+                <div className="flex justify-center py-12">
+                  <Button
+                    variant="primary"
+                    onClick={() =>
+                      void newSession('chat', { projectId: project.id })
+                        .then((id) => navigate(`/s/${id}`))
+                        .catch((err: unknown) => setNotice(startFailure(err, t)))
+                    }
+                  >
+                    <Plus size={16} />
+                    {t('새 채팅 시작')}
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-2">
                 {projectSessions.map((c) => {

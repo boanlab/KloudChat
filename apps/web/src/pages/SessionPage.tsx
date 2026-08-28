@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
-import { Composer } from '@/components/chat/Composer'
+import { Composer, hasUnsentDraft } from '@/components/chat/Composer'
 import { ProposalCard } from '@/components/chat/ProposalCard'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
@@ -233,6 +233,53 @@ export function SessionPage() {
   useEffect(() => {
     setActiveSession(session?.id ?? null)
   }, [session?.id, setActiveSession])
+
+  /**
+   * A conversation nobody put anything into. 새 채팅 시작 and 이 프로젝트에서
+   * 새로 만들기 create the row on the server before there is a sentence, so
+   * leaving before the first send left an empty chat sitting in every list
+   * that reads sessions — the project's own tab and the sidebar are one
+   * array, so removing it here clears both without touching either.
+   *
+   * A typed-but-unsent draft is the one thing that keeps an empty session:
+   * it already survives navigation on its own (Composer's in-memory map),
+   * and deleting the row out from under it would make that draft
+   * unreachable rather than merely unsent.
+   *
+   * The actual check runs a tick later, in a timer cancelled by whatever
+   * mounts next for the same id. Deleting straight from the cleanup would
+   * also catch StrictMode's dev-only mount → cleanup → mount, which tests
+   * that an effect survives being repeated by repeating it once, in the same
+   * tick, on the same session — a delete fired there removes what the second
+   * mount was about to show. Returning to the same still-empty session before
+   * the timer fires cancels it exactly the same way, which is also correct:
+   * being looked at is reason enough not to go.
+   */
+  const pendingCleanup = useRef<{ id: string; timer: number } | null>(null)
+  useEffect(() => {
+    const id = sessionId
+    if (!id) return
+    if (pendingCleanup.current?.id === id) {
+      window.clearTimeout(pendingCleanup.current.timer)
+      pendingCleanup.current = null
+    }
+    return () => {
+      const timer = window.setTimeout(() => {
+        pendingCleanup.current = null
+        const row = useStore.getState().sessions.find((c) => c.id === id)
+        if (!row) return
+        const hasWork =
+          row.messages.length > 0 ||
+          row.messageCount > 0 ||
+          row.artifactId !== null ||
+          row.made !== null ||
+          hasUnsentDraft(id) ||
+          useStore.getState().jobs.some((j) => j.sessionId === id)
+        if (!hasWork) void useStore.getState().deleteSession(id)
+      }, 0)
+      pendingCleanup.current = { id, timer }
+    }
+  }, [sessionId])
 
   // The sidebar list carries titles only, so a session opened by URL (a reload,
   // a shared link, a back button) has to fetch its own transcript.
