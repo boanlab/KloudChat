@@ -514,8 +514,10 @@ interface State {
   // ── workspace — all live against /api ─────────────────────────────────
   /** One call after sign-in; each screen also refreshes its own slice. */
   loadWorkspace: () => Promise<void>
+  // emoji is optional — the server defaults to 📁, and the creation form no
+  // longer asks for one up front.
   createProject: (
-    p: Pick<Project, 'name' | 'description' | 'emoji' | 'instructions'>,
+    p: Pick<Project, 'name' | 'description' | 'instructions'> & Partial<Pick<Project, 'emoji'>>,
   ) => Promise<string>
   updateProject: (id: string, patch: Partial<Project>) => Promise<void>
   deleteProject: (id: string) => Promise<void>

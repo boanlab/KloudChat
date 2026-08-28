@@ -360,6 +360,12 @@ let carriedComposer: {
 const drafts = new Map<string, string>()
 const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
 
+/** Whether an existing session has something typed and not yet sent — the one
+ *  thing that makes an otherwise empty conversation worth keeping. */
+export function hasUnsentDraft(sessionId: string) {
+  return !!drafts.get(sessionId)?.trim()
+}
+
 export function Composer({
   sessionId,
   kind,
