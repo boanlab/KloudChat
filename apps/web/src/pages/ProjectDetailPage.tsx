@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, FileText, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Brain, FileText, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -15,14 +15,14 @@ import {
   MenuItem,
   MenuLabel,
   Modal,
-  PageHeader,
   Tabs,
   Textarea,
+  useMenuClose,
 } from '@/components/ui'
 import { downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
-import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { formatTokens, relativeTime } from '@/lib/utils'
 import {
   MemoryEditor,
   emptyMemory,
@@ -35,6 +35,27 @@ import type { MemoryEntry } from '@/types'
 import { useT } from '@/lib/useT'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
+
+/** The grid inside the icon button's dropdown. Closes itself on a pick. */
+function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
+  const close = useMenuClose()
+  return (
+    <div className="grid grid-cols-4 gap-1 p-1">
+      {PROJECT_EMOJIS.map((e) => (
+        <button
+          key={e}
+          onClick={() => {
+            onPick(e)
+            close()
+          }}
+          className="grid size-9 place-items-center rounded-control text-lg transition-colors hover:bg-elevated"
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /**
  * What a delete takes, in the same words in the card and in the question.
@@ -204,31 +225,65 @@ export function ProjectDetailPage() {
           </Dropdown>
         }
       />
-      <PageBody>
-        <PageHeader
-          title={`${project.emoji} ${project.name}`}
-          description={project.description}
-          action={
-            <div className="flex gap-2">
-              {/* Name, icon and description were fixed at creation: the detail
-                  page could edit the instructions and nothing else, so a typo in
-                  a project's name was permanent. */}
-              <Button
-                size="sm"
-                onClick={() =>
-                  setEditing({
-                    name: project.name,
-                    emoji: project.emoji,
-                    description: project.description,
-                  })
-                }
-              >
-                <Pencil size={14} />
-                {t('이름 · 설명')}
-              </Button>
+      {/* 클로드의 프로젝트 화면처럼: 왼쪽은 하는 일(대화·지식·스킬·메모리),
+          오른쪽은 그 일에 매번 걸리는 설정(지침·디자인·서식). 셋이었던 카드가
+          제목보다 먼저 눈에 들어오던 것을 여기서 나눕니다. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            {/* 아이콘은 이제 여기서, 만드는 시점이 아니라 필요할 때 고릅니다. */}
+            <Dropdown
+              trigger={() => (
+                <button
+                  aria-label={t('아이콘 바꾸기')}
+                  title={t('아이콘 바꾸기')}
+                  className="grid size-11 shrink-0 place-items-center rounded-card border border-line bg-elevated text-xl transition-colors hover:border-line-strong hover:bg-panel"
+                >
+                  {project.emoji}
+                </button>
+              )}
+            >
+              <EmojiGrid onPick={(emoji) => void updateProject(project.id, { emoji })} />
+            </Dropdown>
+            <div className="min-w-0 pt-1">
+              <h1 className="truncate text-2xl font-semibold tracking-tight">{project.name}</h1>
+              {project.description && (
+                <p className="mt-1 text-base text-muted">{project.description}</p>
+              )}
             </div>
-          }
-        />
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              onClick={() =>
+                setEditing({
+                  name: project.name,
+                  emoji: project.emoji,
+                  description: project.description,
+                })
+              }
+            >
+              <Pencil size={14} />
+              {t('이름 · 설명')}
+            </Button>
+            <Dropdown
+              align="right"
+              trigger={() => (
+                <Button variant="ghost" size="icon" aria-label={t('더 보기')}>
+                  <MoreHorizontal size={16} />
+                </Button>
+              )}
+            >
+              {/* 되돌릴 수 없는 것 하나를 위해 카드 한 칸을 늘 띄워 두는 대신,
+                  누르지 않으면 보이지 않는 자리에 둡니다. 확인 대화상자는 그대로라
+                  실수로 지워지는 경로는 아닙니다. */}
+              <MenuItem danger icon={<Trash2 size={14} />} onClick={() => setConfirmDelete(true)}>
+                {t('프로젝트 삭제')}
+              </MenuItem>
+            </Dropdown>
+          </div>
+        </div>
 
         <Modal
           open={!!editing}
@@ -252,24 +307,6 @@ export function ProjectDetailPage() {
         >
           {editing && (
             <>
-              <Field label={t('아이콘')}>
-                <div className="flex flex-wrap gap-1.5">
-                  {PROJECT_EMOJIS.map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => setEditing({ ...editing, emoji: e })}
-                      className={cn(
-                        'grid size-9 place-items-center rounded-control border text-lg transition-colors',
-                        editing.emoji === e
-                          ? 'border-accent bg-accent-soft'
-                          : 'border-line hover:bg-elevated',
-                      )}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              </Field>
               <Field label={t('이름')}>
                 <Input
                   value={editing.name}
@@ -286,7 +323,9 @@ export function ProjectDetailPage() {
           )}
         </Modal>
 
-        <Card className="mb-6 p-4">
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start">
+        <aside className="order-2 space-y-4 lg:sticky lg:top-6">
+        <Card className="p-4">
           <div className="mb-2 flex items-center justify-between">
             <div>
               <p className="text-base font-medium">{t('프로젝트 지침')}</p>
@@ -404,7 +443,9 @@ export function ProjectDetailPage() {
             ))}
           </Card>
         )}
+        </aside>
 
+        <div className="order-1 min-w-0">
         <Tabs<Tab>
           value={tab}
           onChange={setTab}
@@ -703,24 +744,10 @@ export function ProjectDetailPage() {
             </div>
           )}
         </div>
-
-        {/* Away from the routine controls. 프로젝트 삭제 used to sit beside
-            이름 · 설명 at the same size, one misclick from a permanent loss of
-            the instructions and knowledge files; the header keeps the edits and
-            the one thing that cannot be undone lives here, behind a question. */}
-        <Card className="mt-8 border-danger/30 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-base font-medium text-danger">{t('프로젝트 삭제')}</p>
-              <p className="mt-0.5 text-sm text-muted">{t(DELETE_SCOPE)}</p>
-            </div>
-            <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
-              <Trash2 size={14} />
-              {t('프로젝트 삭제')}
-            </Button>
-          </div>
-        </Card>
-      </PageBody>
+        </div>
+        </div>
+        </div>
+      </div>
 
       <ConfirmDialog
         open={confirmDelete}
