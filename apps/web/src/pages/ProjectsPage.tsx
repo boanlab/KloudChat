@@ -17,7 +17,6 @@ import {
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { relativeTime } from '@/lib/utils'
-import { PROJECT_EMOJIS } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
@@ -38,7 +37,6 @@ export function ProjectsPage() {
   const [draft, setDraft] = useState({
     name: '',
     description: '',
-    emoji: '🧪',
     instructions: '',
   })
 
@@ -143,7 +141,7 @@ export function ProjectsPage() {
                 // wait for it — otherwise the route gets a pending Promise.
                 void createProject(draft).then((id) => {
                   setOpen(false)
-                  setDraft({ name: '', description: '', emoji: '🧪', instructions: '' })
+                  setDraft({ name: '', description: '', instructions: '' })
                   navigate(`/projects/${id}`)
                 })
               }}
@@ -153,21 +151,9 @@ export function ProjectsPage() {
           </>
         }
       >
-        <Field label={t('아이콘')}>
-          <div className="flex flex-wrap gap-1.5">
-            {PROJECT_EMOJIS.map((e) => (
-              <button
-                key={e}
-                onClick={() => setDraft((d) => ({ ...d, emoji: e }))}
-                className={`grid size-9 place-items-center rounded-control border text-lg transition-colors ${
-                  draft.emoji === e ? 'border-accent bg-accent-soft' : 'border-line hover:bg-elevated'
-                }`}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
-        </Field>
+        {/* 아이콘은 여기서 묻지 않습니다. 이름·설명도 정하지 않은 채로 그림부터
+            고르라는 요구였고, 프로젝트 안에 들어가면 제목 옆 아이콘을 눌러 언제든
+            바꿀 수 있습니다. */}
         <Field label={t('이름')}>
           <Input
             value={draft.name}
