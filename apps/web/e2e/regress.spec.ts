@@ -106,7 +106,8 @@ test('대화 안에서 모델을 바꾸면 그 대화에 반영된다', async ({
   const other = menu
     .getByRole('button')
     .filter({ hasNotText: /Qwen3\.[56]/i })
-    .filter({ hasText: /1k당 입력/ })
+    // 대화 픽커의 단가는 '{n} 크레딧' 꼴이다 — '1k당 입력'은 설정 화면의 문구.
+    .filter({ hasText: /크레딧/ })
     .first()
   const label = (await other.innerText()).split('\n')[0].trim()
 
