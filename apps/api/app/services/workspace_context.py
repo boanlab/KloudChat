@@ -597,7 +597,14 @@ async def assemble(
     project = await _load_project(db, user, session)
     design = await _load_design_system(db, user, project)
     instructions, knowledge, knowledge_files = await _project_blocks(db, user, project)
-    memories, memory_names, memory_total = await _memory_block(db, user, project, session)
+    # Not looked up at all off the chat surface — see the block gate below.
+    # Looking them up and then not including them left the context step saying
+    # "메모리 2건 참고" over a prompt that carried none, which is the screen
+    # asserting an influence that was not there.
+    if session.kind is SessionKind.chat:
+        memories, memory_names, memory_total = await _memory_block(db, user, project, session)
+    else:
+        memories, memory_names, memory_total = "", (), 0
     resolved = await _resolve_skills(
         db,
         user,
@@ -630,7 +637,7 @@ async def assemble(
     # *user's own saved memory* ("시스템 프롬프트 구조 인수인계") stated as the
     # team's main project, in a deck about a different company. A document's
     # material is the request and its attachments, and a memory is neither.
-    if memories and session.kind is SessionKind.chat:
+    if memories:
         blocks.append(ContextBlock("memory", memories, False))
 
     attached_files: tuple[ContextFile, ...] = ()
