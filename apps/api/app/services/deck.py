@@ -40,6 +40,7 @@ from app.models.chat import SessionKind
 from app.services import (
     figures,
     grounding,
+    hangul,
     imagegen,
     pictures,
     research,
@@ -349,7 +350,14 @@ def _json_object(text: str) -> dict[str, Any]:
     Models fence their JSON, prefix it with a sentence, or both. Returning `{}`
     rather than raising lets each caller decide what a miss costs — for one
     slide it is a gap, for the outline it is the whole deck.
+
+    Stray ideographs are read back into Hangul here rather than field by field
+    downstream: a slide is a title, a body, bullets, metric labels and table
+    cells, and every one of them is a place `動的 엔드포인트` has turned up. The
+    substitution is over the JSON text, which is safe because the keys are
+    ASCII and the values are exactly what will be shown.
     """
+    text, _ = hangul.read_back(text)
     match = re.search(r"\{.*\}", text, re.S)
     if not match:
         return {}

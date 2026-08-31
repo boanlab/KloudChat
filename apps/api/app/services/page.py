@@ -30,7 +30,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
-from app.services import grounding, research, settings_store, thinking
+from app.services import grounding, hangul, research, settings_store, thinking
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -289,8 +289,15 @@ def _fragment(text: str, template: DesignTemplate) -> str:
     The template comes along for its layout names: a model that answers with
     the layout it was handed before it writes anything would otherwise have
     that word printed on the slide.
+
+    Stray ideographs are read back into Hangul on the way through — see
+    `services/hangul.py`. This is the door the model's own markup comes in by,
+    and it is the last place the text is still only the model's, so a `傳統的인
+    방화벽` never becomes something a person has to notice and press a button
+    about.
     """
-    return templates.sanitise(_FENCE.sub(r"\1", text.strip()), template.layouts)
+    clean, _ = hangul.read_back(text.strip())
+    return templates.sanitise(_FENCE.sub(r"\1", clean), template.layouts)
 
 
 async def write(
