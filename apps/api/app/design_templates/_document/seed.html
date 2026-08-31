@@ -396,6 +396,21 @@
       break-after: page;
     }
     section { margin: 0 0 12mm; }
+    /* 발치의 문서 이름. 인쇄된 두 번째 장부터는 이 종이가 무엇의 일부인지
+       종이 자신이 말해야 한다 — 회의 탁자 위에서 낱장은 반드시 흩어진다.
+       Chromium 은 @page 여백 상자를 그리지 않으므로 fixed 로 반복한다. */
+    .doc-foot {
+      display: block;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 2mm 0 0;
+      border-top: 1px solid var(--hair);
+      color: var(--muted);
+      font-size: 8pt;
+      letter-spacing: 0.03em;
+    }
     /* 각주는 자기 절과 같은 쪽에 있어야 뜻이 있다. */
     section > small { break-inside: avoid; break-before: avoid; }
     h2 { page-break-after: avoid; break-after: avoid; }
@@ -433,6 +448,7 @@
   .ProseMirror { min-width: 0; cursor: text; }
   /* 제목과 절 제목도 고칠 수 있는 자리다. 서식은 종이처럼 보이므로 표시가
      없으면 읽기 전용으로 읽힌다 — 커서 모양과, 눌렀을 때의 옅은 밑줄. */
+  .doc-foot { display: none; }
   [contenteditable="true"] { cursor: text; outline: none; }
   [contenteditable="true"]:focus {
     box-shadow: 0 2px 0 -1px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -528,5 +544,7 @@
 <div class="page">
 {{BODY}}
 </div>
+<!-- 화면에서는 숨고 인쇄에서만 반복된다 — 위 @media print 의 .doc-foot. -->
+<span class="doc-foot" aria-hidden="true">{{TITLE}}</span>
 </body>
 </html>

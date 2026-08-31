@@ -1,4 +1,9 @@
 kind = "document"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["citation", "terms"]
 name = "기말 리포트"
 description = "주장을 근거로 받치고, 인용한 자리마다 출처를 각주로 다는 학기말 글"
 category = "학업"

@@ -1,4 +1,9 @@
 kind = "deck"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["deck-story", "evidence"]
 name = "심사 발표"
 description = "연구 질문에서 방법·결과·한계로, 질문받을 자리를 미리 여는 발표"
 category = "발표"

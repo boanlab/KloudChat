@@ -1,4 +1,9 @@
 kind = "document"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["survey-analysis", "calculation-unit-check"]
 name = "설문 분석"
 description = "표본과 문항을 밝히고, 기술통계에서 교차분석까지 표로 잇는 보고서"
 category = "연구"

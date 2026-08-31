@@ -1,4 +1,9 @@
 kind = "document"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["minutes"]
 name = "회의록"
 description = "결정과 할 일을 오른쪽 담당·기한 칸에 맞춰 세우는 A4 세로 문서. 두 달 뒤 오른쪽 가장자리만 훑어도 자기 몫이 보인다"
 category = "업무"

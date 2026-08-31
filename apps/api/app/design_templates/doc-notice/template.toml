@@ -1,4 +1,9 @@
 kind = "document"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["official"]
 name = "안내문·공지"
 description = "수신·시행일·근거·붙임을 갖춘 공문. 가운데 정렬 제목에 이중선, 번호와 들여쓰기로 이루어진 계단 하나"
 category = "업무"
