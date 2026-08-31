@@ -1271,6 +1271,12 @@ async def _template_skills(
         return blocks, skills_event
     event = dict(skills_event or {"type": "skills_applied", "skills": []})
     event["skills"] = list(event.get("skills") or []) + applied
+    # The total travels with the merged list. Without agent skills the seed
+    # event above has no total at all, and the browser read the missing key
+    # off a template-only turn and took the whole stream down with it.
+    event["estimatedTokens"] = sum(
+        int(skill.get("estimatedTokens") or 0) for skill in event["skills"]
+    )
     return blocks, event
 
 
