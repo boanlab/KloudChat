@@ -51,6 +51,17 @@ export function Diagram({
     let live = true
     const node = host.current
     if (!node || stored) return
+    /*
+     * A new source is a new attempt, and the last one's verdict does not carry.
+     * `failed` was set and never cleared: a diagram in a streaming report
+     * mounts on the first token with a fragment of a source, that draw fails,
+     * and the finished diagram arriving a second later was drawn into a
+     * component that had already decided to show its source instead.
+     */
+    setFailed(false)
+    // Nothing written yet is not a failure. Most of what a streamed source is
+    // on the way to being does not parse, and an empty one never does.
+    if (!source.trim()) return
 
     void (async () => {
       try {

@@ -832,7 +832,6 @@ export interface Skill {
   /** The shared skill this one was copied from, if it was copied. */
   originId: string | null
   version: string
-  files: string[]
   updatedAt: string
 }
 

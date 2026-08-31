@@ -703,6 +703,7 @@ async def write(
         # 劣势 and 書類 while a deck on the same subject did not. One product,
         # one answer.
         clean, _ = hangul.read_back(body)
+        clean = hangul.tidy_spacing(clean)
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
         # The picture, if this section is one of the ones somebody paid for.

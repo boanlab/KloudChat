@@ -121,7 +121,9 @@ export function AgentKnowledge({
     setBusy('reindex')
     setError(null)
     try {
-      await agentsApi.knowledge.reindex(agentId)
+      // 전부 다시 보낸다. 기본값은 `indexed_at` 이 빈 것만 집어, 임베딩
+      // 모델이 바뀌어 옛 공간에 남은 벡터는 이 버튼으로 영영 못 고쳤다.
+      await agentsApi.knowledge.reindex(agentId, true)
       replaceRows(await agentsApi.knowledge.list(agentId))
     } catch (err) {
       setError(errorMessage(err, t('색인하지 못했습니다.')))

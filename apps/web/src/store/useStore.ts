@@ -205,6 +205,8 @@ interface State {
    */
   skillStore: StoreSkill[]
   skillStoreLoading: boolean
+  /** The last listing was refused or never landed — not the same as empty. */
+  skillStoreError: boolean
   /** Looks this account can attach to a project: its own, plus shared ones. */
   designs: DesignRow[]
   /** Shapes the answer can come out in. Ships with the server; read-only. */
@@ -799,7 +801,11 @@ function reconcileDefaults(
 ): Record<SessionKind, string> {
   const next = { ...current }
   for (const kind of Object.keys(next) as SessionKind[]) {
-    if (available.some((m) => m.id === next[kind])) continue
+    // Still in the catalogue *and* still serving this surface. The second half
+    // was missing, so a model remembered for 보고서 that had since become
+    // image-only survived every reconcile — and the surface it no longer
+    // serves kept sending turns to it.
+    if (available.some((m) => m.id === next[kind] && m.kinds.includes(kind))) continue
     const usable = available
       .filter((m) => m.kinds.includes(kind))
       // Cheapest first, but never a strict-local model unless it is the only
@@ -1072,6 +1078,7 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   skillStore: [],
   skillStoreLoading: false,
+  skillStoreError: false,
   designs: [],
   designTemplates: [],
   promptTemplates: [],
@@ -2405,10 +2412,13 @@ export const useStore = create<State>((set, get) => ({
     }))
   },
   loadSkillStore: async () => {
-    set({ skillStoreLoading: true })
+    set({ skillStoreLoading: true, skillStoreError: false })
     const rows = await skillsApi.store().catch(() => null)
     set((st) => ({
       skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
+      // A listing that never arrived is not an empty store. Held apart so the
+      // screen can say the request failed instead of "nothing shared yet".
+      skillStoreError: rows === null,
       skillStoreLoading: false,
     }))
   },
@@ -3031,7 +3041,6 @@ function toSkill(s: SkillRow): Skill {
     installs: s.installs ?? 0,
     originId: s.originId ?? null,
     version: s.version,
-    files: ['SKILL.md'],
     updatedAt: s.updatedAt,
   }
 }

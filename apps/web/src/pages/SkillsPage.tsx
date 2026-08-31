@@ -108,6 +108,7 @@ export function SkillsPage() {
     skills,
     skillStore,
     skillStoreLoading,
+    skillStoreError,
     availableTools,
     toggleSkill,
     upsertSkill,
@@ -226,7 +227,9 @@ export function SkillsPage() {
               <p className="py-10 text-center text-base text-muted">
                 {skillStoreLoading
                   ? t('불러오는 중…')
-                  : t('아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.')}
+                  : skillStoreError
+                    ? t('공유된 스킬 목록을 불러오지 못했습니다. 잠시 뒤 다시 열어 보세요.')
+                    : t('아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.')}
               </p>
             )}
             <ShowMore hidden={storePaged.hidden} onMore={storePaged.more} />
@@ -430,23 +433,13 @@ export function SkillsPage() {
               <div>
                 <p className="mb-1.5 flex items-center gap-1.5 text-base font-medium">
                   <FileCode2 size={14} className="text-faint" />
-                  <span className="font-mono">{detail.files[0] ?? 'SKILL.md'}</span>
+                  {/* 스킬은 본문 한 벌이 전부다. 파일 목록이라 부를 것이
+                      서버에 없어, 곁들여 오는 파일을 그리던 자리는 늘 비어
+                      있었다 — 없는 기능을 화면이 지어내지 않게 걷어낸다. */}
+                  <span className="font-mono">SKILL.md</span>
                 </p>
                 <div className="max-h-80 overflow-y-auto rounded-control border border-line bg-elevated px-3 py-2">
                   <Markdown>{detail.body}</Markdown>
-                </div>
-              </div>
-            )}
-            {detail.files.length > 1 && (
-              <div>
-                <p className="mb-1.5 text-base font-medium">{t('함께 오는 파일')}</p>
-                <div className="divide-y divide-[var(--border)] overflow-hidden rounded-control border border-line">
-                  {detail.files.slice(1).map((f) => (
-                    <div key={f} className="flex items-center gap-2 px-3 py-2 text-base">
-                      <FileCode2 size={14} className="text-faint" />
-                      <span className="font-mono">{f}</span>
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
@@ -491,7 +484,6 @@ export function SkillsPage() {
                     kinds: current?.kinds ?? ['chat', 'report', 'slides'],
                     enabled: current?.enabled ?? true,
                     version: current?.version ?? '1.0.0',
-                    files: current?.files ?? ['SKILL.md'],
                     estimatedTokens: current?.estimatedTokens ?? 0,
                     installs: current?.installs ?? 0,
                     originId: current?.originId ?? null,

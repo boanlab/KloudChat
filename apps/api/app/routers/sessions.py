@@ -48,8 +48,11 @@ from app.models.workspace import (
     Memory,
     MemoryType,
     Project,
+    Skill,
+    SkillSource,
     StoredFile,
 )
+from app.models.workspace import Visibility as SkillVisibility
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
@@ -1213,6 +1216,62 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     await db.commit()
     await db.refresh(session)
     return SessionOut.of(session, [])
+
+
+async def _template_skills(
+    db: AsyncSession,
+    template: design_templates.DesignTemplate | None,
+    kind: SessionKind,
+    skills_event: dict | None,
+) -> tuple[list[str], dict | None]:
+    """`(context blocks, skills_applied event)` with the 서식's skills joined.
+
+    Catalogue rows only, found by `catalog_key`: a 서식 ships with the product
+    and can only promise procedures that ship with it. A key nobody seeded is
+    skipped rather than an error — the document still generates, in the shape
+    the 서식 gives it, minus a rule it named.
+
+    The event is extended rather than replaced so a hand-activated skill and a
+    서식's own appear in the one list the screen already draws.
+    """
+    if template is None or not template.skills:
+        return [], skills_event
+    rows = (
+        await db.exec(
+            select(Skill)
+            .where(
+                col(Skill.catalog_key).in_(list(template.skills)),
+                Skill.source == SkillSource.built_in,
+                Skill.visibility == SkillVisibility.org,
+            )
+            .order_by(col(Skill.id))
+        )
+    ).all()
+    by_key = {row.catalog_key: row for row in rows}
+    blocks: list[str] = []
+    applied: list[dict] = []
+    for key in template.skills:
+        skill = by_key.get(key)
+        if skill is None or (skill.kinds and kind.value not in skill.kinds):
+            continue
+        head = f"# 서식 스킬 — {skill.name}"
+        body = skill.body.strip() or skill.description.strip()
+        blocks.append(f"{head}\n{body}" if body else head)
+        applied.append(
+            {
+                "id": skill.id,
+                "name": skill.name,
+                "catalogKey": skill.catalog_key,
+                "estimatedTokens": skill.estimated_tokens,
+                # The screen can say where it came from: 서식이 켠 스킬.
+                "fromTemplate": True,
+            }
+        )
+    if not applied:
+        return blocks, skills_event
+    event = dict(skills_event or {"type": "skills_applied", "skills": []})
+    event["skills"] = list(event.get("skills") or []) + applied
+    return blocks, event
 
 
 async def _project_render_template(
@@ -2473,6 +2532,15 @@ async def send_message(
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
     skills_event = workspace.skills_event()
+    # The 서식's own skills, joined the same way a hand-activated one is.
+    # A 공문 without the 공문 문체 rules is a notice-shaped essay; the 서식
+    # names its procedures in `template.toml` and they ride in here, announced
+    # in the same skills_applied event so the person sees what joined.
+    template_blocks, skills_event = await _template_skills(
+        db, design_templates.get(session.render_template_id), session.kind, skills_event
+    )
+    if template_blocks:
+        trusted_context = list(trusted_context) + template_blocks
     context_steps = _context_steps(workspace)
     if policy.pii_masking:
         # The document runners persist this event directly as a timeline step.

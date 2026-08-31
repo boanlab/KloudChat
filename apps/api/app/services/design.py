@@ -58,7 +58,10 @@ DEFAULT_TOKENS: dict[str, str] = {
 #: a photograph somebody dropped in the wrong field, and it would be carried in
 #: every row of the design system table.
 _MAX_LOGO_BYTES = 256 * 1024
-_LOGO = re.compile(r"^data:image/(png|jpeg|jpg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=\s]+$", re.I)
+#: No SVG: the preview draws one fine and the exporters decode with PIL, which
+#: cannot — so an SVG mark showed on screen and silently vanished from every
+#: file. A format only half the surfaces can draw is a preview that lies.
+_LOGO = re.compile(r"^data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$", re.I)
 
 #: `fonts.py` keys. Gothic for slides, serif for documents — the two faces the
 #: image ships, so a third value would name a file that is not there.

@@ -113,6 +113,11 @@ services:
     networks:
       - default
       - printer
+      # The LLM cluster's own network, when it runs on this host. One hop to
+      # LiteLLM instead of a round trip through the public gateway — whose
+      # 60-second proxy timeout was returning 504 on long document sections,
+      # and the section then arrived empty with nothing saying so.
+      - llm
     volumes:
       # Uploaded originals. Extracted text lives in the database; only blobs
       # are here.
@@ -174,3 +179,7 @@ networks:
   # even if it wants to — which is the point of putting a browser here.
   printer:
     internal: true
+  # Owned by the kloudchat-llm compose project; joined, not created, here.
+  llm:
+    external: true
+    name: kloudchat-llm_kloudchat

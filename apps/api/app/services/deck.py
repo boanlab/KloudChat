@@ -423,7 +423,7 @@ def _json_object(text: str) -> dict[str, Any]:
 def _read_back_values(value: Any) -> Any:
     """The same structure with every string read back into Hangul."""
     if isinstance(value, str):
-        return hangul.read_back(value)[0]
+        return hangul.tidy_spacing(hangul.read_back(value)[0])
     if isinstance(value, list):
         return [_read_back_values(item) for item in value]
     if isinstance(value, dict):
@@ -767,7 +767,10 @@ def _rationed_quotes(plan: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 #: A divider title that says nothing: `01`, `2.`, `Part 3`, `섹션 1`.
-_NUMBER_ONLY = re.compile(r"^\s*(?:part|섹션|section|장)?\s*[0-9IVX]+\s*[.)]?\s*$", re.I)
+#: Digits and *multi-letter* Roman numerals. A lone I/V/X is as likely a word
+#: or a product name as a number — and with `re.I`, a lone x too — so a divider
+#: somebody typed into the proposal card could be silently deleted for it.
+_NUMBER_ONLY = re.compile(r"^\s*(?:part|섹션|section|장)?\s*(?:[0-9]+|[IVX]{2,})\s*[.)]?\s*$", re.I)
 
 
 def _named_dividers(plan: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -853,7 +856,13 @@ _MAX_LABEL = 16
 #: deadline taken apart into three numbers and each set 44pt. Nothing there is
 #: a quantity, and the slide that exists to make one figure memorable made three
 #: unmemorable ones out of a date. A date has a layout of its own now.
-_CALENDAR = re.compile(r"년도|연도|마감|기한|일자|신청월|개강|종강|^(년|월|일|요일)$")
+#: Whole labels, not substrings: `일자` is inside 일자리 — the commonest metric
+#: label in a Korean 사업 발표 — and the unanchored version deleted 신규 일자리,
+#: 마감률 and 연도별 추이 from metrics slides while it was catching deadlines.
+_CALENDAR = re.compile(
+    r"^(년도|연도|마감|기한|일자|신청월|개강|종강|년|월|일|요일"
+    r"|마감일|마감월|마감년도|신청일|시작일|종료일|개강일|종강일|접수일|발표일)$"
+)
 
 
 def _clean_metrics(value: Any) -> list[list[str]]:
@@ -872,7 +881,8 @@ def _clean_metrics(value: Any) -> list[list[str]]:
             continue
         figure = str(pair[0]).strip()[:_MAX_VALUE]
         label = str(pair[1]).strip()[:_MAX_LABEL]
-        if figure and label and not _CALENDAR.search(label):
+        last = label.split()[-1] if label.split() else ""
+        if figure and label and not _CALENDAR.match(last):
             out.append([figure, label])
     return out
 
@@ -1637,7 +1647,10 @@ def has_content(slide: dict) -> bool:
     the same test left 내보내기, 발표 and 텍스트 수정 disabled forever on a deck
     that was complete.
     """
-    if slide.get("layout") == "title":
+    if slide.get("layout") in ("title", "section"):
+        # A divider says the name of its part and nothing else — that is the
+        # whole of what a divider is, so its title is its content. Read as
+        # empty, `filled` dropped approved dividers from finished decks.
         return True
     for field in _CONTENT_FIELDS:
         value = slide.get(field)
@@ -1665,6 +1678,21 @@ def to_markdown(title: str, slides: list[dict]) -> str:
             parts.append(f"\n> {slide['body']}")
         for bullet in slide.get("bullets") or []:
             parts.append(f"- {bullet}")
+        # Everything else a slide can hold, or "텍스트로 복사" hands over six
+        # bare headings out of eleven layouts and calls it the deck.
+        for row in slide.get("rows") or []:
+            parts.append("| " + " | ".join(str(cell) for cell in row) + " |")
+        for pair in slide.get("metrics") or []:
+            if isinstance(pair, list) and len(pair) >= 2:
+                parts.append(f"- **{pair[0]}** {pair[1]}")
+        for key in _PAIRED:
+            for pair in slide.get(key) or []:
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                    parts.append(f"- {pair[0]} — {pair[1]}")
+        if chart := slide.get("chart"):
+            for item in chart.get("series") or []:
+                values = " · ".join(str(v) for v in item.get("values") or [])
+                parts.append(f"- {item.get('name') or '계열'}: {values}")
         if slide.get("notes"):
             parts.append(f"\n발표 노트: {slide['notes']}")
         parts.append("")

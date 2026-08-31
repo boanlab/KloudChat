@@ -586,11 +586,23 @@ def test_wire_contract_rejects_more_than_three_skills():
         )
 
 
-def test_new_agent_and_personal_skill_defaults_are_least_privilege():
+def test_a_new_agent_inherits_rather_than_denies():
+    """Omitted means inherit, the same as explicit null.
+
+    It used to mean least privilege — `[]` — and the screen never sends the
+    fields, so every agent made in the UI was born with skills and tools
+    hard-denied: activating a skill on it answered 422, and no tool was ever
+    offered. Least privilege is still one explicit `[]` away for the caller
+    that wants it; a default nobody chose is not a privilege decision.
+    """
     agent = AgentIn(name="New agent")
     skill = SkillIn(name="New skill")
-    assert agent.tools == []
-    assert agent.skill_ids == []
+    assert agent.tools is None
+    assert agent.skill_ids is None
+    # Explicit lockdown still works exactly as before.
+    locked = AgentIn(name="Locked", tools=[], skill_ids=[])
+    assert locked.tools == []
+    assert locked.skill_ids == []
     assert skill.required_tools == []
 
 
@@ -1138,3 +1150,16 @@ def test_send_and_compare_http_contract_rejects_four_skills_before_route(
     assert db.added == []
     assert db.commits == 0
     assert upstream["calls"] == 0
+
+
+def test_an_installed_copy_passes_the_agents_allowlist():
+    """A store install is a copy with its own id and `origin_id` back to the
+    shared row. An agent whose allowlist names the shared row has allowed that
+    procedure, and the copy is that procedure — a new account's first natural
+    path (browse store → install → use the shared agent) answered 422."""
+    import inspect
+
+    from app.services import workspace_context
+
+    source = inspect.getsource(workspace_context._resolve_skills)
+    assert "origin_id" in source

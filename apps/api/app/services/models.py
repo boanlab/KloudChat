@@ -455,7 +455,10 @@ async def list_models(force: bool = False) -> dict[str, Any]:
         # Per surface, falling back to the chat default. A conversation and a
         # 보고서 are not the same job — see `config.default_report_model`.
         "defaultModelByKind": {
-            kind: served(chosen, kind) or default_chat
+            # The chat fallback is re-checked against *this* surface: a model
+            # allowed for chat alone must not become the report default just
+            # because nothing else was set.
+            kind: served(chosen, kind) or served(default_chat, kind)
             for kind, chosen in (
                 ("report", settings.default_report_model),
                 ("slides", settings.default_slides_model),

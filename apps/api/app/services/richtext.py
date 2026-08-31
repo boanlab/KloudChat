@@ -84,7 +84,27 @@ class Grid:
 
     @property
     def width(self) -> int:
-        return max((sum(c.colspan for c in row) for row in self.rows), default=0)
+        """How many columns the table actually has.
+
+        Not the widest row of *anchors*: a `rowspan` cell occupies columns in
+        the rows below without beginning in them, so a table whose first row is
+        one tall cell and whose later rows hold the values measured narrower
+        than it was — and `flat()` then threw the value column away. Walked
+        with the same occupancy the renderers use.
+        """
+        taken: set[tuple[int, int]] = set()
+        width = 0
+        for index, row in enumerate(self.rows):
+            column = 0
+            for cell in row:
+                while (index, column) in taken:
+                    column += 1
+                for down in range(cell.rowspan):
+                    for across in range(cell.colspan):
+                        taken.add((index + down, column + across))
+                column += cell.colspan
+            width = max(width, column)
+        return width
 
     def flat(self, newline: str = " ") -> list[list[str]]:
         """The grid as plain rows, merges opened out and newlines replaced.
@@ -122,7 +142,7 @@ class Grid:
 
 def _span(markup: str, name: str) -> int:
     """A `colspan`/`rowspan` attribute, clamped to something a page can hold."""
-    found = re.search(rf'{name}\s*=\s*["\']?(\d{{1,2}})', markup, re.I)
+    found = re.search(rf'{name}\s*=\s*["\']?(\d+)', markup, re.I)
     return max(1, min(int(found.group(1)), 40)) if found else 1
 
 
@@ -219,7 +239,22 @@ def _items(markup: str) -> list[tuple[str, str]]:
     and came back as a paragraph. A Korean 공문 is three levels of 글머리 from
     top to bottom, so that was not an edge either.
     """
-    body = markup[markup.index(">") + 1 : markup.rindex("</")]
+    # The fragment can be truncated: `sanitise` is regex-based and does not
+    # balance tags, and a block cut off at the token limit arrives here whole.
+    # `rindex("</")` on such a fragment either raised (no close anywhere — a
+    # 500 on export and on review) or, worse, cut silently at an *earlier*
+    # close and dropped the last item with no error. The end of the outermost
+    # list is where `_LIST_EDGE` says it is, and a list that never closes runs
+    # to the end of what we have.
+    opened = markup.index(">") + 1
+    depth = 1
+    stop = len(markup)
+    for edge in _LIST_EDGE.finditer(markup, opened):
+        depth += -1 if edge.group(1) else 1
+        if depth == 0:
+            stop = edge.start()
+            break
+    body = markup[opened:stop]
     out: list[tuple[str, str]] = []
     starts = [m.end() for m in _ITEM_OPEN.finditer(body) if _depth(body[: m.start()]) == 0]
     for index, start in enumerate(starts):

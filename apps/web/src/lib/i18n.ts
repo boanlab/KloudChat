@@ -254,6 +254,8 @@ const EN: Record<string, string> = {
     'Edit one of your agents and share it to list it here.',
   '아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.':
     'Nothing shared yet. Edit one of your skills to share it with the workspace.',
+  '공유된 스킬 목록을 불러오지 못했습니다. 잠시 뒤 다시 열어 보세요.':
+    'Could not load the shared skills. Try opening this again in a moment.',
   '공유하면 워크스페이스 스토어에 올라가고, 다른 사용자가 각자 사본을 가져갑니다. 내가 고쳐도 이미 가져간 사본은 그대로입니다.':
     'Sharing lists it in the workspace store, where others take their own copy. Editing yours afterwards leaves those copies alone.',
   '관리': 'Manage',
@@ -319,7 +321,6 @@ const EN: Record<string, string> = {
   '발표 노트': 'Speaker notes',
   '배정 대비': 'Of allowance',
   '버전 기록': 'Version history',
-  '함께 오는 파일': 'Bundled with it',
   '번들 파일': 'Bundle',
   '범위': 'Scope',
   '벡터': 'Vector',
@@ -699,7 +700,8 @@ const EN: Record<string, string> = {
   '1k당 {in} / {out}': '{in} / {out} per 1k',
   '1k당 입력 {in} · 출력 {out}': 'Per 1k: {in} in · {out} out',
   '이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.': 'That slug is already in use. Pick another.',
-  '입력창의 @ 버튼과 홈 화면 카드에 이 핸들로 보입니다.': "Shown under this handle on the composer's @ button and the home screen cards.",
+  '이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 이름에서 만듭니다.':
+    'Shown as this handle on the card in this list. Left empty, it is made from the name.',
   'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
@@ -765,8 +767,6 @@ const EN: Record<string, string> = {
   '공유된 결과물': 'Shared artifact',
   '공유된 자료입니다. 원본은 공유한 사람만 수정할 수 있습니다.':
     'Shared with you. Only the person who shared it can edit the original.',
-  '공유하면 워크스페이스 스토어에 올라가고 다른 구성원이 그대로 씁니다.':
-    'Sharing puts it in the workspace store for anyone here to use as is.',
   '관리자가 이 계정의 접근을 중지했습니다. 사유가 궁금하다면 관리자에게 문의하세요.':
     'An administrator has stopped this account\'s access. Ask them if you need to know why.',
   '기간이 지난 본문 {n}건을 지웠습니다.': 'Cleared {n} bodies past the retention window.',

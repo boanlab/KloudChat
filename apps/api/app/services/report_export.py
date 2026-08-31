@@ -412,8 +412,10 @@ def _markdown_to_lines(
             # and the list it sits inside carries on where it left off — before
             # this the outer 1. 하나 / 2. 둘 came out 1. and 3., because the
             # sub-items had counted against it.
-            counts[depth] = counts.get(depth, 0) + 1 if counts.get(depth) else int(
-                numbered.group(2)
+            # `is None`, not falsy: a list a writer numbers from 0 is unusual
+            # and legal, and the falsy test restarted it at 0 on every line.
+            counts[depth] = (
+                counts[depth] + 1 if counts.get(depth) is not None else int(numbered.group(2))
             )
             for deeper in [d for d in counts if d > depth]:
                 del counts[deeper]
