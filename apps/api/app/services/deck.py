@@ -329,6 +329,11 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
+                    # No thinking on a call whose whole answer is one JSON
+                    # object — see `thinking.NO_REASONING` for the measurements.
+                    # Safe to send everywhere: the proxy runs `drop_params`, so
+                    # a provider that has never heard of it never sees it.
+                    "reasoning": thinking.NO_REASONING,
                 },
             )
             if response.status_code != 429 or attempt == len(_BACKOFF):
@@ -355,7 +360,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    "reasoning": thinking.REASONING_CAP,
+                    "reasoning": thinking.NO_REASONING,
                 },
             )
             if again.status_code >= 400:
@@ -397,11 +402,14 @@ def _json_object(text: str) -> dict[str, Any]:
 
     Stray ideographs are read back into Hangul here rather than field by field
     downstream: a slide is a title, a body, bullets, metric labels and table
-    cells, and every one of them is a place `動的 엔드포인트` has turned up. The
-    substitution is over the JSON text, which is safe because the keys are
-    ASCII and the values are exactly what will be shown.
+    cells, and every one of them is a place `動的 엔드포인트` has turned up.
+
+    Over the parsed values, not over the JSON text. Reading it back from the
+    text looked simpler and was wrong: a gloss is ideographs inside brackets —
+    `분산(分散)` — and a JSON array is ideographs inside brackets too, so
+    `[{"title": "대학生的 역량 격차"}]` was protected as if somebody had written
+    it as an aside. It reached the proposal card and then the slide.
     """
-    text, _ = hangul.read_back(text)
     match = re.search(r"\{.*\}", text, re.S)
     if not match:
         return {}
@@ -409,7 +417,19 @@ def _json_object(text: str) -> dict[str, Any]:
         data = json.loads(match.group(0))
     except json.JSONDecodeError:
         return {}
-    return data if isinstance(data, dict) else {}
+    return _read_back_values(data) if isinstance(data, dict) else {}
+
+
+def _read_back_values(value: Any) -> Any:
+    """The same structure with every string read back into Hangul."""
+    if isinstance(value, str):
+        return hangul.read_back(value)[0]
+    if isinstance(value, list):
+        return [_read_back_values(item) for item in value]
+    if isinstance(value, dict):
+        # Keys are the schema's and are ASCII; only the values are shown.
+        return {key: _read_back_values(item) for key, item in value.items()}
+    return value
 
 
 def requested_slides(request: str) -> int | None:

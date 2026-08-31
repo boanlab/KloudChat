@@ -50,6 +50,27 @@ _HEADROOM = 700
 #: the first attempt.
 REASONING_CAP = {"max_tokens": 400}
 
+#: What a writer sends: no thinking at all.
+#:
+#: A cap is the right answer for a model that respects one and the wrong answer
+#: for a model that does not. `qwen3.5-122b` through OpenRouter ignores it —
+#: 1,016 reasoning tokens against a cap of 400, and an empty answer again. On
+#: the real slide prompt it fills whatever ceiling it is given:
+#:
+#:     max=600   추론   586   본문 0자
+#:     max=1908  추론 1,677   본문 0자
+#:     max=4000  추론 3,964   본문 0자
+#:     max=900 + 이 설정   추론 0   본문 나옴
+#:
+#: A whole deck came back with every slide reading "이 장을 쓰지 못했습니다.",
+#: and every empty answer was charged for: 3,431 credits for nothing, against
+#: 303 for the same run asked not to think.
+#:
+#: Only for the calls whose entire answer is one JSON object or one block of
+#: markup. Chat does not send it — somebody asking a question may well want the
+#: model to work through it; somebody asking for slide four does not.
+NO_REASONING = {"enabled": False}
+
 
 def starved(payload: dict, asked: int) -> int:
     """A bigger ceiling worth re-asking with, or `0` if the answer is not the

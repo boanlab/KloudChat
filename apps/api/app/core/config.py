@@ -165,6 +165,20 @@ class Settings(BaseSettings):
     #: which is a decision about one turn, not a default posture for all of them.
     default_chat_model: str = "local/qwen3.6-35b"
 
+    #: The same, per surface, when one of them wants a different model.
+    #:
+    #: A conversation and a 보고서 are not the same job. Chat is a turn every
+    #: few seconds and is read as it arrives, so decode speed is most of what
+    #: the person feels; a document is one long run they wait for once, and
+    #: what they feel is whether it needed rewriting. A model three times the
+    #: decode cost is the wrong trade for the first and the right one for the
+    #: second.
+    #:
+    #: Empty falls back to `default_chat_model`, which is what every install
+    #: had before these existed.
+    default_report_model: str = ""
+    default_slides_model: str = ""
+
     #: The instance's wall clock, as an IANA name. Used for the date given to
     #: the model and for nothing else — every timestamp in the database stays
     #: UTC. A model told "today is 2026-08-20" in UTC at 07:00 KST would be a

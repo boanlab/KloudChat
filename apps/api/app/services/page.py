@@ -117,7 +117,16 @@ async def _complete(
         for attempt in range(len(_BACKOFF) + 1):
             response = await client.post(
                 "/v1/chat/completions",
-                json={"model": model, "messages": messages, "max_tokens": max_tokens},
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    # See `thinking.NO_REASONING`: a reasoning model asked for
+                    # one block of markup spends the whole ceiling thinking and
+                    # answers with nothing. Dropped by the proxy for providers
+                    # that do not know it.
+                    "reasoning": thinking.NO_REASONING,
+                },
             )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
@@ -143,7 +152,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    "reasoning": thinking.REASONING_CAP,
+                    "reasoning": thinking.NO_REASONING,
                 },
             )
             if again.status_code >= 400:
@@ -152,7 +161,12 @@ async def _complete(
                 # scale its thinking to it.
                 again = await client.post(
                     "/v1/chat/completions",
-                    json={"model": model, "messages": messages, "max_tokens": bigger},
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": bigger,
+                        "reasoning": thinking.NO_REASONING,
+                    },
                 )
         if again.status_code == 200:
             retried = again.json()
