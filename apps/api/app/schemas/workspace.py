@@ -978,6 +978,10 @@ class DesignTemplateOut(Wire):
     #: which file is coming. "양식 내려받기" and then a `.pptx` when somebody
     #: expected a `.docx` is a surprise the card could have prevented.
     form_format: str = ""
+    #: Whether `/design-templates/{id}/preview` has something to show. The
+    #: card decides between a live miniature and its text-only fall-back on
+    #: this, instead of loading an iframe that will 404.
+    has_preview: bool = False
 
     @classmethod
     def of(cls, t: object) -> DesignTemplateOut:
@@ -1010,6 +1014,7 @@ class DesignTemplateOut(Wire):
             ],
             defaults=dict(t.defaults),
             form_format=t.form_file.rsplit(".", 1)[-1] if t.form_file else "",
+            has_preview=bool(getattr(t, "sample", "") and getattr(t, "seed", "")),
         )
 
 

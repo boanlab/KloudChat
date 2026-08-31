@@ -1259,6 +1259,8 @@ export interface DesignTemplateRow {
    * could have prevented.
    */
   formFormat: string
+  /** Whether `/design-templates/{id}/preview` has a miniature to show. */
+  hasPreview: boolean
 }
 
 /** One argument's text in the language on screen. */
