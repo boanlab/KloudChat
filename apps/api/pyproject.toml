@@ -20,6 +20,9 @@ dependencies = [
     # 복합 파일이라 컨테이너 판독에만 olefile 을 쓰고, 레코드 해석은 직접 한다.
     "olefile>=0.47",
     "cryptography>=44.0",
+    # 한자 독음. 모델이 한국어 문장에 흘리는 중국어 한자를 한글로 되돌리는 데만
+    # 쓴다 — services/hangul.py. 표 하나짜리 순수 파이썬이라 시스템 의존성이 없다.
+    "hanja>=0.15",
     # Report export. reportlab over a HTML→PDF engine: it needs no system
     # libraries and ships CID fonts, so Korean renders without shipping a TTF.
     "python-docx>=1.1",

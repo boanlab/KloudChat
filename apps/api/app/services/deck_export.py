@@ -236,13 +236,53 @@ def _cell_rule(cell, colour: RGBColor, points: float) -> None:
     )
 
 
-def _textbox(slide, *, left: float, top: float, width: float, height: float):
+#: What PowerPoint reads to build the outline pane, and what a screen reader
+#: reads to say which slide it is on. Placeholder indices are per slide: a title
+#: is always 0, and the body that follows it is 1.
+_PH = (
+    '<p:ph xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+    ' type="{kind}" idx="{index}"/>'
+)
+
+
+def _placeholder(box, kind: str, index: int) -> None:
+    """Mark a drawn textbox as a placeholder of `kind`.
+
+    The slides here are drawn — free boxes at measured positions — because the
+    design is the product and the built-in layouts have their own. The cost was
+    invisible until somebody opened the outline pane: a deck of nine slides
+    showed nine blank lines, because a textbox is not a placeholder and only a
+    placeholder is outline text. The same emptiness is what a screen reader
+    gets, and what 개요 보기 in Hancom Office 쇼 gets.
+
+    Marking rather than re-placing. `p:ph` is the whole of what makes a shape a
+    placeholder — PowerPoint reads the type off the shape, not off the layout —
+    so the box keeps the position and the type it was given here, and every run
+    in it already carries its own font, size and colour, which leaves nothing
+    for a layout to inherit into and change.
+    """
+    from pptx.oxml import parse_xml
+
+    box._element.nvSpPr.nvPr.append(parse_xml(_PH.format(kind=kind, index=index)))
+
+
+def _textbox(
+    slide,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    placeholder: tuple[str, int] | None = None,
+):
     box = slide.shapes.add_textbox(
         Emu(int(left * _EMU_PER_PT)),
         Emu(int(top * _EMU_PER_PT)),
         Emu(int(width * _EMU_PER_PT)),
         Emu(int(height * _EMU_PER_PT)),
     )
+    if placeholder:
+        _placeholder(box, *placeholder)
     frame = box.text_frame
     frame.word_wrap = True
     return frame
@@ -488,7 +528,10 @@ def to_pptx(
 
         if cover:
             _block(slide, left=82, top=186, width=106, height=7, colour=_WHITE)
-            frame = _textbox(slide, left=72, top=210, width=_W - 144, height=180)
+            frame = _textbox(
+                slide, left=72, top=210, width=_W - 144, height=180,
+                placeholder=("ctrTitle", 0),
+            )
             paint(frame.paragraphs[0].add_run(), size=40, bold=True, colour=_WHITE)
             frame.paragraphs[0].runs[0].text = heading or title
             if body:
@@ -499,7 +542,10 @@ def to_pptx(
                 # 80% white over the accent — the preview's rgba(255,255,255,.8).
                 paint(run, size=15, colour=_mix(_WHITE, 80, onto=accent))
         elif layout == "quote":
-            frame = _textbox(slide, left=90, top=170, width=_W - 180, height=200)
+            frame = _textbox(
+                slide, left=90, top=170, width=_W - 180, height=200,
+                placeholder=("title", 0),
+            )
             paragraph = frame.paragraphs[0]
             paragraph.alignment = PP_ALIGN.LEFT
             run = paragraph.add_run()
@@ -512,7 +558,10 @@ def to_pptx(
                 run.text = heading
                 paint(run, size=13, colour=muted)
         else:
-            frame = _textbox(slide, left=72, top=64, width=text_width, height=60)
+            frame = _textbox(
+                slide, left=72, top=64, width=text_width, height=60,
+                placeholder=("title", 0),
+            )
             run = frame.paragraphs[0].add_run()
             run.text = heading
             paint(run, size=26, bold=True)
@@ -622,6 +671,11 @@ def to_pptx(
                         top=150,
                         width=span,
                         height=_H - 210,
+                        # The first column is the slide's body, so the outline
+                        # pane shows what the slide says and not only that it
+                        # exists. A second column is a second box on the same
+                        # slide and cannot also be the body.
+                        placeholder=("body", 1) if column_index == 0 else None,
                     )
                     for position, text in enumerate(column):
                         paragraph = (
@@ -636,7 +690,8 @@ def to_pptx(
                         paint(run, size=16 if len(columns) > 1 else 18)
             elif body:
                 paragraph_frame = _textbox(
-                    slide, left=72, top=150, width=text_width, height=_H - 210
+                    slide, left=72, top=150, width=text_width, height=_H - 210,
+                    placeholder=("body", 1),
                 )
                 run = paragraph_frame.paragraphs[0].add_run()
                 run.text = body
