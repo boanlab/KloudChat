@@ -16,7 +16,9 @@ def plan(*layouts: str) -> list[dict[str, str]]:
     return [{"title": f"{i}", "layout": layout} for i, layout in enumerate(layouts)]
 
 
-_DECK = deck._LAYOUTS[1:]
+#: The shapes an argument takes. Not `_LAYOUTS[1:]`: a section divider has no
+#: content either, so slicing off the cover alone stopped meaning this.
+_DECK = deck._BODY_LAYOUTS
 
 
 def test_a_plan_that_uses_one_layout_all_the_way_down_is_flat():

@@ -25,9 +25,11 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
+from app.services import deck as deck_rules
 from app.services import (
     figures,
     grounding,
+    hangul,
     imagegen,
     pictures,
     research,
@@ -172,6 +174,11 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
   무엇인지 한 문장씩은 있어야 한다.
 - 참고 자료에서 가져온 사실은 그 자료의 번호를 문장 끝에 [1] 처럼 붙여라.
   목록에 없는 번호는 절대 쓰지 마라. 참고 자료가 없으면 번호도 쓰지 마라.
+- **자료에 없는 고유한 값을 지어내지 마라.** 금액, 날짜, 기관 이름, 사람 이름,
+  계약 상대가 그렇다. 결정해야 할 자리라면 값을 채우지 말고 무엇을 정해야
+  하는지를 적어라 — "예산 2억 원" 이 아니라 "예산 규모(미정)", "A社·B社" 가
+  아니라 "협약 기업(선정 필요)" 이다. 지어낸 고유값은 읽는 사람이 그대로
+  옮겨 적고, 그 뒤에 아무도 그것이 어디서 왔는지 묻지 않는다.
 
 원래 요청: {request}"""
 
@@ -354,6 +361,29 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
     }
 
 
+#: The two blocks that are nothing but figures, drawn large.
+_FIGURE_FENCE = re.compile(r"^```(?:kpi|chart)\b.*?^```\s*$", re.S | re.M)
+
+
+def _grounded_figures(text: str, grounded: bool) -> str:
+    """Figure blocks removed from a section with nothing to draw them from.
+
+    The same rule the deck applies to its `chart` and `metrics` slides, and for
+    the same reason. Asked for a 검토 보고서 on a topic with no material, the
+    writer filled three sections with `kpi` blocks — 6개월, 80%, 90%, 4명, 30%,
+    100%, 0일, 8주, 40명, 80점 — every one of them invented, every one of them
+    set large on the page where a figure is read as the most factual thing in
+    the section.
+
+    The prose around them survives. A sentence saying the programme runs in a
+    compressed cycle is a claim somebody can weigh; the same claim as `8주`
+    beside a heading is a measurement, and there was no measuring.
+    """
+    if grounded:
+        return text
+    return _FIGURE_FENCE.sub("", text).strip()
+
+
 async def write(
     *,
     request: str,
@@ -458,6 +488,10 @@ async def write(
     # substituted: an attached file is still the better source for what it
     # covers, and the two are labelled so the writer can tell them apart.
     document_context = list(untrusted_context or [])
+    #: Whether a figure could honestly have come from anywhere. Judged once for
+    #: the run, by the same test the deck uses — a saved memory about who the
+    #: user is is material and is not a measurement.
+    grounded = deck_rules.has_numbers(request, document_context)
     if block := research.context_block(findings):
         document_context.append(block)
 
@@ -658,7 +692,13 @@ async def write(
         # Models write a table with a blank line between every row, which is
         # not a table to any renderer. Closed here, once, so the panel, the
         # page view and the three exporters all read the same thing.
-        section["content"] = richtext.tidy_tables(body)
+        # Stray ideographs read back into Hangul before anything is stored —
+        # `services/hangul.py`. The deck and the page tracks did this at their
+        # own doors and the report did not, so a 보고서 came out carrying 培育,
+        # 劣势 and 書類 while a deck on the same subject did not. One product,
+        # one answer.
+        clean, _ = hangul.read_back(body)
+        section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
         # The picture, if this section is one of the ones somebody paid for.
         # Drawn after the prose rather than before it so a failed drawing

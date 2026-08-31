@@ -63,6 +63,8 @@ _DROPPED_TAGS = {"hr"}
 #: Rendered by `deck_export`, keyed by the layout class the seed uses.
 _DECK_LAYOUT = {
     "cover": "title",
+    # A divider is a cover for the part after it — same ground, same reversal.
+    "section": "section",
     "bullets": "bullets",
     "quote": "quote",
     "split": "two-column",
@@ -70,6 +72,10 @@ _DECK_LAYOUT = {
     # item was on is the point of that slide, so it must not flatten.
     "compare": "two-column",
     "table": "table",
+    # The three paired shapes, under the names the seed's own vocabulary uses.
+    "bands": "bands",
+    "tiles": "tiles",
+    "timeline": "timeline",
 }
 
 
