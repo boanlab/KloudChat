@@ -2858,8 +2858,13 @@ function appliedSkillsStep(event: {
     catalogKey: string | null
     estimatedTokens: number
   }[]
-  estimatedTokens: number
+  estimatedTokens?: number
 }): Step {
+  // 합계가 빠진 이벤트도 받아들인다 — 배지 하나 그리려던 계산이
+  // 스트림 전체를 떨어뜨린 적이 있다.
+  const total =
+    event.estimatedTokens ??
+    event.skills.reduce((sum, skill) => sum + (skill.estimatedTokens || 0), 0)
   return {
     id: 'skills-applied',
     type: 'thinking',
@@ -2867,10 +2872,10 @@ function appliedSkillsStep(event: {
     status: 'done',
     detail: `${event.skills.map((skill) => tr(skill.name)).join(' · ')} · ${tr('약 {n} 토큰').replace(
       '{n}',
-      event.estimatedTokens.toLocaleString(),
+      total.toLocaleString(),
     )}`,
     skills: event.skills,
-    estimatedTokens: event.estimatedTokens,
+    estimatedTokens: total,
   }
 }
 
