@@ -295,7 +295,12 @@ test.describe('페르소나 커버리지', () => {
                 if ((await page.locator('.page').count()) > 0) {
                   await page.getByRole('button', { name: '페이지뷰' }).click()
                 }
-                await probe(page.getByRole('button', { name: /다시 쓰기|재생성/ }).first()).toBeVisible()
+                // 절이 할 수 있는 일은 절의 한 손잡이(절 편집 메뉴)로 모였다.
+                await page.getByRole('button', { name: /절 편집$/ }).first().click()
+                await probe(
+                  page.getByRole('menuitem', { name: /다시 쓰기|재생성/ }).first(),
+                ).toBeVisible()
+                await page.keyboard.press('Escape')
                 break
               case 'hum-export-docx':
               case 'off-docx':

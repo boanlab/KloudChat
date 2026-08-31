@@ -281,18 +281,23 @@ export function DesignTemplateCard({
           />
         </div>
       )}
-      <div className="space-y-2 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-base font-medium">{text.name}</p>
-          <Badge>{text.category}</Badge>
-        </div>
-        <p className="text-sm text-muted">{text.description}</p>
-        <Checks checks={row.checks} />
-        {row.arguments.length > 0 ? (
-          <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={onPick} />
-        ) : (
-          <>
-            {text.fills.length > 0 && (
+      {/* 가운데는 스크롤하고 발치는 고정한다. 행 높이는 격자가 정하므로,
+          펼친 점검 목록처럼 행보다 큰 내용은 여기 안에서 흘러야 한다 —
+          카드째 잘리면 시작 버튼이 사라지고, 카드째 늘리면 쪽 높이가 흔들린다. */}
+      <div className="flex min-h-0 flex-1 flex-col p-3">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-base font-medium">{text.name}</p>
+            <Badge>{text.category}</Badge>
+          </div>
+          {/* 두 줄이면 고르기에 충분하다. 긴 설명은 카드 높이를 제각각으로
+              만들던 첫 번째 범인이다. */}
+          <p className="line-clamp-2 text-sm text-muted">{text.description}</p>
+          <Checks checks={row.checks} />
+          {row.arguments.length > 0 ? (
+            <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={onPick} />
+          ) : (
+            text.fills.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {text.fills.map((fill) => (
                   <span
@@ -303,7 +308,11 @@ export function DesignTemplateCard({
                   </span>
                 ))}
               </div>
-            )}
+            )
+          )}
+        </div>
+        {row.arguments.length === 0 && (
+          <div className="pt-2">
             <Foot row={row} chosen={chosen} saving={saving} onSave={save}>
               <Button
                 size="sm"
@@ -313,7 +322,7 @@ export function DesignTemplateCard({
                 {chosen ? t('고른 서식') : t('이 서식으로 시작')}
               </Button>
             </Foot>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -685,7 +694,13 @@ export function DesignGalleryModal({
 
             204 × 2 + 사이 12. 바닥이지 천장이 아니므로, 더 큰 카드가 오는 쪽은
             그만큼 자란다 — 잘라 내는 것보다 낫다. 남는 자리는 아래에 둔다. */}
-        <div className="grid min-h-[420px] content-start gap-3 sm:grid-cols-2">
+        {/* Fixed window, evenly split rows. The 서식 cards grew a live
+           miniature and pages stopped agreeing on a height, so the dialog
+           breathed between pages — close and 다음 쪽 moved on every turn. A
+           fixed window pins that; even rows keep the two cards of a row the
+           same size; and the card below pins its buttons to its foot and
+           scrolls only its middle, so neither dead air nor clipping shows. */}
+        <div className="grid h-[600px] [grid-auto-rows:1fr] content-start gap-3 sm:grid-cols-2">
           {shown.map((card) =>
             card.design ? (
               <DesignTemplateCard

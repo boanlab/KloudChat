@@ -89,7 +89,7 @@ async function openNewestReport(page: import('@playwright/test').Page) {
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-  await expect(page.getByRole('button', { name: '문서 수정' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 20_000 })
   return page.evaluate(async () => {
     const login = await fetch('/api/auth/login', {
       method: 'POST',
@@ -110,9 +110,14 @@ async function openNewestReport(page: import('@playwright/test').Page) {
 
 /** Replaces the whole document through the editor and saves. */
 async function rewrite(page: import('@playwright/test').Page, markdown: string) {
-  await page.getByRole('button', { name: '문서 수정' }).click()
+  // 생성 직후의 패널은 아직 그리는 중일 수 있다 — 기본 15초는 접수 확인이지
+  // 무거운 문서의 첫 그림이 아니다.
+  await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: '원문 편집' }).click()
   await page.getByLabel('문서 원본').fill(markdown)
-  await page.getByRole('button', { name: '저장' }).click()
+  // 편집 패널의 저장은 화면에서 마지막 저장 버튼이다 — 이름만으로는
+  // 제목 저장과 같은 다른 저장에 함께 걸린다.
+  await page.getByRole('button', { name: '저장' }).last().click()
   await expect(page.getByLabel('문서 원본')).toBeHidden({ timeout: 20_000 })
 }
 

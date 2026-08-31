@@ -106,7 +106,11 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   // behind it draws five invented bars. It is offered now only when the
   // source it is written from actually carries figures.
   for (const slide of slides) {
-    expect(['title', 'bullets', 'quote', 'two-column', 'table', 'metrics', 'chart']).toContain(
+    expect([
+      'title', 'section', 'bullets', 'quote', 'two-column', 'table', 'metrics', 'chart',
+      // 이 가지에서 더해진 세 쌍 모양 — 이름표 줄·표식·연혁.
+      'bands', 'tiles', 'timeline',
+    ]).toContain(
       slide.layout,
     )
   }
@@ -119,7 +123,12 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
       (slide.body ? 1 : 0) +
       (slide.rows?.length ?? 0) +
       (slide.metrics?.length ?? 0) +
-      (slide.chart ? 1 : 0)
+      (slide.chart ? 1 : 0) +
+      // 세 쌍 모양도 말이다 — 이 합계가 쌍을 안 세서, 꽉 찬 연혁 장이
+      // "비어 있다" 로 읽혔다.
+      (slide.bands?.length ?? 0) +
+      (slide.tiles?.length ?? 0) +
+      (slide.timeline?.length ?? 0)
     expect(said, `${slide.layout} 장이 비어 있다: ${slide.title}`).toBeGreaterThan(0)
   }
 

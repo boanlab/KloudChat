@@ -259,7 +259,9 @@ export function answerText(page: Page, text: string | RegExp) {
  * Chosen by excluding the Strict Local group rather than by naming an id: a
  * picker row prints the model's name, not its route.
  */
-export async function pickToolModel(page: Page, name = /qwen3\.6/i) {
+// 기본값이 3.5 를 앞세우는 이유: 35b 는 검색·아티팩트 도구를 가끔 건너뛰고
+// 본문으로 답한다. 도구 스펙이 재는 것은 도구 경로이지 모델의 변덕이 아니다.
+export async function pickToolModel(page: Page, name = /qwen3\.5|qwen3\.6/i) {
   await page
     .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
     .first()
