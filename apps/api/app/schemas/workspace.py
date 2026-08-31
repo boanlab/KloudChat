@@ -174,6 +174,18 @@ def _card_data(kind: ArtifactKind, data: dict[str, Any] | None) -> dict[str, Any
                 {
                     **{k: v for k, v in (section or {}).items() if k != "content"},
                     "content": str((section or {}).get("content") or "")[:_CARD_CHARS],
+                    # The pictures a browser drew of this section's mermaid
+                    # diagrams, as base64 PNGs. They arrived on the section when
+                    # diagrams learned to reach the exported file, and nothing
+                    # trimmed them here: measured on one real account, 384 KB of
+                    # a 442 KB listing was diagrams — 86% of a payload whose
+                    # whole purpose is to be small. A card draws a thumbnail and
+                    # has never shown one.
+                    #
+                    # Emptied rather than dropped, like every other value here:
+                    # a renderer reading `Object.keys(section.diagrams)` on a
+                    # card that has no `diagrams` takes the screen down.
+                    "diagrams": {},
                 }
                 for section in (data.get("sections") or [])[:_CARD_PARTS]
             ],
@@ -303,6 +315,25 @@ class BlockImage(Wire):
     """
 
     index: int = Field(ge=0, le=63)
+    #: The `image` artifact to embed.
+    artifact_id: str = Field(min_length=1, max_length=64)
+    #: Printed under the picture. Empty leaves the figure uncaptioned rather
+    #: than repeating the prompt, which is a request and not a caption.
+    caption: str = Field(default="", max_length=200)
+
+
+class SectionImage(Wire):
+    """A picture this workspace already made, put into one section of a report.
+
+    A report is Markdown, and a Markdown picture — `![caption](data:…)` — is a
+    shape `richtext` and all three exporters already read. So this writes a line
+    into the body rather than inventing a field: what the `.docx` draws for a
+    figure the writer proposed, it draws for this one, by the same code.
+    """
+
+    #: The section to append it to. By id rather than by index, so a picture does
+    #: not move when somebody adds a section above it.
+    section_id: str = Field(min_length=1, max_length=64)
     #: The `image` artifact to embed.
     artifact_id: str = Field(min_length=1, max_length=64)
     #: Printed under the picture. Empty leaves the figure uncaptioned rather

@@ -40,7 +40,7 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
   // that is off carries no composer to drive.
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '영상' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
 
   // Switching to video has to bring a video model with it. The cheapest model on
   // this surface is a speech model, and it stayed selected — so the composer

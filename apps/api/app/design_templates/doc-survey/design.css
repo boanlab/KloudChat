@@ -1,0 +1,52 @@
+/* 조사 보고 — 표가 본문인 문서.
+ *
+ * 기술통계에서 교차분석까지 가는 동안 이 문서의 대부분은 표다. 그래서 표를
+ * 본문 크기로 두지 않고 한 단계 줄여, 한 면에 더 들어가게 한다. 줄어든 만큼
+ * 행 간격을 좁히고 줄무늬를 넣어 가로로 읽히게 한다.
+ *
+ * 표본과 문항은 문서의 신뢰를 정하는 값이므로 각주가 아니라 표지에 세운다.
+ * 기본 조판의 표지 목록을 그대로 쓰되 눈에 들어오게 키운다. */
+
+.page { font-size: 0.96rem; }
+
+.cover { min-height: 0; padding: 0 0 1rem; margin: 0 0 1.7rem; }
+.cover h1 { font-size: 1.55rem; }
+.cover dl {
+  max-width: none;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.9rem 1.4rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hair);
+  font-size: 0.9rem;
+}
+.cover dt { font-size: 0.76rem; letter-spacing: 0.06em; }
+.cover dd { font-weight: 650; font-size: 1.05rem; }
+
+h2 { font-size: 1.06rem; }
+h3 { font-size: 0.98rem; margin-top: 1.4rem; }
+
+/* 표. 이 문서에서 가장 자주 읽히는 요소이므로 조판이 여기에 쓰인다. */
+table { font-size: 0.85rem; line-height: 1.45; margin: 0.9rem 0 1rem; }
+th { padding: 0.35em 0.6em 0.35em 0; font-size: 0.78rem; }
+td { padding: 0.32em 0.6em 0.32em 0; }
+table tbody tr:nth-child(odd) td {
+  background: var(--wash);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+table td:not(:first-child), table th:not(:first-child) {
+  text-align: right;
+  padding-right: 0;
+  padding-left: 1em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 백분율과 표본 수가 한 칸에 같이 오는 표가 많다. 괄호 안은 눌러 둔다. */
+table td small { display: inline; font-size: 0.86em; }
+
+@media print {
+  .cover { min-height: 0; padding: 0 0 1rem; page-break-after: auto; break-after: auto; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+}

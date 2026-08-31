@@ -574,16 +574,17 @@ function MessageItemInner({
 
         {!streaming && message.content && !message.variants && (
           <div className="mt-2 flex items-center gap-1 text-faint">
-            {/* Hidden until the turn is hovered, except once it has been rated:
-                a verdict that only appears when you go looking for it is not
-                readable, and reading back which answers you had already decided
-                against is the whole of what recording them buys. */}
-            <span
-              className={cn(
-                'flex items-center gap-1 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-                !message.liked && 'opacity-0',
-              )}
-            >
+            {/* Visible at rest.
+                It used to appear only on hover, and the row holds 복사 — the
+                thing people reach for most on an answer and the one they cannot
+                reach for if finding it means sweeping a mouse across the text.
+                The report panel settled this for its own edit button and wrote
+                down why: a control that only hover reveals leaves "is this even
+                possible" answerable only by accident.
+                Muted rather than loud, so a page of turns does not become a
+                page of buttons; a rating that has been given keeps its colour
+                and reads back as the verdict it is. */}
+            <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button
               variant="ghost"

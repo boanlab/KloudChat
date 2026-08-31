@@ -24,12 +24,44 @@ import { parse } from '@/components/report/StepList'
  * out: the person who receives the `.docx` can correct a number, search for
  * it, and print it sharp.
  */
+/** Anything with a digit in it. A figure is what this block is for. */
+const isFigure = (text: string) => /\d/.test(text)
+
 export function KpiStrip({ source }: { source: string }) {
-  const figures = parse(source, 4)
-  if (!figures.length) return null
+  const pairs = parse(source, 4)
+  if (!pairs.length) return null
+
+  // Written the other way round is still written. `32% | 오탐 감소` is the
+  // shape the prompt shows and `오탐 감소 | 32%` is the shape people and
+  // models write anyway; reading the digits rather than the position costs
+  // nothing and stops a strip coming out with its labels set at 24px.
+  const rows = pairs.map(([left, right]) =>
+    isFigure(right) && !isFigure(left) ? ([right, left] as const) : ([left, right] as const),
+  )
+
+  // No figures anywhere. It happens for an honest reason: a writer told not to
+  // invent numbers puts "확인 필요" where the number would go, which is the
+  // right thing to write and the wrong thing to set in accent at 24px — four
+  // sentences in the figure slot, wrapping, reading as a broken component.
+  // Shown as the pairs they are instead. Nothing is dropped: what the writer
+  // meant is still on the page, and the exporters read the same fence either
+  // way.
+  if (!rows.some(([value]) => isFigure(value))) {
+    return (
+      <dl className="my-5 grid gap-x-6 gap-y-2 border-y border-line py-4 sm:grid-cols-2">
+        {rows.map(([name, note], i) => (
+          <div key={i} className="flex min-w-0 items-baseline justify-between gap-3">
+            <dt className="min-w-0 truncate text-base">{name}</dt>
+            <dd className="shrink-0 text-sm text-muted">{note}</dd>
+          </div>
+        ))}
+      </dl>
+    )
+  }
+
   return (
     <div className="my-5 flex flex-wrap justify-around gap-x-6 gap-y-4 border-y border-line py-4">
-      {figures.map(([value, label], i) => (
+      {rows.map(([value, label], i) => (
         <div key={i} className="min-w-24 flex-1 text-center">
           <div className="text-2xl font-semibold leading-tight text-accent">{value}</div>
           <div className="mt-1 text-xs text-muted">{label}</div>

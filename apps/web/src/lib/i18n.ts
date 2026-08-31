@@ -1421,6 +1421,9 @@ const EN: Record<string, string> = {
   // ── 시작점 갤러리의 이름 ────────────────────────────────────────
   '시작점 고르기': 'Pick a starting point',
   '서식 추가': 'Add a form',
+  '내보내면 이 양식으로 나갑니다': 'The exported file comes out in this form',
+  '서식 바꾸기': 'Change of form',
+  '서식을 바꾸지 못했습니다.': 'The form could not be changed.',
   '서식 검색': 'Search forms',
   '이 서식이 확인하는 것 {n}개': '{n} things this form checks',
   '찾는 서식이 없습니다.': 'No form matches that.',

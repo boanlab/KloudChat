@@ -40,6 +40,24 @@ _STYLE_PHRASE = {
     "수채화": "watercolour painting, visible paper texture, soft edges",
 }
 
+#: What a picture bound for a slide or a document section has to be told.
+#:
+#: Asked only for "a picture for 시장 전망", an image model draws the whole
+#: slide — a title across the top, a chart, three labelled cards down the side.
+#: Dropped into a slide that already has a title and bullets, that is a slide
+#: inside a slide, and the first one somebody made looked exactly like that.
+#:
+#: "No text" is the load-bearing half. Whatever an image model writes it writes
+#: badly, and in Korean it writes glyphs that are not words — so a picture with
+#: words in it is a picture that has to be thrown away, and the words are the
+#: document's job anyway.
+_FIGURE_CLAUSE = (
+    "a single illustrative figure to sit inside a document, not a page of its "
+    "own: no text, no words, no letters, no title, no caption, no labels or "
+    "legends, no slide or page frame, no user-interface chrome, one subject on "
+    "an uncluttered ground, legible at a small size"
+)
+
 _DATA_URL = re.compile(r"^data:(image/[a-z+]+);base64,(.+)$", re.S)
 
 
@@ -81,7 +99,13 @@ def _measure(data: bytes) -> tuple[int, int]:
 
 
 def compose_prompt(
-    prompt: str, *, aspect: str, style: str, template: str = "", design: str = ""
+    prompt: str,
+    *,
+    aspect: str,
+    style: str,
+    template: str = "",
+    design: str = "",
+    figure: bool = False,
 ) -> str:
     """The request as the model will read it.
 
@@ -95,6 +119,12 @@ def compose_prompt(
     outlast one picture's chip.
     """
     parts = [prompt.strip()]
+    # Directly after what the person asked for, and before the style chip: it
+    # says what kind of thing to make, and the chip only says what it looks
+    # like. A chip that disagrees is still allowed to — "사진" of one subject is
+    # a fine figure — but it cannot turn the figure back into a page.
+    if figure:
+        parts.append(_FIGURE_CLAUSE)
     phrase = _STYLE_PHRASE.get(style)
     if phrase:
         parts.append(phrase)

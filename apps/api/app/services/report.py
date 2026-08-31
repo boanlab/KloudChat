@@ -25,7 +25,16 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
-from app.services import figures, grounding, imagegen, pictures, research, richtext, settings_store
+from app.services import (
+    figures,
+    grounding,
+    imagegen,
+    pictures,
+    research,
+    richtext,
+    settings_store,
+    thinking,
+)
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 
@@ -207,6 +216,48 @@ async def _complete(
             await asyncio.sleep(_BACKOFF[attempt])
         response.raise_for_status()
         payload = response.json()
+
+    # A reasoning model can spend the whole ceiling thinking and return an
+    # empty answer with `finish_reason: "length"`. See `services/thinking.py` —
+    # this is the one place that can tell that apart from a model with nothing
+    # to say, because it is the only place holding the raw payload.
+    if bigger := thinking.starved(payload, max_tokens):
+        log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
+        ) as client:
+            again = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": bigger,
+                    "reasoning": thinking.REASONING_CAP,
+                },
+            )
+            if again.status_code >= 400:
+                # A gateway that does not know `reasoning` refuses the whole
+                # call. The ceiling alone still helps every model that does not
+                # scale its thinking to it.
+                again = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": model, "messages": messages, "max_tokens": bigger},
+                )
+        if again.status_code == 200:
+            retried = again.json()
+            spent = retried.get("usage") or {}
+            first = payload.get("usage") or {}
+            # Both calls are charged, so both are counted. A budget that hid
+            # the first attempt would under-report what the turn cost.
+            payload = retried
+            payload["usage"] = {
+                "prompt_tokens": int(first.get("prompt_tokens") or 0)
+                + int(spent.get("prompt_tokens") or 0),
+                "completion_tokens": int(first.get("completion_tokens") or 0)
+                + int(spent.get("completion_tokens") or 0),
+            }
 
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     raw = payload.get("usage") or {}

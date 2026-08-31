@@ -11,7 +11,11 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArtifactPreview, CodePanel, MediaPanel } from '@/components/artifacts/ArtifactPanel'
-import { PanelControls } from '@/components/artifacts/PanelControls'
+import {
+  PanelControls,
+  nextMode,
+  type PanelMode,
+} from '@/components/artifacts/PanelControls'
 import { ChartPanel } from '@/components/chart/ChartPanel'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -176,7 +180,7 @@ export function ArtifactsPage() {
   //: Set by the report panel when it opens an editor or focus mode. Both need
   //: the room, and a dialog that cannot grow makes the control that asks for
   //: it a button that does nothing.
-  const [widePreview, setWidePreview] = useState(false)
+  const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
   const [confirming, setConfirming] = useState<Artifact | null>(null)
 
   const preview = artifacts.find((a) => a.id === previewId) ?? null
@@ -374,11 +378,11 @@ export function ArtifactsPage() {
         open={!!preview}
         onClose={() => {
           setPreviewId(null)
-          setWidePreview(false)
+          setPreviewMode('wide')
         }}
         title={preview?.title ?? ''}
         description={preview ? `${t(kindLabel[preview.kind])} · v${preview.version}` : undefined}
-        width={widePreview ? 'max-w-7xl' : 'max-w-4xl'}
+        width={previewMode === 'narrow' ? 'max-w-4xl' : 'max-w-7xl'}
       >
         {preview && (
           <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
@@ -394,18 +398,18 @@ export function ArtifactsPage() {
             ) && (
               <header className="flex shrink-0 justify-end border-b border-line px-2 py-1.5">
                 <PanelControls
-                  wide={widePreview}
-                  onToggleWide={() => setWidePreview(!widePreview)}
+                  mode={previewMode}
+                  onCycle={() => setPreviewMode(nextMode(previewMode))}
                 />
               </header>
             )}
             <div className="min-h-0 flex-1 overflow-hidden">
             {preview.kind === 'report' ? (
-              <ReportPanel report={preview} onWideChange={setWidePreview} />
+              <ReportPanel report={preview} onModeChange={setPreviewMode} />
             ) : preview.kind === 'deck' ? (
-              <DeckPanel deck={preview} onWideChange={setWidePreview} />
+              <DeckPanel deck={preview} onModeChange={setPreviewMode} />
             ) : preview.kind === 'chart' ? (
-              <ChartPanel chart={preview} onWideChange={setWidePreview} />
+              <ChartPanel chart={preview} onModeChange={setPreviewMode} />
             ) : preview.kind === 'image' ||
               preview.kind === 'audio' ||
               preview.kind === 'video' ? (

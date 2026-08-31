@@ -136,8 +136,13 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
     await openReport(page)
 
     // The web view is where the verdicts are read.
-    const check = page.getByRole('button', { name: /검토$/ }).first()
-    await check.click()
+    //
+    // Reached through the section's own menu. 검토 and 다시 쓰기 used to sit
+    // beside the heading and appear only on hover, next to a 절 편집 button
+    // that was always there — one row, two rules, and the hidden half read as
+    // absent. Everything a section can do is in the one handle now.
+    await page.getByRole('button', { name: /절 편집$/ }).first().click()
+    await page.getByRole('menuitem', { name: /^검토$|^다시 검토$/ }).click()
     // Either answer means the check ran. A section with figures in it comes
     // back as verdicts under a 팩트체크 heading; one without comes back saying
     // so, because opinions and definitions are not judged. Which of the two

@@ -289,6 +289,12 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'grad-section-regen':
                 await openNewest(page, '보고서')
+                // 절 단위 컨트롤은 웹뷰에 있다. 서식을 입은 문서는 페이지뷰로
+                // 열리므로 — 패널이 `templateId` 를 읽고 거기서 시작한다 —
+                // 어느 문서가 가장 최근이냐에 따라 시작 화면이 갈린다.
+                if ((await page.locator('.page').count()) > 0) {
+                  await page.getByRole('button', { name: '페이지뷰' }).click()
+                }
                 await probe(page.getByRole('button', { name: /다시 쓰기|재생성/ }).first()).toBeVisible()
                 break
               case 'hum-export-docx':

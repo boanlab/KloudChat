@@ -58,9 +58,20 @@ test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page 
   const seen = rewrites.map((r) => r.sectionId)
   expect(new Set(seen).size, `같은 절을 두 번 다시 썼다: ${seen.join(', ')}`).toBe(seen.length)
   expect(rewrites.length, '한 절도 다시 쓰지 않았다').toBeGreaterThan(0)
-  // And a part with more than one finding is told about all of them at once.
-  const many = rewrites.find((r) => /\n2\./.test(r.note))
-  if (count > seen.length) {
-    expect(many, '한 절에 여러 지적이 있는데 하나만 전달했다').toBeTruthy()
+  // And every note is well formed: one problem stated plainly, several as a
+  // numbered list. A list of one is the shape that means somebody grouped and
+  // then sent the group one item at a time.
+  for (const rewrite of rewrites) {
+    const numbered = rewrite.note.match(/^\d+\. /gm)?.length ?? 0
+    expect(numbered === 0 || numbered > 1, `번호가 하나뿐인 목록: ${rewrite.note}`).toBe(true)
   }
+
+  // Nothing is invented. The notes cannot name more problems than the checker
+  // found — and they may name fewer, because a finding no section owns is not
+  // dropped but sent to the conversation as one message instead.
+  const named = rewrites.reduce(
+    (total, rewrite) => total + Math.max(1, rewrite.note.match(/^\d+\. /gm)?.length ?? 0),
+    0,
+  )
+  expect(named, '지적보다 많은 문제를 지어냈다').toBeLessThanOrEqual(count)
 })

@@ -4,6 +4,7 @@ import {
   Download,
   Grid2x2,
   ImagePlus,
+  ListPlus,
   Loader2,
   Play,
   Presentation,
@@ -15,20 +16,23 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { PanelControls, usePanelWidth } from '@/components/artifacts/PanelControls'
+import {
+  PanelControls,
+  usePanelWidth,
+  type PanelMode,
+} from '@/components/artifacts/PanelControls'
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Badge, Button, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
-import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { useT } from '@/lib/useT'
-import { NoPicturesYet } from '@/components/artifacts/NoPicturesYet'
+import { PicturePicker } from '@/components/artifacts/PicturePicker'
 
 
 /**
@@ -99,6 +103,18 @@ function SlideView({
   const t = useT()
   const accent = slide.accent ?? 'var(--accent)'
   const px = (n: number) => `${n * scale}px`
+  /**
+   * Type, which a person can make bigger or smaller on one slide.
+   *
+   * Separate from `px` on purpose: the ask was for the words, and growing the
+   * padding and the gaps with them would only push the same amount of text off
+   * the same edge. The gutter is the 서식's decision and stays where it is.
+   *
+   * `deck_export` multiplies its own sizes by the same number, so the `.pptx`
+   * and the `.pdf` come out the size the screen showed. A control that only
+   * changed the preview would be worse than no control.
+   */
+  const type = (n: number) => `${n * scale * (slide.textScale ?? 1)}px`
   const rows = slide.rows ?? []
   const metrics = slide.metrics ?? []
   const chart = slide.chart
@@ -115,21 +131,21 @@ function SlideView({
       <div className="absolute top-0 left-0 h-full" style={{ width: px(4), background: accent }} />
       {slide.layout === 'title' ? (
         <div className="flex flex-1 flex-col justify-center" style={{ paddingLeft: px(16) }}>
-          <h3 style={{ fontSize: px(28), fontWeight: 700, lineHeight: 1.2 }}>{slide.title}</h3>
+          <h3 style={{ fontSize: type(28), fontWeight: 700, lineHeight: 1.2 }}>{slide.title}</h3>
           {slide.body && (
-            <p style={{ fontSize: px(13), marginTop: px(12), color: '#666' }}>{slide.body}</p>
+            <p style={{ fontSize: type(13), marginTop: px(12), color: '#666' }}>{slide.body}</p>
           )}
         </div>
       ) : slide.layout === 'quote' && slide.body ? (
         <div className="flex flex-1 flex-col justify-center" style={{ paddingLeft: px(16) }}>
-          <p style={{ fontSize: px(20), fontWeight: 600, lineHeight: 1.4, color: accent }}>
+          <p style={{ fontSize: type(20), fontWeight: 600, lineHeight: 1.4, color: accent }}>
             “{slide.body}”
           </p>
-          <p style={{ fontSize: px(12), marginTop: px(10), color: '#666' }}>{slide.title}</p>
+          <p style={{ fontSize: type(12), marginTop: px(10), color: '#666' }}>{slide.title}</p>
         </div>
       ) : (
         <div className="flex flex-1 flex-col" style={{ paddingLeft: px(16) }}>
-          <h3 style={{ fontSize: px(19), fontWeight: 700, marginBottom: px(12) }}>{slide.title}</h3>
+          <h3 style={{ fontSize: type(19), fontWeight: 700, marginBottom: px(12) }}>{slide.title}</h3>
           {/* Words left, picture right — the geometry `deck_export` uses, so
               the preview and the .pptx put them in the same places. */}
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
@@ -143,7 +159,7 @@ function SlideView({
                 <div key={i} className="min-w-0 flex-1">
                   <div
                     style={{
-                      fontSize: px(30),
+                      fontSize: type(30),
                       fontWeight: 700,
                       lineHeight: 1.1,
                       color: accent,
@@ -151,7 +167,7 @@ function SlideView({
                   >
                     {figure}
                   </div>
-                  <div style={{ fontSize: px(11), marginTop: px(4), color: '#666' }}>{label}</div>
+                  <div style={{ fontSize: type(11), marginTop: px(4), color: '#666' }}>{label}</div>
                 </div>
               ))}
             </div>
@@ -163,7 +179,7 @@ function SlideView({
                in it. Kept in step with `deck_export`, which draws the same
                shape into the .pptx and the .pdf. */
             <table
-              style={{ fontSize: px(12), lineHeight: 1.5, width: '100%', borderCollapse: 'collapse' }}
+              style={{ fontSize: type(12), lineHeight: 1.5, width: '100%', borderCollapse: 'collapse' }}
             >
               <tbody>
                 {rows.map((row, r) => (
@@ -189,7 +205,7 @@ function SlideView({
           {slide.bullets && rows.length === 0 && metrics.length === 0 && !chart && (
             <ul
               style={{
-                fontSize: px(13),
+                fontSize: type(13),
                 lineHeight: 1.7,
                 // A long list down one edge wastes the right half of the
                 // rectangle and pushes the last item off the bottom. Splitting
@@ -208,13 +224,13 @@ function SlideView({
             </ul>
           )}
           {slide.body && !slide.bullets?.length && (
-            <p style={{ fontSize: px(12), color: '#555', marginTop: px(8), lineHeight: 1.6 }}>
+            <p style={{ fontSize: type(12), color: '#555', marginTop: px(8), lineHeight: 1.6 }}>
               {slide.body}
             </p>
           )}
           {/* 빈 장. 흰 화면만 두면 다 만들어진 것처럼 보인다 */}
           {pending && !slide.image && (
-            <p style={{ fontSize: px(12), color: '#aaa', marginTop: px(6) }}>
+            <p style={{ fontSize: type(12), color: '#aaa', marginTop: px(6) }}>
               {writing ? t('쓰는 중…') : t('내용이 비었습니다 — 텍스트 수정으로 채워 주세요.')}
             </p>
           )}
@@ -230,7 +246,7 @@ function SlideView({
                 className="max-h-full w-full object-contain"
               />
               {slide.image.caption && (
-                <p style={{ fontSize: px(10), color: '#666', marginTop: px(4) }}>
+                <p style={{ fontSize: type(10), color: '#666', marginTop: px(4) }}>
                   {slide.image.caption}
                 </p>
               )}
@@ -258,23 +274,8 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const artifacts = useStore((s) => s.artifacts)
   const loadArtifacts = useStore((s) => s.loadArtifacts)
   const refreshArtifact = useStore((s) => s.refreshArtifact)
-
-  // The picture somebody made while writing this deck is almost always the one
-  // they want, so its own session comes first.
-  const pictures = artifacts
-    .filter((a) => a.kind === 'image')
-    .sort((a, b) => {
-      const mine =
-        Number(b.sessionId === deck.sessionId) - Number(a.sessionId === deck.sessionId)
-      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
-    })
-    .slice(0, 24)
-
-  // Nothing to pick is a thing to say, not a reason to hide the only path
-  // a picture has into a deck.
 
   const insert = async () => {
     if (!picked) return
@@ -314,7 +315,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
         open={open}
         onClose={() => setOpen(false)}
         title={t('{name} 에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
-        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
         footer={
           <>
             <Button onClick={() => setOpen(false)} disabled={busy}>
@@ -326,42 +327,58 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
           </>
         }
       >
-        {pictures.length === 0 && <NoPicturesYet />}
-        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
-          {pictures.map((picture) => (
-            <button
-              key={picture.id}
-              onClick={() => setPicked(picture.id)}
-              aria-label={picture.title}
-              aria-pressed={picked === picture.id}
-              className={cn(
-                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
-                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
-              )}
-            >
-              <ArtifactPreview artifact={picture} />
-            </button>
-          ))}
-        </div>
-        {pictures.length > 0 && (
-          <div className="mt-3">
-            <Input
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              aria-label={t('설명')}
-              placeholder={t('그림 아래에 붙일 설명 (선택)')}
-            />
-          </div>
-        )}
+        <PicturePicker
+          sessionId={deck.sessionId}
+          aspect="16:9"
+          picked={picked}
+          onPick={setPicked}
+          caption={caption}
+          onCaption={setCaption}
+          about={slide.title || t('이 장')}
+        />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
     </>
   )
 }
 
-/** The editable text of a slide, as lines: the title, then the bullets. */
+/**
+ * The editable text of a slide: the title, then whatever the slide is made of.
+ *
+ * A table row comes out as `| 구분 | 탐지 |`, the shape anybody who has written
+ * Markdown already knows, and goes back in the same way. Before this, a slide's
+ * table was simply absent from the box: somebody opened 텍스트 수정 on a table
+ * slide, saw a title and nothing else, typed the lines they wanted, and saved.
+ * The save turned the slide into `bullets` — and `SlideView` draws bullets only
+ * where `rows` is empty, so the table stayed and every word they typed was
+ * swallowed with no error and no trace.
+ *
+ * Metrics go out the same way, as `| 99.5% | 대응률 |`, so a KPI strip is
+ * editable for the first time as well.
+ */
 function toLines(slide: Slide): string {
-  return [slide.title, ...(slide.bullets ?? []), slide.body ?? ''].filter(Boolean).join('\n')
+  const rows = (slide.rows ?? []).map((row) => `| ${row.join(' | ')} |`)
+  const metrics = (slide.metrics ?? []).map(([figure, label]) => `| ${figure} | ${label} |`)
+  return [
+    slide.title,
+    ...(slide.bullets ?? []),
+    slide.body ?? '',
+    ...rows,
+    ...metrics,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+/** `| a | b |` → `['a', 'b']`, or `null` for a line that is not a row. */
+function toCells(line: string): string[] | null {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('|')) return null
+  const cells = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+  // `| --- | --- |` is a Markdown rule, not data. Somebody pasting a table
+  // from elsewhere brings one with them.
+  if (cells.every((c) => /^:?-{2,}:?$/.test(c))) return null
+  return cells.length > 1 ? cells : null
 }
 
 /**
@@ -527,6 +544,16 @@ function PresentMode({
   onClose: () => void
 }) {
   const t = useT()
+  // Measured, not chosen. `SlideView` sizes every rule, every gap and every
+  // type size as `n * scale`, so the drawing only looks like itself when
+  // `scale` is the stage's own width over 400 — the relationship
+  // `useStageScale` exists to keep. This screen had a hard 2.4 instead, tuned
+  // for some window nobody wrote down, and on a 1152px stage the right answer
+  // is 2.88: every word, the accent bar and all the padding came out 17%
+  // small. Presenting a deck and reading it in the panel showed two different
+  // designs of the same slide, which also meant rehearsing at a size the room
+  // would never see.
+  const stage = useStageScale()
   const slide = deck.slides[index]
   if (!slide) return null
   return (
@@ -543,8 +570,11 @@ function PresentMode({
             outline={deck.slides.map((s) => s.title)}
       notes={slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
     >
-      <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
-        <SlideView slide={slide} scale={2.4} writing={false} />
+      <div
+        ref={stage.ref}
+        className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float"
+      >
+        <SlideView slide={slide} scale={stage.scale} writing={false} />
       </div>
     </PresentStage>
   )
@@ -574,16 +604,16 @@ function useStageScale() {
 export function DeckPanel({
   deck,
   onClose,
-  onWideChange,
+  onModeChange,
 }: {
   deck: DeckArtifact
   onClose?: () => void
   /** Fires when the reader asks for room. A deck is checked by looking at it,
    *  and the stage beside a transcript is about 330px wide. */
-  onWideChange?: (wide: boolean) => void
+  onModeChange?: (mode: PanelMode) => void
 }) {
   const t = useT()
-  const width = usePanelWidth(onWideChange)
+  const width = usePanelWidth(onModeChange)
 
   /**
    * One finding from the checks, fixed.
@@ -757,14 +787,35 @@ export function DeckPanel({
     }
 
     const [title, ...rest] = lines
+    const table = rest.map(toCells).filter(Boolean) as string[][]
+    const words = rest.filter((line) => toCells(line) === null)
+
     // Layout follows the shape that arrived: on a quote slide one line is a
     // quotation and several are bullets, since quote renders only the first.
+    //
+    // The rows a person typed replace the rows that were there, and typing none
+    // on a slide that had a table removes it. Both are the same rule — what is
+    // in the box is what the slide becomes — and it is the rule that was
+    // missing: the table used to survive an edit that never mentioned it and
+    // then hide the bullets that did get typed.
+    const shaped: Slide =
+      table.length > 0
+        ? // `metrics` is a table of exactly two columns whose left side is a
+          // figure. Kept as metrics only if that is what the slide already was;
+          // otherwise two columns are two columns.
+          slide.metrics?.length && table.every((row) => row.length === 2)
+          ? { ...slide, metrics: table.map(([f, l]) => [f, l] as [string, string]), rows: undefined }
+          : { ...slide, layout: 'table', rows: table, metrics: undefined }
+        : { ...slide, rows: undefined, metrics: undefined }
+
     const edited: Slide =
-      slide.layout === 'quote' && rest.length <= 1
-        ? { ...slide, title, body: rest[0] ?? '', bullets: undefined, notes }
+      slide.layout === 'quote' && words.length <= 1
+        ? { ...shaped, title, body: words[0] ?? '', bullets: undefined, notes }
         : slide.layout === 'title'
-          ? { ...slide, title, body: rest.join(' '), notes }
-          : { ...slide, layout: 'bullets', title, bullets: rest, body: undefined, notes }
+          ? { ...shaped, title, body: words.join(' '), notes }
+          : table.length > 0
+            ? { ...shaped, title, bullets: words.length ? words : undefined, body: undefined, notes }
+            : { ...shaped, layout: 'bullets', title, bullets: words, body: undefined, notes }
 
     const slides = deck.slides.map((s, i) => (i === index ? edited : s))
     setSaving(true)
@@ -801,6 +852,92 @@ export function DeckPanel({
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * Adding, removing and reordering slides.
+   *
+   * A deck arrives with the shape the model chose and there was no way to
+   * change it: not one control on either surface added a slide, removed one, or
+   * moved one. Everything a person could do to the structure of a document they
+   * had to do by asking for the whole thing again, which throws away every edit
+   * they had made to the slides they were keeping.
+   *
+   * Saved through the same door `save` uses — the whole deck as one PATCH,
+   * checked against the server first — so a structural edit is snapshotted and
+   * one click from undone like any other.
+   */
+  const restructure = async (next: Slide[], summary: string, land: number) => {
+    setSaving(true)
+    setError(null)
+    try {
+      const latest = await artifactsApi.get(deck.id).catch(() => null)
+      const onServer = (latest?.data as { slides?: Slide[] } | null)?.slides
+      if (onServer && JSON.stringify(onServer) !== baseline.current) {
+        setError(
+          t('이 덱은 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.'),
+        )
+        return
+      }
+      const row = await artifactsApi.update(deck.id, {
+        data: { kind: 'deck', theme: deck.theme, slides: next },
+        summary,
+        expectedVersion: latest?.version ?? deck.version,
+      })
+      deck.slides = next
+      deck.version = row.version
+      baseline.current = JSON.stringify(next)
+      setEditing(false)
+      // Follow the slide, not the number. After a move the thing somebody was
+      // looking at is somewhere else, and a panel that stayed on the index
+      // would show them a different slide as though nothing had happened.
+      setSelected(Math.max(0, Math.min(land, next.length - 1)))
+    } catch (err) {
+      setError(errorMessage(err, t('저장하지 못했습니다.')))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const addSlide = (after: boolean) => {
+    const at = after ? index + 1 : index
+    const blank: Slide = {
+      id: `sl${Date.now().toString(36)}`,
+      layout: 'bullets',
+      title: t('새 장'),
+      bullets: [],
+      notes: '',
+    }
+    const next = [...deck.slides.slice(0, at), blank, ...deck.slides.slice(at)]
+    void restructure(next, t('{n}장 추가').replace('{n}', String(at + 1)), at)
+  }
+
+  const moveSlide = (by: -1 | 1) => {
+    const to = index + by
+    if (to < 0 || to >= deck.slides.length) return
+    const next = [...deck.slides]
+    ;[next[index], next[to]] = [next[to], next[index]]
+    void restructure(next, t('{n}장 옮김').replace('{n}', String(index + 1)), to)
+  }
+
+  /** 크게 / 보통 / 작게, on this slide only. */
+  const setTextScale = (value: number) => {
+    const next = deck.slides.map((row, i) =>
+      i === index ? { ...row, textScale: value === 1 ? undefined : value } : row,
+    )
+    void restructure(next, t('{n}장 글자 크기').replace('{n}', String(index + 1)), index)
+  }
+
+  const removeSlide = () => {
+    // The last one is not removable: a deck of no slides has nothing to open,
+    // nothing to present and nothing to export, and the way to get rid of it is
+    // to delete the deck.
+    if (deck.slides.length <= 1) {
+      setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 결과물 목록에서 지우세요.'))
+      return
+    }
+    const next = deck.slides.filter((_, i) => i !== index)
+    void restructure(next, t('{n}장 지움').replace('{n}', String(index + 1)), Math.max(0, index - 1))
   }
 
   const go = (i: number) => {
@@ -890,7 +1027,7 @@ export function DeckPanel({
           // 열어 둔 초안을 그대로 저장하면 방금 되돌린 장을 덮어쓴다.
           onRestored={() => setEditing(false)}
         />
-        <PanelControls wide={width.wide} onToggleWide={width.toggle} onClose={onClose} />
+        <PanelControls mode={width.mode} onCycle={width.cycle} onClose={onClose} />
       </header>
 
       <div className="relative flex min-h-0 flex-1">
@@ -984,9 +1121,17 @@ export function DeckPanel({
         </nav>
 
         {/* ── 무대 ─────────────────────────────────────────────────────── */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <div className="border-b border-line bg-elevated/40 p-4">
-            <div className="mx-auto flex max-w-lg items-center gap-2">
+        {/* The slide takes the room, the notes take the rest.
+            Both used to sit in one band capped at `max-w-lg` — 32rem — so on a
+            940px panel the slide was drawn a third of the width it had and
+            everything below the notes was empty. That cap made sense when this
+            lived beside a transcript in a 330px column; it stopped making sense
+            the moment the panel could be widened, and nothing followed.
+            A column instead: the slide keeps its 16:9 across the full width,
+            and the notes are their own band under a rule, growing into whatever
+            height is left rather than trailing the slide as a caption. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex shrink-0 items-center gap-2 p-4">
               <button
                 onClick={() => go(index - 1)}
                 disabled={index === 0}
@@ -1015,15 +1160,59 @@ export function DeckPanel({
               >
                 <ChevronRight size={16} />
               </button>
-            </div>
+          </div>
 
-            {slide && (
-              <div className="mx-auto mt-3 max-w-lg">
-                <div className="flex items-center gap-2">
+          {slide && (
+            <div className="flex min-h-40 flex-1 flex-col border-t border-line bg-elevated/40 p-4">
+              <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
                   <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
                     {t('발표 노트')}
                   </span>
+                  {!editing && (
+                    <Dropdown
+                      align="right"
+                      trigger={() => (
+                        <Button variant="ghost" size="sm" disabled={writing || saving}>
+                          <ListPlus size={13} />
+                          {t('장 편집')}
+                        </Button>
+                      )}
+                    >
+                      <MenuLabel>{t('{n}번 장').replace('{n}', String(index + 1))}</MenuLabel>
+                      <MenuItem onClick={() => addSlide(false)}>{t('앞에 장 추가')}</MenuItem>
+                      <MenuItem onClick={() => addSlide(true)}>{t('뒤에 장 추가')}</MenuItem>
+                      <MenuItem onClick={() => moveSlide(-1)} disabled={index === 0}>
+                        {t('위로 옮기기')}
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => moveSlide(1)}
+                        disabled={index >= deck.slides.length - 1}
+                      >
+                        {t('아래로 옮기기')}
+                      </MenuItem>
+                      <MenuItem onClick={removeSlide}>{t('이 장 지우기')}</MenuItem>
+                      <MenuLabel>{t('글자 크기')}</MenuLabel>
+                      <MenuItem
+                        onClick={() => setTextScale(1.25)}
+                        hint={(slide.textScale ?? 1) > 1 ? '✓' : undefined}
+                      >
+                        {t('크게')}
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => setTextScale(1)}
+                        hint={(slide.textScale ?? 1) === 1 ? '✓' : undefined}
+                      >
+                        {t('보통')}
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => setTextScale(0.8)}
+                        hint={(slide.textScale ?? 1) < 1 ? '✓' : undefined}
+                      >
+                        {t('작게')}
+                      </MenuItem>
+                    </Dropdown>
+                  )}
                   {!editing && (
                     <Button
                       variant="ghost"
@@ -1067,7 +1256,9 @@ export function DeckPanel({
                       onChange={(e) => setDraft(e.target.value)}
                       aria-label={t('슬라이드 텍스트')}
                     />
-                    <p className="text-xs text-faint">{t('첫 줄이 제목, 나머지 줄이 각각 한 항목')}</p>
+                    <p className="text-xs text-faint">
+                      {t('첫 줄이 제목, 나머지 줄이 각각 한 항목입니다. | 로 나눈 줄은 표의 한 행이 됩니다.')}
+                    </p>
                     <Textarea
                       rows={3}
                       value={notes}
@@ -1078,19 +1269,20 @@ export function DeckPanel({
                     {error && <p className="text-sm text-danger">{error}</p>}
                   </div>
                 ) : (
-                  <>
-                    <p className="mt-1.5 text-base text-muted">
+                  /* The band owns the rest of the panel, so the note scrolls
+                     inside it rather than pushing the slide off the top. */
+                  <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto">
+                    <p className="text-base text-muted">
                       {slide.notes || <span className="text-faint">{t('노트 없음')}</span>}
                     </p>
                     {slide.factCheck?.status === 'done' && (
                       <FactCheckResults check={slide.factCheck} />
                     )}
                     {error && !editing && <p className="mt-2 text-sm text-danger">{error}</p>}
-                  </>
+                  </div>
                 )}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -150,7 +150,10 @@ _SHEETS = (
         name="기말 리포트",
         name_en="Term paper",
         description="주장을 근거로 받치고, 인용한 자리마다 출처를 각주로 다는 학기말 글",
-        description_en="An argument held up by evidence, with every citation footnoted where it stands",
+        description_en=(
+            "An argument held up by evidence, with every citation "
+            "footnoted where it stands"
+        ),
         category="학업",
         category_en="Study",
         fills=("주제", "분량", "인용 양식"),
@@ -209,7 +212,10 @@ _SHEETS = (
         name="케이스 분석",
         name_en="Case study",
         description="기업 사례를 현황·대안·권고로 갈라, 숫자로 견주고 하나를 고르는 문서",
-        description_en="A company case split into situation, options and recommendation, compared on numbers",
+        description_en=(
+            "A company case split into situation, options and "
+            "recommendation, compared on numbers"
+        ),
         category="학업",
         category_en="Study",
         fills=("대상 기업", "분석 기간", "판단 기준"),
@@ -266,7 +272,10 @@ _SHEETS = (
         name="설문 분석",
         name_en="Survey analysis",
         description="표본과 문항을 밝히고, 기술통계에서 교차분석까지 표로 잇는 보고서",
-        description_en="Sample and instrument stated, then descriptives through cross-tabs, in tables",
+        description_en=(
+            "Sample and instrument stated, then descriptives through "
+            "cross-tabs, in tables"
+        ),
         category="연구",
         category_en="Research",
         fills=("조사 대상", "표본 수", "알고 싶은 것"),
@@ -488,7 +497,10 @@ _SHEETS = (
         name="심사 발표",
         name_en="Defense deck",
         description="연구 질문에서 방법·결과·한계로, 질문받을 자리를 미리 여는 발표",
-        description_en="From the question through method and findings to limits, opening the floor early",
+        description_en=(
+            "From the question through method and findings to limits, "
+            "opening the floor early"
+        ),
         category="발표",
         category_en="Presentation",
         fills=("연구 주제", "발표 시간", "심사 단계"),
@@ -588,7 +600,7 @@ def main() -> int:
         if not (ROOT / sheet.base).is_dir():
             print(f"바탕 서식이 없습니다: {sheet.base}", file=sys.stderr)
             return 1
-        folder = write(sheet)
+        write(sheet)
         print(f"{sheet.folder:16} {sheet.name:10} ← {sheet.base:12} {sheet.who}")
     return 0
 

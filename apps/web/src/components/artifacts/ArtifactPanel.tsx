@@ -2,13 +2,17 @@ import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } fr
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
-import { NoPicturesYet } from '@/components/artifacts/NoPicturesYet'
-import { PanelControls } from '@/components/artifacts/PanelControls'
+import { PicturePicker } from '@/components/artifacts/PicturePicker'
+import {
+  PanelControls,
+  nextMode,
+  type PanelMode,
+} from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
 import { sectionText } from '@/components/report/SectionBody'
-import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
@@ -389,22 +393,11 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const artifacts = useStore((s) => s.artifacts)
   const loadArtifacts = useStore((s) => s.loadArtifacts)
 
   const blocks = artifact.blocks ?? []
-  // Same session first: the picture somebody made for this document is almost
-  // always the one they made while writing it.
-  const pictures = artifacts
-    .filter((a) => a.kind === 'image')
-    .sort((a, b) => {
-      const mine = Number(b.sessionId === artifact.sessionId) - Number(a.sessionId === artifact.sessionId)
-      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
-    })
-    .slice(0, 24)
-
   // Only the absence of somewhere to put one is a reason to draw nothing;
-  // having no pictures is a thing to say, not a thing to hide.
+  // having no pictures is not — the picker makes them now.
   if (blocks.length === 0) return null
 
   const insert = async () => {
@@ -459,7 +452,7 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
           '{name}',
           (target !== null && blocks[target]?.title) || '',
         )}
-        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
         footer={
           <>
             <Button onClick={() => setTarget(null)} disabled={busy}>
@@ -471,33 +464,16 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
           </>
         }
       >
-        {pictures.length === 0 && <NoPicturesYet />}
-        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
-          {pictures.map((picture) => (
-            <button
-              key={picture.id}
-              onClick={() => setPicked(picture.id)}
-              aria-label={picture.title}
-              aria-pressed={picked === picture.id}
-              className={cn(
-                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
-                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
-              )}
-            >
-              <ArtifactPreview artifact={picture} />
-            </button>
-          ))}
-        </div>
-        {pictures.length > 0 && (
-          <div className="mt-3">
-            <Input
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              aria-label={t('설명')}
-              placeholder={t('그림 아래에 붙일 설명 (선택)')}
-            />
-          </div>
-        )}
+        <PicturePicker
+          sessionId={artifact.sessionId}
+          /* A figure in a document sits in a text column, not across a slide. */
+          aspect="4:3"
+          picked={picked}
+          onPick={setPicked}
+          caption={caption}
+          onCaption={setCaption}
+          about={(target !== null && blocks[target]?.title) || undefined}
+        />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
     </>
@@ -760,11 +736,11 @@ function useSplit(enabled: boolean) {
 export function ArtifactPanel() {
   const t = useT()
   const narrow = useNarrowLayout()
-  //: Set by ReportPanel while it needs the width — an open editor, or focus
-  //: mode. Declared above the early return: this panel renders once with no
-  //: artifact, and a hook below `return null` changes the hook count between
-  //: renders (React #300).
-  const [wideReport, setWideReport] = useState(false)
+  //: Set by whichever panel is inside — a document asks for the room it needs
+  //: and this is what has it. Declared above the early return: this panel
+  //: renders once with no artifact, and a hook below `return null` changes the
+  //: hook count between renders (React #300).
+  const [mode, setMode] = useState<PanelMode>('wide')
   const split = useSplit(!narrow)
   const { artifacts, openArtifactId, openArtifact } = useStore()
   const artifact = artifacts.find((a) => a.id === openArtifactId)
@@ -789,14 +765,22 @@ export function ArtifactPanel() {
           ? 'absolute inset-0 z-20 w-full min-w-0'
           : dragged
             ? 'min-w-0'
-            : wideReport
-              // Editing needs source and preview side by side, and the document
-              // column is only ~350px — so the panel borrows width while an
-              // editor is open, or while the reader asked for room to read.
-              ? 'w-[72%] min-w-[720px]'
-              : selfWide
-                ? 'w-[52%] min-w-[460px]'
-                : 'w-[38%] min-w-[340px]',
+            : mode === 'full'
+              // The document alone, laid over the row rather than pushing the
+              // transcript to nothing. Squeezed instead, the transcript keeps
+              // its padding and leaves a 32px sliver of composer down the side
+              // — a thing too narrow to use and too wide to ignore. The same
+              // treatment the narrow screen already uses, for the same reason.
+              // The way back is the same button, still in this panel's header.
+              ? 'absolute inset-0 z-20 w-full min-w-0'
+              : mode === 'wide'
+                // Editing needs source and preview side by side, and the
+                // document column is only ~350px — so the panel borrows width
+                // while an editor is open, or while the reader is reading.
+                ? 'w-[72%] min-w-[720px]'
+                : selfWide
+                  ? 'w-[52%] min-w-[460px]'
+                  : 'w-[38%] min-w-[340px]',
       )}
     >
       {!narrow && (
@@ -858,8 +842,8 @@ export function ArtifactPanel() {
           {/* 코드와 미디어도 넓게 볼 수 있어야 한다. 한 줄이 긴 코드는 340px
               패널에서 전부 접히고, 그림은 썸네일만 한 크기로 남는다. */}
           <PanelControls
-            wide={wideReport}
-            onToggleWide={narrow ? undefined : () => setWideReport(!wideReport)}
+            mode={mode}
+            onCycle={narrow ? undefined : () => setMode(nextMode(mode))}
             onClose={() => openArtifact(null)}
           />
         </header>
@@ -871,19 +855,19 @@ export function ArtifactPanel() {
             <ReportPanel
               report={artifact}
               onClose={() => openArtifact(null)}
-              onWideChange={setWideReport}
+              onModeChange={setMode}
             />
           ) : artifact.kind === 'deck' ? (
             <DeckPanel
               deck={artifact}
               onClose={() => openArtifact(null)}
-              onWideChange={setWideReport}
+              onModeChange={setMode}
             />
           ) : artifact.kind === 'chart' ? (
             <ChartPanel
               chart={artifact}
               onClose={() => openArtifact(null)}
-              onWideChange={setWideReport}
+              onModeChange={setMode}
             />
           ) : null}
         </div>

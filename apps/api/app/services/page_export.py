@@ -1,8 +1,8 @@
 """Reading an HTML artifact back into the shapes the file exporters render.
 
-There is no rendering engine in this image, so a faithful pixel conversion of
-an HTML deck is not on the table. What *is* on the table is a structural one:
-this markup was assembled by `design_templates.assemble` out of a fixed
+Word and PowerPoint have no CSS, so a pixel-faithful conversion of an HTML deck
+is not on the table and never will be. What *is* on the table is a structural
+one: this markup was assembled by `design_templates.assemble` out of a fixed
 vocabulary, so it can be read back with certainty rather than guessed at.
 
 What that buys is real. A deck exported this way opens in PowerPoint as
@@ -10,8 +10,10 @@ editable slides — one per `<section class="slide">`, same order, same words,
 same accent and typeface — laid out by `deck_export`, the renderer the JSON
 deck track already uses. What it does not buy is the template's own visual
 design: the columns and the paper texture belong to the seed, and the seed
-needs a browser. The `.html` file is still the faithful copy; this is the
-editable one.
+needs a browser. That browser now exists — `services/printing.py` — but it
+draws the `.pdf`, which is a picture of the document; this draws the `.docx`
+and the `.pptx`, which are documents somebody can edit. Fidelity there,
+editability here, and neither is the other's poor relation.
 
 Parsed with the standard library's `HTMLParser` rather than a dependency: the
 markup is ours, the vocabulary is closed, and anything outside it was already

@@ -1316,7 +1316,22 @@ def _record_media(
         )
         # Newest result, for the panel and 원본 작업 열기. Per-batch results live
         # on the messages.
-        session.artifact_id = made[-1].id
+        #
+        # Except where the session already has a document of its own. On the
+        # image and audio surfaces the newest thing made *is* the document, and
+        # on a chat there is nothing else for the pointer to mean. A report or a
+        # slides session is different: `artifact_id` is the report or the deck,
+        # and it is what the panel opens, what 원본 작업 열기 opens, and what
+        # `_revise_document` reads when somebody types "슬라이드 2 다시 써 줘".
+        #
+        # That last one is how this was found. Pictures could only be made on
+        # the image surface until the document pickers learned to make their
+        # own, and the first one made from inside a deck moved the deck's
+        # pointer onto the picture. Every instruction typed afterwards was read
+        # against an image artifact, which has neither slides nor sections, and
+        # answered "고칠 내용이 없습니다" — about a deck of eleven slides.
+        if session.kind not in (SessionKind.report, SessionKind.slides):
+            session.artifact_id = made[-1].id
     # The sidebar sorts on this. Making something is the clearest case there is
     # of the conversation having been touched.
     session.updated_at = utcnow()
@@ -1364,6 +1379,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         style=payload.style,
         template=picture_template.prompt_suffix if picture_template else "",
         design=design_service.image_clause(await design_for(db, user, session)),
+        figure=payload.figure,
     )
 
     made: list[Artifact] = []
@@ -2536,7 +2552,8 @@ async def send_message(
     render_template = design_templates.get(session.render_template_id)
     if render_template is not None:
         return StreamingResponse(
-            _run_page(
+            _survive_disconnect(
+                _run_page(
                 may_ask=not proceed_as_is,
                 figures_plan=approved_figures,
                 image_model=image_model,
@@ -2562,7 +2579,7 @@ async def send_message(
                 # A strict-local route is given no network anywhere else, and
                 # a document is not the place to make the one exception.
                 web_search=payload.web_search and not strict_local,
-            ),
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2576,14 +2593,15 @@ async def send_message(
     # one and offered to replace the one on screen.
     if revising and session.kind in (SessionKind.report, SessionKind.slides):
         return StreamingResponse(
-            _revise_document(
+            _survive_disconnect(
+                _revise_document(
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
                 model=model,
                 instruction=content,
                 routing=document_routing,
-            ),
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2594,7 +2612,8 @@ async def send_message(
 
     if session.kind is SessionKind.report:
         return StreamingResponse(
-            _run_report(
+            _survive_disconnect(
+                _run_report(
                 may_ask=not proceed_as_is,
                 figures_plan=approved_figures,
                 image_model=image_model,
@@ -2621,7 +2640,7 @@ async def send_message(
                 # A strict-local route is given no network anywhere else, and
                 # a document is not the place to make the one exception.
                 web_search=payload.web_search and not strict_local,
-            ),
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2632,7 +2651,8 @@ async def send_message(
 
     if session.kind is SessionKind.slides:
         return StreamingResponse(
-            _run_deck(
+            _survive_disconnect(
+                _run_deck(
                 may_ask=not proceed_as_is,
                 figures_plan=approved_figures,
                 image_model=image_model,
@@ -2659,7 +2679,7 @@ async def send_message(
                 # A strict-local route is given no network anywhere else, and
                 # a document is not the place to make the one exception.
                 web_search=payload.web_search and not strict_local,
-            ),
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

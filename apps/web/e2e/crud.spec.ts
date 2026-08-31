@@ -143,22 +143,40 @@ test('프로젝트의 이름과 아이콘을 바꾼다', async ({ page }) => {
   await page.waitForURL(/\/projects\/[0-9a-f]{32}/, { timeout: 15_000 })
   const url = page.url()
 
-  await page.getByRole('button', { name: '이름 · 설명' }).click()
+  // Both of these live under 더 보기 now. Renaming and deleting are the two
+  // things a project owner does rarely and irreversibly, and they were taking
+  // a permanent slot each in the header; the dialog still asks before either.
+  await page.getByRole('button', { name: '더 보기', exact: true }).click()
+  await page.getByRole('menuitem', { name: '이름 · 설명' }).click()
   await dialog(page).last().getByLabel('이름').fill(`검수${tag}v2`)
-  await dialog(page).last().getByRole('button', { name: '📚', exact: true }).first().click()
   await dialog(page).last().getByRole('button', { name: '저장' }).click()
 
+  // The icon has its own control, on the icon itself. It used to be a row of
+  // emoji inside this dialog and inside the create dialog before that; it is
+  // picked where it is shown now, when somebody wants a different one rather
+  // than at the moment they are naming the thing.
+  await page.getByRole('button', { name: '아이콘 바꾸기' }).click()
+  await page.getByRole('menu').getByRole('button', { name: '📚', exact: true }).click()
+
   await page.goto(url)
-  await expect(page.getByText(`📚 검수${tag}v2`).first()).toBeVisible({ timeout: 15_000 })
+  // Two elements, not one string. The icon is its own control beside the title
+  // now — it used to be a character in front of the name and this asserted the
+  // two as one text node.
+  await expect(page.getByRole('heading', { name: `검수${tag}v2` })).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(page.getByRole('button', { name: '아이콘 바꾸기' })).toHaveText('📚')
 
   // Deletion moved out of the header into its own area, and asks first: the
   // instructions and knowledge files do not come back.
-  await page.getByRole('button', { name: '프로젝트 삭제' }).click()
+  await page.getByRole('button', { name: '더 보기', exact: true }).click()
+  await page.getByRole('menuitem', { name: '프로젝트 삭제' }).click()
   await expect(dialog(page).getByRole('heading', { name: `검수${tag}v2 삭제` })).toBeVisible()
   await dialog(page).getByRole('button', { name: '취소' }).click()
   await expect(page).toHaveURL(url)
 
-  await page.getByRole('button', { name: '프로젝트 삭제' }).click()
+  await page.getByRole('button', { name: '더 보기', exact: true }).click()
+  await page.getByRole('menuitem', { name: '프로젝트 삭제' }).click()
   await dialog(page).getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page).toHaveURL(/\/projects$/, { timeout: 15_000 })
   await expect(page.getByText(`검수${tag}v2`)).toHaveCount(0)

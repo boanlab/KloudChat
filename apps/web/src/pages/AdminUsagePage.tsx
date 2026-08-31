@@ -188,7 +188,12 @@ export function AdminUsagePage() {
                         title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
                       />
                     </div>
-                    <span className="truncate text-2xs text-faint">{d.date.slice(5)}</span>
+                    {/* Not truncated — see `MyUsagePage`: `MM-DD` does not fit
+                        a column's width over a month and every date came out
+                        as `08-…`. */}
+                    <span className="overflow-visible text-2xs whitespace-nowrap text-faint">
+                      {d.date.slice(5)}
+                    </span>
                   </div>
                 ))}
               </div>

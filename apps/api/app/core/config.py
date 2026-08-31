@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     #: KloudChat-LLM gateway. Model and tool endpoints are derived from it
     #: by appending paths. Overridden by the admin screen.
     backend_base_url: str = ""
+    #: The printer sidecar — HTML in, PDF out, so an exported PDF is the same
+    #: document the screen draws rather than a second renderer's reading of it.
+    #: Empty means no printer, and every PDF falls back to the structural
+    #: exporters. That fallback is the reason this is a URL and not a flag: a
+    #: deployment that has not added the service keeps exporting.
+    print_base_url: str = ""
     litellm_base_url: str = ""
     litellm_master_key: str = ""
     litellm_timeout_sec: float = 20.0

@@ -185,6 +185,26 @@ export async function approveOnce(page: Page, timeout = 480_000): Promise<boolea
   }
   if (!(await button.isVisible().catch(() => false))) return false
   await expect(button).toBeEnabled({ timeout: 30_000 })
+  // Pressed after the card has stopped moving.
+  //
+  // The proposal arrives on a stream that is still going: the card fades up,
+  // steps land under it and the transcript scrolls, and a press aimed at the
+  // button's first position lands on a node that has since been replaced —
+  // "element was detached from the DOM" after fifteen seconds of retrying.
+  // Measured once it settles, the button holds one identity and one position
+  // for as long as you care to watch, so the wait is short and the click is
+  // certain.
+  const settle = async () => {
+    let last = ''
+    for (let i = 0; i < 20; i++) {
+      const box = await button.boundingBox().catch(() => null)
+      const now = box ? `${Math.round(box.x)},${Math.round(box.y)}` : ''
+      if (now && now === last) return
+      last = now
+      await page.waitForTimeout(250)
+    }
+  }
+  await settle()
   await button.click()
   // Returns as soon as it is pressed. Waiting for the card to go would wait out
   // the run it just started — the card is drawn from the stored plan and only

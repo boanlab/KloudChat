@@ -1,0 +1,44 @@
+/* 심사 발표 — 연구 질문에서 방법·결과·한계로, 그리고 질문받을 자리.
+ *
+ * 심사장에서 색이 채워진 면은 불리하게 읽힌다. 팔러 온 사람처럼 보이기
+ * 때문이다. 그래서 이 덱은 채우지 않는다 — 강조는 가는 선 하나로만 하고,
+ * 알약도 띠도 쓰지 않는다. 제안 덱과 정확히 반대의 결정이다.
+ *
+ * 대신 마지막 장을 연다. 한계와 남은 질문을 스스로 적어 둔 장이 있으면, 질문은
+ * 공격이 아니라 이어지는 이야기가 된다. 그 장만 테두리를 갖는다 — 채운 바탕이
+ * 아니라 테두리인 이유는 인쇄기가 바탕을 빼도 남기 때문이다. */
+
+:root {
+  --h2-size: clamp(1.6rem, 2.8vw, 2.2rem);
+  --measure: min(44rem, 66%);
+}
+
+h2 { font-weight: 500; letter-spacing: -0.012em; border-bottom-color: var(--hair); }
+h3 { font-size: 0.76rem; letter-spacing: 0.16em; }
+p, li { font-size: clamp(1.05rem, 1.4vw, 1.18rem); line-height: 1.65; }
+
+/* 표는 격자를 그리지 않는다. 결과표에서 선이 값보다 진하면 값이 읽히지 않는다. */
+th { border-bottom: 1px solid var(--ink); font-weight: 600; }
+td { border-bottom: 1px solid var(--hair); }
+table td:not(:first-child), table th:not(:first-child) {
+  text-align: right;
+  padding-right: 0;
+  padding-left: 1.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 인용은 문헌이다. 크게 뽑지 않고 본문 곁에 둔다. */
+blockquote { font-size: clamp(1.25rem, 2vw, 1.6rem); line-height: 1.45; }
+
+/* 질문받을 자리. 이 덱에서 유일하게 테두리를 갖는 장. */
+.slide.ask {
+  background: transparent;
+  border: 1px solid var(--accent);
+  margin: 0;
+}
+.slide.ask li strong { color: var(--accent); }
+.slide.ask li { font-size: clamp(1.05rem, 1.5vw, 1.2rem); }
+
+@media print {
+  .slide.ask { border: 1pt solid var(--accent); padding: 8mm; }
+}

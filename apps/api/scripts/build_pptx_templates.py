@@ -30,14 +30,13 @@ substitutes, which is worse than not setting one.
 
 from __future__ import annotations
 
-import copy
 import pathlib
 import sys
 
-from pptx import Presentation
 from lxml import etree
+from pptx import Presentation
 from pptx.oxml.ns import qn
-from pptx.util import Emu, Pt
+from pptx.util import Emu
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "app" / "design_templates"
 
@@ -246,7 +245,10 @@ _SPECS = (
                 "같은 기준에서 본 장단점",
                 second=("안 2", "같은 기준에서 본 장단점"),
             ),
-            Slide("Title and Content", "위험", "틀렸을 때 무엇이 일어나는가.", "무엇을 보면 아는가."),
+            Slide(
+                "Title and Content", "위험",
+                "틀렸을 때 무엇이 일어나는가.", "무엇을 보면 아는가.",
+            ),
             Slide("Title and Content", "요청", "무엇을 판단해 달라는 것인지."),
         ),
     ),
