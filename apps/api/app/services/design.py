@@ -34,7 +34,34 @@ DEFAULT_TOKENS: dict[str, str] = {
     "ink": "#1a1a1a",
     "muted": "#666666",
     "font": "gothic",
+    #: The two marks a deck carries on every slide but its cover. Empty by
+    #: default, which is exactly what the product drew before they existed.
+    #:
+    #: They are here rather than in `body` because `body` is read by the model
+    #: and these are read by the renderers, which is the split this table is.
+    #: And they pass the rule the table sets — all four surfaces can draw a
+    #: line of text and a picture — where a gradient or a corner cut could not.
+    #:
+    #: What they are for: a deck presented outside the room it was made in is
+    #: read as belonging to whoever made it, and nothing in a KloudChat deck
+    #: said who that was. A 사업설명회 자료 without the university's mark on it
+    #: is a draft of one.
+    "footer": "",
+    "logo": "",
 }
+
+#: A logo, as the bytes of the picture rather than a link to it.
+#:
+#: A deck is downloaded, mailed and opened on a machine that has never heard of
+#: this server, so a URL would be a broken image on exactly the day it matters.
+#: The cap is what one mark costs at the size a slide draws it: past this it is
+#: a photograph somebody dropped in the wrong field, and it would be carried in
+#: every row of the design system table.
+_MAX_LOGO_BYTES = 256 * 1024
+#: No SVG: the preview draws one fine and the exporters decode with PIL, which
+#: cannot — so an SVG mark showed on screen and silently vanished from every
+#: file. A format only half the surfaces can draw is a preview that lies.
+_LOGO = re.compile(r"^data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$", re.I)
 
 #: `fonts.py` keys. Gothic for slides, serif for documents — the two faces the
 #: image ships, so a third value would name a file that is not there.
@@ -87,6 +114,14 @@ def normalise_tokens(raw: dict | None) -> dict[str, str]:
     font = str((raw or {}).get("font") or "").strip().lower()
     if font in FONTS:
         out["font"] = font
+    # One line. A footer that wraps is a second line of body text at the foot of
+    # every slide, which is what the slide's own words are for.
+    footer = " ".join(str((raw or {}).get("footer") or "").split())[:80]
+    if footer:
+        out["footer"] = footer
+    logo = str((raw or {}).get("logo") or "").strip()
+    if _LOGO.match(logo) and len(logo) <= _MAX_LOGO_BYTES:
+        out["logo"] = logo
     return out
 
 

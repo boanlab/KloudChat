@@ -386,3 +386,42 @@ def test_approving_is_not_folded_into_the_request_as_a_condition():
     merged = grounding.merge_answers("전이학습 발표자료", {"focus": "의료 영상 사례"})
 
     assert _regeneration_summary(merged) == "재생성 전 · 전이학습 발표자료"
+
+
+def test_a_request_built_on_an_attachment_that_never_arrived_asks_instead_of_writing():
+    """The gap nothing downstream can see.
+
+    Twice in production this wrote a whole document about nothing anybody had
+    asked for: the file never reached the request, the writer was left holding
+    첨부한 내용을 바탕으로 보고서 작성해줘 and nothing else, and researching that
+    sentence returns 보고서 작성법 blog posts. The document that came back was
+    about how to write reports, and no step, error or empty state said why.
+    """
+    gap = grounding.missing_attachment("첨부한 내용을 바탕으로 보고서 작성해줘", ())
+
+    assert gap is not None
+    assert gap.id == "no_attachment"
+    # The one answer that can be honoured without the file has to be offered,
+    # or the question is a dead end.
+    assert any("진행" in option for option in gap.options)
+
+
+def test_the_attachment_gap_is_the_act_of_attaching_not_the_word():
+    """A report *about* attachments is a subject, not a missing source.
+
+    The interview this module exists to avoid is the one that stops a
+    legitimate request to ask about a file nobody ever mentioned handing over.
+    """
+    assert grounding.missing_attachment("이메일 첨부 파일 관리 정책 보고서를 써 줘", ()) is None
+    assert grounding.missing_attachment("전이학습 발표자료 만들어 줘", ()) is None
+
+
+def test_a_request_naming_an_attachment_that_did_arrive_is_not_asked_about():
+    """The file is here. Asking would be a form."""
+    assert (
+        grounding.missing_attachment(
+            "첨부한 계획서로 보고서 써 줘",
+            (ContextFile("계획서.hwpx", "included", 4_974, 4_974),),
+        )
+        is None
+    )

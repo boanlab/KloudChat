@@ -205,6 +205,8 @@ interface State {
    */
   skillStore: StoreSkill[]
   skillStoreLoading: boolean
+  /** The last listing was refused or never landed — not the same as empty. */
+  skillStoreError: boolean
   /** Looks this account can attach to a project: its own, plus shared ones. */
   designs: DesignRow[]
   /** Shapes the answer can come out in. Ships with the server; read-only. */
@@ -302,6 +304,10 @@ interface State {
        * something somebody looked at first.
        */
       approve?: boolean
+      /** The figure card's answer. Absent means it was not asked. */
+      includeFigures?: boolean
+      /** The outline as edited on the proposal card, when it was. */
+      plan?: Record<string, unknown>
       /** Answers to a stopped turn's questions, keyed by question id. */
       answers?: Record<string, string>
       /**
@@ -476,8 +482,6 @@ interface State {
    */
   pendingStartingTemplate: StartingPoint | null
   setPendingStartingTemplate: (template: StartingPoint | null) => void
-  /** Whether this instance has a Whisper backend. Drives the composer's mic. */
-  dictationEnabled: boolean
   /** Service name and logo to render. An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-read after an administrator saves branding, so it applies without a
@@ -533,6 +537,18 @@ interface State {
   ) => Promise<number>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
+  /**
+   * The rendering catalogue, fetched once if nothing has fetched it yet.
+   *
+   * `loadWorkspace` fills it, and `loadWorkspace` runs on the workspace
+   * management screens only — never on chat and never on the report surface.
+   * So the report panel's 서식 picker opened onto an empty menu for anybody
+   * who had not visited /agents or /skills first, which is most people on
+   * their way to writing a report.
+   *
+   * Idempotent and cheap: a list already in hand short-circuits.
+   */
+  ensureDesignTemplates: () => Promise<void>
   /** Page one, for the current filter or the one passed in. */
   loadArtifacts: (filter?: ArtifactFilter) => Promise<void>
   /** The page after the oldest row on screen. */
@@ -628,6 +644,16 @@ function sameFilter(filter: ArtifactFilter): ArtifactFilter {
 }
 
 const MODEL_STORAGE_KEY = 'kchat-models'
+
+/** The picks the person actually made, straight from storage — never derived. */
+function readRememberedModels(): Partial<Record<SessionKind, string>> | null {
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<Record<SessionKind, string>>) : null
+  } catch {
+    return null
+  }
+}
 
 /** Remembered model choice per surface. Only ever holds ids picked from the
  *  real catalogue. */
@@ -781,14 +807,46 @@ function reconcileDefaults(
   current: Record<SessionKind, string>,
   available: ModelInfo[],
   instanceDefault = '',
+  byKind: Partial<Record<SessionKind, string>> = {},
 ): Record<SessionKind, string> {
   const next = { ...current }
+  // A person's pick survives a gap in the catalogue. This function used to
+  // *overwrite* a remembered model the list did not carry — and the list has
+  // gaps that are nobody's decision: a proxy mid-restart, a model mid-cutover.
+  // One such refresh silently turned every surface's 122b back into the
+  // cheapest row, and the pick did not come back when the model did. So the
+  // stored choice is left alone here; what changes is only what this load
+  // *uses*, and the next load re-reads the untouched choice.
+  const remembered = readRememberedModels()
   for (const kind of Object.keys(next) as SessionKind[]) {
-    if (available.some((m) => m.id === next[kind])) continue
+    const kept = remembered?.[kind]
+    if (kept && available.some((m) => m.id === kept && m.kinds.includes(kind))) {
+      next[kind] = kept
+      continue
+    }
+    // Still in the catalogue *and* still serving this surface. The second half
+    // was missing, so a model remembered for 보고서 that had since become
+    // image-only survived every reconcile — and the surface it no longer
+    // serves kept sending turns to it.
+    if (available.some((m) => m.id === next[kind] && m.kinds.includes(kind))) continue
     const usable = available
       .filter((m) => m.kinds.includes(kind))
-      .sort((a, b) => a.creditCost - b.creditCost)
-    const preferred = usable.find((m) => m.id === instanceDefault)
+      // Cheapest first, but never a strict-local model unless it is the only
+      // one. strict-local is a route somebody chooses — it takes the web
+      // search tool away and refuses every connector — and it costs the same
+      // as the plain local model, so on price alone it kept winning the tie
+      // and became the first model a new account ever ran. The screen then
+      // said 웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다 about a choice
+      // nobody had made.
+      .sort(
+        (a, b) =>
+          Number(a.strictLocal ?? false) - Number(b.strictLocal ?? false) ||
+          a.creditCost - b.creditCost,
+      )
+    // This surface's own default first, then the instance's. A 보고서 set to
+    // the larger model must not lose it because chat is set to a smaller one.
+    const preferred =
+      usable.find((m) => m.id === byKind[kind]) ?? usable.find((m) => m.id === instanceDefault)
     if (preferred) next[kind] = preferred.id
     else if (usable.length) next[kind] = usable[0].id
   }
@@ -849,7 +907,6 @@ export const useStore = create<State>((set, get) => ({
           .then((c) => {
             applyBrand(c.brand)
             set({
-              dictationEnabled: c.dictationEnabled,
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
@@ -1044,6 +1101,7 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   skillStore: [],
   skillStoreLoading: false,
+  skillStoreError: false,
   designs: [],
   designTemplates: [],
   promptTemplates: [],
@@ -1158,7 +1216,7 @@ export const useStore = create<State>((set, get) => ({
   loadModels: async () => {
     set({ modelsLoading: true })
     try {
-      const { models: live, litellmAvailable, defaultChatModel, autoRouting } =
+      const { models: live, litellmAvailable, defaultChatModel, defaultModelByKind, autoRouting } =
         await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1174,7 +1232,7 @@ export const useStore = create<State>((set, get) => ({
           qualityModelIds: [],
         },
         modelsLoading: false,
-        modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel),
+        modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel, defaultModelByKind),
         compareModels: reconcileCompareModels(s.compareModels, live),
       }))
     } catch {
@@ -1427,7 +1485,16 @@ export const useStore = create<State>((set, get) => ({
       role: 'user',
       content: text,
       createdAt: now,
-      attachments: opts.attachmentNames?.map((name) => ({ name, size: '', type: '' })),
+      // The ids too, not only the names. The bubble that goes up the moment
+      // somebody presses send is what they look at, and without an id every
+      // affordance that needs the file — taking it back, opening a `.hwpx` as
+      // a document — was missing there and appeared on reload.
+      attachments: opts.attachmentNames?.map((name, i) => ({
+        id: opts.attachments?.[i],
+        name,
+        size: '',
+        type: '',
+      })),
       startedFrom: opts.startingTemplate
         ? { templateId: opts.startingTemplate.id, title: opts.startingTemplate.title }
         : undefined,
@@ -1488,7 +1555,14 @@ export const useStore = create<State>((set, get) => ({
           opts.activatedSkillIds,
           opts.renderTemplateId,
           opts.startingTemplate?.id,
-          { approve: opts.approve, answers: opts.answers },
+          {
+            approve: opts.approve,
+            answers: opts.answers,
+            webSearch: opts.webSearch,
+            includeFigures: opts.includeFigures,
+            attachments: opts.attachments,
+            plan: opts.plan,
+          },
         )
         return id
       }
@@ -1502,7 +1576,14 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.startingTemplate?.id,
-          { approve: opts.approve, answers: opts.answers },
+          {
+            approve: opts.approve,
+            answers: opts.answers,
+            webSearch: opts.webSearch,
+            includeFigures: opts.includeFigures,
+            attachments: opts.attachments,
+            plan: opts.plan,
+          },
         )
         return id
       }
@@ -1516,7 +1597,14 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.startingTemplate?.id,
-          { approve: opts.approve, answers: opts.answers },
+          {
+            approve: opts.approve,
+            answers: opts.answers,
+            webSearch: opts.webSearch,
+            includeFigures: opts.includeFigures,
+            attachments: opts.attachments,
+            plan: opts.plan,
+          },
         )
         return id
       }
@@ -1982,7 +2070,6 @@ export const useStore = create<State>((set, get) => ({
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   pendingStartingTemplate: null,
   setPendingStartingTemplate: (pendingStartingTemplate) => set({ pendingStartingTemplate }),
-  dictationEnabled: false,
   brand: { name: 'KloudChat', logo: '' },
   refreshBrand: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -2165,6 +2252,14 @@ export const useStore = create<State>((set, get) => ({
     await filesApi.remove(id).catch(() => get().loadWorkspace())
   },
 
+  ensureDesignTemplates: async () => {
+    if (get().designTemplates.length > 0) return
+    const rows = await designTemplatesApi.list().catch(() => null)
+    // A failure stays silent on purpose: the picker falls back to naming the
+    // template the document already wears, which is what it showed anyway.
+    // Nothing on this screen is blocked by the list being absent.
+    if (rows) set({ designTemplates: rows })
+  },
   loadArtifacts: async (filter) => {
     const next = sameFilter(filter ?? get().artifactFilter)
     const key = JSON.stringify(next)
@@ -2340,10 +2435,13 @@ export const useStore = create<State>((set, get) => ({
     }))
   },
   loadSkillStore: async () => {
-    set({ skillStoreLoading: true })
+    set({ skillStoreLoading: true, skillStoreError: false })
     const rows = await skillsApi.store().catch(() => null)
     set((st) => ({
       skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
+      // A listing that never arrived is not an empty store. Held apart so the
+      // screen can say the request failed instead of "nothing shared yet".
+      skillStoreError: rows === null,
       skillStoreLoading: false,
     }))
   },
@@ -2760,8 +2858,13 @@ function appliedSkillsStep(event: {
     catalogKey: string | null
     estimatedTokens: number
   }[]
-  estimatedTokens: number
+  estimatedTokens?: number
 }): Step {
+  // 합계가 빠진 이벤트도 받아들인다 — 배지 하나 그리려던 계산이
+  // 스트림 전체를 떨어뜨린 적이 있다.
+  const total =
+    event.estimatedTokens ??
+    event.skills.reduce((sum, skill) => sum + (skill.estimatedTokens || 0), 0)
   return {
     id: 'skills-applied',
     type: 'thinking',
@@ -2769,10 +2872,10 @@ function appliedSkillsStep(event: {
     status: 'done',
     detail: `${event.skills.map((skill) => tr(skill.name)).join(' · ')} · ${tr('약 {n} 토큰').replace(
       '{n}',
-      event.estimatedTokens.toLocaleString(),
+      total.toLocaleString(),
     )}`,
     skills: event.skills,
-    estimatedTokens: event.estimatedTokens,
+    estimatedTokens: total,
   }
 }
 
@@ -2966,7 +3069,6 @@ function toSkill(s: SkillRow): Skill {
     installs: s.installs ?? 0,
     originId: s.originId ?? null,
     version: s.version,
-    files: ['SKILL.md'],
     updatedAt: s.updatedAt,
   }
 }
@@ -3201,11 +3303,18 @@ async function streamTurn(
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
         case 'artifact':
-                    // The document as well as the listing: an `html` card has its
-                    // `content` emptied for the grid, so opening on the card alone puts
-                    // a finished document on screen as a white rectangle.
+          // The document as well as the listing: an `html` card has its
+          // `content` emptied for the grid, so opening on the card alone puts
+          // a finished document on screen as a white rectangle.
+          //
+          // Opened only when the model set out to make it. A code fence long
+          // enough to keep is still kept — it is on the message and in the
+          // gallery — but it does not get to take two thirds of the screen
+          // away from the answer it came out of.
           void Promise.all([get().loadArtifacts(), get().refreshArtifact(event.artifactId)]).then(
-            () => set({ openArtifactId: event.artifactId }),
+            () => {
+              if (event.deliberate !== false) set({ openArtifactId: event.artifactId })
+            },
           )
           break
         case 'step':
@@ -3526,7 +3635,32 @@ async function streamReport(
    * writes nothing, so an empty panel opening over the deck already there
    * would say the opposite of what is happening.
    */
-  gate: { approve?: boolean; answers?: Record<string, string> } = {},
+  gate: {
+    approve?: boolean
+    answers?: Record<string, string>
+    /**
+     * Whether the writer may research before it writes. Carried here rather
+     * than as its own argument because it travels with the same turn the
+     * approval does — a second pass that writes an approved outline researches
+     * on the same terms the pass that proposed it did.
+     */
+    webSearch?: boolean
+    /** The figure card's answer, carried with the approval it belongs to. */
+    includeFigures?: boolean
+    /**
+     * The outline as the person edited it on the card, when they did. Sent
+     * with the approval rather than saved first — the edit and the decision
+     * to write are one gesture.
+     */
+    plan?: Record<string, unknown>
+    /**
+     * The files this turn was sent with. Carried like the answers are: the
+     * planning pass and the approved writing pass are two requests, and the
+     * server assembles the context fresh for each — a document written from
+     * an attachment has to be handed that attachment both times.
+     */
+    attachments?: string[]
+  } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3590,6 +3724,10 @@ async function streamReport(
         startingTemplateId,
         approve: gate.approve,
         answers: gate.answers,
+        webSearch: gate.webSearch,
+        includeFigures: gate.includeFigures,
+        attachments: gate.attachments,
+        plan: gate.plan,
       },
       controller.signal,
     )) {
@@ -3602,7 +3740,7 @@ async function streamReport(
           setPending(set, sessionId, (p) => ({
             stage: 'outline',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
           }))
@@ -3612,7 +3750,7 @@ async function streamReport(
           setPending(set, sessionId, (p) => ({
             stage: 'clarify',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
           }))
@@ -3739,7 +3877,32 @@ async function streamPage(
    * writes nothing, so an empty panel opening over the deck already there
    * would say the opposite of what is happening.
    */
-  gate: { approve?: boolean; answers?: Record<string, string> } = {},
+  gate: {
+    approve?: boolean
+    answers?: Record<string, string>
+    /**
+     * Whether the writer may research before it writes. Carried here rather
+     * than as its own argument because it travels with the same turn the
+     * approval does — a second pass that writes an approved outline researches
+     * on the same terms the pass that proposed it did.
+     */
+    webSearch?: boolean
+    /** The figure card's answer, carried with the approval it belongs to. */
+    includeFigures?: boolean
+    /**
+     * The outline as the person edited it on the card, when they did. Sent
+     * with the approval rather than saved first — the edit and the decision
+     * to write are one gesture.
+     */
+    plan?: Record<string, unknown>
+    /**
+     * The files this turn was sent with. Carried like the answers are: the
+     * planning pass and the approved writing pass are two requests, and the
+     * server assembles the context fresh for each — a document written from
+     * an attachment has to be handed that attachment both times.
+     */
+    attachments?: string[]
+  } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3805,6 +3968,10 @@ async function streamPage(
         startingTemplateId,
         approve: gate.approve,
         answers: gate.answers,
+        webSearch: gate.webSearch,
+        includeFigures: gate.includeFigures,
+        attachments: gate.attachments,
+        plan: gate.plan,
       },
       controller.signal,
     )) {
@@ -3817,7 +3984,7 @@ async function streamPage(
           setPending(set, sessionId, (p) => ({
             stage: 'outline',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
           }))
@@ -3827,7 +3994,7 @@ async function streamPage(
           setPending(set, sessionId, (p) => ({
             stage: 'clarify',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
           }))
@@ -3934,7 +4101,32 @@ async function streamDeck(
    * writes nothing, so an empty panel opening over the deck already there
    * would say the opposite of what is happening.
    */
-  gate: { approve?: boolean; answers?: Record<string, string> } = {},
+  gate: {
+    approve?: boolean
+    answers?: Record<string, string>
+    /**
+     * Whether the writer may research before it writes. Carried here rather
+     * than as its own argument because it travels with the same turn the
+     * approval does — a second pass that writes an approved outline researches
+     * on the same terms the pass that proposed it did.
+     */
+    webSearch?: boolean
+    /** The figure card's answer, carried with the approval it belongs to. */
+    includeFigures?: boolean
+    /**
+     * The outline as the person edited it on the card, when they did. Sent
+     * with the approval rather than saved first — the edit and the decision
+     * to write are one gesture.
+     */
+    plan?: Record<string, unknown>
+    /**
+     * The files this turn was sent with. Carried like the answers are: the
+     * planning pass and the approved writing pass are two requests, and the
+     * server assembles the context fresh for each — a document written from
+     * an attachment has to be handed that attachment both times.
+     */
+    attachments?: string[]
+  } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3951,6 +4143,9 @@ async function streamDeck(
     projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
     theme: '기본',
     slides: [],
+    // Cleared by being replaced: the `artifact` event drops this row and puts
+    // the saved document in its place.
+    draft: true,
   }
 
   // A planning pass produces no document, so it must not open one. Before
@@ -3994,6 +4189,10 @@ async function streamDeck(
         startingTemplateId,
         approve: gate.approve,
         answers: gate.answers,
+        webSearch: gate.webSearch,
+        includeFigures: gate.includeFigures,
+        attachments: gate.attachments,
+        plan: gate.plan,
       },
       controller.signal,
     )) {
@@ -4006,7 +4205,7 @@ async function streamDeck(
           setPending(set, sessionId, (p) => ({
             stage: 'outline',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
           }))
@@ -4016,7 +4215,7 @@ async function streamDeck(
           setPending(set, sessionId, (p) => ({
             stage: 'clarify',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
           }))

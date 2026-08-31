@@ -1,0 +1,49 @@
+/* 사례 분석 — 견주고, 하나를 고른다.
+ *
+ * 현황·대안·권고 세 절 가운데 문서가 존재하는 이유는 마지막 하나다. 앞의 둘은
+ * 재료이고 마지막이 결론이므로, 조판이 그 차이를 만든다: 대안을 담는 표는
+ * 줄마다 바탕을 번갈아 깔아 가로로 견주기 쉽게 하고, 권고 절만 강조색 테두리를
+ * 얻는다.
+ *
+ * 숫자는 오른쪽으로 세운다. 견준다는 것은 크기를 본다는 뜻이고, 자릿수가 맞지
+ * 않으면 큰 수가 작아 보인다. */
+
+.cover { min-height: 0; padding: 0 0 1.1rem; margin: 0 0 1.8rem; }
+.cover h1 { font-size: 1.62rem; }
+
+h2 { font-size: 1.14rem; }
+
+/* 견주기 표. 줄무늬는 눈이 한 줄을 가로로 따라가게 하는 장치다. */
+table tbody tr:nth-child(even) td {
+  background: var(--wash);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+table td, table th { padding-left: 0.7em; }
+table td:first-child, table th:first-child { padding-left: 0; }
+table td:not(:first-child), table th:not(:first-child) {
+  text-align: right;
+  padding-right: 0.7em;
+}
+table td { font-variant-numeric: tabular-nums; }
+/* 마지막 열이 권고 대안이라는 약속을 조판이 지킨다. */
+table td:last-child, table th:last-child {
+  border-left: 1px solid var(--hair);
+  padding-left: 0.9em;
+  font-weight: 650;
+}
+
+.kpi { border-top-width: 2px; border-bottom-width: 2px; }
+
+/* 권고. 앞의 절들과 같은 무게로 읽히면 이 문서는 결론이 없는 문서가 된다. */
+section:last-of-type {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+}
+section:last-of-type h2 { color: var(--accent); }
+
+@media print {
+  .cover { min-height: 0; padding: 0 0 1.1rem; page-break-after: auto; break-after: auto; }
+  section:last-of-type { break-inside: avoid; }
+}

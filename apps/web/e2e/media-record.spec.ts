@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, signIn, surfaceOn } from './helpers'
 
 /**
  * What a media session leaves behind for whoever comes back to it.
@@ -36,10 +36,13 @@ test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page })
   await signIn(page)
   const headers = { Authorization: `Bearer ${await token(page)}` }
 
-  await page.goto('/new/av')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   // The kind control is a dropdown labelled with its current value.
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '오디오' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '오디오' }).click()
 
   await page.getByLabel('프롬프트 입력').fill(PROMPT)
   await page.getByLabel('프롬프트 입력').press('Enter')
@@ -121,7 +124,10 @@ test('그림 화면을 여는 것만으로는 대화가 생기지 않는다', as
       .length
 
   const before = await count()
-  await page.goto('/new/image')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible({ timeout: 20_000 })
   await expect(page).toHaveURL(/\/new\/image$/)
   expect(await count()).toBe(before)

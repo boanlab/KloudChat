@@ -1,0 +1,75 @@
+/* 사고 보고 — 시각이 먼저, 판단은 그 다음.
+ *
+ * 사고 문서를 여는 사람이 가장 먼저 찾는 것은 언제였는가다. 그래서 절차
+ * 목록을 시간축으로 바꾼다 — 각 줄의 앞머리에 굵은 점을 찍고 그 점들을 세로
+ * 선으로 잇는다. 번호가 아니라 시각이 그 자리를 차지하도록 강조도 옮긴다.
+ *
+ * 표지는 종이 한 장을 쓰지 않는다. 사고 보고는 표지를 넘겨 가며 읽는 문서가
+ * 아니다. */
+
+.cover {
+  min-height: 0;
+  padding: 0 0 1rem;
+  margin: 0 0 1.6rem;
+  border-top: 4px solid var(--accent);
+  padding-top: 1rem;
+}
+.cover::after { display: none; }
+.cover h1 { font-size: 1.6rem; }
+
+h2 { font-size: 1.1rem; }
+
+/* 시간축. 점과 선으로 그리므로 인쇄기가 배경을 빼도 남는다. */
+ol.steps {
+  border-left: 0;
+  margin-left: 0.35rem;
+  padding-left: 1.35rem;
+  position: relative;
+}
+ol.steps::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.9rem;
+  bottom: 0.9rem;
+  border-left: 1px solid var(--rule);
+}
+ol.steps > li {
+  position: relative;
+  padding-left: 0;
+  border-bottom: 0;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+ol.steps > li::before {
+  content: "";
+  position: absolute;
+  left: -1.35rem;
+  top: 1.05rem;
+  width: 7px;
+  height: 7px;
+  min-width: 0;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: var(--accent);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+/* 시각은 이 문서에서 가장 자주 찾는 값이므로 자릿수를 맞춰 세운다. */
+ol.steps > li strong {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+  font-size: 0.94em;
+}
+ol.steps > li span { color: var(--ink); }
+
+/* 무엇을 바꾸는가. 마지막 절이 이 문서의 목적이다. */
+section:last-of-type {
+  padding: 1rem 0 0;
+  border-top: 2px solid var(--accent);
+}
+section:last-of-type h2 { color: var(--accent); }
+
+@media print {
+  .cover { min-height: 0; padding: 1rem 0; page-break-after: auto; break-after: auto; }
+}

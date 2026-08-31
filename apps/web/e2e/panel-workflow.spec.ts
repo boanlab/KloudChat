@@ -369,14 +369,19 @@ test('아티팩트는 대화에서 열고, 닫고, 다시 열 수 있다', async
     .filter({ has: page.getByRole('button', { name: '닫기' }) })
   await expect(panel).toBeVisible({ timeout: 20_000 })
 
-  // Room to read, and back again.
-  const wider = panel.getByRole('button', { name: '넓게 보기' })
-  await expect(wider).toBeVisible()
-  await wider.click()
+  // Three positions, walked by one button, and the button is named for what
+  // pressing it does. A document opens at a reading width, folds the
+  // conversation away, comes back to the narrow column, and round again.
+  const only = panel.getByRole('button', { name: '문서만 보기' })
+  await expect(only).toBeVisible()
+  await only.click()
   const narrower = panel.getByRole('button', { name: '패널 좁히기' })
   await expect(narrower).toBeVisible()
   await narrower.click()
+  const wider = panel.getByRole('button', { name: '넓게 보기' })
   await expect(wider).toBeVisible()
+  await wider.click()
+  await expect(only).toBeVisible()
 
   // Put it away — the transcript gets the whole window back.
   await panel.getByRole('button', { name: '닫기' }).click()
@@ -444,7 +449,10 @@ test.describe('보고서 패널', () => {
     // Version history is reachable by the same name the restore flow uses.
     await expect(panel.getByRole('button', { name: '버전 기록' })).toBeVisible()
     await expect(panel.getByText('저장 시점 v1')).toBeVisible()
-    await expect(panel.getByText(/\d+\/2 섹션/)).toBeVisible()
+    // The count moved onto the button that opens the contents. It used to sit
+    // in a column standing beside the document at every width, and that column
+    // was 208px of the document's own room.
+    await expect(panel.getByRole('button', { name: /목차 \d+\/2/ })).toBeVisible()
   })
 
   test('본문을 긁으면 그 대목을 고칠 손잡이가 나온다', async ({ page }) => {
@@ -488,12 +496,13 @@ test.describe('보고서 패널', () => {
     await expect(note).toBeVisible()
   })
 
-  test('넓게 보기는 다시 눌러 되돌린다', async ({ page }) => {
+  test('너비는 세 자리를 돌고 제자리로 온다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('button', { name: '넓게 보기' }).click()
-    await expect(panel.getByRole('button', { name: '패널 좁히기' })).toBeVisible()
+    await panel.getByRole('button', { name: '문서만 보기' }).click()
     await panel.getByRole('button', { name: '패널 좁히기' }).click()
-    await expect(panel.getByRole('button', { name: '넓게 보기' })).toBeVisible()
+    await panel.getByRole('button', { name: '넓게 보기' }).click()
+    // Back where it opened, which is the position a document should be in.
+    await expect(panel.getByRole('button', { name: '문서만 보기' })).toBeVisible()
   })
 })

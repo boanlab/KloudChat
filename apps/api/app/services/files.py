@@ -22,7 +22,7 @@ import zlib
 from pathlib import Path
 
 from app.core.config import settings
-from app.services import pictures
+from app.services import pictures, transcribe
 
 log = logging.getLogger(__name__)
 
@@ -343,6 +343,38 @@ _TEXT_SUFFIXES = {
 }
 
 
+def is_speech(mime: str) -> bool:
+    """Whether this is something somebody said rather than something they wrote."""
+    return mime.startswith(("audio/", "video/"))
+
+
+async def text_of(name: str, mime: str, data: bytes) -> str:
+    """The file as text, transcribing it when the text is speech.
+
+    A meeting does not arrive as somebody re-speaking it into the composer. It
+    arrives as a recording — the room's file, an hour of it, made by whoever
+    was there. Refusing that and offering a microphone instead asks the one
+    person who already sat through the meeting to sit through it again.
+
+    The same backend the microphone uses. It was wired to one button and to
+    nothing else, so the capability was in the deployment and out of reach of
+    the job it exists for.
+
+    Async because transcription is a call and `extract_text` is not; the
+    callers are routes, and this is the one they should reach for.
+    """
+    if not is_speech(mime):
+        return extract_text(name, mime, data)
+    if not await transcribe.available():
+        return extract_text(name, mime, data)
+    if len(data) > transcribe.MAX_BYTES:
+        limit = transcribe.MAX_BYTES // (1024 * 1024)
+        raise RuntimeError(
+            f"녹음이 너무 깁니다. {limit}MB 이하로 나눠 올려 주세요."
+        )
+    return await transcribe.transcribe(data, name)
+
+
 def extract_text(name: str, mime: str, data: bytes) -> str:
     """Best-effort text for the model. Raises with a Korean reason on failure."""
     suffix = Path(name).suffix.lower()
@@ -375,8 +407,13 @@ def extract_text(name: str, mime: str, data: bytes) -> str:
         raise RuntimeError(
             "이 그림은 읽을 수 없습니다. PNG·JPEG·GIF·WebP 로, 4MB 이하로 올려 주세요."
         )
-    if mime.startswith(("audio/", "video/")):
-        raise RuntimeError("이 파일 형식에서는 텍스트를 추출할 수 없습니다.")
+    if is_speech(mime):
+        # Reached only when transcription is off or has failed — `text_of`
+        # takes this branch away when a backend is configured.
+        raise RuntimeError(
+            "말소리를 글로 옮기는 기능이 꺼져 있어 이 파일을 읽지 못했습니다. "
+            "관리자에게 요청하거나, 회의록 텍스트를 올려 주세요."
+        )
 
     # Unknown extension: try text, and let the mojibake check below decide.
     text = _from_text(data)

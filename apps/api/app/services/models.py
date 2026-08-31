@@ -376,6 +376,29 @@ def _video_rates(model_id: str) -> dict[str, int]:
 _MODALITY_ORDER = {"chat": 0, "image": 1, "audio": 2, "video": 3}
 
 
+def fallback_order(model: dict[str, Any]) -> tuple[int, float]:
+    """How a model ranks when nobody has chosen one.
+
+    Deterministic to the last field, because this decides what a new account
+    runs first.
+
+    Cheapest first, but never a strict-local model unless it is the only one.
+    strict-local is a route somebody picks on purpose — it takes the web search
+    tool away and refuses every connector — and it is priced identically to the
+    plain local model it sits beside, so sorting on price alone let it win the
+    tie and become the first model a new account ever ran. The screen then
+    explained that this model does not reach the internet, about a decision
+    nobody had made.
+    """
+    # The id breaks a tie. Two self-hosted models are both free, so price
+    # decides nothing between them and the winner was whichever order the proxy
+    # happened to list them in — a default that changes on a restart, and one
+    # nobody could see change. Which of the two should win is a decision, and
+    # the place to make it is `KCHAT_DEFAULT_CHAT_MODEL`; this only guarantees
+    # that the answer is the same twice in a row.
+    return (1 if model.get("strictLocal") else 0, model["creditCost"], model["id"])
+
+
 def find(models: list[dict[str, Any]], model_id: str) -> dict[str, Any] | None:
     return next((m for m in models if m["id"] == model_id), None)
 
@@ -414,14 +437,33 @@ async def list_models(force: bool = False) -> dict[str, Any]:
 
     # Resolved here: "cheapest" in the UI would be decided by sort order, since
     # self-hosted models are priced at 0.
-    default_chat = settings.default_chat_model
-    if not any(m["id"] == default_chat and "chat" in m["kinds"] for m in merged):
-        default_chat = ""
+    def served(model_id: str, kind: str) -> str:
+        """`model_id` if this install actually serves it for `kind`, else ``.
 
+        A default naming a model the cluster does not have is worse than none:
+        the surface would offer it, the call would 404, and the setting that
+        caused it is in a file nobody reads while somebody waits for an answer.
+        """
+        ok = any(m["id"] == model_id and kind in m["kinds"] for m in merged)
+        return model_id if ok else ""
+
+    default_chat = served(settings.default_chat_model, "chat")
     result = {
         "models": merged,
         "litellmAvailable": available,
         "defaultChatModel": default_chat,
+        # Per surface, falling back to the chat default. A conversation and a
+        # 보고서 are not the same job — see `config.default_report_model`.
+        "defaultModelByKind": {
+            # The chat fallback is re-checked against *this* surface: a model
+            # allowed for chat alone must not become the report default just
+            # because nothing else was set.
+            kind: served(chosen, kind) or served(default_chat, kind)
+            for kind, chosen in (
+                ("report", settings.default_report_model),
+                ("slides", settings.default_slides_model),
+            )
+        },
     }
     _CACHE.update(at=now, value=result)
     return result
@@ -476,6 +518,7 @@ async def list_models_for_egress() -> dict[str, Any]:
             **catalogue,
             "models": [],
             "defaultChatModel": "",
+            "defaultModelByKind": {},
         }
     return catalogue
 

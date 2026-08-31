@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, surfaceOn } from './helpers'
 
 /**
  * Video generation and playback on the audio/video surface.
@@ -35,9 +35,12 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
     AS_USER,
   )
 
-  await page.goto('/new/av')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '영상' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
 
   // Switching to video has to bring a video model with it. The cheapest model on
   // this surface is a speech model, and it stayed selected — so the composer

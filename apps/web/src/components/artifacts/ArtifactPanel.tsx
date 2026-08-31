@@ -1,13 +1,19 @@
 import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } from 'lucide-react'
+import { SlideView } from '@/components/slides/DeckPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
-import { NoPicturesYet } from '@/components/artifacts/NoPicturesYet'
-import { PanelControls } from '@/components/artifacts/PanelControls'
+import { PicturePicker } from '@/components/artifacts/PicturePicker'
+import {
+  PanelControls,
+  nextMode,
+  type PanelMode,
+} from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
-import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { sectionText } from '@/components/report/SectionBody'
+import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
@@ -24,6 +30,28 @@ const aspectClass: Record<string, string> = {
 }
 
 /** Thumbnail-safe render of any artifact. Used by the panel and the gallery. */
+/**
+ * Markdown notation out, the sentence left.
+ *
+ * For thumbnails only. A preview does not need a parser — it needs the words
+ * without the marks that tell a renderer what to do with them, because at
+ * thumbnail size the marks are most of what you can see.
+ */
+function plainText(body: string): string {
+  return body
+    .replace(/^\s*\|.*\|\s*$/gm, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}[-*+]\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(?<!\*)\*([^*]+)\*/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+
 export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
   const t = useT()
   switch (artifact.kind) {
@@ -81,20 +109,55 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
         />
       )
     case 'report':
+      /*
+       * A page, not its source.
+       *
+       * This drew the sections into a monospace block with the Markdown left
+       * in — `## 배경`, `| --- |`, `**근거**` — so the 아티팩트 gallery was a
+       * wall of grey notation with no way to tell one report from another.
+       * Somebody looking for the thing they wrote yesterday reads a thumbnail
+       * the way they read a shelf: by its shape.
+       */
       return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
-          <code className="font-mono">
-            {artifact.sections.map((s) => `## ${s.heading}\n${s.content}`).join('\n\n')}
-          </code>
-        </pre>
+        <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
+          <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
+          <p className="mb-3 text-xs text-[#999]">
+            {t('{n}개 절').replace('{n}', String(artifact.sections.length))}
+          </p>
+          {/* Three, not six. A thumbnail is read at a glance from across a
+              gallery, and eight lines of 10px prose is the wall this replaced. */}
+          {artifact.sections.slice(0, 3).map((section) => (
+            <div key={section.id} className="mb-2">
+              <p className="truncate text-sm font-semibold">{section.heading}</p>
+              <p className="line-clamp-2 text-xs leading-relaxed text-[#777]">
+                {plainText(sectionText(section))}
+              </p>
+            </div>
+          ))}
+        </div>
       )
     case 'deck':
-      return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
-          <code className="font-mono">
-            {artifact.slides.map((s, i) => `${i + 1}. ${s.title}`).join('\n')}
-          </code>
-        </pre>
+      /*
+       * The first slide, drawn.
+       *
+       * A numbered list of titles was the honest thing to show when a slide
+       * was a white rectangle with a stripe down one edge. It is not any more:
+       * a deck opens on a cover reversed out of its accent, and that cover is
+       * how somebody picks this deck out of a gallery of a hundred. The list
+       * said what the deck was about; the cover says which deck it is.
+       */
+      return artifact.slides[0] ? (
+        <div className="size-full overflow-hidden bg-white">
+          {/* The gallery card is about 310px across and the slide is drawn in a
+              400-unit space, so this is the scale at which one fills the other.
+              At 0.42 the cover was a blue rectangle with a caption nobody could
+              read. */}
+          <SlideView slide={artifact.slides[0]} scale={0.78} writing={false} />
+        </div>
+      ) : (
+        <div className="grid size-full place-items-center bg-elevated text-base text-muted">
+          {artifact.title}
+        </div>
       )
     case 'chart':
       return <ChartThumb chart={artifact} />
@@ -386,22 +449,11 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const artifacts = useStore((s) => s.artifacts)
   const loadArtifacts = useStore((s) => s.loadArtifacts)
 
   const blocks = artifact.blocks ?? []
-  // Same session first: the picture somebody made for this document is almost
-  // always the one they made while writing it.
-  const pictures = artifacts
-    .filter((a) => a.kind === 'image')
-    .sort((a, b) => {
-      const mine = Number(b.sessionId === artifact.sessionId) - Number(a.sessionId === artifact.sessionId)
-      return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
-    })
-    .slice(0, 24)
-
   // Only the absence of somewhere to put one is a reason to draw nothing;
-  // having no pictures is a thing to say, not a thing to hide.
+  // having no pictures is not — the picker makes them now.
   if (blocks.length === 0) return null
 
   const insert = async () => {
@@ -452,11 +504,11 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
       <Modal
         open={target !== null}
         onClose={() => setTarget(null)}
-        title={t('{name} 에 그림 넣기').replace(
+        title={t('{name}에 그림 넣기').replace(
           '{name}',
           (target !== null && blocks[target]?.title) || '',
         )}
-        description={t('이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
         footer={
           <>
             <Button onClick={() => setTarget(null)} disabled={busy}>
@@ -468,33 +520,21 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
           </>
         }
       >
-        {pictures.length === 0 && <NoPicturesYet />}
-        <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
-          {pictures.map((picture) => (
-            <button
-              key={picture.id}
-              onClick={() => setPicked(picture.id)}
-              aria-label={picture.title}
-              aria-pressed={picked === picture.id}
-              className={cn(
-                'aspect-video overflow-hidden rounded-control border-2 transition-colors',
-                picked === picture.id ? 'border-accent' : 'border-line hover:border-line-strong',
-              )}
-            >
-              <ArtifactPreview artifact={picture} />
-            </button>
-          ))}
-        </div>
-        {pictures.length > 0 && (
-          <div className="mt-3">
-            <Input
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              aria-label={t('설명')}
-              placeholder={t('그림 아래에 붙일 설명 (선택)')}
-            />
-          </div>
-        )}
+        <PicturePicker
+          sessionId={artifact.sessionId}
+          /* A figure in a document sits in a text column, not across a slide. */
+          aspect="4:3"
+          picked={picked}
+          onPick={setPicked}
+          caption={caption}
+          onCaption={setCaption}
+          about={(target !== null && blocks[target]?.title) || undefined}
+          title={artifact.title}
+          /* The block list carries titles only; the body lives in the
+             rendered document. The title is what the suggestion has to go on
+             here, and it is enough to name a subject. */
+          context={undefined}
+        />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
     </>
@@ -757,11 +797,11 @@ function useSplit(enabled: boolean) {
 export function ArtifactPanel() {
   const t = useT()
   const narrow = useNarrowLayout()
-  //: Set by ReportPanel while it needs the width — an open editor, or focus
-  //: mode. Declared above the early return: this panel renders once with no
-  //: artifact, and a hook below `return null` changes the hook count between
-  //: renders (React #300).
-  const [wideReport, setWideReport] = useState(false)
+  //: Set by whichever panel is inside — a document asks for the room it needs
+  //: and this is what has it. Declared above the early return: this panel
+  //: renders once with no artifact, and a hook below `return null` changes the
+  //: hook count between renders (React #300).
+  const [mode, setMode] = useState<PanelMode>('wide')
   const split = useSplit(!narrow)
   const { artifacts, openArtifactId, openArtifact } = useStore()
   const artifact = artifacts.find((a) => a.id === openArtifactId)
@@ -786,14 +826,22 @@ export function ArtifactPanel() {
           ? 'absolute inset-0 z-20 w-full min-w-0'
           : dragged
             ? 'min-w-0'
-            : wideReport
-              // Editing needs source and preview side by side, and the document
-              // column is only ~350px — so the panel borrows width while an
-              // editor is open, or while the reader asked for room to read.
-              ? 'w-[72%] min-w-[720px]'
-              : selfWide
-                ? 'w-[52%] min-w-[460px]'
-                : 'w-[38%] min-w-[340px]',
+            : mode === 'full'
+              // The document alone, laid over the row rather than pushing the
+              // transcript to nothing. Squeezed instead, the transcript keeps
+              // its padding and leaves a 32px sliver of composer down the side
+              // — a thing too narrow to use and too wide to ignore. The same
+              // treatment the narrow screen already uses, for the same reason.
+              // The way back is the same button, still in this panel's header.
+              ? 'absolute inset-0 z-20 w-full min-w-0'
+              : mode === 'wide'
+                // Editing needs source and preview side by side, and the
+                // document column is only ~350px — so the panel borrows width
+                // while an editor is open, or while the reader is reading.
+                ? 'w-[72%] min-w-[720px]'
+                : selfWide
+                  ? 'w-[52%] min-w-[460px]'
+                  : 'w-[38%] min-w-[340px]',
       )}
     >
       {!narrow && (
@@ -855,8 +903,8 @@ export function ArtifactPanel() {
           {/* 코드와 미디어도 넓게 볼 수 있어야 한다. 한 줄이 긴 코드는 340px
               패널에서 전부 접히고, 그림은 썸네일만 한 크기로 남는다. */}
           <PanelControls
-            wide={wideReport}
-            onToggleWide={narrow ? undefined : () => setWideReport(!wideReport)}
+            mode={mode}
+            onCycle={narrow ? undefined : () => setMode(nextMode(mode))}
             onClose={() => openArtifact(null)}
           />
         </header>
@@ -868,19 +916,19 @@ export function ArtifactPanel() {
             <ReportPanel
               report={artifact}
               onClose={() => openArtifact(null)}
-              onWideChange={setWideReport}
+              onModeChange={setMode}
             />
           ) : artifact.kind === 'deck' ? (
             <DeckPanel
               deck={artifact}
               onClose={() => openArtifact(null)}
-              onWideChange={setWideReport}
+              onModeChange={setMode}
             />
           ) : artifact.kind === 'chart' ? (
             <ChartPanel
               chart={artifact}
               onClose={() => openArtifact(null)}
-              onWideChange={setWideReport}
+              onModeChange={setMode}
             />
           ) : null}
         </div>

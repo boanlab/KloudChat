@@ -175,9 +175,21 @@ async function mockSkillWorkspace(page: Page, initial = catalogue) {
   }
 }
 
+/**
+ * The skill menu, open — whether or not it already was.
+ *
+ * Its rows carry `keepOpen`, because the point of a `menuitemcheckbox` list is
+ * picking several without the menu shutting between them. This used to press
+ * the trigger unconditionally, so the second `selectSkill` in a row *closed*
+ * the menu that was already open and the third could not find it. The failure
+ * read as "the skill menu does not open", which is the opposite of what was
+ * happening.
+ */
 async function openSkillMenu(page: Page) {
-  await page.getByRole('button', { name: '스킬', exact: true }).click()
   const menu = page.getByRole('menu')
+  if ((await menu.count()) === 0) {
+    await page.getByRole('button', { name: '스킬', exact: true }).click()
+  }
   await expect(menu).toBeVisible()
   return menu
 }
@@ -200,7 +212,10 @@ test('입력창은 스킬을 세 개까지만 고르고 네 번째 이유를 설
   const menu = await openSkillMenu(page)
   const fourth = menu.getByRole('menuitemcheckbox').filter({ hasText: '독자별 리스크 검토' })
   await expect(fourth).toBeDisabled()
-  await expect(fourth).toContainText('최대 3개까지 선택할 수 있습니다.')
+  // On hover, not in the row. A sentence in the hint slot pushed the skill's
+  // own name out of the width it had; `MenuItem` moved every disabled reason
+  // to `title` and this assertion stayed where it was.
+  await expect(fourth).toHaveAttribute('title', '최대 3개까지 선택할 수 있습니다.')
   await expect(page.getByRole('button', { name: / 제거$/ })).toHaveCount(3)
 })
 

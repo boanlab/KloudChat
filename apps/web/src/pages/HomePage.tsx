@@ -7,7 +7,6 @@ import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignGallery } from '@/components/chat/DesignGallery'
 import { DesignRail } from '@/components/chat/DesignRail'
-import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -84,6 +83,10 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   if (offHere) {
     const meta = kindMeta[initialKind]
     const Icon = meta.icon
+    // An administrator is not somebody to ask an administrator. They are the
+    // person who can turn it on, and the switch is two clicks away — so the
+    // screen says which switch instead of who to petition.
+    const canSwitch = user?.role === 'admin'
     return (
       <>
         <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
@@ -91,11 +94,22 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           <EmptyState
             icon={<Icon size={18} />}
             title={t('{kind} 기능이 꺼져 있습니다').replace('{kind}', t(meta.label))}
-            description={t('관리자가 이 워크스페이스에서 사용하지 않도록 설정했습니다. 필요하면 관리자에게 요청하세요.')}
+            description={
+              canSwitch
+                ? t('이 워크스페이스에서 사용하지 않도록 설정되어 있습니다. 시스템 · 기능에서 켤 수 있습니다.')
+                : t('관리자가 이 워크스페이스에서 사용하지 않도록 설정했습니다. 필요하면 관리자에게 요청하세요.')
+            }
             action={
-              <Button variant="primary" onClick={() => navigate('/')}>
-                {t('홈으로')}
-              </Button>
+              <div className="flex gap-2">
+                {canSwitch && (
+                  <Button variant="primary" onClick={() => navigate('/admin/system/features')}>
+                    {t('기능 설정 열기')}
+                  </Button>
+                )}
+                <Button variant={canSwitch ? 'secondary' : 'primary'} onClick={() => navigate('/')}>
+                  {t('홈으로')}
+                </Button>
+              </div>
             }
           />
         </PageBody>
@@ -152,7 +166,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             that screen and now lands here, so this is the only place left
             that can — without them a starting point cannot be picked at all. */}
         <div className="mx-auto mb-8 mt-3 flex w-full max-w-3xl flex-wrap justify-center gap-2 px-4">
-          <TemplateGallery kind={active} />
           <DesignGallery kind={active} />
         </div>
 
@@ -206,7 +219,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             already naming the pick, and the card it came from would print the
             same two words a second time on one empty screen — only the chip
             carries the × that undoes it, so only the chip should say it. */}
-        {pendingTemplate?.surface !== active && <DesignRail />}
+        {pendingTemplate?.surface !== active && <DesignRail surface={active} />}
 
         {running.length > 0 && (
           <section className="mb-8">

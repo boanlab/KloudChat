@@ -1,5 +1,5 @@
 import { MessageSquare, Search, Trash2, TriangleAlert } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Badge,
@@ -15,6 +15,26 @@ import {
 import { kindMeta } from '@/lib/kinds'
 import { errorMessage } from '@/lib/api'
 import { madeLine, relativeTime } from '@/lib/utils'
+
+/** The local calendar day a timestamp falls on, as `YYYY-MM-DD`. */
+function dayOf(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
+/** 오늘 · 어제 · the date itself. What somebody actually remembers. */
+function dayLabel(iso: string | null | undefined, t: (s: string) => string): string {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return t('날짜 없음')
+  const today = new Date()
+  const same = (a: Date, b: Date) => dayOf(a.toISOString()) === dayOf(b.toISOString())
+  if (same(d, today)) return t('오늘')
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (same(d, yesterday)) return t('어제')
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+}
 import { useStore } from '@/store/useStore'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -163,11 +183,26 @@ export function HistoryPage() {
             title={query ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
           />
         ) : (
-          shown.map((s) => {
+          shown.map((s, i) => {
             const meta = kindMeta[s.kind]
             const made = madeLine(s.made, t)
+            // A heading wherever the day changes.
+            //
+            // Thirty-one rows all reading "14시간 전" is a list nobody can
+            // search by memory: somebody looking for what they wrote yesterday
+            // has a relative age on every row and a date on none. The rows are
+            // already newest-first, so the day only has to be announced when it
+            // turns over.
+            const day = dayOf(s.updatedAt)
+            const first = i === 0 || dayOf(shown[i - 1].updatedAt) !== day
             return (
-              <Card key={s.id} className="flex items-center gap-3 px-3 py-2.5">
+              <Fragment key={s.id}>
+                {first && (
+                  <p className="mt-4 px-1 text-xs font-semibold text-faint first:mt-0">
+                    {dayLabel(s.updatedAt, t)}
+                  </p>
+                )}
+              <Card className="flex items-center gap-3 px-3 py-2.5">
                 {/* 16px 사각형 하나가 전부이던 자리. 지울 대화를 여러 개 고르는
                     화면이라 정확히 누르는 일이 계속 반복되고, 그때마다 옆의
                     카드가 열렸다. 상자는 그대로 두고 누르는 영역만 넓힌다. */}
@@ -197,6 +232,7 @@ export function HistoryPage() {
                 </button>
                 <Badge>{t(meta?.label ?? s.kind)}</Badge>
               </Card>
+              </Fragment>
             )
           })
         )}

@@ -1,0 +1,48 @@
+/* 강의 — 번호 알약이 장을 열고, 개념 하나에 예시 하나.
+ *
+ * 강의실 덱과 세미나 덱을 한눈에 가르는 것은 번호의 위치다. 세미나 덱은
+ * 쪽번호를 오른쪽 구석에 작게 두고 없는 셈 친다. 강의 덱은 그 번호를 제목
+ * 앞으로 끌어와 색을 채운 알약에 담는다 — 학생이 필기하다 고개를 들었을 때
+ * 지금 몇 번째 이야기인지 세지 않고 알게 하는 장치다.
+ *
+ * 글씨는 크다. 그리고 본문이 차지하는 폭을 넓힌다: 강의실에는 손으로 적을
+ * 오른쪽 여백이 필요 없다. 유인물이 아니라 화면이기 때문이다. */
+
+:root {
+  --h2-size: clamp(2rem, 4vw, 3rem);
+  --measure: min(50rem, 78%);
+}
+
+/* 번호 알약. 제목 줄의 왼쪽에 놓이므로 제목이 그만큼 안으로 들어간다. */
+.num {
+  position: absolute;
+  left: var(--gut);
+  right: auto;
+  top: calc(var(--pad-y) - 0.2rem);
+  padding: 0.28em 0.85em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+h2 { padding-top: 2.6rem; }
+
+p, li { font-size: clamp(1.2rem, 1.9vw, 1.55rem); line-height: 1.55; }
+li + li { margin-top: 0.65em; }
+
+/* 개념 하나에 예시 하나. 예시 판이 이 서식에서 가장 자주 쓰이는 장이므로
+   기본보다 크게, 그리고 왼쪽 강조선을 두껍게 둔다. */
+.slide.example > p { font-size: clamp(1.4rem, 2.8vw, 2.2rem); }
+.slide.example .ex,
+.slide.example > div { border-left-width: 8px; padding: 1.5rem 1.8rem; }
+.slide.example .ex::before,
+.slide.example > div::before { font-size: clamp(0.95rem, 1.4vw, 1.15rem); }
+
+.slide.cover .num {
+  align-self: flex-start;
+  margin-bottom: 1rem;
+}

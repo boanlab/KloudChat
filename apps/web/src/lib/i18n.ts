@@ -78,6 +78,22 @@ const EN: Record<string, string> = {
   '끈 화면은 목록에서 사라지고 새 작업도 만들 수 없습니다. 기존 기록은 남습니다.':
     'A surface that is off disappears from the menu and refuses new work. Existing records stay.',
   'AI 에이전트 연동': 'Agent setup',
+  'API 연동': 'API access',
+  '이 인스턴스의 모델을 코드에서 부릅니다. 게이트웨이가 OpenAI 프로토콜을 말하므로, OpenAI SDK 와 LiteLLM SDK 가 그대로 붙습니다.':
+    "Call this instance's models from code. The gateway speaks the OpenAI protocol, so the OpenAI SDK and the LiteLLM SDK connect as they are.",
+  '고른 모델의 이름이 아래 예제에 그대로 들어갑니다.': 'The chosen model id is written into the examples below.',
+  '가장 짧은 길입니다. base_url 만 이 인스턴스로 바꾸면 나머지는 여느 OpenAI 코드와 같습니다.':
+    'The shortest path. Point base_url at this instance and the rest is ordinary OpenAI code.',
+  '스트리밍': 'Streaming',
+  '긴 답은 흘려 받습니다. 위에서 만든 client 를 그대로 씁니다.': 'Long answers arrive as they are written. Uses the client above.',
+  '이미 LiteLLM 으로 여러 제공자를 오가는 코드라면 이쪽이 자연스럽습니다.':
+    'If your code already moves across providers with LiteLLM, this is the natural fit.',
+  '바로 확인': 'Quick check',
+  '키와 주소가 맞는지 코드를 쓰기 전에 한 줄로 확인합니다.': 'One line to confirm the key and address before writing code.',
+  '임베딩도 같은 주소로 받습니다 — client.embeddings.create(model="local/bge-m3", input=[...]).':
+    'Embeddings ride the same address — client.embeddings.create(model="local/bge-m3", input=[...]).',
+  '키를 폐기하면 즉시 막힙니다. 코드 쪽 설정도 함께 지우세요.': 'A revoked key stops working immediately. Remove it from your code too.',
+  '접두사가 프로토콜을 고른다': 'the prefix picks the protocol',
 
   // ── Auto cost routing ──────────────────────────────────────────────
   'Auto · 비용 절약': 'Auto · Save credits',
@@ -254,6 +270,8 @@ const EN: Record<string, string> = {
     'Edit one of your agents and share it to list it here.',
   '아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.':
     'Nothing shared yet. Edit one of your skills to share it with the workspace.',
+  '공유된 스킬 목록을 불러오지 못했습니다. 잠시 뒤 다시 열어 보세요.':
+    'Could not load the shared skills. Try opening this again in a moment.',
   '공유하면 워크스페이스 스토어에 올라가고, 다른 사용자가 각자 사본을 가져갑니다. 내가 고쳐도 이미 가져간 사본은 그대로입니다.':
     'Sharing lists it in the workspace store, where others take their own copy. Editing yours afterwards leaves those copies alone.',
   '관리': 'Manage',
@@ -319,7 +337,6 @@ const EN: Record<string, string> = {
   '발표 노트': 'Speaker notes',
   '배정 대비': 'Of allowance',
   '버전 기록': 'Version history',
-  '함께 오는 파일': 'Bundled with it',
   '번들 파일': 'Bundle',
   '범위': 'Scope',
   '벡터': 'Vector',
@@ -432,7 +449,6 @@ const EN: Record<string, string> = {
   '요청일': 'Requested',
   '월 크레딧': 'Monthly credits',
   '유형': 'Type',
-  '음성 입력': 'Voice input',
   '음악': 'Music',
   '응답 수': 'Responses',
   '이름': 'Name',
@@ -560,12 +576,7 @@ const EN: Record<string, string> = {
   'Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
   '웹에서 최신 자료를 찾아 근거로 씁니다': 'Searches the web and cites what it finds',
   '같은 질문을 여러 모델에 동시에 보내고 답변을 나란히 비교합니다': 'Sends the same question to several models and shows the answers side by side',
-  '말한 내용을 받아 적습니다': 'Transcribes what you say',
-  '듣고 있습니다 — 다시 누르면 받아 적습니다': 'Listening — press again to transcribe',
-  '멈추고 받아쓰기': 'Stop and transcribe',
-  '받아 적는 중…': 'Transcribing…',
   '받아쓰지 못했습니다.': 'Could not transcribe.',
-  '마이크를 쓸 수 없습니다. 브라우저 권한을 확인해 주세요.': 'The microphone is unavailable. Check the browser permission.',
   '생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다': 'Generating — the card above becomes the result when it finishes',
   '이 모델은 이 조합을 만들지 않습니다': 'This model does not produce that combination',
   '비교할 모델 (2~3개)': 'Models to compare (2–3)',
@@ -687,7 +698,7 @@ const EN: Record<string, string> = {
   '모델 목록을 모두 불러오지 못했습니다. 지금은 일부 모델만 고를 수 있습니다.': 'The model list is incomplete — only some models can be chosen right now.',
   '키는 만들 때 한 번만 보여 줍니다. 그 뒤로는 서버에도 원문이 남지 않습니다.': 'A key is shown once at creation. After that not even the server keeps the original.',
   '커넥터가 반환한 내용은 외부 입력입니다. 그 안의 지시문은 명령으로 실행되지 않습니다.': 'What a connector returns is outside input — instructions inside it are never run as commands.',
-  '검색으로 확인할 수 있는 주장이 이 장에는 없습니다. 의견과 정의는 판정하지 않습니다.': 'This slide has no claim that search can check. Opinions and definitions are not judged.',
+  '검색으로 확인할 수 있는 주장이 여기에는 없습니다. 의견과 정의는 판정하지 않습니다.': 'There is no claim here that search can check. Opinions and definitions are not judged.',
   '내 코드에서 직접 모델을 호출할 때 씁니다. 사용량과 월 한도는 이 계정에 그대로 합산됩니다.': 'For calling models from your own code. Usage and the monthly limit stay on this account.',
   '대화 내용은 서버에 그대로 저장되어 있습니다. 아래에서 다시 시도하거나 다른 화면으로 이동하세요.': 'The conversation is safe on the server. Try again below or move to another screen.',
   '정책은 서버에서 강제되고, 기록은 서버가 작성합니다. 이 화면에서 기록을 고치거나 지울 수 없습니다.': 'Policy is enforced on the server and the server writes these records. They cannot be edited or deleted here.',
@@ -705,7 +716,8 @@ const EN: Record<string, string> = {
   '1k당 {in} / {out}': '{in} / {out} per 1k',
   '1k당 입력 {in} · 출력 {out}': 'Per 1k: {in} in · {out} out',
   '이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.': 'That slug is already in use. Pick another.',
-  '입력창의 @ 버튼과 홈 화면 카드에 이 핸들로 보입니다.': "Shown under this handle on the composer's @ button and the home screen cards.",
+  '이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 자동으로 만듭니다.':
+    'Shown as the handle on cards in this list. Left empty, one is generated.',
   'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
@@ -771,8 +783,6 @@ const EN: Record<string, string> = {
   '공유된 결과물': 'Shared artifact',
   '공유된 자료입니다. 원본은 공유한 사람만 수정할 수 있습니다.':
     'Shared with you. Only the person who shared it can edit the original.',
-  '공유하면 워크스페이스 스토어에 올라가고 다른 구성원이 그대로 씁니다.':
-    'Sharing puts it in the workspace store for anyone here to use as is.',
   '관리자가 이 계정의 접근을 중지했습니다. 사유가 궁금하다면 관리자에게 문의하세요.':
     'An administrator has stopped this account\'s access. Ask them if you need to know why.',
   '기간이 지난 본문 {n}건을 지웠습니다.': 'Cleared {n} bodies past the retention window.',
@@ -818,7 +828,34 @@ const EN: Record<string, string> = {
     'The image surface is switched off, so there is nothing to put here yet. An administrator can turn it on in the system settings.',
   '이미지 만들러 가기': 'Make one',
   '어느 자리에 넣을까요?': 'Where should it go?',
-  '{name} 에 그림 넣기': 'Add a picture to {name}',
+  '{name}에 그림 넣기': 'Add a picture to {name}',
+  '다시 만들기': 'Make it again',
+  '위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.':
+    'Click any words on the slide above to change them. The box below is for going through the whole slide at once — first line the title, one line per item, and a line split by | is a table row.',
+  '원문 편집':
+    'Edit the source',
+  '굵게·표·그림을 그대로 보면서 고칩니다':
+    'Edit with bold, tables and pictures as they will look',
+  '마크다운으로 한 번에 고칩니다':
+    'Edit the whole thing as Markdown',
+  '커넥터 {n}개': '{n} connectors',
+  '참고한 자료가 없습니다.':
+    'No sources were used.',
+  '웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.':
+    'Turn web search on and write it again, and what it finds is cited here. Writing with search off leaves nothing to cite.',
+  '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 그림과 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.':
+    'Credits go down each time a model runs. Writing costs a little; pictures and clips cost a lot. At zero you cannot send new requests until next month, and everything you have made stays. Click to see where they went.',
+  '{n}개 절': '{n} sections',
+  '항목 추가': 'Add an item',
+  '처음 제안으로': 'Back to the proposal',
+  '고친 대로 생성': 'Write it as edited',
+  '{n}번 제목': 'Title {n}',
+  '{n}번 위로': 'Move {n} up',
+  '{n}번 아래로': 'Move {n} down',
+  '{n}번 지우기': 'Remove {n}',
+  '제목을 직접 고치거나, 크게 바꿀 것이 있으면 아래 입력창에 적어 주세요.': 'Edit the titles here, or type a bigger change in the box below.',
+  '고친 구성으로 생성해 주세요': 'Write it as I edited it',
+  '프롬프트 고치기': 'Edit the prompt',
   '이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.':
     'A picture you made on the image surface goes inside the document itself — not linked to, so it prints and travels with the file.',
   '넣는 중…': 'Adding…',
@@ -957,6 +994,7 @@ const EN: Record<string, string> = {
     'The server inspects the whole outbound context and applies this before anything reaches an external model.',
   '외부 전환 가능': 'May switch to external',
   '외부 제공': 'External provider',
+  '자체 · 폴백 외부': 'Self-hosted · external fallback',
   '외부 제공자가 무료로 제공하는 모델입니다': 'An external provider offers this model free of charge',
   '요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.':
     'Could not send the request. Try again in a moment.',
@@ -1426,8 +1464,20 @@ const EN: Record<string, string> = {
 
   // ── 시작점 갤러리의 이름 ────────────────────────────────────────
   '시작점 고르기': 'Pick a starting point',
-  '시작점 추가': 'Add a starting point',
-  '시작점 수정': 'Edit starting point',
+  '서식 추가': 'Add a form',
+  '내보내면 이 양식으로 나갑니다': 'The exported file comes out in this form',
+  '서식 바꾸기': 'Change of form',
+  '서식을 바꾸지 못했습니다.': 'The form could not be changed.',
+  '서식 검색': 'Search forms',
+  '이 서식이 확인하는 것 {n}개': '{n} things this form checks',
+  '찾는 서식이 없습니다.': 'No form matches that.',
+  '이전 쪽': 'Previous page',
+  '다음 쪽': 'Next page',
+  '서식 수정': 'Edit form',
+  '{name} 양식 내려받기': 'Download the {name} form',
+  '양식 {ext}': '{ext} form',
+  '고른 서식': 'Chosen',
+  '이미 고른 서식입니다': 'Already chosen',
   '고친 내용은 다음에 이 시작점을 고를 때부터 반영됩니다.':
     'Your edits apply the next time you pick this starting point.',
 
@@ -1575,11 +1625,36 @@ const EN: Record<string, string> = {
 
 
   '검토': 'Review',
+  '{name} 검토': 'Review {name}',
+  '{n}쪽 즈음': 'around page {n}',
+  '그림을 넣을까요?': 'Add figures?',
+  '문장만 · 서식은 그대로': 'Sentence only — the format stays',
+  '내 시작점': 'My starting points',
+  '이 대목 고치기': 'Fix this',
+  '검색으로 뒷받침되지 않았습니다': 'search did not support it',
+  '확인하지 못했습니다': 'it could not be verified',
+  '"{heading}" 절의 이 대목을 고쳐 주세요. {why}: "{claim}" — {note}':
+    'Please fix this in "{heading}". {why}: "{claim}" — {note}',
+  '그림 넣고 생성': 'Generate with figures',
+  '그림 없이 생성': 'Generate without',
+  '그림을 넣어 주세요': 'Please include the figures',
+  '그림 없이 생성해 주세요': 'Generate without figures',
+  '{n}장 · 약 {c} 크레딧 · {m}': '{n} images · about {c} credits · {m}',
   '검토 받기': 'Ask for a review',
   '다시 검토': 'Review again',
   '자동 검사': 'Automatic checks',
   '검토하지 못했습니다.': 'The review could not be produced.',
   '고칠 곳을 찾지 못했습니다.': 'Nothing to fix was found.',
+  '모두 고치기 ({n})': 'Fix all ({n})',
+  '고치는 중입니다…': 'Fixing…',
+  '모두 고쳤습니다.': 'All fixed.',
+  '고치지 못한 절이 있습니다: {list}': 'Some sections could not be fixed: {list}',
+  '고치지 못한 장이 있습니다: {list}': 'Some slides could not be fixed: {list}',
+  '검사에서 지적된 문제를 모두 고쳐 주세요:\n{list}':
+    'Please fix everything the check found:\n{list}',
+  '보고서 전체에서 이 문제들을 고쳐 주세요:\n{list}':
+    'Please fix these across the whole report:\n{list}',
+  '덱 전체': 'the whole deck',
   '쓰지 않은 사람의 눈으로 한 번 읽습니다. 모델을 한 번 호출합니다.':
     'One reading by somebody who did not write it. Costs one model call.',
 

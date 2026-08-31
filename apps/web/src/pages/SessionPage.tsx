@@ -8,7 +8,6 @@ import { ProposalCard } from '@/components/chat/ProposalCard'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
 import { DesignGallery } from '@/components/chat/DesignGallery'
-import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button } from '@/components/ui'
@@ -141,11 +140,9 @@ function StartingFrom({
 function Intro({
   kind,
   sessionId,
-  projectId,
 }: {
   kind: SessionKind
   sessionId?: string | null
-  projectId?: string | null
 }) {
   const t = useT()
   const user = useStore((s) => s.user)
@@ -190,10 +187,9 @@ function Intro({
       </div>
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
       <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <TemplateGallery kind={kind} />
         {/* The cards are drawn in this project's look, which is the one the
             composer under them will render the answer in. */}
-        <DesignGallery kind={kind} projectId={projectId} />
+        <DesignGallery kind={kind} sessionId={sessionId ?? null} />
       </div>
     </div>
   )
@@ -421,11 +417,7 @@ export function SessionPage() {
             </>
           ) : (
             <>
-              <Intro
-                kind={kind}
-                sessionId={session?.id ?? sessionId ?? null}
-                projectId={session?.projectId ?? null}
-              />
+              <Intro kind={kind} sessionId={session?.id ?? sessionId ?? null} />
               {/* The URL is authoritative, not the store lookup. On `/s/:id`
                   the row may not have arrived yet — falling back to `null` there
                   makes the composer start a *new* conversation, silently

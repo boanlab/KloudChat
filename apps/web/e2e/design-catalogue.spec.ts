@@ -47,16 +47,19 @@ test('디자인 화면은 만드는 것과 제품이 주는 것을 탭으로 나
 
   // ── and it is the gallery's own card ────────────────────────────────
   const minutes = documents.locator('div.group', { hasText: '회의록' })
-  // Its own seed filled with its own sample, so the card is the thing that
-  // will be produced rather than a picture of it.
-  await expect(minutes.locator('iframe')).toHaveCount(1)
+  await expect(minutes).toHaveCount(1)
   // What it asks you to bring…
   await expect(minutes.getByText('일시와 참석자')).toBeVisible()
   // …and what the finished document will be read against, which is the only
   // thing that tells two shapes of one kind apart.
-  await expect(minutes.getByText('이 서식이 확인하는 것')).toBeVisible()
+  // Folded, and saying how many. The list is the tallest thing on a card and
+  // open it made a page of four cards taller than the screen; a reader
+  // choosing a 서식 needs to know it has rules and how many, not read eight.
+  const checks = minutes.locator('summary')
+  await expect(checks).toHaveText(/확인하는 것 \d+개/)
+  await expect(minutes.locator('li').first()).toBeHidden()
+  await checks.click()
   await expect(minutes.locator('li').first()).toBeVisible()
-  await expect(minutes.locator('summary')).toHaveText(/\d+개 더 보기/)
 
   // ── and it starts the right screen ──────────────────────────────────
   // There is no session yet, so the button opens the surface first and the
@@ -80,10 +83,15 @@ test('서식 탭은 주소로 바로 열리고, 홈의 줄은 몇 개만 보여 
     'true',
     { timeout: 20_000 },
   )
-  // Counted by preview frames: every shipped shape has one, and unlike a class
-  // name they belong to nothing else on this screen.
-  await expect(page.locator('iframe').first()).toBeVisible({ timeout: 20_000 })
-  const all = await page.locator('iframe').count()
+  // Counted by cards. It used to count preview frames — every shipped shape
+  // had one — and the previews went with the seeds they were drawn from.
+  //
+  // `div.group` alone counts every element wearing that class, nested ones
+  // included, and reported 57 where there are 17 — which then made the rail's
+  // "17종 모두 보기" look wrong instead of the count.
+  const anyCard = page.locator('div.group:has(> div > p)')
+  await expect(anyCard.first()).toBeVisible({ timeout: 20_000 })
+  const all = await anyCard.count()
   expect(all).toBeGreaterThan(6)
 
   // ── the front door ──────────────────────────────────────────────────
@@ -105,5 +113,5 @@ test('서식 탭은 주소로 바로 열리고, 홈의 줄은 몇 개만 보여 
   await expect(link).toHaveText(new RegExp(`${all}종 모두 보기`))
   await link.click()
   await expect(page).toHaveURL(/\/designs\?tab=template/)
-  await expect(page.locator('iframe')).toHaveCount(all, { timeout: 20_000 })
+  await expect(page.locator('div.group:has(> div > p)')).toHaveCount(all, { timeout: 20_000 })
 })

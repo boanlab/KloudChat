@@ -14,6 +14,7 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   CostRouting,
+  DesignTokens,
   Session,
   SessionKind,
   SessionMade,
@@ -223,6 +224,15 @@ export interface ModelCatalogue {
   /** Model used when the user has not chosen one. Empty when it is not in
    *  the catalogue. */
   defaultChatModel?: string
+  /**
+   * The instance default per surface, when one of them wants a different
+   * model. Absent keys fall back to `defaultChatModel`.
+   *
+   * A conversation and a 보고서 are not the same job: chat is a turn every few
+   * seconds and read as it arrives, so decode speed is most of what the person
+   * feels; a document is one long run they wait for once.
+   */
+  defaultModelByKind?: Partial<Record<SessionKind, string>>
   autoRouting: {
     enabled: boolean
     available: boolean
@@ -310,7 +320,6 @@ export const authConfig = {
   get: () =>
     call<{
       passwordResetEnabled: boolean
-      dictationEnabled: boolean
       brand: { name: string; logo: string }
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
@@ -561,6 +570,28 @@ export async function downloadArtifact(
 }
 
 /**
+ * The 서식 as a blank file to fill in by hand.
+ *
+ * Fetched rather than linked. The API takes a bearer token this app holds in
+ * memory, so an `<a href>` to the route arrives unauthenticated and comes back
+ * a 401 the browser renders as a broken download.
+ */
+export async function downloadDesignTemplateForm(id: string, name: string, format: string) {
+  const res = await fetch(`${BASE_URL}/design-templates/${encodeURIComponent(id)}/form`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'form'}.${format}`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
  * URL for a stored file, used as the `src` of `<img>`, `<audio>` and `<video>`.
  *
  * Those elements cannot attach an Authorization header and the token lives in
@@ -571,23 +602,6 @@ export function fileUrl(src: string | null | undefined): string | undefined {
   if (!src) return undefined
   if (!accessToken || !src.startsWith(`${BASE_URL}/files/`)) return src
   return `${src}${src.includes('?') ? '&' : '?'}t=${encodeURIComponent(accessToken)}`
-}
-
-/**
- * Dictated audio → text. Multipart, so it cannot go through `call()`. Nothing
- * is stored server-side — the clip is a way of typing, not a document.
- */
-export async function transcribe(blob: Blob): Promise<string> {
-  const form = new FormData()
-  form.append('file', blob, 'speech.webm')
-  const res = await fetch(`${BASE_URL}/transcribe`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    body: form,
-  })
-  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
-  return ((await res.json()) as { text: string }).text
 }
 
 export interface ShareRow {
@@ -765,6 +779,20 @@ export const sessionsApi = {
     call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
   /** Pictures. Synchronous: the upstream is a completion whose answer is a
    *  PNG, so there is nothing to poll. */
+  /**
+   * What picture to put here, proposed rather than asked for.
+   *
+   * Draws nothing and costs nothing: two lines of text the person then edits,
+   * replaces or ignores. The credit is spent by `images` below.
+   */
+  suggestFigure: (
+    sessionId: string,
+    payload: { title?: string; about?: string; context?: string },
+  ) =>
+    call<{ caption: string; prompt: string }>(
+      `/sessions/${sessionId}/figure-suggestion`,
+      body(payload),
+    ),
   images: (
     sessionId: string,
     payload: {
@@ -775,6 +803,12 @@ export const sessionsApi = {
       count: number
       /** An `image` design template. Shapes the prompt; produces no file of its own. */
       templateId?: string
+      /**
+       * Asked for from inside a document rather than from the image surface.
+       * Tells the server the picture goes *into* a slide or a section, so it
+       * comes back as a figure and not as a picture of a whole slide.
+       */
+      figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
@@ -869,6 +903,16 @@ export const filesApi = {
     return (await res.json()) as FileRow
   },
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
+  /**
+   * Opens an uploaded `.hwpx` as an editable document.
+   *
+   * Reads the file — headings, tables and lists — into an ordinary report, so
+   * it lands in the same editor everything else does and exports back to
+   * `.hwpx` through the exporter that was already there. Nothing is generated
+   * and nothing is charged. Returns the new session's id.
+   */
+  openAsDocument: (id: string) =>
+    call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
 }
 
@@ -971,9 +1015,25 @@ export const artifactsApi = {
   /** Checks one slide's claims against the web. Costs searches and a model call. */
   factcheckSlide: (id: string, slideId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/factcheck`, body({ slideId })),
+  /** The same check on one report section. Same cost, same verdict shape. */
+  factcheckSection: (id: string, sectionId: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/sections/factcheck`, body({ sectionId })),
+  /**
+   * The picture this browser made of one mermaid diagram.
+   *
+   * Mermaid renders in JavaScript and the API has no headless browser, so the
+   * reader's own render is the only one there will ever be. Stored so the
+   * exports carry a figure where the source stands. Free, and takes no version
+   * — opening a document is not editing it.
+   */
+  storeDiagram: (id: string, sectionId: string, key: string, src: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/sections/diagram`, body({ sectionId, key, src })),
   /** Rewrites one section. Costs a model call and snapshots the old text. */
   rewriteSection: (id: string, sectionId: string, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/rewrite`, body({ sectionId, note })),
+  /** The deck's half of the same thing, slide by slide. */
+  rewriteSlide: (id: string, slideId: string, note: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/slides/rewrite`, body({ slideId, note })),
   /** One block of an HTML artifact, addressed by position and re-rendered. */
   rewriteBlock: (id: string, index: number, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
@@ -986,6 +1046,14 @@ export const artifactsApi = {
   addBlockImage: (id: string, index: number, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/image`, body({ index, artifactId, caption })),
   /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
+  /**
+   * Puts a picture made in this workspace into one section of a report.
+   *
+   * A report is Markdown and a Markdown picture is a shape every exporter
+   * already reads, so the server appends a line rather than adding a field.
+   */
+  addSectionImage: (id: string, sectionId: string, artifactId: string, caption: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/sections/image`, body({ sectionId, artifactId, caption })),
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
@@ -1078,13 +1146,9 @@ export const templatesApi = {
   remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
-/** The four values every renderer reads. Always complete on the wire. */
-export interface DesignTokens {
-  accent: string
-  ink: string
-  muted: string
-  font: 'gothic' | 'serif'
-}
+//: Defined in `@/types` — the artifact types need it and this file already
+//: imports from there, so the definition lives on the side with no cycle.
+export type { DesignTokens }
 
 export interface DesignRow {
   id: string
@@ -1188,6 +1252,14 @@ export interface DesignTemplateRow {
    * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
    */
   defaults: Record<string, string | number | boolean>
+  /**
+   * The extension of the blank form this 서식 ships — `docx`, `pptx`, or empty
+   * where it has none. The card offers it by name, because "양식 내려받기" and
+   * then a `.pptx` when somebody expected a `.docx` is a surprise the card
+   * could have prevented.
+   */
+  formFormat: string
+  /** Whether `/design-templates/{id}/preview` has a miniature to show. */
   hasPreview: boolean
 }
 
@@ -1218,40 +1290,47 @@ export function templateText(row: DesignTemplateRow, english: boolean) {
   }
 }
 
+/** A template's CSS and its wrappers, for the document editor's shadow root. */
+export interface TemplateStyle {
+  css: string
+  wrapCover: string
+  wrapBlock: string
+  wrapGroup: string
+}
+
+/** How often each rendering template has been started. Ids to counts. */
+export interface DesignTemplateUsage {
+  /** By this person. Empty on their first day, which is what `popular` is for. */
+  mine: Record<string, number>
+  /** Across the installation. An aggregate over a catalogue that ships in the image. */
+  popular: Record<string, number>
+}
+
 export const designTemplatesApi = {
   list: (surface?: SessionKind) =>
     call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
+  usage: () => call<DesignTemplateUsage>('/design-templates/usage'),
+  /**
+   * The stylesheet the editor draws the document in.
+   *
+   * The gallery card gets a finished document at `/preview` and shows it in a
+   * sandboxed iframe, which is right for something nobody clicks. An editor is
+   * clicked, so the document lives in the page inside a shadow root — and a
+   * shadow root takes a stylesheet, not a URL.
+   */
+  style: (id: string, tokens?: DesignTokens | null) => {
+    const query = tokens
+      ? `?${new URLSearchParams({
+          accent: tokens.accent,
+          ink: tokens.ink,
+          muted: tokens.muted,
+          font: tokens.font,
+        })}`
+      : ''
+    return call<TemplateStyle>(`/design-templates/${encodeURIComponent(id)}/style${query}`)
+  },
 }
 
-/**
- * The preview document for a template card, in the look it will be made in.
- *
- * The tokens ride in the query string because an iframe asks for its document
- * by address. The server validates all four the way the exporters read them,
- * so a card cannot advertise a colour no file could come out in. No tokens is
- * exactly what a project without a design system produces.
- *
- * Unauthenticated on purpose — see the route's docstring — and rendered in a
- * sandboxed iframe.
- */
-export const designTemplatePreviewUrl = (id: string, tokens?: DesignTokens | null) => {
-  const url = `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
-  if (!tokens) return url
-  const query = new URLSearchParams({
-    accent: tokens.accent,
-    ink: tokens.ink,
-    muted: tokens.muted,
-    font: tokens.font,
-  })
-  return `${url}?${query}`
-}
-
-/**
- * The look a project wears, for a card standing in for its output.
- *
- * `null` where the project has no design system or has one this account can no
- * longer see: both render in the default tokens.
- */
 export const designTokensOf = (
   designs: DesignRow[],
   designSystemId: string | null | undefined,
@@ -1560,7 +1639,16 @@ export type StreamEvent =
   | { type: 'needs'; questions: PendingQuestion[] }
   /** The reference shelf a report's sections cite from, sent once, up front. */
   | { type: 'sources'; sources: Source[] }
-  | { type: 'artifact'; artifactId: string }
+  | {
+      type: 'artifact'
+      artifactId: string
+      /**
+       * Whether the model set out to make this rather than the server keeping
+       * a long fence out of the answer. Only the first opens the panel: a
+       * nine-line example is not worth two thirds of the screen.
+       */
+      deliberate?: boolean
+    }
   | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
   | { type: 'error'; message: string; code?: string; reason?: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
@@ -1607,6 +1695,13 @@ export async function* streamSession(
     privacyDecisionToken?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
+    /**
+     * The outline as the person edited it on the card. Sanitised server-side:
+     * titles and order are theirs, layouts stay the planner's.
+     */
+    plan?: Record<string, unknown>
+    /** The figure card's answer — the second of the two questions. */
+    includeFigures?: boolean
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
     /**
@@ -1716,6 +1811,41 @@ async function* postStream(
     if (res.status === 401) throw new UnauthorizedError(resolved)
     throw new ApiError(res.status, resolved)
   }
+  /*
+   * A turn that stopped to ask answers in JSON, not as a stream.
+   *
+   * The server takes that route on purpose — see `_ask_before_writing`: a
+   * one-event SSE would leave the browser holding a socket open to be told
+   * that nothing is coming. But the caller here is a stream reader, and a JSON
+   * body has no `data:` lines in it, so the loop below fell out having seen no
+   * `usage` event and the runner marked the turn cut off. Every clarifying
+   * question therefore arrived under 연결이 끊겨 답변이 중간에 멈췄습니다 and a
+   * 다시 시도 button — an error message on the one screen that is working
+   * exactly as designed.
+   *
+   * Translated here rather than in each of the four runners, which all read
+   * this generator and all handle these events already.
+   */
+  if (res.headers.get('content-type')?.includes('application/json')) {
+    const answered = (await res.json()) as { pending?: PendingPlan | null; message?: string }
+    const pending = answered.pending
+    // What the turn said, before what it is asking. Without it the answer
+    // bubble stays empty and the panel draws 생각하는 중 into it — a spinner
+    // over a turn that has already stopped and is waiting for a person.
+    if (answered.message) yield { type: 'delta', text: answered.message }
+    if (pending?.stage === 'clarify' && pending.questions) {
+      yield { type: 'needs', questions: pending.questions }
+    } else if (pending?.stage === 'outline' && pending.plan) {
+      yield { type: 'proposal', plan: pending.plan }
+    } else {
+      // Any other shape: the turn is over and produced nothing to stream.
+      // Said so, because falling out of this generator silently is what the
+      // runners read as a dropped connection.
+      yield { type: 'done' }
+    }
+    return
+  }
+
   if (!res.body) throw new Error('no response body')
 
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()

@@ -1,9 +1,15 @@
 kind = "document"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["official"]
 name = "안내문·공지"
 description = "수신·시행일·근거·붙임을 갖춘 공문. 가운데 정렬 제목에 이중선, 번호와 들여쓰기로 이루어진 계단 하나"
 category = "업무"
 fills = ["알릴 내용", "받는 사람", "시행일"]
 example_prompt = "구성원 전체에게 보낼 안내문을 공문 형식으로 써 줘. 무엇에 근거한 안내인지 먼저 밝히고, 무엇이 언제부터 달라지는지, 받는 사람이 언제까지 무엇을 해야 하는지 분명히 하고, 마지막에 붙임 자료를 적어 줘.\n\n알릴 내용: "
+seed_from = "_document"
 layouts = ["cover", "section"]
 
 # English half of the catalogue. The UI picks a side by language;

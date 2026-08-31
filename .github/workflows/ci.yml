@@ -113,32 +113,36 @@ jobs:
           build_all() {
             echo "$1"
             {
-              echo 'matrix={"include":[{"name":"api","context":"apps/api"},{"name":"web","context":"apps/web"}]}'
+              echo 'matrix={"include":[{"name":"api","context":"apps/api"},{"name":"print","context":"apps/print"},{"name":"web","context":"apps/web"}]}'
               echo 'any=true'
             } >> "$GITHUB_OUTPUT"
           }
 
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            build_all "manual run — building both"; exit 0
+            build_all "manual run — building all"; exit 0
           fi
           # No usable base: first commit, new branch, or a force push that
           # removed the previous tip.
           if [ -z "${BASE:-}" ] \
              || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
-            build_all "no diff base — building both"; exit 0
+            build_all "no diff base — building all"; exit 0
           fi
 
           changed=$(git diff --name-only "$BASE" "$HEAD")
           echo "Changed files:"; echo "$changed" | sed 's/^/  /'
 
           if echo "$changed" | grep -qx '.github/workflows/ci.yml'; then
-            build_all "ci.yml changed — building both"; exit 0
+            build_all "ci.yml changed — building all"; exit 0
           fi
 
           entries=""
           if echo "$changed" | grep -q '^apps/api/'; then
             entries='{"name":"api","context":"apps/api"}'
+          fi
+          if echo "$changed" | grep -q '^apps/print/'; then
+            [ -n "$entries" ] && entries="$entries,"
+            entries="$entries{\"name\":\"print\",\"context\":\"apps/print\"}"
           fi
           if echo "$changed" | grep -q '^apps/web/'; then
             [ -n "$entries" ] && entries="$entries,"

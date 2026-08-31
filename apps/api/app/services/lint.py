@@ -37,6 +37,43 @@ _MIN_BLOCK_CHARS = 12
 _MAX_BULLETS = 7
 _MAX_BULLET_CHARS = 45
 
+#: Chinese characters that Korean prose has no business carrying.
+#:
+#: The models this product runs on are trained heavily on Chinese and leak it
+#: one word at a time: `全自動化`, `動的 엔드포인트`, `傳統的인 방화벽`, `試點
+#: 프로젝트`. All real samples from generated reports. To a Korean reader it is
+#: a typo; to a Korean reviewer it is the clearest possible sign the document
+#: was written by a machine, and on a submitted report that costs more than a
+#: weak argument does.
+#:
+#: The surface prompt asks the model not to, and a prompt is advice. This is
+#: the read-back — deterministic, free, and it fires on the text that was
+#: actually written rather than on the text that was asked for.
+#:
+#: **Parenthesised glosses are allowed on purpose.** `분산(分散)` in an academic
+#: paper, a legal term, a name in its original script: banning the block
+#: outright would be its own kind of wrong in exactly the documents this product
+#: is for. So a run of ideographs counts only when nothing around it says it is
+#: a gloss.
+_HANJA = re.compile(r"[\u4e00-\u9fff]+")
+#: A gloss: the ideographs sit inside brackets. The Korean that a gloss
+#: explains is usually right before it — `분산(分散)` — but not always: a term
+#: can be introduced after a space, or stand alone in a citation, and treating
+#: `우회 [傳統]` as a leak because of one space is a false alarm on exactly the
+#: documents that gloss the most.
+_GLOSSED = re.compile(r"[(\[][^)\]]*[\u4e00-\u9fff][^)\]]*[)\]]")
+
+
+def _stray_hanja(text: str) -> str:
+    """The first run of ideographs that is not a parenthesised gloss, or `''`."""
+    glosses = [(m.start(), m.end()) for m in _GLOSSED.finditer(text)]
+    for found in _HANJA.finditer(text):
+        if any(start <= found.start() < end for start, end in glosses):
+            continue
+        return found.group(0)
+    return ""
+
+
 #: Left in from a template or a draft. Unambiguous: none of these is something
 #: somebody meant to submit.
 _PLACEHOLDER = re.compile(
@@ -155,14 +192,76 @@ def from_sections(sections: list[dict]) -> list[Part]:
 
 
 def from_slides(slides: list[dict]) -> list[Part]:
-    """A JSON deck: one part per slide."""
+    """A JSON deck: one part per slide.
+
+    Every field a slide can hold words or numbers in, not just the two it used
+    to. `bullets` and `body` were the whole vocabulary once; a slide can now be
+    a table, a row of figures or a chart, and those are precisely the shapes
+    that carry the numbers worth checking. Read as it was, a chart slide with
+    eight invented quarters on it arrived at the checks as an empty slide and
+    every rule passed.
+    """
     parts = []
     for slide in slides:
         lines = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
         if body := str(slide.get("body") or "").strip():
             lines.append(body)
+        # A table row reads as one line: the checks are looking for claims, and
+        # a claim in a table is the row rather than the cell.
+        for row in slide.get("rows") or []:
+            if line := " ".join(str(cell) for cell in row if str(cell).strip()):
+                lines.append(line)
+        for pair in slide.get("metrics") or []:
+            if isinstance(pair, list) and len(pair) >= 2:
+                lines.append(f"{pair[0]} {pair[1]}")
+        if chart := slide.get("chart"):
+            lines.extend(_chart_lines(chart))
+        # The three paired layouts, read the same way a table row is: the claim
+        # is the pair. Added when the layouts were and this was not, so a deck
+        # whose 참여 혜택 slide held four filled bands was stamped `P0 empty` —
+        # and 전체 고치기 then paid for an LLM rewrite of four correct slides.
+        # The hanja and invented-number rules were blind to the same text.
+        for key in ("bands", "tiles", "timeline"):
+            for pair in slide.get(key) or []:
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                    if line := " ".join(str(half) for half in pair[:2] if str(half).strip()):
+                        lines.append(line)
+        if slide.get("layout") == "section":
+            # A divider says the name of the part and nothing else — that is
+            # what a divider is. Nothing on it is a claim, and its four-word
+            # title is shorter than the emptiness floor, so checking it can
+            # only ever produce a false P0.
+            continue
         parts.append(Part(str(slide.get("title") or ""), lines))
     return parts
+
+
+def _chart_lines(chart: dict) -> list[str]:
+    """A chart's numbers as sentences the checks can read.
+
+    Paired with their labels rather than listed, because a bare column of
+    numbers is not a claim and a rule looking for one would find nothing. The
+    unit rides along: `1분기 처리 건수 120건` is what a reader would have to
+    have written to make the same assertion in prose, and it is that assertion
+    the checks are for.
+    """
+    if not isinstance(chart, dict):
+        return []
+    categories = [str(c) for c in (chart.get("categories") or [])]
+    unit = str(chart.get("unit") or "")
+    lines: list[str] = []
+    for item in chart.get("series") or []:
+        name, values = (
+            (item.get("name"), item.get("values"))
+            if isinstance(item, dict)
+            else (item[0], item[1])
+            if isinstance(item, (list, tuple)) and len(item) >= 2
+            else (None, None)
+        )
+        for position, value in enumerate(values or []):
+            if position < len(categories):
+                lines.append(f"{categories[position]} {name or ''} {value}{unit}".strip())
+    return lines
 
 
 def from_blocks(blocks: list[dict]) -> list[Part]:
@@ -211,6 +310,24 @@ def check(
             )
             continue
 
+        if stray := _stray_hanja(text):
+            findings.append(
+                Finding(
+                    # Wrong, not merely awkward. `_stray_hanja` has already let
+                    # every legitimate use through — a gloss in brackets, a
+                    # name — so what reaches here is a Chinese word standing in
+                    # a Korean sentence where a Korean word exists: 独自 for
+                    # 단독, 指的 for 가리키는. A reader takes it for a typo, and
+                    # a submitted document does not get a second reading. Filed
+                    # as P1 it showed on the badge as 볼 곳 — "have a look" —
+                    # which is not what somebody about to hand this in needs to
+                    # be told.
+                    "P0",
+                    "hanja",
+                    f"한국어 문장에 중국어 한자가 섞였습니다 — “{stray}”.",
+                    where,
+                )
+            )
         if found := _PLACEHOLDER.search(text):
             findings.append(
                 Finding(

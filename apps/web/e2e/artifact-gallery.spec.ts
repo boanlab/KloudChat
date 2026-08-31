@@ -113,5 +113,7 @@ test('카드에 없던 본문은 문서를 열 때 채워진다', async ({ page 
   // the document is the document: the source tab has the file in it.
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: '소스' }).click()
-  await expect(dialog.locator('pre')).toContainText('<!doctype html>', { timeout: 20_000 })
+  // 모델은 대문자 DOCTYPE 을 쓰고 서식 seed 는 소문자를 쓴다 — 둘 다 이
+  // 카드가 열릴 수 있는 문서다.
+  await expect(dialog.locator('pre')).toContainText(/<!doctype html>/i, { timeout: 20_000 })
 })

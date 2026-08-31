@@ -144,7 +144,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     }
 
     const rewrite = async (p: typeof page, body: string) => {
-      await p.getByRole('button', { name: '문서 수정' }).click()
+      await p.getByRole('button', { name: '원문 편집' }).click()
       await p.getByLabel('문서 원본').fill(`# ${report.title}\n\n## 한 절\n\n${body}\n`)
       await p.getByRole('button', { name: '저장', exact: true }).click()
       await p.waitForTimeout(1200)

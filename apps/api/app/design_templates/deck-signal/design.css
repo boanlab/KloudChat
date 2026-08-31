@@ -1,0 +1,43 @@
+/* 신호 — 조명을 낮춘 방, 어두운 화면, 큰 글씨.
+ *
+ * 이 서식은 `dark = true` 를 선언하고 있었고 pptx 는 어둡게 나갔지만, 화면과
+ * PDF 는 계속 밝게 나왔다. 조판을 하나로 합치면서 어둠이 어디에도 남지 않아서
+ * 생긴 어긋남이다. 여기가 그 어둠이 사는 자리다.
+ *
+ * 어둠은 화면에만 준다. 인쇄된 종이가 검게 나오면 그것은 잉크를 쓰는 일이지
+ * 읽히는 일이 아니고, 기본 조판의 인쇄 규칙도 같은 결정을 이미 하고 있다 —
+ * 프로젝터와 프린터는 서로 반대의 것을 원한다.
+ *
+ * 큰 글씨는 화면과 종이 둘 다에 준다. 뒷줄에서 읽히지 않는 글씨는 배포한
+ * 유인물에서도 읽히지 않는다. */
+
+/* 뒷줄까지. 기본보다 제목은 한 단계, 본문은 두 단계 크다. */
+:root {
+  --h2-size: clamp(2.2rem, 4.6vw, 3.6rem);
+  --measure: min(48rem, 72%);
+}
+p, li { font-size: clamp(1.3rem, 2.1vw, 1.75rem); line-height: 1.5; }
+li + li { margin-top: 0.7em; }
+blockquote { font-size: clamp(2.2rem, 5vw, 3.4rem); }
+h3 { font-size: 0.95rem; letter-spacing: 0.18em; }
+table { font-size: clamp(1.1rem, 1.7vw, 1.4rem); }
+
+@media screen {
+  :root {
+    /* 표지 띠는 바탕에 흰빛을 섞어 만든다. 잉크를 덜 섞는 방식으로는
+       두 값이 거의 같은 검정이 되어 표지가 표지로 보이지 않는다. */
+    --paper: color-mix(in srgb, var(--ink) 88%, #000);
+    --band: color-mix(in srgb, #fff 9%, color-mix(in srgb, var(--ink) 88%, #000));
+    --hair: color-mix(in srgb, #fff 18%, transparent);
+    --page-ink: color-mix(in srgb, #fff 92%, var(--accent));
+  }
+  body { background: var(--paper); color: var(--page-ink); }
+  .slide { border-bottom-color: var(--hair); }
+  .slide.cover { background: var(--band); }
+  /* 어두운 바탕에서 --muted 는 종이용으로 고른 회색이라 읽히지 않는다. */
+  h3, .num, th, figcaption, small, dd, .lead { color: color-mix(in srgb, #fff 62%, transparent); }
+  th { border-bottom-color: var(--accent); }
+  th, td { border-bottom-color: var(--hair); }
+  code { background: var(--band); border-color: var(--hair); }
+  hr { border-top-color: var(--hair); }
+}

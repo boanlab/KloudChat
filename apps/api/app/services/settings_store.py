@@ -151,11 +151,16 @@ async def litellm_config() -> tuple[str, str]:
     values = await all_values()
     base = (
         (values.get(LITELLM_BASE_URL) or "").strip()
+        # The environment before the derivation. The derived address is a
+        # guess off the public domain, and a guess must not outrank a value an
+        # operator wrote down — it did, and the public gateway's 60-second
+        # proxy limit then cut long document calls to 504 even with the
+        # internal address sitting configured in the env.
+        or env_settings.litellm_base_url
         or derive_url(
             (values.get(BACKEND_BASE_URL) or "").strip() or env_settings.backend_base_url,
             "litellm",
         )
-        or env_settings.litellm_base_url
     )
     key = (values.get(LITELLM_MASTER_KEY) or "").strip() or env_settings.litellm_master_key
     return base, key
@@ -274,6 +279,11 @@ async def put(db: AsyncSession, key: str, value: str, actor_id: str) -> None:
         row.updated_at = utcnow()
         row.updated_by = actor_id
         db.add(row)
+    # This process must not keep serving the old value for another TTL after
+    # its own write. The 15s window sounds harmless until it holds a broken
+    # LiteLLM address someone just reverted — a generation starting inside it
+    # dialled nowhere.invalid and reported "문서를 만들지 못했습니다".
+    _cache["at"] = 0.0
 
 
 def preview(value: str) -> str:

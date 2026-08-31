@@ -16,7 +16,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, SessionKind
 from app.models.user import User
 from app.models.workspace import (
     Agent,
@@ -438,7 +438,14 @@ async def _resolve_skills(
             raise WorkspaceContextError("skill_not_installed")
         if skill.kinds and session.kind.value not in skill.kinds:
             raise WorkspaceContextError("skill_kind_mismatch")
-        if allowed is not None and skill.id not in allowed:
+        if allowed is not None and skill.id not in allowed and (
+            # A store install is a copy with its own id and `origin_id` back to
+            # the shared row. An agent whose allowlist names the shared row has
+            # allowed *that procedure*, and the copy is that procedure — a new
+            # account's first natural path (browse store → install → use the
+            # shared agent) answered 422 without this.
+            not skill.origin_id or skill.origin_id not in allowed
+        ):
             raise WorkspaceContextError("skill_not_allowed_by_agent")
         metadata = starter.runtime_metadata(skill)
         missing = sorted(set(metadata["required_tools"]) - available_tool_names)
@@ -590,7 +597,14 @@ async def assemble(
     project = await _load_project(db, user, session)
     design = await _load_design_system(db, user, project)
     instructions, knowledge, knowledge_files = await _project_blocks(db, user, project)
-    memories, memory_names, memory_total = await _memory_block(db, user, project, session)
+    # Not looked up at all off the chat surface — see the block gate below.
+    # Looking them up and then not including them left the context step saying
+    # "메모리 2건 참고" over a prompt that carried none, which is the screen
+    # asserting an influence that was not there.
+    if session.kind is SessionKind.chat:
+        memories, memory_names, memory_total = await _memory_block(db, user, project, session)
+    else:
+        memories, memory_names, memory_total = "", (), 0
     resolved = await _resolve_skills(
         db,
         user,
@@ -617,6 +631,12 @@ async def assemble(
     # turn, so it is the more specific instruction and comes later.
     if starting_block := _starting_template_block(starting_point):
         blocks.append(starting_block)
+    # Memories reach the conversation and stay out of the documents. On the
+    # chat surface a remembered role or interest shapes an answer; on a 보고서
+    # it becomes the report — a live run's 분기 업무 보고 opened with the
+    # *user's own saved memory* ("시스템 프롬프트 구조 인수인계") stated as the
+    # team's main project, in a deck about a different company. A document's
+    # material is the request and its attachments, and a memory is neither.
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 

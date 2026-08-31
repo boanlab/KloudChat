@@ -144,7 +144,16 @@ export async function approveOnce(page: Page, timeout = 480_000): Promise<boolea
   // The unconditional one. 이대로 계속 needs every question answered first, and
   // what these tests are about is the document, not the questions.
   const carryOn = page.getByRole('button', { name: '있는 자료로 진행' })
-  const card = approve.or(carryOn).first()
+  // The figures offer, declined. It is a second gate behind the outline — a
+  // deck or a report that could carry drawings asks before spending the
+  // credits — and nothing here knew the words, so a run that reached it simply
+  // stopped: no card these buttons match, no stream, and a test waiting out
+  // its whole timeout on an outline that was finished and asking a question.
+  //
+  // Declined rather than accepted because these tests are about the document.
+  // Drawing costs a model call per figure and comes back different every time.
+  const noFigures = page.getByRole('button', { name: '그림 없이 생성' })
+  const card = approve.or(carryOn).or(noFigures).first()
 
   // Both questions are asked together, every half second. "Not streaming" is
   // true before a turn starts as well as after it ends, so waiting on it alone
@@ -165,9 +174,37 @@ export async function approveOnce(page: Page, timeout = 480_000): Promise<boolea
     await page.waitForTimeout(500)
   }
 
-  const button = (await approve.isVisible().catch(() => false)) ? approve : carryOn
+  // In the order they are offered, so a screen showing both answers the
+  // outline first and meets the figures offer on the next round.
+  let button = carryOn
+  for (const candidate of [approve, carryOn, noFigures]) {
+    if (await candidate.isVisible().catch(() => false)) {
+      button = candidate
+      break
+    }
+  }
   if (!(await button.isVisible().catch(() => false))) return false
   await expect(button).toBeEnabled({ timeout: 30_000 })
+  // Pressed after the card has stopped moving.
+  //
+  // The proposal arrives on a stream that is still going: the card fades up,
+  // steps land under it and the transcript scrolls, and a press aimed at the
+  // button's first position lands on a node that has since been replaced —
+  // "element was detached from the DOM" after fifteen seconds of retrying.
+  // Measured once it settles, the button holds one identity and one position
+  // for as long as you care to watch, so the wait is short and the click is
+  // certain.
+  const settle = async () => {
+    let last = ''
+    for (let i = 0; i < 20; i++) {
+      const box = await button.boundingBox().catch(() => null)
+      const now = box ? `${Math.round(box.x)},${Math.round(box.y)}` : ''
+      if (now && now === last) return
+      last = now
+      await page.waitForTimeout(250)
+    }
+  }
+  await settle()
   await button.click()
   // Returns as soon as it is pressed. Waiting for the card to go would wait out
   // the run it just started — the card is drawn from the stored plan and only
@@ -183,15 +220,17 @@ export async function approvePlan(page: Page, timeout = 480_000) {
   const card = page
     .getByRole('button', { name: '이대로 생성' })
     .or(page.getByRole('button', { name: '있는 자료로 진행' }))
+    .or(page.getByRole('button', { name: '그림 없이 생성' }))
     .first()
-  for (let round = 0; round < 3; round++) {
+  // Up to four presses: clarify, outline, figures — and one spare.
+  for (let round = 0; round < 4; round++) {
     if (!(await approveOnce(page, timeout))) return
     // Only here. Coming straight back round would find the same card — still up
     // because the run it started has not finished — and press it again, and the
     // turns that produces are a second and third document nobody asked for.
     await card.waitFor({ state: 'hidden', timeout }).catch(() => undefined)
   }
-  throw new Error('제안 카드가 세 번을 눌러도 사라지지 않았습니다.')
+  throw new Error('제안 카드가 네 번을 눌러도 사라지지 않았습니다.')
 }
 
 export async function gotoSurface(page: Page, kind: string) {
@@ -220,7 +259,9 @@ export function answerText(page: Page, text: string | RegExp) {
  * Chosen by excluding the Strict Local group rather than by naming an id: a
  * picker row prints the model's name, not its route.
  */
-export async function pickToolModel(page: Page, name = /qwen3\.6/i) {
+// 기본값이 3.5 를 앞세우는 이유: 35b 는 검색·아티팩트 도구를 가끔 건너뛰고
+// 본문으로 답한다. 도구 스펙이 재는 것은 도구 경로이지 모델의 변덕이 아니다.
+export async function pickToolModel(page: Page, name = /qwen3\.5|qwen3\.6/i) {
   await page
     .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
     .first()
@@ -235,4 +276,120 @@ export async function pickToolModel(page: Page, name = /qwen3\.6/i) {
     }
   }
   throw new Error('도구를 쓸 수 있는 모델을 고르지 못했습니다')
+}
+
+/**
+ * Opens a report, then writes into the one that opened.
+ *
+ * The other way round does not work. Choosing an artifact from the API and
+ * then finding its card meant matching on a title, and the shared account has
+ * five reports called the same thing — so a spec could seed one document and
+ * open another, and the failure looks like a feature that does not work rather
+ * than a document that was never touched. Opening first removes the matching
+ * problem entirely: the session in the URL says which document is on screen,
+ * and that is the one written into.
+ *
+ * Returns the artifact and the id of the section the body went into, so a
+ * caller can scope its assertions to what it wrote rather than to whatever
+ * else the document is carrying from other runs.
+ */
+export async function openAndSeedReport(
+  page: Page,
+  body: string,
+  options: { clearDiagrams?: boolean } = {},
+): Promise<{ id: string; sectionId: string }> {
+  await signIn(page)
+  await page.goto('/artifacts')
+  await page.getByRole('tab', { name: /^보고서/ }).click()
+  await page.getByText('원본 작업 열기').first().click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
+  // Idle first. The card opened is whichever report comes first, and in a full
+  // suite run that can be one another spec is still writing — the panel then
+  // shows a document mid-stream, the seeded body is hidden behind it, and the
+  // failure reads as a block that will not render.
+  await expect(page.getByLabel('중지')).toBeHidden({ timeout: 300_000 })
+
+  const sessionId = page.url().split('/s/')[1]
+  const seeded = await page.evaluate(
+    async ([admin, content, session, clear]: [typeof E2E_ADMIN, string, string, boolean]) => {
+      const login = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: admin.email, password: admin.password }),
+      })
+      const s = await login.json()
+      const headers = {
+        'content-type': 'application/json',
+        Authorization: `Bearer ${s.accessToken ?? s.access_token}`,
+      }
+      const row = await (
+        await fetch(`/api/sessions/${session}`, { headers, credentials: 'include' })
+      ).json()
+      const id: string = row.artifactId ?? row.artifact_id
+      if (!id) return { ok: false, why: '이 대화에 문서가 없습니다', id: '', sectionId: '' }
+      const full = await (
+        await fetch(`/api/artifacts/${id}`, { headers, credentials: 'include' })
+      ).json()
+      const data = full.data ?? full
+      // One section, and Markdown.
+      //
+      // The rest of the document went with it. A report left over from a 서식
+      // run carries `format: "html"` sections, and a document with one of
+      // those in it opens in the page view — so a case about the web view
+      // found its own text present and hidden, and read that as a block that
+      // would not render. The seeded document is now only what the seed put
+      // there.
+      data.sections = [{ ...data.sections[0], content, format: 'markdown' }]
+      data.templateId = ''
+      // A picture stored by an earlier run would be shown instead of a fresh
+      // render, and some callers are about what the renderer does.
+      if (clear) data.sections[0].diagrams = {}
+      const res = await fetch(`/api/artifacts/${id}`, {
+        method: 'PATCH',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ data }),
+      })
+      return {
+        ok: res.status === 200,
+        why: String(res.status),
+        id,
+        sectionId: String(data.sections[0].id),
+      }
+    },
+    [E2E_ADMIN, body, sessionId, options.clearDiagrams === true] as [
+      typeof E2E_ADMIN,
+      string,
+      string,
+      boolean,
+    ],
+  )
+  expect(seeded.ok, `씨앗 심기 실패: ${seeded.why}`).toBe(true)
+
+  // Reloaded rather than re-navigated: the panel is holding the copy it was
+  // handed, and the body just written is not in it.
+  await page.reload()
+  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
+  return { id: seeded.id, sectionId: seeded.sectionId }
+}
+
+/**
+ * Whether this workspace has a surface switched on.
+ *
+ * `image` and `av` default to off — they spend credits per generation, so an
+ * administrator turns them on deliberately — and a screen for a surface that
+ * is off is an EmptyState saying so, with no composer on it. A spec that walks
+ * one of those screens then fails on a missing 서식 고르기 and reads as a
+ * broken feature, which is the one thing it is not.
+ */
+export async function surfaceOn(page: Page, kind: string): Promise<boolean> {
+  await page.goto(`/new/${kind}`)
+  const composer = page.getByLabel('프롬프트 입력')
+  // `getByText`, because `EmptyState` writes its title as a `<p>` — there is
+  // no heading here to ask for.
+  const off = page.getByText(/기능이 꺼져 있습니다/)
+  await expect(composer.or(off).first()).toBeVisible({ timeout: 20_000 })
+  return (await composer.count()) > 0
 }

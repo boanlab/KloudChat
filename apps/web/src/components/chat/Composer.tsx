@@ -9,8 +9,6 @@ import {
   Paperclip,
   Plug,
   Loader2,
-  Mic,
-  MicOff,
   Plus,
   ShieldCheck,
   Sparkles,
@@ -21,7 +19,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
 import { DesignGalleryModal } from '@/components/chat/DesignGallery'
-import { errorCode, errorMessage, PrivacyDecisionError, templateText, transcribe } from '@/lib/api'
+import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
@@ -382,10 +380,19 @@ export function Composer({
   //: clip is made by its own endpoint, which takes a prompt and the option
   //: chips and has no room for anything else the composer could collect.
   const isMedia = kind === 'image' || kind === 'av'
-  //: Only the chat surface runs a tool loop. A report or a deck writer is
-  //: handed no tools at all, so a lit globe there promised a search that was
-  //: never going to happen — the same reason the two media surfaces hide it.
-  const canWebSearch = kind === 'chat'
+  //: The surfaces that can be written against the web. Chat runs a tool loop;
+  //: a report, a deck and a rendered page each run a research pass before they
+  //: write, planning queries off the request and reading the pages they find.
+  //:
+  //: This used to be chat alone, and the reasoning was sound for what existed
+  //: then: the document writers were handed no tools, so a lit globe promised
+  //: a search that was never going to happen. Hiding the control was the wrong
+  //: half of that to fix. A chat answer that is out of date gets argued with;
+  //: a report gets exported and mailed. The two media surfaces still hide it —
+  //: an image endpoint takes a prompt and chips and nothing else.
+  //: A rendered page has no `SessionKind` of its own — it is a report or a
+  //: slides session wearing a render template — so these three cover it too.
+  const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
   const draftKey = draftKeyFor(sessionId, kind)
   const [value, setValue] = useState(() => drafts.get(draftKey) ?? '')
   const liveValue = useRef(value)
@@ -406,59 +413,7 @@ export function Composer({
   }, [draftKey, value])
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
-  //: idle → 'recording' while the mic is open, 'working' while Whisper reads it.
-  const [dictation, setDictation] = useState<'off' | 'recording' | 'working'>('off')
-  const [dictationError, setDictationError] = useState<string | null>(null)
-  const recorder = useRef<MediaRecorder | null>(null)
 
-    /**
-     * Records, then transcribes through this instance's own Whisper.
-     *
-     * Not `webkitSpeechRecognition`, which streams the microphone to a third
-     * party. The transcript fills the composer rather than being sent —
-     * dictation is a way of typing, not of submitting.
-     */
-  const toggleDictation = async () => {
-    if (dictation === 'recording') {
-      recorder.current?.stop()
-      return
-    }
-    if (dictation === 'working') return
-    setDictationError(null)
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      setDictationError(t('마이크를 쓸 수 없습니다. 브라우저 권한을 확인해 주세요.'))
-      return
-    }
-    const chunks: Blob[] = []
-    const rec = new MediaRecorder(stream)
-    recorder.current = rec
-    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-    rec.onstop = async () => {
-      // Released before the round trip, or the browser's recording indicator
-      // stays lit.
-      stream.getTracks().forEach((t) => t.stop())
-      setDictation('working')
-      try {
-        const text = await transcribe(new Blob(chunks, { type: rec.mimeType }))
-        setValue((v) => {
-          const next = v ? `${v.replace(/\s*$/, '')} ${text}` : text
-          activeRestoreToken.current = null
-          liveValue.current = next
-          return next
-        })
-        ref.current?.focus()
-      } catch (err) {
-        setDictationError(errorMessage(err, t('받아쓰지 못했습니다.')))
-      } finally {
-        setDictation('off')
-      }
-    }
-    rec.start()
-    setDictation('recording')
-  }
   const draft = useStore((s) => s.draft)
   const setDraft = useStore((s) => s.setDraft)
   /**
@@ -539,6 +494,7 @@ export function Composer({
   const livePendingTemplate = useRef(pendingTemplate)
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
+  const promptTemplates = useStore((s) => s.promptTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
@@ -609,7 +565,20 @@ export function Composer({
   }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  const [webSearch, setWebSearch] = useState(false)
+  /**
+   * On by default, and off is the deliberate choice.
+   *
+   * It was the other way round, and what that produced was answers written
+   * from a model's training data and presented with no sign of it — a GPU spec
+   * two generations stale, a list of "current" open-source models that had
+   * been superseded twice. The person only found out because they happened to
+   * know better and typed 인터넷 검색해봐, which works exactly once per fact
+   * they already doubted.
+   *
+   * `searchBlocked` still overrides this per turn, so a strict-local model
+   * never inherits a lit globe from the default.
+   */
+  const [webSearch, setWebSearch] = useState(true)
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
@@ -711,7 +680,6 @@ export function Composer({
     generateAudio,
     generateVideo,
     avOptions,
-    dictationEnabled,
     mediaError,
     clearMediaError,
   } = useStore()
@@ -733,7 +701,12 @@ export function Composer({
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
     null
-  const hasTemplates = designTemplates.some((row) => row.surface === kind)
+  // Sentences count too — 챗 has no 서식 at all, so asking only about shapes
+  // hid the picker on the one surface where a saved starting point is the
+  // whole of what it offers.
+  const hasTemplates =
+    designTemplates.some((row) => row.surface === kind) ||
+    promptTemplates.some((row) => row.kind === kind)
   //: Whether the empty screen — and its own copy of this button — is gone.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
@@ -1300,6 +1273,25 @@ export function Composer({
                 {t('업로드 중')}
               </span>
             )}
+            {/*
+              The reason, in words, on the screen.
+              
+              A failed upload wore a ⚠ and kept why it failed in a `title` —
+              which is a hover, and a hover is nothing on a phone and nearly
+              nothing to somebody who has not been told there is something to
+              hover over. So a scan nobody can read and a file that is not what
+              its name says both arrived as a chip with a small orange triangle,
+              and the next thing that happened was a question about contents
+              that were never there.
+            */}
+            {attachments.some((f) => f.error) && (
+              <p role="status" className="w-full text-xs text-warn">
+                {attachments
+                  .filter((f) => f.error)
+                  .map((f) => `${f.name} — ${f.error}`)
+                  .join(' · ')}
+              </p>
+            )}
           </div>
         )}
 
@@ -1571,29 +1563,6 @@ export function Composer({
           )}
 
 
-          {dictationEnabled && (
-            <button
-              onClick={() => void toggleDictation()}
-              aria-pressed={dictation === 'recording'}
-              aria-label={t('음성 입력')}
-              title={dictation === 'recording' ? t('멈추고 받아쓰기') : t('말한 내용을 받아 적습니다')}
-              disabled={dictation === 'working'}
-              className={cn(
-                'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 transition-colors hover:bg-elevated',
-                dictation === 'recording' ? 'text-danger' : 'text-muted hover:text-fg',
-                dictation === 'working' && 'opacity-60',
-              )}
-            >
-              {dictation === 'working' ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : dictation === 'recording' ? (
-                <MicOff size={15} />
-              ) : (
-                <Mic size={15} />
-              )}
-            </button>
-          )}
-
           {usableConnectors.length > 0 && (
             <Dropdown
               className="min-w-72"
@@ -1603,7 +1572,14 @@ export function Composer({
                     'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
-                  aria-label={t('커넥터')}
+                  /* With the count on the face of it and 커넥터 in the label,
+                     the accessible name has to hold both — otherwise the
+                     button says 25 and answers to something else. */
+                  aria-label={
+                    activeConnectors.length
+                      ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
+                      : t('커넥터')
+                  }
                 >
                   <Plug size={15} />
                   {activeConnectors.length > 0 && <span>{activeConnectors.length}</span>}
@@ -1745,13 +1721,7 @@ export function Composer({
         </p>
       )}
       <p className="mt-2 text-center text-xs text-faint">
-        {dictationError
-          ? dictationError
-          : dictation === 'recording'
-            ? t('듣고 있습니다 — 다시 누르면 받아 적습니다')
-            : dictation === 'working'
-              ? t('받아 적는 중…')
-              : busy && isMedia
+        {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
               ? t('Enter 로 생성 · 만든 그림은 아티팩트에 쌓입니다')
@@ -1888,7 +1858,7 @@ export function Composer({
 
       <DesignGalleryModal
         kind={kind}
-        projectId={projectId}
+        sessionId={sessionId}
         open={galleryOpen}
         onClose={() => setGalleryOpen(false)}
       />

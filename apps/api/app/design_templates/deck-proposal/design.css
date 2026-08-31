@@ -1,0 +1,34 @@
+/* 제안 발표 — 문제·접근·근거, 그리고 마지막 장의 요청.
+ *
+ * 이 덱은 마지막 한 장을 위해 존재한다. 앞의 장들이 아무리 좋아도 무엇을
+ * 요청하는지가 흐리면 심사는 결정을 미룬다. 그래서 요청 장만 유일하게 바탕을
+ * 갖고, 그 안의 굵은 글자만 강조색을 얻는다.
+ *
+ * 근거 장은 숫자 한 개를 제목보다 크게 뽑는다. 근거는 문장으로 설득하는 것이
+ * 아니라 값 하나로 세우는 것이고, 그 값이 어디서 왔는지는 바로 아래 선 위에
+ * 붙는다 — 출처 없는 숫자는 근거가 아니기 때문이다. */
+
+:root {
+  --h2-size: clamp(1.7rem, 3vw, 2.4rem);
+  --measure: min(46rem, 70%);
+}
+
+/* 근거 한 개. 기본보다 크게 뽑고, 출처를 붙인 선을 두껍게 둔다. */
+.slide.figure .claim { font-size: clamp(2.4rem, 7.5vw, 4.8rem); }
+.slide.figure .note { border-top-width: 3px; font-size: 0.9rem; }
+
+/* 요청. 이 덱에서 바탕을 갖는 유일한 장이고, 그것이 이 서식의 전부다. */
+.slide.ask h2 { border-bottom-color: var(--accent-ink); }
+.slide.ask li { font-size: clamp(1.15rem, 1.8vw, 1.4rem); }
+.slide.ask .note {
+  padding-top: 0.7rem;
+  border-top: 2px solid var(--accent-ink);
+  font-size: 0.92rem;
+}
+
+/* 접근은 차례다. 번호 있는 목록이 이 덱에서 자주 쓰이므로 눈에 들어오게. */
+ol { padding-left: 1.8em; }
+ol > li::marker { font-weight: 700; }
+
+/* 문제 장의 인용은 고객의 말이다. 크게 두되 따옴표는 쓰지 않는다. */
+blockquote { font-size: clamp(1.7rem, 3.6vw, 2.6rem); line-height: 1.3; }

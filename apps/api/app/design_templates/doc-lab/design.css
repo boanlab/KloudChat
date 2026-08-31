@@ -1,0 +1,54 @@
+/* 실험 노트 — 측정값은 자릿수를 맞춰 한 열에 세운다.
+ *
+ * 이 문서에서 표는 읽는 것이 아니라 견주는 것이다. 1,204 와 318 을 눈으로
+ * 견주려면 두 수의 일의 자리가 같은 세로선 위에 있어야 하고, 그러려면 숫자
+ * 열은 오른쪽 정렬이고 글자 폭이 고정이어야 한다. 기본 조판은 표를 왼쪽으로
+ * 세우므로 여기서 뒤집는다.
+ *
+ * 절 이름은 목적·방법·결과·한계로 정해져 있다. 정해진 이름은 제목이라기보다
+ * 표지이므로, 크게 쓰지 않고 작은 대문자처럼 눌러 쓴다. */
+
+.page { line-height: 1.6; }
+
+.cover { min-height: 0; padding: 0 0 1rem; margin: 0 0 1.8rem; }
+.cover h1 { font-size: 1.5rem; }
+.cover::after { height: 1px; }
+
+/* 표지가 아니라 표지판. */
+h2 {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--hair);
+}
+h2::before { color: var(--accent); font-size: 0.86rem; }
+h3 { font-size: 1rem; margin-top: 1.3rem; }
+
+/* 측정값. 머리와 몸이 같은 규칙으로 정렬되어야 열이 선다. */
+table { font-size: 0.9rem; font-variant-numeric: tabular-nums lining-nums; }
+table th:not(:first-child),
+table td:not(:first-child) {
+  text-align: right;
+  padding-right: 0;
+  padding-left: 1.2em;
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+  font-feature-settings: "tnum" 1;
+}
+table th:not(:first-child) { font-family: inherit; }
+table td:first-child { white-space: nowrap; }
+/* 격자를 다 그리지 않는다. 세로선 없이도 오른쪽 정렬이 열을 세운다. */
+td { border-bottom: 1px solid var(--hair); }
+
+/* 방법은 절차이고, 절차는 다시 해 볼 수 있어야 한다. */
+ol.steps > li { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+ol.steps > li span { color: var(--ink); }
+
+/* 한계는 각주가 아니라 본문이다. 마지막 절을 눌러 두면 읽고 넘어가게 된다. */
+section:last-of-type h2 { color: var(--accent); border-bottom-color: var(--rule); }
+
+@media print {
+  .cover { min-height: 0; padding: 0 0 1rem; page-break-after: auto; break-after: auto; }
+}

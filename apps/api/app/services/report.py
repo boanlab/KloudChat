@@ -25,7 +25,18 @@ import httpx
 
 from app.core.config import settings
 from app.models.chat import SessionKind
-from app.services import grounding, settings_store
+from app.services import deck as deck_rules
+from app.services import (
+    figures,
+    grounding,
+    hangul,
+    imagegen,
+    pictures,
+    research,
+    richtext,
+    settings_store,
+    thinking,
+)
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 
@@ -34,11 +45,6 @@ log = logging.getLogger(__name__)
 #: Each section is its own model call, so this is the multiplier on the bill.
 _MIN_SECTIONS = 3
 _MAX_SECTIONS = 8
-
-#: Search hits kept as the reference shelf — enough to cite, few enough to fit
-#: in every section prompt.
-_SOURCES = 6
-_SEARCH_TIMEOUT = httpx.Timeout(12.0, connect=6.0)
 
 _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
 
@@ -73,8 +79,106 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 - 제목 줄은 쓰지 마라. 본문만.
 - 마크다운을 쓰되 최상위 제목(#)은 쓰지 마라.
 - 앞에서 한 말을 되풀이하지 마라.
+- **비교·수치·일정은 표로 써라.** 두 가지 이상을 같은 기준으로 견주거나, 항목별
+  값이 나열되거나, 날짜와 담당이 붙는 대목은 줄글보다 표가 읽힌다. 줄글로 늘어
+  놓은 비교는 읽는 사람이 머릿속에서 표로 다시 그려야 한다.
+- **다만 한 항목이 시점에 따라 변하는 값은 표가 아니라 아래의 ```chart 다.**
+  1월·2월·3월…처럼 시점이 열로 늘어서는 표는 단 폭을 넘기고, 읽는 사람은 결국
+  그 숫자들을 머릿속에서 선으로 잇는다. **시점이 4개를 넘으면 표를 쓰지 마라.**
+- **같은 숫자를 두 번 쓰지 마라.** 표나 차트에 넣은 값을 문단에서 다시 읊지
+  마라. 본문은 그 숫자가 무엇을 뜻하는지 말하는 자리다.
+- 표는 이 형식으로 쓴다. **행 사이에 빈 줄을 넣지 마라** — 빈 줄이 들어가면
+  표가 아니라 문장으로 그려진다.
+
+      | 기준 | 대안 A | 대안 B |
+      | --- | --- | --- |
+      | 초기 비용 | 0원 | 약 3억 원 |
+      | 도입 기간 | 2주 | 4개월 |
+
+- **핵심 수치는 강조 블록으로 뽑아라.** 절의 결론이 되는 숫자가 두셋 있으면
+  ```kpi 로 감싼 블록에 `값 | 이름` 을 한 줄씩 쓴다. 화면과 내보낸 파일 양쪽에
+  큰 숫자로 나온다. 최대 4개.
+
+      ```kpi
+      32% | 오탐 감소
+      1.4초 | 평균 응답 시간
+      99.2% | 가용성
+      ```
+
+  - **한 절에 하나까지.** 매 절마다 붙이면 강조가 아니라 배경이 된다.
+  - 값은 짧게 — `32%`, `1.4초`, `3억 원`. 문장을 넣지 마라.
+  - 표에 있는 수치를 그대로 옮기지 마라. 표는 견주는 자리고, 이 블록은
+    **하나를 기억시키는** 자리다.
+  - 블록만 두지 마라. 그 숫자가 무엇을 뜻하는지는 본문이 말해야 한다.
+- **차례대로 하는 일은 절차 블록으로 써라.** ```steps 로 감싸고 `이름 | 설명` 을
+  한 줄씩 쓴다. 번호가 붙어 나온다. 최대 8단계.
+
+      ```steps
+      자료 수집 | 공개 데이터와 내부 로그를 모은다
+      정제 | 중복과 결측을 걸러낸다
+      분석 | 세 가지 기준으로 견준다
+      ```
+
+  - 번호를 직접 쓰지 마라. 번호는 자동으로 붙는다.
+  - 이름은 짧게, 설명은 한 줄로. 두 문장이 필요하면 그건 절차가 아니라 본문이다.
+  - **갈라지는 흐름은 이걸로 쓰지 마라.** 조건에 따라 길이 나뉘거나 되돌아가면
+    아래의 mermaid 를 써라. 반대로 곧게 이어지는 순서를 mermaid 로 그리면
+    목록을 그림으로 만든 것뿐이고, 파일에서는 글자를 잃는다.
+- **구조·흐름·관계는 mermaid 로 그려라.** ```mermaid 로 감싼 블록을 쓰면 화면과
+  내보낸 파일 양쪽에 도해로 나온다. 아키텍처, 절차, 조직, 상태 변화가 대상이다.
+  글로 세 문단 걸릴 관계도를 열 줄로 적을 수 있다.
+- 도해는 **가로로 긴 직사각형**이어야 한다. 종이에 인쇄되는 그림이고, 세로로
+  길면 한 쪽을 통째로 먹는다. 폭에 맞춰 줄이면 이번에는 글자가 읽을 수 없게
+  작아진다. 아래 규칙은 전부 그 모양 하나를 위한 것이다.
+  - **층은 3개까지.** `graph TD` 에서 층의 수가 곧 세로 길이다. `A --> B --> C
+    --> D --> E` 처럼 한 줄로 이어지면 다섯 층이 되어 좁고 길어진다.
+  - **한 줄로 이어지면 도해가 아니다.** 그건 절차이므로 위의 ```steps 로 써라.
+    도해는 **갈라질 때만** 쓴다.
+  - 한 층에 **2~4개를 나란히** 놓아라. 형제 노드가 가로로 퍼지면서 그림이
+    납작해진다. 이것이 폭을 쓰는 유일한 방법이다.
+  - 노드는 **8개 이하**, 이름은 **10자 안쪽**. 긴 이름은 칸을 넓히는 게 아니라
+    줄바꿈되어 칸을 높이고, 그만큼 그림이 세로로 자란다. `/` 로 두 가지를 한
+    칸에 넣지 마라 — `서버리스/컨테이너` 는 칸 하나가 아니라 노드 둘이다.
+  - **화살표에 글을 붙이는 문법은 `A -->|성공| B` 하나뿐이다.** 파이프는 화살표
+    **바로 뒤**에 오고 그 뒤에 도착 노드가 온다. `A --> B|성공| C` 처럼 쓰면
+    mermaid 가 그리지 못하고, 읽는 사람은 도해 대신 소스를 보게 된다.
+  - 화살표에 붙이는 글은 **6자 안쪽.** 노드 이름보다 더 잘 줄바꿈되고, 줄바꿈된
+    화살표 글씨는 선 옆에 두 줄로 떠서 그림을 어지럽게 만든다. 길어질 것 같으면
+    아예 붙이지 마라.
+  - `subgraph` 는 **하나까지**. 둘을 나란히 놓으면 각각이 절반으로 줄어든다.
+    비교가 목적이면 도해 두 개로 나누거나 표로 써라.
+  - `style`·`classDef`·`linkStyle` 로 색을 칠하지 마라. 색은 서식이 정한다.
+    써도 그리기 전에 지워진다.
+- **수치의 모양이 요점이면 ```chart 로 그려라.** 표는 값을 **읽는** 자리고
+  차트는 값의 **모양**을 보는 자리다. 항목별 크기 비교는 `bar`, 시간에 따른
+  추이는 `line`. **시점이 4개 이상이면 표가 아니라 언제나 차트다.**
+
+      ```chart
+      bar | 건
+      분기 | 처리 건수 | 반려 건수
+      1분기 | 120 | 8
+      2분기 | 210 | 11
+      3분기 | 380 | 9
+      ```
+
+  - 첫 줄은 `종류 | 단위`. 둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
+  - 가로축 항목은 **8개까지**, 계열은 **2개까지**.
+  - **모든 줄의 값 개수가 계열 수와 같아야 한다.** 하나라도 비면 그 줄은 통째로
+    빠진다 — 빈칸을 0으로 채우면 그리지 않은 0이 그래프에 주장으로 남는다.
+  - 값이 서넛뿐이면 차트 대신 표나 강조 수치를 써라. 막대 세 개짜리 그림은
+    표보다 자리만 넓게 차지한다.
+  - **지어낸 수치를 쓰지 마라.** 그래프는 숫자보다 더 사실처럼 읽힌다.
+  - 색과 축 눈금은 정하지 마라. 서식이 정하고, 세로축은 언제나 0에서 시작한다.
+- 표는 3~5행이 적당하다. 그보다 길면 본문에서 요점을 먼저 말하고 표는 근거로
+  둔다. 표 하나로 절을 대신하지 마라 — 표 앞에 무엇을 비교하는지, 뒤에 그래서
+  무엇인지 한 문장씩은 있어야 한다.
 - 참고 자료에서 가져온 사실은 그 자료의 번호를 문장 끝에 [1] 처럼 붙여라.
   목록에 없는 번호는 절대 쓰지 마라. 참고 자료가 없으면 번호도 쓰지 마라.
+- **자료에 없는 고유한 값을 지어내지 마라.** 금액, 날짜, 기관 이름, 사람 이름,
+  계약 상대가 그렇다. 결정해야 할 자리라면 값을 채우지 말고 무엇을 정해야
+  하는지를 적어라 — "예산 2억 원" 이 아니라 "예산 규모(미정)", "A社·B社" 가
+  아니라 "협약 기업(선정 필요)" 이다. 지어낸 고유값은 읽는 사람이 그대로
+  옮겨 적고, 그 뒤에 아무도 그것이 어디서 왔는지 묻지 않는다.
 
 원래 요청: {request}"""
 
@@ -111,6 +215,11 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
+                    # No thinking on a call whose whole answer is one JSON
+                    # object — see `thinking.NO_REASONING` for the measurements.
+                    # Safe to send everywhere: the proxy runs `drop_params`, so
+                    # a provider that has never heard of it never sees it.
+                    "reasoning": thinking.NO_REASONING,
                 },
             )
             if response.status_code != 429 or attempt == len(_BACKOFF):
@@ -119,6 +228,48 @@ async def _complete(
             await asyncio.sleep(_BACKOFF[attempt])
         response.raise_for_status()
         payload = response.json()
+
+    # A reasoning model can spend the whole ceiling thinking and return an
+    # empty answer with `finish_reason: "length"`. See `services/thinking.py` —
+    # this is the one place that can tell that apart from a model with nothing
+    # to say, because it is the only place holding the raw payload.
+    if bigger := thinking.starved(payload, max_tokens):
+        log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
+        ) as client:
+            again = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": bigger,
+                    "reasoning": thinking.NO_REASONING,
+                },
+            )
+            if again.status_code >= 400:
+                # A gateway that does not know `reasoning` refuses the whole
+                # call. The ceiling alone still helps every model that does not
+                # scale its thinking to it.
+                again = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": model, "messages": messages, "max_tokens": bigger},
+                )
+        if again.status_code == 200:
+            retried = again.json()
+            spent = retried.get("usage") or {}
+            first = payload.get("usage") or {}
+            # Both calls are charged, so both are counted. A budget that hid
+            # the first attempt would under-report what the turn cost.
+            payload = retried
+            payload["usage"] = {
+                "prompt_tokens": int(first.get("prompt_tokens") or 0)
+                + int(spent.get("prompt_tokens") or 0),
+                "completion_tokens": int(first.get("completion_tokens") or 0)
+                + int(spent.get("completion_tokens") or 0),
+            }
 
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     raw = payload.get("usage") or {}
@@ -165,62 +316,6 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
     return title, [line for line in lines if line][:_MAX_SECTIONS]
 
 
-def _publisher(url: str) -> str:
-    """Host without `www.` — what a reader recognises."""
-    host = re.sub(r"^https?://", "", url).split("/")[0]
-    return re.sub(r"^www\.", "", host)[:80]
-
-
-async def gather_sources(request: str) -> list[dict[str, Any]]:
-    """Reference shelf for one report, from the SearXNG the tools use.
-
-    `[]` on failure or with no search backend, which is why the citation rule in
-    the section prompt is conditional.
-    """
-    backends = await settings_store.tools_config()
-    if not backends.search:
-        return []
-    try:
-        async with httpx.AsyncClient(timeout=_SEARCH_TIMEOUT) as client:
-            response = await client.get(
-                f"{backends.search.rstrip('/')}/search",
-                params={"q": request[:300], "format": "json", "language": "ko"},
-            )
-            response.raise_for_status()
-            results = (response.json() or {}).get("results") or []
-    except (httpx.HTTPError, ValueError) as exc:
-        log.info("report source search failed: %s", exc)
-        return []
-
-    sources: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for row in results:
-        url = str(row.get("url") or "")
-        title = str(row.get("title") or "").strip()
-        if not url or not title:
-            continue
-        publisher = _publisher(url)
-        # One entry per site: duplicates crowd out coverage on a short shelf.
-        if publisher in seen:
-            continue
-        seen.add(publisher)
-        sources.append(
-            {
-                "id": f"src{len(sources)}_{uuid.uuid4().hex[:6]}",
-                "ordinal": len(sources) + 1,
-                "title": title[:200],
-                "publisher": publisher,
-                "url": url,
-                "origin": "web",
-                "originLabel": "웹 검색",
-                "quote": str(row.get("content") or "")[:300],
-            }
-        )
-        if len(sources) >= _SOURCES:
-            break
-    return sources
-
-
 def _refs_block(sources: list[dict[str, Any]]) -> str:
     if not sources:
         return _NO_REFS
@@ -228,6 +323,70 @@ def _refs_block(sources: list[dict[str, Any]]) -> str:
         f"[{s['ordinal']}] {s['title']} ({s['publisher']})\n{s.get('quote') or ''}"
         for s in sources
     )
+
+
+async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | None:
+    """One picture as a stored figure, or `None` when it could not be drawn.
+
+    Embedded as a `data:` URI rather than a file reference. A report is
+    exported and mailed, and a picture that lives at a URL is a picture that is
+    missing by the time somebody opens the attachment — the same reason the
+    document editor embeds what a person pastes in.
+
+    Never raises. A drawing that fails leaves the section without a figure,
+    which the reader can see; a turn that dies takes the whole document.
+    """
+    if not image_model:
+        return None
+    base, _ = await settings_store.litellm_config()
+    try:
+        made = await imagegen.generate(
+            base_url=base,
+            api_key=api_key,
+            model=str(image_model.get("id") or ""),
+            prompt=imagegen.compose_prompt(
+                str(figure.get("prompt") or ""), aspect="4:3", style=""
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — a missing figure is not a failed report
+        log.warning("figure could not be drawn: %s", exc)
+        return None
+    return {
+        # `encode` already returns the whole `data:` address; wrapping it
+        # in `data_uri` again produced `data:image/png;base64,data:…`,
+        # which every reader of it silently refused.
+        "src": pictures.encode(made.mime, made.data),
+        "caption": str(figure.get("caption") or ""),
+        "width": made.width,
+        "height": made.height,
+        # Popped by the caller into the turn's usage. Carried on the dict
+        # because the drawing is billed to the same turn the prose is.
+        "_in": made.input_tokens,
+        "_out": made.output_tokens,
+    }
+
+
+#: The two blocks that are nothing but figures, drawn large.
+_FIGURE_FENCE = re.compile(r"^```(?:kpi|chart)\b.*?^```\s*$", re.S | re.M)
+
+
+def _grounded_figures(text: str, grounded: bool) -> str:
+    """Figure blocks removed from a section with nothing to draw them from.
+
+    The same rule the deck applies to its `chart` and `metrics` slides, and for
+    the same reason. Asked for a 검토 보고서 on a topic with no material, the
+    writer filled three sections with `kpi` blocks — 6개월, 80%, 90%, 4명, 30%,
+    100%, 0일, 8주, 40명, 80점 — every one of them invented, every one of them
+    set large on the page where a figure is read as the most factual thing in
+    the section.
+
+    The prose around them survives. A sentence saying the programme runs in a
+    compressed cycle is a claim somebody can weigh; the same claim as `8주`
+    beside a heading is a measurement, and there was no measuring.
+    """
+    if grounded:
+        return text
+    return _FIGURE_FENCE.sub("", text).strip()
 
 
 async def write(
@@ -257,6 +416,27 @@ async def write(
     #: keeps pressing it. Only this one pass is silenced; a later request that
     #: genuinely cannot be grounded is still allowed to say so.
     may_ask: bool = True,
+    #: The pictures somebody agreed to on the second card, ready to draw.
+    #:
+    #: `None` on the planning pass, which is where they are *proposed*. `[]`
+    #: means the card was answered with 그림 없이, and the difference matters:
+    #: a section told a figure is coming writes 아래 그림과 같이, and one told
+    #: nothing does not. That is why the question is asked before the writing
+    #: rather than after it.
+    figures_plan: list[dict] | None = None,
+    #: Model that draws them, and the key to draw with. Empty disables the
+    #: proposal entirely — no image model configured, no card.
+    image_model: dict | None = None,
+    #: Whether to research this report before writing it.
+    #:
+    #: The shelf this used to build was six titles and six 300-character
+    #: snippets, from one search on the request typed verbatim. That is enough
+    #: to print a reference list and not enough to correct a single thing the
+    #: model misremembers — which is how a report cites four real sources
+    #: underneath a paragraph none of them support. With this on, the pass runs
+    #: through `services.research`: the queries are planned off the request,
+    #: and the top pages are read in full before a heading is chosen.
+    web_search: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -273,6 +453,53 @@ async def write(
         "outlineOutputTokens": 0,
     }
 
+    # Before the outline, not after it. A 목차 chosen from memory commits the
+    # whole document to that memory's shape — every section after it is written
+    # to fill a heading that was already wrong. Researching first costs one
+    # planning call and buys an outline that knows what it is about.
+    findings = research.Findings()
+    # Checked before the step is drawn, not inside `run`. A deployment with no
+    # search backend would otherwise open every document with 자료 찾는 중 and
+    # close it with 참고할 자료 없음 — a step that reports the deployment's
+    # configuration as though it were this document's result.
+    if web_search and await research.available():
+        yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
+        findings = await research.run(
+            request, model=outline_model or model, api_key=api_key
+        )
+        usage["outlineInputTokens" if outline_model else "inputTokens"] += findings.usage[
+            "inputTokens"
+        ]
+        usage["outlineOutputTokens" if outline_model else "outputTokens"] += findings.usage[
+            "outputTokens"
+        ]
+        yield {
+            "type": "step",
+            "id": "sources",
+            "label": f"자료 {len(findings.sources)}건" if findings.sources else "참고할 자료 없음",
+            "status": "done",
+            "detail": findings.detail,
+        }
+    # Three states, and the writer is told which one it is in. A toggle
+    # somebody switched off is a choice and needs no disclaimer; a search that
+    # could not run and a search that found nothing are both worth saying, and
+    # they do not mean the same thing to a reader.
+    research_rule = ""
+    if web_search and not findings.searched:
+        research_rule = research.UNRESEARCHED_RULE
+    elif web_search and not findings.sources:
+        research_rule = research.EMPTY_RULE
+    # The pages read, as their own reference block. Appended rather than
+    # substituted: an attached file is still the better source for what it
+    # covers, and the two are labelled so the writer can tell them apart.
+    document_context = list(untrusted_context or [])
+    #: Whether a figure could honestly have come from anywhere. Judged once for
+    #: the run, by the same test the deck uses — a saved memory about who the
+    #: user is is material and is not a measurement.
+    grounded = deck_rules.has_numbers(request, document_context)
+    if block := research.context_block(findings):
+        document_context.append(block)
+
     if approved_plan is None:
         yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
         try:
@@ -287,7 +514,8 @@ async def write(
                         request=request[:2000],
                     ),
                     trusted_context=trusted_context,
-                    untrusted_context=untrusted_context,
+                    untrusted_context=document_context,
+                    research_rule=research_rule,
                 ),
                 api_key,
                 400,
@@ -329,7 +557,31 @@ async def write(
         # than written against: the caller stores it, shows it, and calls back
         # with it approved. Nothing has been written, which is what keeps the
         # report already on screen safe from a run nobody confirmed.
-        yield {"type": "proposal", "plan": {"title": title[:200], "sections": headings}}
+        #
+        # The pictures are proposed here too and asked about separately, once
+        # the outline is agreed — see `services.figures`. Proposed now because
+        # the planner has the outline in front of it; asked later because two
+        # decisions on one card is how somebody approves an expensive one by
+        # accident.
+        plan: dict[str, Any] = {"title": title[:200], "sections": headings}
+        if image_model:
+            drawn = await figures.propose(
+                request=request,
+                title=title,
+                parts=headings,
+                model=outline_model or model,
+                api_key=api_key,
+                image_model=image_model,
+            )
+            usage["outlineInputTokens" if outline_model else "inputTokens"] += drawn.usage[
+                "inputTokens"
+            ]
+            usage["outlineOutputTokens" if outline_model else "outputTokens"] += drawn.usage[
+                "outputTokens"
+            ]
+            if drawn.figures:
+                plan["figures"] = drawn.wire()
+        yield {"type": "proposal", "plan": plan}
         yield {"type": "usage", **usage}
         return
 
@@ -343,16 +595,10 @@ async def write(
     if title:
         yield {"type": "title", "title": title[:200]}
 
-    # Before any section, so all of them cite from one shelf.
-    yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
-    sources = await gather_sources(request)
-    yield {
-        "type": "step",
-        "id": "sources",
-        "label": f"자료 {len(sources)}건" if sources else "참고할 자료 없음",
-        "status": "done",
-        "detail": " · ".join(str(s["publisher"]) for s in sources),
-    }
+    # One shelf for every section, and the same one the outline was chosen
+    # from. Researched above — before this, the search ran here, which meant
+    # the 목차 was planned with nothing under it.
+    sources = findings.sources
     yield {"type": "sources", "sources": sources}
     refs = _refs_block(sources)
 
@@ -372,6 +618,12 @@ async def write(
 
     outline_text = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headings))
     written: list[str] = []
+    #: Approved pictures by the index of the section they belong to. Empty when
+    #: the figure card was answered 그림 없이, and then nothing below mentions a
+    #: figure — which is the whole point of asking before the writing.
+    wanted_figures = {
+        int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")
+    }
 
     for index, section in enumerate(sections):
         # The position lives in `progress`, not in the text: spelled into both,
@@ -401,9 +653,22 @@ async def write(
                         written="\n\n".join(written)[-4000:] or "(아직 없음)",
                         refs=refs,
                         request=request[:1500],
+                    )
+                    + (
+                        # Told before the prose is written, so the section can
+                        # refer to its figure. A picture added afterwards is a
+                        # picture nobody mentioned.
+                        "\n\n" + figures.note_for(figures.Figure(
+                            section=index,
+                            caption=str(wanted_figures[index].get("caption") or ""),
+                            prompt="",
+                        ))
+                        if index in wanted_figures
+                        else ""
                     ),
                     trusted_context=trusted_context,
-                    untrusted_context=untrusted_context,
+                    untrusted_context=document_context,
+                    research_rule=research_rule,
                 ),
                 api_key,
                 1200,
@@ -429,7 +694,67 @@ async def write(
 
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        section["content"] = body
+        # Models write a table with a blank line between every row, which is
+        # not a table to any renderer. Closed here, once, so the panel, the
+        # page view and the three exporters all read the same thing.
+        # Stray ideographs read back into Hangul before anything is stored —
+        # `services/hangul.py`. The deck and the page tracks did this at their
+        # own doors and the report did not, so a 보고서 came out carrying 培育,
+        # 劣势 and 書類 while a deck on the same subject did not. One product,
+        # one answer.
+        clean, _ = hangul.read_back(body)
+        clean = hangul.tidy_spacing(clean)
+        section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
+
+        # The picture, if this section is one of the ones somebody paid for.
+        # Drawn after the prose rather than before it so a failed drawing
+        # leaves a section with no figure rather than a section that refers to
+        # one — the prompt already told the writer a figure was coming, and
+        # that sentence is the thing a missing picture makes wrong.
+        if (drawing := wanted_figures.get(index)) is not None:
+            yield {
+                "type": "step",
+                "id": f"fig{index}",
+                "label": drawing.get("caption") or "그림 그리는 중",
+                "status": "running",
+                "progress": progress,
+            }
+            picture = await _draw(drawing, image_model, api_key)
+            if picture is None:
+                yield {
+                    "type": "step",
+                    "id": f"fig{index}",
+                    "label": drawing.get("caption") or "그림",
+                    "status": "error",
+                    "progress": progress,
+                }
+            else:
+                usage["inputTokens"] += picture.pop("_in", 0)
+                usage["outputTokens"] += picture.pop("_out", 0)
+                # Into the prose, not onto the section.
+                #
+                # `section["images"]` was the writer's own channel and the
+                # exporters read it — but nothing on screen did, so a figure
+                # somebody paid for sat in the downloaded file and was
+                # invisible in the panel. The body is the one place every
+                # reader looks.
+                #
+                # As Markdown rather than as HTML, because the body *is*
+                # Markdown here: the web view renders it, the page view turns
+                # it into an `<img>` the editor can move, and the exporters
+                # read it through the same `![…](…)` the document editor
+                # produces when somebody pastes a picture in themselves.
+                caption = str(picture.get("caption") or "").replace("]", " ")
+                section["content"] = (
+                    f"{section['content'].rstrip()}\n\n![{caption}]({picture['src']})"
+                )
+                yield {
+                    "type": "step",
+                    "id": f"fig{index}",
+                    "label": drawing.get("caption") or "그림",
+                    "status": "done",
+                    "progress": progress,
+                }
         written.append(f"## {section['heading']}\n{body}")
         yield {
             "type": "step",

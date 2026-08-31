@@ -1,0 +1,49 @@
+/* 사례 발표 — 현황과 대안을 나란히 놓고 15분 안에 권고까지.
+ *
+ * 이 덱에서 가장 자주 쓰이는 장은 견주는 장이다. 그래서 나뉜 장(`split`)도
+ * 견주는 장(`compare`)과 같은 규칙으로 그린다 — 모델이 어느 배치를 골랐든
+ * 왼쪽은 지금이고 오른쪽은 제안이며, 제안 쪽만 선을 갖는다. 배치 이름을 잘못
+ * 고른 것 때문에 논지가 무너지지 않게 하려는 것이다.
+ *
+ * 15분이라는 제약이 나머지를 정한다. 제목은 작고, 본문은 빽빽하지 않으며,
+ * 숫자는 크다 — 견주기는 숫자로 하고 설명은 말로 하기 때문이다. */
+
+:root {
+  --h2-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  --measure: min(50rem, 80%);
+}
+
+.slide.split .cols {
+  grid-template-columns: 1fr 1fr;
+  column-gap: clamp(1.25rem, 3vw, 2.5rem);
+}
+.slide.split .cols > div:first-child { color: var(--receded); }
+.slide.split .cols > div + div {
+  padding-left: clamp(1rem, 2vw, 1.75rem);
+  border-left: 2px solid var(--accent-ink);
+}
+.slide.split .cols > div + div h3 { color: var(--accent-ink); }
+
+/* 견주는 숫자. 표에서 첫 열만 이름이고 나머지는 값이므로 오른쪽으로 세운다. */
+table td:not(:first-child), table th:not(:first-child) {
+  text-align: right;
+  padding-right: 0;
+  padding-left: 1.2em;
+}
+table td { font-variant-numeric: tabular-nums; }
+
+/* 권고는 마지막 장이다. 그 장에서만 결론이 제목보다 크다. */
+.slide:last-child .claim,
+.slide.figure .claim { font-size: clamp(2.2rem, 7vw, 4.4rem); }
+
+@media (max-width: 720px) {
+  .slide.split .cols {
+    grid-template-columns: 1fr;
+    row-gap: 1.6rem;
+  }
+  .slide.split .cols > div + div {
+    padding: 1rem 0 0;
+    border-left: 0;
+    border-top: 2px solid var(--accent-ink);
+  }
+}

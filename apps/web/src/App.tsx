@@ -24,6 +24,7 @@ const AdminSystemPage = lazy(() => import('@/pages/AdminSystemPage').then((m) =>
 const AdminUsagePage = lazy(() => import('@/pages/AdminUsagePage').then((m) => ({ default: m.AdminUsagePage })))
 const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
 const AgentSetupPage = lazy(() => import('@/pages/AgentSetupPage').then((m) => ({ default: m.AgentSetupPage })))
+const ApiSetupPage = lazy(() => import('@/pages/ApiSetupPage').then((m) => ({ default: m.ApiSetupPage })))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
 const DesignsPage = lazy(() => import('@/pages/DesignsPage').then((m) => ({ default: m.DesignsPage })))
@@ -88,6 +89,7 @@ function Authenticated() {
           <Route path="usage" element={<MyUsagePage />} />
           <Route path="connectors" element={<ConnectorsPage />} />
           <Route path="agent-setup" element={<AgentSetupPage />} />
+          <Route path="api-setup" element={<ApiSetupPage />} />
           {/* Tabs live inside these pages, so the parent needs the splat. */}
           <Route path="settings/*" element={<SettingsPage />} />
           {/* One parent owns the role check so a new /admin route cannot be

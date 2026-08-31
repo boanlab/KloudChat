@@ -5,7 +5,11 @@
  * file exporting both components and hooks loses fast refresh.
  */
 import { useEffect, useState } from 'react'
-import { designTemplatesApi, type DesignTemplateRow } from '@/lib/api'
+import {
+  designTemplatesApi,
+  type DesignTemplateRow,
+  type DesignTemplateUsage,
+} from '@/lib/api'
 import { useStore } from '@/store/useStore'
 
 /**
@@ -27,6 +31,41 @@ export function useDesignTemplates(enabled = true) {
     void designTemplatesApi.list().then(setRows).catch(() => setRows([]))
   }, [enabled, cached])
   return rows
+}
+
+/**
+ * The catalogue ordered by what people actually pick.
+ *
+ * Its own order is by id, which is the order the files happen to sit in and
+ * means nothing to anybody — so the front door led with whatever sorted first
+ * and the shapes people reach for most were as likely to be two screens away.
+ *
+ * This person's own habit first, everyone's after it. Both matter and neither
+ * alone is enough: `mine` is empty on somebody's first day, and `popular` goes
+ * on describing the average user long after this one has their own way of
+ * working. Ordering by `mine` and breaking ties on `popular` gives the new
+ * person a sensible catalogue and then gets out of the way.
+ *
+ * The counts are a *sort key*, never a filter. A template nobody has used is
+ * last, not hidden — a catalogue that only shows what is already popular is a
+ * catalogue where nothing new is ever found.
+ *
+ * A failed request sorts by nothing rather than showing nothing.
+ */
+export function useTemplateUsage(enabled = true): DesignTemplateUsage {
+  const [usage, setUsage] = useState<DesignTemplateUsage>({ mine: {}, popular: {} })
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    void designTemplatesApi
+      .usage()
+      .then((next) => live && setUsage(next))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [enabled])
+  return usage
 }
 
 /**

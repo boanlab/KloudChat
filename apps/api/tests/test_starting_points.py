@@ -56,13 +56,13 @@ def test_every_starting_point_is_offered_once_and_hands_the_turn_back():
 
 def test_a_built_in_card_travels_in_the_shape_the_gallery_already_renders():
     """One card renders both lists, so the shared keys have to mean one thing."""
-    card = PromptTemplateOut.of(prompt_templates.get("t_incident"))
-    assert card.kind == card.surface == SessionKind.report.value
+    card = PromptTemplateOut.of(prompt_templates.get("t_debug"))
+    assert card.kind == card.surface == SessionKind.chat.value
     assert card.builtin is True
     # The English half is declared and unwritten; the client falls back.
     assert card.title_en == "" and card.fills_en == []
     wire = card.model_dump(by_alias=True)
-    assert wire["fills"] == list(prompt_templates.get("t_incident").fills)
+    assert wire["fills"] == list(prompt_templates.get("t_debug").fills)
     assert wire["titleEn"] == ""
 
 
@@ -128,19 +128,19 @@ async def test_the_starting_point_is_one_block_and_sits_after_the_skills():
         _user(),
         _session(),
         activated_skill_ids=[skill.id],
-        starting_template_id="t_essay",
+        starting_template_id="t_debug",
         available_tool_names=set(),
     )
     sources = [block.source for block in context.blocks]
-    assert sources.count("template:t_essay") == 1
-    assert sources.index(f"skill:{skill.id}") < sources.index("template:t_essay")
-    assert sources.index("template:t_essay") < sources.index("memory")
+    assert sources.count("template:t_debug") == 1
+    assert sources.index(f"skill:{skill.id}") < sources.index("template:t_debug")
+    assert sources.index("template:t_debug") < sources.index("memory")
 
-    block = next(b for b in context.blocks if b.source == "template:t_essay")
+    block = next(b for b in context.blocks if b.source == "template:t_debug")
     # Trusted, because the person chose it: the same standing as a skill body.
     assert block.trusted
-    assert block.text.startswith("# 시작점 — 업무·기술 보고서")
-    assert prompt_templates.get("t_essay").prompt.strip() in block.text
+    assert block.text.startswith("# 시작점 — 장애 원인 좁히기")
+    assert prompt_templates.get("t_debug").prompt.strip() in block.text
 
 
 @pytest.mark.asyncio
@@ -157,7 +157,7 @@ async def test_a_turn_carries_the_template_and_records_only_its_name(monkeypatch
 
     response = await sessions_router.send_message(
         db.session.id,
-        SendMessage(content="어제 새벽 장애 정리해 줘", starting_template_id="t_incident"),
+        SendMessage(content="어제 새벽 장애 정리해 줘", starting_template_id="t_debug"),
         _request(f"/sessions/{db.session.id}/messages"),
         user,
         db,
@@ -165,14 +165,14 @@ async def test_a_turn_carries_the_template_and_records_only_its_name(monkeypatch
     async for _chunk in response.body_iterator:
         pass
 
-    template = prompt_templates.get("t_incident")
+    template = prompt_templates.get("t_debug")
     started = [line for line in captured["trusted_context"] if "# 시작점" in line]
     assert len(started) == 1
     assert template.prompt.strip() in started[0]
 
     row = next(r for r in db.added if isinstance(r, Message) and r.role.value == "user")
     assert row.content == "어제 새벽 장애 정리해 줘"
-    assert row.started_from == {"templateId": "t_incident", "title": "장애 보고"}
+    assert row.started_from == {"templateId": "t_debug", "title": "장애 원인 좁히기"}
     # Named, not quoted — nowhere on the row, not only outside `content`.
     assert "재발 방지책" not in repr(row.model_dump())
 

@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     #: KloudChat-LLM gateway. Model and tool endpoints are derived from it
     #: by appending paths. Overridden by the admin screen.
     backend_base_url: str = ""
+    #: The printer sidecar — HTML in, PDF out, so an exported PDF is the same
+    #: document the screen draws rather than a second renderer's reading of it.
+    #: Empty means no printer, and every PDF falls back to the structural
+    #: exporters. That fallback is the reason this is a URL and not a flag: a
+    #: deployment that has not added the service keeps exporting.
+    print_base_url: str = ""
     litellm_base_url: str = ""
     litellm_master_key: str = ""
     litellm_timeout_sec: float = 20.0
@@ -149,7 +155,29 @@ class Settings(BaseSettings):
     title_model: str = "local/qwen3.6-35b"
     #: Conversation model when the user has not chosen one. Absent from the
     #: catalogue, the surface falls back to its cheapest.
-    default_chat_model: str = "strict-local/qwen3.6-35b"
+    #:
+    #: The `local/` alias, not `strict-local/`. Both run the same weights on the
+    #: same box; the strict alias is the one that is handed no network tool, and
+    #: as the instance default it made every new conversation, report and deck
+    #: unable to search — the search toggle arrives greyed out, and the answer
+    #: underneath it is written from training data with nothing saying so.
+    #: Strict-local is a route somebody chooses for text that must not leave,
+    #: which is a decision about one turn, not a default posture for all of them.
+    default_chat_model: str = "local/qwen3.6-35b"
+
+    #: The same, per surface, when one of them wants a different model.
+    #:
+    #: A conversation and a 보고서 are not the same job. Chat is a turn every
+    #: few seconds and is read as it arrives, so decode speed is most of what
+    #: the person feels; a document is one long run they wait for once, and
+    #: what they feel is whether it needed rewriting. A model three times the
+    #: decode cost is the wrong trade for the first and the right one for the
+    #: second.
+    #:
+    #: Empty falls back to `default_chat_model`, which is what every install
+    #: had before these existed.
+    default_report_model: str = ""
+    default_slides_model: str = ""
 
     #: The instance's wall clock, as an IANA name. Used for the date given to
     #: the model and for nothing else — every timestamp in the database stays

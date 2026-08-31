@@ -18,8 +18,12 @@ test('보고서를 문서 단위로 고치면 제목·절 제목·본문이 함�
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 
-  // Discoverable without hovering: the control is in the panel header.
-  await page.getByRole('button', { name: '문서 수정' }).click()
+  // 원문 편집기의 저장은 화면의 마지막 저장이다 — 페이지뷰의 저장과 이름이
+  // 겹치므로 위치로 가른다.
+  // 수정 버튼은 이제 페이지 편집기(ProseMirror)로 간다 — 표를 고치려던
+  // 사람이 `| --- |` 를 마주하지 않게 한 변경. 마크다운 원문은 제 이름을
+  // 단 '원문 편집' 으로 옮겨 갔고, 이 스펙이 검증하는 것은 그 원문 왕복이다.
+  await page.getByRole('button', { name: '원문 편집' }).click()
   const source = page.getByLabel('문서 원본')
   const preview = page.getByLabel('문서 미리보기')
   await expect(source).toBeVisible()
@@ -37,7 +41,7 @@ test('보고서를 문서 단위로 고치면 제목·절 제목·본문이 함�
   // Numbering follows the source, the same way the exporters write it.
   expect(await preview.locator('ol').first().getAttribute('start')).toBe('5')
 
-  await page.getByRole('button', { name: '저장' }).click()
+  await page.getByRole('button', { name: '저장', exact: true }).last().click()
   await expect(source).toBeHidden({ timeout: 20_000 })
 
   // Rendered document reflects every level, not just the prose.

@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui'
 import {
   argumentText,
-  designTemplatePreviewUrl,
   fillPrompt,
   templateText,
   type DesignTemplateRow,
@@ -13,11 +12,12 @@ import { currentLang } from '@/lib/i18n'
 import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
-import { useDesignTemplates, useStartTemplate } from '@/lib/useDesignTemplates'
+import { useDesignTemplates, useStartTemplate, useTemplateUsage } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 
-/** How many the front door shows before handing over to the catalogue. */
-const SHOWN = 6
+/** The preview document's own width, which the card scales down from. */
+
+const SHOWN = 8
 
 /**
  * A few shapes on the screen everybody lands on, and the way to the rest.
@@ -27,23 +27,41 @@ const SHOWN = 6
  * anybody who did not already know it existed. This is the front door: what
  * the answer can look like, beside the choice of what to make.
  *
- * A taste rather than the whole thing. Sixteen cards in a horizontal scroller
- * is a list nobody reaches the end of, and every one of them is a slide that
- * has to be rendered; the 디자인 screen shows all of them, grouped by surface,
- * with room for what each one asks for.
+ * A taste rather than the whole thing. Sixteen cards is a list nobody reaches
+ * the end of, and every one of them is a slide that has to be rendered; the
+ * 디자인 screen shows all of them, grouped by surface, with room for what each
+ * one asks for.
+ *
+ * Two rows of four rather than a scroller. A rail hides its own contents: the
+ * cards past the fold are behind a gesture people do not make, so half of what
+ * was on offer was never seen. A grid shows all eight at once and costs the
+ * height of one more row.
  *
  * Picking one here fills its blanks with their own defaults rather than
  * showing the form. The gallery is where you fill them in; from the home
  * screen the point is to *start*, and the sentence lands in the composer where
  * every word of it is still editable.
  */
-export function DesignRail() {
+export function DesignRail({
+  /**
+   * The surface the person has already chosen at the top of the screen.
+   *
+   * Without it this rail led with one card of each surface — breadth, which is
+   * the right answer on a front door and the wrong one under a tab somebody
+   * has just pressed. Standing on 보고서 and being offered five 발표 서식 reads
+   * as the tab not having done anything.
+   */
+  surface,
+}: {
+  surface?: SessionKind
+}) {
   const t = useT()
   const navigate = useNavigate()
   const enabledKinds = useStore((s) => s.enabledKinds)
   // The home screen is reached before the workspace load on a cold open, which
   // is the fallback fetch this hook exists for.
   const rows = useDesignTemplates()
+  const usage = useTemplateUsage()
   const startTemplate = useStartTemplate()
 
   const english = currentLang() === 'en'
@@ -54,22 +72,37 @@ export function DesignRail() {
         .map((row) => ({ row, text: templateText(row, english) })),
     [rows, enabledKinds, english],
   )
-  // Breadth before depth. The catalogue is ordered by id, so its first six are
-  // four decks and two pieces of audio — a rail that would say the product
-  // makes one kind of thing. One of each surface first, then whatever fits.
   const few = useMemo(() => {
+    // What this person keeps picking, then what everybody picks. The catalogue
+    // is ordered by id — the order the files sit in — so without this the front
+    // door leads with whatever sorted first.
+    const used = [...visible].sort(
+      (a, b) =>
+        (usage.mine[b.row.id] ?? 0) - (usage.mine[a.row.id] ?? 0) ||
+        (usage.popular[b.row.id] ?? 0) - (usage.popular[a.row.id] ?? 0),
+    )
+    // Breadth before depth, applied to that order rather than instead of it.
+    // Eight cards all of one surface would say the product makes one kind of
+    // thing — true of a brand-new installation, where every count is zero and
+    // the id order is four decks in a row. One of each surface first, then the
+    // most-used of whatever is left.
+    //: The chosen surface first, in the order above. Everything else keeps
+    //: the one-of-each rule, so a rail that runs out of 보고서 서식 still shows
+    //: what else exists rather than three empty slots.
+    const chosen = surface ? used.filter((c) => c.row.surface === surface) : []
+    const others = surface ? used.filter((c) => c.row.surface !== surface) : used
     const seen = new Set<SessionKind>()
     const lead: typeof visible = []
     const rest: typeof visible = []
-    for (const card of visible) {
+    for (const card of others) {
       if (seen.has(card.row.surface)) rest.push(card)
       else {
         seen.add(card.row.surface)
         lead.push(card)
       }
     }
-    return [...lead, ...rest].slice(0, SHOWN)
-  }, [visible])
+    return [...chosen, ...lead, ...rest].slice(0, SHOWN)
+  }, [visible, usage, surface])
   if (visible.length === 0) return null
 
   const start = (row: DesignTemplateRow, prompt: string) => {
@@ -101,9 +134,10 @@ export function DesignRail() {
           <ArrowRight size={13} />
         </Link>
       </div>
-      {/* A rail rather than a grid: this is the second thing on the screen,
-          and a wall of cards would push the recent work off it. */}
-      <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+      {/* Four across, two down, and one column at a time on the way to a
+          phone — a 224px card in a 360px viewport is a card with two words per
+          line. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {few.map(({ row, text }) => {
           const meta = kindMeta[row.surface]
           const Icon = meta.icon
@@ -112,26 +146,8 @@ export function DesignRail() {
               key={row.id}
               onClick={() => start(row, text.examplePrompt)}
               title={text.description}
-              className="group w-56 shrink-0 snap-start overflow-hidden rounded-card border border-line bg-panel text-left transition-colors hover:border-line-strong"
+              className="group overflow-hidden rounded-card border border-line bg-panel text-left transition-colors hover:border-line-strong"
             >
-              {row.hasPreview && (
-                <div className="pointer-events-none h-28 overflow-hidden border-b border-line bg-white">
-                  {/* Drawn in the default look, and asking for no other one is
-                      the honest answer here: a card on the home screen starts
-                      a session with no project, so the defaults are what its
-                      deck will actually come out in. The same gallery opened
-                      inside a project passes that project's design system. */}
-                  <iframe
-                    title={text.name}
-                    src={designTemplatePreviewUrl(row.id)}
-                    sandbox=""
-                    loading="lazy"
-                    tabIndex={-1}
-                    className="h-[440px] w-[880px] origin-top-left border-0"
-                    style={{ transform: 'scale(0.255)' }}
-                  />
-                </div>
-              )}
               <div className="space-y-1 p-2.5">
                 <div className="flex items-center gap-1.5">
                   <Icon size={12} style={{ color: meta.color }} />

@@ -89,7 +89,7 @@ async function openNewestReport(page: import('@playwright/test').Page) {
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-  await expect(page.getByRole('button', { name: '문서 수정' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 20_000 })
   return page.evaluate(async () => {
     const login = await fetch('/api/auth/login', {
       method: 'POST',
@@ -110,9 +110,14 @@ async function openNewestReport(page: import('@playwright/test').Page) {
 
 /** Replaces the whole document through the editor and saves. */
 async function rewrite(page: import('@playwright/test').Page, markdown: string) {
-  await page.getByRole('button', { name: '문서 수정' }).click()
+  // 생성 직후의 패널은 아직 그리는 중일 수 있다 — 기본 15초는 접수 확인이지
+  // 무거운 문서의 첫 그림이 아니다.
+  await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: '원문 편집' }).click()
   await page.getByLabel('문서 원본').fill(markdown)
-  await page.getByRole('button', { name: '저장' }).click()
+  // 이름이 '저장'인 버튼이 화면에 둘이라 클릭은 어느 쪽을 눌렀는지
+  // 말해 주지 않는다. 편집기 자신의 단축키가 유일하게 모호하지 않다.
+  await page.getByLabel('문서 원본').press('Control+Enter')
   await expect(page.getByLabel('문서 원본')).toBeHidden({ timeout: 20_000 })
 }
 
@@ -133,7 +138,16 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
   // Planned first and written only once approved, so neither the panel nor its
   // denominator exists before this.
   await approvePlan(page, 480_000)
-  await expect(page.getByText(/\d+\/[3-8] 섹션/)).toBeVisible({ timeout: 180_000 })
+  // The count is on the button that opens the contents.
+  //
+  // It used to be a line inside a column that stood beside the document at
+  // every width, and that column was 208px of the document's own room — so the
+  // contents became a drawer and the count moved onto its handle. The line is
+  // still there, inside the closed drawer, which is why looking for it by text
+  // finds an element and calls it hidden.
+  await expect(page.getByRole('button', { name: /목차 \d+\/[3-8]/ })).toBeVisible({
+    timeout: 180_000,
+  })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 
   const id = await page.evaluate(async () => {

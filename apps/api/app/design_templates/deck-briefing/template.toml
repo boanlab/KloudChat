@@ -1,0 +1,26 @@
+kind = "deck"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["deck-story"]
+name = "사내 브리핑"
+description = "정해진 것과 해야 할 것을 갈라, 회의 시간을 줄이려고 만드는 발표"
+category = "발표"
+fills = ["주제", "듣는 사람", "결정할 것"]
+example_prompt = "사내 브리핑 자료를 만들어 줘. 정해진 것과 아직 정할 것을 갈라서 적고, 마지막에 담당과 기한을 넣어 줘.\n\n주제와 듣는 사람: "
+seed_from = "_deck"
+layouts = ["cover", "bullets", "quote", "split", "table"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Briefing deck"
+description_en = "Decisions apart from actions, made to shorten the meeting"
+category_en = "Presentation"
+fills_en = ["Topic", "Audience", "Decision"]
+example_prompt_en = "Make a briefing deck. Keep what is decided apart from what is not, and end with owners and dates.\n\nTopic and audience: "
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

@@ -56,7 +56,7 @@ jobs:
           build_all() {
             echo "$1"
             {
-              echo 'matrix={"include":[{"name":"api","context":"apps/api","image":"kloudchat-api"},{"name":"web","context":"apps/web","image":"kloudchat-web"}]}'
+              echo 'matrix={"include":[{"name":"api","context":"apps/api","image":"kloudchat-api"},{"name":"print","context":"apps/print","image":"kloudchat-print"},{"name":"web","context":"apps/web","image":"kloudchat-web"}]}'
               echo 'any=true'
             } >> "$GITHUB_OUTPUT"
           }
@@ -64,9 +64,9 @@ jobs:
           # A tag or a manual run publishes everything. A release has to leave a
           # complete set of tags behind: skipping the image that happened not to
           # change would mean no kloudchat-web:1.2.3 exists at all.
-          case "$REF" in refs/tags/*) build_all "tag build — publishing both"; exit 0 ;; esac
+          case "$REF" in refs/tags/*) build_all "tag build — publishing all"; exit 0 ;; esac
           if [ "$EVENT" != "push" ]; then
-            build_all "$EVENT — publishing both"; exit 0
+            build_all "$EVENT — publishing all"; exit 0
           fi
 
           # No usable base: a new branch, the first commit, or a force push that
@@ -74,21 +74,25 @@ jobs:
           if [ -z "${BEFORE:-}" ] \
              || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            build_all "no diff base — publishing both"; exit 0
+            build_all "no diff base — publishing all"; exit 0
           fi
 
           changed=$(git diff --name-only "$BEFORE" "$AFTER")
           echo "Changed files:"; echo "$changed" | sed 's/^/  /'
 
-          # A change to this workflow rebuilds both, so the change is exercised
-          # on the path it affects.
+          # A change to this workflow rebuilds everything, so the change is
+          # exercised on the path it affects.
           if echo "$changed" | grep -qx '.github/workflows/release.yml'; then
-            build_all "release.yml changed — publishing both"; exit 0
+            build_all "release.yml changed — publishing all"; exit 0
           fi
 
           entries=""
           if echo "$changed" | grep -q '^apps/api/'; then
             entries='{"name":"api","context":"apps/api","image":"kloudchat-api"}'
+          fi
+          if echo "$changed" | grep -q '^apps/print/'; then
+            [ -n "$entries" ] && entries="$entries,"
+            entries="$entries{\"name\":\"print\",\"context\":\"apps/print\",\"image\":\"kloudchat-print\"}"
           fi
           if echo "$changed" | grep -q '^apps/web/'; then
             [ -n "$entries" ] && entries="$entries,"

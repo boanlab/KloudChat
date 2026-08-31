@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, surfaceOn } from './helpers'
 
 /**
  * The image surface produces a picture.
@@ -29,7 +29,10 @@ test('이미지를 만들면 아티팩트로 남고 크레딧이 걷힌다', asy
     AS_USER,
   )
 
-  await page.goto('/new/image')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   // The picker offers image models, and quotes the price of a picture rather
   // than of a thousand tokens.
   await expect(page.getByText(/예상 [1-9][0-9,]* 크레딧/)).toBeVisible({ timeout: 20_000 })

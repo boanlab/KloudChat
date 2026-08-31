@@ -16,7 +16,9 @@ import logging
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -46,13 +48,18 @@ from app.models.workspace import (
     Memory,
     MemoryType,
     Project,
+    Skill,
+    SkillSource,
     StoredFile,
 )
+from app.models.workspace import Visibility as SkillVisibility
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
     ChooseVariant,
     CompareRequest,
+    FigureSuggestion,
+    FigureSuggestRequest,
     ImageRequest,
     MessageOut,
     SendMessage,
@@ -70,10 +77,13 @@ from app.services import (
     artifact_extract,
     audiogen,
     design_templates,
+    figures,
     governance,
     grounding,
     imagegen,
     lint,
+    revise,
+    richtext,
     settings_store,
 )
 from app.services import agent as agent_service
@@ -1041,6 +1051,31 @@ async def _owned_attachments(
     return rows, metadata
 
 
+def _worth_listing(rows: list[ChatSession], empty: set[str]) -> list[ChatSession]:
+    """Conversations that happened, plus anything still on its way.
+
+    Opening 새 보고서 and changing your mind used to leave a row behind, and
+    the row said 새 작업 and led to a blank screen. Four hundred of them
+    accumulated on this instance, which is what somebody's work list looks like
+    after a fortnight of trying things: a column of identical labels, none of
+    which is the thing they are looking for.
+
+    An empty conversation is only hidden once it is a minute old and holds
+    nothing. The minute is for the turn in flight — a session is written before
+    the first message is — and the artifact check is for the surfaces where the
+    answer is a file rather than a sentence.
+    """
+    fresh = utcnow() - timedelta(minutes=1)
+    return [
+        row
+        for row in rows
+        if row.id not in empty
+        or row.artifact_id
+        or row.pinned
+        or row.created_at > fresh
+    ]
+
+
 @router.get("", response_model=list[SessionOut])
 async def list_sessions(
     user: CurrentUser,
@@ -1060,6 +1095,10 @@ async def list_sessions(
     # One aggregate for the page — the sidebar asks for every conversation.
     ids = [s.id for s in rows]
     previews = await _previews(db, ids)
+    # `_previews` is absent for a conversation with no messages, which is the
+    # same question `_worth_listing` asks — so it is asked once.
+    rows = _worth_listing(rows, {sid for sid in ids if sid not in previews})
+    ids = [s.id for s in rows]
     # Empty body, not a missing row: a media answer holds the artifact and
     # quotes nothing.
     made = await _made(db, [sid for sid in ids if not previews.get(sid, (None, 0))[0]])
@@ -1177,6 +1216,68 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     await db.commit()
     await db.refresh(session)
     return SessionOut.of(session, [])
+
+
+async def _template_skills(
+    db: AsyncSession,
+    template: design_templates.DesignTemplate | None,
+    kind: SessionKind,
+    skills_event: dict | None,
+) -> tuple[list[str], dict | None]:
+    """`(context blocks, skills_applied event)` with the 서식's skills joined.
+
+    Catalogue rows only, found by `catalog_key`: a 서식 ships with the product
+    and can only promise procedures that ship with it. A key nobody seeded is
+    skipped rather than an error — the document still generates, in the shape
+    the 서식 gives it, minus a rule it named.
+
+    The event is extended rather than replaced so a hand-activated skill and a
+    서식's own appear in the one list the screen already draws.
+    """
+    if template is None or not template.skills:
+        return [], skills_event
+    rows = (
+        await db.exec(
+            select(Skill)
+            .where(
+                col(Skill.catalog_key).in_(list(template.skills)),
+                Skill.source == SkillSource.built_in,
+                Skill.visibility == SkillVisibility.org,
+            )
+            .order_by(col(Skill.id))
+        )
+    ).all()
+    by_key = {row.catalog_key: row for row in rows}
+    blocks: list[str] = []
+    applied: list[dict] = []
+    for key in template.skills:
+        skill = by_key.get(key)
+        if skill is None or (skill.kinds and kind.value not in skill.kinds):
+            continue
+        head = f"# 서식 스킬 — {skill.name}"
+        body = skill.body.strip() or skill.description.strip()
+        blocks.append(f"{head}\n{body}" if body else head)
+        applied.append(
+            {
+                "id": skill.id,
+                "name": skill.name,
+                "catalogKey": skill.catalog_key,
+                "estimatedTokens": skill.estimated_tokens,
+                # The screen can say where it came from: 서식이 켠 스킬.
+                "fromTemplate": True,
+            }
+        )
+    if not applied:
+        return blocks, skills_event
+    event = dict(skills_event or {"type": "skills_applied", "skills": []})
+    event["skills"] = list(event.get("skills") or []) + applied
+    # The total travels with the merged list. Without agent skills the seed
+    # event above has no total at all, and the browser read the missing key
+    # off a template-only turn and took the whole stream down with it.
+    event["estimatedTokens"] = sum(
+        int(skill.get("estimatedTokens") or 0) for skill in event["skills"]
+    )
+    return blocks, event
 
 
 async def _project_render_template(
@@ -1313,11 +1414,70 @@ def _record_media(
         )
         # Newest result, for the panel and 원본 작업 열기. Per-batch results live
         # on the messages.
-        session.artifact_id = made[-1].id
+        #
+        # Except where the session already has a document of its own. On the
+        # image and audio surfaces the newest thing made *is* the document, and
+        # on a chat there is nothing else for the pointer to mean. A report or a
+        # slides session is different: `artifact_id` is the report or the deck,
+        # and it is what the panel opens, what 원본 작업 열기 opens, and what
+        # `_revise_document` reads when somebody types "슬라이드 2 다시 써 줘".
+        #
+        # That last one is how this was found. Pictures could only be made on
+        # the image surface until the document pickers learned to make their
+        # own, and the first one made from inside a deck moved the deck's
+        # pointer onto the picture. Every instruction typed afterwards was read
+        # against an image artifact, which has neither slides nor sections, and
+        # answered "고칠 내용이 없습니다" — about a deck of eleven slides.
+        if session.kind not in (SessionKind.report, SessionKind.slides):
+            session.artifact_id = made[-1].id
     # The sidebar sorts on this. Making something is the clearest case there is
     # of the conversation having been touched.
     session.updated_at = utcnow()
     db.add(session)
+
+
+@router.post("/{session_id}/figure-suggestion", response_model=FigureSuggestion)
+async def suggest_figure(
+    session_id: str, payload: FigureSuggestRequest, user: CurrentUser, db: DbSession
+):
+    """What picture to put here — proposed, not asked for.
+
+    The picker opened on an empty box with the 장's name in the placeholder,
+    which asks somebody who wanted a picture to first become somebody who can
+    describe one. This fills it in. Nothing is drawn and nothing is charged:
+    the answer is two lines of text the person then edits or throws away, and
+    the credit is only spent by pressing 만들기.
+    """
+    session = await _owned(db, user, session_id)
+    catalogue = await model_service.list_models()
+    model = model_service.find(catalogue["models"], session.model or "")
+    if model is None or "chat" not in model.get("kinds", []):
+        usable = sorted(
+            (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
+            key=model_service.fallback_order,
+        )
+        if not usable:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_chat_models"
+            )
+        model = usable[0]
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+    figure = await figures.suggest(
+        title=payload.title or session.title or "",
+        about=payload.about,
+        context=payload.context,
+        model=str(model["id"]),
+        api_key=api_key,
+    )
+    # A suggestion that did not come back is not an error the person can act
+    # on — the box simply stays theirs to fill, exactly as it was before.
+    if figure is None:
+        return FigureSuggestion(caption="", prompt="")
+    return FigureSuggestion(caption=figure.caption, prompt=figure.prompt)
 
 
 @router.post("/{session_id}/images", response_model=list[ArtifactOut])
@@ -1333,7 +1493,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     if model is None or "image" not in model["kinds"]:
         usable = sorted(
             (m for m in catalogue["models"] if "image" in m["kinds"]),
-            key=lambda m: m["creditCost"],
+            key=model_service.fallback_order,
         )
         if not usable:
             raise HTTPException(
@@ -1361,6 +1521,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         style=payload.style,
         template=picture_template.prompt_suffix if picture_template else "",
         design=design_service.image_clause(await design_for(db, user, session)),
+        figure=payload.figure,
     )
 
     made: list[Artifact] = []
@@ -1703,6 +1864,10 @@ async def _settle_plan_turn(
     usage: dict[str, int],
     proposal: dict | None,
     questions: list[dict] | None,
+    #: The second question, when there is one to ask. Present only after an
+    #: outline has been approved and the planner found somewhere a picture
+    #: would help — which on most work documents it does not.
+    figures: dict | None = None,
 ) -> None:
     """Stores a turn that planned or asked, and charged for doing so.
 
@@ -1726,13 +1891,18 @@ async def _settle_plan_turn(
         user = await db.get(User, user_id)
         if session is None or user is None:
             return
+        stage = "clarify" if questions else "figures" if figures else "outline"
         session.pending = {
-            "stage": "clarify" if questions else "outline",
+            "stage": stage,
             "request": request,
             "attachments": attachments,
             "answers": answers,
             **({"questions": questions} if questions else {}),
             **({"plan": proposal} if proposal else {}),
+            # The outline is carried through the figure question unchanged:
+            # the person already approved it, and asking again would be a
+            # third card nobody agreed to look at.
+            **(figures or {}),
         }
         db.add(
             Message(
@@ -1741,6 +1911,8 @@ async def _settle_plan_turn(
                 content=(
                     "시작하기 전에 확인할 것이 있습니다."
                     if questions
+                    else "그림을 넣을지 확인해 주세요."
+                    if figures
                     else "이렇게 구성하려고 합니다. 확인해 주세요."
                 ),
                 usage={**usage, "credits": credits},
@@ -1758,6 +1930,57 @@ async def _settle_plan_turn(
         session.updated_at = utcnow()
         db.add(session)
         await db.commit()
+
+
+#: More parts than any surface writes. `deck._MAX_SLIDES` is 50 and the
+#: document track stops at 24, so this refuses a payload rather than bounding a
+#: real outline.
+_MAX_PLANNED = 60
+
+
+def _edited_plan(sent: dict | None, stored: dict) -> dict:
+    """The stored outline with the person's edits folded in, where they fit.
+
+    Titles and their order are theirs; everything else — the layouts, the
+    surface's own keys — comes from the proposal. An edit that does not
+    typecheck is not an error to report: the card cannot produce one, so the
+    only way to see it is a client that was not this card, and the right answer
+    to that is the outline everybody already looked at.
+    """
+    if not isinstance(sent, dict):
+        return stored
+    out = dict(stored)
+    for key in ("sections", "slides", "blocks"):
+        items = sent.get(key)
+        if key not in stored or not isinstance(items, list) or not items:
+            continue
+        if len(items) > _MAX_PLANNED:
+            continue
+        # `sections` is a list of headings; `slides` and `blocks` are objects
+        # carrying a layout the seed styles. The layout is never taken from the
+        # browser — a name the 서식 does not style is a slide with no design.
+        if all(isinstance(row, str) for row in items):
+            kept = [row.strip()[:200] for row in items if row.strip()]
+        else:
+            layouts = {
+                str(row.get("layout") or "")
+                for row in stored.get(key, [])
+                if isinstance(row, dict)
+            }
+            kept = []
+            for row in items:
+                if not isinstance(row, dict):
+                    continue
+                title = str(row.get("title") or "").strip()[:200]
+                layout = str(row.get("layout") or "")
+                if not title or layout not in layouts:
+                    continue
+                kept.append({"title": title, "layout": layout})
+        if kept:
+            out[key] = kept
+    if title := str(sent.get("title") or "").strip():
+        out["title"] = title[:200]
+    return out
 
 
 async def _ask_before_writing(
@@ -1803,15 +2026,21 @@ async def _ask_before_writing(
             attachments=None,
         )
     )
+    said = "시작하기 전에 확인할 것이 있습니다."
     db.add(
         Message(
             session_id=session.id,
             role=Role.assistant,
-            content="시작하기 전에 확인할 것이 있습니다.",
+            content=said,
         )
     )
     await db.commit()
-    return JSONResponse({"pending": session.pending})
+    # The sentence travels with the questions. It is already stored, so a
+    # reload showed it — but the turn in flight had an empty answer bubble, and
+    # an empty bubble is what the panel draws 생각하는 중 into. The card was up,
+    # the question was asked, and above it a spinner said the model was still
+    # thinking about a turn that had already stopped.
+    return JSONResponse({"pending": session.pending, "message": said})
 
 
 def _plans_first(session: ChatSession) -> bool:
@@ -1864,11 +2093,45 @@ async def send_message(
     #: outline already agreed to. A plain message never carries one — typing
     #: while a proposal is up is a revision, and revising means planning again.
     approved_plan: dict | None = None
+    #: Set by the figure card's two buttons. `None` until one of them is
+    #: pressed, which is how the writer tells "no pictures" from "not asked".
+    approved_figures: list[dict] | None = None
+    #: Whether this message is somebody working on the document in front of
+    #: them rather than asking for another one.
+    #:
+    #: `pending` is cleared the moment a document is written, so every sentence
+    #: after that met a planner with nothing to plan against: "3절을 좀 더 짧게"
+    #: produced a whole new report about being shorter and offered it as a
+    #: proposal, waiting to replace the one on screen. The chat and the document
+    #: were two windows that could not see each other, and everything the person
+    #: could actually do to their document they did with a panel button and a
+    #: note in a box.
+    #:
+    #: What it lands on is decided by `services.revise`, which reads the
+    #: instruction against the document's own outline. An approval, an answer,
+    #: and a plainly-worded "새로 써 줘" are all excluded here rather than left
+    #: for that call to get right.
+    revising = bool(
+        _plans_first(session)
+        and session.artifact_id
+        and not pending
+        and not payload.approve
+        and payload.answers is None
+        and not revise.obviously_new(payload.content)
+    )
     focus = ""
     #: What this person typed just now, as opposed to the merged request the
     #: model is given. The transcript shows the first: nobody wrote the merge.
     typed_content = payload.content
     #: "있는 자료로 진행" — the card's second button, which sends an empty answers
+    #: The outline the writer will follow: what was proposed, or what the
+    #: person made of it on the card.
+    #:
+    #: Trusted for its words and not for its shape. The plan drives a run that
+    #: costs real money and cannot be half-formed, so every key is taken from
+    #: the proposal and only the strings are taken from the browser — a client
+    #: that sends `sections: 4` or thirty thousand of them gets the stored plan
+    #: back, which is what approving used to do in every case.
     #: object where a typed note sends none at all. Folded back into the
     #: request it changes nothing, so the planner meets the same sentence and
     #: asks the same question; the button then loops for as long as anybody
@@ -1887,7 +2150,18 @@ async def send_message(
         # an answer, a note, a plain sentence — goes back through planning, so
         # what finally gets written is always something somebody saw first.
         if payload.approve and pending.get("plan"):
-            approved_plan = dict(pending["plan"])
+            approved_plan = _edited_plan(payload.plan, dict(pending["plan"]))
+        #: The pictures somebody agreed to pay for, or `[]` when they said no.
+        #:
+        #: Two questions rather than one card with a checkbox on it. A figure
+        #: changes the prose beside it — a section written expecting a diagram
+        #: says 아래 그림과 같이 — so "with pictures" and "without" are two
+        #: different documents, and asking about them together invites somebody
+        #: to change the expensive half by mistake.
+        if pending.get("stage") == "figures" and payload.include_figures is not None:
+            approved_figures = (
+                list(pending.get("figures") or []) if payload.include_figures else []
+            )
         payload = payload.model_copy(
             update={
                 "content": grounding.merge_answers(
@@ -1971,7 +2245,7 @@ async def send_message(
     if model is None:
         # A stale session/agent id may fall back, but only inside the user's
         # allowed intersection.
-        usable = sorted(usable, key=lambda m: m["creditCost"])
+        usable = sorted(usable, key=model_service.fallback_order)
         if not usable:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
@@ -2118,7 +2392,12 @@ async def send_message(
     # had never arrived and asked for the text to be pasted in.
     if _plans_first(session) and not pending.get("answers"):
         short = grounding.file_shortfalls(workspace.attachments)
-        if questions := grounding.questions_for(short):
+        questions = grounding.questions_for(short)
+        # Only when nothing arrived at all, so it can never displace a question
+        # about a file that did — `questions_for` is empty in exactly that case.
+        if not questions and (gap := grounding.missing_attachment(content, workspace.attachments)):
+            questions = [gap]
+        if questions:
             return await _ask_before_writing(
                 db,
                 session,
@@ -2259,6 +2538,15 @@ async def send_message(
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
     skills_event = workspace.skills_event()
+    # The 서식's own skills, joined the same way a hand-activated one is.
+    # A 공문 without the 공문 문체 rules is a notice-shaped essay; the 서식
+    # names its procedures in `template.toml` and they ride in here, announced
+    # in the same skills_applied event so the person sees what joined.
+    template_blocks, skills_event = await _template_skills(
+        db, design_templates.get(session.render_template_id), session.kind, skills_event
+    )
+    if template_blocks:
+        trusted_context = list(trusted_context) + template_blocks
     context_steps = _context_steps(workspace)
     if policy.pii_masking:
         # The document runners persist this event directly as a timeline step.
@@ -2469,11 +2757,27 @@ async def send_message(
         strict_local=strict_local,
     )
 
+    #: The model that draws a document's figures — the image default, not the
+    #: one writing the prose. A deployment with no image model simply never
+    #: shows the figure card, which is the right silence: there is nothing to
+    #: offer.
+    image_model = next(
+        (
+            m
+            for m in _allowed_models(user, catalogue_models, kind="image")
+            if "image" in (m.get("kinds") or [])
+        ),
+        None,
+    )
+
     render_template = design_templates.get(session.render_template_id)
     if render_template is not None:
         return StreamingResponse(
-            _run_page(
+            _survive_disconnect(
+                _run_page(
                 may_ask=not proceed_as_is,
+                figures_plan=approved_figures,
+                image_model=image_model,
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
@@ -2493,7 +2797,32 @@ async def send_message(
                 skills_event=skills_event,
                 context_steps=context_steps,
                 outline_model=outline_model,
-            ),
+                # A strict-local route is given no network anywhere else, and
+                # a document is not the place to make the one exception.
+                web_search=payload.web_search and not strict_local,
+            )),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # A sentence typed under a finished document works on that document. See
+    # `revising` above and `_revise_document` — before this, it planned another
+    # one and offered to replace the one on screen.
+    if revising and session.kind in (SessionKind.report, SessionKind.slides):
+        return StreamingResponse(
+            _survive_disconnect(
+                _revise_document(
+                user_id=user.id,
+                api_key=api_key,
+                session_id=session.id,
+                model=model,
+                instruction=content,
+                routing=document_routing,
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2504,8 +2833,11 @@ async def send_message(
 
     if session.kind is SessionKind.report:
         return StreamingResponse(
-            _run_report(
+            _survive_disconnect(
+                _run_report(
                 may_ask=not proceed_as_is,
+                figures_plan=approved_figures,
+                image_model=image_model,
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
@@ -2526,7 +2858,10 @@ async def send_message(
                 skills_event=skills_event,
                 context_steps=context_steps,
                 outline_model=outline_model,
-            ),
+                # A strict-local route is given no network anywhere else, and
+                # a document is not the place to make the one exception.
+                web_search=payload.web_search and not strict_local,
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2537,8 +2872,11 @@ async def send_message(
 
     if session.kind is SessionKind.slides:
         return StreamingResponse(
-            _run_deck(
+            _survive_disconnect(
+                _run_deck(
                 may_ask=not proceed_as_is,
+                figures_plan=approved_figures,
+                image_model=image_model,
                 user_id=user.id,
                 api_key=api_key,
                 session_id=session.id,
@@ -2559,7 +2897,10 @@ async def send_message(
                 skills_event=skills_event,
                 context_steps=context_steps,
                 outline_model=outline_model,
-            ),
+                # A strict-local route is given no network anywhere else, and
+                # a document is not the place to make the one exception.
+                web_search=payload.web_search and not strict_local,
+            )),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2611,6 +2952,15 @@ async def send_message(
                 protect_enrichment=policy.pii_masking or policy.external_data_guard,
                 privacy_audit_id=privacy_audit_id,
                 routing_audit_id=routing_audit_id,
+                # The toggle is a request, not a suggestion. Left on `auto` a
+                # small model reads the nudge as advice and answers from what
+                # it remembers, under a lit globe that says it looked. Only the
+                # first hop is forced; after it the loop is free again.
+                force_tool=(
+                    "web_search"
+                    if payload.web_search and any(t.name == "web_search" for t in tools)
+                    else None
+                ),
             )
         ),
         media_type="text/event-stream",
@@ -2833,6 +3183,10 @@ async def _run_turn(
     protect_enrichment: bool = False,
     privacy_audit_id: str | None = None,
     routing_audit_id: str | None = None,
+    #: A tool the first hop must call rather than may. See `agent.run_turn`.
+    #: Set to `web_search` when somebody switched the search toggle on and the
+    #: tool survived into this turn.
+    force_tool: str | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -2904,6 +3258,7 @@ async def _run_turn(
                 strict_local=strict_local,
                 disable_fallbacks=disable_fallbacks,
                 redact_logging=mask_at_rest,
+                force_tool=force_tool,
             ),
             stopping,
         ):
@@ -3194,7 +3549,18 @@ async def _run_turn(
     if memory_step:
         yield chat_service.sse(_step_event(memory_step))
     if new_artifact:
-        yield chat_service.sse({"type": "artifact", "artifactId": new_artifact})
+        yield chat_service.sse(
+            {
+                "type": "artifact",
+                "artifactId": new_artifact,
+                # Whether the panel should take the screen. A document somebody
+                # asked for is the deliverable and belongs open; a nine-line
+                # example lifted out of an answer is not, and opening for it
+                # squeezed the conversation into a third of the width — where
+                # the table in that same answer came out one glyph per line.
+                "deliberate": bool(ctx.pending_artifacts),
+            }
+        )
     if cost_routing:
         yield chat_service.sse({"type": "model_route", **cost_routing})
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
@@ -3800,6 +4166,25 @@ async def _run_page(
     design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
     context_steps: list[dict] | None = None,
+    #: The composer's search toggle, for the surfaces that write a document.
+    #:
+    #: A document is not argued with the way a chat answer is: it is exported,
+    #: attached to a mail, and read by people who were not here when it was
+    #: written. So the writers research before they write, and this is what
+    #: says whether they may — off for a strict-local route, which is given no
+    #: network anywhere else either.
+    web_search: bool = True,
+    #: Pictures somebody agreed to on the second card. `None` on the planning
+    #: pass, `[]` when the card was answered 그림 없이.
+    #:
+    #: Accepted by every document runner so the dispatch is uniform; only the
+    #: report draws them today. A deck's pictures are a different question —
+    #: `slide-image` already puts one on a slide, and a figure on every slide is
+    #: not what anybody wants — so it takes the argument and ignores it until
+    #: that question is answered.
+    figures_plan: list[dict] | None = None,
+    #: The model that draws them — the image default, not the writer's model.
+    image_model: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one HTML artifact to completion and settles it.
 
@@ -3814,6 +4199,10 @@ async def _run_page(
     html = ""
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
+    #: What the research pass read, kept so a report stores the same shelf the
+    #: plain track does — the citations belong to the document, not to the
+    #: track it happened to be written on.
+    sources: list[dict] = []
 
     if routing:
         # Before the first block of the document, for the same reason chat
@@ -3825,6 +4214,7 @@ async def _run_page(
         yield chat_service.sse(_step_event(step))
     try:
         stream = page_service.write(
+            web_search=web_search,
             request=request,
             approved_plan=approved_plan,
             may_ask=may_ask,
@@ -3851,6 +4241,8 @@ async def _run_page(
                 html = event["html"]
                 blocks = event["blocks"]
                 continue
+            if event["type"] == "sources":
+                sources = list(event.get("sources") or [])
             if event["type"] == "title":
                 doc_title = str(event.get("title") or "").strip()
             if event["type"] == "usage":
@@ -3901,7 +4293,67 @@ async def _run_page(
         user = await db.get(User, user_id)
         if session is not None and user is not None:
             title = (doc_title or session.title or request.strip()[:60] or template.name)[:200]
-            if written and html:
+            if written and html and session.kind is SessionKind.report:
+                # A report written into a 서식 is a report, not a file.
+                #
+                # It used to be stored as an `html` artifact — the finished
+                # document, rendered — and that is what made choosing a 서식 a
+                # one-way door: the panel for an `html` artifact is a sandboxed
+                # frame, so the document could be read, exported and rewritten
+                # a block at a time, but never typed in. Choosing no 서식 gave
+                # prose that could be edited and had no shape. Neither could
+                # become the other.
+                #
+                # Stored as sections, both are the same document. The blocks
+                # the writer produced are already HTML, so they become
+                # `format: "html"` sections with nothing lost in between, and
+                # the page view re-renders them through whichever 서식 is
+                # chosen — including a different one, later.
+                #
+                # The deck surface keeps the `html` artifact below: a slide is
+                # not a section, and its panel is a stage rather than a page.
+                artifact_id = await _store_document(
+                    db,
+                    session,
+                    user_id=user_id,
+                    project_id=project_id,
+                    kind=ArtifactKind.report,
+                    title=title,
+                    summary=_regeneration_summary(request),
+                    data={
+                        "kind": "report",
+                        "templateId": template.id,
+                        "sections": [
+                            {
+                                "id": f"s{index}_{uuid4().hex[:6]}",
+                                "heading": block["title"],
+                                "level": 1,
+                                "status": "done",
+                                "content": block["html"],
+                                "format": "html",
+                            }
+                            for index, block in enumerate(blocks)
+                            if block.get("layout") != "cover"
+                        ],
+                        "sources": sources,
+                        "citationStyle": "APA",
+                        "lint": lint.wire(
+                            lint.check(
+                                lint.from_blocks(blocks),
+                                slides=False,
+                                limits=template.limits,
+                            )
+                        ),
+                        "wordCount": sum(
+                            len(re.sub(r"<[^>]+>", " ", b.get("html") or "").split())
+                            for b in blocks
+                        ),
+                        **({"design": design_tokens} if design_tokens else {}),
+                    },
+                )
+                session.artifact_id = artifact_id
+                session.pending = None
+            elif written and html:
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -3997,6 +4449,25 @@ async def _run_deck(
     design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
     context_steps: list[dict] | None = None,
+    #: The composer's search toggle, for the surfaces that write a document.
+    #:
+    #: A document is not argued with the way a chat answer is: it is exported,
+    #: attached to a mail, and read by people who were not here when it was
+    #: written. So the writers research before they write, and this is what
+    #: says whether they may — off for a strict-local route, which is given no
+    #: network anywhere else either.
+    web_search: bool = True,
+    #: Pictures somebody agreed to on the second card. `None` on the planning
+    #: pass, `[]` when the card was answered 그림 없이.
+    #:
+    #: Accepted by every document runner so the dispatch is uniform; only the
+    #: report draws them today. A deck's pictures are a different question —
+    #: `slide-image` already puts one on a slide, and a figure on every slide is
+    #: not what anybody wants — so it takes the argument and ignores it until
+    #: that question is answered.
+    figures_plan: list[dict] | None = None,
+    #: The model that draws them — the image default, not the writer's model.
+    image_model: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
 
@@ -4018,6 +4489,9 @@ async def _run_deck(
         yield chat_service.sse(_step_event(step))
     try:
         stream = deck_service.write(
+            web_search=web_search,
+            figures_plan=figures_plan,
+            image_model=image_model,
             request=request,
             approved_plan=approved_plan,
             may_ask=may_ask,
@@ -4057,6 +4531,7 @@ async def _run_deck(
     # what actually keeps the document already on screen from being replaced by
     # a run nobody confirmed.
     if proposal is not None or questions is not None:
+        drawn = (proposal or {}).pop("figures", None)
         await _settle_plan_turn(
             session_id=session_id,
             user_id=user_id,
@@ -4068,6 +4543,7 @@ async def _run_deck(
             usage=usage,
             proposal=proposal,
             questions=questions,
+            figures={"plan": proposal, **drawn} if drawn and proposal else None,
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})
@@ -4169,6 +4645,214 @@ async def _run_deck(
     yield chat_service.sse({"type": "done"})
 
 
+async def _revise_document(
+    *,
+    user_id: str,
+    api_key: str,
+    session_id: str,
+    model: dict,
+    instruction: str,
+    routing: dict[str, Any] | None = None,
+) -> AsyncIterator[str]:
+    """One instruction, applied to the document already on screen.
+
+    This is the loop the document surfaces did not have. Everything a person
+    could do to their document, they did with a panel button and a note in a
+    box; everything they typed in the chat planned a new document and offered
+    to replace this one. Two windows that could not see each other.
+
+    The shape is the same for a report and a deck because the difference is
+    only what a part is called. `services.revise` reads the instruction against
+    the document's own outline and says which parts it lands on; the surfaces
+    rewrite those parts with the machinery they already had.
+
+    The original request travels with it. A section fixed in isolation forgets
+    what the document is about, and the numbered citations in its prose would
+    renumber against an empty shelf.
+
+    Every failure falls back to saying so rather than to regenerating: a
+    revision that quietly became a new document is the behaviour this replaces.
+    """
+    usage = {"inputTokens": 0, "outputTokens": 0}
+    if routing:
+        yield chat_service.sse({"type": "privacy_route", **routing})
+
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        artifact = await db.get(Artifact, session.artifact_id) if session else None
+        if session is None or artifact is None or not artifact.data:
+            yield chat_service.sse({"type": "error", "message": "고칠 문서를 찾지 못했습니다."})
+            yield chat_service.sse({"type": "done"})
+            return
+        kind = artifact.kind
+        data = dict(artifact.data)
+        request = str(session.title or "")
+        title = artifact.title or ""
+
+    is_deck = kind is ArtifactKind.deck
+    parts = list(data.get("slides") if is_deck else data.get("sections") or [])
+    names = [str(p.get("title" if is_deck else "heading") or "") for p in parts]
+    if not parts:
+        yield chat_service.sse({"type": "error", "message": "고칠 내용이 없습니다."})
+        yield chat_service.sse({"type": "done"})
+        return
+
+    yield chat_service.sse(
+        {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중", "status": "running"}
+    )
+    plan = await revise.plan(
+        message=instruction, title=title, parts=names, model=model["id"], api_key=api_key
+    )
+    usage["inputTokens"] += plan.usage["inputTokens"]
+    usage["outputTokens"] += plan.usage["outputTokens"]
+    if not plan.revises:
+        # Read as a request for a different document. Said rather than acted
+        # on: replacing what is on screen is the person's call, not a
+        # classifier's.
+        yield chat_service.sse(
+            {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
+        )
+        yield chat_service.sse(
+            {
+                "type": "delta",
+                "text": "이건 지금 문서를 고치는 요청으로 보이지 않습니다. "
+                "새로 쓰려면 '새로 써 줘' 라고 알려 주세요.",
+            }
+        )
+        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
+        yield chat_service.sse({"type": "done"})
+        return
+
+    yield chat_service.sse(
+        {
+            "type": "step",
+            "id": "route",
+            "label": revise.label(plan, names),
+            "status": "done",
+        }
+    )
+
+    changed = 0
+    for index in plan.targets:
+        part = parts[index]
+        label = names[index] or f"{index + 1}"
+        yield chat_service.sse(
+            {"type": "step", "id": f"r{index}", "label": label, "status": "running"}
+        )
+        try:
+            if is_deck:
+                written, spent = await deck_service.rewrite_slide(
+                    request=request,
+                    slides=parts,
+                    target_id=str(part.get("id") or ""),
+                    model=model["id"],
+                    api_key=api_key,
+                    note=plan.note,
+                )
+                parts[index] = written
+                yield chat_service.sse({"type": "slide", "slide": written, "done": True})
+            else:
+                body, spent = await report_service.rewrite_section(
+                    request=request,
+                    heading=label,
+                    sections=richtext.normalise(parts),
+                    target_id=str(part.get("id") or ""),
+                    model=model["id"],
+                    api_key=api_key,
+                    note=plan.note,
+                    sources=list(data.get("sources") or []),
+                )
+                if not body.strip():
+                    raise ValueError("빈 결과")
+                # Back to Markdown: what the model wrote *is* Markdown, and
+                # leaving an old `html` flag on would render `**가**` as
+                # literal asterisks. See `services/richtext`.
+                parts[index] = {
+                    **part,
+                    "content": richtext.tidy_tables(body),
+                    "format": "markdown",
+                    "status": "done",
+                }
+                parts[index].pop("factCheck", None)
+                yield chat_service.sse(
+                    {
+                        "type": "section",
+                        "sectionId": part.get("id"),
+                        "heading": label,
+                        "content": body,
+                        "done": True,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001 — one bad part is not a failed turn
+            log.warning("revision of %r failed: %s", label, exc)
+            yield chat_service.sse(
+                {"type": "step", "id": f"r{index}", "label": label, "status": "error"}
+            )
+            continue
+        usage["inputTokens"] += spent["inputTokens"]
+        usage["outputTokens"] += spent["outputTokens"]
+        changed += 1
+        yield chat_service.sse(
+            {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
+        )
+
+    if not changed:
+        yield chat_service.sse({"type": "error", "message": "고치지 못했습니다."})
+        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
+        yield chat_service.sse({"type": "done"})
+        return
+
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    artifact_id: str | None = None
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        user = await db.get(User, user_id)
+        if session is not None and user is not None:
+            data["slides" if is_deck else "sections"] = parts
+            if not is_deck:
+                data["wordCount"] = report_service.word_count(parts)
+                data["lint"] = lint.wire(lint.check(lint.from_sections(parts)))
+            # `_store_document` snapshots the previous body, so 저장 시점 has
+            # the document as it stood before this instruction.
+            artifact_id = await _store_document(
+                db,
+                session,
+                user_id=user_id,
+                project_id=session.project_id,
+                kind=kind,
+                title=title or "문서",
+                summary=instruction.strip()[:80] or "문서 수정",
+                data=data,
+            )
+            session.artifact_id = artifact_id
+            db.add(
+                Message(
+                    session_id=session_id,
+                    role=Role.assistant,
+                    content=f"{changed}곳을 고쳤습니다.",
+                    usage={**usage, "credits": credits},
+                    model=model["id"],
+                    routing=routing,
+                )
+            )
+            settle(
+                db,
+                user,
+                credits,
+                reason="document.revise",
+                session_id=session_id,
+                model=model["id"],
+            )
+            session.updated_at = utcnow()
+            db.add(session)
+            await db.commit()
+
+    if artifact_id:
+        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "done"})
+
+
 async def _run_report(
     *,
     outline_model: dict | None = None,
@@ -4197,6 +4881,25 @@ async def _run_report(
     design_tokens: dict[str, str] | None = None,
     skills_event: dict | None = None,
     context_steps: list[dict] | None = None,
+    #: The composer's search toggle, for the surfaces that write a document.
+    #:
+    #: A document is not argued with the way a chat answer is: it is exported,
+    #: attached to a mail, and read by people who were not here when it was
+    #: written. So the writers research before they write, and this is what
+    #: says whether they may — off for a strict-local route, which is given no
+    #: network anywhere else either.
+    web_search: bool = True,
+    #: Pictures somebody agreed to on the second card. `None` on the planning
+    #: pass, `[]` when the card was answered 그림 없이.
+    #:
+    #: Accepted by every document runner so the dispatch is uniform; only the
+    #: report draws them today. A deck's pictures are a different question —
+    #: `slide-image` already puts one on a slide, and a figure on every slide is
+    #: not what anybody wants — so it takes the argument and ignores it until
+    #: that question is answered.
+    figures_plan: list[dict] | None = None,
+    #: The model that draws them — the image default, not the writer's model.
+    image_model: dict | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it.
 
@@ -4224,6 +4927,9 @@ async def _run_report(
         yield chat_service.sse(_step_event(step))
     try:
         stream = report_service.write(
+            web_search=web_search,
+            figures_plan=figures_plan,
+            image_model=image_model,
             request=request,
             approved_plan=approved_plan,
             may_ask=may_ask,
@@ -4271,6 +4977,12 @@ async def _run_report(
     # what actually keeps the document already on screen from being replaced by
     # a run nobody confirmed.
     if proposal is not None or questions is not None:
+        # The outline card and the figure card are two questions, asked in
+        # order. The planner proposes both at once because it has the outline
+        # in front of it; the second is held here and asked only once the first
+        # is answered, so an expensive decision is never approved by a button
+        # somebody pressed for a cheap one.
+        drawn = (proposal or {}).pop("figures", None)
         await _settle_plan_turn(
             session_id=session_id,
             user_id=user_id,
@@ -4282,6 +4994,7 @@ async def _run_report(
             usage=usage,
             proposal=proposal,
             questions=questions,
+            figures={"plan": proposal, **drawn} if drawn and proposal else None,
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})

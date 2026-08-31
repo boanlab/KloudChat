@@ -5,8 +5,10 @@ import {
   CircleStop,
   Copy,
   Download,
+  FilePenLine,
   FileText,
   Image as ImageIcon,
+  Loader2,
   Paperclip,
   Presentation,
   RotateCcw,
@@ -18,9 +20,10 @@ import {
   Video,
 } from 'lucide-react'
 import { memo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
-import { downloadFile, errorMessage, templateText } from '@/lib/api'
+import { downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
@@ -218,6 +221,29 @@ function MessageItemInner({
   const madeHere = sessionKind === 'image' || sessionKind === 'av'
   const [copied, setCopied] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
+  //: Which attachment is being read into a document, so its own button spins.
+  const [opening, setOpening] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  /**
+   * Opens an attached `.hwpx` as a document somebody can edit.
+   *
+   * Reads the file rather than asking a model about it, so it costs nothing
+   * and takes as long as unzipping does. What comes back is an ordinary
+   * report — same editor, same printer, same `.hwpx` on the way out.
+   */
+  const openAsDocument = async (id: string) => {
+    setFileError(null)
+    setOpening(id)
+    try {
+      const made = await filesApi.openAsDocument(id)
+      navigate(`/s/${made.id}`)
+    } catch (err) {
+      setFileError(errorMessage(err, t('이 파일을 문서로 열지 못했습니다.')))
+    } finally {
+      setOpening(null)
+    }
+  }
 
   /** Hands an attachment back to the person who attached it. */
   const take = async (id: string, name: string) => {
@@ -310,17 +336,39 @@ function MessageItemInner({
             // The file is still on the server, under this id. Without a way
             // back to it the chip was a receipt for something the reader could
             // no longer have — it named a document and then kept it.
+            // A `.hwpx` can be opened rather than only taken back. The
+            // server reads its headings, tables and lists into an ordinary
+            // report, so the file somebody attached becomes a document they
+            // can edit here and export back to `.hwpx` — which is the half
+            // that was missing between reading one and writing one.
+            const hangul = Boolean(a.id) && /\.hwpx$/i.test(a.name)
             return a.id ? (
-              <button
-                key={a.id}
-                type="button"
-                title={t('원본 파일을 내려받습니다')}
-                className={`${shell} transition-colors hover:border-strong hover:bg-elevated`}
-                onClick={() => void take(a.id!, a.name)}
-              >
-                {chip}
-                <Download size={13} className="shrink-0 text-faint" />
-              </button>
+              <span key={a.id} className="ml-auto flex w-fit max-w-full items-center gap-1.5">
+                {hangul && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={opening === a.id}
+                    onClick={() => void openAsDocument(a.id!)}
+                  >
+                    {opening === a.id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <FilePenLine size={13} />
+                    )}
+                    {t('문서로 열기')}
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  title={t('원본 파일을 내려받습니다')}
+                  className={`${shell} transition-colors hover:border-strong hover:bg-elevated`}
+                  onClick={() => void take(a.id!, a.name)}
+                >
+                  {chip}
+                  <Download size={13} className="shrink-0 text-faint" />
+                </button>
+              </span>
             ) : (
               <div key={a.name} className={shell}>
                 {chip}
@@ -486,8 +534,24 @@ function MessageItemInner({
           // "thinking…" under it reads as still running. Nor once the turn has
           // its answer in hand — on these surfaces the answer is the picture
           // below, and no sentence ever arrives to replace this line.
-          !message.steps?.length &&
+          //
+          // `steps` used to end this line. The idea was that a timeline says
+          // more than 생각하는 중 does, and it does — about what has already
+          // happened. What it does not say is that anything is still going on,
+          // so the moment the first step landed the answer area went blank and
+          // stayed blank for as long as the model reasoned: a step chip at the
+          // top, a composer at the bottom, and half a screen of white between
+          // them. On a local 35B that is half a minute of looking at a page
+          // that appears to have stopped. So the line stays for as long as the
+          // turn is running and there is nothing yet to read.
+          //
+          // And only while it is running. A turn that stopped to ask — a file
+          // read short, a question the outline needed answered — ends with an
+          // empty bubble and a card underneath it, and this line went on
+          // saying 생각하는 중 over a turn that was waiting for a person. The
+          // timer kept counting.
           !failed &&
+          streaming &&
           shown.length === 0 &&
           named.length === 0 && (
             <TurnProgress
@@ -506,7 +570,11 @@ function MessageItemInner({
         {/* Where the answer goes, because here it is the answer. */}
         {shown.length > 0 && (
           <div className="mt-1">
-            <MediaResult artifacts={shown} credits={message.usage?.credits ?? 0} />
+            <MediaResult
+              artifacts={shown}
+              credits={message.usage?.credits ?? 0}
+              sessionId={sessionId}
+            />
           </div>
         )}
 
@@ -574,16 +642,17 @@ function MessageItemInner({
 
         {!streaming && message.content && !message.variants && (
           <div className="mt-2 flex items-center gap-1 text-faint">
-            {/* Hidden until the turn is hovered, except once it has been rated:
-                a verdict that only appears when you go looking for it is not
-                readable, and reading back which answers you had already decided
-                against is the whole of what recording them buys. */}
-            <span
-              className={cn(
-                'flex items-center gap-1 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-                !message.liked && 'opacity-0',
-              )}
-            >
+            {/* Visible at rest.
+                It used to appear only on hover, and the row holds 복사 — the
+                thing people reach for most on an answer and the one they cannot
+                reach for if finding it means sweeping a mouse across the text.
+                The report panel settled this for its own edit button and wrote
+                down why: a control that only hover reveals leaves "is this even
+                possible" answerable only by accident.
+                Muted rather than loud, so a page of turns does not become a
+                page of buttons; a rating that has been given keeps its colour
+                and reads back as the verdict it is. */}
+            <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button
               variant="ghost"

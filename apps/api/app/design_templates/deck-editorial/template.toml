@@ -1,9 +1,15 @@
 kind = "deck"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["deck-story"]
 name = "편집형 덱"
 description = "제목 아래를 가로지르는 룰 하나, 본문은 왼쪽 일곱 칸. 오른쪽 다섯 칸은 끝까지 비워 두는 밝은 발표 자료"
 category = "발표"
 fills = ["주제", "청중", "발표 시간"]
 example_prompt = "팀 케이스 분석을 15분 발표 자료로 만들어 줘. 청중은 같은 수업을 듣는 학생들이고, 같은 파일을 A4로 뽑아 나눠 볼 거야.\n\n주제: "
+seed_from = "_deck"
 layouts = ["cover", "bullets", "quote", "split", "table"]
 
 # English half of the catalogue. The UI picks a side by language;

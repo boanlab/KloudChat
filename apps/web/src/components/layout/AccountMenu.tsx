@@ -1,4 +1,4 @@
-import {
+import { Code2,
   Bot,
   Brain,
   ChartColumn,
@@ -74,6 +74,9 @@ function AccountItems() {
       </MenuItem>
       <MenuItem icon={<TerminalIcon size={14} />} onClick={() => navigate('/agent-setup')}>
         {t('AI 에이전트 연동')}
+      </MenuItem>
+      <MenuItem icon={<Code2 size={14} />} onClick={() => navigate('/api-setup')}>
+        {t('API 연동')}
       </MenuItem>
       {user?.role === 'admin' && (
         <>

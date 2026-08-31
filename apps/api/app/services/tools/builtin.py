@@ -89,6 +89,12 @@ async def _scrape(base_url: str, url: str) -> str:
 #: implementation would be a second set of timeouts and headers to keep in step.
 scrape = _scrape
 
+#: The search, for the same reason. `services.research` runs the document
+#: surfaces' pre-pass against this one so a report and a chat answer are
+#: looking at the same index with the same parameters — a second client here
+#: is a second place for `language` or `safesearch` to drift.
+searxng = _searxng
+
 
 async def web_search(args: dict[str, Any]) -> ToolResult:
     query = str(args.get("query") or "").strip()
@@ -309,6 +315,16 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         return ToolResult(content="오류: content 가 비어 있습니다.", failed=True)
     if not title:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
+
+    # HTML with no HTML in it. The commonest way this arrives is a model asked
+    # for "HTML 문서" answering in Markdown — headings as `##`, emphasis as
+    # `**`, and not one tag — and the artifact then wore an HTML badge over a
+    # page that rendered as a wall of unstyled text in the panel and in every
+    # thumbnail. Renamed rather than refused: the content is fine and it is
+    # Markdown, so saying so is the whole fix.
+    if kind == "html" and not _TAG_NAME.search(content):
+        kind = "code"
+        language = "markdown"
 
     visible = _visible_length(kind, content)
         # The one call the description cannot prevent, the model having already

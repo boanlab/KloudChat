@@ -1,0 +1,453 @@
+<!doctype html>
+<!--
+  KloudChat deck seed — editorial.
+
+  A seminar talk with room to breathe. The slide is organised by one horizontal
+  hairline: the title sits in a band across the top, an accent rule crosses the
+  page under it, and the body drops into the left seven of twelve columns. The
+  right five stay empty on every slide — on a projector that is air, and on the
+  A4 handout it is where somebody writes. That emptiness is the design; there
+  is no vertical accent bar down the left edge, because a rule that lies down
+  is the one thing that tells this deck apart from the lecture deck at a
+  glance.
+
+  This file is the shared shape. It is editorial 덱's own design — the first
+  line above says so — and every other deck 서식 borrows it by naming it in
+  `seed_from`, then adds its own `design.css`: 신호 goes white on black, 강의
+  opens each slide with a filled number, 심사 발표 fills nothing at all. What
+  belongs here is what all of them need; what belongs there is what tells them
+  apart.
+
+  Colour is derived, never literal: every neutral is a `color-mix` of `--ink`
+  and every tinted surface a `color-mix` of `--accent`, so the deck answers the
+  same way to any accent hue and to a serif or a sans body face. The accent
+  itself appears exactly twice on a slide — the rule under the title, and the
+  hanging dash in front of a list item. Nothing else is painted.
+
+  No script, by design: artifacts render in a `sandbox=""` iframe, so a
+  keyboard runtime would be dead code that still had to be trusted. The deck
+  navigates by CSS scroll-snap, which works in the panel, in a new tab, and
+  in the downloaded file alike.
+
+  `@media print` puts one slide on one landscape page, so "print to PDF" is
+  the export path rather than a rendering engine in the API image.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{TOKENS}}
+    /* Every neutral is a mix of the ink the design system chose. A literal
+       grey stops following when the ink changes, which is how a template
+       drifts out of its own design system without anybody editing it. */
+    --paper: color-mix(in srgb, var(--ink) 2%, #fff);
+    --band: color-mix(in srgb, var(--ink) 5%, #fff);
+    --hair: color-mix(in srgb, var(--ink) 12%, transparent);
+    --rule: color-mix(in srgb, var(--accent) 55%, transparent);
+    /* The slide's own measurements, named so print can restate them in mm
+       and the step number can find the title's baseline in either. */
+    --gut: 8vw;
+    --pad-y: 12vh;
+    --h2-size: clamp(1.75rem, 3.2vw, 2.6rem);
+    /* Seven of twelve columns. The `rem` half caps the measure on a wide
+       projector; the percentage half keeps it an actual column fraction. */
+    --measure: min(42rem, 58.33%);
+    /* Three that arrived with the proposal deck's layouts when the typesetting
+       was merged, and arrived without their declarations. An undeclared custom
+       property is not an error anywhere: `background: var(--tint)` is thrown
+       away at computed-value time and the ground comes out white, `border-left:
+       2px solid var(--accent-ink)` comes out no border at all. So the compare
+       slide lost the rule that says which column is being argued for, and the
+       ask slide lost its ground, and nothing anywhere said so.
+       Mixed from the ink and the accent like every other neutral here, so they
+       follow the design system instead of pinning a colour beside it. */
+    --accent-ink: color-mix(in srgb, var(--accent) 76%, var(--ink));
+    --tint: color-mix(in srgb, var(--accent) 7%, #fff);
+    --receded: color-mix(in srgb, var(--ink) 52%, #fff);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    scroll-snap-type: y mandatory;
+    overflow-y: auto;
+    height: 100vh;
+  }
+  /* Korean breaks between syllables unless it is told not to, which puts the
+     second half of a word on the next line. `keep-all` moves the break to a
+     space; `break-word` is the escape hatch for a token with no space in it,
+     such as a path or an identifier. */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    /* Not centred. The title starts at a measured height on every slide, so
+       the rule under it lands in the same place each time and the deck reads
+       as one page turned rather than five boxes. */
+    justify-content: flex-start;
+    padding: var(--pad-y) var(--gut) 9vh;
+    border-bottom: 1px solid var(--hair);
+    position: relative;
+    /* The slide's own `1em`: the body voice, so that every subordinate voice
+       under it — a caption, a source line, a definition — lands at 0.84 of
+       what it is subordinate *to* rather than 0.84 of a browser default
+       nothing on this slide is set in. */
+    font-size: clamp(1.05rem, 1.45vw, 1.2rem);
+  }
+  /* The body column: the left seven of twelve. The right five are left empty
+     on purpose — margin on the handout, air on the projector. */
+  .slide > * { max-width: var(--measure); }
+  /* The heading is the one thing that is *not* on the seven columns — it runs
+     the width of the slide so its rule can. Written at this specificity on
+     purpose: a bare `h2 { max-width: none }` loses to the line above it. */
+  .slide > h2 { max-width: none; }
+
+  /* ── the rule ──────────────────────────────────────────────────── */
+  /* The title band. Negative margins take the heading out to both edges so
+     its underline is full bleed; the padding puts the words back on the
+     column. The right padding reserves the corner the step number sits in. */
+  h2 {
+    margin: 0 calc(-1 * var(--gut)) 2.4rem;
+    padding: 0 calc(var(--gut) + 4rem) 0.5em var(--gut);
+    border-bottom: 1px solid var(--accent);
+    font-size: var(--h2-size);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.021em;
+    text-wrap: balance;
+  }
+  /* Sits at the right end of the rule, on the title's first baseline: the
+     0.86em is the heading's ascent, the 0.62rem the number's own. */
+  .num {
+    position: absolute;
+    right: var(--gut);
+    top: calc(var(--pad-y) + var(--h2-size) * 0.86 - 0.62rem);
+    font-size: 0.78rem;
+    line-height: 1;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  /* ── body ──────────────────────────────────────────────────────── */
+  /* Korean has no upper case, so a kicker is made of tracking and colour
+     rather than `text-transform`, which would do nothing to Hangul and
+     shout at the Latin words mixed into it. */
+  h3 {
+    margin: 0 0 0.6em;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  p { margin: 0 0 0.9em; font-size: clamp(1.05rem, 1.45vw, 1.2rem); font-weight: 400;
+      line-height: 1.6; text-wrap: pretty; }
+  li { font-size: clamp(1.05rem, 1.45vw, 1.2rem); font-weight: 400; line-height: 1.6;
+       text-wrap: pretty; }
+  /* No dots. A hanging accent dash marks the item and the text keeps one left
+     edge, which is what makes five lines read as a list of statements rather
+     than a bulleted slide. */
+  ul { list-style: none; margin: 0; padding: 0; }
+  ul > li { position: relative; padding-left: 1.15em; }
+  ul > li::before {
+    content: "–";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+  }
+  ol { margin: 0; padding-left: 1.5em; }
+  ol > li::marker { color: var(--accent); font-variant-numeric: tabular-nums; }
+  li + li { margin-top: 0.55em; }
+  strong { font-weight: 650; }
+  blockquote {
+    margin: 0;
+    font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+    font-weight: 400;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+  table { width: 100%; border-collapse: collapse;
+          font-size: clamp(0.95rem, 1.3vw, 1.1rem); }
+  th, td { padding: 0.55em 0.9em 0.55em 0; border-bottom: 1px solid var(--hair);
+           text-align: left; vertical-align: top; }
+  /* Figures in a column are read down, not across; without this they
+     wander by a fraction of a character each row. */
+  td { font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.1em;
+       border-bottom: 1px solid var(--rule); }
+
+  /* ── the subordinate voice ─────────────────────────────────────── */
+  /* One behaviour for every voice that explains something else: 0.84em,
+     muted, upright, a short measure, 0.5rem under what it explains.
+     Recognising this is how somebody knows a third KloudChat document
+     without being told which template it came from. */
+  figcaption, small, dd, .lead {
+    font-size: 0.84em;
+    line-height: 1.55;
+    color: var(--muted);
+    font-style: normal;
+    max-width: 54ch;
+  }
+  figcaption { margin-top: 0.5rem; }
+  p + small, blockquote + small, figure + small, ul + small, table + small {
+    display: block;
+    margin-top: 0.5rem;
+  }
+
+  /* ── cover ─────────────────────────────────────────────────────── */
+  /* The one inverted slide: the rule goes above the title and the block sits
+     in the bottom third, so the deck opens on the move it then repeats. */
+  .slide.cover {
+    background: var(--band);
+    justify-content: flex-end;
+    /* The local scale the lead is 0.84em of. */
+    font-size: clamp(1.25rem, 2vw, 1.5rem);
+  }
+  .slide.cover h2 {
+    margin: 0 calc(-1 * var(--gut));
+    padding: 0.55em calc(var(--gut) + 12%) 0 var(--gut);
+    border-bottom: 0;
+    border-top: 1px solid var(--accent);
+    font-size: clamp(2.1rem, 4.6vw, 3.2rem);
+  }
+  .slide.cover .lead { margin: 0.5rem 0 0; }
+  .slide.cover .num {
+    position: static;
+    order: -1;
+    align-self: flex-end;
+    margin: 0 0 0.55rem;
+  }
+
+  /* ── quote ─────────────────────────────────────────────────────── */
+  /* The rule comes off. One sentence on the seven columns and nothing else —
+     the only slide where the accent is a piece of punctuation rather than a
+     structure. */
+  .slide.quote { justify-content: center; }
+  .slide.quote > h2 {
+    max-width: var(--measure);
+    margin: 0 0 1.6rem;
+    padding: 0;
+    border-bottom: 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  .slide.quote small { display: block; }
+  .slide.quote small::before { content: "— "; color: var(--accent); }
+
+  /* ── split ─────────────────────────────────────────────────────── */
+  /* Five columns, two empty, five. The gap is the divider; a drawn line
+     between them would be a second rule competing with the one above. */
+  .slide.split .cols {
+    display: grid;
+    grid-template-columns: 5fr 5fr;
+    column-gap: 16.66%;
+    max-width: none;
+  }
+  @media (max-width: 720px) {
+    .slide.split .cols { grid-template-columns: 1fr; row-gap: 1.8rem; column-gap: 0; }
+  }
+
+  /* ── table ─────────────────────────────────────────────────────── */
+  /* The only layout that uses all twelve columns. The change of width is
+     what stops five slides looking like the same slide five times. */
+  .slide.table > * { max-width: none; }
+
+  /* The rest of the vocabulary `sanitise` lets through. A block that reaches
+     for a caption or a definition list should get typography rather than the
+     browser's defaults — an unstyled `<dl>` is how model output starts to
+     look like model output. */
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 650; }
+  dd { margin: 0.5rem 0 0.9rem; }
+  hr { border: 0; border-top: 1px solid var(--hair); margin: 1.6rem 0; }
+  /* A line of code is a quotation from a machine, so it has to survive being
+     copied out of the page character for character: a fixed-width face, and a
+     field that shows where it starts and where it stops. Inline only — `pre`
+     is not in the vocabulary, so nothing here can grow into a wall. */
+  code {
+    font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    font-size: 0.88em;
+    padding: 0.05em 0.32em;
+    background: var(--band);
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+  /* A picture is a data URI the server embedded; nothing here fetches from
+     outside a sandboxed artifact. */
+  figure { margin: 1.2rem 0; }
+  /* A slide is one screen. A portrait picture at full width is twice that,
+     and it takes the slide's own box with it — scroll-snap stops landing on
+     slide boundaries and print puts one slide across two pages. Height is
+     what has to be capped here, not width. */
+  figure img { display: block; max-width: 100%; max-height: 52vh;
+               width: auto; height: auto; }
+
+  /* 960 x 540 points is 16:9 — a slide, not a sheet of paper.
+     These rules were written when "printing it in a browser" meant a person
+     pressing Ctrl+P to get a handout, so they said A4 landscape with a 12mm
+     margin and let each slide be as tall as its words. Now a browser *is* the
+     exporter, and what it makes is the deck's own `.pdf` — the file somebody
+     projects. On A4 a four-line slide left two thirds of every page white.
+     Same numbers `deck_export` used for the file it drew before this
+     (`_W, _H = 960.0, 540.0`), so the deck did not change shape when the
+     renderer under it did. A handout is still one Ctrl+P away from the `.html`,
+     which is the faithful copy and has always been the place for that. */
+  @page { size: 960pt 540pt; margin: 0; }
+  @media print {
+    body { height: auto; overflow: visible; scroll-snap-type: none;
+           background: #fff; }
+    .slide, .slide.cover {
+      --gut: 6.5%;
+      --pad-y: 9%;
+      /* One point of slack. At exactly the page height a rounding error puts
+         every slide onto two pages, and `min-height` rather than `height` so a
+         slide with more words than fit overflows visibly instead of being
+         silently cropped. */
+      min-height: 539pt;
+      height: auto;
+      justify-content: flex-start;
+      page-break-after: always;
+      break-after: page;
+      border-bottom: 0;
+      padding: var(--pad-y) var(--gut) 7%;
+    }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    /* The cover keeps its band now that the page is a slide rather than a
+       sheet: it is the one page of the deck a projector shows before anybody
+       is listening, and on paper it is a tint at the top, not a grey wash over
+       a whole A4. */
+    .slide.cover { justify-content: flex-end; }
+    figure img { max-height: 300pt; }
+  }
+
+  /* 제안 덱이 쓰던 세 배치 — 나란히 견주기, 그림 한 장, 마지막 요청.
+     조판을 하나로 합치면서 함께 왔다. 서식이 선언한 배치를 조판이 그리지
+     못하면, 쓰는 쪽은 종이가 그릴 수 없는 장을 달라고 하게 된다. */
+  /* ── compare ───────────────────────────────────────────────────────
+     Left is what happens now, right is what is proposed. Only the proposed
+     column is ruled and only its name is coloured, and the reported column
+     steps back one shade — which side is being argued for is legible before
+     a word is read. */
+  .slide.compare .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(1.25rem, 3vw, 2.5rem);
+  }
+  .slide.compare .cols > div:first-child { color: var(--receded); }
+  .slide.compare .cols > div + div {
+    padding-left: clamp(1rem, 2vw, 1.75rem);
+    border-left: 2px solid var(--accent-ink);
+  }
+  .slide.compare .cols > div + div h3 { color: var(--accent-ink); }
+  /* Side by side is the whole idea, so it stacks only where two columns would
+     be two narrow columns. Without this query the stacked rule applied
+     everywhere and a compare slide was never once compared. */
+  @media (max-width: 720px) {
+    .slide.compare .cols { grid-template-columns: 1fr; }
+    .slide.compare .cols > div + div {
+      padding: 1rem 0 0;
+      border-left: 0;
+      border-top: 2px solid var(--accent-ink);
+    }
+  }
+  /* ── figure ────────────────────────────────────────────────────────
+     One value, larger than any title in the deck, with the line that says
+     where it came from directly under it. A number nobody can source is not
+     evidence, so the source is carried on a rule rather than dropped in. */
+  .slide.figure .claim {
+    margin: 0;
+    font-size: clamp(2rem, 6.5vw, 4rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  .slide.figure blockquote { font-size: clamp(1.7rem, 4.6vw, 3rem); line-height: 1.15; }
+  .slide.figure .note {
+    margin: 1rem 0 0;
+    padding-top: 0.55rem;
+    border-top: 2px solid var(--accent-ink);
+  }
+  /* ── ask ───────────────────────────────────────────────────────────
+     The last slide, and the only coloured ground in the deck: what is being
+     requested, from whom, by when. */
+  .slide.ask { background: var(--tint); }
+  .slide.ask li { font-size: clamp(1rem, 1.6vw, 1.22rem); margin-bottom: 0.75em; }
+  .slide.ask li strong { color: var(--accent-ink); }
+  .slide.ask .note { margin-top: 1.4rem; }
+  /* A printer may drop a background and never drops a rule, so the ask is
+     framed on paper instead of tinted. On screen it stays tinted, which is
+     what the rule above says — this had lost its `@media print` and was
+     whitening the one coloured slide in the deck everywhere. */
+  @media print {
+    .slide.ask { background: #fff; border: 1.5pt solid var(--accent-ink); padding: 8mm; }
+  }
+
+  /* ── example: the concept, then the case that carries it ───────── */
+  .slide.example > p {
+    font-size: clamp(1.2rem, 2.5vw, 2rem);
+    line-height: 1.35;
+    margin-bottom: 1.1em;
+  }
+  /* The label sits in the gutter beside the case on a projector and above it
+     in a narrow panel. Styled for `.ex` and for a bare `<div>` both: a model
+     that forgot the class still gets the panel, because a division in this
+     layout can only be the example. */
+  .slide.example .ex,
+  .slide.example > div {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.3rem 1.5rem;
+    padding: 1.3rem 1.6rem;
+    border-left: 5px solid var(--accent);
+    border-radius: 0 12px 12px 0;
+    background: var(--tint);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .slide.example .ex::before,
+  .slide.example > div::before {
+    content: "예시";
+    grid-column: 1;
+    color: var(--accent);
+    font-size: clamp(0.85rem, 1.3vw, 1.05rem);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    line-height: 2;
+  }
+  .slide.example .ex > *,
+  .slide.example > div > * { grid-column: 2; margin: 0 0 0.45em; }
+  .slide.example .ex > :last-child,
+  .slide.example > div > :last-child { margin-bottom: 0; }
+  /* The label moves above the case where the gutter would be too narrow to
+     hold it. Unwrapped, this collapsed the two-column panel everywhere and the
+     "예시" label sat on its own line on a projector too. */
+  @media (max-width: 720px) {
+    .slide.example .ex,
+    .slide.example > div { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+    .slide.example .ex > *,
+    .slide.example > div > * { grid-column: 1; }
+  }
+  @media print {
+    .slide.example .ex,
+    .slide.example > div { break-inside: avoid; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

@@ -375,3 +375,42 @@ async def test_the_agent_list_marks_official_entries_and_the_ones_already_taken(
     assert original.official and original.installed
     # Your own row never claims you hold a copy of yourself.
     assert not next(r for r in rows if r.id == "agent-9").installed
+
+
+@pytest.mark.asyncio
+async def test_the_copy_every_account_was_handed_before_the_store_hides_the_catalogue_row():
+    """옛 사본 때문에 기본 에이전트가 두 번 보이던 것.
+
+    Before the shipped agents became one shared catalogue, every account was
+    handed its own copy of each. The move made the originals org-owned and left
+    the copies where they were, so an account that existed before it saw every
+    built-in twice — 리포트 도우미 above 리포트 도우미, one of them with a
+    different sentence under it. A person opening KloudChat on such an account
+    reads that as two different agents and cannot tell which to press.
+
+    The catalogue row is the one that goes, because which of the two is
+    untouched cannot be known: the migration rewrote both, so their timestamps
+    say a day passed and mean nothing. Between a row somebody may have edited
+    and a row they can take from the store again whenever they like, the safe
+    one to hide is the one that comes back.
+    """
+    admin = _user("admin-1", UserRole.admin)
+    shared = _agent()
+    #: No `origin_id` — nobody installed this, it was seeded.
+    seeded = _agent(id="agent-9", owner_id="user-1", visibility=Visibility.private)
+    db = _Db(agents=[shared, seeded], users=[admin, _user()])
+
+    rows = await ws.list_agents(_user(), db)
+
+    assert [row.id for row in rows] == ["agent-9"]
+
+
+@pytest.mark.asyncio
+async def test_an_account_with_no_copy_of_its_own_still_sees_the_catalogue():
+    """Which is every account made since. Nothing about the fix reaches them."""
+    admin = _user("admin-1", UserRole.admin)
+    db = _Db(agents=[_agent()], users=[admin, _user()])
+
+    rows = await ws.list_agents(_user(), db)
+
+    assert [row.id for row in rows] == ["agent-1"]

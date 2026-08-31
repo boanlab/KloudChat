@@ -1,0 +1,50 @@
+/* 제안서 — 고객이 먼저, 견적이 마지막.
+ *
+ * 제출용 보고서와 달리 이 문서는 팔린다. 그래서 표지는 자기 몫의 종이를 갖고,
+ * 그 위에 강조색 띠가 놓인다. 절 번호는 마침표가 아니라 색이 채워진 칩이다 —
+ * 넘겨 보는 사람이 어디까지 왔는지 세지 않아도 알게 하는 장치다.
+ *
+ * 대신 본문은 조용하다. 표지에서 한 번 쓴 색을 본문에서 다시 쓰면 문서 전체가
+ * 광고로 읽히고, 견적표의 마지막 줄이 눈에 띄지 않게 된다. */
+
+.cover {
+  padding-top: 26vh;
+  border-top: 10px solid var(--accent);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.cover::after { height: 1px; background: var(--border); }
+.cover h1 { font-size: clamp(2rem, 4.4vw, 3rem); }
+
+/* 번호 칩. 인쇄기가 배경을 빼는 경우를 대비해 테두리도 함께 준다. */
+h2 { display: flex; align-items: baseline; gap: 0.6rem; font-size: 1.2rem; }
+h2::before {
+  margin-right: 0;
+  flex: 0 0 auto;
+  min-width: 1.6em;
+  padding: 0.1em 0;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.78rem;
+  text-align: center;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* 도입 효과. 이 서식에서 숫자는 근거이자 약속이므로 테두리를 갖는다. */
+.kpi {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 0.6rem;
+}
+
+/* 견적. 마지막 줄이 합계이고, 합계는 이 문서에서 가장 자주 찾는 한 줄이다. */
+table tbody tr:last-child td {
+  border-top: 2px solid var(--rule);
+  border-bottom: 0;
+  font-weight: 700;
+}
+table td:not(:first-child) { text-align: right; padding-right: 0; padding-left: 1.2em; }
+table th:not(:first-child) { text-align: right; padding-right: 0; padding-left: 1.2em; }

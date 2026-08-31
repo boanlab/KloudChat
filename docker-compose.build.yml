@@ -1,4 +1,4 @@
-# Build overlay — builds both images from this checkout instead of pulling the
+# Build overlay — builds every image from this checkout instead of pulling the
 # published ones.
 #
 # Use it when you are changing the source, or on an architecture the release
@@ -10,13 +10,20 @@
 # The tag becomes `:local` so that a build never sits in the image cache under
 # the name of a published version, where a later `docker compose up -d` would
 # take it for the real thing. `pull_policy: build` says the same to compose:
-# these two services come from source here, never from a registry.
+# these services come from source here, never from a registry.
 services:
   api:
     image: boanlab/kloudchat-api:local
     pull_policy: build
     build:
       context: ./apps/api
+      dockerfile: Dockerfile
+
+  print:
+    image: boanlab/kloudchat-print:local
+    pull_policy: build
+    build:
+      context: ./apps/print
       dockerfile: Dockerfile
 
   web:

@@ -12,16 +12,19 @@ import base64
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import func, or_, tuple_
 from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
-from app.models.chat import ChatSession, Message, Role
+from app.models.chat import ChatSession, Message, Role, SessionKind
 from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Agent,
@@ -54,19 +57,25 @@ from app.schemas.workspace import (
     DesignSystemIn,
     DesignSystemOut,
     DesignTemplateOut,
+    DesignTemplateUsageOut,
+    DiagramPicture,
     FileOut,
     KnowledgeUrl,
     MemoryIn,
     MemoryOut,
+    OpenedDocument,
     ProjectIn,
     ProjectOut,
     ProjectPatch,
     PromptTemplateOut,
+    SectionFactCheck,
+    SectionImage,
     SectionRewrite,
     SkillIn,
     SkillOut,
     SlideFactCheck,
     SlideImage,
+    SlideRewrite,
     StoreSkillOut,
     TemplateIn,
     TemplateOut,
@@ -78,12 +87,15 @@ from app.services import (
     design_extract,
     design_templates,
     factcheck,
+    hwpx_import,
     index_client,
     lint,
     page_export,
     pictures,
+    printing,
     prompt_templates,
     report_export,
+    richtext,
     settings_store,
     starter,
 )
@@ -94,7 +106,6 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
-from app.services import transcribe as transcribe_service
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools import builtin as builtin_tools
 from app.services.tools import registry as tool_registry
@@ -404,7 +415,7 @@ async def upload_file(
 
     # Extraction failure is recorded, not raised — the upload itself succeeded.
     try:
-        stored.text = file_service.extract_text(stored.name, stored.mime, data)
+        stored.text = await file_service.text_of(stored.name, stored.mime, data)
         stored.tokens = file_service.estimate_tokens(stored.text)
     except Exception as exc:  # noqa: BLE001
         log.info("extraction failed for %s: %s", stored.name, exc)
@@ -414,25 +425,6 @@ async def upload_file(
     await db.commit()
     await db.refresh(stored)
     return FileOut.of(stored)
-
-
-@router.post("/transcribe")
-async def transcribe_audio(user: CurrentUser, file: UploadFile = File(...)):
-    """Dictated audio → text. Nothing is stored.
-
-    The clip is a means of typing, not a document; keeping it would leave a
-    voice recording in the file store for every dictated sentence.
-    """
-    if not await transcribe_service.available():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="transcription_unavailable"
-        )
-    data = await file.read()
-    try:
-        text = await transcribe_service.transcribe(data, file.filename or "speech.webm")
-    except transcribe_service.TranscribeError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return {"text": text}
 
 
 @router.get("/files/{file_id}/content")
@@ -459,6 +451,91 @@ async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
             )
         },
     )
+
+
+@router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)
+async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
+    """올린 `.hwpx` 를 편집할 수 있는 문서로 연다.
+
+    The half that was missing. This server has been able to *write* `.hwpx`
+    since the report exporter learnt OWPML, and to *read* one as flat text
+    since attachments could be reference material — but a file somebody
+    uploaded and wanted to change had nowhere to go: the text came out as one
+    block with the headings and the tables gone, which is not a document any
+    more, it is a transcript of one.
+
+    What comes back is an ordinary report: the same artifact the writer
+    produces, so it opens in the same editor, prints through the same printer,
+    and exports back to `.hwpx` through the exporter that was already there.
+    Nothing is generated and nothing is charged — this is a file format being
+    read, not a model being asked.
+    """
+    stored = await _own(db, StoredFile, "user_id", user, file_id)
+    if not stored.name.lower().endswith(".hwpx"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_hwpx_file"
+        )
+    try:
+        data = file_service.read_blob(stored.storage_key)
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
+    try:
+        document = hwpx_import.read(data)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    parts = document.sections
+    if not parts:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="no_document_body"
+        )
+
+    # What the document calls itself, and failing that the file's own name minus
+    # the extension. A document opened from a file is that file until somebody
+    # renames it — but a file that carries a title on its first page is telling
+    # us the name its author chose, which beats `최종_보고서_v3(수정)`.
+    title = document.title[:200] or re.sub(r"\.hwpx$", "", stored.name, flags=re.I)[:200]
+    title = title or "한글 문서"
+    session = ChatSession(
+        user_id=user.id,
+        project_id=stored.project_id,
+        kind=SessionKind.report,
+        title=title,
+    )
+    db.add(session)
+    await db.flush()
+    artifact = Artifact(
+        user_id=user.id,
+        session_id=session.id,
+        project_id=stored.project_id,
+        kind=ArtifactKind.report,
+        title=title,
+        data={
+            "sections": [
+                {
+                    "id": uuid4().hex,
+                    "heading": part.heading,
+                    "level": part.level,
+                    "status": "done",
+                    # Read out of a file rather than written by a model, so it
+                    # is markup from the start — the editor's own format, which
+                    # is what keeps the tables tables through a save.
+                    "format": "html",
+                    "content": part.html,
+                }
+                for part in parts
+            ],
+            "sources": [],
+            "citationStyle": "APA",
+        },
+    )
+    db.add(artifact)
+    await db.flush()
+    session.artifact_id = artifact.id
+    db.add(session)
+    await db.commit()
+    return OpenedDocument(id=session.id)
 
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -554,6 +631,27 @@ async def get_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     return ArtifactOut.of(await _own(db, Artifact, "user_id", user, artifact_id))
 
 
+def _clean_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Report sections with every hand-written body sanitised.
+
+    Only `format: "html"` bodies are touched. A Markdown section is text and is
+    escaped by whatever renders it; an HTML one is markup that reaches a panel,
+    an export and a share link, and the only place to stop a `<script>` in it is
+    before it is stored.
+    """
+    if not data or not isinstance(data.get("sections"), list):
+        return data
+    cleaned = []
+    for row in data["sections"]:
+        section = dict(row) if isinstance(row, dict) else {}
+        if section.get("format") == "html":
+            section["content"] = design_templates.sanitise(
+                str(section.get("content") or ""), editable_styles=True
+            )
+        cleaned.append(section)
+    return {**data, "sections": cleaned}
+
+
 @router.patch("/artifacts/{artifact_id}", response_model=ArtifactOut)
 async def patch_artifact(
     artifact_id: str, payload: ArtifactPatch, user: CurrentUser, db: DbSession
@@ -575,6 +673,15 @@ async def patch_artifact(
                 "최신 내용을 받은 뒤 다시 저장하세요."
             ),
         )
+
+    if "data" in changes and artifact.kind is ArtifactKind.report:
+        # A PATCH carries whatever the browser sends, and since the document
+        # editor shipped what it sends is markup. Cleaned here rather than
+        # trusted: this is the boundary the HTML crosses, and past it the same
+        # string is rendered into a panel, written into an export and served
+        # from a share link. `editable_styles` keeps the four things a person
+        # can actually set — see `design_templates._EDITABLE_STYLE`.
+        changes["data"] = _clean_report_data(changes["data"])
 
     if "data" in changes:
         # Snapshot before overwriting; otherwise a bad edit is unrecoverable.
@@ -622,7 +729,7 @@ async def factcheck_slide(
 
     catalogue = await model_service.list_models()
     usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=lambda m: m["creditCost"]
+        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=model_service.fallback_order
     )
     if not usable:
         raise HTTPException(
@@ -668,14 +775,143 @@ async def factcheck_slide(
     return ArtifactOut.of(artifact)
 
 
+@router.post("/artifacts/{artifact_id}/sections/diagram", response_model=ArtifactOut)
+async def store_diagram(
+    artifact_id: str, payload: DiagramPicture, user: CurrentUser, db: DbSession
+):
+    """Keeps the picture a browser made of one mermaid diagram.
+
+    Mermaid is a JavaScript renderer and this image has no headless browser —
+    `report_export` chose reportlab over an HTML engine on purpose. So a
+    diagram is drawn by whoever opens the document, and what they drew is
+    posted back here so the `.docx`, the `.pdf` and the `.hwpx` have a real
+    figure in that place rather than a line of source.
+
+    **No version is taken.** Opening a document is not editing it, and a
+    version per reader would bury the edits somebody actually made. The stored
+    body is untouched: this only fills a cache beside it, keyed by the
+    diagram's own source, and a body that changes simply stops matching the
+    key and gets drawn again.
+
+    Free, and deliberately so — the work happened in the reader's browser.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.report:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
+    if not pictures.decode(payload.src):
+        # A remote address is not a picture this document can carry, and
+        # fetching one here is a request nobody asked for.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_embedded")
+
+    data = dict(artifact.data or {})
+    sections = [dict(row) for row in (data.get("sections") or [])]
+    target = next((row for row in sections if row.get("id") == payload.section_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="section_not_found")
+
+    store = dict(target.get("diagrams") or {})
+    if store.get(payload.key) == payload.src:
+        # Already have it. Every reader of the document would otherwise write
+        # the same bytes back on every open.
+        return ArtifactOut.of(artifact)
+    store[payload.key] = payload.src
+    target["diagrams"] = store
+    data["sections"] = sections
+    artifact.data = data
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+@router.post("/artifacts/{artifact_id}/sections/factcheck", response_model=ArtifactOut)
+async def factcheck_section(
+    artifact_id: str, payload: SectionFactCheck, user: CurrentUser, db: DbSession
+):
+    """Checks one report section's claims against the web and stores them.
+
+    The deck has had this since it shipped and the report has not, which is
+    backwards: a slide is argued with in the room it is shown in, and a report
+    is exported, attached to a mail, and read by people who were not there. The
+    figure nobody checked does the most damage on this surface.
+
+    Per section, for the reason the deck runs per slide — a document-wide run is
+    a hundred unasked-for searches, and a hundred verdicts at once is not
+    something a reader can act on.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.report:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
+    if not await factcheck.available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="search_unavailable"
+        )
+
+    data = dict(artifact.data or {})
+    sections = [dict(row) for row in (data.get("sections") or [])]
+    target = next((row for row in sections if row.get("id") == payload.section_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="section_not_found")
+
+    catalogue = await model_service.list_models()
+    usable = sorted(
+        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=model_service.fallback_order
+    )
+    if not usable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    model = usable[0]
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+
+    verdicts, usage = await factcheck.check_text(
+        title=str(target.get("heading") or ""),
+        body=str(target.get("content") or ""),
+        model=model["id"],
+        api_key=api_key,
+    )
+    target["factCheck"] = verdicts
+    data["sections"] = sections
+    artifact.data = data
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+    # No version snapshot: a verdict annotates the report rather than editing it.
+
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    settle(
+        db,
+        user,
+        credits,
+        reason="report.factcheck",
+        session_id=artifact.session_id,
+        model=model["id"],
+    )
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
 #: How a document reaches the reviewer, per kind. The linter reads the same
 #: three shapes; this turns them into headings and prose instead of parts.
 def _reviewable(artifact: Artifact) -> tuple[str, str]:
     """`(body, rubric)` for one artifact, or `("", "")` when there is nothing."""
     data = artifact.data or {}
     if artifact.kind is ArtifactKind.report:
+        # `as_markdown` rather than the raw body: a section edited in the
+        # document editor is markup, and a reviewer handed `<p style=…>` spends
+        # its findings on the tags instead of the argument.
         parts = [
-            {"heading": s.get("heading") or "", "text": s.get("content") or ""}
+            {"heading": s.get("heading") or "", "text": richtext.as_markdown(s)}
             for s in (data.get("sections") or [])
         ]
         return critique.document(parts), ""
@@ -718,7 +954,7 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     session = (
         await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
@@ -941,6 +1177,78 @@ async def add_block_image(
     return ArtifactOut.of(artifact)
 
 
+@router.post("/artifacts/{artifact_id}/sections/image", response_model=ArtifactOut)
+async def add_section_image(
+    artifact_id: str, payload: SectionImage, user: CurrentUser, db: DbSession
+):
+    """Puts a picture this workspace made into one section of a report.
+
+    The page track has had this since it shipped and the report track has not,
+    which meant the surface most people write on was the one with no way to put
+    a picture in a document. Not for want of machinery: a Markdown picture line
+    is already read by `richtext` on the way in and by all three exporters on
+    the way out — `_IMAGE` in `report_export` decodes it and hands the bytes to
+    the same code that draws a figure the writer proposed. So this appends a
+    line rather than adding a field, and the `.docx`, `.pdf` and `.hwpx` need no
+    changes at all to carry it.
+
+    A section somebody has formatted by hand is HTML, and a Markdown line
+    dropped into HTML prints as literal text. So the shape follows the body it
+    is joining.
+
+    Free, and snapshotted like a rewrite.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.report:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
+
+    data = dict(artifact.data or {})
+    sections = [dict(row) for row in (data.get("sections") or [])]
+    target = next((row for row in sections if row.get("id") == payload.section_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="section_not_found")
+
+    mime, blob = await _picture_bytes(db, user, payload.artifact_id)
+    src = f"data:{mime};base64,{base64.b64encode(blob).decode('ascii')}"
+    caption = payload.caption.strip()
+    body = str(target.get("content") or "").rstrip()
+
+    if target.get("format") == "html":
+        label = design_templates.escape(caption or "그림")
+        figure = f'<figure><img src="{src}" alt="{label}" />'
+        if caption:
+            figure += f"<figcaption>{design_templates.escape(caption)}</figcaption>"
+        figure += "</figure>"
+        # The same door a hand-edited body goes through on PATCH — see
+        # `_clean_report_data`. The picture is trusted and the markup around it
+        # is built here, and neither gets to skip it.
+        target["content"] = design_templates.sanitise(
+            f"{body}{figure}", editable_styles=True
+        )
+    else:
+        # The alt text is what the exporters print as the caption, so it holds
+        # the caption rather than a description of it.
+        target["content"] = f"{body}\n\n![{caption}]({src})\n"
+
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=artifact.version,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=f"{target.get('heading') or '절'} 에 그림 넣음",
+        )
+    )
+    data["sections"] = sections
+    artifact.data = data
+    artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
 @router.post("/artifacts/{artifact_id}/blocks/rewrite", response_model=ArtifactOut)
 async def rewrite_block(
     artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession
@@ -980,7 +1288,7 @@ async def rewrite_block(
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if template.surface.value in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     session = (
         await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
@@ -1092,7 +1400,7 @@ async def rewrite_section(
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "report" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     # An artifact carries no model: the session's if it still has one, else the
     # cheapest that can write a report.
@@ -1121,7 +1429,9 @@ async def rewrite_section(
         body, usage = await report_service.rewrite_section(
             request=artifact.title or "",
             heading=target.get("heading") or "",
-            sections=sections,
+            # The surrounding sections as prose. A rewrite reads them for
+            # continuity, and markup in that window is noise it may copy.
+            sections=richtext.normalise(sections),
             target_id=payload.section_id,
             model=model["id"],
             api_key=api_key,
@@ -1148,6 +1458,11 @@ async def rewrite_section(
         )
     )
     target["content"] = body
+    # The model writes Markdown. A section that had been edited into HTML goes
+    # back to Markdown when it is rewritten, because what is stored now *is*
+    # Markdown — leaving the old flag on would have the panel render `**가**`
+    # as literal asterisks.
+    target["format"] = "markdown"
     target["status"] = "done"
     data["sections"] = sections
     data["wordCount"] = report_service.word_count(sections)
@@ -1162,6 +1477,101 @@ async def rewrite_section(
         user,
         credits,
         reason="report.rewrite",
+        session_id=artifact.session_id,
+        model=model["id"],
+    )
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+@router.post("/artifacts/{artifact_id}/slides/rewrite", response_model=ArtifactOut)
+async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUser, db: DbSession):
+    """Rewrites one slide of a deck and keeps the previous version.
+
+    The deck's half of `rewrite_section`. `deck.rewrite_slide` has existed for
+    a while and was reachable only by asking in the conversation — so anything
+    that wanted to correct one slide from a panel had to send a sentence to the
+    chat and hope, which is a request rather than an action. The checks list is
+    the caller that needed this: it names a slide and says what is wrong with
+    it, and had nowhere to send that.
+
+    Charged like any other model call and snapshotted like any other edit, so a
+    worse rewrite is one click from undone.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.deck:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
+
+    data = dict(artifact.data or {})
+    slides = [dict(s) for s in (data.get("slides") or [])]
+    target = next((s for s in slides if s.get("id") == payload.slide_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
+
+    catalogue = await model_service.list_models()
+    usable = sorted(
+        (m for m in catalogue["models"] if "slides" in m["kinds"]),
+        key=model_service.fallback_order,
+    )
+    session = (
+        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
+    )
+    model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
+        usable[0] if usable else None
+    )
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+
+    try:
+        written, usage = await deck_service.rewrite_slide(
+            request=artifact.title or "",
+            slides=slides,
+            target_id=payload.slide_id,
+            model=model["id"],
+            api_key=api_key,
+            note=payload.note,
+        )
+    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+        log.warning("slide rewrite failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_failed"
+        ) from exc
+
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=artifact.version,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=f"{target.get('title')} 다시 씀",
+        )
+    )
+    slides[slides.index(target)] = written
+    data["slides"] = slides
+    artifact.data = data
+    artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+
+    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+    settle(
+        db,
+        user,
+        credits,
+        reason="deck.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
     )
@@ -1578,6 +1988,37 @@ async def _agent_has_knowledge(db: DbSession, user_id: str, agent_id: str) -> bo
     return row is not None
 
 
+def _without_legacy_copies(rows: list[Agent], *, user_id: str) -> list[Agent]:
+    """One card per name: the person's own, where they have one.
+
+    Before the shipped agents became a shared catalogue, every account was
+    handed its own copy of each. The move made the originals org-owned and left
+    the copies where they were, so an account that existed before it sees every
+    built-in twice — 리포트 도우미 above 리포트 도우미, one of them with a
+    different sentence under it, and no way to tell which is which. Somebody
+    opening KloudChat on such an account reads that as two different agents.
+
+    The catalogue entry is the one hidden, not the copy. Which of the two is
+    untouched cannot be known — the rows were rewritten by the migration that
+    made them, so their timestamps say a day passed and mean nothing — and
+    between a row the person may have edited and a row they can install again
+    from the store at any time, the safe one to hide is the one that can come
+    back. An account with no copy of its own, which is every account made since,
+    sees the catalogue exactly as before.
+    """
+    # `origin_id` is what separates the two ways an account comes to hold a
+    # copy. Taking one from the store sets it, and the store then marks the
+    # original 이미 가져감 and keeps both on screen on purpose — that pairing is
+    # the feature. The seeded copies predate the store and carry nothing, which
+    # is exactly the set to collapse.
+    legacy = {
+        row.name
+        for row in rows
+        if row.owner_id == user_id and row.visibility != "org" and row.origin_id is None
+    }
+    return [row for row in rows if row.visibility != "org" or row.name not in legacy]
+
+
 @router.get("/agents", response_model=list[AgentOut])
 async def list_agents(user: CurrentUser, db: DbSession):
     # Own agents plus anything shared with the workspace.
@@ -1588,6 +2029,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
             .order_by(col(Agent.name))
         )
     ).all()
+    rows = _without_legacy_copies(rows, user_id=user.id)
 
     # One lookup for the page: the store shows who made each agent, and
     # whether that was an administrator publishing an official one.
@@ -1828,6 +2270,9 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
     tokens = (artifact.data or {}).get("design") or None
     title = artifact.title or "슬라이드"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "deck"
+    # The 서식 the deck was written in, when it names one. Its PowerPoint half
+    # is what the file is built on.
+    chosen = design_templates.get((artifact.data or {}).get("templateId") or "")
 
     if format == "md":
         return _attachment(
@@ -1844,7 +2289,12 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
         # `docx` is the endpoint default, so a deck exported without an explicit
         # format lands here rather than 400-ing.
         return _attachment(
-            deck_export.to_pptx(title, slides, tokens=tokens),
+            deck_export.to_pptx(
+                title,
+                slides,
+                tokens=tokens,
+                template=chosen.pptx_template if chosen else "",
+            ),
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             stem,
             "pptx",
@@ -1852,13 +2302,20 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
 
 
-def _export_page(artifact: Artifact, format: str) -> Response:
+async def _export_page(artifact: Artifact, format: str) -> Response:
     """An HTML artifact as a file somebody can hand on.
 
-    The `.html` is the artifact itself. The other formats are `page_export`
-    reading the markup back into the shapes the existing exporters draw, so a deck
-    opens in PowerPoint as editable slides laid out by this product's own deck
-    renderer. Fidelity lives in the `.html`, editability here.
+    Three ways out, and the split is deliberate:
+
+    · `.html` is the artifact itself, byte for byte.
+    · `.pdf` is that same file printed by a browser, so it carries the 서식's
+      own layout — its columns, its margin notes, its paper. See
+      `services/printing.py`. Where no printer is configured this falls through
+      to the structural renderer below, which still produces a PDF.
+    · `.docx` / `.hwpx` / `.pptx` are `page_export` reading the markup back into
+      the shapes the Office exporters draw, so the file opens in Word or
+      PowerPoint as paragraphs and slides somebody can edit. A design that
+      survived as a picture would not be a document.
 
     Which formats are offered follows the template — a document has no slides, a
     deck no `.hwpx`.
@@ -1889,15 +2346,23 @@ def _export_page(artifact: Artifact, format: str) -> Response:
                 "md",
             )
         if format == "pdf":
+            printed = await printing.to_pdf(content)
             return _attachment(
-                deck_export.to_pdf(title, slides, tokens=tokens), "application/pdf", stem, "pdf"
+                printed or deck_export.to_pdf(title, slides, tokens=tokens),
+                "application/pdf",
+                stem,
+                "pdf",
             )
         if format in ("pptx", "docx"):
             # `docx` is the endpoint default, so a deck exported without an
             # explicit format lands on the presentation rather than 400-ing.
             return _attachment(
                 deck_export.to_pptx(
-                    title, slides, tokens=tokens, dark=bool(template and template.dark)
+                    title,
+                    slides,
+                    tokens=tokens,
+                    dark=bool(template and template.dark),
+                    template=template.pptx_template if template else "",
                 ),
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 stem,
@@ -1913,8 +2378,9 @@ def _export_page(artifact: Artifact, format: str) -> Response:
             "md",
         )
     elif format == "pdf":
+        printed = await printing.to_pdf(content)
         body, media, suffix = (
-            report_export.to_pdf(title, sections, tokens=tokens),
+            printed or report_export.to_pdf(title, sections, tokens=tokens),
             "application/pdf",
             "pdf",
         )
@@ -1954,15 +2420,24 @@ async def export_artifact(
         )
 
     if artifact.kind is ArtifactKind.html:
-        return _export_page(artifact, format)
+        return await _export_page(artifact, format)
 
     if artifact.kind is ArtifactKind.deck:
         return _export_deck(artifact, format)
 
-    sections = list((artifact.data or {}).get("sections") or [])
+    # Markdown, whichever way each section was stored. A report somebody edited
+    # in the document editor holds HTML; `_markdown_to_lines` in every exporter
+    # reads Markdown and would draw the tags as text.
+    sections = richtext.normalise(list((artifact.data or {}).get("sections") or []))
     tokens = (artifact.data or {}).get("design") or None
     title = artifact.title or "보고서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "report"
+
+    # The 서식 this report wears, so the `.docx` comes out as that 서식 rather
+    # than in Word's defaults. Stored on the artifact by the page track and
+    # chosen in the panel; absent, the exporter uses its own page setup.
+    chosen = design_templates.get(str((artifact.data or {}).get("templateId") or ""))
+    docx_template = chosen.docx_template if chosen else ""
 
     if format == "md":
         body = report_service.to_markdown(title, sections).encode()
@@ -1973,7 +2448,7 @@ async def export_artifact(
         media = "application/pdf"
         suffix = "pdf"
     elif format == "docx":
-        body = report_export.to_docx(title, sections, tokens=tokens)
+        body = report_export.to_docx(title, sections, tokens=tokens, template=docx_template)
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
     elif format == "hwpx":
@@ -2100,11 +2575,33 @@ async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession)
     return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
 
 
+async def _own_or_shared(db: DbSession, user: User, template_id: str) -> Template:
+    """A template this account owns, or any shared one when an administrator asks.
+
+    공용 템플릿 is instance configuration — it is registered and listed on the
+    시스템 page, beside the proxy and the mail server — but the row still
+    belongs to whichever administrator happened to add it. With ownership as
+    the only test, a second administrator saw the list, saw the pencil and the
+    bin beside every row, and neither did anything: the delete 404ed and the
+    row came back on the next read. Nothing on screen said why, because from
+    the screen's point of view nothing had happened.
+
+    Private templates are untouched. Somebody's own drafts are not instance
+    configuration and an administrator has no business in them.
+    """
+    row = await db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if row.owner_id != user.id and not (row.shared and user.role is UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return row
+
+
 @router.patch("/templates/{template_id}", response_model=TemplateOut)
 async def patch_template(
     template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession
 ):
-    template = await _own(db, Template, "owner_id", user, template_id)
+    template = await _own_or_shared(db, user, template_id)
     fields = payload.model_dump(exclude_unset=True)
     if "shared" in fields:
         _may_share(user, bool(fields["shared"]))
@@ -2121,7 +2618,7 @@ async def patch_template(
 
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
-    template = await _own(db, Template, "owner_id", user, template_id)
+    template = await _own_or_shared(db, user, template_id)
     await db.delete(template)
     await db.commit()
 
@@ -2188,7 +2685,7 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     model = usable[0] if usable else None
     if model is None:
@@ -2312,59 +2809,149 @@ async def list_design_templates(user: CurrentUser, surface: str | None = None):
     return [DesignTemplateOut.of(t) for t in rows]
 
 
+@router.get("/design-templates/usage", response_model=DesignTemplateUsageOut)
+async def design_template_usage(user: CurrentUser, db: DbSession):
+    """How often each rendering template has actually been started.
+
+    The catalogue is ordered by id, which is the order the files happen to sit
+    in and means nothing to anybody. The front door showed the first few of
+    that order, so the shapes people reach for most were as likely to be on the
+    second screen of the catalogue as on the home page.
+
+    Two counts, because one is not enough on its own. `mine` is what this
+    person keeps coming back to, and it is empty for everybody on their first
+    day — so `popular` carries the ordering until they have a habit of their
+    own, and then gets out of the way.
+
+    `popular` counts sessions across the installation. It is an aggregate over
+    a catalogue that ships in the image and is the same for everyone: it says
+    how often a shape was picked, never by whom, and there is no id in it that
+    is not already public.
+    """
+    counts: dict[str, dict[str, int]] = {"mine": {}, "popular": {}}
+    for key, mine_only in (("mine", True), ("popular", False)):
+        query = (
+            select(ChatSession.render_template_id, func.count())
+            .where(col(ChatSession.render_template_id).is_not(None))
+            .group_by(col(ChatSession.render_template_id))
+        )
+        if mine_only:
+            query = query.where(ChatSession.user_id == user.id)
+        counts[key] = {
+            template: total for template, total in await db.exec(query) if template
+        }
+    return DesignTemplateUsageOut(**counts)
+
+
 @router.get("/design-templates/{template_id}/preview")
-async def preview_design_template(
+async def design_template_preview(template_id: str):
+    """The 서식 itself, miniature — its seed rendered around its own sample.
+
+    Seventeen 서식 differ almost entirely in CSS, and a card that carries only
+    a name and a line cannot show CSS: the gallery read as seventeen copies of
+    one shape. This returns the finished thing the card can shrink.
+
+    Unauthenticated on purpose. The card reaches it as an iframe `src`, which
+    cannot carry a header — and everything here ships inside the image: the
+    seed, the sample, the default tokens. There is nothing of anybody's here.
+    The frame that shows it is `sandbox=""`, and the seeds carry no script.
+    """
+    template = design_templates.get(template_id)
+    if template is None or not template.sample or not template.seed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
+    html = design_templates.render(
+        template,
+        title=template.name,
+        tokens=design_service.normalise_tokens(None),
+        body=template.sample,
+    )
+    return HTMLResponse(
+        html,
+        # A day: the content changes only when the image does.
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.get("/design-templates/{template_id}/style")
+async def design_template_style(
     template_id: str,
+    user: CurrentUser,
     accent: str | None = None,
     ink: str | None = None,
     muted: str | None = None,
     font: str | None = None,
 ):
-    """This template's own shape, filled with its sample and worn in a look.
+    """This template's CSS, and the wrappers a section is written into.
 
-    Served as a document rather than as a string in JSON because the gallery
-    renders it in a sandboxed iframe, which needs a URL.
+    The document editor's half of `/preview`. The gallery card wants a finished
+    document and shows it in a `sandbox=""` frame, where a sandbox is exactly
+    right — nothing in a card is meant to be clicked. An editor has to be
+    clicked, so the document lives in the page inside a shadow root, and a
+    shadow root takes a stylesheet rather than a URL.
 
-    The four tokens arrive as query parameters because that iframe is the only
-    thing that can ask for this document, and it can only ask by address. They
-    are the same four every renderer reads, and they go through
-    `design.normalise_tokens` on the way in — so a card shows a colour the
-    exporters can also draw, or the default, and never the string it was sent.
-    A design system is not named here: what the caller sends is the look
-    itself, which keeps the route as free of anybody's rows as it was.
-
-    **Unauthenticated, like the branding logo.** The body is still a constant
-    of this image plus four validated values — there is no user data in it to
-    protect. An iframe `src` cannot carry an Authorization header, and the
-    `?t=` escape hatch `current_viewer` provides puts a live access token into
-    the proxy's access log. Paying that for a static asset would buy nothing.
-
-    The client still sandboxes the frame; the headers here keep the document
-    inert on its own terms.
+    Authenticated, unlike `/preview`: that route is reachable only by an iframe
+    `src`, which cannot carry a header. Nothing here has that constraint, so
+    nothing here gives up the check.
     """
     template = design_templates.get(template_id)
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
-    return Response(
-        content=design_templates.preview(
-            template, {"accent": accent, "ink": ink, "muted": muted, "font": font}
-        ),
-        media_type="text/html; charset=utf-8",
-        headers={
-            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "public, max-age=300",
-        },
+    tokens = design_service.normalise_tokens(
+        {"accent": accent, "ink": ink, "muted": muted, "font": font}
     )
+    return {
+        "css": design_templates.stylesheet(template, tokens),
+        "wrapCover": template.wrap_cover,
+        "wrapBlock": template.wrap_block,
+        "wrapGroup": template.wrap_group,
+    }
 
 
-# ══ agent knowledge ════════════════════════════════════════════════════
-#
-# Documents an agent can search, as opposed to project files, which are pushed
-# into every turn whole. The difference is size: a shelf too big to inject is
-# exactly the shelf worth searching.
+#: What a form is served as, by the extension it was built with.
+_FORM_MEDIA = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+
+@router.get("/design-templates/{template_id}/form")
+async def download_design_template_form(template_id: str, user: CurrentUser):
+    """The 서식 as a blank file to fill in by hand.
+
+    The catalogue shapes what the model writes, and until now that was the only
+    way to get a document in one of these shapes: ask for one. Somebody who
+    wanted the 회의록 form to type into themselves — or to send to a colleague
+    who does not use this — had nothing to take away.
+
+    The file the 서식 already carries, not one made here. It is the same
+    styles the export comes out in, so a document written by hand in this form
+    and one written by the model are the same document twice.
+
+    Authenticated, unlike `preview`: a preview is a picture of a shape and this
+    is a file, and files come from a workspace somebody belongs to.
+    """
+    chosen = design_templates.get(template_id)
+    if chosen is None or not chosen.form_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_form_not_found"
+        )
+    path = Path(chosen.form_file)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_form_not_found"
+        )
+    return _attachment(
+        path.read_bytes(),
+        _FORM_MEDIA.get(path.suffix, "application/octet-stream"),
+        # The 서식's own name, so the file in somebody's downloads folder says
+        # what it is rather than `form.docx` four times over.
+        re.sub(r'[\\/:*?"<>|]+', "_", chosen.name)[:60] or "form",
+        path.suffix.lstrip("."),
+    )
 
 
 @router.get("/agents/{agent_id}/knowledge", response_model=list[FileOut])
@@ -2410,7 +2997,7 @@ async def add_agent_file(
     # Same as the project path: extraction failure is recorded, not raised. The
     # row is what makes the failure visible in the list.
     try:
-        stored.text = file_service.extract_text(stored.name, stored.mime, data)
+        stored.text = await file_service.text_of(stored.name, stored.mime, data)
         stored.tokens = file_service.estimate_tokens(stored.text)
     except Exception as exc:  # noqa: BLE001
         log.info("extraction failed for %s: %s", stored.name, exc)

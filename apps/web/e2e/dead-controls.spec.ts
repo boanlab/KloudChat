@@ -223,6 +223,21 @@ test('웹 검색은 켠 대화에만 남고 다음 대화로 따라오지 않는
 
 test('공유된 에이전트를 가져오면 서버가 사본을 만들고 함께 오지 않은 것을 밝힌다', async ({ page }) => {
   await signIn(page)
+  // 내 것/스토어를 가르는 기준은 실제 계정 id 다 — 목의 'me' 는 어느 탭에도
+  // 서지 못해 사본이 화면에서 사라진다.
+  const myId = await page.evaluate(async () => {
+    const login = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'e2e-personas@example.com',
+        password: 'personas-playwright-pass',
+      }),
+    })
+    const { accessToken } = (await login.json()) as { accessToken: string }
+    const r = await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + accessToken } })
+    return ((await r.json()) as { id: string }).id
+  })
 
   const shared = {
     ownerId: 'someone-else',
@@ -255,7 +270,7 @@ test('공유된 에이전트를 가져오면 서버가 사본을 만들고 함�
   const copy = {
     ...shared,
     id: 'agent-mine',
-    ownerId: 'me',
+    ownerId: myId,
     ownerName: '나',
     visibility: 'private',
     installs: 0,
@@ -283,14 +298,19 @@ test('공유된 에이전트를 가져오면 서버가 사본을 만들고 함�
   })
 
   await page.goto('/agents')
+  // 남의 공유 에이전트는 이제 내 에이전트가 아니라 스토어에 선다 — 내
+  // 목록에 보기만 되는 카드가 섞여 있던 것이 고쳐진 자리다.
+  await page.getByRole('tab', { name: /워크스페이스 스토어/ }).click()
   await page.getByRole('button', { name: '가져오기' }).click()
 
   await expect.poll(() => installed).toBe(true)
+  // The card it came from stops offering an import that is already done.
+  await expect(page.getByRole('button', { name: '가져옴' })).toBeVisible()
   // Said where the copy lands, not in a toast: the question it answers — why
-  // is my copy worse than the one I tried? — is asked days afterwards.
+  // is my copy worse than the one I tried? — is asked days afterwards. The
+  // copy is mine, so it stands on the 내 에이전트 tab.
+  await page.getByRole('tab', { name: /내 에이전트/ }).click()
   await expect(
     page.getByText('지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요.'),
   ).toBeVisible()
-  // And the card it came from stops offering an import that is already done.
-  await expect(page.getByRole('button', { name: '가져옴' })).toBeVisible()
 })

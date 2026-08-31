@@ -117,9 +117,13 @@ test('답변이 오지 않은 질문은 다시 열어도 그 사실과 다시 �
   // A video job has had a retry all along; a conversation turn had none.
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect.poll(() => sent, { timeout: 30_000 }).toEqual([QUESTION])
-  // Asked again, not repaired: the question that went unanswered stays in the
-  // record beside the one that did not.
-  await expect(page.getByText(QUESTION)).toHaveCount(2)
+  // Where it stands, not underneath: 다시 시도 reruns the failed turn in place.
+  // This used to assert the opposite — the question a second time, with a
+  // second error under it — which is the behaviour `retry-in-place.spec.ts`
+  // exists to keep from coming back: both copies went into the context of
+  // every later turn, so a question that failed once was asked twice for the
+  // rest of the conversation.
+  await expect(page.getByText(QUESTION)).toHaveCount(1)
 })
 
 test('중간에 끊긴 답변은 쓰다 만 내용과 함께 끊겼다고 말한다', async ({ page }) => {

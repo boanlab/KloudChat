@@ -17,9 +17,18 @@
     "test:regress": "playwright test e2e/regress.spec.ts --project=desktop --reporter=list"
   },
   "dependencies": {
+    "@tiptap/core": "^3.30.3",
+    "@tiptap/extension-image": "^3.30.3",
+    "@tiptap/extension-table": "^3.30.3",
+    "@tiptap/extension-text-align": "^3.30.3",
+    "@tiptap/extension-text-style": "^3.30.3",
+    "@tiptap/pm": "^3.30.3",
+    "@tiptap/react": "^3.30.3",
+    "@tiptap/starter-kit": "^3.30.3",
     "clsx": "^2.1.1",
     "katex": "^0.18.4",
     "lucide-react": "^1.33.0",
+    "mermaid": "^11.17.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

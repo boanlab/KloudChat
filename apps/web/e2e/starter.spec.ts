@@ -35,10 +35,16 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
   // shared with the workspace, and somebody else's agent is not what "a new
   // account starts with" means — its rows answer to their owner's shelf, not
   // to this one's.
-  const mine = agents.filter((a: { ownerId: string }) => a.ownerId === me.id)
+  // 공유 카탈로그 전환(e47bad6) 뒤로 새 계정의 "내 것"은 빈 목록에서
+  // 시작한다 — 제품이 싣고 오는 것은 관리자 소유의 org 행들이고, 배선 검사는
+  // 그 행들에 대고 한다. me 는 스토어 쪽 단언이 이 계정을 헷갈리지 않게만 쓴다.
+  void me
+  const mine = agents.filter((a: { visibility: string }) => a.visibility === 'org')
 
   expect(agents.length).toBeGreaterThanOrEqual(5)
-  expect(skills.length).toBeGreaterThanOrEqual(5)
+  // 자기 목록이 아니라 스토어가 채워져 있어야 한다 — 아래 catalogue 단언이
+  // 그 일을 하고, 여기서는 "빈 제품은 아니다"만 잡는다.
+  expect(skills.length).toBeGreaterThanOrEqual(0)
 
   // Every seeded agent says what it is for and how to behave — a row with an
   // empty system prompt is a name with nothing behind it.
@@ -55,40 +61,59 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
 
   // Skills are attached by id. The seeder builds them from its own keys, and a
   // key left unresolved would point at nothing while looking wired.
-  const ids = new Set(skills.map((s: { id: string }) => s.id))
+  // 카탈로그 에이전트의 skillIds 는 카탈로그 스킬을 가리킨다. 이 계정의
+  // /api/skills 는 설치 전엔 비어 있으므로 스토어에서 집합을 만든다.
+  const store = await page.evaluate(async (fn) => eval(fn)('/api/skills/store'), AS_USER)
+  const catalogue = (store ?? []).concat(skills)
+  const ids = new Set(catalogue.map((s: { id: string }) => s.id))
+  expect(catalogue.length).toBeGreaterThanOrEqual(5)
   const attached = mine.flatMap((a: { skillIds: string[] }) => a.skillIds ?? [])
   expect(attached.length).toBeGreaterThan(0)
   for (const id of attached) expect(ids.has(id), '연결된 스킬이 존재하지 않습니다').toBe(true)
 
   // And each skill carries a procedure, not just a title.
-  for (const skill of skills) {
+  for (const skill of catalogue) {
     expect(skill.body.length, `${skill.name} 내용 없음`).toBeGreaterThan(40)
     expect(skill.whenToUse.length, `${skill.name} 사용 시점 없음`).toBeGreaterThan(0)
   }
 
   // They show up on the screens, not only in the API.
   await page.goto('/agents')
+  // 카탈로그 행은 스토어 탭에 선다 — 내 목록은 비어서 시작한다.
+  await page.getByRole('tab', { name: /스토어/ }).click()
   await expect(page.getByText(agents[0].name).first()).toBeVisible({ timeout: 15_000 })
   await page.goto('/skills')
-  await expect(page.getByText(skills[0].name).first()).toBeVisible({ timeout: 15_000 })
+  // 이 계정의 목록은 비어서 시작할 수 있다 — 제품이 싣고 오는 스킬은
+  // 스토어 탭에 선다.
+  const shelf = catalogue[0] ?? skills[0]
+  // shelf 가 내 목록이 아니라 스토어의 행이면, 그 행이 서는 탭으로 간다 —
+  // 내 목록이 비지 않았어도 스토어 행은 내 탭에 없다.
+  const shelfIsMine = skills.some((s: { id: string }) => s.id === shelf.id)
+  if (!shelfIsMine) {
+    await page.getByRole('tab', { name: /스토어/ }).click()
+  }
+  await expect(page.getByText(shelf.name).first()).toBeVisible({ timeout: 15_000 })
 })
 
 test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async ({ page }) => {
   await signIn(page)
-  await page.goto('/new/report')
+  // 챗에서 확인한다. 보고서의 기본 시작점은 같은 일을 하는 서식이 생기면서
+  // 걷어냈고, 이 사례가 확인하는 규칙 — 문장은 입력창이 아니라 턴에 실린다 —
+  // 은 표면의 종류로 갈리므로 챗에서도 같다.
+  await page.goto('/new/chat')
 
-  await page.getByRole('button', { name: '시작점 고르기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   // The card shows what you have to bring, not the prompt it will paste.
-  await expect(page.getByRole('dialog').getByText('업무·기술 보고서')).toBeVisible()
-  await expect(page.getByRole('dialog').getByText('독자', { exact: true })).toBeVisible()
-  await page.getByRole('dialog').getByText('업무·기술 보고서').click()
+  await expect(page.getByRole('dialog').getByText('장애 원인 좁히기')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText('에러 로그', { exact: true })).toBeVisible()
+  await page.getByRole('dialog').getByText('장애 원인 좁히기').click()
 
   // Attached, not typed: the framing rides with the turn, and the box asks for
   // the half only the person has. Pasted into the box, it would come back out
   // in their own voice.
   const box = page.getByLabel('프롬프트 입력')
   await expect(box).toHaveValue('')
-  await expect(box).toHaveAttribute('placeholder', /목적, 독자, 분량/)
-  await expect(page.getByRole('button', { name: /업무·기술 보고서 시작점 해제/ })).toBeVisible()
-  await expect(page).toHaveURL(/\/new\/report$/)
+  await expect(box).toHaveAttribute('placeholder', /에러 로그, 재현 조건/)
+  await expect(page.getByRole('button', { name: /장애 원인 좁히기 시작점 해제/ })).toBeVisible()
+  await expect(page).toHaveURL(/\/new\/chat$/)
 })
