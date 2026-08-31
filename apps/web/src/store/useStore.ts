@@ -795,6 +795,7 @@ function reconcileDefaults(
   current: Record<SessionKind, string>,
   available: ModelInfo[],
   instanceDefault = '',
+  byKind: Partial<Record<SessionKind, string>> = {},
 ): Record<SessionKind, string> {
   const next = { ...current }
   for (const kind of Object.keys(next) as SessionKind[]) {
@@ -813,7 +814,10 @@ function reconcileDefaults(
           Number(a.strictLocal ?? false) - Number(b.strictLocal ?? false) ||
           a.creditCost - b.creditCost,
       )
-    const preferred = usable.find((m) => m.id === instanceDefault)
+    // This surface's own default first, then the instance's. A 보고서 set to
+    // the larger model must not lose it because chat is set to a smaller one.
+    const preferred =
+      usable.find((m) => m.id === byKind[kind]) ?? usable.find((m) => m.id === instanceDefault)
     if (preferred) next[kind] = preferred.id
     else if (usable.length) next[kind] = usable[0].id
   }
@@ -1182,7 +1186,7 @@ export const useStore = create<State>((set, get) => ({
   loadModels: async () => {
     set({ modelsLoading: true })
     try {
-      const { models: live, litellmAvailable, defaultChatModel, autoRouting } =
+      const { models: live, litellmAvailable, defaultChatModel, defaultModelByKind, autoRouting } =
         await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1198,7 +1202,7 @@ export const useStore = create<State>((set, get) => ({
           qualityModelIds: [],
         },
         modelsLoading: false,
-        modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel),
+        modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel, defaultModelByKind),
         compareModels: reconcileCompareModels(s.compareModels, live),
       }))
     } catch {

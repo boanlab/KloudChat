@@ -215,6 +215,11 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
+                    # No thinking on a call whose whole answer is one JSON
+                    # object — see `thinking.NO_REASONING` for the measurements.
+                    # Safe to send everywhere: the proxy runs `drop_params`, so
+                    # a provider that has never heard of it never sees it.
+                    "reasoning": thinking.NO_REASONING,
                 },
             )
             if response.status_code != 429 or attempt == len(_BACKOFF):
@@ -241,7 +246,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    "reasoning": thinking.REASONING_CAP,
+                    "reasoning": thinking.NO_REASONING,
                 },
             )
             if again.status_code >= 400:

@@ -74,3 +74,37 @@ def test_what_was_read_back_no_longer_trips_the_check() -> None:
     clean, replaced = read_back("傳統的인 방화벽으로는 막지 못한다. 分散 처리를 쓴다.")
     assert replaced
     assert not lint._stray_hanja(clean)
+
+
+def test_json_brackets_are_not_a_gloss() -> None:
+    """대괄호가 괄호 병기로 읽히면, 슬라이드 목록 전체가 보호된다.
+
+    A gloss is ideographs inside brackets — `분산(分散)` — and that exemption is
+    right. A JSON array is ideographs inside brackets too. Reading a deck's
+    outline back from its JSON *text* meant every slide title in
+    `[{"title": "대학生的 역량 격차"}]` sat inside a bracket pair and was left
+    alone; it reached the proposal card, then the slide, then the room.
+
+    So the values are read back after parsing, one string at a time, where a
+    bracket is a bracket the writer typed.
+    """
+    from app.services import deck
+
+    parsed = deck._json_object('{"title": "AI", "slides": [{"title": "대학生的 격차"}]}')
+    assert parsed["slides"][0]["title"] == "대학생적 격차"
+
+
+def test_a_gloss_inside_json_is_still_a_gloss() -> None:
+    """The exemption has to survive the move, or every 학술 문서 loses its
+    한자 병기."""
+    from app.services import deck
+
+    parsed = deck._json_object('{"body": "분산(分散) 처리를 도입한다"}')
+    assert parsed["body"] == "분산(分散) 처리를 도입한다"
+
+
+def test_the_keys_are_left_alone() -> None:
+    """They are the schema's, not the writer's."""
+    from app.services import deck
+
+    assert set(deck._json_object('{"bullets": ["가"], "notes": "나"}')) == {"bullets", "notes"}

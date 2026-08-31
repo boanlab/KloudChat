@@ -224,6 +224,15 @@ export interface ModelCatalogue {
   /** Model used when the user has not chosen one. Empty when it is not in
    *  the catalogue. */
   defaultChatModel?: string
+  /**
+   * The instance default per surface, when one of them wants a different
+   * model. Absent keys fall back to `defaultChatModel`.
+   *
+   * A conversation and a 보고서 are not the same job: chat is a turn every few
+   * seconds and read as it arrives, so decode speed is most of what the person
+   * feels; a document is one long run they wait for once.
+   */
+  defaultModelByKind?: Partial<Record<SessionKind, string>>
   autoRouting: {
     enabled: boolean
     available: boolean
