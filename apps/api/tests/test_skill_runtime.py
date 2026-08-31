@@ -1029,11 +1029,11 @@ async def test_report_upstream_payloads_keep_workspace_context_role_separated(mo
     async def litellm_config():
         return "http://mock-litellm", "unused"
 
-    async def no_sources(_request: str):
-        return []
+    async def no_research(_request: str, **_kwargs):
+        return report_service.research.Findings()
 
     monkeypatch.setattr(report_service.settings_store, "litellm_config", litellm_config)
-    monkeypatch.setattr(report_service, "gather_sources", no_sources)
+    monkeypatch.setattr(report_service.research, "run", no_research)
     monkeypatch.setattr(
         report_service.httpx,
         "AsyncClient",

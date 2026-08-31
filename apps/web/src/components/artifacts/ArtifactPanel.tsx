@@ -7,6 +7,7 @@ import { PanelControls } from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
+import { sectionText } from '@/components/report/SectionBody'
 import { Badge, Button, ButtonLink, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
@@ -84,7 +85,9 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
       return (
         <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
           <code className="font-mono">
-            {artifact.sections.map((s) => `## ${s.heading}\n${s.content}`).join('\n\n')}
+            {artifact.sections
+              .map((s) => `## ${s.heading}\n${sectionText(s)}`)
+              .join('\n\n')}
           </code>
         </pre>
       )

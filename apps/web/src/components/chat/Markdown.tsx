@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { cn } from '@/lib/utils'
+import type { DiagramOwner } from './MarkdownBody'
 
 /**
  * The renderer, fetched the first time something needs rendering.
@@ -14,7 +15,15 @@ const Body = lazy(() =>
   import('./MarkdownBody').then((m) => ({ default: m.MarkdownBody })),
 )
 
-export function Markdown({ children, className }: { children: string; className?: string }) {
+export function Markdown({
+  children,
+  className,
+  owner,
+}: {
+  children: string
+  className?: string
+  owner?: DiagramOwner
+}) {
   return (
     <Suspense
       fallback={
@@ -26,7 +35,9 @@ export function Markdown({ children, className }: { children: string; className?
         </div>
       }
     >
-      <Body className={className}>{children}</Body>
+      <Body className={className} owner={owner}>
+        {children}
+      </Body>
     </Suspense>
   )
 }

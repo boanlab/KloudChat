@@ -302,6 +302,8 @@ interface State {
        * something somebody looked at first.
        */
       approve?: boolean
+      /** The figure card's answer. Absent means it was not asked. */
+      includeFigures?: boolean
       /** Answers to a stopped turn's questions, keyed by question id. */
       answers?: Record<string, string>
       /**
@@ -476,8 +478,6 @@ interface State {
    */
   pendingStartingTemplate: StartingPoint | null
   setPendingStartingTemplate: (template: StartingPoint | null) => void
-  /** Whether this instance has a Whisper backend. Drives the composer's mic. */
-  dictationEnabled: boolean
   /** Service name and logo to render. An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-read after an administrator saves branding, so it applies without a
@@ -533,6 +533,18 @@ interface State {
   ) => Promise<number>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
+  /**
+   * The rendering catalogue, fetched once if nothing has fetched it yet.
+   *
+   * `loadWorkspace` fills it, and `loadWorkspace` runs on the workspace
+   * management screens only — never on chat and never on the report surface.
+   * So the report panel's 서식 picker opened onto an empty menu for anybody
+   * who had not visited /agents or /skills first, which is most people on
+   * their way to writing a report.
+   *
+   * Idempotent and cheap: a list already in hand short-circuits.
+   */
+  ensureDesignTemplates: () => Promise<void>
   /** Page one, for the current filter or the one passed in. */
   loadArtifacts: (filter?: ArtifactFilter) => Promise<void>
   /** The page after the oldest row on screen. */
@@ -849,7 +861,6 @@ export const useStore = create<State>((set, get) => ({
           .then((c) => {
             applyBrand(c.brand)
             set({
-              dictationEnabled: c.dictationEnabled,
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
@@ -1488,7 +1499,12 @@ export const useStore = create<State>((set, get) => ({
           opts.activatedSkillIds,
           opts.renderTemplateId,
           opts.startingTemplate?.id,
-          { approve: opts.approve, answers: opts.answers },
+          {
+            approve: opts.approve,
+            answers: opts.answers,
+            webSearch: opts.webSearch,
+            includeFigures: opts.includeFigures,
+          },
         )
         return id
       }
@@ -1502,7 +1518,12 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.startingTemplate?.id,
-          { approve: opts.approve, answers: opts.answers },
+          {
+            approve: opts.approve,
+            answers: opts.answers,
+            webSearch: opts.webSearch,
+            includeFigures: opts.includeFigures,
+          },
         )
         return id
       }
@@ -1516,7 +1537,12 @@ export const useStore = create<State>((set, get) => ({
           model,
           opts.activatedSkillIds,
           opts.startingTemplate?.id,
-          { approve: opts.approve, answers: opts.answers },
+          {
+            approve: opts.approve,
+            answers: opts.answers,
+            webSearch: opts.webSearch,
+            includeFigures: opts.includeFigures,
+          },
         )
         return id
       }
@@ -1982,7 +2008,6 @@ export const useStore = create<State>((set, get) => ({
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   pendingStartingTemplate: null,
   setPendingStartingTemplate: (pendingStartingTemplate) => set({ pendingStartingTemplate }),
-  dictationEnabled: false,
   brand: { name: 'KloudChat', logo: '' },
   refreshBrand: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -2165,6 +2190,14 @@ export const useStore = create<State>((set, get) => ({
     await filesApi.remove(id).catch(() => get().loadWorkspace())
   },
 
+  ensureDesignTemplates: async () => {
+    if (get().designTemplates.length > 0) return
+    const rows = await designTemplatesApi.list().catch(() => null)
+    // A failure stays silent on purpose: the picker falls back to naming the
+    // template the document already wears, which is what it showed anyway.
+    // Nothing on this screen is blocked by the list being absent.
+    if (rows) set({ designTemplates: rows })
+  },
   loadArtifacts: async (filter) => {
     const next = sameFilter(filter ?? get().artifactFilter)
     const key = JSON.stringify(next)
@@ -3526,7 +3559,19 @@ async function streamReport(
    * writes nothing, so an empty panel opening over the deck already there
    * would say the opposite of what is happening.
    */
-  gate: { approve?: boolean; answers?: Record<string, string> } = {},
+  gate: {
+    approve?: boolean
+    answers?: Record<string, string>
+    /**
+     * Whether the writer may research before it writes. Carried here rather
+     * than as its own argument because it travels with the same turn the
+     * approval does — a second pass that writes an approved outline researches
+     * on the same terms the pass that proposed it did.
+     */
+    webSearch?: boolean
+    /** The figure card's answer, carried with the approval it belongs to. */
+    includeFigures?: boolean
+  } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3590,6 +3635,8 @@ async function streamReport(
         startingTemplateId,
         approve: gate.approve,
         answers: gate.answers,
+        webSearch: gate.webSearch,
+        includeFigures: gate.includeFigures,
       },
       controller.signal,
     )) {
@@ -3739,7 +3786,19 @@ async function streamPage(
    * writes nothing, so an empty panel opening over the deck already there
    * would say the opposite of what is happening.
    */
-  gate: { approve?: boolean; answers?: Record<string, string> } = {},
+  gate: {
+    approve?: boolean
+    answers?: Record<string, string>
+    /**
+     * Whether the writer may research before it writes. Carried here rather
+     * than as its own argument because it travels with the same turn the
+     * approval does — a second pass that writes an approved outline researches
+     * on the same terms the pass that proposed it did.
+     */
+    webSearch?: boolean
+    /** The figure card's answer, carried with the approval it belongs to. */
+    includeFigures?: boolean
+  } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3805,6 +3864,8 @@ async function streamPage(
         startingTemplateId,
         approve: gate.approve,
         answers: gate.answers,
+        webSearch: gate.webSearch,
+        includeFigures: gate.includeFigures,
       },
       controller.signal,
     )) {
@@ -3934,7 +3995,19 @@ async function streamDeck(
    * writes nothing, so an empty panel opening over the deck already there
    * would say the opposite of what is happening.
    */
-  gate: { approve?: boolean; answers?: Record<string, string> } = {},
+  gate: {
+    approve?: boolean
+    answers?: Record<string, string>
+    /**
+     * Whether the writer may research before it writes. Carried here rather
+     * than as its own argument because it travels with the same turn the
+     * approval does — a second pass that writes an approved outline researches
+     * on the same terms the pass that proposed it did.
+     */
+    webSearch?: boolean
+    /** The figure card's answer, carried with the approval it belongs to. */
+    includeFigures?: boolean
+  } = {},
 ) {
   const draftId = uid('a')
   const assistantId = uid('m')
@@ -3951,6 +4024,9 @@ async function streamDeck(
     projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
     theme: '기본',
     slides: [],
+    // Cleared by being replaced: the `artifact` event drops this row and puts
+    // the saved document in its place.
+    draft: true,
   }
 
   // A planning pass produces no document, so it must not open one. Before
@@ -3994,6 +4070,8 @@ async function streamDeck(
         startingTemplateId,
         approve: gate.approve,
         answers: gate.answers,
+        webSearch: gate.webSearch,
+        includeFigures: gate.includeFigures,
       },
       controller.signal,
     )) {

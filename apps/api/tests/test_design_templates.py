@@ -80,8 +80,11 @@ def test_a_shipped_template_is_complete(template):
     assert template.example_prompt_en.strip()
     # The gallery renders the seed around the sample; either missing is a card
     # advertising a shape nobody can see.
-    assert template.seed and template.sample
-    assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
+    if template.kind in dt.HTML_KINDS:
+        assert template.seed
+        assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
+    else:
+        assert not template.seed
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
@@ -186,6 +189,11 @@ def test_a_seed_breaks_korean_lines_between_words(template):
     which on a slide reads as a typo. `keep-all` is one line in a seed and easy
     to leave out of the next one, so it is asserted rather than remembered.
     """
+    # Only the two that have one. A picture 서식 is a prompt and a suffix — its
+    # kind never reaches a renderer, so the seed it used to carry was drawn
+    # nowhere and has gone with the previews.
+    if template.kind not in dt.HTML_KINDS:
+        return
     assert "keep-all" in template.seed
 
 
@@ -270,44 +278,6 @@ def test_a_writing_template_can_print(template):
     assert "@page" in template.seed
 
 
-@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
-def test_the_preview_is_the_seed_rather_than_a_second_file(template):
-    html = dt.preview(template)
-    assert "{{" not in html  # every placeholder substituted
-    assert "--accent: #5b5bd6;" in html
-    # The sample is what makes the card show this template's own shape.
-    assert template.sample.strip().split("\n")[0][:40] in html
-
-
-def test_a_preview_wears_the_design_system_it_is_shown_under():
-    """The card and the file it advertises are one look, or the card is a lie.
-
-    The gallery and the design editor both ask for a template in the tokens the
-    project actually wears, so what is on the card is what comes out of it.
-    """
-    html = dt.preview(dt.get("deck-editorial"), {"accent": "#0A7B57", "font": "serif"})
-    assert "--accent: #0a7b57;" in html
-    assert "Nanum Myeongjo" in html
-    # Nothing was said about the ink, so the ink is what it always was.
-    assert "--ink: #1a1a1a;" in html
-
-
-def test_a_token_nobody_could_draw_never_reaches_the_preview():
-    """The route is unauthenticated, so the query string arrives a stranger.
-
-    Per field rather than wholesale, exactly as `normalise_tokens` falls back:
-    the good accent below survives the two values beside it that are not.
-    """
-    html = dt.preview(
-        dt.get("deck-editorial"),
-        {"accent": "#0a7b57", "ink": "red; } body { display:none", "font": "comic"},
-    )
-    assert "--accent: #0a7b57;" in html
-    assert "display:none" not in html
-    assert "--ink: #1a1a1a;" in html
-    assert "comic" not in html
-
-
 def test_only_image_templates_hide_a_clause_from_the_composer():
     """Guardrails stay invisible; a brief stays visible.
 
@@ -330,42 +300,6 @@ def test_media_templates_carry_the_settings_they_imply():
     assert dt.get("audio-narration").defaults["audioKind"] == "narration"
     assert dt.get("audio-bed").defaults["audioKind"] == "music"
     assert dt.get("image-poster").defaults["aspect"] == "9:16"
-
-
-def test_the_preview_route_takes_a_look_by_query_and_trusts_none_of_it():
-    """The one door the tokens come through, and what it lets past.
-
-    An iframe can ask only by address, so the look travels in the query string
-    of a route with no session behind it. The document that comes back is still
-    made of this image's own files and four values the renderers agree exist.
-    """
-    app = FastAPI()
-    app.include_router(workspace_router.router)
-    with TestClient(app) as client:
-        worn = client.get(
-            "/design-templates/deck-editorial/preview",
-            params={"accent": "#0a7b57", "ink": "#111111", "muted": "#777777", "font": "serif"},
-        )
-        assert worn.status_code == 200
-        assert "--accent: #0a7b57;" in worn.text
-        assert "Nanum Myeongjo" in worn.text
-
-        junk = client.get(
-            "/design-templates/deck-editorial/preview",
-            params={"accent": "</style><script>steal()</script>", "font": "wingdings"},
-        )
-        assert junk.status_code == 200
-        assert "steal()" not in junk.text
-        assert "--accent: #5b5bd6;" in junk.text
-
-        # No look asked for is the look a project without a design system gets.
-        bare = client.get("/design-templates/deck-editorial/preview")
-        assert bare.status_code == 200
-        assert "--accent: #5b5bd6;" in bare.text
-        assert client.get("/design-templates/nothing-like-it/preview").status_code == 404
-
-
-# ── what the model is allowed to contribute ────────────────────────────
 
 
 def test_a_script_is_removed_with_its_payload():

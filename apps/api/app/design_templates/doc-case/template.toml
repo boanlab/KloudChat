@@ -1,0 +1,21 @@
+kind = "document"
+name = "케이스 분석"
+description = "기업 사례를 현황·대안·권고로 갈라, 숫자로 견주고 하나를 고르는 문서"
+category = "학업"
+fills = ["대상 기업", "분석 기간", "판단 기준"]
+example_prompt = "케이스 분석 보고서를 써 줘. 대안을 같은 기준으로 견주고, 어느 것을 왜 고르는지 마지막에 밝혀 줘.\n\n대상 기업과 기간: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Case study"
+description_en = "A company case split into situation, options and recommendation, compared on numbers"
+category_en = "Study"
+fills_en = ["Company", "Period", "Criteria"]
+example_prompt_en = "Write a case study. Compare the options on the same criteria and say which one you pick and why.\n\nCompany and period: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

@@ -75,20 +75,23 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
 
 test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async ({ page }) => {
   await signIn(page)
-  await page.goto('/new/report')
+  // 챗에서 확인한다. 보고서의 기본 시작점은 같은 일을 하는 서식이 생기면서
+  // 걷어냈고, 이 사례가 확인하는 규칙 — 문장은 입력창이 아니라 턴에 실린다 —
+  // 은 표면의 종류로 갈리므로 챗에서도 같다.
+  await page.goto('/new/chat')
 
-  await page.getByRole('button', { name: '시작점 고르기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   // The card shows what you have to bring, not the prompt it will paste.
-  await expect(page.getByRole('dialog').getByText('업무·기술 보고서')).toBeVisible()
-  await expect(page.getByRole('dialog').getByText('독자', { exact: true })).toBeVisible()
-  await page.getByRole('dialog').getByText('업무·기술 보고서').click()
+  await expect(page.getByRole('dialog').getByText('장애 원인 좁히기')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText('에러 로그', { exact: true })).toBeVisible()
+  await page.getByRole('dialog').getByText('장애 원인 좁히기').click()
 
   // Attached, not typed: the framing rides with the turn, and the box asks for
   // the half only the person has. Pasted into the box, it would come back out
   // in their own voice.
   const box = page.getByLabel('프롬프트 입력')
   await expect(box).toHaveValue('')
-  await expect(box).toHaveAttribute('placeholder', /목적, 독자, 분량/)
-  await expect(page.getByRole('button', { name: /업무·기술 보고서 시작점 해제/ })).toBeVisible()
-  await expect(page).toHaveURL(/\/new\/report$/)
+  await expect(box).toHaveAttribute('placeholder', /에러 로그, 재현 조건/)
+  await expect(page.getByRole('button', { name: /장애 원인 좁히기 시작점 해제/ })).toBeVisible()
+  await expect(page).toHaveURL(/\/new\/chat$/)
 })

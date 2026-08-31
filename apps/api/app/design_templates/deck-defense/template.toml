@@ -1,0 +1,21 @@
+kind = "deck"
+name = "심사 발표"
+description = "연구 질문에서 방법·결과·한계로, 질문받을 자리를 미리 여는 발표"
+category = "발표"
+fills = ["연구 주제", "발표 시간", "심사 단계"]
+example_prompt = "심사 발표 자료를 만들어 줘. 연구 질문을 먼저 세우고, 방법과 결과를 나눈 뒤 한계를 스스로 밝혀 줘.\n\n연구 주제와 발표 시간: "
+seed_from = "_deck"
+layouts = ["cover", "bullets", "quote", "split", "table"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Defense deck"
+description_en = "From the question through method and findings to limits, opening the floor early"
+category_en = "Presentation"
+fills_en = ["Topic", "Length", "Stage"]
+example_prompt_en = "Make a defense deck. State the research question first, separate method from findings, and name the limits yourself.\n\nTopic and length: "
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

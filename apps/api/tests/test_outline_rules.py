@@ -21,7 +21,9 @@ _DECK = deck._LAYOUTS[1:]
 
 def test_a_plan_that_uses_one_layout_all_the_way_down_is_flat():
     missing = outline.flat_layouts(plan("title", *["bullets"] * 6), _DECK)
-    assert set(missing) == {"quote", "two-column"}
+    # Every body layout except the one it used. Derived rather than listed, so
+    # adding a layout does not silently narrow what this checks.
+    assert set(missing) == set(_DECK) - {"bullets"}
 
 
 def test_a_run_of_three_is_flat_even_when_every_layout_appears():
@@ -30,8 +32,11 @@ def test_a_run_of_three_is_flat_even_when_every_layout_appears():
     Nothing is unused here, so the ask cannot be "use the missing one" — it is
     the layouts the plan leans away from.
     """
-    dominant = plan("title", "bullets", "bullets", "bullets", "quote", "two-column")
-    assert set(outline.flat_layouts(dominant, _DECK)) == {"quote", "two-column"}
+    # Every layout appears, so the ask cannot be "use the unused one". Built
+    # from `_DECK` rather than listed: a layout added later would otherwise be
+    # the unused one, and this test would quietly start checking that instead.
+    dominant = plan("title", "bullets", "bullets", "bullets", *_DECK)
+    assert set(outline.flat_layouts(dominant, _DECK)) == set(_DECK) - {"bullets"}
 
 
 def test_alternating_layouts_are_varied_even_when_one_is_common():

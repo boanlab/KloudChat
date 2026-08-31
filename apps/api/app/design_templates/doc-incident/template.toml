@@ -1,0 +1,21 @@
+kind = "document"
+name = "장애 보고"
+description = "무슨 일이 있었고, 왜 일어났고, 다시 안 나게 무엇을 바꾸는가"
+category = "업무"
+fills = ["발생 시각", "영향 범위", "대응한 사람"]
+example_prompt = "장애 보고서를 써 줘. 시간순 기록과 원인, 재발 방지책을 나눠서 적고, 사람을 탓하지 말고 시스템을 봐 줘.\n\n발생 시각과 영향: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Incident report"
+description_en = "What happened, why, and what changes so it does not happen again"
+category_en = "Work"
+fills_en = ["Detected at", "Blast radius", "Responders"]
+example_prompt_en = "Write an incident report. Separate the timeline, the cause and the follow-ups, and look at the system rather than at people.\n\nDetected at and impact: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

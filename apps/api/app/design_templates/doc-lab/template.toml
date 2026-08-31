@@ -4,6 +4,7 @@ description = "목적·방법·결과·한계를 절로 나누고, 측정값은 
 category = "연구"
 fills = ["무엇을 측정했는지", "장비와 조건", "반복 횟수"]
 example_prompt = "실험 노트로 정리해 줘. 방법은 다른 사람이 그대로 다시 할 수 있을 만큼 자세히 쓰고, 계산은 식을 한 줄씩 펼쳐 남겨 줘. 마지막에 이 결과로 말할 수 없는 것을 적어 줘.\n\n측정한 것과 조건: "
+seed_from = "_document"
 layouts = ["cover", "section"]
 
 # English half of the catalogue. The UI picks a side by language;

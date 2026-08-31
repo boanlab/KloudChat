@@ -30,7 +30,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
-from app.services import grounding, settings_store
+from app.services import grounding, research, settings_store
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -245,6 +245,10 @@ async def write(
     #: keeps pressing it. Only this one pass is silenced; a later request that
     #: genuinely cannot be grounded is still allowed to say so.
     may_ask: bool = True,
+    #: Whether to research this document before writing it. Same pass reports
+    #: and decks run: queries planned off the request, top pages read in full,
+    #: ahead of the outline so the shape is chosen from what is true.
+    web_search: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `block`, a final `page` and one `usage` event.
 
@@ -266,6 +270,44 @@ async def write(
     wanted = requested_blocks(request)
     surface = template.surface
 
+    findings = research.Findings()
+    # Checked before the step is drawn, not inside `run`. A deployment with no
+    # search backend would otherwise open every document with 자료 찾는 중 and
+    # close it with 참고할 자료 없음 — a step that reports the deployment's
+    # configuration as though it were this document's result.
+    if web_search and await research.available():
+        yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
+        findings = await research.run(
+            request, model=outline_model or model, api_key=api_key
+        )
+        usage["outlineInputTokens" if outline_model else "inputTokens"] += findings.usage[
+            "inputTokens"
+        ]
+        usage["outlineOutputTokens" if outline_model else "outputTokens"] += findings.usage[
+            "outputTokens"
+        ]
+        yield {
+            "type": "step",
+            "id": "sources",
+            "label": f"자료 {len(findings.sources)}건" if findings.sources else "참고할 자료 없음",
+            "status": "done",
+            "detail": findings.detail,
+        }
+        if findings.sources:
+            yield {"type": "sources", "sources": findings.sources}
+    # Three states, and the writer is told which one it is in. A toggle
+    # somebody switched off is a choice and needs no disclaimer; a search that
+    # could not run and a search that found nothing are both worth saying, and
+    # they do not mean the same thing to a reader.
+    research_rule = ""
+    if web_search and not findings.searched:
+        research_rule = research.UNRESEARCHED_RULE
+    elif web_search and not findings.sources:
+        research_rule = research.EMPTY_RULE
+    document_context = list(untrusted_context or [])
+    if block := research.context_block(findings):
+        document_context.append(block)
+
     async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
         return await _complete(
             outline_model or model,
@@ -283,7 +325,8 @@ async def write(
                 )
                 + nudge,
                 trusted_context=[*(trusted_context or []), template.instructions],
-                untrusted_context=untrusted_context,
+                untrusted_context=document_context,
+                research_rule=research_rule,
             ),
             api_key,
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
@@ -418,7 +461,8 @@ async def write(
                         request=request[:1200],
                     ),
                     trusted_context=trusted_context,
-                    untrusted_context=untrusted_context,
+                    untrusted_context=document_context,
+                    research_rule=research_rule,
                 ),
                 api_key,
                 1200,

@@ -4,6 +4,7 @@ description = "결정과 할 일을 오른쪽 담당·기한 칸에 맞춰 세�
 category = "업무"
 fills = ["회의 이름", "일시와 참석자", "다룬 안건"]
 example_prompt = "회의록을 정리해 줘. 정해진 것과 아직 정해지지 않은 것을 나누고, 실행 항목에는 담당자와 기한을 적어 줘.\n\n회의와 참석자: "
+seed_from = "_document"
 layouts = ["cover", "section"]
 
 # English half of the catalogue. The UI picks a side by language;

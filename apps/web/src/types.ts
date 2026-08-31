@@ -134,8 +134,18 @@ export interface PendingQuestion {
 
 /** A generation waiting on the person who asked for it. */
 export interface PendingPlan {
-  /** `clarify` is holding a question; `outline` is holding what it will write. */
-  stage: 'clarify' | 'outline'
+  /**
+   * `clarify` is holding a question; `outline` is holding what it will write;
+   * `figures` is holding the second question — whether to draw the pictures
+   * the planner found a place for, and what that costs.
+   */
+  stage: 'clarify' | 'outline' | 'figures'
+  /** Proposed pictures, by the index of the section each belongs to. */
+  figures?: { section: number; caption: string; prompt: string }[]
+  /** What saying yes costs, as shown on the card. Approximate on purpose. */
+  figureCredits?: number
+  /** The image model that would draw them, named so the card can say. */
+  figureModel?: string
   /** The request it began from, with any answers already folded in. */
   request: string
   attachments: string[]
@@ -410,6 +420,20 @@ interface ArtifactBase {
    */
   partial?: boolean
   /**
+   * True while this is the local draft a run is streaming into, before the
+   * `artifact` event swaps in the saved document. It is the honest answer to
+   * "is this still being written", which is what the controls need to know:
+   * export would 404 on a document the server does not have yet, and an edit
+   * would be overwritten by the next event of the run that is still going.
+   *
+   * A report answers that question from its sections' own `status`. A deck had
+   * no equivalent and asked whether every slide had content instead — which is
+   * the same answer almost always, and the wrong one exactly when a slide came
+   * back empty: the whole deck stayed locked, including 텍스트 수정, which is
+   * the one control that could have fixed it.
+   */
+  draft?: boolean
+  /**
    * What the linter found when this was written. Stored on the artifact, so a
    * document that was fine when it was made does not start reporting problems
    * because the rules were tightened afterwards.
@@ -475,6 +499,48 @@ export interface ReportSection {
   level: 1 | 2
   status: 'pending' | 'streaming' | 'done'
   content: string
+  /**
+   * How `content` is stored.
+   *
+   * Absent or `markdown` is what the model writes and what every report held
+   * before the document editor shipped. `html` is a section somebody has
+   * formatted by hand — size, face, alignment and tables have no Markdown, so
+   * storing those as Markdown means throwing them away on save. The server
+   * sanitises an `html` body on the way in and converts it back for the
+   * exporters; see `services/richtext.py`.
+   */
+  format?: 'markdown' | 'html'
+  /**
+   * Pictures of this section's mermaid diagrams, by the key their source
+   * hashes to. Mermaid renders in JavaScript and the API has no headless
+   * browser, so whoever opens the document draws them and posts them back —
+   * which is how the `.docx` gets a figure where the source stands.
+   */
+  diagrams?: Record<string, string>
+  /**
+   * What the web said about the figures in this section, when somebody asked.
+   *
+   * The same shape a slide carries, because it is the same call — a claim does
+   * not care what shape it was printed in. It arrived on the report later than
+   * on the deck, which was backwards: a slide gets argued with in the room it
+   * is shown in, and a report gets exported and mailed.
+   */
+  factCheck?: FactCheck
+}
+
+/**
+ * The four values every renderer and exporter reads. Always complete on the
+ * wire.
+ *
+ * Defined here rather than in `lib/api` because the artifact types need it and
+ * `lib/api` already imports from this file — the other direction would be a
+ * cycle. `lib/api` re-exports it, so its existing importers are unchanged.
+ */
+export interface DesignTokens {
+  accent: string
+  ink: string
+  muted: string
+  font: 'gothic' | 'serif'
 }
 
 export interface ReportArtifact extends ArtifactBase {
@@ -484,6 +550,14 @@ export interface ReportArtifact extends ArtifactBase {
   /** Citation style the export renders. */
   citationStyle: 'APA' | 'MLA' | 'Chicago' | 'IEEE'
   wordCount: number
+  /**
+   * The 서식 the page view wears. A view, not a fork — the sections above are
+   * the document either way, and this only decides what it is drawn in.
+   * Absent falls back to the plain report seed.
+   */
+  templateId?: string
+  /** The project's design system, when it has one. Colours and the body face. */
+  design?: DesignTokens | null
 }
 
 /**
@@ -525,9 +599,45 @@ export interface FactCheck {
 
 export interface Slide {
   id: string
-  layout: 'title' | 'bullets' | 'two-column' | 'image' | 'quote' | 'chart'
+  /**
+   * Which of the shapes `deck._LAYOUTS` offers. `image` used to be here and
+   * was never a layout: a picture arrives on `image` below and the exporters
+   * size it from what else the slide holds, so a picture-only slide already
+   * gets the full width without anyone naming a layout for it. Nothing read
+   * the value, and a member nothing reads is a shape somebody will one day
+   * write into an artifact and then wonder why it renders as bullets.
+   */
+  layout: 'title' | 'bullets' | 'two-column' | 'quote' | 'chart' | 'table' | 'metrics'
   title: string
   bullets?: string[]
+  /**
+   * A table, first row the head. The commonest slide in a working deck and the
+   * last one this type could describe: the `.pptx` and `.pdf` writers had both
+   * drawn `rows` for a long time, the model was never asked for one, and this
+   * type had nowhere to put it — so a comparison came out as six bullets the
+   * reader had to rebuild the table from.
+   */
+  rows?: string[][]
+  /**
+   * Figures worth setting large, as `[값, 이름]` — the slide whose point is a
+   * number rather than a sentence. Held apart from `rows` because a table is
+   * for reading values against each other and this is for remembering one:
+   * drawn as a table they would be read at the same weight as anything else,
+   * which is the thing this layout exists to avoid.
+   */
+  metrics?: [string, string][]
+  /**
+   * A bar or line chart drawn from real numbers. Every series carries as many
+   * values as there are categories — a short one is not a chart with a gap in
+   * it but a chart whose bars stand under the wrong labels, so the writer
+   * trims both to the length they agree on before this is stored.
+   */
+  chart?: {
+    kind: 'bar' | 'line'
+    unit?: string
+    categories: string[]
+    series: { name: string; values: number[] }[]
+  }
   body?: string
   notes?: string
   accent?: string

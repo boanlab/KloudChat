@@ -28,7 +28,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
-from app.services import design, fonts, pictures
+from app.services import charts, design, fonts, pictures
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +111,74 @@ def _font(
         properties.append(element)
 
 
+def _pptx_chart(
+    slide, chart: dict, *, accent, muted, width: float, faces: tuple[str, str]
+) -> None:
+    """A native PowerPoint chart, not a picture of one.
+
+    The difference is what the person presenting can do with it. A native chart
+    carries its own worksheet, so a number that turns out to be wrong the
+    morning of the talk is fixed in the file they already have; a raster is a
+    picture they have to come back to us to change.
+
+    Everything but the geometry is `services.charts`, which the report's `.docx`
+    charts go through as well — one accent, one zero floor, one set of
+    gridlines, whichever surface the reader is on.
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    payload = CategoryChartData()
+    payload.categories = chart["categories"]
+    for name, values in chart["series"]:
+        payload.add_series(name or " ", values)
+
+    frame = slide.shapes.add_chart(
+        XL_CHART_TYPE.LINE_MARKERS if chart["kind"] == "line" else XL_CHART_TYPE.COLUMN_CLUSTERED,
+        Emu(int(72 * _EMU_PER_PT)),
+        Emu(int(150 * _EMU_PER_PT)),
+        Emu(int(width * _EMU_PER_PT)),
+        Emu(int((_H - 220) * _EMU_PER_PT)),
+        payload,
+    )
+    charts.apply(
+        frame.chart,
+        kind=chart["kind"],
+        unit=chart.get("unit") or "",
+        accent=accent,
+        muted=muted,
+        faces=faces,
+    )
+
+
+def _cell_rule(cell, colour: RGBColor, points: float) -> None:
+    """A line under one table cell, and nothing anywhere else on it.
+
+    `python-pptx` has no border API — a cell's lines live in `a:tcPr` and have
+    to be written as XML. Only the bottom is drawn, so a row of cells reads as
+    one rule across the table rather than as a row of boxes.
+
+    `a:tcPr` is schema-ordered and the line elements come first — left, right,
+    top, bottom — so this is inserted at the front. A cell whose `a:lnB` sits
+    after its fill is a file PowerPoint opens with a repair prompt.
+    """
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls, qn
+
+    properties = cell._tc.get_or_add_tcPr()
+    for existing in properties.findall(qn("a:lnB")):
+        properties.remove(existing)
+    properties.insert(
+        0,
+        parse_xml(
+            f'<a:lnB {nsdecls("a")} w="{int(points * 12700)}" cap="flat"'
+            ' cmpd="sng" algn="ctr">'
+            f'<a:solidFill><a:srgbClr val="{colour}"/></a:solidFill>'
+            "</a:lnB>"
+        ),
+    )
+
+
 def _textbox(slide, *, left: float, top: float, width: float, height: float):
     box = slide.shapes.add_textbox(
         Emu(int(left * _EMU_PER_PT)),
@@ -148,6 +216,45 @@ def _split_columns(bullets: list[str]) -> list[list[str]]:
         return [bullets]
     half = (len(bullets) + 1) // 2
     return [bullets[:half], bullets[half:]]
+
+
+def _chart_of(slide: dict) -> dict | None:
+    """A slide's chart, if it has one that can be drawn.
+
+    Checked here rather than trusted, because both writers are also handed
+    artifacts written before `deck._clean_chart` existed and artifacts a person
+    has edited by hand. A series shorter than the categories is the one that
+    matters: it is not a chart with a gap, it is a chart whose bars stand under
+    the wrong labels, and every reader takes away a fact that was never in the
+    data. Rather than guess the pairing, this draws only the part that pairs.
+    """
+    chart = slide.get("chart")
+    if not isinstance(chart, dict):
+        return None
+    categories = [str(c) for c in (chart.get("categories") or [])]
+    series: list[tuple[str, list[float]]] = []
+    for item in chart.get("series") or []:
+        if not isinstance(item, dict):
+            continue
+        values: list[float] = []
+        for raw in item.get("values") or []:
+            try:
+                values.append(float(raw))
+            except (TypeError, ValueError):
+                break
+        if values:
+            series.append((str(item.get("name") or ""), values))
+    if not categories or not series:
+        return None
+    width = min(len(categories), min(len(values) for _, values in series))
+    if width < 2:
+        return None
+    return {
+        "kind": "line" if str(chart.get("kind")) == "line" else "bar",
+        "unit": str(chart.get("unit") or ""),
+        "categories": categories[:width],
+        "series": [(name, values[:width]) for name, values in series],
+    }
 
 
 def _picture_of(slide: dict) -> tuple[bytes, str] | None:
@@ -193,6 +300,7 @@ def to_pptx(
     *,
     tokens: dict[str, str] | None = None,
     dark: bool = False,
+    template: str = "",
 ) -> bytes:
     """The deck as a PowerPoint file.
 
@@ -216,7 +324,18 @@ def to_pptx(
     def paint(run, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
         _font(run, size=size, bold=bold, colour=colour or ink, faces=faces)
 
-    presentation = Presentation()
+    # The 서식's own PowerPoint file, when it has one.
+    #
+    # Same reasoning as `report_export.to_docx` opening the 서식's `.docx`: the
+    # shape reached the screen and then the file — the thing that is actually
+    # presented — came out in `python-pptx`'s defaults. Opening the template
+    # makes the master, its layouts and its theme the 서식's, so a deck saved
+    # from here carries them and 새 슬라이드 offers the same shapes.
+    #
+    # The slides below are still drawn rather than placed in the layouts'
+    # placeholders. That is the next thing to change and it is a bigger one;
+    # this much already moves the master, the theme and the page.
+    presentation = Presentation(template) if template else Presentation()
     presentation.slide_width = Emu(int(_W * _EMU_PER_PT))
     presentation.slide_height = Emu(int(_H * _EMU_PER_PT))
     blank = presentation.slide_layouts[6]
@@ -246,11 +365,21 @@ def to_pptx(
         body = str(data.get("body") or "")
         bullets = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
         rows = [[str(cell) for cell in row] for row in (data.get("rows") or []) if row]
+        metrics = [
+            [str(pair[0]), str(pair[1])]
+            for pair in (data.get("metrics") or [])
+            if isinstance(pair, list) and len(pair) >= 2
+        ]
+        chart = _chart_of(data)
         picture = _picture_of(data)
         # A picture takes the right half and the words keep the left. Alone, it
         # takes the middle of the slide. Either way the text is narrowed here
         # rather than overlapping it, which is what a slide would show.
-        text_width = _W - 144 - (_PICTURE_SPAN + 24 if picture and (bullets or rows or body) else 0)
+        text_width = _W - 144 - (
+            _PICTURE_SPAN + 24
+            if picture and (bullets or rows or metrics or chart or body)
+            else 0
+        )
 
         if layout == "title" and index == 0:
             frame = _textbox(slide, left=72, top=190, width=_W - 144, height=160)
@@ -281,7 +410,34 @@ def to_pptx(
             run.text = heading
             paint(run, size=26, bold=True)
 
-            if rows:
+            if chart:
+                _pptx_chart(
+                    slide, chart, accent=accent, muted=muted, width=text_width, faces=faces
+                )
+            elif metrics:
+                # Figures set large, side by side, with what each one counts
+                # under it. The size is the whole point: a number typed into a
+                # bullet is read at the same weight as everything around it,
+                # and this slide exists because one of them is the thing to
+                # remember.
+                span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
+                for position, (figure, label) in enumerate(metrics):
+                    box = _textbox(
+                        slide,
+                        left=72 + position * (span + 24),
+                        top=180,
+                        width=span,
+                        height=110,
+                    )
+                    run = box.paragraphs[0].add_run()
+                    run.text = figure
+                    paint(run, size=44, bold=True, colour=accent)
+                    under = box.add_paragraph()
+                    under.space_before = Pt(6)
+                    run = under.add_run()
+                    run.text = label
+                    paint(run, size=14, colour=muted)
+            elif rows:
                 # A real table, because an HTML deck can carry one. Flattened
                 # into lines it is a comparison the reader has to rebuild.
                 shape = slide.shapes.add_table(
@@ -293,11 +449,28 @@ def to_pptx(
                     Emu(int(min(_H - 220, 34 * len(rows)) * _EMU_PER_PT)),
                 )
                 table = shape.table
+                # PowerPoint applies a theme table style to every new table:
+                # a banded blue that owes nothing to the deck's own accent. It
+                # made the .pptx the odd one out — the preview and the .pdf
+                # both draw accent-coloured headings over plain rows with a
+                # rule under the head — and a preview that differs from the
+                # .pptx is discovered in the room.
+                table.first_row = False
+                table.horz_banding = False
                 for r, row in enumerate(rows):
                     for c, text in enumerate(row):
                         if c >= len(table.columns):
                             continue
                         cell = table.cell(r, c)
+                        cell.fill.background()
+                        # The rule under the head row is what separates the
+                        # labels from the values; between the rows a hairline
+                        # is enough, and round the outside nothing at all — a
+                        # grid of thin lines closes up at projector distance.
+                        if r == 0:
+                            _cell_rule(cell, accent, 1.25)
+                        elif r < len(rows) - 1:
+                            _cell_rule(cell, muted, 0.5)
                         cell.text = ""
                         run = cell.text_frame.paragraphs[0].add_run()
                         run.text = text
@@ -337,7 +510,7 @@ def to_pptx(
 
         if picture:
             image_bytes, image_caption = picture
-            alone = not (bullets or rows or body)
+            alone = not (bullets or rows or metrics or chart or body)
             box = (_W - 260, _H - 230) if alone else (_PICTURE_SPAN, _H - 230)
             width, height = _fit(image_bytes, box=box)
             left = 72 + (text_width + 24) if not alone else (_W - width) / 2
@@ -378,6 +551,130 @@ def to_pptx(
     buffer = io.BytesIO()
     presentation.save(buffer)
     return buffer.getvalue()
+
+
+def _pdf_chart(
+    pdf,
+    chart: dict,
+    *,
+    accent: tuple[float, float, float],
+    muted: tuple[float, float, float],
+    top: float,
+    width: float,
+    font: str,
+) -> None:
+    """The same chart, drawn.
+
+    By hand rather than with `reportlab.graphics`: that package's charts bring
+    their own type scale, their own axis conventions and their own palette,
+    and reconciling those with the .pptx would take more code than the twenty
+    lines of arithmetic below. What has to match is the shape a reader sees —
+    the same bars in the same order over a zero floor — and that is arithmetic.
+
+    Zero floor, again. A printed chart is the one people photograph.
+    """
+    left = 72.0
+    bottom = 90.0
+    height = top - bottom - 30
+    if height < 60 or width < 100:
+        return
+
+    values = [value for _, series in chart["series"] for value in series]
+    if max(values + [0]) <= 0:
+        return
+    ceiling = _nice_ceiling(max(values))
+    categories = chart["categories"]
+    step = width / len(categories)
+
+    # Four gridlines and their labels. More is a grid, fewer is not a scale.
+    pdf.setFont(font, 11)
+    for tick in range(5):
+        y = bottom + height * tick / 4
+        pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
+        pdf.setLineWidth(0.5)
+        pdf.line(left, y, left + width, y)
+        pdf.setFillColorRGB(*muted)
+        pdf.drawRightString(left - 6, y - 4, _tick_label(ceiling * tick / 4))
+    if unit := chart.get("unit"):
+        pdf.setFillColorRGB(*muted)
+        pdf.drawString(left - 30, bottom + height + 12, unit)
+
+    for series_index, (_name, series) in enumerate(chart["series"]):
+        colour = accent if series_index == 0 else tuple(c + (1 - c) * 0.55 for c in accent)
+        if chart["kind"] == "line":
+            pdf.setStrokeColorRGB(*colour)
+            pdf.setLineWidth(2.5)
+            path = pdf.beginPath()
+            points = [
+                (left + step * (position + 0.5), bottom + height * (value / ceiling))
+                for position, value in enumerate(series)
+            ]
+            for position, (x, y) in enumerate(points):
+                path.moveTo(x, y) if position == 0 else path.lineTo(x, y)
+            pdf.drawPath(path)
+            # The same circles the .pptx puts on its line series. A bare line
+            # hides where the readings actually are, and on a five-point series
+            # that is most of what the chart says.
+            pdf.setFillColorRGB(*colour)
+            for x, y in points:
+                pdf.circle(x, y, 3, stroke=0, fill=1)
+        else:
+            # Bars share the slot between two category ticks, so two series
+            # stand side by side rather than one behind the other.
+            count = len(chart["series"])
+            span = step * 0.6 / count
+            pdf.setFillColorRGB(*colour)
+            for position, value in enumerate(series):
+                x = left + step * (position + 0.5) - (step * 0.6) / 2 + span * series_index
+                pdf.rect(x, bottom, span, height * (value / ceiling), stroke=0, fill=1)
+
+    pdf.setFillColorRGB(*muted)
+    pdf.setFont(font, 12)
+    for position, label in enumerate(categories):
+        pdf.drawCentredString(left + step * (position + 0.5), bottom - 18, label)
+
+    # A legend, when there is more than one line to tell apart. Without it the
+    # printed chart has two lines and no way to say which is which — the .pptx
+    # has had one since it was drawn.
+    if len(chart["series"]) > 1:
+        x = left
+        pdf.setFont(font, 12)
+        for series_index, (name, _values) in enumerate(chart["series"]):
+            colour = accent if series_index == 0 else tuple(c + (1 - c) * 0.55 for c in accent)
+            pdf.setFillColorRGB(*colour)
+            pdf.circle(x + 4, bottom - 36, 3.5, stroke=0, fill=1)
+            pdf.setFillColorRGB(*muted)
+            pdf.drawString(x + 13, bottom - 40, name)
+            x += 24 + pdfmetrics.stringWidth(name, font, 12)
+
+
+def _nice_ceiling(highest: float) -> float:
+    """A top of scale that is a number a reader recognises.
+
+    `highest * 1.15` gives gridlines at 132, 264, 397 — arithmetic nobody reads
+    as a scale. PowerPoint rounds the top of its own charts, so this has to as
+    well, or the same deck is read off two different scales depending on which
+    file somebody opened.
+
+    The *top* is rounded, not the step. Rounding the step is the obvious move
+    and it wastes the chart: a series topping out at 460 has a step of 115,
+    the next round step up is 200, and the bars end up filling a little over
+    half of a chart that runs to 800.
+    """
+    import math
+
+    if highest <= 0:
+        return 1.0
+    power = 10 ** math.floor(math.log10(highest))
+    for multiple in (1, 2, 2.5, 5, 10):
+        if highest <= multiple * power:
+            return multiple * power
+    return highest
+
+
+def _tick_label(value: float) -> str:
+    """A gridline's number, without a decimal point nobody asked for."""
+    return f"{value:,.0f}" if abs(value) >= 10 else f"{value:,.1f}".rstrip("0").rstrip(".")
 
 
 def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
@@ -434,10 +731,20 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         body = str(data.get("body") or "")
         bullets = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
         rows = [[str(cell) for cell in row] for row in (data.get("rows") or []) if row]
+        metrics = [
+            [str(pair[0]), str(pair[1])]
+            for pair in (data.get("metrics") or [])
+            if isinstance(pair, list) and len(pair) >= 2
+        ]
+        chart = _chart_of(data)
         picture = _picture_of(data)
         # The same split the .pptx uses, so the printout and the projected deck
         # put the same things in the same places.
-        text_width = _W - 144 - (_PICTURE_SPAN + 24 if picture and (bullets or rows or body) else 0)
+        text_width = _W - 144 - (
+            _PICTURE_SPAN + 24
+            if picture and (bullets or rows or metrics or chart or body)
+            else 0
+        )
 
         pdf.setFillColorRGB(1, 1, 1)
         pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
@@ -477,7 +784,25 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 y -= 34
             y -= 24
 
-            if rows:
+            if chart:
+                _pdf_chart(
+                    pdf, chart, accent=accent, muted=muted, top=y, width=text_width, font=font
+                )
+            elif metrics:
+                # The same geometry the .pptx uses, so the printout and the
+                # projected deck put the same figures in the same places.
+                span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
+                for position, (figure, label) in enumerate(metrics):
+                    left = 72 + position * (span + 24)
+                    pdf.setFillColorRGB(*accent)
+                    pdf.setFont(font, 44)
+                    pdf.drawString(left, y - 40, figure)
+                    pdf.setFillColorRGB(*muted)
+                    pdf.setFont(font, 14)
+                    # 30pt under a 44pt figure. At 22 the label sat on the
+                    # numeral's baseline and the two read as one word.
+                    pdf.drawString(left, y - 70, label)
+            elif rows:
                 # Ruled rather than boxed: a printed grid of thin lines closes
                 # up at projector distance, and the rule under the header is
                 # what actually separates the labels from the values.
@@ -524,7 +849,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
 
         if picture:
             image_bytes, image_caption = picture
-            alone = not (bullets or rows or body)
+            alone = not (bullets or rows or metrics or chart or body)
             box = (_W - 260, _H - 230) if alone else (_PICTURE_SPAN, _H - 230)
             width, height = _fit(image_bytes, box=box)
             left = 72 + text_width + 24 if not alone else (_W - width) / 2

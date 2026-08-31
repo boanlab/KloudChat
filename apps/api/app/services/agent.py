@@ -123,6 +123,7 @@ async def _stream_once(
     strict_local: bool = False,
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
+    force_tool: str | None = None,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Yields `('delta', text)` while streaming, then `('done', _Accumulator)`."""
     payload: dict[str, Any] = {
@@ -139,7 +140,13 @@ async def _stream_once(
         payload["temperature"] = temperature
     if tools:
         payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
-        payload["tool_choice"] = "auto"
+        # `auto` everywhere except a caller that named a tool for this hop. See
+        # `run_turn`'s `force_tool` for why one hop and not the whole turn.
+        payload["tool_choice"] = (
+            {"type": "function", "function": {"name": force_tool}}
+            if force_tool and any(t.name == force_tool for t in tools)
+            else "auto"
+        )
     if strict_local or disable_fallbacks:
         # Defence in depth. The strict alias has no fallback in KloudChat-LLM;
         # this also asks LiteLLM's router not to fall back for this request.
@@ -221,6 +228,21 @@ async def run_turn(
     redact_logging: bool = False,
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
+    #: A tool the first hop must call, rather than may.
+    #:
+    #: `tool_choice: auto` is the right default and the wrong one for a control
+    #: somebody switched on. A small model reads the search nudge as advice: it
+    #: answers from memory, and the answer arrives under a lit globe that says
+    #: it was looked up. The person then has to know enough to disbelieve it and
+    #: type "인터넷 검색해봐" — which only works for the facts they already
+    #: doubted.
+    #:
+    #: Forced for one hop, not the turn. After the first call `tool_choice`
+    #: returns to `auto`, so the model is free to search again, use another
+    #: tool, or answer — the requirement is that it looks before it writes, not
+    #: that it keeps looking. Forcing the whole turn cannot terminate: every hop
+    #: would owe another call.
+    force_tool: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -261,6 +283,8 @@ async def run_turn(
             stream_kwargs["tool_definitions"] = tool_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
+        if force_tool and hop == 0:
+            stream_kwargs["force_tool"] = force_tool
         async for kind, value in _stream_once(
             model,
             conversation,

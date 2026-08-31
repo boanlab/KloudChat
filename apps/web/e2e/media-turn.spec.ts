@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, surfaceOn } from './helpers'
 
 /**
  * 이미지 화면이 대화처럼 읽히는지.
@@ -79,7 +79,10 @@ test('그림은 프롬프트 아래, 대화 안에 나온다', async ({ page }) 
   test.skip(!picture, '이미지 아티팩트가 없습니다')
   await stubGeneration(page, picture!)
 
-  await page.goto('/new/image')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   await page.getByLabel('프롬프트 입력').fill(PROMPT)
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
@@ -113,7 +116,10 @@ test('만들지 못하면 그 프롬프트가 실패한 차례로 남는다', as
     await route.fulfill({ status: 502, json: { detail: '모델이 요청을 거절했습니다.' } })
   })
 
-  await page.goto('/new/image')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   await page.getByLabel('프롬프트 입력').fill(PROMPT)
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })

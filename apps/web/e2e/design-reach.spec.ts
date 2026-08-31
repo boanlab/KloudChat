@@ -56,8 +56,19 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
   ] as const) {
     await page.goto(`/projects/${projectId}`)
     await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
-    await page.getByRole('menuitem', { name: surface, exact: true }).click()
-    await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
+    const entry = page.getByRole('menuitem', { name: surface, exact: true })
+    // A surface an administrator has switched off has no entry in this menu —
+    // `image` and `av` are off unless somebody turns them on, because they
+    // spend credits per generation. Asserting what such a surface says about a
+    // design is asserting about a screen nobody in this workspace can reach.
+    if ((await entry.count()) === 0 || !(await entry.isEnabled().catch(() => false))) {
+      await page.keyboard.press('Escape')
+      continue
+    }
+    await entry.click()
+    await expect(page, `${surface} 화면으로 넘어가지 않았다`).toHaveURL(/\/s\/[0-9a-f]{32}/, {
+      timeout: 60_000,
+    })
     await expect(panel).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText(says)).toBeVisible({ timeout: 20_000 })
@@ -68,8 +79,11 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
   // direction.
   await page.goto(`/projects/${projectId}`)
   await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
-  await page.getByRole('menuitem', { name: '오디오/동영상', exact: true }).click()
-  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
-  await expect(panel).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText(name, { exact: true })).toHaveCount(0)
+  const clips = page.getByRole('menuitem', { name: '오디오/동영상', exact: true })
+  if ((await clips.count()) > 0 && (await clips.isEnabled().catch(() => false))) {
+    await clips.click()
+    await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
+    await expect(panel).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0)
+  }
 })

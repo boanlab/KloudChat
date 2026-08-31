@@ -1,0 +1,21 @@
+kind = "document"
+name = "제안서"
+description = "고객 과제에서 시작해 도입 효과와 일정, 견적으로 맺는 문서"
+category = "업무"
+fills = ["고객사", "과제", "예산 범위"]
+example_prompt = "제안서를 써 줘. 고객의 과제에서 시작해서, 도입하면 무엇이 달라지는지 숫자로 보이고, 일정과 견적으로 맺어 줘.\n\n고객사와 과제: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Proposal"
+description_en = "Starts from the customer's problem and ends in effect, schedule and price"
+category_en = "Work"
+fills_en = ["Customer", "Problem", "Budget"]
+example_prompt_en = "Write a proposal. Start from the customer's problem, show what changes in numbers, and end with a schedule and a price.\n\nCustomer and problem: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

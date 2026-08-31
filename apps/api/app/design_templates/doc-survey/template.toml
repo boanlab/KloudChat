@@ -1,0 +1,21 @@
+kind = "document"
+name = "설문 분석"
+description = "표본과 문항을 밝히고, 기술통계에서 교차분석까지 표로 잇는 보고서"
+category = "연구"
+fills = ["조사 대상", "표본 수", "알고 싶은 것"]
+example_prompt = "설문 분석 보고서를 써 줘. 표본과 문항을 먼저 밝히고, 기술통계와 교차분석을 표로 정리해 줘.\n\n조사 대상과 표본 수: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Survey analysis"
+description_en = "Sample and instrument stated, then descriptives through cross-tabs, in tables"
+category_en = "Research"
+fills_en = ["Respondents", "Sample size", "Question"]
+example_prompt_en = "Write a survey analysis. State the sample and the instrument first, then give descriptives and cross-tabs as tables.\n\nRespondents and sample size: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

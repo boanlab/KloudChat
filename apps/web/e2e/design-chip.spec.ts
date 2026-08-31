@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { E2E_ADMIN, openSidebar, signIn } from './helpers'
+import { E2E_ADMIN, openSidebar, signIn, surfaceOn } from './helpers'
 
 /**
  * What the composer says about the shape of the answer — across a reload, and
@@ -149,7 +149,7 @@ test('이미지 서식은 그 그림에서 끝나고, 남은 옵션은 누가 �
     await route.fulfill({ json: [] })
   })
 
-  await page.goto('/new/image')
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   await (await card(page, '포스터')).getByRole('button', { name: '이 서식으로 시작' }).click()
   const chip = page.getByRole('button', { name: '포스터 서식 해제' })
   await expect(chip).toBeVisible()
@@ -179,7 +179,7 @@ test('영상 서식이 정한 옵션은 칩이 없어도 출처를 말한다', a
   test.setTimeout(120_000)
   await signIn(page)
 
-  await page.goto('/new/av')
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await (await card(page, '발표 오프닝')).getByRole('button', { name: '이 서식으로 시작' }).click()
 
   // An a/v 서식 leaves no chip: it is spent on the sentence and on these chips

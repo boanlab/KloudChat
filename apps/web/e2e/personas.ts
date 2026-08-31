@@ -145,7 +145,7 @@ export const personas: Persona[] = [
     surfaces: ['chat', 'report', 'slides'],
     viewport: 'laptop',
     needs: [
-      { id: 'off-voice', task: '회의 내용을 말로 받아 적는다', where: '입력창 음성' },
+      { id: 'off-voice', task: '회의 녹음을 올려 회의록으로 옮긴다', where: '입력창 첨부' },
       { id: 'off-template', task: '공문 양식을 골라 시작한다', where: '시작점' },
       { id: 'off-drive', task: '드라이브 문서를 불러온다', where: '커넥터 · Drive' },
       { id: 'off-docx', task: '워드로 내보내 결재 올린다', where: '보고서 내보내기' },

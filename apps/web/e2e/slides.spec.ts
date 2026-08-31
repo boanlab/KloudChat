@@ -85,6 +85,9 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
     title: string
     body?: string
     bullets?: string[]
+    rows?: string[][]
+    metrics?: [string, string][]
+    chart?: unknown
   }[]
   expect(slides.length).toBeGreaterThanOrEqual(5)
   expect(slides[0].layout).toBe('title')
@@ -94,14 +97,30 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   expect(slides[0].body ?? '').not.toContain('만들어줘')
 
   // Only layouts with a renderer behind them in all three outputs — preview,
-  // .pptx and .pdf. `chart` in particular would draw five hard-coded bars:
-  // invented numbers, on a slide, in front of a room.
+  // .pptx and .pdf. That used to be four; a table, a figure strip and a chart
+  // have since been given one in each, so the list is `deck._LAYOUTS`. The
+  // check is still worth making: a layout the writer may choose and one of the
+  // three surfaces cannot draw is a blank rectangle in front of a room.
+  //
+  // `chart` was the one held back longest, because a chart with no numbers
+  // behind it draws five invented bars. It is offered now only when the
+  // source it is written from actually carries figures.
   for (const slide of slides) {
-    expect(['title', 'bullets', 'quote', 'two-column']).toContain(slide.layout)
+    expect(['title', 'bullets', 'quote', 'two-column', 'table', 'metrics', 'chart']).toContain(
+      slide.layout,
+    )
   }
-  // Every non-cover slide actually says something.
+  // Every non-cover slide actually says something — in whichever of the five
+  // shapes it chose. Counting bullets and body alone would have called a
+  // perfectly good table empty.
   for (const slide of slides.slice(1)) {
-    expect((slide.bullets?.length ?? 0) + (slide.body ? 1 : 0)).toBeGreaterThan(0)
+    const said =
+      (slide.bullets?.length ?? 0) +
+      (slide.body ? 1 : 0) +
+      (slide.rows?.length ?? 0) +
+      (slide.metrics?.length ?? 0) +
+      (slide.chart ? 1 : 0)
+    expect(said, `${slide.layout} 장이 비어 있다: ${slide.title}`).toBeGreaterThan(0)
   }
 
   // The title is the model's, not the prompt.

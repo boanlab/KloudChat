@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
-import { approvePlan, signIn } from './helpers'
+import { approvePlan, signIn, surfaceOn } from './helpers'
 
 /**
  * The names in a zip's central directory, without pulling in a zip library.
@@ -105,7 +105,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   await page.goto('/')
   const rail = page.getByRole('region', { name: '서식에서 시작' })
   await expect(rail).toBeVisible({ timeout: 20_000 })
-  await expect(rail.locator('iframe').first()).toBeVisible()
+  await expect(rail.getByRole('button').first()).toBeVisible()
   await shot(page, '13-home-rail')
 
   // Picking one opens its surface wearing the shape. The composer stays empty
@@ -163,23 +163,14 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   await expect(folded).toBeVisible()
 
   // The preview is the seed rendered around its sample, served as a document.
-  // Fetched rather than read through the frame: `sandbox=""` makes the frame
-  // opaque to the test for the same reason it makes it safe.
-  // Every card is that template's own seed, filled with its own sample. Counted
-  // against the cards rather than a number written here: the catalogue gains
-  // templates, and a count in a test only teaches everybody to bump it.
-  await expect(gallery.locator('iframe')).toHaveCount(await gallery.locator('div.group').count())
   await shot(page, '01-deck-gallery')
 
-  const previewUrl = await card.locator('iframe').getAttribute('src')
-  expect(previewUrl).toContain('/design-templates/deck-editorial/preview')
-  const preview = await page.request.get(previewUrl!)
-  expect(preview.status()).toBe(200)
-  const previewHtml = await preview.text()
-  expect(previewHtml).toContain('class="slide cover"')
-  expect(previewHtml).toContain('--accent:')
-  // A seed that shipped with a placeholder left in would render it literally.
-  expect(previewHtml).not.toContain('{{')
+  // What the card carries now that it carries no picture: the rules the
+  // finished deck is read against, and the blanks it asks you to bring. The
+  // previews went with the seeds — six 서식 drew the same one, so the picture
+  // told two of them apart less well than the name did.
+  await expect(card.getByText(/확인하는 것 \d+개/)).toBeVisible()
+  await expect(card.getByRole('button', { name: /양식 pptx/ })).toBeVisible()
 
   // ── 2. Picking one names itself and leaves the box alone ────────────
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
@@ -347,12 +338,28 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
 
   const stored = await artifactOf(page, sessionId)
   expect(stored.data.templateId).toBe('doc-brief')
-  const html = stored.data.content as string
-  // The one-pager's own shape: a cover outside the grid, cards inside it.
-  expect(html.indexOf('<div class="cover">')).toBeLessThan(html.indexOf('<div class="grid">'))
-  expect(html).toContain('break-inside: avoid')
+
+  // Sections, not one `content` string. A document 서식 and a document with no
+  // 서식 used to be different artifacts — one could be read, exported and
+  // rewritten a block at a time but never typed into, and the other could be
+  // typed into and had no shape. Neither could become the other, so they are
+  // one artifact now: the writer's blocks are already HTML, so they are stored
+  // as `format: "html"` sections and the page view renders them through
+  // whichever 서식 is chosen, including a different one later. The `html`
+  // artifact stayed with the deck surface, where a slide is not a section.
+  const sections = stored.data.sections as { content: string; format: string }[]
+  expect(sections.length).toBeGreaterThan(0)
+  expect(sections.every((s) => s.format === 'html')).toBe(true)
+
+  const html = sections.map((s) => s.content).join('\n')
+  // The 서식's own markup, not prose that has been through a Markdown writer.
+  expect(html).toContain('<section>')
+  expect(html).toMatch(/<h[23]>/)
   // A document, not a deck — the slide vocabulary belongs to the other seed.
   expect(html).not.toContain('class="slide')
+  // The cover is the 서식's, not a block of the document: it is what the page
+  // view draws around the sections, so it is not one of them.
+  expect(html).not.toContain('class="cover"')
 })
 
 test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵션까지 맞춰 준다', async ({ page }) => {
@@ -360,7 +367,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   await signIn(page)
 
   // ── image: blanks become a sentence, and the chips follow ───────────
-  await page.goto('/new/image')
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   const imageGallery = await openGallery(page, ['image-poster', 'image-cover'])
   const poster = imageGallery.locator('div.group', { hasText: '포스터' })
   await expect(poster).toBeVisible({ timeout: 20_000 })
@@ -383,7 +390,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   await expect(page.getByRole('button', { name: '스타일 일러스트' })).toBeVisible()
 
   // ── video: the same, plus the settings that surface has ─────────────
-  await page.goto('/new/av')
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   const avGallery = await openGallery(page, ['video-product', 'video-opening'])
   const opener = avGallery.locator('div.group', { hasText: '발표 오프닝' })
   await expect(opener).toBeVisible({ timeout: 20_000 })
@@ -413,7 +420,7 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
   test.setTimeout(120_000)
   await signIn(page)
 
-  await page.goto('/new/image')
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   const gallery = await openGallery(page, ['image-poster', 'image-cover'])
   const card = gallery.locator('div.group', { hasText: '포스터' })
   await expect(card).toBeVisible({ timeout: 20_000 })
@@ -421,9 +428,7 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
   // The card for an image template shows its recipe rather than a picture:
   // the result comes from the model and the project's design system, so a
   // sample image would advertise something this template cannot promise.
-  const previewUrl = await card.locator('iframe').getAttribute('src')
-  const preview = await page.request.get(previewUrl!)
-  expect(await preview.text()).toContain('글자를 그리지 않음')
+  await expect(card).toContainText('글자를 그리지 않음')
 
   await shot(page, '06-image-gallery')
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()

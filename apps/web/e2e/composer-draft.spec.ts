@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, surfaceOn } from './helpers'
 
 /**
  * What the gallery is allowed to do to a sentence somebody is in the middle of.
@@ -19,7 +19,7 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   await signIn(page)
   await page.route('**/api/sessions/*/images', (route) => route.fulfill({ json: [] }))
 
-  await page.goto('/new/image')
+  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   const composer = page.getByLabel('프롬프트 입력')
   const mine = '골목 어귀에서 손을 흔드는 아이. 늦은 오후 빛으로.'
   await composer.fill(mine)
@@ -59,17 +59,22 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
 test('문서 시작점은 여전히 입력창에 아무것도 쓰지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await page.goto('/new/report')
+  // 챗에서 확인한다. 규칙은 표면의 종류로 갈린다 — 그림과 영상에서는 문장이
+  // 곧 프롬프트라 입력창에 들어가고, 나머지에서는 그 틀이 기계의 것이라 턴에
+  // 실린다. 챗도 보고서도 '나머지' 쪽이고, 보고서의 기본 시작점은 같은 일을
+  // 하는 서식이 생기면서 걷어냈으므로 카드가 남아 있는 쪽에서 본다.
+  await page.goto('/new/chat')
 
   const composer = page.getByLabel('프롬프트 입력')
   const mine = '3월 정기 점검 결과를 정리해 줘.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '시작점 고르기' }).click()
-  const card = page.getByRole('dialog').locator('div.group', { hasText: '장애 보고' })
+  await page.getByRole('button', { name: '서식 고르기' }).click()
+  // A sentence card is one button, not a panel with a button inside it.
+  const card = page.getByRole('dialog').getByRole('button').filter({ hasText: '장애 원인 좁히기' })
   await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.getByRole('button').first().click()
+  await card.click()
 
-  await expect(page.getByRole('button', { name: '장애 보고 시작점 해제' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '장애 원인 좁히기 시작점 해제' })).toBeVisible()
   await expect(composer).toHaveValue(mine)
 })
