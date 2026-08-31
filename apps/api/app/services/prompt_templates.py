@@ -62,123 +62,15 @@ class PromptTemplate:
 
 
 _ALL: tuple[PromptTemplate, ...] = (
-    # ── report ─────────────────────────────────────────────────────────
-    PromptTemplate(
-        id="t_essay",
-        kind=SessionKind.report,
-        group="업무",
-        title="업무·기술 보고서",
-        description="목적과 독자를 정하고 근거와 다음 행동으로 맺는 문서",
-        fills=("목적", "독자", "분량"),
-        prompt=(
-            "업무·기술 보고서가 필요하다. 확인되지 않은 수치는 쓰지 말고 결론에 "
-            "다음 행동을 적어 줘.\n\n목적과 독자: "
-        ),
-    ),
-    PromptTemplate(
-        id="t_lab",
-        kind=SessionKind.report,
-        group="학업",
-        title="실험 리포트",
-        description="측정값과 오차까지 포함한 실험 보고",
-        fills=("실험 내용", "측정 데이터"),
-        prompt="실험 리포트를 써야 한다. 수식은 LaTeX 로 써 줘.\n\n실험: ",
-    ),
-    PromptTemplate(
-        id="t_survey",
-        kind=SessionKind.report,
-        group="연구",
-        title="설문 분석",
-        description="올린 응답 데이터를 집계하고 해석한 보고서",
-        fills=("설문 파일", "알고 싶은 것"),
-        prompt=(
-            "첨부한 설문 데이터로 보고서를 써 줘. 표본 수를 밝히고, 근거 없는 해석은 "
-            "하지 말아 줘.\n\n특히 알고 싶은 것: "
-        ),
-    ),
-    PromptTemplate(
-        id="t_techreview",
-        kind=SessionKind.report,
-        group="업무",
-        title="기술 검토",
-        description="후보를 비교하고 도입 여부를 판단할 근거",
-        fills=("검토 대상", "판단 기준"),
-        prompt="기술 검토 보고서가 필요하다. 수치에는 출처와 조사 시점을 붙여 줘.\n\n검토 대상: ",
-    ),
-    PromptTemplate(
-        id="t_incident",
-        kind=SessionKind.report,
-        group="업무",
-        title="장애 보고",
-        description="무슨 일이 있었고 다시 안 나게 무엇을 바꾸는가",
-        fills=("발생 경위", "로그"),
-        prompt=(
-            "장애 보고서를 써야 한다. 시간순 경위, 원인, 영향 범위, 재발 방지책이 필요하다. "
-            "확인되지 않은 원인은 추정이라고 적어 줘.\n\n경위: "
-        ),
-    ),
-    PromptTemplate(
-        id="t_proposal",
-        kind=SessionKind.report,
-        group="영업",
-        title="제안서",
-        description="고객 과제에서 시작해 도입 효과로 맺는 문서",
-        fills=("고객사", "과제", "예산 범위"),
-        prompt=(
-            "고객 제안서를 써야 한다. 확인되지 않은 성과 수치는 쓰지 말아 줘.\n\n고객사와 과제: "
-        ),
-    ),
-    # ── slides ─────────────────────────────────────────────────────────
-    PromptTemplate(
-        id="t_seminar",
-        kind=SessionKind.slides,
-        group="학업",
-        title="세미나 발표",
-        description="문제에서 시작해 한계까지 말하는 연구 발표",
-        fills=("주제", "발표 시간"),
-        prompt="연구 세미나 발표 자료가 필요하다.\n\n주제와 시간: ",
-    ),
-    PromptTemplate(
-        id="t_case",
-        kind=SessionKind.slides,
-        group="학업",
-        title="케이스 분석",
-        description="상황을 정리하고 대안을 비교해 하나를 권하는 발표",
-        fills=("기업·상황", "발표 시간"),
-        prompt="케이스 분석 발표 자료가 필요하다. 재무 수치는 출처를 붙여 줘.\n\n기업과 상황: ",
-    ),
-    PromptTemplate(
-        id="t_pitch",
-        kind=SessionKind.slides,
-        group="영업",
-        title="고객 제안 발표",
-        description="고객의 문제에서 열고 다음 단계로 닫는 덱",
-        fills=("고객사", "업종·규모", "미팅 시간"),
-        prompt="고객 미팅용 제안 발표 자료가 필요하다.\n\n고객사: ",
-    ),
-    PromptTemplate(
-        id="t_periodic",
-        kind=SessionKind.slides,
-        group="업무",
-        title="정기 보고",
-        description="실적·이슈·계획 세 덩어리의 주간·월간 보고",
-        fills=("기간", "지표", "이슈"),
-        prompt=(
-            "정기 보고 자료가 필요하다. 장마다 핵심 메시지 한 줄을 제목으로 써 줘.\n\n기간과 내용: "
-        ),
-    ),
-    PromptTemplate(
-        id="t_onboarding",
-        kind=SessionKind.slides,
-        group="업무",
-        title="사내 교육 자료",
-        description="처음 듣는 사람이 따라올 수 있는 설명 덱",
-        fills=("주제", "대상", "사전 지식"),
-        prompt=(
-            "사내 교육 자료가 필요하다. 듣는 사람이 처음이라고 보고, 용어는 처음 나올 때 "
-            "풀어 써 줘.\n\n주제와 대상: "
-        ),
-    ),
+    # 보고서와 발표의 시작점은 서식이 대신한다.
+    #
+    # 둘은 같은 일을 두 번 말하고 있었다 — 설문 분석, 장애 보고, 제안서,
+    # 케이스 분석은 이름까지 같아서 한 격자에 두 번 섰다. 서식 쪽에는 지시와
+    # 확인 항목과 채워 쓸 양식 파일이 붙어 있고 시작점 쪽에는 문장뿐이므로,
+    # 남길 것은 서식이다.
+    #
+    # 챗의 시작점은 남긴다. 챗에는 서식이 하나도 없어서 이것이 그 화면이
+    # 내놓는 전부다. 없애면 대신 서는 것 없이 비는 자리가 된다.
     # ── chat ───────────────────────────────────────────────────────────
     PromptTemplate(
         id="t_translate",

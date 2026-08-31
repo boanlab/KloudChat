@@ -20,6 +20,44 @@ from app.models.chat import SessionKind
 
 # Per-surface house prompt. Kept short — cost on every turn. Tool routing and
 # artifact handling belong to the agent loop.
+# The models this product runs on are trained heavily on Chinese, and they
+# leak it into Korean prose one word at a time: `動的 엔드포인트`, `傳統的인
+# 방화벽`, `寬大하게`, `試點 프로젝트`, `擧된다`. Every one of those is a real
+# sample from a generated report.
+#
+# It reads as a typo to a Korean reader and as a machine to a Korean reviewer,
+# and it is the single most visible sign that a document was not written by a
+# person. On a submitted report that costs more than a weak argument would.
+#
+# Stated once, in the surface prompt every document and every chat turn is
+# built on, rather than in each writing prompt — the leak happens wherever
+# prose is generated, so the rule has to be wherever prose is generated.
+#
+# 漢字 that Korean actually uses in parentheses — 分散(분산) in an academic
+# paper, a legal term, a name — is allowed on purpose. Banning the script
+# outright would be a different kind of wrong in exactly the documents this
+# product is for.
+_KOREAN_ONLY = (
+    "한국어로 쓸 때는 한국어 낱말만 씁니다. 중국어 한자어(動的, 傳統, 寬大, 試點, "
+    "擧 등)를 한국어 문장에 섞지 마세요 — 한국어에 그 낱말이 있으면 그것을 쓰고, "
+    "없으면 풀어 쓰세요. 괄호 안 병기(예: 분산(分散))나 고유명사는 예외입니다. "
+    "중국어 간체자는 어떤 경우에도 쓰지 않습니다."
+)
+
+#: The document surfaces write in one of two languages and no others.
+#:
+#: Chat follows whoever is talking — somebody asking in Japanese wants an
+#: answer in Japanese. A document does not work that way: it is submitted,
+#: filed and read by a team, and a report that arrives in a third language
+#: because one sentence of the request was in it is a report nobody can use.
+#: Korean unless the request is plainly English, and English then.
+_DOCUMENT_LANGUAGE = (
+    "문서는 한국어로 씁니다. 요청 자체가 영어로 쓰였다면 영어로 씁니다. "
+    "그 둘 외의 언어로는 쓰지 않습니다 — 참고 자료가 어떤 언어든, 요청에 다른 "
+    "언어가 섞여 있든 마찬가지입니다. 인용문과 고유명사는 원문 그대로 두되, "
+    "본문은 한 언어로 일관되게 씁니다."
+)
+
 _SURFACE_DEFAULTS: dict[SessionKind, str] = {
     SessionKind.chat: (
         "당신은 KloudChat의 어시스턴트입니다. 한국어로 답하되, 사용자가 다른 언어로 "
@@ -51,11 +89,29 @@ _TOOL_RULES = """
 """.strip()
 
 
-# Intent statement for the search toggle. `tool_choice: auto` lets a small model
-# skip the tool; forcing it would search "2+2".
+# Intent statement for the search toggle.
+#
+# The first hop is now forced (`agent.run_turn(force_tool=...)`), because a
+# small model reads a nudge as advice and answers from memory anyway — which is
+# how a 2024 recollection got presented as a current spec sheet under a lit
+# globe. Forcing the first call is not enough on its own: the old wording said
+# "최소 한 번", and one search on the narrowest sub-question is minimal
+# compliance. The model looked up a GPU's memory size, got it right, then wrote
+# the entire model list underneath it from memory.
+#
+# So the rule is per-claim, not per-turn: every factual axis of the answer needs
+# its own search, and anything left unsearched has to be marked rather than
+# stated. Forcing the call buys the first search; this is what buys the rest.
 _WEB_SEARCH_NUDGE = (
-    "사용자가 웹 검색을 켰습니다. 답변하기 전에 web_search 를 최소 한 번 사용해 "
-    "사실을 확인하고, 인용한 내용에는 출처 URL 을 밝히세요."
+    "사용자가 웹 검색을 켰습니다. 이 답변의 사실 부분은 기억이 아니라 검색 결과에서 "
+    "가져와야 합니다.\n"
+    "- 답변에 사실 축이 여러 개면(예: 하드웨어 사양 + 그 위에서 돌아가는 소프트웨어 목록) "
+    "축마다 web_search 를 따로 호출하세요. 한 번 검색하고 나머지를 기억으로 채우지 마세요.\n"
+    "- 제품명·모델명·버전·수치·날짜·가격처럼 시간이 지나면 틀리는 항목은 검색으로 확인한 것만 "
+    "쓰세요. 확인한 항목에는 출처 URL 을 밝히세요.\n"
+    "- 검색 결과가 기억과 다르면 검색 결과를 따르세요.\n"
+    "- 검색으로 확인하지 못한 항목은 단정하지 말고 확인하지 못했다고 밝히세요. "
+    "빠진 것을 그럴듯하게 채우는 편보다 낫습니다."
 )
 
 # Same toggle, no search tool in this turn — an agent allowlist removed it, or
@@ -104,7 +160,10 @@ def system_prompt(
     extra: list[str] | None = None,
 ) -> str:
     """Assembles the system turn. `extra` is the caller-ordered workspace blocks."""
-    parts = [_SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]), _today()]
+    parts = [_SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]), _KOREAN_ONLY]
+    if kind is not SessionKind.chat:
+        parts.append(_DOCUMENT_LANGUAGE)
+    parts.append(_today())
     parts.extend(p for p in (extra or []) if p and p.strip())
     if with_tools:
         parts.append(_TOOL_RULES)
@@ -216,6 +275,15 @@ def build_document_messages(
     *,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
+    #: Rule appended to the system turn about where this document's facts come
+    #: from. `services.research` owns both texts: one for a document written on
+    #: top of a search, one for a document written without one. Empty on the
+    #: surfaces and passes that do not research.
+    #:
+    #: It belongs in the system turn rather than the data block because it is an
+    #: instruction about the data, and the data block is explicitly the part the
+    #: model is told not to take instructions from.
+    research_rule: str = "",
 ) -> list[dict[str, str]]:
     """Role-separated messages for report and slide completion calls.
 
@@ -224,10 +292,13 @@ def build_document_messages(
     block, so text embedded in a document can never be flattened into the
     instruction message. The service-owned generation prompt comes last.
     """
+    trusted = list(trusted_context or [])
+    if research_rule:
+        trusted.append(research_rule)
     messages = [
         {
             "role": "system",
-            "content": system_prompt(kind, extra=trusted_context),
+            "content": system_prompt(kind, extra=trusted),
         }
     ]
     references = [part.strip() for part in (untrusted_context or []) if part.strip()]

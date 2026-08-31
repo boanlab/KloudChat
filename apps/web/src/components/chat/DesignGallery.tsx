@@ -1,20 +1,34 @@
-import { LayoutGrid } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  LayoutGrid,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Modal } from '@/components/ui'
 import {
   argumentText,
-  designTemplatePreviewUrl,
-  designTokensOf,
   fillPrompt,
   templateText,
+  downloadDesignTemplateForm,
+  downloadFile,
+  templatesApi,
   type DesignTemplateRow,
-  type DesignTokens,
+  type FileRow,
+  type TemplateRow,
 } from '@/lib/api'
 import { Input } from '@/components/ui'
 import { currentLang } from '@/lib/i18n'
-import { cn } from '@/lib/utils'
+import { cn, upsertById } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
+import { TemplateForm } from '@/components/chat/TemplateForm'
 import { useDesignTemplates, useStartTemplate } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 
@@ -92,6 +106,56 @@ function Blanks({
 const CHECKS_ON_CARD = 3
 
 /**
+ * A card in the sentence half of the grid, whichever list it came from.
+ *
+ * The two lists agree on every field but the form, so they are concatenated
+ * rather than branched on: a built-in framing and one somebody wrote behave
+ * the same way once they are on screen.
+ */
+type Sentence = {
+  id: string
+  title: string
+  description: string
+  fills: string[]
+  prompt: string
+  /** An uploaded 양식 this starting point writes into, when there is one. */
+  form: FileRow | null
+  /** Offered to the whole organisation rather than written by this person. */
+  shared: boolean
+  /** Whether the caller may rewrite or remove it. Built-ins never are. */
+  own: boolean
+}
+
+/**
+ * Whether picking a sentence fills the composer or rides with the turn.
+ *
+ * On the two media surfaces the sentence *is* the prompt — the person edits a
+ * description of a picture and sends that, and a turn carrying an unseen
+ * framing would leave them with nothing to edit. Everywhere else the framing
+ * is the machinery's, and it goes with the turn instead of into their mouth:
+ * typed into the box it comes back out in the transcript under their name,
+ * which is the same reason a 서식's example sentence is not typed there either.
+ */
+const fillsTheComposer = (kind: SessionKind) => kind === 'image' || kind === 'av'
+
+/**
+ * Cards to a page. Four, in the two columns the grid already has, so a page is
+ * a 2×2 block that fits without scrolling.
+ *
+ * The catalogue is seventeen 서식 and however many sentences somebody has
+ * kept, and all of it in one column was a dialog you scrolled and scrolled.
+ */
+const PER_PAGE = 4
+
+/** One card in the grid, from either half. `words` is what a search reads. */
+type Card = {
+  key: string
+  words: string
+  design?: DesignTemplateRow
+  sentence?: Sentence
+}
+
+/**
  * What a review will read the finished document against.
  *
  * The honest difference between two shapes of the same kind: 회의록 keeps what
@@ -116,23 +180,24 @@ function Checks({ checks }: { checks: string[] }) {
       <span>{text}</span>
     </li>
   )
+  // 접어 둔다. 이 목록이 카드에서 가장 큰 덩이이고, 펼쳐 두면 카드 하나가
+  // 515px 이 되어 2×2 한 쪽이 화면에 들어가지 않는다. 고르는 자리에서 필요한
+  // 것은 "이 서식이 무엇을 따지는가" 이지 여덟 줄 전부가 아니고, 몇 개인지는
+  // 접힌 채로도 말해 준다.
   return (
-    <div className="rounded-control bg-elevated p-2 text-xs leading-relaxed">
-      <p className="mb-1 font-medium text-muted">{t('이 서식이 확인하는 것')}</p>
-      <ul lang="ko" className="space-y-0.5 text-faint">
+    <details className="rounded-control bg-elevated p-2 text-xs leading-relaxed">
+      <summary className="cursor-pointer font-medium text-muted transition-colors hover:text-fg">
+        {t('이 서식이 확인하는 것 {n}개').replace('{n}', String(checks.length))}
+      </summary>
+      <ul lang="ko" className="mt-1 space-y-0.5 text-faint">
         {checks.slice(0, CHECKS_ON_CARD).map(line)}
       </ul>
       {rest.length > 0 && (
-        <details className="mt-1">
-          <summary className="cursor-pointer text-muted transition-colors hover:text-fg">
-            {t('{n}개 더 보기').replace('{n}', String(rest.length))}
-          </summary>
-          <ul lang="ko" className="mt-1 space-y-0.5 text-faint">
-            {rest.map(line)}
-          </ul>
-        </details>
+        <ul lang="ko" className="mt-0.5 space-y-0.5 text-faint">
+          {rest.map(line)}
+        </ul>
       )}
-    </div>
+    </details>
   )
 }
 
@@ -153,39 +218,43 @@ function Checks({ checks }: { checks: string[] }) {
 export function DesignTemplateCard({
   row,
   english,
-  tokens,
   onPick,
+  chosen,
 }: {
   row: DesignTemplateRow
   english: boolean
-  /** The look to draw it in. Absent is the default one, which is honest. */
-  tokens?: DesignTokens | null
   onPick: (row: DesignTemplateRow, prompt: string) => void
+  /** True when this is the 서식 the session is already wearing. */
+  chosen?: boolean
 }) {
   const t = useT()
   const text = templateText(row, english)
+  const [saving, setSaving] = useState(false)
+  const save = async () => {
+    setSaving(true)
+    try {
+      await downloadDesignTemplateForm(row.id, text.name, row.formFormat)
+    } catch {
+      // Nothing to say that the card can say. A form that will not come down
+      // is a broken route, not a decision the reader made — and a red line
+      // under a card in a grid of cards is noise they cannot act on.
+    } finally {
+      setSaving(false)
+    }
+  }
   return (
-    <div className="group overflow-hidden rounded-card border border-line bg-panel transition-colors hover:border-line-strong">
-      {/* 500 × 0.42 = 210. The frame is sized to its own scaled height
-          rather than to a round number, so the card shows the whole
-          first slide — a template that puts its title low was being
-          cropped into what looked like a blank card. */}
-      {row.hasPreview && (
-        <div className="pointer-events-none h-[210px] overflow-hidden border-b border-line bg-white">
-          {/* Scaled down rather than cropped: a card should show the
-              whole shape, and a 400px-wide slice of a slide is not a
-              preview of it. */}
-          <iframe
-            title={text.name}
-            src={designTemplatePreviewUrl(row.id, tokens)}
-            sandbox=""
-            loading="lazy"
-            tabIndex={-1}
-            className="h-[500px] w-[1000px] origin-top-left border-0"
-            style={{ transform: 'scale(0.42)' }}
-          />
-        </div>
+    // `h-full` and a column: a row holds a 서식 card and a sentence card side
+    // by side, and they are nothing like the same height. Without this the
+    // shorter one floats at the top of its cell with a band of nothing under
+    // it, which reads as a card that failed to load.
+    <div
+      className={cn(
+        'group flex h-full flex-col overflow-hidden rounded-card border bg-panel transition-colors',
+        // 지금 입고 있는 서식. 고른 것을 말해 주지 않으면 고르지 않은 것과
+        // 같아 보이고, 같아 보이면 한 번 더 누른다.
+        chosen ? 'border-accent' : 'border-line hover:border-line-strong',
       )}
+    >
       <div className="space-y-2 p-3">
         <div className="flex items-start justify-between gap-2">
           <p className="text-base font-medium">{text.name}</p>
@@ -209,12 +278,55 @@ export function DesignTemplateCard({
                 ))}
               </div>
             )}
-            <Button size="sm" onClick={() => onPick(row, text.examplePrompt)}>
-              {t('이 서식으로 시작')}
-            </Button>
+            <Foot row={row} chosen={chosen} saving={saving} onSave={save}>
+              <Button
+                size="sm"
+                disabled={chosen}
+                onClick={() => onPick(row, text.examplePrompt)}
+              >
+                {chosen ? t('고른 서식') : t('이 서식으로 시작')}
+              </Button>
+            </Foot>
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The row of actions at the bottom of a card.
+ *
+ * The form sits beside 시작 rather than replacing it, because they answer
+ * different questions: one asks the model to write in this shape, the other
+ * hands over the shape itself to fill in by hand. Somebody who wants the
+ * `.docx` to send to a colleague who does not use this wants the second one,
+ * and until now had no way to say so.
+ */
+function Foot({
+  row,
+  chosen,
+  saving,
+  onSave,
+  children,
+}: {
+  row: DesignTemplateRow
+  chosen?: boolean
+  saving: boolean
+  onSave: () => Promise<void>
+  children: React.ReactNode
+}) {
+  const t = useT()
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {children}
+      {row.formFormat && (
+        <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onSave()}>
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {t('양식 {ext}').replace('{ext}', row.formFormat)}
+        </Button>
+      )}
+      {chosen && <span className="text-xs text-faint">{t('이미 고른 서식입니다')}</span>}
     </div>
   )
 }
@@ -236,13 +348,13 @@ export function DesignTemplateCard({
  */
 export function DesignGalleryModal({
   kind,
-  projectId,
+  sessionId,
   open,
   onClose,
 }: {
   kind: SessionKind
-  /** Whose look the cards are shown in. Absent means the default one. */
-  projectId?: string | null
+  /** The conversation whose 서식 is already chosen, when there is one. */
+  sessionId?: string | null
   open: boolean
   onClose: () => void
 }) {
@@ -250,25 +362,238 @@ export function DesignGalleryModal({
   const [category, setCategory] = useState<string | 'all'>('all')
   const rows = useDesignTemplates(open)
   const start = useStartTemplate()
-  const tokens = useStore((s) =>
-    designTokensOf(s.designs, s.projects.find((p) => p.id === projectId)?.designSystemId),
-  )
+  const setDraft = useStore((s) => s.setDraft)
+  const pendingTemplate = useStore((s) => s.pendingTemplate)
+  const sessions = useStore((s) => s.sessions)
+  const setPendingAttachment = useStore((s) => s.setPendingAttachment)
+  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
 
   const english = currentLang() === 'en'
   const forSurface = useMemo(
     () => rows.filter((r) => r.surface === kind).map((r) => ({ row: r, text: templateText(r, english) })),
     [rows, kind, english],
   )
+
+  /**
+   * The sentences somebody keeps, in the same grid as the shapes.
+   *
+   * There used to be two pickers and no way to tell them apart from the
+   * outside: 시작점 고르기 gave you a sentence to start from, 서식 고르기 gave
+   * you a shape — and both read as "pick something before you type". The
+   * distinction is real in the code and invisible in the seat.
+   *
+   * They merge cleanly because a 서식 already carries a starting sentence of
+   * its own (`example_prompt`, `fills`). A saved prompt is the same card minus
+   * the shape, so it belongs in the same grid under a category of its own
+   * rather than behind a second button.
+   */
+  const saved = useStore((s) => s.promptTemplates)
+  /**
+   * The person's own, which the merge left behind.
+   *
+   * The store carries the built-in catalogue and nothing else, so folding the
+   * old picker in here quietly dropped every starting point somebody had
+   * written — along with the 양식 file such a card can carry, which is the
+   * whole of "이 양식대로 써 줘": the model reads the document's actual shape
+   * instead of a description of it.
+   *
+   * Fetched when the gallery opens rather than on mount. This sits under every
+   * empty composer and the request buys nothing until somebody looks.
+   */
+  const [mine, setMine] = useState<TemplateRow[]>([])
+  /**
+   * The one being written, or `'new'` while writing a fresh one.
+   *
+   * Somewhere to write one at all. The old picker carried 시작점 추가 and the
+   * merge did not bring it, which left the API, the form and the cards in
+   * place with no way to make a card — a person could use a starting point
+   * somebody else had written and never write their own.
+   */
+  const [writing, setWriting] = useState<TemplateRow | 'new' | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    void templatesApi
+      .list()
+      .then((rows) => live && setMine(rows))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [open])
+
+  const sentences = useMemo<Sentence[]>(
+    () => [
+      ...mine
+        .filter((row) => row.kind === kind)
+        .map((row) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          fills: row.fills,
+          prompt: row.prompt,
+          // Enough of the file to stand as an attachment chip. The composer
+          // renders a name, a token count and an extraction error; the rest it
+          // never reads.
+          form: row.fileId
+            ? {
+                id: row.fileId,
+                name: row.fileName,
+                size: 0,
+                mime: '',
+                tokens: row.fileTokens,
+                projectId: null,
+                sessionId: null,
+                preview: '',
+                error: row.fileError,
+                createdAt: row.updatedAt,
+              }
+            : null,
+          shared: row.shared,
+          own: row.mine !== false,
+        })),
+      ...saved
+        .filter((row) => row.kind === kind)
+        .map((row) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          fills: row.fills,
+          prompt: row.prompt,
+          form: null,
+          shared: false,
+          // The built-in catalogue is the product's, not anybody's to edit.
+          own: false,
+        })),
+    ],
+    [mine, saved, kind],
+  )
+  const MINE = '내 문장'
+
   const categories = useMemo(
-    () => [...new Set(forSurface.map((c) => c.text.category))],
-    [forSurface],
+    () => [
+      ...new Set(forSurface.map((c) => c.text.category)),
+      ...(sentences.length ? [MINE] : []),
+    ],
+    [forSurface, sentences.length],
   )
   const visible =
-    category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
+    category === 'all' || category === MINE
+      ? category === MINE
+        ? []
+        : forSurface
+      : forSurface.filter((c) => c.text.category === category)
+  const showSentences = sentences.length > 0 && (category === 'all' || category === MINE)
+
+  /**
+   * The two halves as one list, so a page can be cut across both.
+   *
+   * They were rendered as two loops, which is fine while everything is on one
+   * screen and wrong the moment it is not: a page boundary that falls inside
+   * the 서식 half leaves the sentences unreachable, and one that falls between
+   * them makes a short page.
+   */
+  const cards: Card[] = useMemo(
+    () => [
+      ...visible.map(({ row, text }) => ({
+        key: row.id,
+        design: row,
+        words: `${text.name} ${text.description} ${text.category} ${text.fills.join(' ')}`,
+      })),
+      ...(showSentences
+        ? sentences.map((row) => ({
+            key: row.id,
+            sentence: row,
+            words: `${row.title} ${row.description} ${row.fills.join(' ')}`,
+          }))
+        : []),
+    ],
+    [visible, sentences, showSentences],
+  )
+
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const found = needle
+    ? cards.filter((card) => card.words.toLowerCase().includes(needle))
+    : cards
+
+  const [page, setPage] = useState(0)
+  const pages = Math.max(1, Math.ceil(found.length / PER_PAGE))
+  // Clamped rather than reset. Narrowing the search from page three should
+  // land on the last page that still has cards, not throw the reader back to
+  // the first one every keystroke.
+  const at = Math.min(page, pages - 1)
+  const shown = found.slice(at * PER_PAGE, at * PER_PAGE + PER_PAGE)
+
+  /**
+   * The 서식 this session is already wearing.
+   *
+   * Two places say so and they disagree for one turn: the pick somebody just
+   * made and has not sent, and the row the server wrote once a turn used it.
+   * The pick wins while it stands, because it is the more recent answer to the
+   * same question.
+   */
+  const worn =
+    (pendingTemplate?.surface === kind ? pendingTemplate.id : null) ??
+    sessions.find((row) => row.id === sessionId)?.renderTemplateId ??
+    null
 
   const pick = (row: DesignTemplateRow, prompt: string) => {
+    // 이미 고른 것을 다시 고르지 않는다. 같은 서식을 두 번 고르는 것은 아무
+    // 일도 아니지만, 아무 일도 아닌 것을 누르게 두면 눌린 것이 무엇이었는지
+    // 헷갈린다 — 카드가 고른 상태를 말하고 버튼이 잠기는 이유다.
+    if (row.id === worn) return
     start(row, prompt)
     onClose()
+  }
+
+  const closeForm = () => setWriting(null)
+
+  /**
+   * Optimistic. The card is theirs and the list is short, so a spinner on a
+   * delete they just asked for is only a delay; a failure puts it back.
+   */
+  const remove = async (id: string) => {
+    const held = mine
+    setMine((rows) => rows.filter((r) => r.id !== id))
+    try {
+      await templatesApi.remove(id)
+    } catch {
+      setMine(held)
+    }
+  }
+
+  // Writing one takes the whole dialog rather than opening a second over it: a
+  // form on top of a grid of cards is two scrolling regions and no clear place
+  // to look.
+  if (writing) {
+    return (
+      <Modal
+        open={open}
+        onClose={() => {
+          closeForm()
+          onClose()
+        }}
+        title={writing === 'new' ? t('서식 추가') : t('서식 수정')}
+        width="max-w-3xl"
+      >
+        <TemplateForm
+          kind={kind}
+          template={writing === 'new' ? undefined : writing}
+          onCancel={closeForm}
+          onSaved={(row) => {
+            setMine((rows) => upsertById(rows, row))
+            closeForm()
+            // 방금 쓴 것을 보여 준다. 쪽이 나뉘어 있으므로 저장하고 돌아온
+            // 자리가 첫 쪽이면, 넷째 뒤에 붙은 새 카드는 어디에도 없는 것과
+            // 같다 — 만들었는데 사라진 것처럼 보인다.
+            setCategory('all')
+            setQuery(row.title)
+            setPage(0)
+          }}
+        />
+      </Modal>
+    )
   }
 
   return (
@@ -279,36 +604,220 @@ export function DesignGalleryModal({
       description={t('고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.')}
       width="max-w-3xl"
     >
-        {categories.length > 1 && (
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {(['all', ...categories] as const).map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategory(c)}
-                className={cn(
-                  'rounded-full border px-2.5 py-1 text-sm transition-colors',
-                  category === c
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:text-fg',
-                )}
-              >
-                {c === 'all' ? t('전체') : c}
-              </button>
-            ))}
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            {categories.length > 1 &&
+              (['all', ...categories] as const).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => {
+                    setCategory(c)
+                    setPage(0)
+                  }}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 text-sm transition-colors',
+                    category === c
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line text-muted hover:text-fg',
+                  )}
+                >
+                  {c === 'all' ? t('전체') : c}
+                </button>
+              ))}
           </div>
-        )}
+          {/* 이름·설명·준비물을 함께 읽는다. 서식을 찾는 사람은 이름을 외우고
+              있지 않고 "각주" 나 "표본" 처럼 자기가 해야 할 일을 기억한다. */}
+          <div className="relative shrink-0">
+            <Search
+              size={13}
+              className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
+            />
+            <Input
+              aria-label={t('서식 검색')}
+              placeholder={t('검색')}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setPage(0)
+              }}
+              className="h-8 w-44 pl-7 text-sm"
+            />
+          </div>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {visible.map(({ row }) => (
-            <DesignTemplateCard
-              key={row.id}
-              row={row}
-              english={english}
-              tokens={tokens}
-              onPick={pick}
-            />
-          ))}
+          {shown.map((card) =>
+            card.design ? (
+              <DesignTemplateCard
+                key={card.key}
+                row={card.design}
+                english={english}
+                onPick={pick}
+                chosen={card.design.id === worn}
+              />
+            ) : (
+              ((row) => (
+              <div key={row.id} className="group relative h-full">
+              <button
+                onClick={() => {
+                  // A sentence and no shape: the document keeps whatever 서식
+                  // it already had. Where the sentence goes depends on the
+                  // surface — see `fillsTheComposer`. This used to call
+                  // `setDraft` on every surface, which put the machinery's
+                  // framing into the transcript in the person's own voice.
+                  if (fillsTheComposer(kind)) setDraft(row.prompt || row.title)
+                  else
+                    setPendingStartingTemplate({
+                      id: row.id,
+                      title: row.title,
+                      fills: row.fills,
+                    })
+                  // The form rides along as an attachment, which is what makes
+                  // "이 양식대로 써 줘" mean anything: the model reads the
+                  // document's actual shape rather than a description of it.
+                  // Cleared when there is none, so a plain starting point does
+                  // not inherit the last one's form.
+                  setPendingAttachment(row.form)
+                  onClose()
+                }}
+                // `w-full`/`h-full` and a column, because the card is the
+                // button and the grid cell is the wrapper around it. Without
+                // them the wrapper fills its column and the button inside
+                // shrinks to its longest line — which is why every card in the
+                // grid came out a different width, and why a short one left a
+                // gap under it beside a tall 서식 card.
+                className="flex h-full w-full flex-col rounded-card border border-line p-3 text-left transition-colors hover:border-accent"
+              >
+                <p className="flex items-center gap-1.5 text-base font-medium">
+                  {row.title}
+                  {/* 조직의 것인지 내가 쓴 것인지. 같은 격자에 섞여 있으므로
+                      말해 주지 않으면 남의 문장을 제 것으로 고치려 든다. */}
+                  {row.shared && <Badge>{t('공용')}</Badge>}
+                </p>
+                {row.description && (
+                  <p className="mt-0.5 text-sm text-muted">{row.description}</p>
+                )}
+                {/* 무엇을 가져와야 하는지. 고른 뒤 입력창이 이것을 이름으로
+                    물으므로, 고르기 전에 같은 말을 보여 준다 — 카드가 붙여 줄
+                    문장을 미리 적어 두는 것과는 다른 일이다. */}
+                {row.fills.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {row.fills.map((fill) => (
+                      <span
+                        key={fill}
+                        className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
+                      >
+                        {fill}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-auto flex items-center gap-1 pt-1.5 text-xs text-faint">
+                  {fillsTheComposer(kind) ? t('입력창에 채우기') : t('시작점으로 붙이기')}
+                  {/* 이 카드는 다른 카드와 다르게 동작한다 — 파일 하나를 함께
+                      붙인다. 고르고 나서 알게 되면 놀랄 일이므로 미리 적는다. */}
+                  {row.form && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <Paperclip size={11} />
+                      {row.form.name}
+                    </>
+                  )}
+                </p>
+                </button>
+                {/* 붙어 있는 양식을 그대로 내려받는다. 기본 서식이 제 양식을
+                    내주는 것과 같은 일이고, 이것이 있어야 "서식 추가" 가
+                    이름값을 한다 — 누른 사람이 만든 것도 채워 쓸 수 있는
+                    양식이지, 문장 한 줄이 아니다. */}
+                {row.form && (
+                  <div className="absolute right-2 bottom-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('{name} 양식 내려받기').replace('{name}', row.title)}
+                      onClick={() => void downloadFile(row.form!.id, row.form!.name)}
+                    >
+                      <Download size={13} />
+                    </Button>
+                  </div>
+                )}
+                {/* 쓴 사람만. 공용은 관리자 화면에서 고친다 — 여기서 고치면
+                    한 사람이 조직 전체의 문장을 바꾸게 된다.
+
+                    카드 안이 아니라 위에 얹는다. 카드가 버튼 하나이므로 안에
+                    또 버튼을 두면 중첩이 되고, 고치려다 고르게 된다. */}
+                {row.own && (
+                  <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('{name} 수정').replace('{name}', row.title)}
+                      onClick={() => {
+                        const held = mine.find((r) => r.id === row.id)
+                        if (held) setWriting(held)
+                      }}
+                    >
+                      <Pencil size={13} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('{name} 삭제').replace('{name}', row.title)}
+                      onClick={() => void remove(row.id)}
+                    >
+                      <Trash2 size={13} />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              ))(card.sentence!)
+            ),
+          )}
+          {shown.length === 0 && (
+            <p className="col-span-full py-8 text-center text-sm text-faint">
+              {t('찾는 서식이 없습니다.')}
+            </p>
+          )}
       </div>
+
+      {/* 쪽 넘김. 한 쪽이 2×2 이므로 스크롤 없이 한눈에 들어오고, 어디쯤인지는
+          숫자가 말한다 — 점만 찍어 두면 열일곱 개 가운데 어디인지 알 수 없다. */}
+      {pages > 1 && (
+        <div className="mt-3 flex items-center justify-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={t('이전 쪽')}
+            disabled={at === 0}
+            onClick={() => setPage(at - 1)}
+          >
+            <ChevronLeft size={14} />
+          </Button>
+          <span className="text-sm text-muted tabular-nums">
+            {at + 1} / {pages}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={t('다음 쪽')}
+            disabled={at >= pages - 1}
+            onClick={() => setPage(at + 1)}
+          >
+            <ChevronRight size={14} />
+          </Button>
+        </div>
+      )}
+
+      {/* 하나 쓰는 자리. 목록 아래에 두는 것은 '고르기' 가 이 화면의 일이고
+          '쓰기' 는 그다음이기 때문이다. */}
+      {(category === 'all' || category === MINE) && (
+        <div className="mt-2 border-t border-line px-1 pt-2">
+          <Button size="sm" onClick={() => setWriting('new')}>
+            <Plus size={13} />
+            {t('서식 추가')}
+          </Button>
+        </div>
+      )}
     </Modal>
   )
 }
@@ -322,14 +831,21 @@ export function DesignGalleryModal({
  */
 export function DesignGallery({
   kind,
-  projectId,
+  sessionId,
 }: {
   kind: SessionKind
-  projectId?: string | null
+  sessionId?: string | null
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
-  const has = useStore((s) => s.designTemplates.some((row) => row.surface === kind))
+  // Sentences count too. The gate used to ask only whether this surface had a
+  // 서식, and 챗 has none — so the button vanished, and with it the only way to
+  // reach a starting point somebody had saved for exactly that surface.
+  const has = useStore(
+    (s) =>
+      s.designTemplates.some((row) => row.surface === kind) ||
+      s.promptTemplates.some((row) => row.kind === kind),
+  )
   if (!has) return null
   return (
     <>
@@ -339,7 +855,7 @@ export function DesignGallery({
       </Button>
       <DesignGalleryModal
         kind={kind}
-        projectId={projectId}
+        sessionId={sessionId}
         open={open}
         onClose={() => setOpen(false)}
       />

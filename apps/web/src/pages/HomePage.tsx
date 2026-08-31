@@ -7,7 +7,6 @@ import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignGallery } from '@/components/chat/DesignGallery'
 import { DesignRail } from '@/components/chat/DesignRail'
-import { TemplateGallery } from '@/components/chat/TemplateGallery'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -152,7 +151,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             that screen and now lands here, so this is the only place left
             that can — without them a starting point cannot be picked at all. */}
         <div className="mx-auto mb-8 mt-3 flex w-full max-w-3xl flex-wrap justify-center gap-2 px-4">
-          <TemplateGallery kind={active} />
           <DesignGallery kind={active} />
         </div>
 

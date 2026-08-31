@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, surfaceOn } from './helpers'
 
 /**
  * '취소' has to reach the server.
@@ -45,7 +45,7 @@ function sessionIdOf(page: Page) {
  * poll that follows the card is refused rather than answered, so nothing but
  * the store itself decides what the card says next.
  */
-async function startStubbedJob(page: Page) {
+async function startStubbedJob(page: Page): Promise<boolean> {
   await page.route('**/api/sessions/*/jobs', async (route) => {
     const parts = new URL(route.request().url()).pathname.split('/')
     const row = jobRow(parts[parts.length - 2])
@@ -55,7 +55,10 @@ async function startStubbedJob(page: Page) {
     await route.fulfill({ json: route.request().method() === 'POST' ? row : [row] })
   })
 
-  await page.goto('/new/av')
+  // The clip surface, when this workspace has it on. It spends credits per
+  // generation and defaults to off, and the screen for a surface that is off
+  // carries no option chips to press.
+  if (!(await surfaceOn(page, 'av'))) return false
   await page.getByRole('button', { name: /^해상도/ }).click()
   await page.getByRole('menuitem', { name: '720p' }).click()
   await page.keyboard.press('Escape')
@@ -72,12 +75,13 @@ async function startStubbedJob(page: Page) {
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
   await expect(page.getByText('만드는 중').first()).toBeVisible({ timeout: 30_000 })
+  return true
 }
 
 test('취소는 서버까지 간다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await startStubbedJob(page)
+  test.skip(!(await startStubbedJob(page)), 'av 표면이 꺼져 있습니다')
 
   await page.route(`**/api/jobs/${JOB_ID}/cancel`, async (route) => {
     await route.fulfill({
@@ -102,7 +106,7 @@ test('취소는 서버까지 간다', async ({ page }) => {
 test('취소가 실패하면 카드는 되던 대로 돌아간다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await startStubbedJob(page)
+  test.skip(!(await startStubbedJob(page)), 'av 표면이 꺼져 있습니다')
 
   await page.route(`**/api/jobs/${JOB_ID}/cancel`, async (route) => {
     await route.fulfill({ status: 500, json: { detail: 'upstream_failed' } })

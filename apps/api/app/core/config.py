@@ -149,7 +149,15 @@ class Settings(BaseSettings):
     title_model: str = "local/qwen3.6-35b"
     #: Conversation model when the user has not chosen one. Absent from the
     #: catalogue, the surface falls back to its cheapest.
-    default_chat_model: str = "strict-local/qwen3.6-35b"
+    #:
+    #: The `local/` alias, not `strict-local/`. Both run the same weights on the
+    #: same box; the strict alias is the one that is handed no network tool, and
+    #: as the instance default it made every new conversation, report and deck
+    #: unable to search — the search toggle arrives greyed out, and the answer
+    #: underneath it is written from training data with nothing saying so.
+    #: Strict-local is a route somebody chooses for text that must not leave,
+    #: which is a decision about one turn, not a default posture for all of them.
+    default_chat_model: str = "local/qwen3.6-35b"
 
     #: The instance's wall clock, as an IANA name. Used for the date given to
     #: the model and for nothing else — every timestamp in the database stays

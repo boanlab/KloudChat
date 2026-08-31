@@ -76,6 +76,7 @@ export function ProjectDetailPage() {
     skills,
     designs,
     designTemplates,
+    enabledKinds,
     memories,
     updateProject,
     deleteProject,
@@ -237,23 +238,33 @@ export function ProjectDetailPage() {
               )}
             >
               <MenuLabel>{t('무엇을 만들까요?')}</MenuLabel>
-              {kindOrder.map((k) => {
-                const meta = kindMeta[k]
-                const KindIcon = meta.icon
-                return (
-                  <MenuItem
-                    key={k}
-                    icon={<KindIcon size={14} style={{ color: meta.color }} />}
-                    onClick={() =>
-                      void newSession(k, { projectId: project.id })
-                        .then((id) => navigate(`/s/${id}`))
-                        .catch((err: unknown) => setNotice(startFailure(err, t)))
-                    }
-                  >
-                    {t(meta.label)}
-                  </MenuItem>
-                )
-              })}
+              {/* 관리자가 끈 표면은 아예 내놓지 않는다. 여기 나열해 놓고 눌러야
+                  거절하는 것은 없는 것보다 나쁘다 — 홈 화면이 세운 규칙이고,
+                  이 메뉴만 지키지 않고 있었다.
+
+                  누르고 나서 알려 주는 것과 애초에 내놓지 않는 것은 다른 일이고
+                  둘 다 필요하다. 아래의 `startFailure` 는 고를 수 있는 것이
+                  실패했을 때를 말하고, 이 걸러내기는 고를 수 없는 것을 처음부터
+                  내놓지 않는다. */}
+              {kindOrder
+                .filter((k) => enabledKinds.includes(k))
+                .map((k) => {
+                  const meta = kindMeta[k]
+                  const KindIcon = meta.icon
+                  return (
+                    <MenuItem
+                      key={k}
+                      icon={<KindIcon size={14} style={{ color: meta.color }} />}
+                      onClick={() =>
+                        void newSession(k, { projectId: project.id })
+                          .then((id) => navigate(`/s/${id}`))
+                          .catch((err: unknown) => setNotice(startFailure(err, t)))
+                      }
+                    >
+                      {t(meta.label)}
+                    </MenuItem>
+                  )
+                })}
             </Dropdown>
             <Dropdown
               align="right"

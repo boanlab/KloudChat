@@ -1,10 +1,7 @@
 import {
-  BadgeCheck,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
   Download,
-  ExternalLink,
   Grid2x2,
   ImagePlus,
   Loader2,
@@ -23,71 +20,56 @@ import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Badge, Button, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { DeckArtifact, FactCheck, Slide } from '@/types'
+import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
-import { LintFindings } from '@/components/artifacts/LintFindings'
+import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
+import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
+import { SlideChart } from '@/components/slides/SlideChart'
 import { useT } from '@/lib/useT'
 import { NoPicturesYet } from '@/components/artifacts/NoPicturesYet'
 
-const verdictMeta = {
-  supported: { icon: BadgeCheck, tone: 'success' as const, label: '근거 있음', color: 'text-success' },
-  unsupported: { icon: TriangleAlert, tone: 'danger' as const, label: '근거 없음', color: 'text-danger' },
-  uncertain: { icon: CircleHelp, tone: 'warn' as const, label: '확인 필요', color: 'text-warn' },
+
+/**
+ * Is there anything on this slide yet?
+ *
+ * Every field a slide can carry content in, not the two it could carry when
+ * this was written. `bullets` and `body` were the whole list; a table's `rows`,
+ * a strip's `metrics` and a chart's numbers live nowhere near them — so a
+ * finished table slide was indistinguishable from one the model had not
+ * written yet, and a deck containing one was "still being written" forever.
+ * 내보내기, 발표 and 텍스트 수정 stayed disabled on a deck that was complete.
+ *
+ * Mirrors `deck.has_content` on the server, which drops contentless slides
+ * from the stored deck and was dropping the same three layouts.
+ */
+export function hasContent(slide: Slide): boolean {
+  if (slide.layout === 'title') return true
+  return Boolean(
+    slide.bullets?.length ||
+      slide.body?.trim() ||
+      slide.rows?.length ||
+      slide.metrics?.length ||
+      slide.chart,
+  )
 }
 
 /**
- * Per-claim verdicts with the source behind each one. The server refuses to
- * issue a confident verdict without a source; this is where it is shown.
+ * The slide a finding was found on, or `undefined`.
+ *
+ * Matched on the title, which is all a finding carries. Exact first, then
+ * ignoring whitespace — a title somebody has retyped differs from the one the
+ * checks ran against by exactly that much, and refusing to fix a slide because
+ * its title gained a space is a worse answer than fixing the one it obviously
+ * means.
  */
-function FactCheckResults({ check }: { check: FactCheck }) {
-  const t = useT()
-  if (check.claims.length === 0) {
-    return (
-      <p className="mt-3 rounded-card border border-line bg-panel p-3 text-sm text-muted">
-        {t('검색으로 확인할 수 있는 주장이 이 장에는 없습니다. 의견과 정의는 판정하지 않습니다.')}
-      </p>
-    )
-  }
-  const weak = check.claims.filter((c) => c.verdict !== 'supported').length
-  return (
-    <div className="mt-3 rounded-card border border-line bg-panel p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <ShieldQuestion size={13} className="shrink-0 text-accent" />
-        <span className="text-xs font-semibold tracking-wide text-faint uppercase">{t('팩트체크')}</span>
-        <Badge tone={weak > 0 ? 'warn' : 'success'}>
-          {weak > 0 ? t('확인 필요 {n}').replace('{n}', String(weak)) : t('전부 근거 있음')}
-        </Badge>
-      </div>
-      <div className="space-y-2.5">
-        {check.claims.map((c) => {
-          const meta = verdictMeta[c.verdict]
-          const Icon = meta.icon
-          return (
-            <div key={c.id} className="flex items-start gap-2 text-sm">
-              <Icon size={13} className={cn('mt-0.5 shrink-0', meta.color)} />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{c.text}</p>
-                <p className="mt-0.5 text-muted">{c.note}</p>
-                {c.sourceUrl && (
-                  <a
-                    href={c.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="mt-1 inline-flex items-center gap-1 text-xs text-accent hover:underline"
-                  >
-                    <ExternalLink size={10} />
-                    {t('근거 열기')}
-                  </a>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
+function slideFor(slides: Slide[], where: string): Slide | undefined {
+  if (!where) return undefined
+  const exact = slides.find((s) => s.title === where)
+  if (exact) return exact
+  const loose = (text: string) => text.replace(/\s+/g, '')
+  return slides.find((s) => loose(s.title) === loose(where))
 }
 
 /**
@@ -95,11 +77,32 @@ function FactCheckResults({ check }: { check: FactCheck }) {
  * kept in step with `deck_export.py` — a preview that differs from the .pptx
  * is discovered in the room.
  */
-function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
+function SlideView({
+  slide,
+  scale = 1,
+  writing = true,
+}: {
+  slide: Slide
+  scale?: number
+  /**
+   * Whether the run that fills this deck is still going. Defaults to true so a
+   * caller that cannot know says the softer of the two things.
+   *
+   * An empty slide means one of two opposite things and they must not read the
+   * same. While the deck is being written it has not been reached yet, and the
+   * answer is to wait. Once the run has ended it came back unusable, and
+   * "쓰는 중…" on a deck that finished ten minutes ago is a screen telling
+   * somebody to keep waiting for something that is never coming.
+   */
+  writing?: boolean
+}) {
   const t = useT()
   const accent = slide.accent ?? 'var(--accent)'
   const px = (n: number) => `${n * scale}px`
-  const pending = !slide.bullets?.length && !slide.body
+  const rows = slide.rows ?? []
+  const metrics = slide.metrics ?? []
+  const chart = slide.chart
+  const pending = !hasContent(slide)
   // Two columns are only two columns when there is enough to fill them; four
   // bullets split in half reads as a mistake.
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
@@ -131,7 +134,59 @@ function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
               the preview and the .pptx put them in the same places. */}
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
           <div className="flex min-w-0 flex-1 flex-col">
-          {slide.bullets && (
+          {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
+          {metrics.length > 0 && (
+            /* Side by side, the figure large and what it counts under it —
+               the same geometry `deck_export` draws into the .pptx and .pdf. */
+            <div className="flex" style={{ gap: px(20), marginTop: px(18) }}>
+              {metrics.map(([figure, label], i) => (
+                <div key={i} className="min-w-0 flex-1">
+                  <div
+                    style={{
+                      fontSize: px(30),
+                      fontWeight: 700,
+                      lineHeight: 1.1,
+                      color: accent,
+                    }}
+                  >
+                    {figure}
+                  </div>
+                  <div style={{ fontSize: px(11), marginTop: px(4), color: '#666' }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {rows.length > 0 && (
+            /* The head row in the accent, hairlines between the body rows, and
+               nothing round the outside — a slide table is read at eight
+               metres, and a grid at that distance is a grey blur with words
+               in it. Kept in step with `deck_export`, which draws the same
+               shape into the .pptx and the .pdf. */
+            <table
+              style={{ fontSize: px(12), lineHeight: 1.5, width: '100%', borderCollapse: 'collapse' }}
+            >
+              <tbody>
+                {rows.map((row, r) => (
+                  <tr key={r} style={{ borderBottom: `1px solid ${r === 0 ? accent : '#e5e5e5'}` }}>
+                    {row.map((cell, c) => (
+                      <td
+                        key={c}
+                        style={{
+                          padding: `${px(6)} ${px(8)} ${px(6)} 0`,
+                          verticalAlign: 'top',
+                          fontWeight: r === 0 || c === 0 ? 600 : 400,
+                          color: r === 0 ? accent : '#1a1a1a',
+                        }}
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {slide.bullets && rows.length === 0 && metrics.length === 0 && !chart && (
             <ul
               style={{
                 fontSize: px(13),
@@ -157,9 +212,11 @@ function SlideView({ slide, scale = 1 }: { slide: Slide; scale?: number }) {
               {slide.body}
             </p>
           )}
-          {/* 아직 안 쓰인 장. 빈 흰 화면이면 다 만들어진 것처럼 보인다 */}
+          {/* 빈 장. 흰 화면만 두면 다 만들어진 것처럼 보인다 */}
           {pending && !slide.image && (
-            <p style={{ fontSize: px(12), color: '#aaa', marginTop: px(6) }}>{t('쓰는 중…')}</p>
+            <p style={{ fontSize: px(12), color: '#aaa', marginTop: px(6) }}>
+              {writing ? t('쓰는 중…') : t('내용이 비었습니다 — 텍스트 수정으로 채워 주세요.')}
+            </p>
           )}
           </div>
           {slide.image?.src && (
@@ -473,16 +530,21 @@ function PresentMode({
   const slide = deck.slides[index]
   if (!slide) return null
   return (
+    // `outline` is what draws the slide list in the presentation header. The
+    // HTML artifact panel has always passed it and this one never did, so the
+    // same deck presented from here had no way to jump to a slide — the one
+    // thing a presenter reaches for when a question comes from the floor.
     <PresentStage
       title={deck.title}
       index={index}
       count={deck.slides.length}
       onIndex={onIndex}
       onClose={onClose}
+            outline={deck.slides.map((s) => s.title)}
       notes={slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
     >
       <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float">
-        <SlideView slide={slide} scale={2.4} />
+        <SlideView slide={slide} scale={2.4} writing={false} />
       </div>
     </PresentStage>
   )
@@ -522,6 +584,83 @@ export function DeckPanel({
 }) {
   const t = useT()
   const width = usePanelWidth(onWideChange)
+
+  /**
+   * One finding from the checks, fixed.
+   *
+   * Rewrites the slide it was found on, through the endpoint that mirrors the
+   * report's — so the deck changes, a snapshot is kept, and a rewrite that
+   * reads worse is one press of 되돌리기 from undone.
+   *
+   * The deck could not do this until now. `deck.rewrite_slide` existed and was
+   * reachable only by asking in the conversation, which is a request rather
+   * than an action: the deck does not change, and the reader has to watch the
+   * transcript and work out for themselves whether anything happened.
+   *
+   * A finding about the deck as a whole names no slide and has nowhere to go,
+   * so it keeps the button hidden rather than pretending.
+   */
+  const fixFinding = async (finding: LintFinding) => {
+    const slide = slideFor(deck.slides, finding.where)
+    if (!slide) throw new Error(t('어느 장을 고쳐야 하는지 알 수 없습니다.'))
+    const row = await artifactsApi.rewriteSlide(
+      deck.id,
+      slide.id,
+      t('검사에서 지적된 문제를 고쳐 주세요: {message}').replace('{message}', finding.message),
+    )
+    const data = (row.data ?? {}) as { slides?: Slide[] }
+    // Written onto the object this panel holds as well as into the store — the
+    // artifacts screen opens its modal on a copy it took when the card was
+    // clicked, so a store refresh alone leaves the new slide invisible exactly
+    // where it was asked for.
+    if (data.slides) deck.slides = data.slides
+    deck.version = row.version
+  }
+  /**
+   * Every finding at once, one rewrite per slide.
+   *
+   * Not a loop over `fixFinding`: two findings about one slide would be two
+   * rewrites of it, and the second lands on what the first produced — asked to
+   * fix a line that is no longer there, it writes the first fix back out.
+   * Grouped, a slide is rewritten once and told everything found in it.
+   *
+   * One after another, not together: the slides share a deck and a version, so
+   * two rewrites in flight means the second saves over the first.
+   */
+  const fixAllFindings = async (findings: LintFinding[]) => {
+    const failed: string[] = []
+    for (const [where, group] of byWhere(findings)) {
+      const slide = where ? slideFor(deck.slides, where) : undefined
+      if (!slide) {
+        // A deck has no conversation path of its own for a finding about the
+        // whole thing, so it is named rather than silently dropped.
+        failed.push(where || t('덱 전체'))
+        continue
+      }
+      try {
+        const row = await artifactsApi.rewriteSlide(
+          deck.id,
+          slide.id,
+          fixNote(
+            group,
+            t('검사에서 지적된 문제를 고쳐 주세요: {message}'),
+            t('검사에서 지적된 문제를 모두 고쳐 주세요:\n{list}'),
+          ),
+        )
+        const data = (row.data ?? {}) as { slides?: Slide[] }
+        if (data.slides) deck.slides = data.slides
+        deck.version = row.version
+      } catch {
+        failed.push(where)
+      }
+    }
+    if (failed.length > 0) {
+      throw new Error(
+        t('고치지 못한 장이 있습니다: {list}').replace('{list}', failed.join(', ')),
+      )
+    }
+  }
+
   const panel = usePanelNarrow<HTMLDivElement>()
   const stage = useStageScale()
   const [selected, setSelected] = useState(0)
@@ -559,12 +698,22 @@ export function DeckPanel({
   // Slides arrive one at a time, so the selection can point past the end.
   const index = Math.min(selected, Math.max(deck.slides.length - 1, 0))
   const slide = deck.slides[index] as Slide | undefined
-  // A deck still being written has no server id: export would 404 and an edit
-  // would be overwritten by the next slide event.
   const weakSlides = deck.slides
     .map((s, i) => (s.factCheck?.claims.some((c) => c.verdict !== 'supported') ? i : -1))
     .filter((i) => i >= 0)
-  const writing = deck.slides.length === 0 || deck.slides.some((s) => !s.bullets?.length && !s.body)
+  // Still being written, which is the only thing these controls need to wait
+  // for: export would 404 on a document the server does not have yet, and an
+  // edit would be overwritten by the next slide event of a run still going.
+  //
+  // This asked whether every slide had content, which answers the same
+  // question almost always and answers it wrong in the one case that matters.
+  // A slide whose model call came back unusable stays empty — the writer falls
+  // back to bullets and salvages what it can, and sometimes there is nothing
+  // to salvage — and the deck was then locked for good: no export, no
+  // 발표, and no 텍스트 수정, which is the control that exists to fix exactly
+  // this. The deck had finished writing; only its result was disappointing,
+  // and a disappointing result is the reader's to repair.
+  const writing = deck.draft === true || deck.slides.length === 0
 
   useEffect(() => {
     if (writing) setEditing(false)
@@ -689,7 +838,12 @@ export function DeckPanel({
           </button>
         )}
         <Badge className="max-sm:hidden">{deck.theme}</Badge>
-        <LintFindings findings={deck.lint} artifact={deck} />
+        <LintFindings
+          findings={deck.lint}
+          artifact={deck}
+          onFix={fixFinding}
+          onFixAll={fixAllFindings}
+        />
         {/* Only where there is a drawer to open: with the rail standing beside
             the stage this button opens what is already on screen. */}
         {panel.narrow && (
@@ -800,7 +954,7 @@ export function DeckPanel({
                     i === index ? 'border-accent' : 'border-line hover:border-line-strong',
                   )}
                 >
-                  <SlideView slide={s} scale={0.3} />
+                  <SlideView slide={s} scale={0.3} writing={writing} />
                   <span className="absolute bottom-0.5 left-0.5 rounded bg-black/55 px-1 text-2xs font-medium text-white tabular-nums">
                     {i + 1}
                   </span>
@@ -846,7 +1000,7 @@ export function DeckPanel({
                 className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-raised"
               >
                 {slide ? (
-                  <SlideView slide={slide} scale={stage.scale} />
+                  <SlideView slide={slide} scale={stage.scale} writing={writing} />
                 ) : (
                   <div className="grid size-full place-items-center bg-white text-base text-[#999]">
                     {t('구성을 잡는 중…')}

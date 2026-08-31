@@ -1,0 +1,21 @@
+kind = "document"
+name = "기말 리포트"
+description = "주장을 근거로 받치고, 인용한 자리마다 출처를 각주로 다는 학기말 글"
+category = "학업"
+fills = ["주제", "분량", "인용 양식"]
+example_prompt = "기말 리포트를 써 줘. 읽은 자료에서 인용한 자리마다 각주로 출처를 달고, 확인되지 않은 것은 쓰지 마.\n\n주제와 분량: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Term paper"
+description_en = "An argument held up by evidence, with every citation footnoted where it stands"
+category_en = "Study"
+fills_en = ["Topic", "Length", "Citation style"]
+example_prompt_en = "Write a term paper. Footnote the source at every place you cite, and leave out anything you cannot verify.\n\nTopic and length: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

@@ -89,6 +89,12 @@ async def _scrape(base_url: str, url: str) -> str:
 #: implementation would be a second set of timeouts and headers to keep in step.
 scrape = _scrape
 
+#: The search, for the same reason. `services.research` runs the document
+#: surfaces' pre-pass against this one so a report and a chat answer are
+#: looking at the same index with the same parameters — a second client here
+#: is a second place for `language` or `safesearch` to drift.
+searxng = _searxng
+
 
 async def web_search(args: dict[str, Any]) -> ToolResult:
     query = str(args.get("query") or "").strip()

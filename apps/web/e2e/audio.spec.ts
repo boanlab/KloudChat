@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, surfaceOn } from './helpers'
 
 /** The API holds its token in memory, so a cookie fetch is anonymous. */
 const AS_USER = `async (path) => {
@@ -29,7 +29,10 @@ test('내레이션을 만들면 오디오 아티팩트로 남는다', async ({ p
     AS_USER,
   )
 
-  await page.goto('/new/av')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   // The kind control is a dropdown labelled with its current value.
   await page.getByRole('button', { name: /^종류/ }).click()
   await page.getByRole('menuitem', { name: '오디오' }).click()
@@ -96,7 +99,10 @@ test('내레이션을 만들면 오디오 아티팩트로 남는다', async ({ p
 test('영상 모드는 만들기 전에 값을 알려 준다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await page.goto('/new/av')
+  // Skipped where the workspace has this surface off. `image` and `av` spend
+  // credits per generation and default to off, and the screen for a surface
+  // that is off carries no composer to drive.
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
   await page.getByRole('menuitem', { name: '영상' }).click()
 

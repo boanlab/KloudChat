@@ -681,5 +681,21 @@ test('사라진 모델이 남은 정책도 식별자를 다시 보내지 않고 
   await page.getByRole('button', { name: '라우팅 설정 저장' }).click()
 
   await expect.poll(() => state.governancePuts.length).toBe(1)
-  expect(state.governancePuts[0]).toEqual({ adaptiveRoutingEnabled: false })
+  const sent = state.governancePuts[0]
+  await expect(page.getByRole('switch', { name: 'Auto 비용 절약 라우팅' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  )
+  expect(sent).toMatchObject({ adaptiveRoutingEnabled: false })
+  // The claim, stated against what it is about rather than against the exact
+  // set of keys the form happens to send. Pinned to `{ adaptiveRoutingEnabled:
+  // false }` alone, this broke the day a sibling toggle was added beside it —
+  // and a sibling toggle is not the failure it exists to catch.
+  //
+  // What must not happen is a model that no longer exists being named back up:
+  // the form is holding two dead identifiers to show them, and sending either
+  // would write them into the policy as though somebody had chosen them.
+  expect(Object.keys(sent)).not.toContain('adaptiveClassifierModelId')
+  expect(Object.keys(sent)).not.toContain('adaptiveEconomyModelIds')
+  expect(JSON.stringify(sent), '사라진 모델 식별자가 다시 올라갔다').not.toContain('deleted')
 })

@@ -2,7 +2,6 @@ import { FileUp, Palette, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, ConfirmDialog, Field, Input, Switch, Textarea } from '@/components/ui'
 import {
-  designTemplatePreviewUrl,
   designsApi,
   errorMessage,
   filesApi,
@@ -50,23 +49,6 @@ const blank = (): Partial<DesignRow> => ({
   craft: [],
   shared: false,
 })
-
-/**
- * The same string, once the typing has stopped.
- *
- * The preview is a document the browser fetches, and both controls feeding it
- * are loud: a colour picker fires while the pointer moves, a hex field once
- * per character. A quarter of a second still reads as live and turns a drag
- * across the spectrum into one load.
- */
-function useSettled(value: string, ms = 250) {
-  const [settled, setSettled] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
-  return settled
-}
 
 function Swatch({
   label,
@@ -258,20 +240,6 @@ export function DesignsSection() {
   const setTokens = (patch: Partial<DesignTokens>) =>
     setDraft((d) => ({ ...d, tokens: { ...tokens, ...patch } }))
 
-  //: The shape the preview borrows. A deck spends all four tokens at once —
-  //: accent on the rules, ink on the title, muted on the caption, the face on
-  //: everything — which is why it says more about a look than a document does.
-  //: Any seeded template will do where a deck is not offered.
-  const previewTemplate = useStore(
-    (s) =>
-      s.designTemplates.find((row) => row.kind === 'deck' && row.hasPreview) ??
-      s.designTemplates.find((row) => row.hasPreview) ??
-      null,
-  )
-  const previewUrl = useSettled(
-    previewTemplate ? designTemplatePreviewUrl(previewTemplate.id, tokens) : '',
-  )
-
   const save = async () => {
     if (!draft?.name?.trim()) return
     setSaving(true)
@@ -382,31 +350,6 @@ export function DesignsSection() {
           </select>
         </Field>
 
-        {/* Three hex codes and the name of a face are not a look until you can
-            see one. This is the gallery's own card, asked for in the tokens
-            above it — the same document the same seed will produce, so what is
-            being decided here is visible while it is being decided. */}
-        {previewUrl && (
-          <section aria-label={t('미리보기')} className="space-y-1.5">
-            <span className="block text-base font-medium text-fg">{t('미리보기')}</span>
-            {/* 500 × 0.42 = 210, as in the gallery: the whole slide scaled
-                down rather than a slice of it at full size. */}
-            <div className="h-[210px] overflow-hidden rounded-card border border-line bg-white">
-              <iframe
-                title={t('미리보기')}
-                src={previewUrl}
-                sandbox=""
-                loading="lazy"
-                tabIndex={-1}
-                className="pointer-events-none h-[500px] w-[1000px] origin-top-left border-0"
-                style={{ transform: 'scale(0.42)' }}
-              />
-            </div>
-            <span className="block text-sm text-faint">
-              {t('고른 색과 서체로 문서를 만들면 나오는 모양입니다.')}
-            </span>
-          </section>
-        )}
 
         <Field
           label={`${t('문체 규율')} — ${(draft.body ?? '').length}/${BODY_MAX}`}

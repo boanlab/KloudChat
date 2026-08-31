@@ -1,6 +1,6 @@
 import { LayoutTemplate, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { TemplateForm } from '@/components/chat/TemplateGallery'
+import { TemplateForm } from '@/components/chat/TemplateForm'
 import { Badge, Button } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { templatesApi, type TemplateRow } from '@/lib/api'

@@ -4,6 +4,7 @@ description = "상자 없이 두 단으로 갈라 결정에 필요한 것만 한
 category = "업무"
 fills = ["결정할 것", "기한"]
 example_prompt = "한 장짜리 요약 문서를 만들어 줘. 무엇을 결정해야 하는지, 무엇이 걸려 있는지, 다음에 뭘 할지가 한눈에 보이게.\n\n결정할 것: "
+seed_from = "_document"
 layouts = ["cover", "section"]
 
 # English half of the catalogue. The UI picks a side by language;

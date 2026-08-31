@@ -1,4 +1,4 @@
-import { CircleCheck, FileWarning, ListOrdered, Loader2 } from 'lucide-react'
+import { CircleCheck, FileWarning, ImagePlus, ListOrdered, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -38,8 +38,77 @@ export function ProposalCard({
   const streaming = useStore((s) => !!s.running[sessionId])
   const [picked, setPicked] = useState<Record<string, string>>({})
 
-  const run = (opts: { approve?: boolean; answers?: Record<string, string> }, label: string) =>
+  const run = (
+    opts: {
+      approve?: boolean
+      answers?: Record<string, string>
+      includeFigures?: boolean
+    },
+    label: string,
+  ) =>
     void send(sessionId, kind, label, opts)
+
+  if (pending.stage === 'figures') {
+    /*
+     * The second of two questions, and the expensive one.
+     *
+     * Asked apart from the outline on purpose. A picture costs multiples of
+     * what the prose does, and a figure changes the sentences beside it — a
+     * section told a diagram is coming writes 아래 그림과 같이. Folding both
+     * into one 이대로 생성 meant somebody approving a shape also bought
+     * pictures, and somebody who wanted the shape without them had no way to
+     * say so.
+     *
+     * Asked *before* the writing for the same reason: decline it afterwards
+     * and the prose still refers to figures that are not there.
+     */
+    const drawn = pending.figures ?? []
+    const credits = pending.figureCredits ?? 0
+    return (
+      <Shell tone="accent" icon={<ImagePlus size={15} />} title={t('그림을 넣을까요?')}>
+        <ul className="space-y-1">
+          {drawn.map((figure, i) => (
+            <li key={`${i}-${figure.caption}`} className="flex items-baseline gap-2 text-base">
+              <span className="w-5 shrink-0 text-right text-sm tabular-nums text-faint">
+                {figure.section + 1}
+              </span>
+              <span className="min-w-0 flex-1">{figure.caption}</span>
+            </li>
+          ))}
+        </ul>
+        {/* 장수와 값을 묻는 자리에 함께 둔다. 무엇을 사는지 모르고 누르는
+            버튼은 승인이 아니다. */}
+        <p className="mt-2 text-sm text-muted">
+          {t('{n}장 · 약 {c} 크레딧 · {m}')
+            .replace('{n}', String(drawn.length))
+            .replace('{c}', credits.toLocaleString())
+            .replace('{m}', pending.figureModel ?? '')}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={streaming}
+            onClick={() =>
+              run({ approve: true, includeFigures: true }, t('그림을 넣어 주세요'))
+            }
+          >
+            {streaming ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+            {t('그림 넣고 생성')}
+          </Button>
+          <Button
+            size="sm"
+            disabled={streaming}
+            onClick={() =>
+              run({ approve: true, includeFigures: false }, t('그림 없이 생성해 주세요'))
+            }
+          >
+            {t('그림 없이 생성')}
+          </Button>
+        </div>
+      </Shell>
+    )
+  }
 
   if (pending.stage === 'clarify') {
     const questions = pending.questions ?? []

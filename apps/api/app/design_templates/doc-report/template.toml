@@ -1,19 +1,20 @@
 kind = "document"
 name = "보고 문서"
-description = "표지 한 장을 따로 두고, 절마다 근거를 오른쪽 여백에 달아 읽히는 A4 세로 문서"
+description = "표지 한 장을 따로 두고, 수치마다 근거를 각주로 다는 A4 세로 문서"
 category = "업무"
 fills = ["목적", "독자", "기간"]
-example_prompt = "제출용 보고 문서를 써 줘. 확인되지 않은 수치는 쓰지 말고, 수치마다 어디서 온 값인지 여백 주석에 달아 줘. 마지막에 다음 행동을 적어 줘.\n\n목적과 독자: "
+example_prompt = "제출용 보고 문서를 써 줘. 확인되지 않은 수치는 쓰지 말고, 수치마다 어디서 온 값인지 각주에 달아 줘. 마지막에 다음 행동을 적어 줘.\n\n목적과 독자: "
+seed_from = "_document"
 layouts = ["cover", "section"]
 
 # English half of the catalogue. The UI picks a side by language;
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
 name_en = "Report"
-description_en = "A cover of its own, then section by section, with the sources out in the right-hand margin"
+description_en = "A cover of its own, then section by section, with every figure footnoted to its source"
 category_en = "Work"
 fills_en = ["Purpose", "Audience", "Period"]
-example_prompt_en = "Write a report to submit. Leave out any figure you cannot source, put where each figure came from in the margin note beside it, and end with the next actions.\n\nPurpose and audience: "
+example_prompt_en = "Write a report to submit. Leave out any figure you cannot source, footnote where each figure came from, and end with the next actions.\n\nPurpose and audience: "
 
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'

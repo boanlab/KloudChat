@@ -378,6 +378,15 @@ class SendMessage(Wire):
     #: question qualifies; anything after it would be a conversation that moved
     #: on. `content` and `attachments` are taken from the stored row.
     retry_of: str | None = Field(default=None, max_length=64)
+    #: Answer to the figure card, which is the second of the two questions a
+    #: document asks before it is written.
+    #:
+    #: Three states and they are all different. `True` writes the document with
+    #: the pictures that were proposed; `False` writes it without them, and the
+    #: prose is told so — a section that mentions 아래 그림 with no figure under
+    #: it is the failure this whole two-step exists to avoid. `None` is a
+    #: message that is not answering the card at all.
+    include_figures: bool | None = None
     #: Answers to the questions a stopped turn asked, keyed by question id.
     #: Folded into the request as conditions on it — never substituted for it,
     #: because the sentence they typed is the thing they asked for.

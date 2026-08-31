@@ -35,13 +35,18 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
 
   // It reaches the gallery, where it is marked as everybody's.
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '시작점 고르기' }).click()
-  const card = page.getByRole('dialog').locator('div.group', { hasText: title })
+  await page.getByRole('button', { name: '서식 고르기' }).click()
+  // Searched for. The gallery is paged four to a screen, so a card is on some
+  // page rather than on the page.
+  await page.getByLabel('서식 검색').fill(title)
+  // A sentence card is one button, not a panel with a button inside it: the
+  // two pickers were merged and a shared 시작점 now sits in the 서식 grid.
+  const card = page.getByRole('dialog').getByRole('button').filter({ hasText: title })
   await expect(card).toBeVisible({ timeout: 20_000 })
-  await expect(card.getByText('공용')).toBeVisible()
+  await expect(card).toContainText('공용')
 
   // Picking it works like any other card.
-  await card.getByRole('button').first().click()
+  await card.click()
   await expect(page.getByRole('button', { name: `${title} 시작점 해제` })).toBeVisible()
 
   // Corrected from the same screen it was added on. This is the whole point of
@@ -56,10 +61,13 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
   await expect(section.locator('li', { hasText: fixed })).toBeVisible({ timeout: 20_000 })
   // Still shared, not quietly turned private by the edit.
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '시작점 고르기' }).click()
-  const revised = page.getByRole('dialog').locator('div.group', { hasText: fixed })
+  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByLabel('서식 검색').fill(fixed)
+  // `filter`, not a name regex: the revised title ends in "(개정)" and those
+  // are regex metacharacters — the pattern matched a group, never the words.
+  const revised = page.getByRole('dialog').getByRole('button').filter({ hasText: fixed })
   await expect(revised).toBeVisible({ timeout: 20_000 })
-  await expect(revised.getByText('공용')).toBeVisible()
+  await expect(revised).toContainText('공용')
 
   // Removed from the same screen it was added on.
   await page.goto('/admin/system/templates')

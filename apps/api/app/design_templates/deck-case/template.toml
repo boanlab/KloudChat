@@ -1,0 +1,21 @@
+kind = "deck"
+name = "케이스 발표"
+description = "현황과 대안을 나란히 놓고 15분 안에 권고까지 가는 발표"
+category = "발표"
+fills = ["대상 기업", "발표 시간", "결론"]
+example_prompt = "케이스 발표 자료를 만들어 줘. 대안을 나란히 견주는 장을 넣고, 마지막 장에서 무엇을 권고하는지 밝혀 줘.\n\n대상 기업과 발표 시간: "
+seed_from = "_deck"
+layouts = ["cover", "bullets", "compare", "figure", "table", "ask"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Case deck"
+description_en = "Situation and options side by side, to a recommendation in fifteen minutes"
+category_en = "Presentation"
+fills_en = ["Company", "Length", "Recommendation"]
+example_prompt_en = "Make a case deck. Include a slide that compares the options side by side, and say what you recommend on the last one.\n\nCompany and length: "
+
+[wrap]
+cover = '<section class="slide cover"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'
+block = '<section class="slide {layout}"><h2>{title}</h2>{body}<span class="num">{n}</span></section>'

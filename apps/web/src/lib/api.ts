@@ -14,6 +14,7 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   CostRouting,
+  DesignTokens,
   Session,
   SessionKind,
   SessionMade,
@@ -310,7 +311,6 @@ export const authConfig = {
   get: () =>
     call<{
       passwordResetEnabled: boolean
-      dictationEnabled: boolean
       brand: { name: string; logo: string }
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
@@ -561,6 +561,28 @@ export async function downloadArtifact(
 }
 
 /**
+ * The 서식 as a blank file to fill in by hand.
+ *
+ * Fetched rather than linked. The API takes a bearer token this app holds in
+ * memory, so an `<a href>` to the route arrives unauthenticated and comes back
+ * a 401 the browser renders as a broken download.
+ */
+export async function downloadDesignTemplateForm(id: string, name: string, format: string) {
+  const res = await fetch(`${BASE_URL}/design-templates/${encodeURIComponent(id)}/form`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'form'}.${format}`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
  * URL for a stored file, used as the `src` of `<img>`, `<audio>` and `<video>`.
  *
  * Those elements cannot attach an Authorization header and the token lives in
@@ -571,23 +593,6 @@ export function fileUrl(src: string | null | undefined): string | undefined {
   if (!src) return undefined
   if (!accessToken || !src.startsWith(`${BASE_URL}/files/`)) return src
   return `${src}${src.includes('?') ? '&' : '?'}t=${encodeURIComponent(accessToken)}`
-}
-
-/**
- * Dictated audio → text. Multipart, so it cannot go through `call()`. Nothing
- * is stored server-side — the clip is a way of typing, not a document.
- */
-export async function transcribe(blob: Blob): Promise<string> {
-  const form = new FormData()
-  form.append('file', blob, 'speech.webm')
-  const res = await fetch(`${BASE_URL}/transcribe`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    body: form,
-  })
-  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
-  return ((await res.json()) as { text: string }).text
 }
 
 export interface ShareRow {
@@ -971,9 +976,25 @@ export const artifactsApi = {
   /** Checks one slide's claims against the web. Costs searches and a model call. */
   factcheckSlide: (id: string, slideId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/factcheck`, body({ slideId })),
+  /** The same check on one report section. Same cost, same verdict shape. */
+  factcheckSection: (id: string, sectionId: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/sections/factcheck`, body({ sectionId })),
+  /**
+   * The picture this browser made of one mermaid diagram.
+   *
+   * Mermaid renders in JavaScript and the API has no headless browser, so the
+   * reader's own render is the only one there will ever be. Stored so the
+   * exports carry a figure where the source stands. Free, and takes no version
+   * — opening a document is not editing it.
+   */
+  storeDiagram: (id: string, sectionId: string, key: string, src: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/sections/diagram`, body({ sectionId, key, src })),
   /** Rewrites one section. Costs a model call and snapshots the old text. */
   rewriteSection: (id: string, sectionId: string, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/rewrite`, body({ sectionId, note })),
+  /** The deck's half of the same thing, slide by slide. */
+  rewriteSlide: (id: string, slideId: string, note: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/slides/rewrite`, body({ slideId, note })),
   /** One block of an HTML artifact, addressed by position and re-rendered. */
   rewriteBlock: (id: string, index: number, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
@@ -1078,13 +1099,9 @@ export const templatesApi = {
   remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
-/** The four values every renderer reads. Always complete on the wire. */
-export interface DesignTokens {
-  accent: string
-  ink: string
-  muted: string
-  font: 'gothic' | 'serif'
-}
+//: Defined in `@/types` — the artifact types need it and this file already
+//: imports from there, so the definition lives on the side with no cycle.
+export type { DesignTokens }
 
 export interface DesignRow {
   id: string
@@ -1188,7 +1205,13 @@ export interface DesignTemplateRow {
    * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
    */
   defaults: Record<string, string | number | boolean>
-  hasPreview: boolean
+  /**
+   * The extension of the blank form this 서식 ships — `docx`, `pptx`, or empty
+   * where it has none. The card offers it by name, because "양식 내려받기" and
+   * then a `.pptx` when somebody expected a `.docx` is a surprise the card
+   * could have prevented.
+   */
+  formFormat: string
 }
 
 /** One argument's text in the language on screen. */
@@ -1218,40 +1241,47 @@ export function templateText(row: DesignTemplateRow, english: boolean) {
   }
 }
 
+/** A template's CSS and its wrappers, for the document editor's shadow root. */
+export interface TemplateStyle {
+  css: string
+  wrapCover: string
+  wrapBlock: string
+  wrapGroup: string
+}
+
+/** How often each rendering template has been started. Ids to counts. */
+export interface DesignTemplateUsage {
+  /** By this person. Empty on their first day, which is what `popular` is for. */
+  mine: Record<string, number>
+  /** Across the installation. An aggregate over a catalogue that ships in the image. */
+  popular: Record<string, number>
+}
+
 export const designTemplatesApi = {
   list: (surface?: SessionKind) =>
     call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
+  usage: () => call<DesignTemplateUsage>('/design-templates/usage'),
+  /**
+   * The stylesheet the editor draws the document in.
+   *
+   * The gallery card gets a finished document at `/preview` and shows it in a
+   * sandboxed iframe, which is right for something nobody clicks. An editor is
+   * clicked, so the document lives in the page inside a shadow root — and a
+   * shadow root takes a stylesheet, not a URL.
+   */
+  style: (id: string, tokens?: DesignTokens | null) => {
+    const query = tokens
+      ? `?${new URLSearchParams({
+          accent: tokens.accent,
+          ink: tokens.ink,
+          muted: tokens.muted,
+          font: tokens.font,
+        })}`
+      : ''
+    return call<TemplateStyle>(`/design-templates/${encodeURIComponent(id)}/style${query}`)
+  },
 }
 
-/**
- * The preview document for a template card, in the look it will be made in.
- *
- * The tokens ride in the query string because an iframe asks for its document
- * by address. The server validates all four the way the exporters read them,
- * so a card cannot advertise a colour no file could come out in. No tokens is
- * exactly what a project without a design system produces.
- *
- * Unauthenticated on purpose — see the route's docstring — and rendered in a
- * sandboxed iframe.
- */
-export const designTemplatePreviewUrl = (id: string, tokens?: DesignTokens | null) => {
-  const url = `${BASE_URL}/design-templates/${encodeURIComponent(id)}/preview`
-  if (!tokens) return url
-  const query = new URLSearchParams({
-    accent: tokens.accent,
-    ink: tokens.ink,
-    muted: tokens.muted,
-    font: tokens.font,
-  })
-  return `${url}?${query}`
-}
-
-/**
- * The look a project wears, for a card standing in for its output.
- *
- * `null` where the project has no design system or has one this account can no
- * longer see: both render in the default tokens.
- */
 export const designTokensOf = (
   designs: DesignRow[],
   designSystemId: string | null | undefined,
@@ -1607,6 +1637,8 @@ export async function* streamSession(
     privacyDecisionToken?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
+    /** The figure card's answer — the second of the two questions. */
+    includeFigures?: boolean
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
     /**

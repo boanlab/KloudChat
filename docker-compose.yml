@@ -72,7 +72,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
       JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
       SIGNUP_MODE: ${KCHAT_SIGNUP_MODE:-approval}
-      DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-strict-local/qwen3.6-35b}
+      DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.6-35b}
       # Names conversations and extracts memories. Both are best effort, so a
       # name the gateway does not serve falls back to the session's own model
       # rather than failing the turn.

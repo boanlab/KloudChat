@@ -1,4 +1,4 @@
-"""Checking the claims on a slide against the web.
+"""Checking the claims in a document against the web.
 
 **Never manufacture confidence.** A wrong badge is worse than no badge: the
 reader stops looking exactly where they should have. The verdicts are therefore
@@ -12,6 +12,9 @@ asymmetric:
 
 Only checkable claims are extracted: a position run through a search engine
 produces a verdict-shaped opinion.
+
+One passage at a time on both surfaces — a whole-document run is a hundred
+unasked-for searches, and the reader cannot act on a hundred verdicts at once.
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Per slide. Each claim costs one search plus one judgement.
+#: Per passage. Each claim costs one search plus one judgement.
 MAX_CLAIMS = 4
 #: How many results the judge reads. Enough to disagree with itself.
 _RESULTS = 5
@@ -168,26 +171,41 @@ def slide_text(slide: dict) -> str:
 async def check_slide(
     *, slide: dict, model: str, api_key: str
 ) -> tuple[dict, dict[str, int]]:
-    """`(factCheck, usage)` for one slide — always `done`, possibly empty.
+    """One slide's claims. Thin wrapper over `check_text`."""
+    return await check_text(
+        title=str(slide.get("title") or ""),
+        body=slide_text(slide),
+        model=model,
+        api_key=api_key,
+    )
 
-    An empty claim list is a real answer: a slide of positions and definitions
-    has nothing a search engine can settle.
+
+async def check_text(
+    *, title: str, body: str, model: str, api_key: str, limit: int = MAX_CLAIMS
+) -> tuple[dict, dict[str, int]]:
+    """`(factCheck, usage)` for one passage — always `done`, possibly empty.
+
+    An empty claim list is a real answer: a passage of positions and
+    definitions has nothing a search engine can settle.
 
     The tokens come back beside the verdicts because a caller who cannot see
-    them bills for none of them, and this is the most expensive thing on the
-    deck screen: up to five calls and four searches for one slide.
+    them bills for none of them, and this is the most expensive thing on either
+    document screen: up to five calls and four searches for one passage.
+
+    Written against a title and a body rather than a slide, because the thing
+    being checked is a claim and a claim does not care what shape it was
+    printed in. A report section is the same call — and a report is where an
+    unchecked figure does the most damage, since it is the artifact that gets
+    exported and attached to a mail.
     """
     usage = _spend()
-    body = slide_text(slide)
     if not body.strip():
         return {"status": "done", "claims": []}, usage
 
     try:
         raw, spent = await _complete(
             model,
-            _EXTRACT_PROMPT.format(
-                limit=MAX_CLAIMS, title=slide.get("title") or "", body=body[:2000]
-            ),
+            _EXTRACT_PROMPT.format(limit=limit, title=title, body=body[:2000]),
             api_key,
             400,
         )
@@ -202,10 +220,10 @@ async def check_slide(
         return {"status": "done", "claims": []}, usage
 
     judged = await asyncio.gather(
-        *(_judge(c, model, api_key) for c in claims[:MAX_CLAIMS]), return_exceptions=True
+        *(_judge(c, model, api_key) for c in claims[:limit]), return_exceptions=True
     )
     out = []
-    for claim, outcome in zip(claims[:MAX_CLAIMS], judged, strict=False):
+    for claim, outcome in zip(claims[:limit], judged, strict=False):
         if isinstance(outcome, BaseException):
             log.info("factcheck judge crashed: %s", outcome)
             result = {

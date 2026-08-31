@@ -73,6 +73,11 @@ _ALLOWED_TAGS = {
     "p", "h3", "ul", "ol", "li", "strong", "em", "blockquote", "code",
     "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td",
     "div", "span", "section", "br", "hr", "small", "dl", "dt", "dd",
+    # The footnote reference. `<small>` carries the note itself and always
+    # could; without a marker in the sentence there was no way to say *which*
+    # sentence a note belonged to, which is the whole difference between a
+    # footnote and a paragraph in smaller type.
+    "sup",
 }
 
 _TAG = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>")
@@ -93,12 +98,51 @@ _SCRIPTISH = re.compile(
 #: leaves behind sits inside a tag, where it means nothing. Same attributes
 #: removed, 0.001s.
 _EVENT_ATTR = re.compile(r"\son[a-z]++\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
-#: Inline presentation from the model. The seed owns every colour, size
-#: and space in the document; a `style=` written into a block is the one
-#: thing that can actually win against it, and it never agrees with the
-#: template around it. `class` survives — that is how a block reaches the
-#: names its own seed styles, such as `lead` and `cols`.
+#: Inline presentation. The seed owns every colour, size and space in the
+#: document; a `style=` is the one thing that can actually win against it, and
+#: the model's own never agrees with the template around it. `class` survives —
+#: that is how a block reaches the names its own seed styles, such as `lead`
+#: and `cols`.
 _STYLE_ATTR = re.compile(r"\sstyle\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+
+#: Declarations a person may set by hand, and nothing else.
+#:
+#: Dropping `style` wholesale was right while the only author was the model: a
+#: writer that invents its own type scale produces a document that disagrees
+#: with itself on every page. It is wrong once somebody is editing the document
+#: in a word processor, because the four things they reach for first — size,
+#: face, alignment, emphasis colour — have no other way to be expressed, and a
+#: silent strip means their edit vanishes on save.
+#:
+#: So the rule became an allowlist rather than a switch. What is *not* here is
+#: the point of it: no `position`, no `display`, no margin or padding, no
+#: `background` — layout stays the seed's, which is what keeps a template a
+#: template after somebody has typed in it. Values are bounded too; `url()`,
+#: `expression(` and anything with a semicolon-smuggled second declaration
+#: cannot survive `_declaration`.
+_EDITABLE_STYLE = {
+    "font-size",
+    "font-family",
+    "font-weight",
+    "font-style",
+    "text-align",
+    "text-decoration",
+    "color",
+    "line-height",
+}
+#: A property/value pair with nothing exotic in the value. Deliberately narrow:
+#: letters, digits, spaces, and the punctuation a font stack or a length needs.
+#:
+#: **No parentheses.** None of `_EDITABLE_STYLE` needs them — a font stack is
+#: quoted names and commas, a length is a number and a unit, and a colour from
+#: a picker is a hex triple. Allowing them let `font-size: expression(alert(1))`
+#: through on the first pass, which is legacy-IE only and still not something to
+#: write into a file that gets downloaded and opened outside the sandbox. With
+#: them gone, `url(`, `expression(` and `calc(` all fail to match and the whole
+#: declaration is dropped.
+_DECLARATION = re.compile(
+    r"^\s*([a-z-]{2,20})\s*:\s*([A-Za-z0-9 ,.%#'\"_-]{1,120})\s*$"
+)
 _URL_ATTR = re.compile(r"\s(href|src)\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 #: What is inside a `<code>` is text. Every other rule below reads the
 #: fragment as markup, so left alone `<code><div></code>` becomes a real
@@ -176,10 +220,28 @@ class DesignTemplate:
     #: writing surfaces — a picture model reads neither well nor at that
     #: length.
     prompt_suffix: str
+    #: The 서식's Word half — a real `.docx` whose styles, page setup and
+    #: theme the exporter opens and writes into. Empty when the folder has
+    #: none, and then `report_export` falls back to Word's own defaults.
+    #:
+    #: A path rather than bytes: `python-docx` opens a file, the templates are
+    #: 37KB each, and holding five of them in memory for the life of the
+    #: process buys nothing.
+    docx_template: str
+    #: The 서식's PowerPoint half, for the deck surfaces — a real `.pptx`
+    #: whose master, layouts and theme `deck_export` opens and builds on.
+    #: Empty when the folder has none, and then PowerPoint's own defaults.
+    pptx_template: str
+    #: The blank form somebody downloads — the 서식 as a file to fill in by
+    #: hand, in the same styles the export comes out in.
+    #:
+    #: A second file rather than the one above, because the writer *appends*
+    #: to `template.docx`: a heading left in it would arrive at the top of
+    #: every report written from it. `.docx` on the document surfaces and
+    #: `.pptx` on the deck ones; empty where a 서식 has no form yet.
+    form_file: str
     #: The shell every slide or section is placed into.
     seed: str
-    #: Body fragment the gallery previews, rendered inside the same seed.
-    sample: str
     #: Layout names this template's instructions actually describe. The first
     #: is always the cover, and the outline call is offered only these.
     layouts: tuple[str, ...]
@@ -218,6 +280,30 @@ class DesignTemplate:
         )
 
 
+def _seed(folder: pathlib.Path, meta: dict) -> str:
+    """The typesetting this 서식 is drawn in, its own or a shared one.
+
+    Six of the ten document 서식 carried byte-identical copies of one file —
+    the five built on 보고 문서 plus 보고 문서 itself — because a new 서식 was
+    scaffolded by copying the shape it is typeset in. Copies drift: one gets a
+    fix and the other five do not, and nothing says they were ever meant to be
+    the same.
+
+    `seed_from` says it instead. A 서식 with its own `seed.html` keeps it —
+    한 장 요약, 회의록, 안내문·공지 and 실험 노트 are four real designs, not
+    four copies — and one without names the shape it borrows.
+    """
+    own = folder / "seed.html"
+    if own.is_file():
+        return own.read_text(encoding="utf-8")
+    borrowed = str(meta.get("seed_from") or "")
+    if borrowed:
+        shared = folder.parent / borrowed / "seed.html"
+        if shared.is_file():
+            return shared.read_text(encoding="utf-8")
+    return ""
+
+
 def _read(folder: Path, name: str) -> str:
     path = folder / name
     return path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -227,7 +313,12 @@ def _load() -> dict[str, DesignTemplate]:
     found: dict[str, DesignTemplate] = {}
     if not _ROOT.is_dir():
         return found
-    for folder in sorted(p for p in _ROOT.iterdir() if p.is_dir()):
+    # `_` folders hold the shared typesettings rather than a 서식. A 서식 is a
+    # name, a set of rules and a file to fill in; the paper it is drawn on is
+    # one of two, and neither of those is something anybody picks.
+    for folder in sorted(
+        p for p in _ROOT.iterdir() if p.is_dir() and not p.name.startswith("_")
+    ):
         manifest = folder / "template.toml"
         if not manifest.is_file():
             continue
@@ -267,8 +358,21 @@ def _load() -> dict[str, DesignTemplate]:
                 if arg.get("name")
             ),
             defaults=dict(meta.get("defaults") or {}),
-            seed=_read(folder, "seed.html"),
-            sample=_read(folder, "sample.html"),
+            docx_template=str(folder / "template.docx")
+            if (folder / "template.docx").is_file()
+            else "",
+            pptx_template=str(folder / "template.pptx")
+            if (folder / "template.pptx").is_file()
+            else "",
+            form_file=next(
+                (
+                    str(folder / name)
+                    for name in ("form.docx", "form.pptx")
+                    if (folder / name).is_file()
+                ),
+                "",
+            ),
+            seed=_seed(folder, meta),
             layouts=tuple(str(x) for x in (meta.get("layouts") or ["cover", "section"])),
             wrap_cover=str(wrap.get("cover") or "{body}"),
             wrap_block=str(wrap.get("block") or "{body}"),
@@ -398,8 +502,31 @@ def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
         return text
 
 
-def sanitise(fragment: str, layouts: Sequence[str] = ()) -> str:
-    """One block of model-written HTML, reduced to what the seed styles.
+def _kept_style(match: re.Match[str]) -> str:
+    """A `style=` reduced to the declarations a person is allowed to set.
+
+    Everything outside `_EDITABLE_STYLE` goes, and so does any value the narrow
+    `_DECLARATION` pattern will not match — which is what keeps `url(...)`,
+    `expression(...)` and a second declaration smuggled past a semicolon out of
+    a document that is also opened outside the sandbox.
+
+    An empty result drops the attribute rather than leaving `style=""` behind.
+    """
+    raw = match.group(1).strip().strip("\"'")
+    kept = []
+    for part in raw.split(";"):
+        if not part.strip():
+            continue
+        found = _DECLARATION.match(part)
+        if found and found.group(1).lower() in _EDITABLE_STYLE:
+            kept.append(f"{found.group(1).lower()}: {found.group(2).strip()}")
+    return f' style="{"; ".join(kept)}"' if kept else ""
+
+
+def sanitise(
+    fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False
+) -> str:
+    """One block of authored HTML, reduced to what the seed styles.
 
     `sandbox=""` already stops a script from running, so this is the second
     lock rather than the only one. It exists because an artifact is also
@@ -407,11 +534,19 @@ def sanitise(fragment: str, layouts: Sequence[str] = ()) -> str:
 
     `layouts` is the template's own vocabulary. Empty — which is every caller
     that has no template in hand — leaves the front of the fragment alone.
+
+    `editable_styles` is the difference between the model writing this block and
+    a person writing it. The model gets no inline style at all — one that
+    invents its own type scale produces a document that disagrees with itself
+    on every page. A person editing in the document editor keeps the narrow set
+    in `_EDITABLE_STYLE`, because size, face, alignment and emphasis have no
+    other way to be expressed and a silent strip means their edit disappears
+    when they press save. Layout is not in that set either way.
     """
     text = _CODE.sub(_quoted_code, _without_layout_preamble(_unwrapped(fragment), layouts))
     text = _SCRIPTISH.sub("", text)
     text = _EVENT_ATTR.sub("", text)
-    text = _STYLE_ATTR.sub("", text)
+    text = _STYLE_ATTR.sub(_kept_style if editable_styles else "", text)
 
     def address(match: re.Match[str]) -> str:
         """A link goes nowhere in a printed document; a picture may stay."""
@@ -428,14 +563,15 @@ def sanitise(fragment: str, layouts: Sequence[str] = ()) -> str:
     return _TAG.sub(keep, text).strip()
 
 
-def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body: str) -> str:
-    """The finished single file.
+def _token_declarations(tokens: dict[str, str]) -> str:
+    """The design system as CSS custom properties, in the seed's indentation.
 
-    `tokens` reaches the document as CSS custom properties, which is the whole
-    reason the design system and this catalogue compose: the seed decides the
-    layout, the design system decides what colour it is.
+    One implementation, because `render` writes the exported file and
+    `stylesheet` writes what the editor draws in — and a document that looks
+    one way while it is typed and another when it is downloaded is worse than
+    one that is plain in both.
     """
-    declarations = "\n".join(
+    return "\n".join(
         f"      --{name}: {value};"
         for name, value in (
             ("accent", tokens.get("accent", "#5b5bd6")),
@@ -449,11 +585,39 @@ def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body
             ),
         )
     )
+
+
+def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body: str) -> str:
+    """The finished single file.
+
+    `tokens` reaches the document as CSS custom properties, which is the whole
+    reason the design system and this catalogue compose: the seed decides the
+    layout, the design system decides what colour it is.
+    """
     return (
-        template.seed.replace("{{TOKENS}}", declarations)
+        template.seed.replace("{{TOKENS}}", _token_declarations(tokens))
         .replace("{{TITLE}}", escape(title))
         .replace("{{BODY}}", body)
     )
+
+
+_STYLE_BLOCK = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.S | re.I)
+
+
+def stylesheet(template: DesignTemplate, tokens: dict[str, str]) -> str:
+    """The seed's CSS alone, with `{{TOKENS}}` resolved.
+
+    For the document editor, which is the one consumer that cannot use
+    `render`. Everything else wants the finished file and shows it in a
+    `sandbox=""` frame, where a sandbox is exactly right — nothing in there is
+    meant to be clicked. An editor has to be clicked, so the document lives in
+    the page, inside a shadow root, and what the shadow root needs is this.
+
+    Same substitution `render` performs, so the editor and the exported file
+    are looking at one stylesheet rather than two that agree today.
+    """
+    seed = template.seed.replace("{{TOKENS}}", _token_declarations(tokens))
+    return "\n\n".join(match.group(1) for match in _STYLE_BLOCK.finditer(seed)).strip()
 
 
 def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
@@ -491,23 +655,6 @@ def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
         else "\n".join(rest)
     )
     return "\n".join(part for part in (cover, grouped) if part)
-
-
-def preview(template: DesignTemplate, tokens: dict[str, str] | None = None) -> str:
-    """What the gallery card shows: this template's own shape, filled in.
-
-    `tokens` is the look the card is standing in for — the design system of the
-    project it will be started in, when there is one. It goes through
-    `normalise_tokens` rather than into the document as it arrived, so a card
-    can only ever show a colour and a face the exporters can also draw. `None`
-    is the whole of the fallback: it normalises to the defaults, which is what
-    a project with no design system is rendered in.
-    """
-    from app.services.design import normalise_tokens
-
-    return render(
-        template, title=template.name, tokens=normalise_tokens(tokens), body=template.sample
-    )
 
 
 def figure(*, mime: str, data_b64: str, alt: str = "", caption: str = "") -> str:
@@ -564,7 +711,7 @@ __all__ = [
     "pictures_in",
     "for_surface",
     "get",
-    "preview",
     "render",
     "sanitise",
+    "stylesheet",
 ]

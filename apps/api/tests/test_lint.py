@@ -284,3 +284,45 @@ def test_the_shipped_limits_are_the_ones_the_instructions_state():
     assert "25자" in template.instructions
     # A template that says nothing keeps the general bounds.
     assert dt.get("doc-report").limits == {}
+
+
+# ── 중국어 한자가 한국어 문장에 섞인 것 ───────────────────────────────
+
+
+def test_a_chinese_word_in_korean_prose_is_flagged():
+    """The models leak Chinese into Korean one word at a time.
+
+    `全自動化`, `動的 엔드포인트`, `傳統的인 방화벽` — all real samples from
+    generated reports. To a Korean reader it is a typo; to a Korean reviewer it
+    is the clearest sign the document was written by a machine, and on a
+    submitted report that costs more than a weak argument does.
+
+    The surface prompt asks the model not to, and a prompt is advice. This is
+    the read-back.
+    """
+    parts = lint.from_sections(
+        [{"heading": "대응", "content": "수준 3의 全自動化 단계는 오경보가 최소화될 때 도입한다."}]
+    )
+    rules = [f.rule for f in lint.check(parts)]
+    assert "hanja" in rules
+
+
+def test_a_parenthesised_gloss_is_not_a_leak():
+    """`분산(分散)` in a paper, a legal term, a name in its original script.
+
+    Banning the block outright would be its own kind of wrong in exactly the
+    documents this product is for, so a gloss inside brackets is left alone.
+    """
+    for body in (
+        "분산(分散) 시스템의 특성을 아래와 같이 정리하여 문서에 담는다.",
+        "서비스 메쉬 우회 [傳統] 방식과의 차이를 아래에 정리하여 담는다.",
+    ):
+        parts = lint.from_sections([{"heading": "가", "content": body}])
+        assert "hanja" not in [f.rule for f in lint.check(parts)], body
+
+
+def test_korean_prose_with_latin_and_numbers_is_left_alone():
+    parts = lint.from_sections(
+        [{"heading": "가", "content": "컨테이너 격리 또는 트래픽 자동 차단을 RBAC 로 제어한다."}]
+    )
+    assert "hanja" not in [f.rule for f in lint.check(parts)]

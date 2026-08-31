@@ -255,6 +255,33 @@ class SlideFactCheck(Wire):
     slide_id: str
 
 
+class DiagramPicture(Wire):
+    """A diagram the browser drew, on its way to being stored.
+
+    Mermaid draws in a browser and nothing on the server can, so the picture
+    has to come back from the reader who happened to open the document. Keyed
+    by the diagram's own source — see `report_export.diagram_key` — because a
+    section whose diagrams are numbered loses them all when somebody adds one
+    in the middle.
+    """
+
+    section_id: str
+    key: str = Field(min_length=8, max_length=64)
+    #: A `data:` picture. Anything else is refused rather than fetched.
+    src: str = Field(max_length=4_000_000)
+
+
+class SectionFactCheck(Wire):
+    """Which report section to check.
+
+    One section, not the report. A whole-document run is a hundred searches
+    nobody asked for, and a hundred verdicts is not something a reader can act
+    on — the deck screen settled this question the same way.
+    """
+
+    section_id: str
+
+
 class SlideImage(Wire):
     """A picture this workspace already made, put on one slide of a JSON deck.
 
@@ -300,6 +327,19 @@ class SectionRewrite(Wire):
     """Which section, and why it is being rewritten."""
 
     section_id: str
+    #: What to change. Optional — an empty note means "just try again".
+    note: str = ""
+
+
+class SlideRewrite(Wire):
+    """Which slide, and why it is being rewritten.
+
+    A separate schema from `SectionRewrite` even though the fields match: the
+    two surfaces name their parts differently, and a `section_id` in a deck
+    request would be a field the caller has to translate on the way in.
+    """
+
+    slide_id: str
     #: What to change. Optional — an empty note means "just try again".
     note: str = ""
 
@@ -837,6 +877,19 @@ class DesignExtractOut(Wire):
     credits: int = 0
 
 
+class DesignTemplateUsageOut(Wire):
+    """How often each rendering template was started, by this person and by all.
+
+    Two maps rather than one ordering, because the caller decides how to weigh
+    them: the home rail leads with `mine` and falls back to `popular`, and the
+    catalogue may want to say something else. An id absent from a map was never
+    used, which is not the same as zero and reads the same either way.
+    """
+
+    mine: dict[str, int] = Field(default_factory=dict)
+    popular: dict[str, int] = Field(default_factory=dict)
+
+
 class DesignTemplateOut(Wire):
     """One entry of the rendering catalogue.
 
@@ -877,8 +930,13 @@ class DesignTemplateOut(Wire):
     arguments: list[DesignArgumentOut] = Field(default_factory=list)
     #: Composer settings this template implies — aspect, duration, voice.
     defaults: dict[str, Any] = Field(default_factory=dict)
-    #: `True` when `/design-templates/{id}/preview` has something to render.
-    has_preview: bool = True
+    #: The extension of the blank form this 서식 ships — `docx`, `pptx`, or
+    #: empty where it has none yet.
+    #:
+    #: The extension rather than a flag, because the button that offers it says
+    #: which file is coming. "양식 내려받기" and then a `.pptx` when somebody
+    #: expected a `.docx` is a surprise the card could have prevented.
+    form_format: str = ""
 
     @classmethod
     def of(cls, t: object) -> DesignTemplateOut:
@@ -910,7 +968,7 @@ class DesignTemplateOut(Wire):
                 for a in t.arguments
             ],
             defaults=dict(t.defaults),
-            has_preview=bool(t.seed and t.sample),
+            form_format=t.form_file.rsplit(".", 1)[-1] if t.form_file else "",
         )
 
 

@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
+import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -349,7 +349,10 @@ test('그림·클립 화면에는 보낼 곳 없는 첨부·스킬 버튼이 없
   await expect(page.getByRole('button', { name: '스킬', exact: true }).first()).toBeVisible()
 
   for (const surface of ['image', 'av'] as const) {
-    await page.goto(`/new/${surface}`)
+    // Only where the workspace has the surface on. Both default to off — they
+    // spend credits per generation — and a screen that says so has no composer
+    // for these controls to be absent from.
+    if (!(await surfaceOn(page, surface))) continue
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
     await expect(page.getByRole('button', { name: '첨부' })).toHaveCount(0)
     // The picker itself, not only its button: a hidden input is still reachable.

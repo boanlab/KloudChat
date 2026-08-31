@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn } from './helpers'
+import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn } from './helpers'
 import { personas } from './personas'
 
 /**
@@ -71,11 +71,22 @@ test.describe('페르소나 커버리지', () => {
 
   /* ── shared groundwork ─────────────────────────────────────────────── */
 
-  test('다섯 축 모두 진입 가능', async ({ page }) => {
+  test('켜져 있는 축은 모두 진입 가능', async ({ page }) => {
+    // Only the ones this workspace has on. `image` and `av` spend credits per
+    // generation and default to off, and a surface an administrator switched
+    // off is an EmptyState with no composer on it — asserting a composer there
+    // is asserting that nobody may turn them off.
+    const reached: string[] = []
     for (const kind of ['chat', 'report', 'slides', 'image', 'av']) {
-      await gotoSurface(page, kind)
+      if (!(await surfaceOn(page, kind))) continue
       await probe(composer(page)).toBeVisible()
+      reached.push(kind)
     }
+    // The three document surfaces are not optional; a workspace without them
+    // is a broken fixture rather than a choice somebody made.
+    expect(reached, `진입하지 못한 축이 있다: ${reached.join(', ')}`).toEqual(
+      expect.arrayContaining(['chat', 'report', 'slides']),
+    )
   })
 
   test('회원가입은 관리자 승인 대기 상태로 들어간다', async ({ page }) => {
@@ -199,10 +210,13 @@ test.describe('페르소나 커버리지', () => {
                 await probe(page.getByRole('button', { name: '웹 검색' })).toBeVisible()
                 break
 
-              /* dictation */
+              /* a recording, read */
               case 'off-voice':
-                await gotoSurface(page, 'chat')
-                await probe(page.getByRole('button', { name: '음성 입력' })).toBeVisible()
+                // 첨부로 본다. 회의는 누가 입력창에 대고 다시 말해서 도착하지
+                // 않는다 — 회의실 파일로 온다. 마이크는 그래서 없앴고, 이 요구를
+                // 채우는 것은 그 파일을 붙일 수 있느냐다.
+                await gotoSurface(page, 'report')
+                await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
                 break
 
               /* templates and starting points */
@@ -210,7 +224,7 @@ test.describe('페르소나 커버리지', () => {
               case 'off-template':
               case 'sal-template':
                 await gotoSurface(page, persona.surfaces[0])
-                await probe(page.getByRole('button', { name: '시작점 고르기' })).toBeVisible()
+                await probe(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
                 break
 
               /* maths */

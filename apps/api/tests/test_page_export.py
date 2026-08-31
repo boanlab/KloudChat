@@ -190,16 +190,42 @@ def test_every_tag_the_catalogue_admits_is_accounted_for():
     )
 
 
-def test_a_margin_note_is_a_note_and_not_the_next_claim():
+def test_a_footnote_is_a_note_and_not_the_next_claim():
     """It sources the paragraph above it, so it has to stay above the next one."""
     sections = page_export.to_sections(_held_html())
     lines = sections[1]["content"].split("\n\n")
 
     assert lines == [
         "보증이 2월에 끝났다.",
-        "— 구매 계약서 3항, 2026-01-04 확인.",
+        "* 구매 계약서 3항, 2026-01-04 확인.",
         "재기동은 systemctl restart kc-api 로 한다.",
     ]
+
+
+def test_footnote_markers_count_up_and_restart_each_section():
+    """The marker is written here because the seed's is a CSS counter.
+
+    Generated content is not text: `*`, `**` come from `::before` on screen and
+    would reach neither the `.docx` nor the `.pdf`. The body carries its own
+    `<sup>*</sup>` either way, so a note exported without one leaves a marker
+    in the prose pointing at a line with nothing to match it.
+    """
+    html = (
+        "<div class='page'>"
+        "<section><h2>가</h2><p>첫째<sup>*</sup></p><small>하나</small>"
+        "<p>둘째<sup>**</sup></p><small>둘</small></section>"
+        "<section><h2>나</h2><p>셋째<sup>*</sup></p><small>셋</small></section>"
+        "</div>"
+    )
+    first, second = page_export.to_sections(html)
+
+    assert "* 하나" in first["content"]
+    assert "** 둘" in first["content"]
+    # The reference survives into the prose, or the note below has no referent.
+    assert "첫째*" in first["content"]
+    # Counted per section, exactly as the seed resets its counter per section.
+    assert "* 셋" in second["content"]
+    assert "** " not in second["content"]
 
 
 def test_a_definition_list_is_a_list_of_labelled_items_rather_than_a_table():

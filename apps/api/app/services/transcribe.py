@@ -7,9 +7,15 @@ connector uses.
 **Two paths, not equivalent.** Local Whisper keeps the audio inside the
 cluster. Where vLLM cannot serve Whisper — the aarch64 build cannot — STT is
 delegated to OpenRouter and the audio leaves the deployment. That is a separate
-setting (`stt_or_model`) an operator can empty out, so dictation disappears on
-those architectures rather than silently going off-premises. Local always wins
-when both are configured.
+setting (`stt_or_model`) an operator can empty out, so transcription disappears
+on those architectures rather than silently going off-premises.
+
+Local is tried first and, when it fails, the other path is taken *if the
+operator has opened it*. An ARM deployment carrying the same configuration as
+an x86 one has an `stt` address pointing at something that cannot answer, and
+treating a configured address as a working one turned that into a hard failure
+for every recording. An empty `stt_or_model` still means no, and then the local
+failure stands where it is.
 """
 
 from __future__ import annotations
@@ -53,6 +59,29 @@ async def transcribe(data: bytes, filename: str = "speech.webm") -> str:
     if not stt_url:
         return await _transcribe_via_openrouter(data, filename)
 
+    try:
+        return await _transcribe_locally(stt_url, data, filename)
+    except TranscribeError:
+        # Local first, and local failing is not the end of it.
+        #
+        # vLLM serves Whisper on amd64 and does not on aarch64, so an ARM
+        # deployment that carries the same configuration as an x86 one has an
+        # `stt` URL pointing at something that cannot answer. Before this, that
+        # was a hard failure: the address was set, so the address was used, and
+        # every recording came back 받아쓰지 못했습니다.
+        #
+        # Falling through is not a privacy decision made here. Setting
+        # `stt_or_model` *is* that decision — an operator who does not want
+        # audio leaving the cluster leaves it empty, and then there is nothing
+        # to fall through to and the local failure stands.
+        if not settings.stt_or_model:
+            raise
+        log.warning("local whisper failed; falling through to %s", settings.stt_or_model)
+        return await _transcribe_via_openrouter(data, filename)
+
+
+async def _transcribe_locally(stt_url: str, data: bytes, filename: str) -> str:
+    """Whisper inside the cluster, through vLLM's OpenAI-shaped endpoint."""
     url = f"{stt_url.rstrip('/')}/v1/audio/transcriptions"
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -126,8 +155,21 @@ async def _transcribe_via_openrouter(data: bytes, filename: str) -> str:
         # is what a transcript wants, so both are pinned.
         "top_p": 1,
     }
-    headers = {"Authorization": f"Bearer {settings.litellm_master_key}"}
-    url = f"{settings.litellm_base_url.rstrip('/')}/v1/chat/completions"
+    # Resolved the way every other model call resolves it.
+    #
+    # This read `settings.litellm_base_url` — the raw environment variable —
+    # and nothing sets that. Everywhere else the address comes from
+    # `settings_store.litellm_config`, which takes the operator's setting
+    # first, derives one from the backend address when there is none, and only
+    # then falls back to the environment. So the whole deployment could be
+    # talking to LiteLLM perfectly well while this one path built
+    # `/v1/chat/completions` with nothing in front of it and reported the
+    # backend unreachable.
+    base, key = await settings_store.litellm_config()
+    if not base:
+        raise TranscribeError("음성 인식에 쓸 모델 주소가 설정되지 않았습니다.")
+    headers = {"Authorization": f"Bearer {key}"}
+    url = f"{base.rstrip('/')}/v1/chat/completions"
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.post(url, json=payload, headers=headers)
