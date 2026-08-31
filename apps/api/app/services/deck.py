@@ -1127,6 +1127,11 @@ async def _write_slides(
                 "status": "error",
                 "progress": progress,
             }
+            # 마커와 함께 layout 도 평문으로 되돌린다. timeline 인 채로 남으면
+            # 화면과 파일이 "항목 없는 연혁" 을 그리려 들고, 검사는 빈 장으로
+            # 읽는다 — 표·차트가 빈 답에서 bullets 로 내려가는 것과 같은 규칙.
+            if slide.get("layout") not in ("title", "section"):
+                slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
             yield {"type": "slide", "slide": slide, "done": True}
             continue
@@ -1230,6 +1235,11 @@ async def _write_slides(
             # 못했습니다." on slide three of a deck somebody was about to
             # present. The lint already files this P0, so nobody is exporting
             # it without having been told.
+            # 마커와 함께 layout 도 평문으로 되돌린다. timeline 인 채로 남으면
+            # 화면과 파일이 "항목 없는 연혁" 을 그리려 들고, 검사는 빈 장으로
+            # 읽는다 — 표·차트가 빈 답에서 bullets 로 내려가는 것과 같은 규칙.
+            if slide.get("layout") not in ("title", "section"):
+                slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
 
         if notes:

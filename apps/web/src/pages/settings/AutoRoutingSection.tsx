@@ -50,7 +50,10 @@ export function AutoRoutingSection() {
     (model) =>
       model.kinds.includes('chat') &&
       !model.privacyOnly &&
-      model.dataBoundary !== 'hybrid' &&
+      // hybrid 는 자체 서빙이 기본이고 폭주·장애 때만 외부로 폴백하는
+      // 경로다. 절약 레인의 요점이 비용인데, 이 인스턴스에서 가장 싼 —
+      // 공짜인 — 모델들이 바로 hybrid 로컬이라, 이 제외는 절약 목록에서
+      // 절약 후보를 지우고 있었다. 품질 레인은 이미 hybrid 를 받는다.
       model.dataBoundary !== 'unknown',
   )
   //: Every chat model. Deliberately unfiltered by price — an upgrade list is
@@ -201,9 +204,17 @@ export function AutoRoutingSection() {
                   {model && (
                     <Badge
                       className="hidden sm:inline-flex"
-                      tone={model.dataBoundary === 'self_hosted' ? 'success' : 'neutral'}
+                      tone={
+                        model.dataBoundary === 'self_hosted' || model.dataBoundary === 'hybrid'
+                          ? 'success'
+                          : 'neutral'
+                      }
                     >
-                      {model.dataBoundary === 'self_hosted' ? 'self-hosted' : t('외부 제공')}
+                      {model.dataBoundary === 'self_hosted'
+                        ? 'self-hosted'
+                        : model.dataBoundary === 'hybrid'
+                          ? t('자체 · 폴백 외부')
+                          : t('외부 제공')}
                     </Badge>
                   )}
                   {/* An arrow that cannot move is the row telling you it is
@@ -339,9 +350,17 @@ export function AutoRoutingSection() {
                   {model && (
                     <Badge
                       className="hidden sm:inline-flex"
-                      tone={model.dataBoundary === 'self_hosted' ? 'success' : 'neutral'}
+                      tone={
+                        model.dataBoundary === 'self_hosted' || model.dataBoundary === 'hybrid'
+                          ? 'success'
+                          : 'neutral'
+                      }
                     >
-                      {model.dataBoundary === 'self_hosted' ? 'self-hosted' : t('외부 제공')}
+                      {model.dataBoundary === 'self_hosted'
+                        ? 'self-hosted'
+                        : model.dataBoundary === 'hybrid'
+                          ? t('자체 · 폴백 외부')
+                          : t('외부 제공')}
                     </Badge>
                   )}
                   <Button

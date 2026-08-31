@@ -78,6 +78,22 @@ const EN: Record<string, string> = {
   '끈 화면은 목록에서 사라지고 새 작업도 만들 수 없습니다. 기존 기록은 남습니다.':
     'A surface that is off disappears from the menu and refuses new work. Existing records stay.',
   'AI 에이전트 연동': 'Agent setup',
+  'API 연동': 'API access',
+  '이 인스턴스의 모델을 코드에서 부릅니다. 게이트웨이가 OpenAI 프로토콜을 말하므로, OpenAI SDK 와 LiteLLM SDK 가 그대로 붙습니다.':
+    "Call this instance's models from code. The gateway speaks the OpenAI protocol, so the OpenAI SDK and the LiteLLM SDK connect as they are.",
+  '고른 모델의 이름이 아래 예제에 그대로 들어갑니다.': 'The chosen model id is written into the examples below.',
+  '가장 짧은 길입니다. base_url 만 이 인스턴스로 바꾸면 나머지는 여느 OpenAI 코드와 같습니다.':
+    'The shortest path. Point base_url at this instance and the rest is ordinary OpenAI code.',
+  '스트리밍': 'Streaming',
+  '긴 답은 흘려 받습니다. 위에서 만든 client 를 그대로 씁니다.': 'Long answers arrive as they are written. Uses the client above.',
+  '이미 LiteLLM 으로 여러 제공자를 오가는 코드라면 이쪽이 자연스럽습니다.':
+    'If your code already moves across providers with LiteLLM, this is the natural fit.',
+  '바로 확인': 'Quick check',
+  '키와 주소가 맞는지 코드를 쓰기 전에 한 줄로 확인합니다.': 'One line to confirm the key and address before writing code.',
+  '임베딩도 같은 주소로 받습니다 — client.embeddings.create(model="local/bge-m3", input=[...]).':
+    'Embeddings ride the same address — client.embeddings.create(model="local/bge-m3", input=[...]).',
+  '키를 폐기하면 즉시 막힙니다. 코드 쪽 설정도 함께 지우세요.': 'A revoked key stops working immediately. Remove it from your code too.',
+  '접두사가 프로토콜을 고른다': 'the prefix picks the protocol',
 
   // ── Auto cost routing ──────────────────────────────────────────────
   'Auto · 비용 절약': 'Auto · Save credits',
@@ -700,8 +716,8 @@ const EN: Record<string, string> = {
   '1k당 {in} / {out}': '{in} / {out} per 1k',
   '1k당 입력 {in} · 출력 {out}': 'Per 1k: {in} in · {out} out',
   '이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.': 'That slug is already in use. Pick another.',
-  '이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 이름에서 만듭니다.':
-    'Shown as this handle on the card in this list. Left empty, it is made from the name.',
+  '이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 자동으로 만듭니다.':
+    'Shown as the handle on cards in this list. Left empty, one is generated.',
   'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
@@ -978,6 +994,7 @@ const EN: Record<string, string> = {
     'The server inspects the whole outbound context and applies this before anything reaches an external model.',
   '외부 전환 가능': 'May switch to external',
   '외부 제공': 'External provider',
+  '자체 · 폴백 외부': 'Self-hosted · external fallback',
   '외부 제공자가 무료로 제공하는 모델입니다': 'An external provider offers this model free of charge',
   '요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.':
     'Could not send the request. Try again in a moment.',

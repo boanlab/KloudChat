@@ -492,7 +492,7 @@ export function AgentsPage() {
                 )}
               </div>
               <div>
-                <Field label={t('슬러그')} hint={t('이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 이름에서 만듭니다.')}>
+                <Field label={t('슬러그')} hint={t('이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 자동으로 만듭니다.')}>
                   <Input
                     value={draft.slug}
                     aria-invalid={slugTaken || undefined}

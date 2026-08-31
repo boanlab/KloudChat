@@ -645,6 +645,16 @@ function sameFilter(filter: ArtifactFilter): ArtifactFilter {
 
 const MODEL_STORAGE_KEY = 'kchat-models'
 
+/** The picks the person actually made, straight from storage — never derived. */
+function readRememberedModels(): Partial<Record<SessionKind, string>> | null {
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<Record<SessionKind, string>>) : null
+  } catch {
+    return null
+  }
+}
+
 /** Remembered model choice per surface. Only ever holds ids picked from the
  *  real catalogue. */
 const initialModelByKind: Record<SessionKind, string> = (() => {
@@ -800,7 +810,20 @@ function reconcileDefaults(
   byKind: Partial<Record<SessionKind, string>> = {},
 ): Record<SessionKind, string> {
   const next = { ...current }
+  // A person's pick survives a gap in the catalogue. This function used to
+  // *overwrite* a remembered model the list did not carry — and the list has
+  // gaps that are nobody's decision: a proxy mid-restart, a model mid-cutover.
+  // One such refresh silently turned every surface's 122b back into the
+  // cheapest row, and the pick did not come back when the model did. So the
+  // stored choice is left alone here; what changes is only what this load
+  // *uses*, and the next load re-reads the untouched choice.
+  const remembered = readRememberedModels()
   for (const kind of Object.keys(next) as SessionKind[]) {
+    const kept = remembered?.[kind]
+    if (kept && available.some((m) => m.id === kept && m.kinds.includes(kind))) {
+      next[kind] = kept
+      continue
+    }
     // Still in the catalogue *and* still serving this surface. The second half
     // was missing, so a model remembered for 보고서 that had since become
     // image-only survived every reconcile — and the surface it no longer

@@ -194,7 +194,8 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   // The turn ends on a proposal and writes nothing; the card is what writes.
   await approvePlan(page, 480_000)
   const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
-  await expect(exportButton).toBeVisible({ timeout: 20_000 })
+  // 승인 뒤에도 블록은 지금부터 쓰인다 — 20초는 접수 확인이지 생성이 아니다.
+  await expect(exportButton).toBeVisible({ timeout: 480_000 })
 
   await shot(page, '03-deck-rendered')
 
@@ -331,7 +332,7 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
   // The turn ends on a proposal and writes nothing; the card is what writes.
   await approvePlan(page, 480_000)
   await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({
-    timeout: 20_000,
+    timeout: 480_000,
   })
 
   await shot(page, '05-document-rendered')

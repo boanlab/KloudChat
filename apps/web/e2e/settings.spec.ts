@@ -51,7 +51,12 @@ test('기본 모델도 단가와 데이터 경계를 보고 고른다', async ({
   // offered rather than offered and inert.
   await expect(menu.getByText('Auto · 비용 절약')).toHaveCount(0)
 
-  const others = menu.locator('button').filter({ hasNotText: before.replace(/^챗: /, '') })
+  // 메뉴에는 모델 행이 아닌 버튼(검색 지우기 등)도 있다 — 공급자 표기
+  // '·' 를 가진 행만이 클릭하면 기본값이 바뀌는 행이다.
+  const others = menu
+    .locator('button')
+    .filter({ hasText: '·' })
+    .filter({ hasNotText: before.replace(/^챗: /, '') })
   test.skip((await others.count()) === 0, '이 인스턴스에는 챗 모델이 하나뿐입니다')
   await others.first().click()
   await expect(chat).not.toHaveAttribute('aria-label', before)
