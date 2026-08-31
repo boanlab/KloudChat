@@ -117,7 +117,7 @@ async def forget_document(*, collection: str, doc_id: str) -> bool:
             )
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        log.warning("index delete for %s failed: %s", doc_id, logs.safe(exc))
+        log.warning("index delete for %s failed: %s", logs.safe(doc_id), logs.safe(exc))
         return False
     return True
 

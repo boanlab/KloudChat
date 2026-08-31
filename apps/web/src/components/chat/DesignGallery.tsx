@@ -255,6 +255,32 @@ export function DesignTemplateCard({
         chosen ? 'border-accent' : 'border-line hover:border-line-strong',
       )}
     >
+      {row.hasPreview && (
+        /* The 서식 itself, miniature. Seventeen 서식 differ almost entirely
+           in CSS, and text on a card cannot show CSS — so the card shows the
+           finished thing, shrunk. A fixed window with the full page scaled
+           into it: decks are wide, documents are tall, and the window is the
+           card's, not the content's. sandbox with no permissions — nothing in
+           a card is meant to be clicked, and the route is public static. */
+        <div
+          className="relative h-28 shrink-0 overflow-hidden border-b border-line bg-elevated"
+          aria-hidden="true"
+        >
+          <iframe
+            src={`/api/design-templates/${row.id}/preview`}
+            sandbox=""
+            tabIndex={-1}
+            loading="lazy"
+            title=""
+            className="pointer-events-none absolute left-0 top-0 origin-top-left"
+            style={
+              row.kind === 'deck'
+                ? { width: '1280px', height: '448px', transform: 'scale(0.25)' }
+                : { width: '820px', height: '448px', transform: 'scale(0.39)' }
+            }
+          />
+        </div>
+      )}
       <div className="space-y-2 p-3">
         <div className="flex items-start justify-between gap-2">
           <p className="text-base font-medium">{text.name}</p>

@@ -18,6 +18,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import func, or_, tuple_
 from sqlmodel import col, delete, select, update
 
@@ -2840,6 +2841,37 @@ async def design_template_usage(user: CurrentUser, db: DbSession):
             template: total for template, total in await db.exec(query) if template
         }
     return DesignTemplateUsageOut(**counts)
+
+
+@router.get("/design-templates/{template_id}/preview")
+async def design_template_preview(template_id: str):
+    """The 서식 itself, miniature — its seed rendered around its own sample.
+
+    Seventeen 서식 differ almost entirely in CSS, and a card that carries only
+    a name and a line cannot show CSS: the gallery read as seventeen copies of
+    one shape. This returns the finished thing the card can shrink.
+
+    Unauthenticated on purpose. The card reaches it as an iframe `src`, which
+    cannot carry a header — and everything here ships inside the image: the
+    seed, the sample, the default tokens. There is nothing of anybody's here.
+    The frame that shows it is `sandbox=""`, and the seeds carry no script.
+    """
+    template = design_templates.get(template_id)
+    if template is None or not template.sample or not template.seed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
+    html = design_templates.render(
+        template,
+        title=template.name,
+        tokens=design_service.normalise_tokens(None),
+        body=template.sample,
+    )
+    return HTMLResponse(
+        html,
+        # A day: the content changes only when the image does.
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.get("/design-templates/{template_id}/style")

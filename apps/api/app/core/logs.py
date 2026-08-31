@@ -30,6 +30,10 @@ def safe(value: object, limit: int = _MAX) -> str:
     as two words and not as the single word `ab` — what was there should still
     be legible to whoever is reading the line.
     """
-    text = str(value)
+    # `.replace` first, though the comprehension below would catch both: the
+    # newline is the character that lets one entry forge a second, and spelling
+    # its removal as `replace` is what static analysis recognises as the
+    # sanitiser — the comprehension alone left every caller flagged.
+    text = str(value).replace("\r", " ").replace("\n", " ")
     cleaned = "".join(" " if ch in _STRIP else ch for ch in text)
     return cleaned[:limit] + ("…" if len(cleaned) > limit else "")

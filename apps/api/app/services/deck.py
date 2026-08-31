@@ -691,12 +691,21 @@ def _offered_layouts(request: str, context: list[str]) -> list[str]:
 _FIGURE = re.compile(
     # A year is not a measurement. `2026년 계획` matched the three-digit rule
     # and let a deck about next year's plan draw a chart of nothing.
-    # The lookarounds pin the whole run. `\d{3,}(?!\s*년)` looks right and is
-    # not: given 2026년 the engine backtracks to 202, sees 6 rather than 년,
-    # and matches. A regex that can retreat inside the number it is judging is
-    # judging a different number.
-    r"\d+[.,]\d|(?<!\d)\d{3,}(?!\d)(?!\s*년)|"
-    r"\d+\s*(?:%|퍼센트|원|명|건|배|억|만|천|시간|분|초|주|개월|점|개|회|위)"
+    #
+    # `(?<!\d)` pins every match to the start of a digit run — 2026년 cannot
+    # be salvaged by backtracking into 202, because a regex that can retreat
+    # inside the number it is judging is judging a different number.
+    #
+    # Every quantifier is bounded. Static analysis flags an unbounded `\d+`
+    # beside an overlapping alternative as polynomial on adversarial digit
+    # strings, and user-typed text reaches this — a twelve-digit cap loses
+    # nothing anybody has ever put on a slide and closes the question by
+    # construction rather than by argument.
+    r"(?<!\d)(?:"
+    r"\d{1,12}[.,]\d"
+    r"|\d{3,12}(?!\d)(?!\s{0,4}년)"
+    r"|\d{1,12}\s{0,4}(?:%|퍼센트|원|명|건|배|억|만|천|시간|분|초|주|개월|점|개|회|위)"
+    r")"
 )
 
 

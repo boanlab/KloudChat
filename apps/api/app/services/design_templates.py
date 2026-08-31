@@ -266,6 +266,11 @@ class DesignTemplate:
     #: general bound is 45 — without this, a template's own rule is the one
     #: rule nothing enforces. Empty means the general bounds apply.
     limits: dict[str, int]
+    #: A short body in this 서식's own vocabulary, for the gallery card to
+    #: render inside the real seed. The card then shows the thing that will be
+    #: produced instead of describing it — the whole differentiation between
+    #: seventeen 서식 lives in CSS, and text on a card cannot show CSS.
+    sample: str
     #: Catalogue skills this 서식 works best with, by `catalog_key`.
     #:
     #: A 서식 is a shape and a skill is a procedure, and some shapes imply
@@ -482,6 +487,7 @@ def _load() -> dict[str, DesignTemplate]:
                 if key in ("max_bullets", "max_bullet_chars") and int(value) > 0
             },
             skills=tuple(str(k) for k in (meta.get("skills") or [])),
+            sample=_read(folder, "sample.html"),
         )
     return found
 
