@@ -63,7 +63,16 @@ export function VersionHistory({
 
   return (
     <>
-      <Button size="sm" aria-label={t('버전 기록')} onClick={() => void openHistory()}>
+      {/* Both names, because an `aria-label` replaces the visible text rather
+          than adding to it: the button read 저장 시점 v3 and answered only to
+          버전 기록, so saying what is written on it reached nothing. The label
+          it opens with is still 버전 기록, which is what the dialog is called
+          and what the rest of this app already calls it. */}
+      <Button
+        size="sm"
+        aria-label={`${t('버전 기록')} · ${t('저장 시점')} v${artifact.version}`}
+        onClick={() => void openHistory()}
+      >
         <History size={13} />
         {t('저장 시점')} v{artifact.version}
       </Button>

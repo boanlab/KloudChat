@@ -42,7 +42,19 @@ const SHOWN = 8
  * screen the point is to *start*, and the sentence lands in the composer where
  * every word of it is still editable.
  */
-export function DesignRail() {
+export function DesignRail({
+  /**
+   * The surface the person has already chosen at the top of the screen.
+   *
+   * Without it this rail led with one card of each surface — breadth, which is
+   * the right answer on a front door and the wrong one under a tab somebody
+   * has just pressed. Standing on 보고서 and being offered five 발표 서식 reads
+   * as the tab not having done anything.
+   */
+  surface,
+}: {
+  surface?: SessionKind
+}) {
   const t = useT()
   const navigate = useNavigate()
   const enabledKinds = useStore((s) => s.enabledKinds)
@@ -74,18 +86,23 @@ export function DesignRail() {
     // thing — true of a brand-new installation, where every count is zero and
     // the id order is four decks in a row. One of each surface first, then the
     // most-used of whatever is left.
+    //: The chosen surface first, in the order above. Everything else keeps
+    //: the one-of-each rule, so a rail that runs out of 보고서 서식 still shows
+    //: what else exists rather than three empty slots.
+    const chosen = surface ? used.filter((c) => c.row.surface === surface) : []
+    const others = surface ? used.filter((c) => c.row.surface !== surface) : used
     const seen = new Set<SessionKind>()
     const lead: typeof visible = []
     const rest: typeof visible = []
-    for (const card of used) {
+    for (const card of others) {
       if (seen.has(card.row.surface)) rest.push(card)
       else {
         seen.add(card.row.surface)
         lead.push(card)
       }
     }
-    return [...lead, ...rest].slice(0, SHOWN)
-  }, [visible, usage])
+    return [...chosen, ...lead, ...rest].slice(0, SHOWN)
+  }, [visible, usage, surface])
   if (visible.length === 0) return null
 
   const start = (row: DesignTemplateRow, prompt: string) => {

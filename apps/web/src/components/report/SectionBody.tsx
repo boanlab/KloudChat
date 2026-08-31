@@ -61,23 +61,31 @@ export function SectionBody({
   )
 }
 
+//: Where a line break belongs when markup becomes text.
+const BLOCKS = 'p, div, section, li, h1, h2, h3, h4, h5, h6, tr, blockquote'
+
 /**
  * The same body as plain text, for the places that show a document rather than
  * render it — a card preview, a copy button, a diff.
  *
- * Tags are stripped rather than escaped: a preview exists to say what the
- * section is about, and `&lt;p&gt;` says nothing about that.
+ * Parsed rather than stripped with regular expressions. The old version peeled
+ * tags off with `/<[^>]+>/` and then turned `&lt;` back into `<`, which is a
+ * machine for building `<script>` out of text somebody escaped on purpose —
+ * and it handed that string back from a function named as though it were safe,
+ * in a file that uses `dangerouslySetInnerHTML` forty lines above. Nothing
+ * renders it as HTML today; React escapes what it is given. The next caller is
+ * the problem, and it is not one to leave for them.
+ *
+ * `DOMParser` runs no script and fetches nothing — it builds a detached
+ * document — and `textContent` of one cannot contain markup at all, which is
+ * the whole property this function was pretending to have.
  */
 export function sectionText(section: Pick<ReportSection, 'content' | 'format'>): string {
   if (section.format !== 'html') return section.content
-  return section.content
-    .replace(/<\/(p|div|section|li|h[1-6]|tr|blockquote)>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  const doc = new DOMParser().parseFromString(section.content, 'text/html')
+  // A break is a newline, and a block ends one. Done on the tree rather than on
+  // the string so `<br>` inside an attribute is not mistaken for one.
+  doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'))
+  doc.body.querySelectorAll(BLOCKS).forEach((block) => block.append('\n'))
+  return (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
 }

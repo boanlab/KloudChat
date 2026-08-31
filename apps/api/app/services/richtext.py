@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import html
 import re
+from dataclasses import dataclass, field
 from html import unescape
 
 #: Block tags that end a paragraph. Everything else is inline and folds into
@@ -49,6 +50,121 @@ _EMPHASIS = (
 )
 
 
+@dataclass(slots=True)
+class Cell:
+    """One table cell, with the two things GFM cannot say about it.
+
+    A merged cell and a cell holding two lines are both ordinary in a Korean
+    계획서 — the header row that spans four columns, the 비고 that runs to a
+    second line — and Markdown has no syntax for either. Routed through GFM
+    they came out of every exporter as, respectively, one filled cell followed
+    by empty ones, and two sentences joined by a space. One real 계획서 opened
+    here has thirty merged cells in it, so this is not an edge.
+    """
+
+    text: str
+    colspan: int = 1
+    rowspan: int = 1
+
+    @property
+    def spans(self) -> bool:
+        return self.colspan > 1 or self.rowspan > 1
+
+
+@dataclass(slots=True)
+class Grid:
+    """A table as its cells, anchors only.
+
+    Row by row, each row holding the cells that *begin* in it. A cell covered
+    by the one above or to its left is not repeated — which is how docx, PDF
+    and OWPML all describe a merge, so no exporter has to undo anything.
+    """
+
+    rows: list[list[Cell]] = field(default_factory=list)
+
+    @property
+    def width(self) -> int:
+        return max((sum(c.colspan for c in row) for row in self.rows), default=0)
+
+    def flat(self, newline: str = " ") -> list[list[str]]:
+        """The grid as plain rows, merges opened out and newlines replaced.
+
+        What the exporters drew before, kept for the formats and the fallbacks
+        that cannot merge — and for the GFM table the grid travels beside,
+        which is written from this so the two always have the same shape.
+
+        Opening a merge out puts the text in the cell it started in and leaves
+        the covered ones empty, which is what the reader of a flattened table
+        sees anyway. Before this the covered cells were not there at all, and
+        every row after a `rowspan` sat one column to the left of where it
+        belonged — the 계열 column of a 22행 표 reading as 단과대학.
+        """
+        width = self.width
+        out: list[list[str]] = []
+        taken: set[tuple[int, int]] = set()
+        for index, row in enumerate(self.rows):
+            while len(out) <= index:
+                out.append([""] * width)
+            column = 0
+            for cell in row:
+                while (index, column) in taken:
+                    column += 1
+                for down in range(cell.rowspan):
+                    while len(out) <= index + down:
+                        out.append([""] * width)
+                    for across in range(cell.colspan):
+                        taken.add((index + down, column + across))
+                if column < width:
+                    out[index][column] = cell.text.replace("\n", newline)
+                column += cell.colspan
+        return out
+
+
+def _span(markup: str, name: str) -> int:
+    """A `colspan`/`rowspan` attribute, clamped to something a page can hold."""
+    found = re.search(rf'{name}\s*=\s*["\']?(\d{{1,2}})', markup, re.I)
+    return max(1, min(int(found.group(1)), 40)) if found else 1
+
+
+def _cell_text(body: str) -> str:
+    """One cell's text, keeping the line breaks the writer put in it."""
+    body = re.sub(r"<br\s*/?>", "\n", body, flags=re.I)
+    body = re.sub(r"</(p|div|li)\s*>", "\n", body, flags=re.I)
+    lines = [_inline(line) for line in body.split("\n")]
+    return "\n".join(line for line in lines if line)
+
+
+def _grid(markup: str) -> Grid:
+    """One `<table>` as a `Grid`."""
+    grid = Grid()
+    for row in re.findall(r"<tr\b[^>]*>(.*?)</tr\s*>", markup, re.S | re.I):
+        cells = [
+            Cell(_cell_text(body), _span(open_tag, "colspan"), _span(open_tag, "rowspan"))
+            for open_tag, body in re.findall(
+                r"<t[hd]\b([^>]*)>(.*?)</t[hd]\s*>", row, re.S | re.I
+            )
+        ]
+        grid.rows.append(cells)
+    while grid.rows and not any(c.text for c in grid.rows[-1]):
+        grid.rows.pop()
+    return grid
+
+
+def grids(fragment: str) -> list[Grid]:
+    """Every table in an HTML body, in the order they appear.
+
+    Travels beside the Markdown rather than inside it. The exporters read
+    Markdown and always will — it is what the model writes — so a table that
+    needs more than Markdown can say is matched to its GFM twin by position
+    and by text, and the exporter draws whichever it got. Encoding the merges
+    into the Markdown itself was the other way, and it would have put a private
+    notation in front of the model and in front of the browser, both of which
+    read this same string.
+    """
+    found = re.findall(r"<table\b.*?</table\s*>", fragment, re.S | re.I)
+    return [_grid(markup) for markup in found]
+
+
 def _inline(fragment: str) -> str:
     """One run of inline markup as Markdown text."""
     text = fragment
@@ -59,14 +175,6 @@ def _inline(fragment: str) -> str:
     return re.sub(r"[ \t]+", " ", unescape(text)).strip()
 
 
-def _cells(row: str) -> list[str]:
-    """The text of one table row's cells, in order."""
-    return [
-        _inline(cell)
-        for cell in re.findall(r"<t[hd]\b[^>]*>(.*?)</t[hd]\s*>", row, re.S | re.I)
-    ]
-
-
 def _table(markup: str) -> str:
     """A table as a GFM table, or `''` when it has no rows.
 
@@ -75,7 +183,10 @@ def _table(markup: str) -> str:
     a table flattened to a bullet is a table somebody has to rebuild by hand
     after every export.
     """
-    rows = [_cells(row) for row in re.findall(r"<tr\b[^>]*>(.*?)</tr\s*>", markup, re.S | re.I)]
+    #: From the grid, so the pipes line up with the merges rather than ignoring
+    #: them, and so a cell's line breaks survive as `<br>` — GFM's own way of
+    #: saying it, and what the browser rendering this already draws.
+    rows = _grid(markup).flat(newline="<br>")
     rows = [row for row in rows if any(cell for cell in row)]
     if not rows:
         return ""
@@ -92,15 +203,86 @@ def _table(markup: str) -> str:
     return "\n".join(lines)
 
 
-def _list(markup: str, ordered: bool) -> str:
-    """A list as Markdown lines. Nested lists flatten — see the module note."""
-    items = [_inline(item) for item in re.findall(r"<li\b[^>]*>(.*?)</li\s*>", markup, re.S | re.I)]
-    items = [item for item in items if item]
-    if not items:
-        return ""
-    if ordered:
-        return "\n".join(f"{i}. {item}" for i, item in enumerate(items, start=1))
-    return "\n".join(f"- {item}" for item in items)
+#: A list opening or closing, so nesting can be counted rather than guessed.
+_LIST_EDGE = re.compile(r"<(/?)(ul|ol)\b[^>]*>", re.I)
+#: An item opening, likewise.
+_ITEM_OPEN = re.compile(r"<li\b[^>]*>", re.I)
+
+
+def _items(markup: str) -> list[tuple[str, str]]:
+    """`(text, inner)` for each item of the outermost list in `markup`.
+
+    Counted rather than matched. `<li>(.*?)</li>` is non-greedy, so an item
+    holding a sub-list stopped at the sub-list's own `</li>` — the outer item's
+    text and the first inner item's ran together into 바깥안쪽, a word that does
+    not exist, and everything after the sub-list fell out of the list entirely
+    and came back as a paragraph. A Korean 공문 is three levels of 글머리 from
+    top to bottom, so that was not an edge either.
+    """
+    body = markup[markup.index(">") + 1 : markup.rindex("</")]
+    out: list[tuple[str, str]] = []
+    starts = [m.end() for m in _ITEM_OPEN.finditer(body) if _depth(body[: m.start()]) == 0]
+    for index, start in enumerate(starts):
+        stop = _item_end(body, start, starts[index + 1] if index + 1 < len(starts) else len(body))
+        chunk = body[start:stop]
+        nested = _LIST_EDGE.search(chunk)
+        cut = nested.start() if nested else len(chunk)
+        out.append((chunk[:cut], chunk[cut:]))
+    return out
+
+
+def _depth(text: str) -> int:
+    """How many lists are open at the end of `text`."""
+    return sum(-1 if edge.group(1) else 1 for edge in _LIST_EDGE.finditer(text))
+
+
+def _item_end(body: str, start: int, limit: int) -> int:
+    """Where this item's own content ends — its `</li>`, at nesting depth zero."""
+    for close in re.finditer(r"</li\s*>", body[start:limit], re.I):
+        if _depth(body[start : start + close.start()]) == 0:
+            return start + close.start()
+    return limit
+
+
+def _list(markup: str, ordered: bool, depth: int = 0) -> str:
+    """A list as Markdown lines, sub-lists indented under their own item.
+
+    Two spaces per level, which is Markdown's own way of saying it and what the
+    browser rendering this already draws. The exporters read the indent back —
+    `report_export._markdown_to_lines` — so a 공문's ○ · • · - survives into the
+    `.hwpx` as three levels rather than as one.
+    """
+    lines: list[str] = []
+    pad = "  " * depth
+    number = 0
+    for text, nested in _items(markup):
+        item = _inline(text)
+        if item:
+            number += 1
+            lines.append(f"{pad}{number}. {item}" if ordered else f"{pad}- {item}")
+        for inner in _sublists(nested):
+            drawn = _list(inner, inner[:3].lower().startswith("<ol"), depth + 1)
+            if drawn:
+                lines.append(drawn)
+    return "\n".join(lines)
+
+
+def _sublists(markup: str) -> list[str]:
+    """The lists directly inside one item, each whole."""
+    out: list[str] = []
+    while (opened := _LIST_EDGE.search(markup)) and not opened.group(1):
+        start = opened.start()
+        depth = 0
+        for edge in _LIST_EDGE.finditer(markup, start):
+            depth += -1 if edge.group(1) else 1
+            if depth == 0:
+                out.append(markup[start : edge.end()])
+                markup = markup[edge.end() :]
+                break
+        else:
+            out.append(markup[start:])
+            break
+    return out
 
 
 #: One top-level construct: a table, a list, a quote, a sub-heading, or a
@@ -122,8 +304,12 @@ _CONSTRUCT = re.compile(
     # back as a bullet by the exporters.
     r"|<small\b[^>]*>.*?</small\s*>"
     r"|<table\b.*?</table\s*>"
-    r"|<ul\b.*?</ul\s*>"
-    r"|<ol\b.*?</ol\s*>"
+    # `.*?` stops at the *first* close, which for a list holding a list is the
+    # inner one — so the outer list was cut in half and everything after the
+    # sub-list came back as prose. `_balanced` walks past the nested closes; the
+    # pattern below only has to find where a list starts.
+    r"|<ul\b"
+    r"|<ol\b"
     r"|<blockquote\b.*?</blockquote\s*>"
     r"|<h[1-6]\b.*?</h[1-6]\s*>"
     r"|<figure\b.*?</figure\s*>"
@@ -294,6 +480,16 @@ def _picture(markup: str) -> str:
     return f"![{label}]({src})"
 
 
+def _balanced(fragment: str, start: int) -> int:
+    """Where the list opening at `start` actually closes."""
+    depth = 0
+    for edge in _LIST_EDGE.finditer(fragment, start):
+        depth += -1 if edge.group(1) else 1
+        if depth == 0:
+            return edge.end()
+    return len(fragment)
+
+
 def to_markdown(fragment: str) -> str:
     """One section's HTML as the Markdown every consumer already reads.
 
@@ -314,13 +510,23 @@ def to_markdown(fragment: str) -> str:
     cursor = 0
     notes = 0
     for match in _CONSTRUCT.finditer(fragment):
+        if match.start() < cursor:
+            # Inside a list this scan has already consumed whole.
+            continue
         parts.extend(_paragraphs(fragment[cursor : match.start()]))
         if match.group(0)[:6].lower().startswith("<small"):
             notes += 1
-        rendered = _render(match, notes)
+        stop = match.end()
+        if match.group(0).lower() in ("<ul", "<ol"):
+            stop = _balanced(fragment, match.start())
+            rendered = _list(
+                fragment[match.start() : stop], match.group(0).lower() == "<ol"
+            )
+        else:
+            rendered = _render(match, notes)
         if rendered:
             parts.append(rendered)
-        cursor = match.end()
+        cursor = stop
     parts.extend(_paragraphs(fragment[cursor:]))
     return "\n\n".join(part for part in parts if part.strip())
 
@@ -407,11 +613,20 @@ def as_markdown(section: dict) -> str:
 
 
 def normalise(sections: list[dict]) -> list[dict]:
-    """Sections with every body as Markdown. For the exporters and the model."""
-    return [
-        {**section, "content": as_markdown(section), "format": "markdown"}
-        for section in sections
-    ]
+    """Sections with every body as Markdown. For the exporters and the model.
+
+    `grids` rides along under `tables` for the sections that had real ones. The
+    model never sees that key — it reads `content` — and an exporter that does
+    not look for it draws exactly what it drew before.
+    """
+    out: list[dict] = []
+    for section in sections:
+        body = str(section.get("content") or "")
+        moved = {**section, "content": as_markdown(section), "format": "markdown"}
+        if section.get("format") == "html" and (found := grids(body)):
+            moved["tables"] = found
+        out.append(moved)
+    return out
 
 
-__all__ = ["as_markdown", "normalise", "tidy_tables", "to_markdown"]
+__all__ = ["Cell", "Grid", "as_markdown", "grids", "normalise", "tidy_tables", "to_markdown"]

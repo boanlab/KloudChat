@@ -376,6 +376,20 @@ def _video_rates(model_id: str) -> dict[str, int]:
 _MODALITY_ORDER = {"chat": 0, "image": 1, "audio": 2, "video": 3}
 
 
+def fallback_order(model: dict[str, Any]) -> tuple[int, float]:
+    """How a model ranks when nobody has chosen one.
+
+    Cheapest first, but never a strict-local model unless it is the only one.
+    strict-local is a route somebody picks on purpose — it takes the web search
+    tool away and refuses every connector — and it is priced identically to the
+    plain local model it sits beside, so sorting on price alone let it win the
+    tie and become the first model a new account ever ran. The screen then
+    explained that this model does not reach the internet, about a decision
+    nobody had made.
+    """
+    return (1 if model.get("strictLocal") else 0, model["creditCost"])
+
+
 def find(models: list[dict[str, Any]], model_id: str) -> dict[str, Any] | None:
     return next((m for m in models if m["id"] == model_id), None)
 

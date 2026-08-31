@@ -81,10 +81,34 @@ function slideFor(slides: Slide[], where: string): Slide | undefined {
  * kept in step with `deck_export.py` — a preview that differs from the .pptx
  * is discovered in the room.
  */
-function SlideView({
+/**
+ * One slide, drawn at whatever scale the caller has room for.
+ *
+ * Exported because the artifact gallery draws the first slide as a deck's
+ * thumbnail — the same drawing, so a deck looks in the gallery like the deck
+ * it opens as.
+ */
+/**
+ * The fields the caller owns, when a slide is being typed over.
+ *
+ * A new `slide` prop arrives whenever the deck reloads, and the working copy
+ * must not lose what is half-typed — but it must pick up a slide that is
+ * genuinely different (somebody moved to the next one).
+ */
+function pick(next: Slide, working: Slide): Slide {
+  return next.id === working.id ? working : next
+}
+
+
+export function SlideView({
   slide,
   scale = 1,
   writing = true,
+  deckTitle = '',
+  index,
+  total,
+  editable = false,
+  onEdit,
 }: {
   slide: Slide
   scale?: number
@@ -99,8 +123,59 @@ function SlideView({
    * somebody to keep waiting for something that is never coming.
    */
   writing?: boolean
+  /**
+   * The deck's name and where this slide falls in it, for the footer.
+   *
+   * Optional because a thumbnail 400px wide draws a footer nobody can read;
+   * the rail passes neither and gets a slide without one.
+   */
+  deckTitle?: string
+  index?: number
+  total?: number
+  /**
+   * Whether the words on this slide can be typed over.
+   *
+   * The panel's editor was a textarea with a syntax: first line the title, one
+   * line per bullet, and `|` between cells for a table row. So somebody looking
+   * at a comparison table on screen, wanting to change one cell, had to find
+   * that cell inside `| 기존 | 개선 | 적용 시기 |` and count pipes. The slide
+   * was right there and could not be touched.
+   *
+   * Edits are handed back as a whole slide, and the panel turns that back into
+   * the same lines the textarea holds — so the two are one draft and `save()`
+   * did not have to learn anything new.
+   */
+  editable?: boolean
+  onEdit?: (next: Slide) => void
 }) {
   const t = useT()
+  /*
+   * The slide as it is being typed.
+   *
+   * Held in a ref rather than in state: re-rendering a `contentEditable` while
+   * somebody is inside it moves the caret to the front, and the browser is
+   * already holding the characters. What this accumulates is the *other*
+   * fields — edit the title, then a bullet, and the second edit has to carry
+   * the first or it would hand back a slide with the old title.
+   */
+  const working = useRef(slide)
+  working.current = editable ? { ...working.current, ...pick(slide, working.current) } : slide
+  const edit = (patch: Partial<Slide>) => {
+    working.current = { ...working.current, ...patch }
+    onEdit?.(working.current)
+  }
+  /** What a `contentEditable` needs to be one, and nothing when it is not. */
+  const typed = (read: (text: string) => Partial<Slide>) =>
+    editable
+      ? ({
+          contentEditable: true,
+          suppressContentEditableWarning: true,
+          spellCheck: false,
+          onBlur: (e: React.FocusEvent<HTMLElement>) =>
+            edit(read(e.currentTarget.textContent ?? '')),
+          className: 'outline-none focus:bg-accent-soft/40',
+        } as const)
+      : {}
   const accent = slide.accent ?? 'var(--accent)'
   const px = (n: number) => `${n * scale}px`
   /**
@@ -115,6 +190,15 @@ function SlideView({
    * changed the preview would be worse than no control.
    */
   const type = (n: number) => `${n * scale * (slide.textScale ?? 1)}px`
+  /*
+   * Every surface is a mix of the slide's own accent, so one deck in green and
+   * one in navy are the same design rather than the same design plus a blue
+   * table. `deck_export` computes the identical mixes in Python and draws them
+   * into the .pptx and .pdf — see `_mix` there. Change a percentage here and
+   * change it there, or the room sees a different deck from the panel.
+   */
+  const tint = `color-mix(in srgb, ${accent} 7%, #fff)`
+  const hair = '#e6e6e6'
   const rows = slide.rows ?? []
   const metrics = slide.metrics ?? []
   const chart = slide.chart
@@ -122,137 +206,321 @@ function SlideView({
   // Two columns are only two columns when there is enough to fill them; four
   // bullets split in half reads as a mistake.
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
+  /*
+   * How tight the table has to be to stay on the slide.
+   *
+   * A slide is 225 units tall in this drawing and the body gets about 125 of
+   * them. Seven rows at one comfortable size is 190, so the table ran off the
+   * bottom edge and through the footer — which is exactly what a filled head
+   * row makes obvious, because the overflow now has a colour. The row count is
+   * known before anything is drawn, so the size follows it rather than the
+   * slide losing its last row. `deck_export` scales the same way.
+   */
+  const dense = (() => {
+    // What is left under the title once the head band, the title, the tab and
+    // the foot have taken theirs, in this drawing's 225 units.
+    const body = 122
+    // One row in reserve for the cell that wraps to two lines — 시스템 전역
+    // 또는 프로젝트 does, in a column sized for 도구.
+    const perRow = body / (rows.length + 1.2)
+    const size = Math.max(7.5, Math.min(12, perRow / 2.05))
+    return { size, pad: Math.max(2, (perRow - size * 1.4) / 2) }
+  })()
+
+  /**
+   * The cover, and every 장 that opens a section.
+   *
+   * Reversed out of the accent rather than set on white. A title slide has one
+   * job — say what this is before anybody reads a word of it — and the deck
+   * that came before this one opened on a white rectangle with a 4px stripe
+   * down the edge, which is the same rectangle the seventeen slides behind it
+   * were on. The block is the only thing here that is not type, and it is what
+   * makes a deck look like a deck at a glance.
+   */
+  if (slide.layout === 'title') {
+    return (
+      <div
+        className="relative flex size-full flex-col justify-center overflow-hidden"
+        style={{ background: accent, padding: px(34) }}
+      >
+        <div
+          style={{
+            width: px(44),
+            height: px(3),
+            background: 'rgba(255,255,255,0.9)',
+            marginBottom: px(18),
+          }}
+        />
+        <h3
+          style={{ fontSize: type(28), fontWeight: 700, lineHeight: 1.2, color: '#fff' }}
+          {...typed((text) => ({ title: text }))}
+        >
+          {slide.title}
+        </h3>
+        {slide.body && (
+          <p
+            style={{
+              fontSize: type(13),
+              marginTop: px(12),
+              lineHeight: 1.5,
+              color: 'rgba(255,255,255,0.8)',
+            }}
+          >
+            {slide.body}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
       className="relative flex size-full flex-col overflow-hidden bg-white text-[#1a1a1a]"
-      style={{ padding: px(28) }}
+      style={{
+        paddingTop: px(24),
+        paddingLeft: px(28),
+        paddingRight: px(28),
+        // Room for the footer, which is drawn against the bottom edge.
+        paddingBottom: px(28),
+      }}
     >
-      <div className="absolute top-0 left-0 h-full" style={{ width: px(4), background: accent }} />
-      {slide.layout === 'title' ? (
-        <div className="flex flex-1 flex-col justify-center" style={{ paddingLeft: px(16) }}>
-          <h3 style={{ fontSize: type(28), fontWeight: 700, lineHeight: 1.2 }}>{slide.title}</h3>
-          {slide.body && (
-            <p style={{ fontSize: type(13), marginTop: px(12), color: '#666' }}>{slide.body}</p>
-          )}
-        </div>
-      ) : slide.layout === 'quote' && slide.body ? (
-        <div className="flex flex-1 flex-col justify-center" style={{ paddingLeft: px(16) }}>
+      {/* The band across the head. Where the 4px stripe down the left edge
+          used to be: a rule that stands up is read as a margin mark, and one
+          that lies across the top is read as the top of a slide. */}
+      <div className="absolute inset-x-0 top-0" style={{ height: px(6), background: accent }} />
+
+      {slide.layout === 'quote' && slide.body ? (
+        <div className="flex flex-1 flex-col justify-center">
           <p style={{ fontSize: type(20), fontWeight: 600, lineHeight: 1.4, color: accent }}>
             “{slide.body}”
           </p>
           <p style={{ fontSize: type(12), marginTop: px(10), color: '#666' }}>{slide.title}</p>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col" style={{ paddingLeft: px(16) }}>
-          <h3 style={{ fontSize: type(19), fontWeight: 700, marginBottom: px(12) }}>{slide.title}</h3>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <h3
+            style={{ fontSize: type(19), fontWeight: 700, lineHeight: 1.25 }}
+            {...typed((text) => ({ title: text }))}
+          >
+            {slide.title}
+          </h3>
+          {/* The tab under the title. Two by twenty-six, and the only accent
+              on a slide of prose — enough that the eye finds the same corner
+              on every 장, not enough to compete with the words. */}
+          <div
+            style={{
+              width: px(26),
+              height: px(2),
+              background: accent,
+              marginTop: px(8),
+              marginBottom: px(14),
+            }}
+          />
           {/* Words left, picture right — the geometry `deck_export` uses, so
               the preview and the .pptx put them in the same places. */}
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
-          <div className="flex min-w-0 flex-1 flex-col">
-          {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
-          {metrics.length > 0 && (
-            /* Side by side, the figure large and what it counts under it —
-               the same geometry `deck_export` draws into the .pptx and .pdf. */
-            <div className="flex" style={{ gap: px(20), marginTop: px(18) }}>
-              {metrics.map(([figure, label], i) => (
-                <div key={i} className="min-w-0 flex-1">
-                  <div
-                    style={{
-                      fontSize: type(30),
-                      fontWeight: 700,
-                      lineHeight: 1.1,
-                      color: accent,
-                    }}
-                  >
-                    {figure}
-                  </div>
-                  <div style={{ fontSize: type(11), marginTop: px(4), color: '#666' }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {rows.length > 0 && (
-            /* The head row in the accent, hairlines between the body rows, and
-               nothing round the outside — a slide table is read at eight
-               metres, and a grid at that distance is a grey blur with words
-               in it. Kept in step with `deck_export`, which draws the same
-               shape into the .pptx and the .pdf. */
-            <table
-              style={{ fontSize: type(12), lineHeight: 1.5, width: '100%', borderCollapse: 'collapse' }}
-            >
-              <tbody>
-                {rows.map((row, r) => (
-                  <tr key={r} style={{ borderBottom: `1px solid ${r === 0 ? accent : '#e5e5e5'}` }}>
-                    {row.map((cell, c) => (
-                      <td
-                        key={c}
+            <div className="flex min-w-0 flex-1 flex-col">
+              {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
+              {metrics.length > 0 && (
+                /* One card each: the figure large, what it counts under it, and
+                   a rule over the top in the accent. Set on the open slide they
+                   were three numbers floating in a white field; carded, the eye
+                   reads them as one row of comparable things. The same shape
+                   `deck_export` draws into the .pptx and .pdf. */
+                <div className="flex" style={{ gap: px(12), marginTop: px(6) }}>
+                  {metrics.map(([figure, label], i) => (
+                    <div
+                      key={i}
+                      className="min-w-0 flex-1"
+                      style={{
+                        background: tint,
+                        borderTop: `${px(2)} solid ${accent}`,
+                        padding: `${px(14)} ${px(14)} ${px(16)}`,
+                      }}
+                    >
+                      <div
                         style={{
-                          padding: `${px(6)} ${px(8)} ${px(6)} 0`,
-                          verticalAlign: 'top',
-                          fontWeight: r === 0 || c === 0 ? 600 : 400,
-                          color: r === 0 ? accent : '#1a1a1a',
+                          fontSize: type(30),
+                          fontWeight: 700,
+                          lineHeight: 1.1,
+                          color: accent,
+                        }}
+                        {...typed((text) => ({
+                          metrics: (working.current.metrics ?? []).map((m, at) =>
+                            at === i ? ([text, m[1]] as [string, string]) : m,
+                          ),
+                        }))}
+                      >
+                        {figure}
+                      </div>
+                      <div
+                        style={{ fontSize: type(11), marginTop: px(5), color: '#666' }}
+                        {...typed((text) => ({
+                          metrics: (working.current.metrics ?? []).map((m, at) =>
+                            at === i ? ([m[0], text] as [string, string]) : m,
+                          ),
+                        }))}
+                      >
+                        {label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {rows.length > 0 && (
+                /* Clipped rather than allowed to run: a table one row too long
+                   used to draw straight through the foot, and a slide whose
+                   page number has a table row across it reads as a broken
+                   export rather than a long table. */
+                <div className="min-h-0 overflow-hidden">
+                {/* The head row filled and reversed out, the body banded in the
+                    faintest tint of the same accent, hairlines between and
+                    nothing round the outside. A slide table is read at eight
+                    metres: the head has to be a block of colour rather than
+                    coloured words, and a full grid at that distance is a grey
+                    blur. Kept in step with `deck_export`. */}
+                <table
+                  style={{
+                    fontSize: type(dense.size),
+                    lineHeight: 1.4,
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    tableLayout: 'fixed',
+                  }}
+                >
+                  <tbody>
+                    {rows.map((row, r) => (
+                      <tr
+                        key={r}
+                        style={{
+                          background: r === 0 ? accent : r % 2 === 0 ? tint : 'transparent',
+                          borderBottom: r === 0 ? 'none' : `1px solid ${hair}`,
                         }}
                       >
-                        {cell}
-                      </td>
+                        {row.map((cell, c) => (
+                          <td
+                            key={c}
+                            style={{
+                              padding: `${px(dense.pad)} ${px(9)}`,
+                              verticalAlign: 'top',
+                              wordBreak: 'keep-all',
+                              fontWeight: r === 0 || c === 0 ? 600 : 400,
+                              color: r === 0 ? '#fff' : '#1a1a1a',
+                            }}
+                            {...typed((text) => ({
+                              rows: (working.current.rows ?? []).map((row2, ri) =>
+                                ri === r ? row2.map((cell2, ci) => (ci === c ? text : cell2)) : row2,
+                              ),
+                            }))}
+                          >
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {slide.bullets && rows.length === 0 && metrics.length === 0 && !chart && (
-            <ul
-              style={{
-                fontSize: type(13),
-                lineHeight: 1.7,
-                // A long list down one edge wastes the right half of the
-                // rectangle and pushes the last item off the bottom. Splitting
-                // it is the same content, read in the shape it fits.
-                ...(twoColumn
-                  ? { columnCount: 2, columnGap: px(20) }
-                  : null),
-              }}
-            >
-              {slide.bullets.map((b, i) => (
-                <li key={i} className="flex gap-2" style={{ breakInside: 'avoid' }}>
-                  <span style={{ color: accent }}>•</span>
-                  <span>{b}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {slide.body && !slide.bullets?.length && (
-            <p style={{ fontSize: type(12), color: '#555', marginTop: px(8), lineHeight: 1.6 }}>
-              {slide.body}
-            </p>
-          )}
-          {/* 빈 장. 흰 화면만 두면 다 만들어진 것처럼 보인다 */}
-          {pending && !slide.image && (
-            <p style={{ fontSize: type(12), color: '#aaa', marginTop: px(6) }}>
-              {writing ? t('쓰는 중…') : t('내용이 비었습니다 — 텍스트 수정으로 채워 주세요.')}
-            </p>
-          )}
-          </div>
-          {slide.image?.src && (
-            <div
-              className="flex shrink-0 flex-col justify-center"
-              style={{ width: pending ? '100%' : '42%' }}
-            >
-              <img
-                src={slide.image.src}
-                alt={slide.image.caption || t('그림')}
-                className="max-h-full w-full object-contain"
-              />
-              {slide.image.caption && (
-                <p style={{ fontSize: type(10), color: '#666', marginTop: px(4) }}>
-                  {slide.image.caption}
+                  </tbody>
+                </table>
+                </div>
+              )}
+              {slide.bullets && rows.length === 0 && metrics.length === 0 && !chart && (
+                <ul
+                  style={{
+                    fontSize: type(13),
+                    lineHeight: 1.7,
+                    // A long list down one edge wastes the right half of the
+                    // rectangle and pushes the last item off the bottom.
+                    // Splitting it is the same content, read in the shape it
+                    // fits.
+                    ...(twoColumn ? { columnCount: 2, columnGap: px(20) } : null),
+                  }}
+                >
+                  {slide.bullets.map((b, i) => (
+                    <li key={i} className="flex gap-2" style={{ breakInside: 'avoid' }}>
+                      <span style={{ color: accent }}>•</span>
+                      <span
+                        {...typed((text) => ({
+                          bullets: (working.current.bullets ?? []).map((old, at) =>
+                            at === i ? text : old,
+                          ),
+                        }))}
+                      >
+                        {b}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {slide.body && !slide.bullets?.length && (
+                <p
+                  style={{ fontSize: type(12), color: '#555', marginTop: px(2), lineHeight: 1.6 }}
+                  {...typed((text) => ({ body: text }))}
+                >
+                  {slide.body}
+                </p>
+              )}
+              {/* 빈 장. 흰 화면만 두면 다 만들어진 것처럼 보인다 */}
+              {pending && !slide.image && (
+                <p style={{ fontSize: type(12), color: '#aaa', marginTop: px(6) }}>
+                  {writing ? t('쓰는 중…') : t('내용이 비었습니다 — 텍스트 수정으로 채워 주세요.')}
                 </p>
               )}
             </div>
-          )}
+            {slide.image?.src && (
+              <div
+                className="flex shrink-0 flex-col justify-center"
+                style={{ width: pending ? '100%' : '42%' }}
+              >
+                <img
+                  src={slide.image.src}
+                  alt={slide.image.caption || t('그림')}
+                  className="max-h-full w-full object-contain"
+                />
+                {slide.image.caption && (
+                  <p style={{ fontSize: type(10), color: '#666', marginTop: px(4) }}>
+                    {slide.image.caption}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* The foot. What deck this is on the left, where you are in it on the
+          right — the two things somebody asks about from the floor. Drawn only
+          where there is room to read it: the rail's thumbnails pass no index
+          and get none. */}
+      {index !== undefined && total !== undefined && (
+        <div
+          className="absolute flex items-center justify-between"
+          style={{
+            left: px(28),
+            right: px(28),
+            bottom: px(10),
+            paddingTop: px(7),
+            borderTop: `1px solid ${hair}`,
+          }}
+        >
+          <span
+            className="min-w-0 truncate"
+            style={{ fontSize: type(8), letterSpacing: px(0.3), color: '#8a8a8a' }}
+          >
+            {deckTitle}
+          </span>
+          <span
+            className="grid shrink-0 place-items-center"
+            style={{
+              minWidth: px(15),
+              height: px(15),
+              padding: `0 ${px(4)}`,
+              background: accent,
+              color: '#fff',
+              fontSize: type(8),
+              fontWeight: 700,
+            }}
+          >
+            {index + 1}
+          </span>
         </div>
       )}
     </div>
@@ -314,7 +582,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={t('{name} 에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
+        title={t('{name}에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
         description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
         footer={
           <>
@@ -335,6 +603,17 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
           caption={caption}
           onCaption={setCaption}
           about={slide.title || t('이 장')}
+          title={deck.title}
+          /* What this 장 already says, so the suggestion draws what the words
+             cannot rather than illustrating them a second time. */
+          context={[
+            slide.body,
+            ...(slide.bullets ?? []),
+            ...(slide.rows ?? []).map((row) => row.join(' · ')),
+            ...(slide.metrics ?? []).map(([value, label]) => `${value} — ${label}`),
+          ]
+            .filter(Boolean)
+            .join('\n')}
         />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
@@ -574,7 +853,14 @@ function PresentMode({
         ref={stage.ref}
         className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float"
       >
-        <SlideView slide={slide} scale={stage.scale} writing={false} />
+        <SlideView
+          slide={slide}
+          scale={stage.scale}
+          writing={false}
+          deckTitle={deck.title}
+          index={index}
+          total={deck.slides.length}
+        />
       </div>
     </PresentStage>
   )
@@ -1145,7 +1431,19 @@ export function DeckPanel({
                 className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-raised"
               >
                 {slide ? (
-                  <SlideView slide={slide} scale={stage.scale} writing={writing} />
+                  <SlideView
+                    slide={slide}
+                    scale={stage.scale}
+                    writing={writing}
+                    deckTitle={deck.title}
+                    index={index}
+                    total={deck.slides.length}
+                    /* 텍스트 수정을 누른 동안에는 슬라이드가 곧 편집기다.
+                       고친 것은 아래 상자와 같은 초안으로 흘러가므로 저장은
+                       한 곳에서만 일어난다. */
+                    editable={editing}
+                    onEdit={(next) => setDraft(toLines(next))}
+                  />
                 ) : (
                   <div className="grid size-full place-items-center bg-white text-base text-[#999]">
                     {t('구성을 잡는 중…')}
@@ -1257,7 +1555,7 @@ export function DeckPanel({
                       aria-label={t('슬라이드 텍스트')}
                     />
                     <p className="text-xs text-faint">
-                      {t('첫 줄이 제목, 나머지 줄이 각각 한 항목입니다. | 로 나눈 줄은 표의 한 행이 됩니다.')}
+                      {t('위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.')}
                     </p>
                     <Textarea
                       rows={3}

@@ -34,7 +34,7 @@ from reportlab.platypus import (
 from reportlab.platypus import Image as RLImage
 
 from app.services import charts as chartkit
-from app.services import design, fonts, pictures
+from app.services import design, fonts, pictures, richtext
 
 log = logging.getLogger(__name__)
 
@@ -214,8 +214,45 @@ def _cells(line: str) -> list[str]:
     return [cell.replace("\\|", "|").strip() for cell in re.split(r"(?<!\\)\|", body)]
 
 
-def _markdown_to_lines(text: str) -> list[tuple[str, Any, str]]:
-    """`(kind, text, marker)` per line: heading2, bullet, number, table or body.
+def _as_grid(rows: richtext.Grid | list[list[str]]) -> richtext.Grid:
+    """Whatever a caller has, as a grid. Plain rows merge nothing."""
+    if isinstance(rows, richtext.Grid):
+        return rows
+    return richtext.Grid(
+        rows=[[richtext.Cell(cell.replace("<br>", "\n")) for cell in row] for row in rows]
+    )
+
+
+def _matched(written: list[list[str]], grids: list[richtext.Grid], used: set[int]) -> richtext.Grid | None:
+    """The grid a GFM table was written from, if one of them was.
+
+    Matched on the text rather than on position alone. A section's Markdown and
+    its grids come from the same HTML in the same order, so position is almost
+    always enough — but a report the model wrote holds GFM tables with no grid
+    behind them at all, and pairing those by counting would hand a hand-typed
+    table somebody else's merges.
+    """
+    for index, grid in enumerate(grids):
+        if index in used:
+            continue
+        if grid.flat(newline="<br>") == written:
+            used.add(index)
+            return grid
+    return None
+
+
+#: The marker each list depth hangs. `•` stays the top level, because every
+#: document already written has it there; the two under it are the sub-markers a
+#: Korean 공문 uses, so ○ · • · - reads as three levels rather than as one.
+_MARKERS = ("•", "–", "·")
+#: How far one level is set in. Points here; each writer converts.
+_INDENT = 14.0
+
+
+def _markdown_to_lines(
+    text: str, grids: list[richtext.Grid] | None = None
+) -> list[tuple[str, Any, str, int]]:
+    """`(kind, text, marker, depth)` per line: heading2, bullet, number, table, body.
 
     Deliberately small — the model writes prose with the occasional sub-heading
     and list, so a full Markdown parser would be mostly dead code.
@@ -230,21 +267,39 @@ def _markdown_to_lines(text: str) -> list[tuple[str, Any, str]]:
     bullet, `3.` for an ordered item, empty otherwise. Ordered items keep their
     numbers, because that is where the number carries meaning.
 
+    `depth` is how far the item was indented, in levels. Markdown says nesting
+    with two spaces and `richtext` writes it that way; before this the exporters
+    could not read it back, so a 공문's three levels of 글머리 arrived as one
+    flat list — which is the same list saying something else about what is
+    subordinate to what.
+
     Numbering follows Markdown: the first item's own number starts the run and
     the rest count from there, so `1.` on every line renders 1, 2, 3. A heading,
     bullet or prose line ends the run; a blank line does not.
     """
-    out: list[tuple[str, Any, str]] = []
+    out: list[tuple[str, Any, str, int]] = []
     number = 0
+    #: Where each list depth's numbering has got to. Cleared below it when a
+    #: level closes, so the next sub-list starts again.
+    counts: dict[int, int] = {}
     rows: list[list[str]] = []
+    #: Grids for this section's tables, spent as they are matched.
+    spare = list(grids or [])
+    used: set[int] = set()
+    #: Whether the table being collected has had its rule row yet.
+    ruled = False
     #: The fenced block being collected, and what language it claimed.
     fence: list[str] | None = None
     fence_lang = ""
 
     def close_table() -> None:
-        nonlocal rows
+        nonlocal rows, ruled
+        ruled = False
         if rows:
-            out.append(("table", rows, ""))
+            width = max(len(row) for row in rows)
+            padded = [row + [""] * (width - len(row)) for row in rows]
+            found = _matched(padded, spare, used)
+            out.append(("table", found or _as_grid(padded), "", 0))
             rows = []
 
     for raw in (text or "").splitlines():
@@ -258,14 +313,14 @@ def _markdown_to_lines(text: str) -> list[tuple[str, Any, str]]:
                         # picture a browser drew for this chart is stored under
                         # its digest, the same way a diagram's is, and the
                         # format that cannot draw one looks it up from here.
-                        out.append(("chart", drawn, source))
+                        out.append(("chart", drawn, source, 0))
                 elif fence_lang.lower() == "steps":
                     # A procedure in order. A picture of one is a picture of
                     # text: the reader cannot copy a step out of it, search it,
                     # or correct a wrong one in the file they were sent. Drawn
                     # as a table for the same reason the strip below is.
                     if steps := _kpi_rows(source, limit=8):
-                        out.append(("steps", steps, ""))
+                        out.append(("steps", steps, "", 0))
                 elif fence_lang.lower() == "kpi":
                     # A row of figures with what each one is under it. Written
                     # as a fence rather than as markup because a section body
@@ -273,16 +328,16 @@ def _markdown_to_lines(text: str) -> list[tuple[str, Any, str]]:
                     # of it, and adding a raw-HTML pass to make one work would
                     # open the body to everything else too.
                     if figures := _kpi_rows(source):
-                        out.append(("kpi", figures, ""))
+                        out.append(("kpi", figures, "", 0))
                 elif fence_lang.lower() == "mermaid":
                     # Placed by key. The picture, if the browser has drawn one
                     # yet, is on the section; the exporters look it up.
-                    out.append(("diagram", {"source": source, "key": diagram_key(source)}, ""))
+                    out.append(("diagram", {"source": source, "key": diagram_key(source)}, "", 0))
                 else:
                     # Any other fence is code, and this writer has no code
                     # block — see `_ALLOWED_TAGS` on `<pre>`. Its lines go out
                     # as prose rather than being dropped.
-                    out.extend(("body", one, "") for one in fence if one.strip())
+                    out.extend(("body", one, "", 0) for one in fence if one.strip())
                 fence = None
                 fence_lang = ""
             else:
@@ -302,10 +357,22 @@ def _markdown_to_lines(text: str) -> list[tuple[str, Any, str]]:
                 close_table()
             continue
         if _RULE.match(line) and rows:
-            # The rule under the head carries no cells of its own.
+            # The rule under the head carries no cells of its own — and a table
+            # has exactly one, right under its head. So a second rule is not
+            # this table's: it belongs to the next one, whose head is the row
+            # just read. Hand that row over and close what came before it.
+            #
+            # Two tables written back to back used to arrive here as one, and a
+            # 상황 보고서 built out of 107 single-row boxes came out with 64.
+            if ruled:
+                head = rows.pop()
+                close_table()
+                rows.append(head)
+            ruled = True
             continue
         if _ROW.match(line):
             number = 0
+            counts.clear()
             rows.append(_cells(line))
             continue
         close_table()
@@ -318,32 +385,48 @@ def _markdown_to_lines(text: str) -> list[tuple[str, Any, str]]:
             if decoded:
                 mime, data = decoded
                 out.append(
-                    ("image", {"data": data, "mime": mime, "caption": picture.group(1)}, "")
+                    ("image", {"data": data, "mime": mime, "caption": picture.group(1)}, "", 0)
                 )
             continue
         if heading := re.match(r"^#{2,6}\s+(.*)$", line):
             number = 0
-            out.append(("heading", heading.group(1).strip(), ""))
+            counts.clear()
+            out.append(("heading", heading.group(1).strip(), "", 0))
         elif note := _NOTE.match(line):
             # Ahead of the bullet rule and not by accident. A footnote used to
             # arrive as `* 보안운영팀 2025년 4분기 집계.` — which is a bullet to
             # every reader of it, including this one — so the first note of
             # every section came out of the exporters as a list item.
             number = 0
-            out.append(("note", note.group(2).strip(), note.group(1)))
-        elif bullet := re.match(r"^\s*[-*+]\s+(.*)$", line):
+            counts.clear()
+            out.append(("note", note.group(2).strip(), note.group(1), 0))
+        elif bullet := re.match(r"^(\s*)[-*+]\s+(.*)$", line):
             number = 0
-            out.append(("bullet", bullet.group(1).strip(), "•"))
-        elif numbered := re.match(r"^\s*(\d{1,9})[.)]\s+(.*)$", line):
-            number = number + 1 if number else int(numbered.group(1))
-            out.append(("number", numbered.group(2).strip(), f"{number}."))
+            counts.clear()
+            depth = min(len(bullet.group(1)) // 2, len(_MARKERS) - 1)
+            out.append(("bullet", bullet.group(2).strip(), _MARKERS[depth], depth))
+        elif numbered := re.match(r"^(\s*)(\d{1,9})[.)]\s+(.*)$", line):
+            depth = min(len(numbered.group(1)) // 2, len(_MARKERS) - 1)
+            # A run of numbers is one list, and a sub-list is a different list.
+            # Counted per level, so a sub-list starts at its own first number
+            # and the list it sits inside carries on where it left off — before
+            # this the outer 1. 하나 / 2. 둘 came out 1. and 3., because the
+            # sub-items had counted against it.
+            counts[depth] = counts.get(depth, 0) + 1 if counts.get(depth) else int(
+                numbered.group(2)
+            )
+            for deeper in [d for d in counts if d > depth]:
+                del counts[deeper]
+            number = counts[depth]
+            out.append(("number", numbered.group(3).strip(), f"{number}.", depth))
         else:
             number = 0
-            out.append(("body", line.strip(), ""))
+            counts.clear()
+            out.append(("body", line.strip(), "", 0))
     close_table()
     if fence:
         # An unclosed fence is a truncated document, not a diagram.
-        out.extend(("body", one, "") for one in fence if one.strip())
+        out.extend(("body", one, "", 0) for one in fence if one.strip())
     return out
 
 
@@ -351,10 +434,24 @@ def _strip_inline(text: str) -> str:
     """Bold and code markers, removed rather than rendered.
 
     Half-applied emphasis reads worse than none, across three document models.
+
+    A marker is a pair, and the pair holds code. This removed every backtick in
+    the text, which is right for `code` and wrong for the one standing alone —
+    and standing alone is what it does in a Korean date: `28.03 is 2028년 3월,
+    written the way an apostrophe is. A 계획서 came back out of the exporter
+    with its 적용 시기 column reading 28.03, which is a different thing said the
+    same way, and nothing anywhere reported a loss.
+
+    Pairing alone is not enough either: `28.03 `28.03 — two dates in one cell —
+    is a pair by that rule, and taking it leaves 28.03 28.03. So the span has to
+    look like code, which in Markdown means it does not open or close on a
+    space. Two lone backticks with no space between them would still be read as
+    a pair; nothing here can tell those apart, and a date is followed by a space
+    or by nothing.
     """
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"\1", text)
-    return text.replace("`", "")
+    return re.sub(r"`(\S(?:[^`]*\S)?)`", r"\1", text)
 
 
 def _field(paragraph, instruction: str, placeholder: str = "") -> None:
@@ -427,28 +524,55 @@ def _table_of_contents(document) -> None:
     document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
 
-def _docx_table(document, rows: list[list[str]]) -> None:
-    """A real Word table, head row emphasised.
+def _docx_table(document, rows: richtext.Grid | list[list[str]]) -> None:
+    """A real Word table, head row emphasised, merges merged.
 
     `Table Grid` is a built-in style, so the reader's own template restyles it
     rather than fighting a set of borders written into this file.
+
+    Built as a full rectangle first and merged afterwards, which is python-docx's
+    own way round: `cell.merge` joins two corners of a region and Word stores the
+    result. Writing the text after the merge rather than before it — the merged
+    cell keeps the text of every cell that went into it, so a merge over four
+    written cells reads as the same word four times.
     """
     from docx.shared import Pt
 
-    rows = [row for row in rows if any(cell.strip() for cell in row)]
-    if not rows:
+    grid = richtext.Grid(
+        rows=[row for row in _as_grid(rows).rows if any(c.text.strip() for c in row)]
+    )
+    if not grid.rows:
         return
-    width = max(len(row) for row in rows)
-    table = document.add_table(rows=len(rows), cols=width)
+    width = grid.width
+    table = document.add_table(rows=len(grid.rows), cols=width)
     table.style = "Table Grid"
-    for r, row in enumerate(rows):
-        for c in range(width):
-            cell = table.cell(r, c)
-            cell.text = _strip_inline(row[c]) if c < len(row) else ""
+
+    covered: set[tuple[int, int]] = set()
+    for r, row in enumerate(grid.rows):
+        column = 0
+        for source in row:
+            while (r, column) in covered:
+                column += 1
+            if column >= width:
+                break
+            across = min(source.colspan, width - column)
+            down = min(source.rowspan, len(grid.rows) - r)
+            for dr in range(down):
+                for dc in range(across):
+                    if (dr, dc) != (0, 0):
+                        covered.add((r + dr, column + dc))
+            cell = table.cell(r, column)
+            if across > 1 or down > 1:
+                cell = cell.merge(table.cell(r + down - 1, column + across - 1))
+            lines = [_strip_inline(line) for line in source.text.split("\n")] or [""]
+            cell.text = lines[0]
+            for extra in lines[1:]:
+                cell.add_paragraph(extra)
             if r == 0:
                 for paragraph in cell.paragraphs:
                     for run in paragraph.runs:
                         run.bold = True
+            column += across
     document.add_paragraph().paragraph_format.space_after = Pt(4)
 
 
@@ -858,14 +982,14 @@ def to_docx(
     charts = 0
     for section in sections:
         recolour(document.add_heading(section.get("heading") or "", level=1))
-        lines = _markdown_to_lines(section.get("content") or "")
+        lines = _markdown_to_lines(section.get("content") or "", section.get("tables"))
         #: This section's notes, by the number the marks in its prose use.
         #: Read ahead of the loop because a note is written *after* the
         #: sentence that cites it, and the mark has to become a real one at the
         #: moment that sentence is written.
-        notes = {mark: str(body) for kind, body, mark in lines if kind == "note"}
+        notes = {mark: str(body) for kind, body, mark, _ in lines if kind == "note"}
         cited: set[str] = set()
-        for kind, text, marker in lines:
+        for kind, text, marker, depth in lines:
             if kind == "table":
                 _docx_table(document, text)
                 continue
@@ -912,6 +1036,8 @@ def to_docx(
             elif kind == "bullet":
                 paragraph = document.add_paragraph(style="List Bullet")
                 footnotes.write(paragraph, clean, notes)
+                if depth:
+                    paragraph.paragraph_format.left_indent = Inches(0.25 * (depth + 1))
                 cited |= _marks_in(clean)
             elif kind == "number":
                 # Not Word's "List Number" style: its automatic numbering runs
@@ -919,7 +1045,7 @@ def to_docx(
                 # 4. The literal marker matches the source and the other formats.
                 paragraph = document.add_paragraph(f"{marker} ", style=_BODY)
                 footnotes.write(paragraph, clean, notes)
-                paragraph.paragraph_format.left_indent = Inches(0.25)
+                paragraph.paragraph_format.left_indent = Inches(0.25 * (depth + 1))
                 paragraph.paragraph_format.space_after = Pt(3)
                 cited |= _marks_in(clean)
             else:
@@ -938,7 +1064,23 @@ def to_docx(
     return buffer.getvalue()
 
 
-def _table_as_lines(rows: list[list[str]]) -> list[str]:
+def _at_depth(style, depth: int):
+    """A list style set in by `depth` levels, or the style itself at the top.
+
+    Cloned rather than mutated: reportlab styles are shared objects, and one
+    nested item would otherwise indent every list drawn after it.
+    """
+    if not depth:
+        return style
+    return ParagraphStyle(
+        f"{style.name}-{depth}",
+        parent=style,
+        leftIndent=style.leftIndent + depth * (_INDENT / 72 * 25.4) * mm,
+        bulletIndent=style.bulletIndent + depth * (_INDENT / 72 * 25.4) * mm,
+    )
+
+
+def _table_as_lines(rows: richtext.Grid | list[list[str]]) -> list[str]:
     """A table as one line per row, for the format that has no table model.
 
     `.hwpx` tables are a nested record structure this writer does not build —
@@ -946,7 +1088,7 @@ def _table_as_lines(rows: list[list[str]]) -> list[str]:
     first. Legible and honest: the reader can see it was a table and can see
     every value, which is more than the pipes were giving them.
     """
-    kept = [row for row in rows if any(cell.strip() for cell in row)]
+    kept = [row for row in _as_grid(rows).flat() if any(cell.strip() for cell in row)]
     return [" · ".join(_strip_inline(cell) for cell in row) for row in kept]
 
 
@@ -1148,28 +1290,55 @@ def _pdf_picture(picture: dict, styles: dict) -> list:
     return out
 
 
-def _pdf_table(rows: list[list[str]], styles: dict, accent) -> Table | None:
+def _pdf_table(
+    rows: richtext.Grid | list[list[str]], styles: dict, accent
+) -> Table | None:
     """A drawn table, or `None` when there is nothing in it.
 
     Cells are `Paragraph`s rather than strings so a long one wraps instead of
     running off the page — the single most common way a generated table breaks
-    a PDF.
+    a PDF. A cell's own line breaks become `<br/>`, which is reportlab's
+    paragraph markup rather than this file's invention.
+
+    reportlab spells a merge as a `SPAN` command over a rectangle of the grid,
+    with the covered cells left empty — so the rectangle is filled here and the
+    commands are added beside the borders.
     """
-    kept = [row for row in rows if any(cell.strip() for cell in row)]
-    if not kept:
+    grid = richtext.Grid(
+        rows=[row for row in _as_grid(rows).rows if any(c.text.strip() for c in row)]
+    )
+    if not grid.rows:
         return None
-    width = max(len(row) for row in kept)
-    body = [
-        [
-            Paragraph(_escape(_strip_inline(row[c])) if c < len(row) else "", styles["body"])
-            for c in range(width)
-        ]
-        for row in kept
-    ]
+    width = grid.width
+    body = [[Paragraph("", styles["body"]) for _ in range(width)] for _ in grid.rows]
+    spans: list[tuple] = []
+    covered: set[tuple[int, int]] = set()
+    for r, row in enumerate(grid.rows):
+        column = 0
+        for source in row:
+            while (r, column) in covered:
+                column += 1
+            if column >= width:
+                break
+            across = min(source.colspan, width - column)
+            down = min(source.rowspan, len(grid.rows) - r)
+            for dr in range(down):
+                for dc in range(across):
+                    if (dr, dc) != (0, 0):
+                        covered.add((r + dr, column + dc))
+            if across > 1 or down > 1:
+                spans.append(("SPAN", (column, r), (column + across - 1, r + down - 1)))
+            text = "<br/>".join(
+                _escape(_strip_inline(line)) for line in source.text.split("\n")
+            )
+            body[r][column] = Paragraph(text, styles["body"])
+            column += across
+
     table = Table(body, colWidths=[(170 * mm) / width] * width, repeatRows=1)
     table.setStyle(
         TableStyle(
             [
+                *spans,
                 ("GRID", (0, 0), (-1, -1), 0.4, HexColor("#d0d0d0")),
                 ("BACKGROUND", (0, 0), (-1, 0), HexColor("#f2f2f2")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1243,7 +1412,9 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
         story.append(Paragraph(_escape(section.get("heading") or ""), styles["h1"]))
         #: This section's footnotes, drawn under it once the prose is done.
         notes: list[tuple[str, str]] = []
-        for kind, text, marker in _markdown_to_lines(section.get("content") or ""):
+        for kind, text, marker, depth in _markdown_to_lines(
+            section.get("content") or "", section.get("tables")
+        ):
             if kind == "table":
                 accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
                 if drawn := _pdf_table(text, styles, accent):
@@ -1308,7 +1479,9 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
             elif kind in ("bullet", "number"):
                 # `bulletText` hangs the marker, keeping two-digit numbers
                 # aligned with single-digit ones.
-                story.append(Paragraph(clean, styles["bullet"], bulletText=marker))
+                story.append(
+                    Paragraph(clean, _at_depth(styles["bullet"], depth), bulletText=marker)
+                )
             else:
                 story.append(Paragraph(clean, styles["body"]))
         for picture in section.get("images") or []:
@@ -1532,6 +1705,12 @@ _HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="3">
 #: The text column, in HWPUNIT: page width less both margins. A table wider
 #: than this is a table Hancom pushes off the page.
 _HWPX_TEXT_WIDTH = 59528 - 8504 - 8504
+
+#: The body's own character, in HWPUNIT. Hangul is full-width, so a 10pt letter
+#: is 1000 wide and the text column divides into about forty-two of them. This
+#: is what lets a column width be reasoned about in characters — which is what
+#: "wide enough for 스포츠과학대학" means.
+_HWPX_BODY_CHAR = 1000
 #: A row's nominal height. Hancom grows a cell to fit its text, so this only
 #: has to be a sane starting point rather than a measurement.
 _HWPX_ROW_HEIGHT = 2000
@@ -1561,6 +1740,25 @@ _HWPX_PARA_SHAPES = (
     (4, "JUSTIFY", 1000, 0, 100),  # bullet — indented from the body margin
     (5, "CENTER", 0, 300, 100),    # figure and its caption
     (6, "CENTER", 0, 0, 0),        # a centred table cell — no space of its own
+    # A table cell that reads from the left.
+    #
+    # Cells used shape 3, which is the body's, and the body is justified — the
+    # right thing across a full text column and the wrong thing inside one two
+    # centimetres wide. Hangul has no hyphenation to fall back on, so Hancom
+    # pulls the words apart instead: 랭  체  인  (LangChain)  기반으로, one word
+    # per line with the gaps stretched to reach both walls. Left is what a
+    # table cell wants.
+    (7, "LEFT", 0, 0, 0),
+    # The two levels under a bullet. A sub-item at its parent's indent is not a
+    # sub-item; a Korean 공문 says ○ then • then -, and the indent is half of
+    # what says which is which.
+    #
+    # On the end, and their ids are their positions: a check reads this table
+    # by index — `_HWPX_PARA_SHAPES[6][1] == "CENTER"` — so a shape inserted in
+    # the middle renumbers every one after it as far as that reader is
+    # concerned, and cells came out justified in a column two centimetres wide.
+    (8, "JUSTIFY", 2000, 0, 100),  # bullet, one level in
+    (9, "JUSTIFY", 3000, 0, 100),  # bullet, two levels in
 )
 
 #: 160% is the usual line spacing for a Korean report; single spacing sets Hangul
@@ -1743,13 +1941,77 @@ def _hwpx_para(text: str, para_pr: int, char_pr: int = 0) -> str:
     )
 
 
+def _column_weights(rows: list[list[str]], cols: int) -> list[int]:
+    """Column widths in characters, summing to what the page actually holds.
+
+    Equal shares are right only when the columns hold the same kind of thing. A
+    구분 column of two-word labels beside an 개선 column of two-sentence
+    descriptions came out the same width, and the narrow one then wrapped every
+    label onto three lines while the wide one ran half empty.
+
+    Widths are returned in characters rather than as bare ratios, and that is
+    the whole of it. A first attempt gave each column a floor — "at least as
+    wide as its longest word" — as a *weight*, and weights are shares of a
+    total: a floor of 7 beside a column weighted 34 came out at three and a half
+    characters, and 스포츠과학대학 split as before. Hancom breaks Hangul between
+    characters when it must, with no hyphen to say it did, so a column narrower
+    than its widest word does not wrap — it makes two words out of one.
+
+    So each column is first given the word it has to hold, and only what is left
+    over is shared out by how much text each column carries. When the words
+    alone do not fit — five columns of long compound nouns on A4 — every column
+    is scaled down together, which splits somewhere but splits proportionally
+    rather than sacrificing one column to another.
+    """
+    def longest_word(column: int) -> int:
+        return max(
+            (len(word) for row in rows if column < len(row) for word in row[column].split()),
+            default=1,
+        )
+
+    #: Hangul at the body's 10pt is a full-width character, so the text column
+    #: divides into about this many of them once each cell's margins are out.
+    budget = (_HWPX_TEXT_WIDTH - cols * _HWPX_CELL_MARGIN * 2) // _HWPX_BODY_CHAR
+    need = [max(2, min(longest_word(c), budget // 2)) for c in range(cols)]
+    if sum(need) >= budget:
+        # More words than the page holds. Scaling every column by the same
+        # factor is the obvious answer and the wrong one: it takes 스포츠과학대학
+        # from seven characters down to five and splits it, to buy a column of
+        # sentences half a character it did not need — sentences have spaces to
+        # wrap at and compound nouns do not.
+        #
+        # So the short needs are met first and the shortfall is shared among the
+        # columns that can absorb it. Filled in ascending order, each column
+        # takes the smaller of what it needs and an even share of what is left,
+        # which hands the leftovers of every satisfied column to the ones still
+        # waiting.
+        out = [0] * cols
+        rest = budget
+        for taken, column in enumerate(sorted(range(cols), key=lambda c: need[c])):
+            share = rest // (cols - taken)
+            out[column] = min(need[column], share)
+            rest -= out[column]
+        return out
+    want = [
+        max((len(row[c]) for row in rows if c < len(row)), default=1) for c in range(cols)
+    ]
+    spare = budget - sum(need)
+    extra = [max(0, w - n) for w, n in zip(want, need, strict=True)]
+    total = sum(extra)
+    if total == 0:
+        return need
+    out = [n + spare * e // total for n, e in zip(need, extra, strict=True)]
+    out[-1] += budget - sum(out)
+    return out
+
+
 def _hwpx_table(
-    rows: list[list[str]],
+    rows: richtext.Grid | list[list[str]],
     *,
     char_pr: int = 0,
     head_char_pr: int = 1,
     widths: list[int] | None = None,
-    cell_para_pr: int | list[int] = 3,
+    cell_para_pr: int | list[int] = 7,
 ) -> str:
     """A GFM table as an OWPML table, wrapped in the paragraph that holds it.
 
@@ -1769,20 +2031,29 @@ def _hwpx_table(
     are not all the same job — a step number beside a sentence gets a twelfth
     of the width rather than a third of it. Omitted, every column is equal.
 
-    `cell_para_pr` picks the paragraph shape inside a cell: 3 reads from the
+    `cell_para_pr` picks the paragraph shape inside a cell: 7 reads from the
     left, 6 centres. A list gives one per column, which a procedure needs in
     both directions at once — one shape for the whole table means either a
     number hard against the wall of a very narrow cell or every sentence in the
     table running down the middle of its column.
 
+    Merges are written where the grid has them. A cell covered by the one above
+    or to its left is not emitted at all — OWPML describes a merge by the anchor
+    carrying `cellSpan` and the covered addresses simply being absent, so this
+    is the format's own shape rather than a trick. A cell holding two lines gets
+    two `hp:p`, which is the only way a cell holds two lines.
+
     Raises on anything it cannot render, so the caller falls back to lines. A
     table drawn as text is a document somebody can still read; a document that
     will not open is not.
     """
-    kept = [row for row in rows if any(cell.strip() for cell in row)]
-    if not kept:
+    grid = richtext.Grid(
+        rows=[row for row in _as_grid(rows).rows if any(c.text.strip() for c in row)]
+    )
+    if not grid.rows:
         raise ValueError("빈 표")
-    cols = max(len(row) for row in kept)
+    kept = grid.flat()
+    cols = grid.width
     if cols < 1 or cols > 12:
         # Past a dozen columns the cells are too narrow to hold a word, and the
         # lines version reads better than a table nobody can follow.
@@ -1790,24 +2061,41 @@ def _hwpx_table(
     # Proportional, and summing to exactly the text width — Hancom lays the
     # table out from the cell sizes, so a rounding error left over from the
     # division shows up as a column that does not reach the right margin.
-    weights = (widths or [1] * cols)[:cols]
+    weights = (widths or _column_weights(kept, cols))[:cols]
     weights += [1] * (cols - len(weights))
     total = sum(weights) or cols
     column_widths = [_HWPX_TEXT_WIDTH * w // total for w in weights]
     column_widths[-1] += _HWPX_TEXT_WIDTH - sum(column_widths)
 
     body: list[str] = []
-    for r, row in enumerate(kept):
+    #: Addresses covered by a merge that began above or to the left. OWPML wants
+    #: them absent, not empty.
+    covered: set[tuple[int, int]] = set()
+    for r, row in enumerate(grid.rows):
         cells: list[str] = []
-        for c in range(cols):
-            text = _strip_inline(row[c]) if c < len(row) else ""
+        column = 0
+        for cell in row:
+            while (r, column) in covered:
+                column += 1
+            if column >= cols:
+                break
+            across = min(cell.colspan, cols - column)
+            down = min(cell.rowspan, len(grid.rows) - r)
+            for dr in range(down):
+                for dc in range(across):
+                    if (dr, dc) != (0, 0):
+                        covered.add((r + dr, column + dc))
             # The head row is bold at body size, shaded, and carries a heavier
             # rule under it. Bold alone was not enough to read as a header at a
             # glance, and 13pt — the section-heading size — is a heading rather
             # than a header row.
             fill = 3 if r == 0 else 2
-            shape = cell_para_pr[c] if isinstance(cell_para_pr, list) else cell_para_pr
-            para = _hwpx_para(text, shape, head_char_pr if r == 0 else char_pr)
+            shape = cell_para_pr[column] if isinstance(cell_para_pr, list) else cell_para_pr
+            lines = [_strip_inline(line) for line in cell.text.split("\n")] or [""]
+            para = "".join(
+                _hwpx_para(line, shape, head_char_pr if r == 0 else char_pr) for line in lines
+            )
+            width = sum(column_widths[column : column + across])
             cells.append(
                 f'<hp:tc name="" header="{1 if r == 0 else 0}" hasMargin="1" protect="0"'
                 f' editable="0" dirty="0" borderFillIDRef="{fill}">'
@@ -1816,20 +2104,21 @@ def _hwpx_table(
                 ' textHeight="0" hasTextRef="0" hasNumRef="0">'
                 f"{para}"
                 "</hp:subList>"
-                f'<hp:cellAddr colAddr="{c}" rowAddr="{r}"/>'
-                '<hp:cellSpan colSpan="1" rowSpan="1"/>'
-                f'<hp:cellSz width="{column_widths[c]}" height="{_HWPX_ROW_HEIGHT}"/>'
+                f'<hp:cellAddr colAddr="{column}" rowAddr="{r}"/>'
+                f'<hp:cellSpan colSpan="{across}" rowSpan="{down}"/>'
+                f'<hp:cellSz width="{width}" height="{_HWPX_ROW_HEIGHT * down}"/>'
                 f'<hp:cellMargin left="{_HWPX_CELL_MARGIN}" right="{_HWPX_CELL_MARGIN}"'
                 f' top="{_HWPX_CELL_MARGIN}" bottom="{_HWPX_CELL_MARGIN}"/>'
                 "</hp:tc>"
             )
+            column += across
         body.append("<hp:tr>" + "".join(cells) + "</hp:tr>")
 
-    height = _HWPX_ROW_HEIGHT * len(kept)
+    height = _HWPX_ROW_HEIGHT * len(grid.rows)
     table = (
         f'<hp:tbl id="0" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM"'
         ' textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL"'
-        f' repeatHeader="1" rowCnt="{len(kept)}" colCnt="{cols}" cellSpacing="0"'
+        f' repeatHeader="1" rowCnt="{len(grid.rows)}" colCnt="{cols}" cellSpacing="0"'
         ' borderFillIDRef="1" noAdjust="0">'
         f'<hp:sz width="{_HWPX_TEXT_WIDTH}" widthRelTo="ABSOLUTE" height="{height}"'
         ' heightRelTo="ABSOLUTE" protect="0"/>'
@@ -1919,7 +2208,9 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
         #: and the way the 서식 says it on screen — gathered under the section,
         #: numbered, in small type — is available for the cost of a paragraph.
         notes: list[tuple[str, str]] = []
-        for kind, text, marker in _markdown_to_lines(section.get("content") or ""):
+        for kind, text, marker, depth in _markdown_to_lines(
+            section.get("content") or "", section.get("tables")
+        ):
             if kind == "note":
                 notes.append((marker, _strip_inline(text)))
                 continue
@@ -1971,7 +2262,10 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
                             # things — run together they read as one long
                             # sentence with a number in front of it.
                             widths=[1, 5, 12],
-                            cell_para_pr=[6, 3, 3],
+                            # The number centred on its rail; the two columns
+                            # of words read from the left, for the reason cell
+                            # shape 7 exists.
+                            cell_para_pr=[6, 7, 7],
                         )
                     )
                 except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
@@ -2015,7 +2309,7 @@ def to_hwpx(title: str, sections: list[dict], *, tokens: dict[str, str] | None =
             if kind == "heading":
                 body.append(_hwpx_para(clean, 2, 4))
             elif kind in ("bullet", "number"):
-                body.append(_hwpx_para(f"{marker} {clean}", 4))
+                body.append(_hwpx_para(f"{marker} {clean}", (4, 8, 9)[depth]))
             else:
                 body.append(_hwpx_para(clean, 3))
         for picture in section.get("images") or []:

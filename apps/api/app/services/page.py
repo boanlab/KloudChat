@@ -264,11 +264,17 @@ def _guide(template: DesignTemplate) -> str:
     as though they were the text. So the form arrives labelled — this is the
     shape, and the lines in it are directions rather than sentences to keep.
     """
+    # The seed's vocabulary under the 서식's own rules. Under, not over: a
+    # 서식 that describes its own layouts has the more specific thing to say,
+    # and this is the floor for the eight that describe none.
+    rules = template.instructions
+    if template.markup:
+        rules = f"{rules}\n\n{template.markup}" if rules else template.markup
     form = templates.form_text(template)
     if not form:
-        return template.instructions
+        return rules
     return (
-        f"{template.instructions}\n\n"
+        f"{rules}\n\n"
         "## 이 서식의 빈 양식\n\n"
         "아래는 사람이 손으로 채우는 빈 양식에서 뽑은 글이다. 제목과 그 차례,\n"
         "표의 열 이름은 이대로 따른다. 각 제목 아래의 한 줄은 무엇을 적으라는\n"

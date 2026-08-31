@@ -86,6 +86,10 @@ async def test_a_document_becomes_a_draft(monkeypatch):
         "ink": "#111827",
         "muted": "#6b7280",
         "font": "serif",
+        # A document read for its design says nothing about whose it is: the
+        # mark and the line at the foot are set by the person, not extracted.
+        "footer": "",
+        "logo": "",
     }
     assert draft["craft"] == ["restraint", "typography"]
     assert usage == {"inputTokens": 800, "outputTokens": 120}

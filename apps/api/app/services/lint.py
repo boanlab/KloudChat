@@ -297,7 +297,16 @@ def check(
         if stray := _stray_hanja(text):
             findings.append(
                 Finding(
-                    "P1",
+                    # Wrong, not merely awkward. `_stray_hanja` has already let
+                    # every legitimate use through — a gloss in brackets, a
+                    # name — so what reaches here is a Chinese word standing in
+                    # a Korean sentence where a Korean word exists: 独自 for
+                    # 단독, 指的 for 가리키는. A reader takes it for a typo, and
+                    # a submitted document does not get a second reading. Filed
+                    # as P1 it showed on the badge as 볼 곳 — "have a look" —
+                    # which is not what somebody about to hand this in needs to
+                    # be told.
+                    "P0",
                     "hanja",
                     f"한국어 문장에 중국어 한자가 섞였습니다 — “{stray}”.",
                     where,

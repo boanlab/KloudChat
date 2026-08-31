@@ -324,10 +324,18 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   // The outline lands before any section is written, so the panel has a real
   // denominator from the start. Asserting the *initial* 0/N would race the first
   // section finishing; what matters is that the count exists and then completes.
-  await expect(page.getByText(/\d+\/[3-8] 섹션/)).toBeVisible({ timeout: 180_000 })
+  // The count is on the button that opens the contents.
+  //
+  // It used to be a line inside a column that stood beside the document at
+  // every width, and that column was 208px of the document's own room — so the
+  // contents became a drawer and the count moved onto its handle. The line is
+  // still there, inside the closed drawer, which is why looking for it by text
+  // finds an element and calls it hidden.
+  const counter = page.getByRole('button', { name: /목차 \d+\/[3-8]/ })
+  await expect(counter).toBeVisible({ timeout: 180_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 
-  const progress = await page.getByText(/\d+\/\d+ 섹션/).first().innerText()
+  const progress = await counter.innerText()
   const [done, total] = progress.match(/(\d+)\/(\d+)/)!.slice(1).map(Number)
   expect(done, '작성되지 않은 섹션').toBe(total)
 

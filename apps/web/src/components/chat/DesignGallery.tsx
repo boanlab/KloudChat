@@ -468,7 +468,14 @@ export function DesignGalleryModal({
     ],
     [mine, saved, kind],
   )
-  const MINE = '내 문장'
+  /*
+   * What this chip gathers: the starting points somebody saved, beside the
+   * shipped 서식 categories. It read 내 문장 — "my sentences" — which names
+   * the thing by what it is made of rather than by what it does, and sits
+   * oddly next to 업무 · 학업 · 연구. The cards under it already say
+   * 시작점으로 붙이기, so the chip says the same word.
+   */
+  const MINE = '내 시작점'
 
   const categories = useMemo(
     () => [

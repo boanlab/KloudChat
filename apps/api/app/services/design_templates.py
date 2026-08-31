@@ -199,6 +199,14 @@ class DesignTemplate:
     example_prompt: str
     #: Appended to the generation prompt. Never shown to the reader.
     instructions: str
+    #: The seed's own markup vocabulary — the elements its stylesheet already
+    #: stands up. Shared, and loaded from the same folder the seed comes from,
+    #: because it describes the seed rather than the 서식: eight of seventeen
+    #: 서식 named their layouts and never said what to build them out of, so a
+    #: model handed `layout: split` and no vocabulary wrote a bulleted list and
+    #: the two-column design nothing had asked it to use went unused. A 서식's
+    #: own instructions still come first and still win — this is the floor.
+    markup: str
         #: What a critique reads the finished thing against. Separate from the
         #: instructions: a rubric folded into the brief becomes a checklist the
         #: model writes *to* rather than one it is measured by. Shown on the
@@ -369,6 +377,22 @@ def _seed(folder: Path, meta: dict) -> str:
     return _HEAD_END.sub(lambda _m: block + "</head>", seed, count=1)
 
 
+def _seed_markup(folder: Path, meta: dict[str, Any]) -> str:
+    """The vocabulary of whichever seed this 서식 is drawn on.
+
+    Follows `seed_from` exactly as `_seed` does, so a 서식 that borrows the
+    deck seed is told about the deck seed's elements and not the document's.
+    """
+    own = _read(folder, "markup.md")
+    if own:
+        return own
+    borrowed = str(meta.get("seed_from") or "")
+    if not borrowed:
+        return ""
+    shared = folder.parent / borrowed / "markup.md"
+    return shared.read_text(encoding="utf-8") if shared.is_file() else ""
+
+
 def _read(folder: Path, name: str) -> str:
     path = folder / name
     return path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -406,6 +430,7 @@ def _load() -> dict[str, DesignTemplate]:
             fills_en=tuple(str(f) for f in (meta.get("fills_en") or [])),
             example_prompt_en=str(meta.get("example_prompt_en") or ""),
             instructions=_read(folder, "instructions.md"),
+            markup=_seed_markup(folder, meta),
             checklist=_read(folder, "checklist.md"),
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
             dark=bool(meta.get("dark")),

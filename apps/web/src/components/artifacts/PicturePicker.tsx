@@ -1,5 +1,5 @@
-import { ImagePlus, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { ImagePlus, Loader2, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { Button, Input } from '@/components/ui'
 import { errorMessage, sessionsApi } from '@/lib/api'
@@ -35,6 +35,10 @@ export function PicturePicker({
   onCaption,
   /** What the picture is for, so the prompt box can suggest rather than sit blank. */
   about,
+  /** The document's own name, so the suggestion belongs to this document. */
+  title,
+  /** What this 장/절 already says, so the suggestion does not redraw it. */
+  context,
 }: {
   /** Whose session the picture is charged to and stored under. */
   sessionId?: string | null
@@ -45,15 +49,20 @@ export function PicturePicker({
   caption: string
   onCaption: (value: string) => void
   about?: string
+  title?: string
+  context?: string
 }) {
   const t = useT()
   const [prompt, setPrompt] = useState('')
+  const [suggesting, setSuggesting] = useState(false)
   const [making, setMaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const artifacts = useStore((s) => s.artifacts)
   const loadArtifacts = useStore((s) => s.loadArtifacts)
   const imageOn = useStore((s) => s.enabledKinds).includes('image')
   const canMake = imageOn && Boolean(sessionId)
+  //: Whether what is in the box came from the suggestion rather than a person.
+  const [suggested, setSuggested] = useState(false)
 
   // Same session first: the picture somebody made while writing this document
   // is almost always the one they want in it.
@@ -64,6 +73,45 @@ export function PicturePicker({
       return mine || +new Date(b.updatedAt) - +new Date(a.updatedAt)
     })
     .slice(0, 24)
+
+  /*
+   * The suggestion, asked for the moment the picker opens.
+   *
+   * The box used to open empty with the 장's name in the placeholder, which
+   * asks somebody who wanted a picture here to first become somebody who can
+   * describe one — and describing a picture to an image model is a skill, not
+   * a preference. Now the proposal arrives written and the decision left is
+   * the one that was always theirs: whether this is worth a credit. Editable,
+   * replaceable, and never drawn without pressing 만들기.
+   *
+   * Runs once per opening. A failed suggestion is silent: what it leaves
+   * behind is the empty box this had before, which is not an error state.
+   */
+  useEffect(() => {
+    if (!canMake || !sessionId || prompt.trim()) return
+    let alive = true
+    setSuggesting(true)
+    void sessionsApi
+      .suggestFigure(sessionId, { title, about, context })
+      .then((row) => {
+        if (!alive || !row.prompt) return
+        setPrompt(row.prompt)
+        setSuggested(true)
+        // Only when the person has not written one. A caption they typed is
+        // theirs and outranks anything proposed here.
+        if (row.caption) onCaption(caption.trim() || row.caption)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (alive) setSuggesting(false)
+      })
+    return () => {
+      alive = false
+    }
+    // Once, on mount. Re-running on `caption` would overwrite what somebody is
+    // in the middle of typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const make = async () => {
     const asked = prompt.trim()
@@ -100,33 +148,47 @@ export function PicturePicker({
           <div className="flex items-center gap-2">
             <Input
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => {
+                setPrompt(e.target.value)
+                setSuggested(false)
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   void make()
                 }
               }}
-              disabled={making}
+              disabled={making || suggesting}
               aria-label={t('그림 설명')}
               placeholder={
-                about
-                  ? t('{name} 에 넣을 그림을 설명해 주세요').replace('{name}', about)
-                  : t('넣을 그림을 설명해 주세요')
+                suggesting
+                  ? t('넣을 만한 그림을 찾는 중…')
+                  : about
+                    ? t('{name}에 넣을 그림을 설명해 주세요').replace('{name}', about)
+                    : t('넣을 그림을 설명해 주세요')
               }
               className="min-w-0 flex-1"
             />
             <Button
               variant="secondary"
               onClick={() => void make()}
-              disabled={making || !prompt.trim()}
+              disabled={making || suggesting || !prompt.trim()}
             >
-              {making ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+              {making || suggesting ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <ImagePlus size={13} />
+              )}
               {making ? t('만드는 중…') : t('만들기')}
             </Button>
           </div>
-          <p className="mt-1.5 text-xs text-faint">
-            {t('문서 안에 들어갈 삽화로 만듭니다 — 글자는 넣지 않습니다. 크레딧이 듭니다.')}
+          <p className="mt-1.5 flex items-center gap-1 text-xs text-faint">
+            {suggested && <Sparkles size={11} className="shrink-0 text-accent" />}
+            {suggested
+              ? t(
+                  '이 장을 읽고 넣을 만한 그림을 적어 두었습니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.',
+                )
+              : t('문서 안에 들어갈 삽화로 만듭니다 — 글자는 넣지 않습니다. 크레딧이 듭니다.')}
           </p>
           {error && <p className="mt-2 text-base text-danger">{error}</p>}
         </div>

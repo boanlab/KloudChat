@@ -158,14 +158,23 @@ export function MarkdownBody({
             </blockquote>
           ),
           hr: () => <hr className="my-4 border-line" />,
+          // `min-w` is what makes the wrapper's `overflow-x-auto` mean
+          // anything. With `w-full` alone the table shrank to whatever column
+          // it was in — beside an open artifact panel that is about 330px —
+          // and a three-column comparison came out one glyph per line: 구 over
+          // 분, 변 over 경 over 가 over 능 over 성. Given a floor it overflows
+          // and scrolls instead, which is the behaviour the wrapper was
+          // already written for.
           table: ({ children }) => (
             <div className="my-3 overflow-x-auto rounded-card border border-line">
-              <table className="w-full border-collapse text-base">{children}</table>
+              <table className="w-full min-w-[30rem] border-collapse text-base">
+                {children}
+              </table>
             </div>
           ),
           thead: ({ children }) => <thead className="bg-elevated">{children}</thead>,
           th: ({ children }) => (
-            <th className="border-b border-line px-3 py-2 text-left font-semibold">{children}</th>
+            <th className="border-b border-line px-3 py-2 text-left font-semibold break-keep">{children}</th>
           ),
           // `last:border-0` was meant to drop the rule under the *last row*,
           // and `:last-child` on a `<td>` is the last **column** — so every
@@ -174,7 +183,7 @@ export function MarkdownBody({
           // row it was always about: the wrapper draws the outer border, so a
           // rule under the final row would sit on top of it.
           td: ({ children }) => (
-            <td className="border-b border-line px-3 py-2 align-top [tr:last-child>&]:border-0">
+            <td className="border-b border-line px-3 py-2 align-top break-keep [tr:last-child>&]:border-0">
               {children}
             </td>
           ),

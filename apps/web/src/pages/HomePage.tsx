@@ -219,7 +219,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             already naming the pick, and the card it came from would print the
             same two words a second time on one empty screen — only the chip
             carries the × that undoes it, so only the chip should say it. */}
-        {pendingTemplate?.surface !== active && <DesignRail />}
+        {pendingTemplate?.surface !== active && <DesignRail surface={active} />}
 
         {running.length > 0 && (
           <section className="mb-8">

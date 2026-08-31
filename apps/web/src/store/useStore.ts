@@ -304,6 +304,8 @@ interface State {
       approve?: boolean
       /** The figure card's answer. Absent means it was not asked. */
       includeFigures?: boolean
+      /** The outline as edited on the proposal card, when it was. */
+      plan?: Record<string, unknown>
       /** Answers to a stopped turn's questions, keyed by question id. */
       answers?: Record<string, string>
       /**
@@ -799,7 +801,18 @@ function reconcileDefaults(
     if (available.some((m) => m.id === next[kind])) continue
     const usable = available
       .filter((m) => m.kinds.includes(kind))
-      .sort((a, b) => a.creditCost - b.creditCost)
+      // Cheapest first, but never a strict-local model unless it is the only
+      // one. strict-local is a route somebody chooses — it takes the web
+      // search tool away and refuses every connector — and it costs the same
+      // as the plain local model, so on price alone it kept winning the tie
+      // and became the first model a new account ever ran. The screen then
+      // said 웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다 about a choice
+      // nobody had made.
+      .sort(
+        (a, b) =>
+          Number(a.strictLocal ?? false) - Number(b.strictLocal ?? false) ||
+          a.creditCost - b.creditCost,
+      )
     const preferred = usable.find((m) => m.id === instanceDefault)
     if (preferred) next[kind] = preferred.id
     else if (usable.length) next[kind] = usable[0].id
@@ -1438,7 +1451,16 @@ export const useStore = create<State>((set, get) => ({
       role: 'user',
       content: text,
       createdAt: now,
-      attachments: opts.attachmentNames?.map((name) => ({ name, size: '', type: '' })),
+      // The ids too, not only the names. The bubble that goes up the moment
+      // somebody presses send is what they look at, and without an id every
+      // affordance that needs the file — taking it back, opening a `.hwpx` as
+      // a document — was missing there and appeared on reload.
+      attachments: opts.attachmentNames?.map((name, i) => ({
+        id: opts.attachments?.[i],
+        name,
+        size: '',
+        type: '',
+      })),
       startedFrom: opts.startingTemplate
         ? { templateId: opts.startingTemplate.id, title: opts.startingTemplate.title }
         : undefined,
@@ -1504,6 +1526,8 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            attachments: opts.attachments,
+            plan: opts.plan,
           },
         )
         return id
@@ -1523,6 +1547,8 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            attachments: opts.attachments,
+            plan: opts.plan,
           },
         )
         return id
@@ -1542,6 +1568,8 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            attachments: opts.attachments,
+            plan: opts.plan,
           },
         )
         return id
@@ -3234,11 +3262,18 @@ async function streamTurn(
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
         case 'artifact':
-                    // The document as well as the listing: an `html` card has its
-                    // `content` emptied for the grid, so opening on the card alone puts
-                    // a finished document on screen as a white rectangle.
+          // The document as well as the listing: an `html` card has its
+          // `content` emptied for the grid, so opening on the card alone puts
+          // a finished document on screen as a white rectangle.
+          //
+          // Opened only when the model set out to make it. A code fence long
+          // enough to keep is still kept — it is on the message and in the
+          // gallery — but it does not get to take two thirds of the screen
+          // away from the answer it came out of.
           void Promise.all([get().loadArtifacts(), get().refreshArtifact(event.artifactId)]).then(
-            () => set({ openArtifactId: event.artifactId }),
+            () => {
+              if (event.deliberate !== false) set({ openArtifactId: event.artifactId })
+            },
           )
           break
         case 'step':
@@ -3571,6 +3606,19 @@ async function streamReport(
     webSearch?: boolean
     /** The figure card's answer, carried with the approval it belongs to. */
     includeFigures?: boolean
+    /**
+     * The outline as the person edited it on the card, when they did. Sent
+     * with the approval rather than saved first — the edit and the decision
+     * to write are one gesture.
+     */
+    plan?: Record<string, unknown>
+    /**
+     * The files this turn was sent with. Carried like the answers are: the
+     * planning pass and the approved writing pass are two requests, and the
+     * server assembles the context fresh for each — a document written from
+     * an attachment has to be handed that attachment both times.
+     */
+    attachments?: string[]
   } = {},
 ) {
   const draftId = uid('a')
@@ -3637,6 +3685,8 @@ async function streamReport(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        attachments: gate.attachments,
+        plan: gate.plan,
       },
       controller.signal,
     )) {
@@ -3649,7 +3699,7 @@ async function streamReport(
           setPending(set, sessionId, (p) => ({
             stage: 'outline',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
           }))
@@ -3659,7 +3709,7 @@ async function streamReport(
           setPending(set, sessionId, (p) => ({
             stage: 'clarify',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
           }))
@@ -3798,6 +3848,19 @@ async function streamPage(
     webSearch?: boolean
     /** The figure card's answer, carried with the approval it belongs to. */
     includeFigures?: boolean
+    /**
+     * The outline as the person edited it on the card, when they did. Sent
+     * with the approval rather than saved first — the edit and the decision
+     * to write are one gesture.
+     */
+    plan?: Record<string, unknown>
+    /**
+     * The files this turn was sent with. Carried like the answers are: the
+     * planning pass and the approved writing pass are two requests, and the
+     * server assembles the context fresh for each — a document written from
+     * an attachment has to be handed that attachment both times.
+     */
+    attachments?: string[]
   } = {},
 ) {
   const draftId = uid('a')
@@ -3866,6 +3929,8 @@ async function streamPage(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        attachments: gate.attachments,
+        plan: gate.plan,
       },
       controller.signal,
     )) {
@@ -3878,7 +3943,7 @@ async function streamPage(
           setPending(set, sessionId, (p) => ({
             stage: 'outline',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
           }))
@@ -3888,7 +3953,7 @@ async function streamPage(
           setPending(set, sessionId, (p) => ({
             stage: 'clarify',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
           }))
@@ -4007,6 +4072,19 @@ async function streamDeck(
     webSearch?: boolean
     /** The figure card's answer, carried with the approval it belongs to. */
     includeFigures?: boolean
+    /**
+     * The outline as the person edited it on the card, when they did. Sent
+     * with the approval rather than saved first — the edit and the decision
+     * to write are one gesture.
+     */
+    plan?: Record<string, unknown>
+    /**
+     * The files this turn was sent with. Carried like the answers are: the
+     * planning pass and the approved writing pass are two requests, and the
+     * server assembles the context fresh for each — a document written from
+     * an attachment has to be handed that attachment both times.
+     */
+    attachments?: string[]
   } = {},
 ) {
   const draftId = uid('a')
@@ -4072,6 +4150,8 @@ async function streamDeck(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        attachments: gate.attachments,
+        plan: gate.plan,
       },
       controller.signal,
     )) {
@@ -4084,7 +4164,7 @@ async function streamDeck(
           setPending(set, sessionId, (p) => ({
             stage: 'outline',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
           }))
@@ -4094,7 +4174,7 @@ async function streamDeck(
           setPending(set, sessionId, (p) => ({
             stage: 'clarify',
             request: text,
-            attachments: p?.attachments ?? [],
+            attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
           }))

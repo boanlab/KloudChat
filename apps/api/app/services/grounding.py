@@ -133,6 +133,55 @@ def questions_for(files: list[ContextFile]) -> list[Question]:
     return out
 
 
+#: A request that names an attachment as its source.
+#:
+#: Tight on purpose. "이메일 첨부 파일 관리 정책 보고서" is a subject, not a
+#: reference to something the person handed over, and stopping to ask about it
+#: would be the interview this module exists to avoid. What is matched is the
+#: act — 첨부한, 올린 파일, 업로드한 자료 — never the noun on its own.
+_NAMES_AN_ATTACHMENT = re.compile(
+    r"첨부(?:한|된|해\s?준|해\s?드린|해\s?놓은)"
+    r"|(?:올린|올려\s?준|업로드한|보낸)\s*(?:파일|자료|문서|문건)"
+    r"|attached\s+(?:file|document|paper)",
+    re.I,
+)
+
+
+def missing_attachment(request: str, files: tuple[ContextFile, ...]) -> Question | None:
+    """The request is built on an attachment and no attachment arrived.
+
+    A gap nothing downstream can see. The writer is handed a sentence that
+    points at material it was never given, and a sentence is all it has to work
+    from — so it researches the sentence itself and writes whatever that turns
+    up. 첨부한 내용을 바탕으로 보고서 작성해줘 searched as a phrase returns
+    보고서 작성법 blog posts, and the document that comes back is about how to
+    write reports. Nothing errored, so nothing said so.
+
+    Asked rather than refused: the file may have failed to upload, the tab may
+    be running yesterday's app, or the person may simply have forgotten to
+    attach it. All three are answered by the same question, and the one answer
+    this can honour without the file is to go on without it.
+    """
+    if files or not _NAMES_AN_ATTACHMENT.search(request or ""):
+        return None
+    return Question(
+        id="no_attachment",
+        question=(
+            "첨부한 파일을 근거로 만들라고 하셨는데, "
+            "이번 요청에는 파일이 실려 오지 않았습니다."
+        ),
+        detail=(
+            "파일이 없으면 요청 문장만 남고, "
+            "그 문장으로 만든 문서는 첨부와 무관한 내용이 됩니다."
+        ),
+        options=[
+            "파일을 다시 첨부하겠습니다",
+            "내용을 직접 붙여넣겠습니다",
+            "파일 없이 요청 문장만으로 진행",
+        ],
+    )
+
+
 #: What the outline call is allowed to do instead of planning.
 #:
 #: Deliberately narrow. The old rule's instinct was right — a bare topic is a

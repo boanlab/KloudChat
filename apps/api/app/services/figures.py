@@ -83,6 +83,40 @@ diagram of a three-tier architecture, flat vector style, labelled boxes, \
 white background"}}]"""
 
 
+#: For a picture somebody has already decided to put here.
+#:
+#: `_PROMPT` judges whether a document wants pictures at all and is right to
+#: answer "none" most of the time. This is the other question: the person has
+#: opened the picker on one 장 and the only thing left to decide is what to
+#: draw. Answering "nothing" there would be answering a question nobody asked,
+#: so this one always proposes — and says so in the caption, which the person
+#: reads before spending a credit on it.
+_ONE_PROMPT = """다음 자리에 넣을 그림 하나를 제안하라.
+
+문서 제목: {title}
+
+이 자리의 제목: {about}
+
+이 자리의 내용:
+{context}
+
+규칙:
+- 구조도·흐름도·관계도는 제안하지 마라. 그런 것은 본문에 mermaid 로 그린다.
+- 수치 비교는 그림이 아니라 표다.
+- 그림으로만 되는 것을 제안하라. 개념을 은유로 보여 주는 삽화, 실물의 모습,
+  분위기를 전달해야 하는 장면.
+- 이 자리에 이미 있는 말을 그림으로 옮겨 적지 마라. 글이 못 하는 것을 그린다.
+- prompt 안에 글자·숫자·표를 넣지 마라. 들어간 글자는 깨져서 나온다.
+
+- caption: 그림 아래에 붙을 한 줄 설명. 한국어. 20자 안쪽.
+- prompt: 이미지 모델에 줄 영어 지시 한 문장.
+
+JSON 객체로만 답하라.
+예: {{"caption": "무균실 작업 장면", "prompt": "photorealistic view of \
+a cleanroom technician in white coveralls handling equipment, soft even \
+lighting, shallow depth of field"}}"""
+
+
 @dataclass(slots=True)
 class Figure:
     """One proposed picture, before anybody has agreed to pay for it."""
@@ -191,6 +225,70 @@ async def propose(
             "inputTokens": int(raw.get("prompt_tokens") or 0),
             "outputTokens": int(raw.get("completion_tokens") or 0),
         },
+    )
+
+
+async def suggest(
+    *,
+    title: str,
+    about: str,
+    context: str,
+    model: str,
+    api_key: str,
+) -> Figure | None:
+    """One picture for one place. `None` on any failure, never raises.
+
+    The picker used to open on an empty box with the 장 title in the
+    placeholder, which asks somebody who wanted a picture to first become the
+    person who can describe one. The suggestion arrives filled in and editable:
+    the decision left is whether to spend the credit, which is the decision
+    that was theirs to make in the first place.
+    """
+    base, _ = await settings_store.litellm_config()
+    try:
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(60.0, connect=10.0),
+        ) as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": _ONE_PROMPT.format(
+                                title=title[:200],
+                                about=about[:200],
+                                context=context[:2000],
+                            ),
+                        }
+                    ],
+                    "max_tokens": 400,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+        log.info("figure suggestion failed: %s", exc)
+        return None
+
+    text = (payload["choices"][0]["message"]["content"] or "").strip()
+    block = text[text.find("{") : text.rfind("}") + 1] if "{" in text and "}" in text else ""
+    try:
+        parsed = json.loads(block)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    prompt = str(parsed.get("prompt") or "").strip()
+    if not prompt:
+        return None
+    return Figure(
+        section=0,
+        caption=str(parsed.get("caption") or "").strip()[:120],
+        prompt=prompt[:600],
     )
 
 

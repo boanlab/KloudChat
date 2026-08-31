@@ -20,9 +20,15 @@ import zipfile
 
 import pytest
 
+# A sibling module, imported the way pytest makes siblings importable: it puts
+# the test file's own directory on the path. `tests.test_export_pictures` needs
+# `apps/api` on the path instead, which `python -m pytest` provides by inserting
+# the working directory and the `pytest` console script does not — so this
+# passed every local run and failed in CI, which runs the script.
+from test_export_pictures import png
+
 from app.routers import workspace as router
 from app.services import report_export, richtext
-from tests.test_export_pictures import png
 
 TOKENS = {"accent": "#5b5bd6", "ink": "#111111", "muted": "#666666", "font": "gothic"}
 

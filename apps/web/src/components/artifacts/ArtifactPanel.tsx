@@ -1,4 +1,5 @@
 import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } from 'lucide-react'
+import { SlideView } from '@/components/slides/DeckPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
@@ -29,6 +30,28 @@ const aspectClass: Record<string, string> = {
 }
 
 /** Thumbnail-safe render of any artifact. Used by the panel and the gallery. */
+/**
+ * Markdown notation out, the sentence left.
+ *
+ * For thumbnails only. A preview does not need a parser — it needs the words
+ * without the marks that tell a renderer what to do with them, because at
+ * thumbnail size the marks are most of what you can see.
+ */
+function plainText(body: string): string {
+  return body
+    .replace(/^\s*\|.*\|\s*$/gm, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}[-*+]\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(?<!\*)\*([^*]+)\*/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+
 export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
   const t = useT()
   switch (artifact.kind) {
@@ -86,22 +109,55 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
         />
       )
     case 'report':
+      /*
+       * A page, not its source.
+       *
+       * This drew the sections into a monospace block with the Markdown left
+       * in — `## 배경`, `| --- |`, `**근거**` — so the 아티팩트 gallery was a
+       * wall of grey notation with no way to tell one report from another.
+       * Somebody looking for the thing they wrote yesterday reads a thumbnail
+       * the way they read a shelf: by its shape.
+       */
       return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
-          <code className="font-mono">
-            {artifact.sections
-              .map((s) => `## ${s.heading}\n${sectionText(s)}`)
-              .join('\n\n')}
-          </code>
-        </pre>
+        <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
+          <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
+          <p className="mb-3 text-xs text-[#999]">
+            {t('{n}개 절').replace('{n}', String(artifact.sections.length))}
+          </p>
+          {/* Three, not six. A thumbnail is read at a glance from across a
+              gallery, and eight lines of 10px prose is the wall this replaced. */}
+          {artifact.sections.slice(0, 3).map((section) => (
+            <div key={section.id} className="mb-2">
+              <p className="truncate text-sm font-semibold">{section.heading}</p>
+              <p className="line-clamp-2 text-xs leading-relaxed text-[#777]">
+                {plainText(sectionText(section))}
+              </p>
+            </div>
+          ))}
+        </div>
       )
     case 'deck':
-      return (
-        <pre className="size-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
-          <code className="font-mono">
-            {artifact.slides.map((s, i) => `${i + 1}. ${s.title}`).join('\n')}
-          </code>
-        </pre>
+      /*
+       * The first slide, drawn.
+       *
+       * A numbered list of titles was the honest thing to show when a slide
+       * was a white rectangle with a stripe down one edge. It is not any more:
+       * a deck opens on a cover reversed out of its accent, and that cover is
+       * how somebody picks this deck out of a gallery of a hundred. The list
+       * said what the deck was about; the cover says which deck it is.
+       */
+      return artifact.slides[0] ? (
+        <div className="size-full overflow-hidden bg-white">
+          {/* The gallery card is about 310px across and the slide is drawn in a
+              400-unit space, so this is the scale at which one fills the other.
+              At 0.42 the cover was a blue rectangle with a caption nobody could
+              read. */}
+          <SlideView slide={artifact.slides[0]} scale={0.78} writing={false} />
+        </div>
+      ) : (
+        <div className="grid size-full place-items-center bg-elevated text-base text-muted">
+          {artifact.title}
+        </div>
       )
     case 'chart':
       return <ChartThumb chart={artifact} />
@@ -448,7 +504,7 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
       <Modal
         open={target !== null}
         onClose={() => setTarget(null)}
-        title={t('{name} 에 그림 넣기').replace(
+        title={t('{name}에 그림 넣기').replace(
           '{name}',
           (target !== null && blocks[target]?.title) || '',
         )}
@@ -473,6 +529,11 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
           caption={caption}
           onCaption={setCaption}
           about={(target !== null && blocks[target]?.title) || undefined}
+          title={artifact.title}
+          /* The block list carries titles only; the body lives in the
+             rendered document. The title is what the suggestion has to go on
+             here, and it is enough to name a subject. */
+          context={undefined}
         />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
