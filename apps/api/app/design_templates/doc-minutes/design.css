@@ -1,0 +1,42 @@
+/* 회의록 — 오른쪽 가장자리만 훑어도 자기 몫이 보이게.
+ *
+ * 두 달 뒤에 이 문서를 다시 여는 사람은 무슨 이야기가 오갔는지 읽으러 오지
+ * 않는다. 자기 이름과 자기 기한을 찾으러 온다. 그래서 표의 마지막 두 열 —
+ * 담당과 기한 — 을 오른쪽에 붙여 세우고 줄바꿈을 막는다. 오른쪽 가장자리가
+ * 한 줄로 정렬되면 눈이 그 선만 따라 내려갈 수 있다.
+ *
+ * 나머지는 조용하다. 회의록은 읽히려고 만드는 문서가 아니라 찾아지려고
+ * 만드는 문서이므로, 강조는 그 한 곳에만 쓴다. */
+
+.page { line-height: 1.66; }
+
+.cover { min-height: 0; padding: 0 0 0.9rem; margin: 0 0 1.6rem; }
+.cover::after { height: 1px; background: var(--border); }
+.cover h1 { font-size: 1.5rem; }
+.cover dl { grid-template-columns: 4.5rem minmax(0, 1fr); font-size: 0.85rem; }
+
+h2 { font-size: 1.08rem; }
+
+/* 담당과 기한. 두 열을 오른쪽에 세우고, 폭을 내용에 맞춰 좁힌다. */
+table th:nth-last-child(-n + 2),
+table td:nth-last-child(-n + 2) {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+  padding-right: 0;
+  padding-left: 1.1em;
+}
+table td:nth-last-child(-n + 2) { font-variant-numeric: tabular-nums; }
+/* 담당자 이름은 기한보다 한 칸 앞이고, 이 문서에서 사람 이름은 강조다. */
+table td:nth-last-child(2) { font-weight: 650; color: var(--accent); }
+table th { font-size: 0.8rem; }
+
+/* 결정과 할 일은 번호가 붙은 줄이다. 기본 조판의 세로 강조선을 지우고
+   왼쪽을 비워, 오른쪽 가장자리가 유일한 정렬선으로 남게 한다. */
+ol.steps { border-left: 0; padding-left: 0; }
+ol.steps > li { padding-left: 0; border-bottom: 1px solid var(--hair); }
+ol.steps > li::before { min-width: 1.6em; color: var(--muted); }
+
+@media print {
+  .cover { min-height: 0; padding: 0 0 0.9rem; page-break-after: auto; break-after: auto; }
+}

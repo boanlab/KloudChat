@@ -280,28 +280,93 @@ class DesignTemplate:
         )
 
 
-def _seed(folder: pathlib.Path, meta: dict) -> str:
-    """The typesetting this 서식 is drawn in, its own or a shared one.
+#: Form text by path, so a turn does not re-open a 38KB zip to read 250 characters.
+#: Keyed by path and mtime: rebuilding the forms changes the second, and the
+#: next turn reads the new one.
+_FORM_TEXT: dict[tuple[str, float], str] = {}
 
-    Six of the ten document 서식 carried byte-identical copies of one file —
-    the five built on 보고 문서 plus 보고 문서 itself — because a new 서식 was
-    scaffolded by copying the shape it is typeset in. Copies drift: one gets a
-    fix and the other five do not, and nothing says they were ever meant to be
-    the same.
 
-    `seed_from` says it instead. A 서식 with its own `seed.html` keeps it —
-    한 장 요약, 회의록, 안내문·공지 and 실험 노트 are four real designs, not
-    four copies — and one without names the shape it borrows.
+def form_text(template: DesignTemplate) -> str:
+    """The blank form as words, for the model to write into.
+
+    A 서식 told the model its rules and showed it nothing. The rules are prose
+    — "결정마다 왜 그렇게 정했는지 한 줄이라도 남긴다" — and the form beside
+    them is the same thing as a shape: the headings in order, the columns of
+    each table, the line under each heading saying what belongs there. Handing
+    over the file it already ships is cheaper than describing it again in
+    another file that then drifts from it.
+
+    Short by construction. A form is headings and column names, so 회의록 comes
+    to 257 characters and 사내 브리핑 to 231 — this is not a document being
+    stuffed into the context, it is a table of contents with the blanks named.
     """
+    if not template.form_file:
+        return ""
+    path = Path(template.form_file)
+    try:
+        key = (str(path), path.stat().st_mtime)
+    except OSError:
+        return ""
+    if key not in _FORM_TEXT:
+        from app.services import files as file_service
+
+        try:
+            _FORM_TEXT[key] = file_service.extract_text(path.name, "", path.read_bytes()).strip()
+        except Exception:  # noqa: BLE001
+            # A form that cannot be read is a form the model writes without.
+            # The instructions still stand, and they are the half that says why.
+            _FORM_TEXT[key] = ""
+    return _FORM_TEXT[key]
+
+
+#: Where a 서식's own stylesheet is spliced in — last in `<head>`, so it is
+#: read after everything the shared seed declares and wins a tie without
+#: needing `!important` or a specificity contest.
+_HEAD_END = re.compile(r"</head\s*>", re.I)
+
+
+def _seed(folder: Path, meta: dict) -> str:
+    """The typesetting this 서식 is drawn in: a shared shape, then its own face.
+
+    Two files, because they answer two different questions.
+
+    `seed.html` — the shared one, named by `seed_from` — is *correctness*. It
+    declares the tokens, styles the whole closed vocabulary `assemble` can
+    emit, carries the `@page` rule and the print rules, and gets the shadow-root
+    `:host` right. Every 서식 needs all of that and none of it is what makes one
+    서식 different from another. Ten copies of it drifted once already: one got
+    a fix and the other nine did not.
+
+    `design.css` — this 서식's own — is *identity*. 안내문·공지 centres its
+    title under a double rule; 한 장 요약 runs two columns; 신호 presents white
+    on black. Those are forty lines each, not four hundred, and they are the
+    forty lines the catalogue already promises in its own descriptions.
+
+    Splitting them this way was worth doing only once a browser drew the PDF.
+    Before that the export was redrawn by reportlab, which reads no CSS, so ten
+    designs made one file and merging them lost nothing anybody could see.
+    """
+    seed = ""
     own = folder / "seed.html"
     if own.is_file():
-        return own.read_text(encoding="utf-8")
-    borrowed = str(meta.get("seed_from") or "")
-    if borrowed:
-        shared = folder.parent / borrowed / "seed.html"
-        if shared.is_file():
-            return shared.read_text(encoding="utf-8")
-    return ""
+        seed = own.read_text(encoding="utf-8")
+    else:
+        borrowed = str(meta.get("seed_from") or "")
+        if borrowed:
+            shared = folder.parent / borrowed / "seed.html"
+            if shared.is_file():
+                seed = shared.read_text(encoding="utf-8")
+    if not seed:
+        return ""
+    face = _read(folder, "design.css").strip()
+    if not face:
+        return seed
+    # A second `<style>` rather than an edit to the first: `stylesheet()`
+    # concatenates every style block in order, so the editor's shadow root
+    # picks this up by the same route the exported file does. One insertion,
+    # both surfaces.
+    block = f"<style>\n/* {folder.name} */\n{face}\n</style>\n"
+    return _HEAD_END.sub(lambda _m: block + "</head>", seed, count=1)
 
 
 def _read(folder: Path, name: str) -> str:
@@ -523,6 +588,27 @@ def _kept_style(match: re.Match[str]) -> str:
     return f' style="{"; ".join(kept)}"' if kept else ""
 
 
+#: The cover class, wherever a block claims it.
+#:
+#: The cover is the 서식's own frame — `wrap_cover` puts it round the title the
+#: outline already decided, and the page view draws it *around* the sections
+#: rather than as one of them. A body block can never legitimately carry it, and
+#: a model that has just seen one written sometimes writes another: the document
+#: then has two covers, one of them in the middle, and the report track stores
+#: it as a section because the filter there reads the block's `layout` and not
+#: its markup.
+#:
+#: Stripped after the tag filter so the element itself survives — losing the
+#: class is losing a frame nobody asked for, and losing the `<div>` would lose
+#: the words inside it.
+#: Bounded on purpose. `\s*` on both sides of `=` and again round the value
+#: gives the engine several ways to split one run of whitespace, and
+#: `test_an_attribute_stripper_cannot_be_stalled_by_whitespace` measured 21
+#: seconds on the first version of this line. One optional space either side is
+#: every shape a model actually writes and is linear.
+_COVER_CLASS = re.compile(r'\sclass\s?=\s?(["\'])cover\1', re.I)
+
+
 def sanitise(
     fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False
 ) -> str:
@@ -560,7 +646,7 @@ def sanitise(
     def keep(match: re.Match[str]) -> str:
         return match.group(0) if match.group(1).lower() in _ALLOWED_TAGS else ""
 
-    return _TAG.sub(keep, text).strip()
+    return _COVER_CLASS.sub("", _TAG.sub(keep, text)).strip()
 
 
 def _token_declarations(tokens: dict[str, str]) -> str:
@@ -583,6 +669,19 @@ def _token_declarations(tokens: dict[str, str]) -> str:
                 if tokens.get("font") == "serif"
                 else "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
             ),
+            # The heading face, which the document seed already asks for by
+            # name — the step number and the KPI figure are both set in
+            # `var(--font-head)` — and which nothing declared. `font-family` is
+            # inherited, so an undeclared name there is not an error and not a
+            # visible fallback either: the declaration is thrown away and the
+            # element keeps the body face, which is what those two had been
+            # doing all along.
+            #
+            # It resolves to the body face, so declaring it changes nothing on
+            # its own. What it gives is a slot: a 서식 that wants its figures in
+            # a different face sets one property in its `design.css` instead of
+            # restating `font-family` at every site that uses one.
+            ("font-head", "var(--font-body)"),
         )
     )
 
@@ -699,6 +798,7 @@ def escape(text: str) -> str:
 
 
 __all__ = [
+    "form_text",
     "HTML_KINDS",
     "SURFACE",
     "Argument",

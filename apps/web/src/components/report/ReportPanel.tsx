@@ -4,6 +4,8 @@ import {
   Download,
   ExternalLink,
   FileText,
+  ImagePlus,
+  ListPlus,
   Link2,
   ListTree,
   Loader2,
@@ -22,9 +24,14 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
-import { PanelControls } from '@/components/artifacts/PanelControls'
+import {
+  PanelControls,
+  nextMode,
+  type PanelMode,
+} from '@/components/artifacts/PanelControls'
+import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, Textarea } from '@/components/ui'
+import { Button, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens } from '@/lib/utils'
@@ -37,6 +44,111 @@ import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindi
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+
+/**
+ * Putting a picture into one section of a report.
+ *
+ * The page track has had this since it shipped and the report track — the
+ * surface most of this product's writing happens on — had no way to put a
+ * picture in a document at all. Not for want of machinery: a Markdown picture
+ * line is read by `richtext` on the way in and by all three exporters on the
+ * way out, so the server appends one and the `.docx`, `.pdf` and `.hwpx` carry
+ * it without changing.
+ *
+ * The picture is chosen or made in the same dialog. See `PicturePicker`: the
+ * old flow sent somebody to the image screen and back, which loses the section
+ * they were filling.
+ */
+function AddSectionImage({ report }: { report: ReportArtifact }) {
+  const t = useT()
+  const [target, setTarget] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [caption, setCaption] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+  const loadArtifacts = useStore((s) => s.loadArtifacts)
+
+  const sections = report.sections ?? []
+  if (sections.length === 0) return null
+  const chosen = sections.find((s) => s.id === target)
+
+  const insert = async () => {
+    if (!target || !picked) return
+    setBusy(true)
+    setError(null)
+    try {
+      await artifactsApi.addSectionImage(report.id, target, picked, caption.trim())
+      await refreshArtifact(report.id)
+      await loadArtifacts()
+      setTarget(null)
+      setPicked(null)
+      setCaption('')
+    } catch (err) {
+      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Dropdown
+        align="right"
+        trigger={() => (
+          <Button variant="ghost" size="icon" aria-label={t('그림 넣기')} title={t('그림 넣기')}>
+            <ImagePlus size={15} />
+          </Button>
+        )}
+      >
+        <MenuLabel>{t('어느 절에 넣을까요?')}</MenuLabel>
+        {sections.map((section, index) => (
+          <MenuItem
+            key={section.id}
+            hint={String(index + 1)}
+            onClick={() => {
+              setPicked(null)
+              setCaption('')
+              setError(null)
+              setTarget(section.id)
+            }}
+          >
+            {section.heading || t('제목 없음')}
+          </MenuItem>
+        ))}
+      </Dropdown>
+
+      <Modal
+        open={target !== null}
+        onClose={() => setTarget(null)}
+        title={t('{name} 에 그림 넣기').replace('{name}', chosen?.heading || t('이 절'))}
+        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        footer={
+          <>
+            <Button onClick={() => setTarget(null)} disabled={busy}>
+              {t('취소')}
+            </Button>
+            <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
+              {busy ? t('넣는 중…') : t('넣기')}
+            </Button>
+          </>
+        }
+      >
+        <PicturePicker
+          sessionId={report.sessionId}
+          /* A figure in a report sits in a text column, not across a slide. */
+          aspect="4:3"
+          picked={picked}
+          onPick={setPicked}
+          caption={caption}
+          onCaption={setCaption}
+          about={chosen?.heading}
+        />
+        {error && <p className="mt-2 text-base text-danger">{error}</p>}
+      </Modal>
+    </>
+  )
+}
 
 /**
  * The section a finding was found under, or `undefined`.
@@ -195,22 +307,39 @@ function documentBody(report: ReportArtifact): Record<string, unknown> {
 export function ReportPanel({
   report,
   onClose,
-  onWideChange,
+  onModeChange,
 }: {
   report: ReportArtifact
   onClose?: () => void
-  /** Fires when the panel needs the extra width — an open editor, or the
-   *  reader asking for focus mode. The document column is ~350px otherwise. */
-  onWideChange?: (wide: boolean) => void
+  /** How much room the document is asking for. The host owns whether there is
+   *  any: the same report sits in a resizable side panel on one screen and in
+   *  a fixed-width preview dialog on another. */
+  onModeChange?: (mode: PanelMode) => void
 }) {
   const t = useT()
   const [activeId, setActiveId] = useState<string | null>(null)
-  //: Focus mode — 350px beside a transcript is not a reading width.
-  const [focus, setFocus] = useState(false)
+  //: How much room the document has. `wide` by default, which is the whole of
+  //: the point. Measured on a 1600px screen before it was: the document's own
+  //: paragraph was 436px, a Korean line of about twenty-six characters, while
+  //: the transcript beside it held three sentences in 640px. The reading width
+  //: existed the whole time behind a button somebody had to find, and a person
+  //: who came to write a report was given a chat with a column of the report
+  //: stapled to it.
+  //:
+  //: `full` folds the transcript away entirely — for reading, and for the
+  //: writing that happens by hand rather than by asking. One more press on the
+  //: same control, and one more press comes back.
+  const [mode, setMode] = useState<PanelMode>('wide')
   const [pane, setPane] = useState<'document' | 'sources'>('document')
-  // In a panel narrower than the document asks for, the contents become a
-  // drawer rather than vanishing: they carry the only signal that the report
-  // is still being written.
+  // The parent holds the split and starts it narrow, so the default above has
+  // to be announced rather than assumed. Once — this is an opening position,
+  // not a thing to re-assert over a reader who has folded it back.
+  useEffect(() => {
+    onModeChange?.('wide')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // The contents are a drawer at every width now, so nothing here asks how
+  // wide the panel is. The `ref` stays: the drawer is positioned against it.
   const panel = usePanelNarrow<HTMLDivElement>()
   const [tocOpen, setTocOpen] = useState(false)
   //: Whole-document edit mode. Title, headings and the space between sections
@@ -418,16 +547,27 @@ export function ReportPanel({
   //: widened panel and no editor in it.
   const openEditor = (open: boolean) => {
     setEditing(open)
-    onWideChange?.(open || focus)
+    // An editor needs source and preview side by side, so it never runs in the
+    // narrow position — but it does not take the transcript away from somebody
+    // who had folded it open.
+    const wanted: PanelMode = open && mode === 'narrow' ? 'wide' : mode
+    setMode(wanted)
+    onModeChange?.(wanted)
   }
-  const toggleFocus = () => {
-    setFocus(!focus)
-    // Still wide while an editor is open, whichever way focus mode just went.
-    onWideChange?.(!focus || editing)
+  const cycleMode = () => {
+    const next = editing && nextMode(mode) === 'narrow' ? 'wide' : nextMode(mode)
+    setMode(next)
+    onModeChange?.(next)
   }
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [restructuring, setRestructuring] = useState(false)
+  //: The sections live on the artifact object rather than in state — every
+  //: other edit here mutates it and the panel re-renders when the store
+  //: refreshes. A structural edit changes nothing the store watches, so it
+  //: needs a nudge of its own or the list stays as it was.
+  const [, setTick] = useState(0)
   //: Nothing to edit until the model stops: a mid-run save would freeze
   //: half-written prose and mark every section done.
   const writing = report.sections.some((s) => s.status !== 'done')
@@ -471,10 +611,106 @@ export function ReportPanel({
   //: at that way, and opening it as plain prose would hide the shape somebody
   //: chose before they ever saw it.
   const [view, setView] = useState<'web' | 'page'>(report.templateId ? 'page' : 'web')
-  //: Which 서식 the page view draws in. Seeded from the document and kept
-  //: locally, so trying one on does not write to the artifact until something
-  //: else does.
+  //: The 서식 this document is written in.
+  //:
+  //: It used to be view state — which stylesheet the page view drew in, kept
+  //: locally so trying one on wrote nothing. That made sense while every 서식
+  //: carried its own typesetting and switching visibly changed the paper.
+  //: The typesettings are one now, so ten options produced one screen and the
+  //: control did nothing at all.
+  //:
+  //: What a 서식 decides today is the file: the exporter opens that 서식's
+  //: `.docx` and the document comes out in its styles, page and theme. So the
+  //: choice belongs on the document, and this is where it is made.
   const [templateId, setTemplateId] = useState(report.templateId || 'doc-report')
+  const [templateSaving, setTemplateSaving] = useState(false)
+
+  /** Writes the 서식 onto the document, so the exported file carries it. */
+  /**
+   * Adding, removing and reordering sections.
+   *
+   * A report arrived with the outline the model chose and there was no way to
+   * change it — not one control added a section, removed one, or moved one. The
+   * only way to a different shape was asking for the whole report again, which
+   * throws away every sentence already fixed by hand in the sections being
+   * kept. The outline card cannot help either: it accepts or it does not.
+   *
+   * Saved as one PATCH of the whole document, checked against the server first,
+   * so it is snapshotted and one click from undone like any other edit.
+   */
+  const restructureSections = async (next: ReportSection[], summary: string) => {
+    setRestructuring(true)
+    setSaveError(null)
+    try {
+      const latest = await artifactsApi.get(report.id).catch(() => null)
+      const row = await artifactsApi.update(report.id, {
+        data: documentBody({ ...report, sections: next }),
+        summary,
+        expectedVersion: latest?.version ?? report.version,
+      })
+      report.sections = next
+      report.version = row.version
+      setTick((n) => n + 1)
+    } catch (err) {
+      setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+    } finally {
+      setRestructuring(false)
+    }
+  }
+
+  const addSection = (at: number) => {
+    const blank: ReportSection = {
+      id: `s${Date.now().toString(36)}`,
+      heading: t('새 절'),
+      level: 1,
+      status: 'done',
+      content: '',
+    }
+    const next = [...report.sections.slice(0, at), blank, ...report.sections.slice(at)]
+    return restructureSections(next, t('{n}번째에 절 추가').replace('{n}', String(at + 1)))
+  }
+
+  const moveSection = (at: number, by: -1 | 1) => {
+    const to = at + by
+    if (to < 0 || to >= report.sections.length) return Promise.resolve()
+    const next = [...report.sections]
+    ;[next[at], next[to]] = [next[to], next[at]]
+    return restructureSections(next, t('{n}번째 절 옮김').replace('{n}', String(at + 1)))
+  }
+
+  const removeSection = (at: number) => {
+    // The last one is not removable: a report with no sections is a title and
+    // nothing else, and the way to be rid of it is to delete the report.
+    if (report.sections.length <= 1) {
+      setSaveError(t('마지막 한 절은 지울 수 없습니다. 보고서 자체를 지우려면 결과물 목록에서 지우세요.'))
+      return Promise.resolve()
+    }
+    const next = report.sections.filter((_, i) => i !== at)
+    return restructureSections(next, t('{n}번째 절 지움').replace('{n}', String(at + 1)))
+  }
+
+  const chooseTemplate = async (id: string) => {
+    if (id === templateId) return
+    const was = templateId
+    setTemplateId(id)
+    setTemplateSaving(true)
+    setSaveError(null)
+    try {
+      const latest = await artifactsApi.get(report.id).catch(() => null)
+      const row = await artifactsApi.update(report.id, {
+        data: documentBody({ ...report, templateId: id }),
+        summary: t('서식 바꾸기'),
+        expectedVersion: latest?.version ?? report.version,
+      })
+      report.templateId = id
+      report.version = row.version
+    } catch (err) {
+      setTemplateId(was)
+      setSaveError(errorMessage(err, t('서식을 바꾸지 못했습니다.')))
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
   /**
    * The 서식 this panel may offer.
    *
@@ -675,7 +911,7 @@ export function ReportPanel({
           synchronous, so a tree created in that handler is not on screen when
           the browser takes its snapshot. */}
       <PrintDocument report={report} />
-      {panel.narrow && tocOpen && (
+      {tocOpen && (
         <button
           aria-label={t('목차 닫기')}
           className="absolute inset-0 z-10 bg-black/30"
@@ -683,15 +919,14 @@ export function ReportPanel({
         />
       )}
 
-      {/* 목차 */}
+      {/* 목차 — 서랍이다. 늘 서 있는 칸이 아니다.
+          다섯 줄짜리 목차가 208px 를 세로로 다 쓰고 있었고, 그 폭은 문서에서
+          나온 것이다. 사람이 문서를 보러 와서 문서가 세 번째로 좁은 칸에 있는
+          이유가 그것이었다. 필요할 때 부르고, 고르면 닫힌다. */}
       <nav
         className={cn(
           'w-52 shrink-0 flex-col border-r border-line bg-panel',
-          panel.narrow
-            ? tocOpen
-              ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
-              : 'hidden'
-            : 'flex',
+          tocOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden',
         )}
       >
         <div className="border-b border-line px-3 py-2.5">
@@ -710,7 +945,11 @@ export function ReportPanel({
           {report.sections.map((s) => (
             <button
               key={s.id}
-              onClick={() => s.status !== 'pending' && scrollTo(s.id)}
+              onClick={() => {
+                if (s.status === 'pending') return
+                scrollTo(s.id)
+                setTocOpen(false)
+              }}
               disabled={s.status === 'pending'}
               className={cn(
                 'flex w-full items-start gap-2 rounded-control px-2 py-1.5 text-left text-sm transition-colors',
@@ -739,15 +978,15 @@ export function ReportPanel({
           <p className="min-w-0 flex-1 truncate text-base font-medium max-sm:basis-full">
             {report.title}
           </p>
-          {/* Only where there is a drawer to open: with the contents standing
-              beside the document this button opens what is already on screen. */}
-          {panel.narrow && (
-            <Button size="sm" aria-label={t('목차')} onClick={() => setTocOpen((o) => !o)}>
-              <ListTree size={13} />
-              {t('목차')} {done}/{report.sections.length}
-            </Button>
-          )}
-          <Badge>v{report.version}</Badge>
+          {/* No `aria-label`: the words on the button are the name, and an
+              `aria-label` of 목차 would replace them — announcing "목차" and
+              swallowing the count that is the reason to look at it. */}
+          <Button size="sm" onClick={() => setTocOpen((o) => !o)}>
+            <ListTree size={13} />
+            {t('목차')} {done}/{report.sections.length}
+          </Button>
+          {/* `저장 시점 v3` 이 바로 옆에서 같은 숫자를 말한다. 둘 중 하나는
+              읽는 사람에게 아무것도 더 주지 않으면서 줄 하나를 접히게 만든다. */}
           <LintFindings
             findings={report.lint}
             artifact={report}
@@ -805,31 +1044,38 @@ export function ReportPanel({
               // that. Scaled it still fits, but a document scaled to 44% is a
               // document nobody can type in — so entering the page view asks
               // for the room a page needs. Leaving it gives the room back.
-              if (onWideChange) {
-                setFocus(next === 'page')
-                onWideChange(next === 'page')
+              if (onModeChange) {
+                // A page is 794px wide, so entering the page view asks for the
+                // room a page needs and leaving gives it back — without
+                // overriding a reader who has already folded the chat away.
+                const wanted: PanelMode =
+                  next === 'page' ? (mode === 'narrow' ? 'wide' : mode) : 'narrow'
+                setMode(wanted)
+                onModeChange(wanted)
               }
             }}
           >
             <FileType2 size={13} />
             {view === 'page' ? t('웹뷰') : t('페이지뷰')}
           </Button>
-          {/* 어떤 서식으로 볼지. 생성 때 한 번 고르고 끝이던 선택을 문서를
-              쓰는 도중에도 바꿀 수 있게 한다 — 보기 방식이지 갈래가 아니다. */}
+          {/* 어떤 양식으로 낼지. 생성 때 한 번 고르고 끝이던 선택을 문서를
+              쓰는 도중에도 바꿀 수 있게 한다. 화면은 달라지지 않는다 — 종이는
+              하나다 — 달라지는 것은 내보낸 파일이다. 메뉴가 그렇게 말한다. */}
           {view === 'page' && (
             <Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary">
+                <Button size="sm" variant="secondary" disabled={templateSaving}>
+                  {templateSaving && <Loader2 size={13} className="animate-spin" />}
                   {documentTemplates.find((row) => row.id === templateId)?.name ?? t('서식')}
                 </Button>
               )}
             >
-              <MenuLabel>{t('서식')}</MenuLabel>
+              <MenuLabel>{t('내보내면 이 양식으로 나갑니다')}</MenuLabel>
               {documentTemplates.map((row) => (
                 <MenuItem
                   key={row.id}
                   checked={row.id === templateId}
-                  onClick={() => setTemplateId(row.id)}
+                  onClick={() => void chooseTemplate(row.id)}
                 >
                   {row.name}
                 </MenuItem>
@@ -859,16 +1105,8 @@ export function ReportPanel({
             // 그대로 저장하면 방금 되돌린 일이 취소된다.
             onRestored={() => openEditor(false)}
           />
-          <PanelControls wide={focus} onToggleWide={onWideChange && toggleFocus} />
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('인쇄')}
-            title={t('이 보고서를 인쇄합니다')}
-            onClick={() => window.print()}
-          >
-            <Printer size={15} />
-          </Button>
+          <PanelControls mode={mode} onCycle={onModeChange && cycleMode} />
+          <AddSectionImage report={report} />
           <Dropdown
             align="right"
             trigger={() => (
@@ -895,8 +1133,13 @@ export function ReportPanel({
             <MenuItem hint="MD" onClick={() => void download(report.id, 'md', report.title)}>
               {t('마크다운 원문')}
             </MenuItem>
+            {/* 인쇄도 내보내기다. 자기 단추를 하나 갖고 도구줄을 한 줄 더
+                접히게 할 만큼 다른 일은 아니다. */}
+            <MenuItem icon={<Printer size={14} />} onClick={() => window.print()}>
+              {t('인쇄')}
+            </MenuItem>
           </Dropdown>
-          <PanelControls wide={focus} onClose={onClose} />
+          <PanelControls mode={mode} onClose={onClose} />
         </header>
 
         <div
@@ -998,7 +1241,7 @@ export function ReportPanel({
           ) : (
           <article className="mx-auto max-w-2xl px-6 py-6">
             <h1 className="mb-6 text-2xl font-semibold tracking-tight">{report.title}</h1>
-            {report.sections.map((s) => (
+            {report.sections.map((s, sectionIndex) => (
               <section key={s.id} id={`sec-${s.id}`} className="mb-8 scroll-mt-4">
                 <div className="group/sec mb-2 flex items-center gap-2">
                   <h2
@@ -1006,46 +1249,85 @@ export function ReportPanel({
                   >
                     {s.heading}
                   </h2>
-                  {/* 절 하나만 다시 쓴다. 지도교수 피드백이 넷째 절에 오면
-                      나머지 다섯을 다시 쓰는 것은 아무도 원하지 않는다. */}
-                  {s.status === 'done' && !editing && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t('{name} 다시 쓰기').replace('{name}', s.heading)}
-                      className="opacity-0 transition-opacity group-hover/sec:opacity-100 focus:opacity-100"
-                      onClick={() => {
-                        setRewriting(s.id)
-                        setRewriteNote('')
-                        setRewriteQuote('')
-                      }}
+                  {!editing && (
+                    // Opens rightward: this button sits at the left edge of the
+                    // document column, and a menu anchored by its right edge
+                    // hangs off the panel and is clipped.
+                    <Dropdown
+                      align="left"
+                      trigger={() => (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={t('{name} 절 편집').replace('{name}', s.heading)}
+                          disabled={restructuring}
+                        >
+                          <ListPlus size={12} />
+                          {t('절 편집')}
+                        </Button>
+                      )}
                     >
-                      <RefreshCw size={12} />
-                        {t('이 절만 다시 쓰기')}
-                    </Button>
+                      <MenuLabel>{s.heading || t('제목 없음')}</MenuLabel>
+                      <MenuItem onClick={() => void addSection(sectionIndex)}>
+                        {t('앞에 절 추가')}
+                      </MenuItem>
+                      <MenuItem onClick={() => void addSection(sectionIndex + 1)}>
+                        {t('뒤에 절 추가')}
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => void moveSection(sectionIndex, -1)}
+                        disabled={sectionIndex === 0}
+                      >
+                        {t('위로 옮기기')}
+                      </MenuItem>
+                      <MenuItem
+                        onClick={() => void moveSection(sectionIndex, 1)}
+                        disabled={sectionIndex >= report.sections.length - 1}
+                      >
+                        {t('아래로 옮기기')}
+                      </MenuItem>
+                      <MenuItem onClick={() => void removeSection(sectionIndex)}>
+                        {t('이 절 지우기')}
+                      </MenuItem>
+                      {s.status === 'done' && (
+                        <>
+                          <MenuLabel>{t('이 절에 대해')}</MenuLabel>
+                          {/* 절 하나만 다시 쓴다. 지도교수 피드백이 넷째 절에
+                              오면 나머지 다섯을 다시 쓰는 것은 아무도 원하지
+                              않는다. */}
+                          <MenuItem
+                            icon={<RefreshCw size={13} />}
+                            onClick={() => {
+                              setRewriting(s.id)
+                              setRewriteNote('')
+                              setRewriteQuote('')
+                            }}
+                          >
+                            {t('이 절만 다시 쓰기')}
+                          </MenuItem>
+                          {/* 수치가 틀린 보고서는 슬라이드보다 멀리 간다.
+                              발표는 그 방에서 반박당하지만 보고서는 내보내져
+                              메일에 붙는다. */}
+                          <MenuItem
+                            icon={<ShieldQuestion size={13} />}
+                            disabled={checking === s.id}
+                            onClick={() => void factcheckSection(s.id)}
+                          >
+                            {s.factCheck ? t('다시 검토') : t('검토')}
+                          </MenuItem>
+                        </>
+                      )}
+                    </Dropdown>
                   )}
-                  {/* 수치가 틀린 보고서는 슬라이드보다 멀리 간다. 발표는 그
-                      방에서 반박당하지만 보고서는 내보내져 메일에 붙는다.
-                      덱에만 있던 검토를 여기에도 두는 이유다. */}
-                  {s.status === 'done' && !editing && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={checking === s.id}
-                      aria-label={t('{name} 검토').replace('{name}', s.heading)}
-                      className={cn(
-                        'transition-opacity focus:opacity-100',
-                        s.factCheck ? 'opacity-100' : 'opacity-0 group-hover/sec:opacity-100',
-                      )}
-                      onClick={() => void factcheckSection(s.id)}
-                    >
-                      {checking === s.id ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <ShieldQuestion size={12} />
-                      )}
-                      {s.factCheck ? t('다시 검토') : t('검토')}
-                    </Button>
+                  {/* 다시 쓰기와 검토는 위 메뉴 안에 있다.
+                      셋이 한 줄에 있었는데 하나만 늘 보이고 둘은 절 위에
+                      마우스를 올려야 나타났다 — 같은 줄에서 규칙이 엇갈리면,
+                      보이지 않는 쪽은 없는 것이 된다. 절 제목 옆에 늘 보이는
+                      손잡이 하나를 두고, 그 절에 할 수 있는 일을 그 안에 모은다.
+                      진행 중 표시는 남는다: 무엇이 돌고 있는지는 메뉴를 열지
+                      않고도 보여야 한다. */}
+                  {checking === s.id && (
+                    <Loader2 size={12} className="shrink-0 animate-spin text-muted" />
                   )}
                   {/* 확인이 필요한 주장이 있으면 절을 접어 두어도 보이게. */}
                   {s.factCheck?.claims.some((c) => c.verdict !== 'supported') && (

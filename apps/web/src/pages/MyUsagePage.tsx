@@ -146,7 +146,13 @@ export function MyUsagePage() {
                         style={{ height: d.value > 0 ? `${Math.max(3, (d.value / peak) * 100)}%` : 0 }}
                       />
                     </div>
-                    <span className="h-4 shrink-0 truncate text-center text-2xs tabular-nums text-faint">
+                    {/* Not truncated. A `MM-DD` label does not fit the ~30px a
+                        column gets over a month, so every date on the axis came
+                        out as `08-…` and the chart said which shape but not
+                        which day. Labels are seven columns apart and their
+                        neighbours are empty, so one is free to overflow into
+                        the space beside it. */}
+                    <span className="h-4 shrink-0 overflow-visible text-center text-2xs whitespace-nowrap tabular-nums text-faint">
                       {dated ? d.date.slice(5) : ''}
                     </span>
                     <span className="pointer-events-none absolute -top-7 left-1/2 z-10 hidden -translate-x-1/2 rounded bg-panel px-1.5 py-0.5 text-xs whitespace-nowrap shadow group-hover:block">

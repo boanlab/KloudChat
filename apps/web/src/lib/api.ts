@@ -780,6 +780,12 @@ export const sessionsApi = {
       count: number
       /** An `image` design template. Shapes the prompt; produces no file of its own. */
       templateId?: string
+      /**
+       * Asked for from inside a document rather than from the image surface.
+       * Tells the server the picture goes *into* a slide or a section, so it
+       * comes back as a figure and not as a picture of a whole slide.
+       */
+      figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
@@ -1007,6 +1013,14 @@ export const artifactsApi = {
   addBlockImage: (id: string, index: number, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/image`, body({ index, artifactId, caption })),
   /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
+  /**
+   * Puts a picture made in this workspace into one section of a report.
+   *
+   * A report is Markdown and a Markdown picture is a shape every exporter
+   * already reads, so the server appends a line rather than adding a field.
+   */
+  addSectionImage: (id: string, sectionId: string, artifactId: string, caption: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/sections/image`, body({ sectionId, artifactId, caption })),
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */

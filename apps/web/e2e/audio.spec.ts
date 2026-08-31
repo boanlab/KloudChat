@@ -35,7 +35,7 @@ test('내레이션을 만들면 오디오 아티팩트로 남는다', async ({ p
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   // The kind control is a dropdown labelled with its current value.
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '오디오' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '오디오' }).click()
     // Sound effects are absent from the list: nothing serves them.
   await page.getByRole('button', { name: /^유형/ }).click()
   await expect(page.getByRole('menuitem', { name: '효과음' })).toHaveCount(0)
@@ -104,7 +104,7 @@ test('영상 모드는 만들기 전에 값을 알려 준다', async ({ page }) 
   // that is off carries no composer to drive.
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '영상' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
 
   // The quote comes from the same table the pass-through bills from. A clip
   // once came back at twice the quoted price because the request named a field

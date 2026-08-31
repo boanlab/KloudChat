@@ -50,6 +50,12 @@ test('페이지뷰에서 제목과 절 제목을 고칠 수 있다', async ({ pa
   // running alone never is, and running after another report spec often is.
   await expect(save).toBeHidden({ timeout: 30_000 })
   await page.reload()
-  await expect(page.getByText(mark).first()).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('절수정').first()).toBeVisible()
+  // Filtered to what a reader can see. The contents are a drawer now and they
+  // sit ahead of the document in the DOM, so `.first()` on a section heading
+  // picked the closed drawer's copy of it — present, hidden, and not the thing
+  // this test is about.
+  await expect(page.getByText(mark).filter({ visible: true }).first()).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByText('절수정').filter({ visible: true }).first()).toBeVisible()
 })

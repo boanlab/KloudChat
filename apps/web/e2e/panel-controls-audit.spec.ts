@@ -16,7 +16,7 @@
  * costs a model call per control is a sweep nobody runs.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, signIn, openAndSeedReport } from './helpers'
 
 /**
  * Titles of the artifacts of one kind that are actually finished, newest first.
@@ -113,37 +113,37 @@ test('보고서 패널이 약속한 컨트롤을 내놓는다', async ({ page })
   const named = await controls(page.locator('body'))
   // A panel missing one of these lost a feature to a merge, which is the
   // failure this sweep exists for.
-  for (const label of ['내보내기', '페이지뷰', '인쇄', '검사 결과']) {
+  for (const label of ['내보내기', '페이지뷰', '검사 결과']) {
     expect(named, `${label} 가 사라졌다`).toContain(label)
   }
+  // Printing is one of the ways this document leaves, so it lives with the
+  // others rather than taking a button of its own and folding the toolbar onto
+  // a second row.
+  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await expect(page.getByRole('menuitem', { name: '인쇄' })).toBeVisible()
 })
 
 test('페이지뷰 토글이 두 방향 모두 간다', async ({ page }) => {
-  test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
-  // From wherever it opened, not from the web view.
+  // Its own document, not whichever is newest.
   //
-  // A document written into a 서식 opens *in* the page view — the panel reads
-  // `templateId` and starts there. The button's `aria-label` is 페이지뷰 in
-  // both directions, so pressing it on such a document goes to the web view,
-  // and asserting the paper appears asserted the opposite of what happened.
+  // The rest of this file audits the controls on a finished artifact and that
+  // is the point of it. This case is different: it is about a button, and the
+  // button behaves differently depending on the document — one written into a
+  // 서식 opens *in* the page view, because the panel reads `templateId` and
+  // starts there. Opening whatever was written last made the case pass or fail
+  // on which spec ran before it.
+  await openAndSeedReport(page, ['## 현황', '', '지금은 이렇다.'].join('\n'))
+
   const toggle = page.getByRole('button', { name: '페이지뷰' })
   const paper = page.locator('.page')
-  const started = (await paper.count()) > 0
+  // Seeded without a 서식, so it opens on the web view.
+  await expect(paper).toHaveCount(0)
 
   await toggle.click()
-  if (started) {
-    await expect(paper).toHaveCount(0, { timeout: 30_000 })
-  } else {
-    await expect(paper.first()).toBeVisible({ timeout: 30_000 })
-  }
-
+  await expect(paper.first()).toBeVisible({ timeout: 30_000 })
   // The same button goes back — its label names the destination, not the state.
   await toggle.click()
-  if (started) {
-    await expect(paper.first()).toBeVisible({ timeout: 30_000 })
-  } else {
-    await expect(paper).toHaveCount(0)
-  }
+  await expect(paper).toHaveCount(0)
 })
 
 test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }) => {

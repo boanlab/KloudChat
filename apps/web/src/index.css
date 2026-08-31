@@ -354,3 +354,89 @@ body {
     display: none;
   }
 }
+
+@layer components {
+  /* 서식으로 쓴 절의 마크업.
+     그 절은 HTML 로 저장되고, 그것을 문서처럼 보이게 하던 규칙은 서식의
+     조판 안에 있다 — 페이지뷰의 shadow root 로 들어가고 그 밖으로는 나오지
+     않는다. 웹뷰에서는 같은 마크업이 브라우저 기본값으로 떨어져서, 표가 줄
+     맞춘 글자 덩어리로 나와 그리다 만 표처럼 읽혔다.
+
+     화면의 나머지와 같은 토큰을 쓴다. 종이의 판형을 여기로 옮겨 오는 것이
+     아니라, 이 마크업이 이 화면에서 읽히게 하는 것이 목적이다. */
+  .doc-html table {
+    width: 100%;
+    margin: 0.75rem 0;
+    border-collapse: collapse;
+    font-size: 0.95em;
+  }
+  .doc-html th,
+  .doc-html td {
+    border: 1px solid var(--color-line);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  .doc-html th {
+    background: var(--color-elevated);
+    font-weight: 600;
+  }
+  /* 넘치면 표만 옆으로 흐른다. 본문이 가로로 밀리면 읽던 자리를 잃는다. */
+  .doc-html > table,
+  .doc-html .table-wrap {
+    display: block;
+    overflow-x: auto;
+  }
+  .doc-html h2,
+  .doc-html h3 {
+    margin: 1.25rem 0 0.5rem;
+    font-weight: 600;
+  }
+  .doc-html h2 {
+    font-size: 1.125rem;
+  }
+  .doc-html h3 {
+    font-size: 1rem;
+  }
+  .doc-html p {
+    margin: 0.625rem 0;
+  }
+  .doc-html ul,
+  .doc-html ol {
+    margin: 0.625rem 0;
+    padding-left: 1.25rem;
+  }
+  .doc-html ul {
+    list-style: disc;
+  }
+  .doc-html ol {
+    list-style: decimal;
+  }
+  .doc-html li {
+    margin: 0.25rem 0;
+  }
+  .doc-html blockquote {
+    margin: 0.75rem 0;
+    border-left: 3px solid var(--color-line);
+    padding-left: 0.75rem;
+    color: var(--color-muted);
+  }
+  .doc-html code {
+    border-radius: 0.25rem;
+    background: var(--color-elevated);
+    padding: 0.1rem 0.3rem;
+    font-size: 0.9em;
+  }
+  .doc-html figure {
+    margin: 1rem 0;
+  }
+  .doc-html figcaption {
+    margin-top: 0.35rem;
+    color: var(--color-muted);
+    font-size: 0.85em;
+  }
+  .doc-html img {
+    max-width: 100%;
+    height: auto;
+  }
+}

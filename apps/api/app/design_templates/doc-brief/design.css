@@ -1,0 +1,62 @@
+/* 한 장 요약 — 두 단, 한 장, 마지막 칸은 언제나 다음 행동.
+ *
+ * 이 서식의 약속은 분량이다. 읽는 사람이 회의에 들고 들어가 한 면만 보고
+ * 결정할 수 있어야 하므로, 표지가 한 장을 통째로 쓰는 기본 조판은 여기서
+ * 성립하지 않는다. 제목은 두 단을 가로지르는 머리띠가 되고 본문은 그 아래로
+ * 두 단을 흐른다. 단을 나누는 것은 장식이 아니라 분량 자체를 줄이는 장치다 —
+ * 같은 글이 한 단일 때보다 짧은 행으로 눈에 들어오고, 한 면에 들어간다.
+ *
+ * 상자는 쓰지 않는다. 칸을 나누는 일을 테두리가 아니라 여백과 규칙선이
+ * 하므로, 인쇄기가 배경을 빼도 구조가 그대로 남는다. */
+
+.page {
+  column-count: 2;
+  column-gap: 2.2rem;
+  column-rule: 1px solid var(--hair);
+  padding-bottom: 2rem;
+  font-size: 0.94rem;
+  line-height: 1.62;
+}
+
+/* 표지가 아니라 머리띠. 두 단을 가로지르고, 자기 몫의 종이를 갖지 않는다. */
+.cover {
+  column-span: all;
+  min-height: 0;
+  padding: 0 0 0.7rem;
+  margin: 0 0 1.3rem;
+  border-bottom: 2px solid var(--accent);
+}
+.cover::after { display: none; }
+.cover h1 { font-size: 1.6rem; max-width: none; margin-bottom: 0.5rem; }
+.cover .lead, .cover > p { margin-bottom: 0.9rem; font-size: 0.92rem; }
+.cover dl { max-width: none; font-size: 0.82rem; }
+
+section { margin: 0 0 1.5rem; break-inside: avoid; }
+h2 { font-size: 1.02rem; margin-bottom: 0.5rem; }
+h2::before { font-size: 0.82rem; }
+p { margin-bottom: 0.6rem; }
+table { margin: 0.7rem 0; font-size: 0.86rem; }
+.kpi { margin: 0.9rem 0; padding: 0.5rem 0; }
+.kpi strong { font-size: 1.2rem; }
+
+/* 마지막 칸은 언제나 다음 행동. 서식이 그렇게 약속했으므로 조판이 그 자리를
+   비워 두지 않고 표시한다 — 어느 절이 마지막인지는 글이 아니라 위치가 정한다. */
+section:last-of-type {
+  break-before: column;
+  margin-bottom: 0;
+  padding-top: 0.7rem;
+  border-top: 2px solid var(--accent);
+}
+section:last-of-type h2 { color: var(--accent); }
+
+@media print {
+  /* 표지가 한 장을 가져가는 기본 규칙을 되돌린다. 한 장 요약이 두 장이 되면
+     그것은 다른 서식이다. */
+  .cover {
+    min-height: 0;
+    padding: 0 0 0.7rem;
+    page-break-after: auto;
+    break-after: auto;
+  }
+  section { margin: 0 0 8mm; }
+}

@@ -157,7 +157,7 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
   ).toBeVisible()
 })
 
-test('웹 검색 토글은 검색이 일어날 수 없는 화면에는 없다', async ({ page }) => {
+test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page }) => {
   // One model every text surface may select, so the composer on each of them
   // is otherwise complete and the only difference is the toggle itself.
   await page.route('**/api/models', async (route) => {
@@ -183,12 +183,23 @@ test('웹 검색 토글은 검색이 일어날 수 없는 화면에는 없다', 
   await page.goto('/new/chat')
   await expect(search).toHaveCount(1)
 
-  // A report and a deck writer are handed no tools at all, so the globe over
-  // them was lit for a search that was never going to run. The picture and the
-  // clip surfaces have hidden it for the same reason all along.
+  // A report and a deck can search now, and should.
+  //
+  // This asserted the opposite for as long as the document writers were handed
+  // no tools: a lit globe promised a search that was never going to run, so it
+  // was hidden. Hiding it turned out to be the wrong half of that to fix — a
+  // chat answer that is out of date gets argued with, and a report gets
+  // exported and mailed. The writers were given the search instead, and this
+  // assertion outlived the reason for it. See `canWebSearch` in `Composer`.
   for (const kind of ['report', 'slides']) {
     await page.goto(`/new/${kind}`)
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-    await expect(search).toHaveCount(0)
+    await expect(search).toHaveCount(1)
   }
+
+  // The two media surfaces still hide it, for the reason the document surfaces
+  // no longer do — an image endpoint takes a prompt and chips and has nowhere
+  // to put a page it found. Not asserted here: those surfaces are off by
+  // default, so an empty count would pass whether the globe is hidden or the
+  // whole composer is. `disabled-surface.spec.ts` is where that belongs.
 })

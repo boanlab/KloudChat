@@ -20,6 +20,16 @@
 
   No script. Artifacts render in a `sandbox=""` iframe and the file is also
   downloaded and opened offline. See `services/design_templates.py`.
+
+  This file is the shared shape. It is 보고 문서's own design — the first line
+  above says so — and every other document 서식 borrows it by naming it in
+  `seed_from`, then adds its own `design.css`: 안내문·공지 centres its title
+  under a double rule, 한 장 요약 runs two columns, 학기말 글 indents its first
+  lines and stops leaving space between paragraphs. What belongs here is what
+  every one of them needs and none of them is different for — the tokens, the
+  whole vocabulary `assemble` can emit, the `@page` rule, the print rules, and
+  the shadow-root `:host`. What belongs there is the forty lines that make one
+  서식 recognisable across a room.
 -->
 <html lang="ko">
 <head>

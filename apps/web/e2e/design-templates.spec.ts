@@ -428,7 +428,12 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
   // The card for an image template shows its recipe rather than a picture:
   // the result comes from the model and the project's design system, so a
   // sample image would advertise something this template cannot promise.
-  await expect(card).toContainText('글자를 그리지 않음')
+  //
+  // Read off the catalogue's own words. The phrase this asserted before —
+  // "글자를 그리지 않음" — was a preview caption, and previews were taken out;
+  // the assertion outlived the thing it was describing and failed on a card
+  // that says the same thing in the template's own description.
+  await expect(card).toContainText('글자는 넣지 않고')
 
   await shot(page, '06-image-gallery')
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
@@ -462,4 +467,33 @@ test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나
   const stored = await artifactOf(page, sessionId)
   expect(stored.kind).toBe('deck')
   expect(stored.data.slides.length).toBeGreaterThanOrEqual(5)
+})
+
+test('쪽을 넘겨도 대화상자 크기가 그대로다', async ({ page }) => {
+  // 넘길 때마다 상자가 자라고 줄면 닫기 버튼도 쪽 넘김도 매번 다른 자리에
+  // 있다. 쪽마다 카드 높이가 다르고 — 서식 카드는 문장 카드의 두 배쯤 된다 —
+  // 마지막 쪽은 넷이 아니라 남은 몇 장이므로, 놔두면 상자가 382 와 686 사이를
+  // 오르내린다.
+  await signIn(page)
+  await page.goto('/new/report')
+  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('dialog').locator('.grid > *').first()).toBeVisible({
+    timeout: 20_000,
+  })
+
+  const grid = page.getByRole('dialog').locator('.grid')
+  const tall = async () => Math.round((await grid.boundingBox())!.height)
+
+  const pages = Number(
+    (await page.getByRole('dialog').getByText(/^\d+ \/ \d+$/).innerText()).split('/')[1],
+  )
+  expect(pages, '쪽이 하나뿐이면 이 사례는 아무것도 확인하지 못한다').toBeGreaterThan(1)
+
+  const first = await tall()
+  for (let i = 1; i < pages; i++) {
+    await page.getByRole('button', { name: '다음 쪽' }).click()
+    await page.waitForTimeout(400)
+    expect(await tall(), `${i + 1}쪽에서 높이가 달라졌다`).toBe(first)
+  }
 })

@@ -21,8 +21,7 @@ import time
 
 import pytest
 from conftest import both_passes
-from fastapi import FastAPI, HTTPException
-from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
 from app.models.chat import SessionKind
 from app.models.workspace import Project

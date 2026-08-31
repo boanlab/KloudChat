@@ -79,6 +79,11 @@ class ImageRequest(Wire):
     template_id: str | None = Field(default=None, max_length=60)
     #: Up to four. Each is a separate upstream call and a separate charge.
     count: int = Field(default=1, ge=1, le=4)
+    #: Asked for from inside a document — a slide's picker or a report's — rather
+    #: than from the image surface. It changes the prompt, not the model: a
+    #: picture going *into* a slide must not be a picture *of* a slide. See
+    #: `imagegen._FIGURE_CLAUSE`.
+    figure: bool = False
 
 
 class AudioRequest(Wire):

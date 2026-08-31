@@ -20,6 +20,7 @@ opened the file.
 
 from __future__ import annotations
 
+import io
 import pathlib
 
 from lxml import etree
@@ -102,7 +103,9 @@ def test_the_design_is_on_the_master_rather_than_on_the_runs() -> None:
                 assert size, f"{row.id}: {tag} 에 크기 없는 수준이 있습니다"
                 levels.append(int(size))
             # An outline steps down. A list that does not is one nobody set.
-            assert levels == sorted(levels, reverse=True), f"{row.id}: {tag} 크기가 내려가지 않습니다"
+            assert levels == sorted(levels, reverse=True), (
+                f"{row.id}: {tag} 크기가 내려가지 않습니다"
+            )
             scales.setdefault(tag, set()).add(levels[0])
 
 
@@ -112,7 +115,9 @@ def test_the_design_is_on_the_master_rather_than_on_the_runs() -> None:
     # the size went onto `a:lvl1pPr`: every file read back PowerPoint's own
     # 44pt and 32pt, and the specs applied to nothing.
     for tag, seen in scales.items():
-        assert len(seen) > 1, f"{tag}: 모든 덱이 같은 크기 {seen} 입니다 — 서식이 반영되지 않았습니다"
+        assert len(seen) > 1, (
+            f"{tag}: 모든 덱이 같은 크기 {seen} 입니다 — 서식이 반영되지 않았습니다"
+        )
 
 
 def test_the_template_ships_without_slides() -> None:
@@ -212,3 +217,51 @@ def test_the_export_is_built_on_the_template_it_was_written_in() -> None:
         assert row.pptx_template, f"{row.id} 에 template.pptx 가 없습니다"
         built = deck_export.to_pptx("제목", slides, template=row.pptx_template)
         assert major(built) != "Calibri", f"{row.id}: 서식이 파일에 실리지 않았습니다"
+
+
+def test_a_slide_can_be_set_larger_or_smaller_and_the_file_follows() -> None:
+    """글자 크기 on one slide, honoured by the `.pptx` as well as the screen.
+
+    A control that only changed the preview would be worse than no control: the
+    thing that gets presented is the file. Scaled in `paint` rather than at the
+    fifteen call sites, which is why every size in that exporter goes through
+    one function.
+    """
+    from pptx import Presentation
+
+    from app.services import deck_export
+
+    body = [{"id": "s1", "layout": "bullets", "title": "비밀번호", "bullets": ["12자 이상"]}]
+
+    def sizes(scale: float | None) -> list[float]:
+        slides = [{**body[0], **({"textScale": scale} if scale else {})}]
+        deck = Presentation(io.BytesIO(deck_export.to_pptx("확인", slides)))
+        return sorted(
+            run.font.size.pt
+            for slide in deck.slides
+            for shape in slide.shapes
+            if shape.has_text_frame
+            for para in shape.text_frame.paragraphs
+            for run in para.runs
+            if run.font.size
+        )
+
+    assert sizes(1.25)[-1] > sizes(None)[-1] > sizes(0.8)[-1]
+
+
+def test_an_absurd_type_size_cannot_be_stored_into_the_file() -> None:
+    """It arrives on an artifact a person can PATCH.
+
+    A slide whose words are forty times the size of the paper is a file nobody
+    can open, so the exporter reads the value rather than trusting it.
+    """
+    from app.services import deck_export
+
+    assert deck_export._typescale({"textScale": 40}) == 2.0
+    assert deck_export._typescale({"textScale": 0.1}) == 0.5
+    assert deck_export._typescale({"textScale": "크게"}) == 1.0
+    assert deck_export._typescale({}) == 1.0
+    # `0` is what an absent value serialises to in more than one client, and
+    # nobody means "no height" by it. Read as unset rather than clamped, which
+    # is the difference between a normal slide and one drawn at half size.
+    assert deck_export._typescale({"textScale": 0}) == 1.0

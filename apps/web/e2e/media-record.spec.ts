@@ -42,7 +42,7 @@ test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page })
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   // The kind control is a dropdown labelled with its current value.
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '오디오' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '오디오' }).click()
 
   await page.getByLabel('프롬프트 입력').fill(PROMPT)
   await page.getByLabel('프롬프트 입력').press('Enter')

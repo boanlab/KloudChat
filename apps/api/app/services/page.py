@@ -30,7 +30,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
-from app.services import grounding, research, settings_store
+from app.services import grounding, research, settings_store, thinking
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -126,6 +126,48 @@ async def _complete(
         response.raise_for_status()
         payload = response.json()
 
+    # A reasoning model can spend the whole ceiling thinking and return an
+    # empty answer with `finish_reason: "length"`. See `services/thinking.py` —
+    # this is the one place that can tell that apart from a model with nothing
+    # to say, because it is the only place holding the raw payload.
+    if bigger := thinking.starved(payload, max_tokens):
+        log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
+        ) as client:
+            again = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": bigger,
+                    "reasoning": thinking.REASONING_CAP,
+                },
+            )
+            if again.status_code >= 400:
+                # A gateway that does not know `reasoning` refuses the whole
+                # call. The ceiling alone still helps every model that does not
+                # scale its thinking to it.
+                again = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": model, "messages": messages, "max_tokens": bigger},
+                )
+        if again.status_code == 200:
+            retried = again.json()
+            spent = retried.get("usage") or {}
+            first = payload.get("usage") or {}
+            # Both calls are charged, so both are counted. A budget that hid
+            # the first attempt would under-report what the turn cost.
+            payload = retried
+            payload["usage"] = {
+                "prompt_tokens": int(first.get("prompt_tokens") or 0)
+                + int(spent.get("prompt_tokens") or 0),
+                "completion_tokens": int(first.get("completion_tokens") or 0)
+                + int(spent.get("completion_tokens") or 0),
+            }
+
     raw = payload.get("usage") or {}
     return _text(payload), {
         "inputTokens": int(raw.get("prompt_tokens") or 0),
@@ -203,6 +245,36 @@ def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[
     if blocks:
         blocks[0]["layout"] = template.layouts[0]
     return title, blocks[:_MAX_BLOCKS]
+
+
+def _guide(template: DesignTemplate) -> str:
+    """The 서식's rules, and the form they are the rules of.
+
+    The instructions say what belongs where; the form shows it — the headings
+    in order, the columns of each table, the line under each heading naming
+    what goes there. A 서식 ships that file already, so describing it a second
+    time in prose would be a second copy to keep in step with the first.
+
+    Short by construction: a blank form is headings and column names, so 회의록
+    comes to 257 characters. This is not a document being stuffed into the
+    context, it is a table of contents with the blanks named.
+
+    The guidance lines inside a form are addressed to a person filling it in by
+    hand, and a model handed them without warning writes them into the document
+    as though they were the text. So the form arrives labelled — this is the
+    shape, and the lines in it are directions rather than sentences to keep.
+    """
+    form = templates.form_text(template)
+    if not form:
+        return template.instructions
+    return (
+        f"{template.instructions}\n\n"
+        "## 이 서식의 빈 양식\n\n"
+        "아래는 사람이 손으로 채우는 빈 양식에서 뽑은 글이다. 제목과 그 차례,\n"
+        "표의 열 이름은 이대로 따른다. 각 제목 아래의 한 줄은 무엇을 적으라는\n"
+        "안내이지 문서에 남길 문장이 아니므로, 그 자리에는 실제 내용을 쓴다.\n\n"
+        f"{form}"
+    )
 
 
 def _fragment(text: str, template: DesignTemplate) -> str:
@@ -324,7 +396,7 @@ async def write(
                     request=request[:2000],
                 )
                 + nudge,
-                trusted_context=[*(trusted_context or []), template.instructions],
+                trusted_context=[*(trusted_context or []), _guide(template)],
                 untrusted_context=document_context,
                 research_rule=research_rule,
             ),
@@ -457,7 +529,7 @@ async def write(
                         layout=block["layout"],
                         outline=outline_text,
                         written="\n".join(written[-4:]) or "(없음)",
-                        guide=template.instructions,
+                        guide=_guide(template),
                         request=request[:1200],
                     ),
                     trusted_context=trusted_context,
@@ -532,7 +604,7 @@ async def rewrite_block(
         layout=target.get("layout") or template.layouts[0],
         outline=outline,
         written=written[-3000:] or "(없음)",
-        guide=template.instructions,
+        guide=_guide(template),
         request=request[:1200],
     )
     if note.strip():

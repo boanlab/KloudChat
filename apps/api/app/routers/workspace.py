@@ -12,8 +12,8 @@ import base64
 import logging
 import re
 from datetime import datetime
-from typing import Any
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
@@ -66,6 +66,7 @@ from app.schemas.workspace import (
     ProjectPatch,
     PromptTemplateOut,
     SectionFactCheck,
+    SectionImage,
     SectionRewrite,
     SkillIn,
     SkillOut,
@@ -87,6 +88,7 @@ from app.services import (
     lint,
     page_export,
     pictures,
+    printing,
     prompt_templates,
     report_export,
     richtext,
@@ -100,7 +102,6 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
-from app.services import transcribe as transcribe_service
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools import builtin as builtin_tools
 from app.services.tools import registry as tool_registry
@@ -1078,6 +1079,78 @@ async def add_block_image(
         tokens=data.get("design") or {},
         body=design_templates.assemble(template, blocks),
     )
+    artifact.data = data
+    artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+@router.post("/artifacts/{artifact_id}/sections/image", response_model=ArtifactOut)
+async def add_section_image(
+    artifact_id: str, payload: SectionImage, user: CurrentUser, db: DbSession
+):
+    """Puts a picture this workspace made into one section of a report.
+
+    The page track has had this since it shipped and the report track has not,
+    which meant the surface most people write on was the one with no way to put
+    a picture in a document. Not for want of machinery: a Markdown picture line
+    is already read by `richtext` on the way in and by all three exporters on
+    the way out — `_IMAGE` in `report_export` decodes it and hands the bytes to
+    the same code that draws a figure the writer proposed. So this appends a
+    line rather than adding a field, and the `.docx`, `.pdf` and `.hwpx` need no
+    changes at all to carry it.
+
+    A section somebody has formatted by hand is HTML, and a Markdown line
+    dropped into HTML prints as literal text. So the shape follows the body it
+    is joining.
+
+    Free, and snapshotted like a rewrite.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.report:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
+
+    data = dict(artifact.data or {})
+    sections = [dict(row) for row in (data.get("sections") or [])]
+    target = next((row for row in sections if row.get("id") == payload.section_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="section_not_found")
+
+    mime, blob = await _picture_bytes(db, user, payload.artifact_id)
+    src = f"data:{mime};base64,{base64.b64encode(blob).decode('ascii')}"
+    caption = payload.caption.strip()
+    body = str(target.get("content") or "").rstrip()
+
+    if target.get("format") == "html":
+        label = design_templates.escape(caption or "그림")
+        figure = f'<figure><img src="{src}" alt="{label}" />'
+        if caption:
+            figure += f"<figcaption>{design_templates.escape(caption)}</figcaption>"
+        figure += "</figure>"
+        # The same door a hand-edited body goes through on PATCH — see
+        # `_clean_report_data`. The picture is trusted and the markup around it
+        # is built here, and neither gets to skip it.
+        target["content"] = design_templates.sanitise(
+            f"{body}{figure}", editable_styles=True
+        )
+    else:
+        # The alt text is what the exporters print as the caption, so it holds
+        # the caption rather than a description of it.
+        target["content"] = f"{body}\n\n![{caption}]({src})\n"
+
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=artifact.version,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=f"{target.get('heading') or '절'} 에 그림 넣음",
+        )
+    )
+    data["sections"] = sections
     artifact.data = data
     artifact.version += 1
     artifact.updated_at = utcnow()
@@ -2108,13 +2181,20 @@ def _export_deck(artifact: Artifact, format: str) -> Response:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
 
 
-def _export_page(artifact: Artifact, format: str) -> Response:
+async def _export_page(artifact: Artifact, format: str) -> Response:
     """An HTML artifact as a file somebody can hand on.
 
-    The `.html` is the artifact itself. The other formats are `page_export`
-    reading the markup back into the shapes the existing exporters draw, so a deck
-    opens in PowerPoint as editable slides laid out by this product's own deck
-    renderer. Fidelity lives in the `.html`, editability here.
+    Three ways out, and the split is deliberate:
+
+    · `.html` is the artifact itself, byte for byte.
+    · `.pdf` is that same file printed by a browser, so it carries the 서식's
+      own layout — its columns, its margin notes, its paper. See
+      `services/printing.py`. Where no printer is configured this falls through
+      to the structural renderer below, which still produces a PDF.
+    · `.docx` / `.hwpx` / `.pptx` are `page_export` reading the markup back into
+      the shapes the Office exporters draw, so the file opens in Word or
+      PowerPoint as paragraphs and slides somebody can edit. A design that
+      survived as a picture would not be a document.
 
     Which formats are offered follows the template — a document has no slides, a
     deck no `.hwpx`.
@@ -2145,8 +2225,12 @@ def _export_page(artifact: Artifact, format: str) -> Response:
                 "md",
             )
         if format == "pdf":
+            printed = await printing.to_pdf(content)
             return _attachment(
-                deck_export.to_pdf(title, slides, tokens=tokens), "application/pdf", stem, "pdf"
+                printed or deck_export.to_pdf(title, slides, tokens=tokens),
+                "application/pdf",
+                stem,
+                "pdf",
             )
         if format in ("pptx", "docx"):
             # `docx` is the endpoint default, so a deck exported without an
@@ -2173,8 +2257,9 @@ def _export_page(artifact: Artifact, format: str) -> Response:
             "md",
         )
     elif format == "pdf":
+        printed = await printing.to_pdf(content)
         body, media, suffix = (
-            report_export.to_pdf(title, sections, tokens=tokens),
+            printed or report_export.to_pdf(title, sections, tokens=tokens),
             "application/pdf",
             "pdf",
         )
@@ -2214,7 +2299,7 @@ async def export_artifact(
         )
 
     if artifact.kind is ArtifactKind.html:
-        return _export_page(artifact, format)
+        return await _export_page(artifact, format)
 
     if artifact.kind is ArtifactKind.deck:
         return _export_deck(artifact, format)

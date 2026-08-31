@@ -321,8 +321,22 @@ def to_pptx(
         # the two neutrals swap rather than being taken from the tokens.
         ink, muted = _DARK_INK, _DARK_MUTED
 
+    #: The slide being drawn, so `paint` can honour its own type size. A list
+    #: because `paint` closes over it and closures cannot rebind an outer name.
+    typescale = [1.0]
+
     def paint(run, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
-        _font(run, size=size, bold=bold, colour=colour or ink, faces=faces)
+        # `textScale` is what somebody set on that slide in the panel — 크게 or
+        # 작게 on one slide, not the deck. Applied here rather than at each of
+        # the fifteen call sites below, which is also why every size in this
+        # file goes through one function.
+        _font(
+            run,
+            size=max(8, round(size * typescale[0])),
+            bold=bold,
+            colour=colour or ink,
+            faces=faces,
+        )
 
     # The 서식's own PowerPoint file, when it has one.
     #
@@ -342,6 +356,7 @@ def to_pptx(
 
     for index, data in enumerate(slides):
         slide = presentation.slides.add_slide(blank)
+        typescale[0] = _typescale(data)
         if dark:
             slide.background.fill.solid()
             slide.background.fill.fore_color.rgb = _DARK_BG
@@ -677,6 +692,20 @@ def _tick_label(value: float) -> str:
     return f"{value:,.0f}" if abs(value) >= 10 else f"{value:,.1f}".rstrip("0").rstrip(".")
 
 
+def _typescale(slide: dict) -> float:
+    """This slide's own type size, as a multiple, clamped to something sane.
+
+    Set in the panel — 크게 / 보통 / 작게 on one slide. Read here rather than
+    trusted: it arrives on an artifact a person can PATCH, and a slide whose
+    words are forty times the size of the paper is a file nobody can open.
+    """
+    try:
+        value = float(slide.get("textScale") or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+    return min(2.0, max(0.5, value))
+
+
 def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
     """Greedy wrap by measured width.
 
@@ -751,37 +780,47 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         pdf.setFillColorRGB(*accent)
         pdf.rect(0, 0, 9, _H, stroke=0, fill=1)
 
+        # This slide's own type size, applied to the sizes *and* to the line
+        # advances they are paired with. Scaling only the glyphs would set 26pt
+        # words on 34pt leading and they would sit on each other — which is the
+        # reason the `.pptx` and the `.pdf` are scaled in different places at
+        # all: PowerPoint reflows a text box and this file does not.
+        ts = _typescale(data)
+
+        def S(n: float, _ts: float = ts) -> float:
+            return n * _ts
+
         if layout == "title" and index == 0:
             pdf.setFillColorRGB(*ink)
-            pdf.setFont(font, 40)
+            pdf.setFont(font, S(40))
             y = _H / 2 + 20
-            for line in _wrap(heading or title, font, 40, _W - 144):
+            for line in _wrap(heading or title, font, S(40), _W - 144):
                 pdf.drawString(72, y, line)
-                y -= 50
+                y -= S(50)
             if body:
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, 15)
-                for line in _wrap(body, font, 15, _W - 144)[:2]:
+                pdf.setFont(font, S(15))
+                for line in _wrap(body, font, S(15), _W - 144)[:2]:
                     pdf.drawString(72, y - 6, line)
-                    y -= 22
+                    y -= S(22)
         elif layout == "quote":
             pdf.setFillColorRGB(*accent)
-            pdf.setFont(font, 30)
+            pdf.setFont(font, S(30))
             y = _H / 2 + 40
-            for line in _wrap(f"“{body or heading}”", font, 30, _W - 200):
+            for line in _wrap(f"“{body or heading}”", font, S(30), _W - 200):
                 pdf.drawString(90, y, line)
-                y -= 40
+                y -= S(40)
             if body and heading:
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, 13)
+                pdf.setFont(font, S(13))
                 pdf.drawString(90, y - 8, heading)
         else:
             pdf.setFillColorRGB(*ink)
-            pdf.setFont(font, 26)
+            pdf.setFont(font, S(26))
             y = _H - 96
-            for line in _wrap(heading, font, 26, text_width):
+            for line in _wrap(heading, font, S(26), text_width):
                 pdf.drawString(72, y, line)
-                y -= 34
+                y -= S(34)
             y -= 24
 
             if chart:
@@ -795,13 +834,13 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 for position, (figure, label) in enumerate(metrics):
                     left = 72 + position * (span + 24)
                     pdf.setFillColorRGB(*accent)
-                    pdf.setFont(font, 44)
-                    pdf.drawString(left, y - 40, figure)
+                    pdf.setFont(font, S(44))
+                    pdf.drawString(left, y - S(40), figure)
                     pdf.setFillColorRGB(*muted)
-                    pdf.setFont(font, 14)
+                    pdf.setFont(font, S(14))
                     # 30pt under a 44pt figure. At 22 the label sat on the
                     # numeral's baseline and the two read as one word.
-                    pdf.drawString(left, y - 70, label)
+                    pdf.drawString(left, y - S(70), label)
             elif rows:
                 # Ruled rather than boxed: a printed grid of thin lines closes
                 # up at projector distance, and the rule under the header is
@@ -809,23 +848,23 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 width = text_width / max(len(row) for row in rows)
                 for row_index, row in enumerate(rows):
                     pdf.setFillColorRGB(*(accent if row_index == 0 else ink))
-                    pdf.setFont(font, 15)
+                    pdf.setFont(font, S(15))
                     for cell_index, cell in enumerate(row):
-                        text = _wrap(cell, font, 15, width - 12)
+                        text = _wrap(cell, font, S(15), width - 12)
                         pdf.drawString(72 + cell_index * width, y, text[0] if text else "")
                     if row_index == 0:
                         pdf.setStrokeColorRGB(*accent)
                         pdf.setLineWidth(1)
                         pdf.line(72, y - 8, _W - 72, y - 8)
-                    y -= 30
+                    y -= S(30)
                     if y < 60:
                         break
             elif bullets:
                 # Same split as the .pptx, so the printout and the projected
                 # deck put the same items in the same places.
                 columns = _columns_of(data, bullets, layout)
-                size = 16 if len(columns) > 1 else 18
-                step = 22 if len(columns) > 1 else 26
+                size = S(16 if len(columns) > 1 else 18)
+                step = S(22 if len(columns) > 1 else 26)
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 top = y
                 for column_index, column in enumerate(columns):
@@ -842,10 +881,10 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         y -= step * len(wrapped) + 14
             elif body:
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, 16)
-                for line in _wrap(body, font, 16, text_width):
+                pdf.setFont(font, S(16))
+                for line in _wrap(body, font, S(16), text_width):
                     pdf.drawString(72, y, line)
-                    y -= 24
+                    y -= S(24)
 
         if picture:
             image_bytes, image_caption = picture

@@ -367,18 +367,56 @@ a deck. The preview draws it where the exporters do, so what the panel shows
 is what the room sees. `services/pictures.py` owns the one rule underneath all
 of it: raster only, embedded only, never fetched.
 
+A 서식's typesetting is two files. `seed.html` — shared, named by `seed_from` —
+is correctness: the tokens, the whole closed vocabulary `assemble` can emit, the
+`@page` rule, the print rules, the shadow-root `:host`. `design.css` is
+identity: 안내문·공지 centres its title under a double rule, 한 장 요약 runs two
+columns, 신호 presents white on black. It is spliced in as a second `<style>`
+last in `<head>`, so it overrides by order rather than by specificity, and
+`stylesheet()` — which concatenates every style block — carries it into the
+document editor's shadow root by the same route. Two of them have no `design.css`
+at all: `_document/seed.html` is 보고 문서's own design and `_deck/seed.html` is
+editorial's, which is what makes the shared file somebody's rather than nobody's.
+
+Splitting them was worth doing only once a browser drew the PDF. Before that the
+export was redrawn by reportlab, which reads no CSS, so ten designs made one file
+and merging them lost nothing anybody could see — which is exactly what happened,
+and it took the catalogue's own promises with it. That merge is also the reason
+`test_a_template_has_a_face.py` checks that every `var(--x)` in a seed is
+declared: three properties arrived from another seed without their declarations,
+and an undeclared custom property is not an error anywhere. `background:
+var(--tint)` simply came out white.
+
 Two constraints shape every seed:
 
 **No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates
-by CSS scroll-snap rather than a keyboard runtime. That is a smaller deck than
-open-design's, and one that cannot run model-written JavaScript in a browser.
+by CSS scroll-snap rather than a keyboard runtime, and one that cannot run
+model-written JavaScript in a browser. That is less of a limit than it reads
+as: open-design's own report and deck templates ship example files with no
+`<script>` in them at all, drawing their charts as inline SVG. What a seed
+gives up is interaction, not design.
 
-**Print is the export.** There is no headless browser in this image — see
-`report_export`, which chose reportlab over an HTML engine — so every seed
-carries `@media print` rules that put one slide or section on one page. The
-`.html` file is the faithful copy, and printing it in a browser is how it
-becomes a PDF. The file is deliberately not opened in a tab from the app: a
-`blob:` URL inherits this origin.
+**Print is the export.** Every seed carries `@media print` rules and an
+`@page` rule that put one slide or section on one page. For most of this
+product's life those rules were dead letters — nothing in the stack could read
+CSS, so a PDF was drawn a second time by reportlab, from the same words and
+none of the design, and agreed with the screen only where somebody had made it
+agree. `apps/print` is what reads them: a headless Chromium in a container of
+its own that takes the finished HTML and returns a PDF. So the `.pdf` is now
+the `.html`, printed — the same document, not a second drawing of it. See
+`services/printing.py`; where no printer is configured, the structural renderer
+below still produces a file.
+
+That container is deliberately poor. What it opens is markup a model wrote —
+sanitised and script-free, and still the least trusted input here — so it has
+no database, no secrets, no published port, and a compose network with
+`internal: true`, which means no route out at all. Inside the browser every
+request is aborted as well, so an `<img src="http://…">` in model-authored
+markup is not a request made from inside the deployment. Two walls, because the
+first one is a line of code and the second one is a fact about the network.
+
+The `.html` file is still the faithful copy, and is deliberately not opened in
+a tab from the app: a `blob:` URL inherits this origin.
 
 The other formats come from `services/page_export.py`, which reads the markup
 back with the standard library's `HTMLParser`. That is possible because
@@ -388,10 +426,14 @@ heading, its lines, which column each line was in, and its table rows. A deck
 then goes through `deck_export` to `.pptx` and `.pdf`, a document through
 `report_export` to `.docx`, `.pdf` and `.hwpx`.
 
-What that conversion buys is **editability, not fidelity**. The deck opens in
-PowerPoint as real slides in the right order with the design system's accent
-and face, laid out by this product's own deck renderer — not by the template's
-stylesheet, which needs a browser. Two things were added to `deck_export` to
+What that conversion buys is **editability, not fidelity**, and that is the
+division of labour: the `.pdf` carries the design because a browser draws it,
+and the `.docx`/`.pptx` carry the structure because Word and PowerPoint have no
+CSS to draw into. A design that survived the trip as a picture would open as a
+document nobody can edit, which is not what somebody who brought their
+organisation's 양식 came for. The deck opens in PowerPoint as real slides in the
+right order with the design system's accent and face, laid out by this
+product's own deck renderer — not by the template's stylesheet. Two things were added to `deck_export` to
 carry it: a `table` layout, because flattening a table into bullets leaves the
 reader to reassemble it, and an explicit `columns` field, because an HTML deck
 knows which column each line was in and halving a merged list would put the

@@ -82,10 +82,19 @@ test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으
 
   // And out and back, which is the other way the model changes underneath the
   // chips.
+  // `menuitemcheckbox`, not `menuitem`. The kind rows carry a tick — they say
+  // which one is current — and a ticked row is a checkbox to every reader of
+  // the tree, including this one. Asked for by the wrong role the rows are not
+  // there at all, which is what "메뉴가 열리지 않는다" looked like.
+  //
+  // The state is waited on rather than raced as well: choosing a kind re-pairs
+  // the model and redraws every chip on the bar.
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '오디오' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '오디오' }).click()
+  await expect(page.getByRole('button', { name: /^종류\s*오디오/ })).toBeVisible()
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitem', { name: '영상' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
+  await expect(page.getByRole('button', { name: /^종류\s*영상/ })).toBeVisible()
 
   await expect(page.getByRole('button', { name: /Sound Only/ })).toBeVisible()
   // 소리 opened on 없음 — the composer's own default — and this model has no

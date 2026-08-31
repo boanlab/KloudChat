@@ -147,7 +147,10 @@ export function AdminUsersPage() {
   const pendingCount = users.filter((u) => u.status === 'pending').length
   const totalGranted = users.reduce((s, u) => s + u.monthlyCredits, 0)
   const totalUsed = users.reduce((s, u) => s + u.creditsUsed, 0)
-  const resetDate = users[0]?.cycleResetsAt
+  // The first account that *has* a cycle, not the first account. A pending
+  // signup has no reset date and sorts to the top of this list, so the card
+  // read "—" on a workspace where every active user refills on the 1st.
+  const resetDate = users.find((u) => u.cycleResetsAt)?.cycleResetsAt
 
   return (
     <>
@@ -323,9 +326,16 @@ export function AdminUsersPage() {
                       >
                         <SlidersHorizontal size={14} />
                       </Button>
+                      {/* The one irreversible button in a row of four, and it
+                          looked exactly like the other three. Named and
+                          explained on hover either way — but a person scanning
+                          seventy rows is not hovering, and the only thing that
+                          separated 지우기 from 제한하기 was which icon they
+                          remembered. */}
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="text-danger hover:bg-danger/10 hover:text-danger"
                         aria-label={t('계정 삭제')}
                         title={t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')}
                         disabled={busy.includes(u.id) || u.id === user?.id}

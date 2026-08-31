@@ -368,8 +368,9 @@ async def text_of(name: str, mime: str, data: bytes) -> str:
     if not await transcribe.available():
         return extract_text(name, mime, data)
     if len(data) > transcribe.MAX_BYTES:
+        limit = transcribe.MAX_BYTES // (1024 * 1024)
         raise RuntimeError(
-            f"녹음이 너무 깁니다. {transcribe.MAX_BYTES // (1024 * 1024)}MB 이하로 나눠 올려 주세요."
+            f"녹음이 너무 깁니다. {limit}MB 이하로 나눠 올려 주세요."
         )
     return await transcribe.transcribe(data, name)
 

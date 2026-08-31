@@ -645,7 +645,14 @@ export function DesignGalleryModal({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* 두 줄 자리를 늘 잡아 두고 위부터 채운다.
+            쪽마다 카드 높이가 달라 — 서식 카드는 204px, 문장 카드는 116px —
+            대화상자가 382 와 686 사이를 오르내렸다. 넘길 때마다 상자가 자라고
+            줄면 닫기 버튼도 쪽 넘김도 매번 다른 자리에 있다.
+
+            204 × 2 + 사이 12. 바닥이지 천장이 아니므로, 더 큰 카드가 오는 쪽은
+            그만큼 자란다 — 잘라 내는 것보다 낫다. 남는 자리는 아래에 둔다. */}
+        <div className="grid min-h-[420px] content-start gap-3 sm:grid-cols-2">
           {shown.map((card) =>
             card.design ? (
               <DesignTemplateCard

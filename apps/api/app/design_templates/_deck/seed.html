@@ -11,6 +11,13 @@
   is the one thing that tells this deck apart from the lecture deck at a
   glance.
 
+  This file is the shared shape. It is editorial 덱's own design — the first
+  line above says so — and every other deck 서식 borrows it by naming it in
+  `seed_from`, then adds its own `design.css`: 신호 goes white on black, 강의
+  opens each slide with a filled number, 심사 발표 fills nothing at all. What
+  belongs here is what all of them need; what belongs there is what tells them
+  apart.
+
   Colour is derived, never literal: every neutral is a `color-mix` of `--ink`
   and every tinted surface a `color-mix` of `--accent`, so the deck answers the
   same way to any accent hue and to a serif or a sans body face. The accent
@@ -48,6 +55,18 @@
     /* Seven of twelve columns. The `rem` half caps the measure on a wide
        projector; the percentage half keeps it an actual column fraction. */
     --measure: min(42rem, 58.33%);
+    /* Three that arrived with the proposal deck's layouts when the typesetting
+       was merged, and arrived without their declarations. An undeclared custom
+       property is not an error anywhere: `background: var(--tint)` is thrown
+       away at computed-value time and the ground comes out white, `border-left:
+       2px solid var(--accent-ink)` comes out no border at all. So the compare
+       slide lost the rule that says which column is being argued for, and the
+       ask slide lost its ground, and nothing anywhere said so.
+       Mixed from the ink and the accent like every other neutral here, so they
+       follow the design system instead of pinning a colour beside it. */
+    --accent-ink: color-mix(in srgb, var(--accent) 76%, var(--ink));
+    --tint: color-mix(in srgb, var(--accent) 7%, #fff);
+    --receded: color-mix(in srgb, var(--ink) 52%, #fff);
   }
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -276,26 +295,42 @@
   figure img { display: block; max-width: 100%; max-height: 52vh;
                width: auto; height: auto; }
 
-  @page { size: A4 landscape; margin: 12mm; }
+  /* 960 x 540 points is 16:9 — a slide, not a sheet of paper.
+     These rules were written when "printing it in a browser" meant a person
+     pressing Ctrl+P to get a handout, so they said A4 landscape with a 12mm
+     margin and let each slide be as tall as its words. Now a browser *is* the
+     exporter, and what it makes is the deck's own `.pdf` — the file somebody
+     projects. On A4 a four-line slide left two thirds of every page white.
+     Same numbers `deck_export` used for the file it drew before this
+     (`_W, _H = 960.0, 540.0`), so the deck did not change shape when the
+     renderer under it did. A handout is still one Ctrl+P away from the `.html`,
+     which is the faithful copy and has always been the place for that. */
+  @page { size: 960pt 540pt; margin: 0; }
   @media print {
     body { height: auto; overflow: visible; scroll-snap-type: none;
            background: #fff; }
     .slide, .slide.cover {
-      --gut: 10mm;
-      --pad-y: 9mm;
-      min-height: auto;
+      --gut: 6.5%;
+      --pad-y: 9%;
+      /* One point of slack. At exactly the page height a rounding error puts
+         every slide onto two pages, and `min-height` rather than `height` so a
+         slide with more words than fit overflows visibly instead of being
+         silently cropped. */
+      min-height: 539pt;
       height: auto;
       justify-content: flex-start;
       page-break-after: always;
       break-after: page;
       border-bottom: 0;
-      padding: var(--pad-y) var(--gut) 8mm;
+      padding: var(--pad-y) var(--gut) 7%;
     }
     .slide:last-child { page-break-after: auto; break-after: auto; }
-    /* The handout is black and white, four copies of it; the band would print
-       as a grey wash over a whole page for no gain. */
-    .slide.cover { background: #fff; }
-    figure img { max-height: 92mm; }
+    /* The cover keeps its band now that the page is a slide rather than a
+       sheet: it is the one page of the deck a projector shows before anybody
+       is listening, and on paper it is a tint at the top, not a grey wash over
+       a whole A4. */
+    .slide.cover { justify-content: flex-end; }
+    figure img { max-height: 300pt; }
   }
 
   /* 제안 덱이 쓰던 세 배치 — 나란히 견주기, 그림 한 장, 마지막 요청.
@@ -317,12 +352,17 @@
     border-left: 2px solid var(--accent-ink);
   }
   .slide.compare .cols > div + div h3 { color: var(--accent-ink); }
-  .slide.compare .cols { grid-template-columns: 1fr; }
-  .slide.compare .cols > div + div {
+  /* Side by side is the whole idea, so it stacks only where two columns would
+     be two narrow columns. Without this query the stacked rule applied
+     everywhere and a compare slide was never once compared. */
+  @media (max-width: 720px) {
+    .slide.compare .cols { grid-template-columns: 1fr; }
+    .slide.compare .cols > div + div {
       padding: 1rem 0 0;
       border-left: 0;
       border-top: 2px solid var(--accent-ink);
     }
+  }
   /* ── figure ────────────────────────────────────────────────────────
      One value, larger than any title in the deck, with the line that says
      where it came from directly under it. A number nobody can source is not
@@ -349,8 +389,12 @@
   .slide.ask li strong { color: var(--accent-ink); }
   .slide.ask .note { margin-top: 1.4rem; }
   /* A printer may drop a background and never drops a rule, so the ask is
-       framed on paper instead of tinted. */
+     framed on paper instead of tinted. On screen it stays tinted, which is
+     what the rule above says — this had lost its `@media print` and was
+     whitening the one coloured slide in the deck everywhere. */
+  @media print {
     .slide.ask { background: #fff; border: 1.5pt solid var(--accent-ink); padding: 8mm; }
+  }
 
   /* ── example: the concept, then the case that carries it ───────── */
   .slide.example > p {
@@ -388,12 +432,19 @@
   .slide.example > div > * { grid-column: 2; margin: 0 0 0.45em; }
   .slide.example .ex > :last-child,
   .slide.example > div > :last-child { margin-bottom: 0; }
-  .slide.example .ex,
+  /* The label moves above the case where the gutter would be too narrow to
+     hold it. Unwrapped, this collapsed the two-column panel everywhere and the
+     "예시" label sat on its own line on a projector too. */
+  @media (max-width: 720px) {
+    .slide.example .ex,
     .slide.example > div { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
-  .slide.example .ex > *,
+    .slide.example .ex > *,
     .slide.example > div > * { grid-column: 1; }
-  .slide.example .ex,
+  }
+  @media print {
+    .slide.example .ex,
     .slide.example > div { break-inside: avoid; page-break-inside: avoid; }
+  }
 </style>
 </head>
 <body>

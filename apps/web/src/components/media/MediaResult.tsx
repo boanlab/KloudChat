@@ -97,6 +97,30 @@ export function MediaResult({
               </button>
             ))}
           </div>
+          {/* Saving it is the point, and it was not on the picture.
+              The only way out of a picture somebody had just made was to open
+              the artifact panel and find it again — the download lives there.
+              A person who has just watched a picture appear reaches for it
+              where it is. */}
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            {images.map((img, i) => (
+              <ButtonLink
+                key={img.id}
+                variant="ghost"
+                size="sm"
+                href={fileUrl(img.src) ?? '#'}
+                download={`${(img.prompt || 'image').slice(0, 40)}${i > 0 ? `-${i + 1}` : ''}.png`}
+                aria-label={
+                  images.length > 1
+                    ? t('{n}번째 그림 내려받기').replace('{n}', String(i + 1))
+                    : t('그림 내려받기')
+                }
+              >
+                <Download size={13} />
+                {images.length > 1 ? String(i + 1) : t('내려받기')}
+              </ButtonLink>
+            ))}
+          </div>
           {caption([
             t('{n}장').replace('{n}', String(images.length)),
             modelLabel(images[0].model),

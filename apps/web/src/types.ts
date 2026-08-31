@@ -643,6 +643,18 @@ export interface Slide {
   accent?: string
   factCheck?: FactCheck
   /**
+   * How big this slide's words are, as a multiple of the 서식's own size.
+   *
+   * One slide, not the deck: the reason to reach for it is a slide with three
+   * words on it or one with a paragraph that will not fit, and both are local
+   * problems. Absent means the 서식 decides, which is the usual case and the
+   * one the checker's limits are written against.
+   *
+   * `deck_export` multiplies by the same number, so the file matches the
+   * screen.
+   */
+  textScale?: number
+  /**
    * A picture made on the image surface, embedded rather than linked — the
    * `src` is a `data:` URI, which is what makes the deck one file that prints
    * and exports with the picture in it.

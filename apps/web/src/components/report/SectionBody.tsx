@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/chat/Markdown'
 import type { ReportSection } from '@/types'
 
@@ -36,7 +37,19 @@ export function SectionBody({
   owner?: { artifactId: string; sectionId: string }
 }) {
   if (section.format === 'html') {
-    return <div className={className} dangerouslySetInnerHTML={{ __html: section.content }} />
+    // `doc-html` carries the styles for markup nobody here wrote.
+    //
+    // A section written into a 서식 is stored as HTML, and the rules that made
+    // it look like a document live in the 서식's typesetting — which is loaded
+    // into the page view's shadow root and nowhere else. In the web view the
+    // same markup landed with browser defaults, so a table came out as columns
+    // of text with no rules and read as a table that had failed to render.
+    return (
+      <div
+        className={cn('doc-html', className)}
+        dangerouslySetInnerHTML={{ __html: section.content }}
+      />
+    )
   }
   return (
     <Markdown
