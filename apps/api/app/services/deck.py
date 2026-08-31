@@ -62,7 +62,32 @@ _MAX_SLIDES = 50
 _DEFAULT_MAX = 12
 
 #: The only layouts with a renderer behind them. See the module docstring.
-_LAYOUTS = ("title", "bullets", "quote", "two-column", "table", "metrics", "chart")
+_LAYOUTS = (
+    "title",
+    "section",
+    "bullets",
+    "quote",
+    "two-column",
+    "table",
+    "metrics",
+    "chart",
+    "bands",
+    "tiles",
+    "timeline",
+)
+
+#: The layouts that carry the argument. Named rather than sliced off the front
+#: of `_LAYOUTS`: `_LAYOUTS[1:]` meant "everything but the cover" only for as
+#: long as the cover was the only layout with no content in it, and adding the
+#: section divider made the variety check demand that a deck use dividers.
+#: A divider says where you are; it is not one of the shapes an argument takes.
+_BODY_LAYOUTS = tuple(layout for layout in _LAYOUTS if layout not in ("title", "section"))
+
+#: What a slide says when it did not get written.
+#:
+#: Shared with `deck_export`, which leaves such a slide out of the file. Two
+#: copies of the sentence would be two chances for the file to carry it.
+UNWRITTEN = "이 장을 쓰지 못했습니다."
 
 #: One accent for the whole deck, applied to every slide. The preview, the
 #: .pptx and the .pdf read from the same field, so they cannot drift apart.
@@ -111,6 +136,25 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 - 나머지 장은 말할 내용에 맞는 layout 을 골라라. 항목을 나열하면 "bullets",
   둘을 나란히 견주거나 항목이 6개 이상이면 "two-column", 한 문장으로 남길
   대목이면 "quote". quote 는 전체에서 최대 2장.
+- **왼쪽에 이름표를 달고 오른쪽에 내용을 놓는 장은 "bands" 로 잡아라.** 항목마다
+  이름이 붙는 내용이다 — 미션·배경·추진전략, 대상·기간·방식·수료, 학점·증명·연계
+  처럼. 이런 장 제목은 대개 "~은 무엇인가", "~ 개요", "~ 체계", "혜택" 이다.
+  같은 것을 bullets 로 쓰면 이름이 문장의 첫 낱말이 되고 이름이기를 그만둔다.
+- **머리글자나 번호로 묶인 것을 보여 주는 장은 "tiles" 로 잡아라.** 4대 분야,
+  3대 전략, P·H·A·S·E 처럼 표식을 크게 세우고 그 아래 이름을 붙인다. 제목에
+  "N대", "핵심 N가지", "구성 요소" 가 있으면 거의 이 장이다.
+- **시간 순서가 요점인 장은 "timeline" 으로 잡아라.** 연혁, 일정, 절차, 단계,
+  로드맵. 제목에 "절차", "단계", "일정", "연혁", "로드맵" 이 있으면 이 장이다.
+  이런 내용을 bullets 로 쓰면 순서가 우연처럼 읽힌다.
+- **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
+  그 뒤에 오는 묶음의 이름만 적는 간지다. number 에 "01." 처럼 순서를 적고,
+  제목은 그 묶음의 이름으로 한다. 내용은 쓰지 마라 — 간지에 항목을 적으면
+  그건 간지가 아니라 목차다. 짧은 발표에는 넣지 마라.
+- **겁을 주거나 재촉하는 장은 만들지 마라.** "기회 손실", "마감 임박", "지금
+  결정하지 않으면" 같은 장은 내용이 없을 때 분량을 채우려고 만드는 장이다.
+  듣는 사람이 알아야 할 사실을 적고, 판단은 그 사람에게 맡겨라.
+- **한 장에는 그 장에서만 하는 말을 담아라.** 앞 장을 다른 낱말로 다시 쓴 장은
+  한 장이 아니라 여백이다.
 - 같은 layout 을 세 장 연속으로 쓰지 마라. 표지를 뺀 나머지에서 최소 세 가지를
   써라. 한 가지로 끌고 간 발표는 넘겨도 넘긴 것 같지 않다.
 {theme_rule}- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
@@ -455,6 +499,75 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
     return title, subtitle, plan
 
 
+_PAIRED_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
+{what}
+
+전체 구성:
+{outline}
+
+앞 장에서 이미 말한 내용:
+{written}
+
+규칙:
+{rules}
+- 지어낸 내용을 쓰지 마라. 쓸 것이 없으면 이 장을 bullets 로 답하라.
+- notes 는 발표자가 이 장에서 말할 내용. 2~3문장.
+
+JSON 객체로만 답하라.
+예: {example}
+
+원래 요청: {request}"""
+
+#: What each paired layout is for, and what its two halves hold. Written out
+#: rather than generated: a model told "왼쪽과 오른쪽을 채워라" fills both with
+#: sentences, and the whole point of the shape is that the left half is a name.
+_PAIRED_RULES = {
+    "bands": (
+        "이 장은 왼쪽에 이름표, 오른쪽에 그 내용을 띠로 놓는 장이다.",
+        "- bands 는 `[이름, 내용]` 의 목록이다. **3~4개.**\n"
+        "- 이름은 그 줄이 무엇인지 가리키는 한 마디. **10자 이내** — 미션, 배경,"
+        " 추진전략, 기대효과 처럼.\n"
+        "- 내용은 한 문장. **90자 이내.** 문장을 둘 넣지 마라.\n"
+        "- 이름은 서로 겹치지 않는 다른 것이어야 한다.",
+        '{{"bands": [["미션", "선제적으로 AI 신기술에 대응하여 차세대 인재를 양성한다"],'
+        ' ["배경", "AI 전환기에 기술수요와 인재 격차가 벌어지고 있다"]],'
+        ' "notes": "여기서는 ..."}}',
+    ),
+    "tiles": (
+        "이 장은 글자나 번호를 크게 세우고 그 아래 이름을 붙이는 장이다.",
+        "- tiles 는 `[글자, 이름]` 의 목록이다. **3~6개.**\n"
+        "- 글자는 **4자 이내** — P, H, A, 01, ① 처럼 한눈에 들어오는 표식.\n"
+        "- 표식과 이름이 같은 말이면 안 된다. `[AI] AI 기본역량` 은 표식이"
+        " 아니라 같은 낱말을 두 번 쓴 것이다.\n"
+        "- 이름은 그 표식이 무엇인지. **24자 이내.**\n"
+        "- 표식들이 하나의 묶음으로 읽혀야 한다. 머리글자를 모으거나 번호를"
+        " 매기는 자리이지, 아무 글자나 크게 세우는 자리가 아니다.",
+        '{{"tiles": [["P", "Physical AI"], ["H", "Human-centered AI"],'
+        ' ["A", "Agentic AI"]], "notes": "여기서는 ..."}}',
+    ),
+    "timeline": (
+        "이 장은 시점과 그때 일어난 일을 차례로 놓는 장이다.",
+        "- timeline 은 `[시점, 일]` 의 목록이다. **3~7개.**\n"
+        "- 시점은 **12자 이내** — 2024.05, 1학기, 3년차 처럼.\n"
+        "- **자료에 실제 날짜가 없으면 날짜를 지어내지 마라.** 1단계·2단계,"
+        " 1~4주, 학기 초 처럼 상대적인 시점을 써라. 지어낸 날짜는 그럴듯해서"
+        " 사실로 읽히고, 발표장에서 되묻는 사람이 반드시 있다.\n"
+        "- 일은 그때 무엇이 있었는지 한 마디. **60자 이내.**\n"
+        "- 시간 순서대로 놓아라. 순서가 뒤섞이면 그건 연혁이 아니라 목록이다.",
+        '{{"timeline": [["2024.05", "1기 개설, 수료생 32명"],'
+        ' ["2025.03", "2기 개설과 기업 연계 시작"]], "notes": "여기서는 ..."}}',
+    ),
+}
+
+_PROMPTS.update(
+    {
+        layout: _PAIRED_PROMPT.replace("{what}", what)
+        .replace("{rules}", rules)
+        .replace("{example}", example)
+        for layout, (what, rules, example) in _PAIRED_RULES.items()
+    }
+)
+
 _PROMPTS.update(
     {
         "quote": _QUOTE_PROMPT,
@@ -540,13 +653,46 @@ def _offered_layouts(request: str, context: list[str]) -> list[str]:
     anywhere near it — and asking for those is asking for invented numbers,
     which is the one thing the plan is then rewritten to strip.
     """
-    body = [layout for layout in _LAYOUTS[1:] if layout not in _NUMERIC_LAYOUTS]
-    return list(_LAYOUTS[1:]) if _has_numbers(request, context) else body
+    body = [layout for layout in _BODY_LAYOUTS if layout not in _NUMERIC_LAYOUTS]
+    return list(_BODY_LAYOUTS) if has_numbers(request, context) else body
 
 
-def _has_numbers(request: str, context: list[str]) -> bool:
-    """Is there anywhere a figure could honestly have come from?"""
-    return bool(context) or bool(re.search(r"\d", request))
+#: A figure somebody could cite, as opposed to a digit.
+#:
+#: `re.search(r"\d", request)` was the test, and `4대 신기술 분야` passed it —
+#: so a deck about a topic with no measurements anywhere near it was allowed a
+#: chart, and the writer produced one: AI 채용 증가율 15 · 30 · 55 · 82 · 110 ·
+#: 135%, six invented numbers on a line, drawn large in front of a room. The 4
+#: in 4대 counts categories. It is not evidence of anything.
+#:
+#: So: a decimal, a run of three or more digits, or a number carrying a unit
+#: that measures. A bare year is deliberately not one — a date can ground a
+#: timeline and cannot ground a chart.
+_FIGURE = re.compile(
+    # A year is not a measurement. `2026년 계획` matched the three-digit rule
+    # and let a deck about next year's plan draw a chart of nothing.
+    # The lookarounds pin the whole run. `\d{3,}(?!\s*년)` looks right and is
+    # not: given 2026년 the engine backtracks to 202, sees 6 rather than 년,
+    # and matches. A regex that can retreat inside the number it is judging is
+    # judging a different number.
+    r"\d+[.,]\d|(?<!\d)\d{3,}(?!\d)(?!\s*년)|"
+    r"\d+\s*(?:%|퍼센트|원|명|건|배|억|만|천|시간|분|초|주|개월|점|개|회|위)"
+)
+
+
+def has_numbers(request: str, context: list[str]) -> bool:
+    """Is there anywhere a figure could honestly have come from?
+
+    The context is searched rather than counted. `bool(context)` was the test,
+    and the context is every block of project knowledge in play — a saved
+    memory saying who the user is, the project's own instructions. Two memories
+    about a person's role were enough to tell the writer that figures were
+    available, and it drew six years of invented AI 채용 증가율 on a chart.
+
+    Having material and having numbers in it are different questions. This asks
+    the second one.
+    """
+    return bool(_FIGURE.search(request)) or any(_FIGURE.search(block) for block in context)
 
 
 def _grounded_layouts(
@@ -568,11 +714,64 @@ def _grounded_layouts(
     줄었다" has given the figure, and refusing to chart it would be refusing
     the thing they asked for.
     """
-    if _has_numbers(request, context):
+    if has_numbers(request, context):
         return plan
     return [
         {**item, "layout": "bullets"} if item.get("layout") in _NUMERIC_LAYOUTS else item
         for item in plan
+    ]
+
+
+#: How many one-sentence slides a deck may hold. The prompt has said 최대 2장
+#: for a long time and a live run came back with three, all of them selling:
+#: 기회 손실 리스크, 마감 임박 경고, and a closing line. A rule the writer keeps
+#: most of the time is not a rule — it is a suggestion with a number in it.
+_MAX_QUOTES = 2
+
+
+def _rationed_quotes(plan: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Extra one-sentence slides demoted to bullets, keeping the first ones.
+
+    The first is the one the writer meant. What follows a full quota is a deck
+    that has run out of things to say and is saying them louder.
+    """
+    out: list[dict[str, str]] = []
+    spent = 0
+    for item in plan:
+        if item.get("layout") != "quote":
+            out.append(item)
+            continue
+        spent += 1
+        out.append(item if spent <= _MAX_QUOTES else {**item, "layout": "bullets"})
+    return out
+
+
+#: A divider title that says nothing: `01`, `2.`, `Part 3`, `섹션 1`.
+_NUMBER_ONLY = re.compile(r"^\s*(?:part|섹션|section|장)?\s*[0-9IVX]+\s*[.)]?\s*$", re.I)
+
+
+def _named_dividers(plan: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Dividers that name their part, and no others.
+
+    The number is drawn by the renderer from where the divider falls, so a
+    writer that puts it in the title spends the one line a divider has on
+    something already on the slide: the reader is told they have reached part
+    two without being told what part two is.
+
+    Dropped rather than renamed. The obvious repair is to borrow the title of
+    the slide after it — and that draws the same words twice in a row, once
+    large and once as a heading, which is worse than the number was. What a
+    part is called is the one thing only the writer knows, so a divider that
+    did not bring a name is not a divider.
+
+    Inserting them is left to the prompt for the same reason. Asked for, the
+    writer produced four; invented here, every one of them would have been
+    named after whatever happened to follow it.
+    """
+    return [
+        item
+        for item in plan
+        if item.get("layout") != "section" or not _NUMBER_ONLY.match(item.get("title") or "")
     ]
 
 
@@ -628,12 +827,22 @@ _MAX_VALUE = 12
 _MAX_LABEL = 16
 
 
+#: A label that says its value is a date rather than a measurement.
+#:
+#: `2026 마감년도 · 8월 신청월 · 31일 마감일` came out of a metrics slide — one
+#: deadline taken apart into three numbers and each set 44pt. Nothing there is
+#: a quantity, and the slide that exists to make one figure memorable made three
+#: unmemorable ones out of a date. A date has a layout of its own now.
+_CALENDAR = re.compile(r"년도|연도|마감|기한|일자|신청월|개강|종강|^(년|월|일|요일)$")
+
+
 def _clean_metrics(value: Any) -> list[list[str]]:
     """`[[값, 이름]]`, however the model formatted it.
 
     A pair with only one half is dropped. A number with nothing saying what it
     counts is a number nobody can use, and a label with no number is a bullet
-    that has wandered into the wrong slide.
+    that has wandered into the wrong slide. A label that names a part of a date
+    goes too — see `_CALENDAR`.
     """
     items = value if isinstance(value, list) else []
     out: list[list[str]] = []
@@ -643,8 +852,46 @@ def _clean_metrics(value: Any) -> list[list[str]]:
             continue
         figure = str(pair[0]).strip()[:_MAX_VALUE]
         label = str(pair[1]).strip()[:_MAX_LABEL]
-        if figure and label:
+        if figure and label and not _CALENDAR.search(label):
             out.append([figure, label])
+    return out
+
+
+#: The three that are a left thing and a right thing, and their bounds.
+#:
+#: One cleaner for all of them, because they are the same data wearing three
+#: designs: a label beside a band of text, a letter over a caption, a date
+#: beside what happened. Three cleaners would be three places to disagree about
+#: what an empty half means.
+_PAIRED = {
+    #: `[[라벨, 내용]]` — 미션 · 배경 · 추진전략, the row-label shape every
+    #: Korean 사업 발표 opens with.
+    "bands": (4, 10, 90),
+    #: `[[글자, 설명]]` — P · H · A · S · E, a letter or a number set large.
+    "tiles": (6, 4, 24),
+    #: `[[시점, 일어난 일]]` — 연혁, a date beside what happened.
+    "timeline": (7, 12, 60),
+}
+
+
+def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
+    """`[[왼쪽, 오른쪽]]` for the three paired layouts, however it was formatted.
+
+    A pair with only one half is dropped. A label with nothing beside it is a
+    heading for a band that is not there, and a band with no label is a
+    paragraph that has wandered onto the wrong slide.
+    """
+    count, left_max, right_max = _PAIRED[layout]
+    items = value if isinstance(value, list) else []
+    out: list[list[str]] = []
+    for item in items[:count]:
+        pair = item if isinstance(item, list) else []
+        if len(pair) < 2:
+            continue
+        left = " ".join(str(pair[0]).split())[:left_max]
+        right = " ".join(str(pair[1]).split())[:right_max]
+        if left and right:
+            out.append([left, right])
     return out
 
 
@@ -763,6 +1010,10 @@ async def _write_slides(
 
     outline_text = "\n".join(f"{i + 1}. {s['title']}" for i, s in enumerate(slides))
     written: list[str] = []
+    #: How many dividers have gone by. A divider's number counts dividers, not
+    #: slides — `01.` over the first one whether it is slide 2 or slide 6, which
+    #: is what a reader asking "which part are we in" wants to know.
+    divider = 0
 
     for index, slide in enumerate(slides):
         # The position lives in `progress`, not in the text: spelled into both,
@@ -774,12 +1025,19 @@ async def _write_slides(
         # many are behind it.
         progress = {"current": index + 1, "total": len(slides)}
 
-        if slide["layout"] == "title":
-            # The title slide needs no model call — both lines arrive with the
-            # outline. The subtitle is trimmed rather than copied verbatim:
+        if slide["layout"] in ("title", "section"):
+            # Neither needs a model call. The cover's two lines arrive with the
+            # outline — the subtitle trimmed rather than copied verbatim, since
             # pasting the request in puts its question mark on the opening
-            # slide of a presentation.
-            slide["body"] = subtitle[:80]
+            # slide of a presentation. A divider has only its own name, which
+            # the outline already chose, and a number, which is where it falls
+            # among the dividers rather than among the slides.
+            if slide["layout"] == "section":
+                divider += 1
+                slide["number"] = f"{divider:02d}."
+                slide["body"] = ""
+            else:
+                slide["body"] = subtitle[:80]
             slide["notes"] = ""
             yield {
                 "type": "step",
@@ -830,7 +1088,7 @@ async def _write_slides(
                 "status": "error",
                 "progress": progress,
             }
-            slide["body"] = "이 장을 쓰지 못했습니다."
+            slide["body"] = UNWRITTEN
             yield {"type": "slide", "slide": slide, "done": True}
             continue
 
@@ -892,6 +1150,13 @@ async def _write_slides(
             else:
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
+        elif slide["layout"] in _PAIRED:
+            if pairs := _clean_pairs(data.get(slide["layout"]), slide["layout"]):
+                slide[slide["layout"]] = pairs
+            else:
+                # An empty band is a coloured rectangle with nothing in it.
+                slide["layout"] = "bullets"
+                slide["bullets"] = _clean_bullets(data.get("bullets"))
         elif slide["layout"] == "table":
             if rows := _clean_rows(data.get("rows")):
                 slide["rows"] = rows
@@ -919,7 +1184,14 @@ async def _write_slides(
             # a deck — every control on this panel waits for the run to end and
             # not for the result to be good, and 텍스트 수정 is then right there
             # to write the slide by hand.
-            slide["body"] = "이 장을 쓰지 못했습니다."
+            #
+            # It says so on the screen and nowhere else. `deck_export` leaves
+            # the slide out of the file: a panel is a workbench and a file is
+            # what goes into a room, and a live run put "이 장을 쓰지
+            # 못했습니다." on slide three of a deck somebody was about to
+            # present. The lint already files this P0, so nobody is exporting
+            # it without having been told.
+            slide["body"] = UNWRITTEN
 
         if notes:
             slide["notes"] = notes[:800]
@@ -1079,7 +1351,7 @@ async def write(
         # Again on the way back in. A plan can be approved days after it was
         # proposed, and it can be edited before it is — neither path went past
         # the check above.
-        plan = _grounded_layouts(plan, request, document_context)
+        plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
         async for event in _write_slides(
             plan=plan,
             title=title,
@@ -1149,7 +1421,7 @@ async def write(
     # is not allowed to use asks for them by name, pays a model call for the
     # answer, and then has them stripped out again — the deck comes back as
     # flat as it started and one call poorer.
-    plan = _grounded_layouts(plan, request, document_context)
+    plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
     offered = _offered_layouts(request, document_context)
 
     # Four layouts on offer, and the answer is usually `bullets` all the way
@@ -1219,7 +1491,7 @@ async def write(
     }
     # Planned, and that is where this stops. The deck is offered rather than
     # written: the caller stores it, shows it, and calls back with it approved.
-    plan = _grounded_layouts(plan, request, document_context)
+    plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
     proposal: dict[str, Any] = {
         "title": title[:200],
         "subtitle": subtitle[:200],
@@ -1323,7 +1595,16 @@ async def rewrite_slide(
 #: Every field a slide can carry its content in. `bullets` and `body` were the
 #: whole list once, and the two that were added after — a table's `rows`, a
 #: strip's `metrics`, a chart's numbers — live nowhere near them.
-_CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart")
+#: Every field a slide's content can arrive in.
+#:
+#: Derived from `_PAIRED` rather than typed out again beside it. The three
+#: paired layouts were added and this list was not, so a finished 참여 혜택
+#: slide — four filled bands on it — was read as a slide the writer failed to
+#: write, and the words "이 장을 쓰지 못했습니다." were set on top of it. The
+#: same list is why a table slide was once dropped from finished decks. A
+#: layout that stores its content under its own name has to be in here, and the
+#: only way to guarantee that is to not maintain two lists.
+_CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart", *_PAIRED)
 
 
 def has_content(slide: dict) -> bool:

@@ -49,13 +49,18 @@ import { PicturePicker } from '@/components/artifacts/PicturePicker'
  * from the stored deck and was dropping the same three layouts.
  */
 export function hasContent(slide: Slide): boolean {
-  if (slide.layout === 'title') return true
+  // A divider says the name of the part and nothing else, which is all a
+  // divider is for — asked to fill one it would be a table of contents.
+  if (slide.layout === 'title' || slide.layout === 'section') return true
   return Boolean(
     slide.bullets?.length ||
       slide.body?.trim() ||
       slide.rows?.length ||
       slide.metrics?.length ||
-      slide.chart,
+      slide.chart ||
+      slide.bands?.length ||
+      slide.tiles?.length ||
+      slide.timeline?.length,
   )
 }
 
@@ -105,6 +110,7 @@ export function SlideView({
   scale = 1,
   writing = true,
   deckTitle = '',
+  brand,
   index,
   total,
   editable = false,
@@ -132,6 +138,16 @@ export function SlideView({
   deckTitle?: string
   index?: number
   total?: number
+  /**
+   * The design system's marks: a line at the foot saying whose deck this is,
+   * and the picture beside it.
+   *
+   * Here rather than on the slide because they belong to the deck, not to one
+   * 장 of it. `deck_export` draws the same two in the same corner, so the panel
+   * and the file agree — a preview that omits the logo is a preview that lies
+   * about what will be handed round the room.
+   */
+  brand?: { footer?: string; logo?: string }
   /**
    * Whether the words on this slide can be typed over.
    *
@@ -201,6 +217,14 @@ export function SlideView({
   const hair = '#e6e6e6'
   const rows = slide.rows ?? []
   const metrics = slide.metrics ?? []
+  /* The three shapes that are a left thing and a right thing. Read as one
+     because they are one — see `Slide.bands`. `deck_export` draws the same
+     three at the same measurements, so the room sees what the panel showed. */
+  const pairs = (
+    slide.layout === 'bands' || slide.layout === 'tiles' || slide.layout === 'timeline'
+      ? (slide[slide.layout] ?? [])
+      : []
+  ).filter(([left, right]) => left?.trim() && right?.trim())
   const chart = slide.chart
   const pending = !hasContent(slide)
   // Two columns are only two columns when there is enough to fill them; four
@@ -237,20 +261,44 @@ export function SlideView({
    * were on. The block is the only thing here that is not type, and it is what
    * makes a deck look like a deck at a glance.
    */
-  if (slide.layout === 'title') {
+  if (slide.layout === 'title' || slide.layout === 'section') {
     return (
       <div
         className="relative flex size-full flex-col justify-center overflow-hidden"
-        style={{ background: accent, padding: px(34) }}
+        style={{
+          /* A wash rather than a flat field. One accent across a whole slide is
+             a printed rectangle; the same accent falling half a step is what a
+             deck made by somebody with a template looks like — and it is mixed
+             from the accent, so it follows whatever hue is set rather than
+             pinning a second colour beside it. `deck_export` mixes the same
+             62% onto the ink. */
+          background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 62%, #1a1a1a))`,
+          padding: px(34),
+        }}
       >
-        <div
-          style={{
-            width: px(44),
-            height: px(3),
-            background: 'rgba(255,255,255,0.9)',
-            marginBottom: px(18),
-          }}
-        />
+        {slide.layout === 'section' && slide.number ? (
+          /* `01.` over the title. A divider that only names the part leaves
+             the reader counting backwards to place it. */
+          <div
+            style={{
+              fontSize: type(15),
+              fontWeight: 700,
+              color: 'rgba(255,255,255,0.7)',
+              marginBottom: px(6),
+            }}
+          >
+            {slide.number}
+          </div>
+        ) : (
+          <div
+            style={{
+              width: px(44),
+              height: px(3),
+              background: 'rgba(255,255,255,0.9)',
+              marginBottom: px(18),
+            }}
+          />
+        )}
         <h3
           style={{ fontSize: type(28), fontWeight: 700, lineHeight: 1.2, color: '#fff' }}
           {...typed((text) => ({ title: text }))}
@@ -320,6 +368,114 @@ export function SlideView({
               the preview and the .pptx put them in the same places. */}
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
             <div className="flex min-w-0 flex-1 flex-col">
+              {pairs.length > 0 && slide.layout === 'bands' && (
+                /* A filled name on the left against a tinted band on the right.
+                   Bullets have nowhere to put the name of what they are, which
+                   is the whole of why this shape exists. */
+                <div className="flex flex-col" style={{ gap: px(7) }}>
+                  {pairs.map(([name, text], i) => (
+                    <div key={i} className="flex items-stretch" style={{ gap: px(5) }}>
+                      <div
+                        className="grid shrink-0 place-items-center text-center"
+                        style={{
+                          width: px(62),
+                          background: accent,
+                          color: '#fff',
+                          fontSize: type(10),
+                          fontWeight: 700,
+                          padding: `${px(9)} ${px(4)}`,
+                        }}
+                      >
+                        {name}
+                      </div>
+                      <div
+                        className="flex min-w-0 flex-1 items-center"
+                        style={{
+                          background: tint,
+                          fontSize: type(10),
+                          lineHeight: 1.5,
+                          padding: `${px(9)} ${px(12)}`,
+                        }}
+                      >
+                        {text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pairs.length > 0 && slide.layout === 'tiles' && (
+                /* The mark set large in a filled square, its name under it. */
+                <div className="flex" style={{ gap: px(11), marginTop: px(8) }}>
+                  {pairs.map(([mark, name], i) => (
+                    <div key={i} className="flex min-w-0 flex-1 flex-col items-center">
+                      <div
+                        className="grid aspect-square w-full place-items-center"
+                        style={{
+                          maxWidth: px(62),
+                          background: accent,
+                          color: '#fff',
+                          fontSize: type(26),
+                          fontWeight: 700,
+                        }}
+                      >
+                        {mark}
+                      </div>
+                      <div
+                        className="text-center"
+                        style={{ fontSize: type(9), marginTop: px(7), color: '#666' }}
+                      >
+                        {name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pairs.length > 0 && slide.layout === 'timeline' && (
+                /* Hung off one rule: the date to its left, what happened to its
+                   right. Order is the point, so nothing here reflows it. */
+                <div className="flex flex-col">
+                  {pairs.map(([when, what], i) => (
+                    <div key={i} className="flex" style={{ gap: px(9) }}>
+                      <div
+                        className="shrink-0 text-right"
+                        style={{
+                          width: px(52),
+                          color: accent,
+                          fontSize: type(10),
+                          fontWeight: 700,
+                          paddingTop: px(2),
+                        }}
+                      >
+                        {when}
+                      </div>
+                      <div className="relative flex shrink-0 flex-col items-center">
+                        <div
+                          style={{
+                            width: px(5),
+                            height: px(5),
+                            marginTop: px(4),
+                            background: accent,
+                            borderRadius: '50%',
+                          }}
+                        />
+                        {i < pairs.length - 1 && (
+                          <div className="flex-1" style={{ width: px(1), background: tint }} />
+                        )}
+                      </div>
+                      <div
+                        className="min-w-0 flex-1"
+                        style={{
+                          fontSize: type(10),
+                          lineHeight: 1.5,
+                          paddingBottom: px(10),
+                        }}
+                      >
+                        {what}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
               {metrics.length > 0 && (
                 /* One card each: the figure large, what it counts under it, and
@@ -422,7 +578,11 @@ export function SlideView({
                 </table>
                 </div>
               )}
-              {slide.bullets && rows.length === 0 && metrics.length === 0 && !chart && (
+              {slide.bullets &&
+                rows.length === 0 &&
+                metrics.length === 0 &&
+                pairs.length === 0 &&
+                !chart && (
                 <ul
                   style={{
                     fontSize: type(13),
@@ -450,7 +610,16 @@ export function SlideView({
                   ))}
                 </ul>
               )}
-              {slide.body && !slide.bullets?.length && (
+              {slide.body &&
+                !slide.bullets?.length &&
+                /* Not on top of a slide that has something on it. A `bands`
+                   slide whose prose failed still has four filled bands, and
+                   the sentence saying it was not written was drawn under
+                   them. */
+                pairs.length === 0 &&
+                rows.length === 0 &&
+                metrics.length === 0 &&
+                !chart && (
                 <p
                   style={{ fontSize: type(12), color: '#555', marginTop: px(2), lineHeight: 1.6 }}
                   {...typed((text) => ({ body: text }))}
@@ -501,12 +670,38 @@ export function SlideView({
             borderTop: `1px solid ${hair}`,
           }}
         >
-          <span
-            className="min-w-0 truncate"
-            style={{ fontSize: type(8), letterSpacing: px(0.3), color: '#8a8a8a' }}
-          >
-            {deckTitle}
+          <span className="flex min-w-0 items-center" style={{ gap: px(6) }}>
+            {brand?.logo && (
+              <img
+                src={brand.logo}
+                alt=""
+                className="shrink-0 object-contain"
+                style={{ height: px(9), maxWidth: px(50) }}
+              />
+            )}
+            <span
+              className="min-w-0 truncate"
+              style={{ fontSize: type(8), letterSpacing: px(0.3), color: '#8a8a8a' }}
+            >
+              {deckTitle}
+            </span>
           </span>
+          {brand?.footer && (
+            /* Whose deck it is, opposite its name. A deck presented outside the
+               room it was made in is read as belonging to whoever made it. */
+            <span
+              className="min-w-0 truncate"
+              style={{
+                fontSize: type(8),
+                letterSpacing: px(0.3),
+                color: '#8a8a8a',
+                marginLeft: px(8),
+                marginRight: px(8),
+              }}
+            >
+              {brand.footer}
+            </span>
+          )}
           <span
             className="grid shrink-0 place-items-center"
             style={{
@@ -858,6 +1053,7 @@ function PresentMode({
           scale={stage.scale}
           writing={false}
           deckTitle={deck.title}
+          brand={deck.design ?? undefined}
           index={index}
           total={deck.slides.length}
         />
@@ -1436,6 +1632,7 @@ export function DeckPanel({
                     scale={stage.scale}
                     writing={writing}
                     deckTitle={deck.title}
+                    brand={deck.design ?? undefined}
                     index={index}
                     total={deck.slides.length}
                     /* 텍스트 수정을 누른 동안에는 슬라이드가 곧 편집기다.

@@ -541,6 +541,17 @@ export interface DesignTokens {
   ink: string
   muted: string
   font: 'gothic' | 'serif'
+  /**
+   * The line at the foot of every slide and page saying whose this is, and the
+   * mark beside it as a `data:` URI.
+   *
+   * Bytes rather than a link: a deck is downloaded, mailed and opened on a
+   * machine that has never heard of this server, so a URL would be a broken
+   * image on exactly the day it matters. Empty is what the product drew before
+   * these existed.
+   */
+  footer?: string
+  logo?: string
 }
 
 export interface ReportArtifact extends ArtifactBase {
@@ -607,8 +618,27 @@ export interface Slide {
    * the value, and a member nothing reads is a shape somebody will one day
    * write into an artifact and then wonder why it renders as bullets.
    */
-  layout: 'title' | 'bullets' | 'two-column' | 'quote' | 'chart' | 'table' | 'metrics'
+  layout:
+    | 'title'
+    | 'section'
+    | 'bullets'
+    | 'two-column'
+    | 'quote'
+    | 'chart'
+    | 'table'
+    | 'metrics'
+    | 'bands'
+    | 'tiles'
+    | 'timeline'
   title: string
+  /**
+   * A section divider's own number — `01.`, `02.` — over its title.
+   *
+   * Only `section` uses it. A divider that names the part and nothing else
+   * leaves the reader counting backwards through the deck to place it, which
+   * is the one question a divider exists to answer.
+   */
+  number?: string
   bullets?: string[]
   /**
    * A table, first row the head. The commonest slide in a working deck and the
@@ -626,6 +656,18 @@ export interface Slide {
    * which is the thing this layout exists to avoid.
    */
   metrics?: [string, string][]
+  /**
+   * The three shapes that are a left thing and a right thing.
+   *
+   * One data shape, three designs, because that is what they are: `bands` is a
+   * name beside a sentence — 미션 · 배경 · 추진전략, the row-label opening every
+   * Korean 사업 발표 has and the one thing a bullet cannot say, having nowhere
+   * to put the name of what it is. `tiles` is a letter or a number over a
+   * caption. `timeline` is a date beside what happened.
+   */
+  bands?: [string, string][]
+  tiles?: [string, string][]
+  timeline?: [string, string][]
   /**
    * A bar or line chart drawn from real numbers. Every series carries as many
    * values as there are categories — a short one is not a chart with a gap in
@@ -666,6 +708,8 @@ export interface DeckArtifact extends ArtifactBase {
   kind: 'deck'
   theme: string
   slides: Slide[]
+  /** The design system this deck wears, copied on when it was made. */
+  design?: DesignTokens | null
 }
 
 export interface ImageArtifact extends ArtifactBase {

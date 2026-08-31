@@ -393,7 +393,7 @@ def test_a_slide_never_comes_out_blank() -> None:
     import inspect
 
     source = inspect.getsource(deck._write_slides)
-    marker = 'slide["body"] = "이 장을 쓰지 못했습니다."'
+    marker = 'slide["body"] = UNWRITTEN'
     # Said in two places: when the call threw, and when it returned something
     # nothing could be made of. The reader cannot tell those apart and should
     # not have to.
@@ -401,4 +401,61 @@ def test_a_slide_never_comes_out_blank() -> None:
     # The salvage runs first; the marker is only for when it found nothing.
     assert source.index("_salvaged_bullets(data)") < source.rindex(marker)
     # And the marker is content, so nothing downstream treats it as a gap.
-    assert deck.has_content({"layout": "bullets", "body": "이 장을 쓰지 못했습니다."})
+    assert deck.has_content({"layout": "bullets", "body": deck.UNWRITTEN})
+
+
+def test_the_sentence_says_so_on_screen_and_not_in_the_file() -> None:
+    """패널은 작업대이고 파일은 방이다.
+
+    The same sentence has two audiences. On the panel it is an instruction —
+    텍스트 수정 is right there, and the lint has already filed it P0. In an
+    exported file it is projected in front of an audience, and a live run put
+    "이 장을 쓰지 못했습니다." on slide three of a deck somebody was about to
+    present.
+
+    Dropped rather than blanked. An empty slide in a deck is a pause nobody
+    planned; the numbering is by position, so what follows moves up.
+    """
+    import io
+
+    from pptx import Presentation
+
+    from app.services import deck_export
+
+    slides = [
+        {"layout": "title", "title": "덱", "body": "부제"},
+        {"layout": "bullets", "title": "쓴 장", "bullets": ["내용"]},
+        {"layout": "bullets", "title": "못 쓴 장", "body": deck.UNWRITTEN},
+    ]
+    written = Presentation(io.BytesIO(deck_export.to_pptx("덱", slides)))
+    assert len(written.slides._sldIdLst) == 2
+    words = " ".join(
+        shape.text_frame.text
+        for slide in written.slides
+        for shape in slide.shapes
+        if shape.has_text_frame
+    )
+    assert deck.UNWRITTEN not in words
+    assert "쓴 장" in words
+
+
+def test_a_slide_that_only_lost_its_prose_is_kept() -> None:
+    """The marker plus a table is a slide with a table on it. Dropping that
+    would lose the work the writer did do."""
+    import io
+
+    from pptx import Presentation
+
+    from app.services import deck_export
+
+    slides = [
+        {"layout": "title", "title": "덱"},
+        {
+            "layout": "table",
+            "title": "표는 나왔다",
+            "body": deck.UNWRITTEN,
+            "rows": [["가", "나"], ["1", "2"]],
+        },
+    ]
+    written = Presentation(io.BytesIO(deck_export.to_pptx("덱", slides)))
+    assert len(written.slides._sldIdLst) == 2

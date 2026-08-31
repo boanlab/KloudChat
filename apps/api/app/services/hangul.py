@@ -38,10 +38,20 @@ import hanja
 
 from app.services.lint import _GLOSSED, _HANJA
 
+#: The fences this product writes that hold prose rather than code: a figure
+#: and its name, a step and what it is, a chart's own axis labels.
+#:
+#: Excluded from the protection below, because they are the document. `3개社`
+#: reached a 보고서 through a ```steps block — protected as if it were a sample
+#: of code, which it is not; it is a line somebody reads off the page.
+_PROSE_FENCES = ("kpi", "steps", "chart", "table", "mermaid")
+
 #: `<code>`/`<pre>` and Markdown's fences and spans. A Chinese identifier in a
 #: sample is not a leak, and rewriting it breaks the sample.
 _CODE = re.compile(
-    r"<(code|pre)\b[^>]*>.*?</\1\s*>|```.*?```|`[^`\n]+`",
+    r"<(code|pre)\b[^>]*>.*?</\1\s*>"
+    rf"|```(?!\s*(?:{'|'.join(_PROSE_FENCES)})\b).*?```"
+    r"|`[^`\n]+`",
     re.S | re.I,
 )
 

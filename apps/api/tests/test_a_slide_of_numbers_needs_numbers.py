@@ -31,11 +31,27 @@ def test_with_nothing_to_draw_numbers_from_they_become_prose() -> None:
     assert _layouts(grounded) == ["title", "bullets", "bullets", "bullets"]
 
 
-def test_attached_material_is_enough() -> None:
-    """Anything in the context window is a place a figure could have come from
-    — a file, a search result, a note."""
-    grounded = deck._grounded_layouts(_PLAN, "클라우드 이관 발표 자료", ["작년 집계표: …"])
+def test_attached_material_with_figures_in_it_is_enough() -> None:
+    """A file, a search result, a note — read for what is in it.
+
+    `bool(context)` was the test: material existed, therefore figures did. Two
+    saved memories about who the user is were enough by that rule, and a live
+    run drew six years of invented AI 채용 증가율 on a chart. Having material
+    and having numbers in it are different questions.
+    """
+    grounded = deck._grounded_layouts(
+        _PLAN, "클라우드 이관 발표 자료", ["작년 집계표: 이관 비용 1,240만 원"]
+    )
     assert _layouts(grounded) == _layouts(_PLAN)
+
+
+def test_material_with_no_figures_in_it_is_not_enough() -> None:
+    """A memory saying what somebody's job is grounds nothing numeric."""
+    grounded = deck._grounded_layouts(
+        _PLAN, "클라우드 이관 발표 자료", ["사용자는 대학 교직원이다"]
+    )
+    assert "chart" not in _layouts(grounded)
+    assert "metrics" not in _layouts(grounded)
 
 
 def test_the_request_counts_as_material() -> None:
@@ -87,6 +103,40 @@ def test_variety_is_judged_against_what_the_request_can_reach() -> None:
         "quote",
         "two-column",
         "table",
+        # The three paired shapes need no figures — a name beside a sentence, a
+        # letter over a caption, a date beside what happened.
+        "bands",
+        "tiles",
+        "timeline",
     ]
-    assert deck._offered_layouts("작년 32% 줄었다", []) == list(deck._LAYOUTS[1:])
-    assert deck._offered_layouts("숫자 없는 주제", ["붙인 자료"]) == list(deck._LAYOUTS[1:])
+    # `_BODY_LAYOUTS`, not `_LAYOUTS[1:]`: the slice meant "everything but the
+    # cover" only while the cover was the one layout with no content in it.
+    assert deck._offered_layouts("작년 32% 줄었다", []) == list(deck._BODY_LAYOUTS)
+    # Material with no figures in it is still material with no figures in it.
+    # `bool(context)` was the test, and two saved memories about who the user is
+    # were enough to let a deck draw six years of invented 채용 증가율.
+    assert deck._offered_layouts("숫자 없는 주제", ["붙인 자료"]) != list(deck._BODY_LAYOUTS)
+    assert deck._offered_layouts("숫자 없는 주제", ["수료생 1500명"]) == list(deck._BODY_LAYOUTS)
+
+
+def test_a_report_refuses_the_same_figures_a_deck_does() -> None:
+    """지어낸 수치는 문서에서도 지어낸 수치다.
+
+    A 검토 보고서 on a topic with no material came back with three ```kpi
+    blocks — 6개월, 80%, 90%, 4명, 30%, 100%, 0일, 8주, 40명, 80점 — every one
+    invented, every one set large where a figure is read as the most factual
+    thing on the page. The deck had refused exactly this for a while and the
+    report had not, so the same request produced an honest deck and a confident
+    document.
+
+    The prose survives. \"짧은 주기로 운영한다\" is a claim somebody can weigh;
+    `8주` beside a heading is a measurement, and there was no measuring.
+    """
+    from app.services.report import _grounded_figures
+
+    body = "앞 문장.\n\n```kpi\n8주 | 한 주기\n40명 | 모집 인원\n```\n\n뒤 문장."
+    assert "8주" not in _grounded_figures(body, grounded=False)
+    assert "앞 문장." in _grounded_figures(body, grounded=False)
+    assert "뒤 문장." in _grounded_figures(body, grounded=False)
+    # With material in hand it is left exactly as written.
+    assert _grounded_figures(body, grounded=True) == body
