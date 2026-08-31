@@ -311,7 +311,7 @@ def _fragment(text: str, template: DesignTemplate) -> str:
     about.
     """
     clean, _ = hangul.read_back(text.strip())
-    return templates.sanitise(_FENCE.sub(r"\1", clean), template.layouts)
+    return templates.sanitise(_FENCE.sub(r"\1", hangul.tidy_spacing(clean)), template.layouts)
 
 
 async def write(

@@ -65,6 +65,38 @@ export function hasContent(slide: Slide): boolean {
 }
 
 /**
+ * The three layouts that are a left thing and a right thing — see `Slide.bands`.
+ *
+ * Named once because three places have to agree about them: the drawing, the
+ * editable text, and the save that reads that text back. They did not, and the
+ * save was the one that lost.
+ */
+const PAIRED = ['bands', 'tiles', 'timeline'] as const
+type Paired = (typeof PAIRED)[number]
+
+/** Which of the three this slide is, or `null`. */
+function pairedLayout(slide: Slide): Paired | null {
+  return (PAIRED as readonly string[]).includes(slide.layout)
+    ? (slide.layout as Paired)
+    : null
+}
+
+/**
+ * The pairs written onto the field the layout names, and the other two cleared.
+ *
+ * One slide carries one shape. A `bands` slide that kept a `timeline` array
+ * from an earlier edit counts as having content on a layout that never draws
+ * it, which is how an empty slide reads as a full one.
+ */
+function pairFields(layout: Paired | null, pairs?: [string, string][]): Partial<Slide> {
+  return {
+    bands: layout === 'bands' ? pairs : undefined,
+    tiles: layout === 'tiles' ? pairs : undefined,
+    timeline: layout === 'timeline' ? pairs : undefined,
+  }
+}
+
+/**
  * The slide a finding was found on, or `undefined`.
  *
  * Matched on the title, which is all a finding carries. Exact first, then
@@ -220,11 +252,10 @@ export function SlideView({
   /* The three shapes that are a left thing and a right thing. Read as one
      because they are one — see `Slide.bands`. `deck_export` draws the same
      three at the same measurements, so the room sees what the panel showed. */
-  const pairs = (
-    slide.layout === 'bands' || slide.layout === 'tiles' || slide.layout === 'timeline'
-      ? (slide[slide.layout] ?? [])
-      : []
-  ).filter(([left, right]) => left?.trim() && right?.trim())
+  const paired = pairedLayout(slide)
+  const pairs = (paired ? (slide[paired] ?? []) : []).filter(
+    ([left, right]) => left?.trim() && right?.trim(),
+  )
   const chart = slide.chart
   const pending = !hasContent(slide)
   // Two columns are only two columns when there is enough to fill them; four
@@ -249,6 +280,40 @@ export function SlideView({
     const perRow = body / (rows.length + 1.2)
     const size = Math.max(7.5, Math.min(12, perRow / 2.05))
     return { size, pad: Math.max(2, (perRow - size * 1.4) / 2) }
+  })()
+  /*
+   * The same arithmetic for the two paired shapes that stack down the slide.
+   *
+   * They were drawn at one size whatever they held: a band was three lines of
+   * padding and type tall and there could be six of them, so a four-band slide
+   * ran through the footer and a seven-entry timeline lost its last two
+   * entries off the bottom edge. Nothing said so — the panel clips, and the
+   * .pptx is where somebody finds out.
+   *
+   * `deck_export` divides the same way (`min(72, room/n)` for a band,
+   * `min(56, room/n)` for a timeline step, in its 540-unit slide); these are
+   * those two numbers in this drawing's 225, so the room sees the slide the
+   * panel showed. `tiles` is not here: it lays its marks across rather than
+   * down, and flex already shares the width between them.
+   */
+  const stack = (() => {
+    const body = 122
+    const count = Math.max(pairs.length, 1)
+    // A band and the 10-unit gap under it, capped where the export caps them.
+    const gap = 4
+    const height = Math.min(30, (body - gap * (count - 1)) / count)
+    const band = Math.max(7, Math.min(10, height / 3))
+    // A timeline entry is a line of type and the air under it, no box.
+    const step = Math.min(23, body / count)
+    const line = Math.max(7, Math.min(10, step / 2.3))
+    return {
+      gap,
+      height,
+      band,
+      pad: Math.max(1.5, (height - band * 1.5) / 2),
+      step,
+      line,
+    }
   })()
 
   /**
@@ -372,18 +437,22 @@ export function SlideView({
                 /* A filled name on the left against a tinted band on the right.
                    Bullets have nowhere to put the name of what they are, which
                    is the whole of why this shape exists. */
-                <div className="flex flex-col" style={{ gap: px(7) }}>
+                <div className="flex flex-col" style={{ gap: px(stack.gap) }}>
                   {pairs.map(([name, text], i) => (
-                    <div key={i} className="flex items-stretch" style={{ gap: px(5) }}>
+                    <div
+                      key={i}
+                      className="flex items-stretch overflow-hidden"
+                      style={{ gap: px(5), height: px(stack.height) }}
+                    >
                       <div
                         className="grid shrink-0 place-items-center text-center"
                         style={{
                           width: px(62),
                           background: accent,
                           color: '#fff',
-                          fontSize: type(10),
+                          fontSize: type(stack.band),
                           fontWeight: 700,
-                          padding: `${px(9)} ${px(4)}`,
+                          padding: `${px(stack.pad)} ${px(4)}`,
                         }}
                       >
                         {name}
@@ -392,9 +461,9 @@ export function SlideView({
                         className="flex min-w-0 flex-1 items-center"
                         style={{
                           background: tint,
-                          fontSize: type(10),
+                          fontSize: type(stack.band),
                           lineHeight: 1.5,
-                          padding: `${px(9)} ${px(12)}`,
+                          padding: `${px(stack.pad)} ${px(12)}`,
                         }}
                       >
                         {text}
@@ -435,13 +504,17 @@ export function SlideView({
                    right. Order is the point, so nothing here reflows it. */
                 <div className="flex flex-col">
                   {pairs.map(([when, what], i) => (
-                    <div key={i} className="flex" style={{ gap: px(9) }}>
+                    <div
+                      key={i}
+                      className="flex overflow-hidden"
+                      style={{ gap: px(9), height: px(stack.step) }}
+                    >
                       <div
                         className="shrink-0 text-right"
                         style={{
                           width: px(52),
                           color: accent,
-                          fontSize: type(10),
+                          fontSize: type(stack.line),
                           fontWeight: 700,
                           paddingTop: px(2),
                         }}
@@ -465,9 +538,9 @@ export function SlideView({
                       <div
                         className="min-w-0 flex-1"
                         style={{
-                          fontSize: type(10),
+                          fontSize: type(stack.line),
                           lineHeight: 1.5,
-                          paddingBottom: px(10),
+                          paddingBottom: px(6),
                         }}
                       >
                         {what}
@@ -829,16 +902,31 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
  *
  * Metrics go out the same way, as `| 99.5% | 대응률 |`, so a KPI strip is
  * editable for the first time as well.
+ *
+ * So do the three paired layouts, one pair a line: a band's name and its text,
+ * a tile's mark and its caption, a date and what happened. They were the same
+ * bug the table had and worse — absent from the box, and `save` then rebuilt
+ * the slide as `bullets`, so opening 텍스트 수정 on a `bands` slide and pressing
+ * 저장 without typing a character emptied it and PATCHed that over the deck.
+ *
+ * A paired slide's `bullets` and `body` are left out on purpose: `SlideView`
+ * draws neither while there are pairs, and putting invisible text in the box
+ * invites somebody to edit words that will never appear.
  */
 function toLines(slide: Slide): string {
   const rows = (slide.rows ?? []).map((row) => `| ${row.join(' | ')} |`)
   const metrics = (slide.metrics ?? []).map(([figure, label]) => `| ${figure} | ${label} |`)
+  const paired = pairedLayout(slide)
+  const pairs = paired
+    ? (slide[paired] ?? []).map(([left, right]) => `| ${left} | ${right} |`)
+    : []
   return [
     slide.title,
-    ...(slide.bullets ?? []),
-    slide.body ?? '',
+    ...(paired ? [] : (slide.bullets ?? [])),
+    paired ? '' : (slide.body ?? ''),
     ...rows,
     ...metrics,
+    ...pairs,
   ]
     .filter(Boolean)
     .join('\n')
@@ -1271,6 +1359,19 @@ export function DeckPanel({
     const [title, ...rest] = lines
     const table = rest.map(toCells).filter(Boolean) as string[][]
     const words = rest.filter((line) => toCells(line) === null)
+    /*
+     * The pairs of a `bands`, `tiles` or `timeline` slide, read out of the same
+     * `|` lines a table row uses — the syntax `toLines` sent them out in.
+     *
+     * Read before `table` is taken for a table, or the three shapes would be
+     * saved as one. Anything past the second cell is rejoined rather than
+     * dropped, so a pair whose text contains a pipe survives the round trip
+     * unchanged instead of losing its tail.
+     */
+    const paired = pairedLayout(slide)
+    const pairs: [string, string][] = paired
+      ? table.map((cells) => [cells[0], cells.slice(1).join(' | ')])
+      : []
 
     // Layout follows the shape that arrived: on a quote slide one line is a
     // quotation and several are bullets, since quote renders only the first.
@@ -1281,23 +1382,51 @@ export function DeckPanel({
     // missing: the table used to survive an edit that never mentioned it and
     // then hide the bullets that did get typed.
     const shaped: Slide =
-      table.length > 0
+      table.length > 0 && !paired
         ? // `metrics` is a table of exactly two columns whose left side is a
           // figure. Kept as metrics only if that is what the slide already was;
           // otherwise two columns are two columns.
           slide.metrics?.length && table.every((row) => row.length === 2)
           ? { ...slide, metrics: table.map(([f, l]) => [f, l] as [string, string]), rows: undefined }
           : { ...slide, layout: 'table', rows: table, metrics: undefined }
-        : { ...slide, rows: undefined, metrics: undefined }
+        : // Emptying the box of its pairs empties the slide of them, the same
+          // rule the table follows — and the array has to go with them or the
+          // slide still counts as having content nothing draws.
+          { ...slide, rows: undefined, metrics: undefined, ...(paired ? pairFields(null) : null) }
 
     const edited: Slide =
-      slide.layout === 'quote' && words.length <= 1
-        ? { ...shaped, title, body: words[0] ?? '', bullets: undefined, notes }
-        : slide.layout === 'title'
-          ? { ...shaped, title, body: words.join(' '), notes }
-          : table.length > 0
-            ? { ...shaped, title, bullets: words.length ? words : undefined, body: undefined, notes }
-            : { ...shaped, layout: 'bullets', title, bullets: words, body: undefined, notes }
+      paired && pairs.length > 0
+        ? // The layout is kept. It used to be forced to `bullets` here, so a
+          // typo fixed in the title of a bands slide saved four bands as
+          // nothing and PATCHed that over the deck.
+          {
+            ...slide,
+            ...pairFields(paired, pairs),
+            title,
+            rows: undefined,
+            metrics: undefined,
+            bullets: words.length ? words : undefined,
+            body: undefined,
+            notes,
+          }
+        : slide.layout === 'quote' && words.length <= 1
+          ? { ...shaped, title, body: words[0] ?? '', bullets: undefined, notes }
+          : // A cover and a 장 divider are a title over a line of prose. `section`
+            // is here rather than falling through because the fall-through
+            // rewrote it as `bullets`, and a divider that is no longer a divider
+            // takes the deck's numbering with it — `number` is on the slide and
+            // nowhere else.
+            slide.layout === 'title' || slide.layout === 'section'
+            ? { ...shaped, title, body: words.join(' ') || undefined, notes }
+            : table.length > 0
+              ? {
+                  ...shaped,
+                  title,
+                  bullets: words.length ? words : undefined,
+                  body: undefined,
+                  notes,
+                }
+              : { ...shaped, layout: 'bullets', title, bullets: words, body: undefined, notes }
 
     const slides = deck.slides.map((s, i) => (i === index ? edited : s))
     setSaving(true)

@@ -123,6 +123,10 @@ export function AgentsPage() {
   // Your own shared agents are not in it: there is nothing to import from
   // yourself, and the button on such a card would refuse.
   const shared = agents.filter((a) => a.visibility === 'org' && a.ownerId !== user?.id)
+  // And the other half of the same line: somebody else's shared agent is not
+  // one of mine. It was listed under 내 에이전트 with its edit, delete and
+  // enable controls already withheld — a card that could only be looked at.
+  const mine = agents.filter((a) => a.ownerId === user?.id)
   // Cheapest model that can hold a conversation, the same rule the surface
   // defaults use.
   const defaultModel =
@@ -135,7 +139,7 @@ export function AgentsPage() {
   const all =
     tab === 'store'
       ? ordered.filter((a) => a.visibility === 'org' && a.ownerId !== user?.id)
-      : ordered
+      : ordered.filter((a) => a.ownerId === user?.id)
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
   // Mine only: somebody else's shared agent is read-only.
   const pick = useBulkSelect(visible.filter((a) => a.ownerId === user?.id))
@@ -202,7 +206,7 @@ export function AgentsPage() {
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'mine', label: t('내 에이전트'), count: agents.length },
+            { id: 'mine', label: t('내 에이전트'), count: mine.length },
             { id: 'store', label: t('워크스페이스 스토어'), count: shared.length },
           ]}
         />
@@ -488,7 +492,7 @@ export function AgentsPage() {
                 )}
               </div>
               <div>
-                <Field label={t('슬러그')} hint={t('입력창의 @ 버튼과 홈 화면 카드에 이 핸들로 보입니다.')}>
+                <Field label={t('슬러그')} hint={t('이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 이름에서 만듭니다.')}>
                   <Input
                     value={draft.slug}
                     aria-invalid={slugTaken || undefined}
@@ -517,31 +521,40 @@ export function AgentsPage() {
               />
             </Field>
 
+            {/* 공개 범위. 모델도 목록 질의도 처음부터 org 를 다뤘고, 배지도
+                "공유됨" 을 그릴 줄 알았는데, 정작 그렇게 **바꿀 방법이**
+                없었습니다 — 워크스페이스 스토어 탭이 영원히 비어 있던 이유.
+                한동안 폼 아래쪽에 같은 선택기가 한 벌 더 있었습니다. 같은
+                값을 두 곳에서 고르게 두면 어느 쪽이 지금 값인지 읽어 낼 수
+                없으니, 무엇이 공개되는지까지 말하는 이쪽만 남깁니다. */}
             <Field
               label={t('공개 범위')}
-              hint={t('공유하면 워크스페이스 스토어에 올라가고 다른 구성원이 그대로 씁니다.')}
+              hint={t('공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
             >
               <div className="flex gap-1.5">
                 {(
                   [
-                    { id: 'private', label: t('개인'), icon: Lock },
+                    { id: 'private', label: t('나만 쓰기'), icon: Lock },
                     { id: 'org', label: t('모두에게 공개'), icon: Globe },
                   ] as const
-                ).map((o) => (
-                  <button
-                    key={o.id}
-                    onClick={() => setDraft({ ...draft, visibility: o.id })}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                      draft.visibility === o.id
-                        ? 'border-accent bg-accent-soft text-accent'
-                        : 'border-line text-muted hover:bg-elevated',
-                    )}
-                  >
-                    <o.icon size={13} />
-                    {o.label}
-                  </button>
-                ))}
+                ).map((o) => {
+                  const Icon = o.icon
+                  return (
+                    <button
+                      key={o.id}
+                      onClick={() => setDraft({ ...draft, visibility: o.id })}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
+                        draft.visibility === o.id
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-line text-muted hover:bg-elevated',
+                      )}
+                    >
+                      <Icon size={13} />
+                      {o.label}
+                    </button>
+                  )
+                })}
               </div>
             </Field>
 
@@ -570,14 +583,6 @@ export function AgentsPage() {
                     </button>
                   )
                 })}
-                {visibleSkills.length === 0 && (
-                  <p className="py-2 text-base text-faint">{t('검색 결과가 없습니다')}</p>
-                )}
-                {hiddenSkills > 0 && (
-                  <span className="self-center text-sm text-faint">
-                    {t('외 {n}개 — 검색해서 찾으세요').replace('{n}', String(hiddenSkills))}
-                  </span>
-                )}
               </div>
             </Field>
 
@@ -633,40 +638,6 @@ export function AgentsPage() {
                 />
               </Field>
             </div>
-
-            {/* 공개 범위. 모델도 목록 질의도 처음부터 org 를 다뤘고, 배지도
-                "공유됨" 을 그릴 줄 알았는데, 정작 그렇게 **바꿀 방법이**
-                없었습니다 — 워크스페이스 스토어 탭이 영원히 비어 있던 이유. */}
-            <Field
-              label={t('공개 범위')}
-              hint={t('공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
-            >
-              <div className="flex gap-1.5">
-                {(
-                  [
-                    { id: 'private', label: t('나만 쓰기'), icon: Lock },
-                    { id: 'org', label: t('모두에게 공개'), icon: Globe },
-                  ] as const
-                ).map((o) => {
-                  const Icon = o.icon
-                  return (
-                    <button
-                      key={o.id}
-                      onClick={() => setDraft({ ...draft, visibility: o.id })}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                        draft.visibility === o.id
-                          ? 'border-accent bg-accent-soft text-accent'
-                          : 'border-line text-muted hover:bg-elevated',
-                      )}
-                    >
-                      <Icon size={13} />
-                      {o.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </Field>
 
             <Field label={t('도구 권한')}>
               <div className="mb-2 flex gap-1.5">
@@ -768,42 +739,54 @@ export function AgentsPage() {
                   {t('허용 목록 지정')}
                 </button>
               </div>
-              {/* 전체를 나열하면 다섯 개일 때는 괜찮아도 예순 개면 못 쓴다.
-                  선택된 것은 앞에 고정해, 검색이 이미 붙은 것을 가리지 않게 한다. */}
-              <Input
-                value={skillQuery}
-                onChange={(e) => setSkillQuery(e.target.value)}
-                placeholder={t('스킬 검색 ({n}개)').replace('{n}', String(skills.length))}
-                className="mb-2 h-8 text-base"
-              />
+              {/* 상속 모드에는 고를 목록이 없다. 검색창만 남겨 두면 무엇도
+                  거르지 못하는 칸에 대고 타자를 치게 된다 — 목록과 함께 나온다. */}
               {draft.skillIds !== null && (
-                <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
-                  {visibleSkills.map((s) => {
-                    const on = draft.skillIds?.includes(s.id) ?? false
-                    return (
-                      <button
-                        key={s.id}
-                        aria-pressed={on}
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            skillIds: on
-                              ? (draft.skillIds ?? []).filter((x) => x !== s.id)
-                              : [...(draft.skillIds ?? []), s.id],
-                          })
-                        }
-                        className={cn(
-                          'rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                          on
-                            ? 'border-accent bg-accent-soft text-accent'
-                            : 'border-line text-muted hover:bg-elevated',
-                        )}
-                      >
-                        {t(s.name)}
-                      </button>
-                    )
-                  })}
-                </div>
+                <>
+                  {/* 전체를 나열하면 다섯 개일 때는 괜찮아도 예순 개면 못 쓴다.
+                      선택된 것은 앞에 고정해, 검색이 이미 붙은 것을 가리지 않게 한다. */}
+                  <Input
+                    value={skillQuery}
+                    onChange={(e) => setSkillQuery(e.target.value)}
+                    placeholder={t('스킬 검색 ({n}개)').replace('{n}', String(skills.length))}
+                    className="mb-2 h-8 text-base"
+                  />
+                  <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+                    {visibleSkills.map((s) => {
+                      const on = draft.skillIds?.includes(s.id) ?? false
+                      return (
+                        <button
+                          key={s.id}
+                          aria-pressed={on}
+                          onClick={() =>
+                            setDraft({
+                              ...draft,
+                              skillIds: on
+                                ? (draft.skillIds ?? []).filter((x) => x !== s.id)
+                                : [...(draft.skillIds ?? []), s.id],
+                            })
+                          }
+                          className={cn(
+                            'rounded-control border px-2.5 py-1.5 text-base transition-colors',
+                            on
+                              ? 'border-accent bg-accent-soft text-accent'
+                              : 'border-line text-muted hover:bg-elevated',
+                          )}
+                        >
+                          {t(s.name)}
+                        </button>
+                      )
+                    })}
+                    {visibleSkills.length === 0 && (
+                      <p className="py-2 text-base text-faint">{t('검색 결과가 없습니다')}</p>
+                    )}
+                    {hiddenSkills > 0 && (
+                      <span className="self-center text-sm text-faint">
+                        {t('외 {n}개 — 검색해서 찾으세요').replace('{n}', String(hiddenSkills))}
+                      </span>
+                    )}
+                  </div>
+                </>
               )}
             </Field>
           </>

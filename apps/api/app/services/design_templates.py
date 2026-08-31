@@ -266,6 +266,15 @@ class DesignTemplate:
     #: general bound is 45 — without this, a template's own rule is the one
     #: rule nothing enforces. Empty means the general bounds apply.
     limits: dict[str, int]
+    #: Catalogue skills this 서식 works best with, by `catalog_key`.
+    #:
+    #: A 서식 is a shape and a skill is a procedure, and some shapes imply
+    #: their procedure — a 공문 without the 공문 문체 rules is a notice-shaped
+    #: essay. Applied automatically when a document is generated in this 서식,
+    #: and announced in the same `skills_applied` event a hand-activated skill
+    #: gets, so the person sees what joined the prompt and can turn it off by
+    #: switching 서식.
+    skills: tuple[str, ...]
 
     @property
     def surface(self) -> SessionKind:
@@ -472,6 +481,7 @@ def _load() -> dict[str, DesignTemplate]:
                 for key, value in (meta.get("limits") or {}).items()
                 if key in ("max_bullets", "max_bullet_chars") and int(value) > 0
             },
+            skills=tuple(str(k) for k in (meta.get("skills") or [])),
         )
     return found
 

@@ -29,10 +29,35 @@ export async function draw(source: string, look: object): Promise<string | null>
       // from being a script — the source comes from a model and passes through
       // no sanitiser of ours.
       securityLevel: 'strict',
+      // On a parse error mermaid throws — which the catch below handles — and
+      // *also* appends its own "Syntax error in text" bomb straight into
+      // `document.body`, outside anything React owns. A report whose model
+      // wrote one bad diagram got the caller's tidy fallback in place and a
+      // full-width bomb at the foot of the screen. This tells it to only
+      // throw.
+      suppressErrorRendering: true,
       ...look,
     })
-    const { svg } = await mermaid.render(`d${Math.abs(hash(source))}`, plain(source))
-    return svg
+    // The hash names the diagram; the counter names *this* drawing of it. The
+    // hash alone was the whole id, so two draws of the same source that overlap
+    // — the panel and the thumbnail beside it, or a re-render landing on a
+    // source that had been drawn before — shared one id, and mermaid tore the
+    // scratch element of the first out from under the second. One of the two
+    // came back empty, which read as a diagram that would not render.
+    draws += 1
+    const id = `d${Math.abs(hash(source))}x${draws}`
+    try {
+      const { svg } = await mermaid.render(id, plain(source))
+      return svg
+    } finally {
+      // Belt to the suppress flag's braces: whatever scratch element this
+      // mermaid version left behind, it does not belong to the page. Both
+      // names, because the container is not always the id we asked for —
+      // some versions of mermaid prefix it with `d` — and the one we do not
+      // remove is left in the document for the life of the page.
+      document.getElementById(id)?.remove()
+      document.getElementById(`d${id}`)?.remove()
+    }
   } catch {
     return null
   }
@@ -61,6 +86,12 @@ function plain(source: string): string {
     .filter((line) => !/^\s*(style|linkStyle|classDef)\s/.test(line))
     .join('\n')
 }
+
+/**
+ * How many diagrams this page has drawn. Mixed into the render id so that no
+ * two live renders can be given the same one — see `draw`.
+ */
+let draws = 0
 
 /** Stable enough to name one render. Not the storage key — that is the server's. */
 function hash(text: string): number {

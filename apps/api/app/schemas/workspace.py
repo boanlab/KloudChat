@@ -547,10 +547,14 @@ class AgentIn(Wire):
     description: str = ""
     model: str = ""
     system_prompt: str = ""
-    # Omitted on create means least privilege. Explicit null is the backwards-
-    # compatible "inherit" state for existing integrations.
-    tools: list[str] | None = Field(default_factory=list)
-    skill_ids: list[str] | None = Field(default_factory=list)
+    # Omitted means inherit (null), the same as explicit null. It used to mean
+    # least privilege — an empty list — and the screen never sends the fields,
+    # so every agent made in the UI was born with skills and tools hard-denied:
+    # activating a skill on it answered 422 and no tool was ever offered.
+    # Least privilege is still one explicit `[]` away for the caller that
+    # wants it; a default nobody chose is not a privilege decision.
+    tools: list[str] | None = None
+    skill_ids: list[str] | None = None
     kinds: list[str] | None = None
     temperature: float = Field(default=0.7, ge=0, le=2)
     color: str = "#5b53e8"

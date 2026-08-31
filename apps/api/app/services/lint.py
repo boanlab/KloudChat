@@ -216,6 +216,22 @@ def from_slides(slides: list[dict]) -> list[Part]:
                 lines.append(f"{pair[0]} {pair[1]}")
         if chart := slide.get("chart"):
             lines.extend(_chart_lines(chart))
+        # The three paired layouts, read the same way a table row is: the claim
+        # is the pair. Added when the layouts were and this was not, so a deck
+        # whose 참여 혜택 slide held four filled bands was stamped `P0 empty` —
+        # and 전체 고치기 then paid for an LLM rewrite of four correct slides.
+        # The hanja and invented-number rules were blind to the same text.
+        for key in ("bands", "tiles", "timeline"):
+            for pair in slide.get(key) or []:
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                    if line := " ".join(str(half) for half in pair[:2] if str(half).strip()):
+                        lines.append(line)
+        if slide.get("layout") == "section":
+            # A divider says the name of the part and nothing else — that is
+            # what a divider is. Nothing on it is a claim, and its four-word
+            # title is shorter than the emptiness floor, so checking it can
+            # only ever produce a false P0.
+            continue
         parts.append(Part(str(slide.get("title") or ""), lines))
     return parts
 
