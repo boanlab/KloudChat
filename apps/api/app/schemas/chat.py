@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
@@ -84,6 +84,22 @@ class ImageRequest(Wire):
     #: picture going *into* a slide must not be a picture *of* a slide. See
     #: `imagegen._FIGURE_CLAUSE`.
     figure: bool = False
+
+
+class FigureSuggestRequest(Wire):
+    """What the picker asks for when it opens on one 장 or one 절."""
+
+    #: The document's own title, so the suggestion belongs to this document.
+    title: str = Field(default="", max_length=300)
+    #: The name of the place the picture is going into.
+    about: str = Field(default="", max_length=300)
+    #: What that place already says, so the picture does not repeat it.
+    context: str = Field(default="", max_length=4000)
+
+
+class FigureSuggestion(Wire):
+    caption: str
+    prompt: str
 
 
 class AudioRequest(Wire):
@@ -376,6 +392,15 @@ class SendMessage(Wire):
     #: request plans and offers, so nothing a person has not looked at can
     #: replace a document they already have.
     approve: bool = False
+    #: The outline as the person edited it on the card, when they did.
+    #:
+    #: Approval used to write whatever the planner had stored, so changing one
+    #: section heading meant re-prompting and getting a whole new outline back
+    #: — a different document, to fix a word. Sent with the approval rather
+    #: than saved first: the edit and the decision to write are one gesture,
+    #: and a plan stored and then not approved would outlive the card it was
+    #: typed on. Sanitised on arrival; see `_edited_plan`.
+    plan: dict[str, Any] | None = None
     #: The failed question to run again, by message id — what 다시 시도 sends.
     #: The row is reused rather than written twice: the transcript keeps one
     #: copy of the question, whatever failed under it is replaced, and the model

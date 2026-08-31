@@ -1273,6 +1273,25 @@ export function Composer({
                 {t('업로드 중')}
               </span>
             )}
+            {/*
+              The reason, in words, on the screen.
+              
+              A failed upload wore a ⚠ and kept why it failed in a `title` —
+              which is a hover, and a hover is nothing on a phone and nearly
+              nothing to somebody who has not been told there is something to
+              hover over. So a scan nobody can read and a file that is not what
+              its name says both arrived as a chip with a small orange triangle,
+              and the next thing that happened was a question about contents
+              that were never there.
+            */}
+            {attachments.some((f) => f.error) && (
+              <p role="status" className="w-full text-xs text-warn">
+                {attachments
+                  .filter((f) => f.error)
+                  .map((f) => `${f.name} — ${f.error}`)
+                  .join(' · ')}
+              </p>
+            )}
           </div>
         )}
 
@@ -1553,7 +1572,14 @@ export function Composer({
                     'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
-                  aria-label={t('커넥터')}
+                  /* With the count on the face of it and 커넥터 in the label,
+                     the accessible name has to hold both — otherwise the
+                     button says 25 and answers to something else. */
+                  aria-label={
+                    activeConnectors.length
+                      ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
+                      : t('커넥터')
+                  }
                 >
                   <Plug size={15} />
                   {activeConnectors.length > 0 && <span>{activeConnectors.length}</span>}

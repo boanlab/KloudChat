@@ -316,6 +316,16 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     if not title:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
 
+    # HTML with no HTML in it. The commonest way this arrives is a model asked
+    # for "HTML 문서" answering in Markdown — headings as `##`, emphasis as
+    # `**`, and not one tag — and the artifact then wore an HTML badge over a
+    # page that rendered as a wall of unstyled text in the panel and in every
+    # thumbnail. Renamed rather than refused: the content is fine and it is
+    # Markdown, so saying so is the whole fix.
+    if kind == "html" and not _TAG_NAME.search(content):
+        kind = "code"
+        language = "markdown"
+
     visible = _visible_length(kind, content)
         # The one call the description cannot prevent, the model having already
         # decided by the time it reads one. Only the model's own guess is

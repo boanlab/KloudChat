@@ -1,5 +1,5 @@
-import { Download } from 'lucide-react'
-import { ButtonLink } from '@/components/ui'
+import { Download, PencilLine, RefreshCw } from 'lucide-react'
+import { Button, ButtonLink } from '@/components/ui'
 import { fileUrl } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -48,13 +48,18 @@ function Waveform({ peaks }: { peaks: number[] }) {
 export function MediaResult({
   artifacts,
   credits,
+  /** Whose conversation this picture is in, so 다시 만들기 has somewhere to go. */
+  sessionId,
 }: {
   artifacts: (ImageArtifact | AudioArtifact | VideoArtifact)[]
   /** What the turn was charged, from the message. Zero prints nothing. */
   credits: number
+  sessionId?: string
 }) {
   const t = useT()
   const { models, openArtifact } = useStore()
+  const generateImages = useStore((s) => s.generateImages)
+  const setComposerRestore = useStore((s) => s.setComposerRestore)
   const images = artifacts.filter((a): a is ImageArtifact => a.kind === 'image')
   const audios = artifacts.filter((a): a is AudioArtifact => a.kind === 'audio')
   const videos = artifacts.filter((a): a is VideoArtifact => a.kind === 'video')
@@ -120,6 +125,48 @@ export function MediaResult({
                 {images.length > 1 ? String(i + 1) : t('내려받기')}
               </ButtonLink>
             ))}
+            {/*
+              What somebody does next after looking at a picture: ask for it
+              again, or ask for it differently. Neither was here, so the only
+              way to try a second time was to retype the sentence — which had
+              already been cleared out of the composer when the first one went.
+
+              Two buttons because they cost different things. 다시 만들기 spends
+              a credit; 프롬프트 고치기 puts the words back in the box and spends
+              nothing, which is the one somebody who was almost happy wants.
+            */}
+            {sessionId && images[0].prompt && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void generateImages(sessionId, images[0].prompt)}
+                >
+                  <RefreshCw size={13} />
+                  {t('다시 만들기')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    // The channel a refused turn uses to hand a draft back —
+                    // the composer keeps its text in a module map, not in the
+                    // store, so this is the one way in from outside it.
+                    setComposerRestore({
+                      sessionId,
+                      value: images[0].prompt,
+                      attachments: [],
+                      activatedSkillIds: [],
+                      startingTemplate: null,
+                      error: '',
+                    })
+                  }
+                >
+                  <PencilLine size={13} />
+                  {t('프롬프트 고치기')}
+                </Button>
+              </>
+            )}
           </div>
           {caption([
             t('{n}장').replace('{n}', String(images.length)),

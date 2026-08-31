@@ -65,7 +65,12 @@ def test_a_template_without_a_form_is_unchanged() -> None:
 
     row = templates.get("doc-report")
     bare = dataclasses.replace(row, form_file="")
-    assert page._guide(bare) == row.instructions
+    guide = page._guide(bare)
+    # The rules and the seed's own markup vocabulary, and nothing else. The
+    # vocabulary is not the form: it describes the elements the typesetting
+    # stands up, and every 서식 gets it whether or not it ships a form.
+    assert guide == f"{row.instructions}\n\n{row.markup}"
+    assert "빈 양식" not in guide
     assert templates.form_text(bare) == ""
 
 
@@ -82,7 +87,9 @@ def test_an_unreadable_form_does_not_take_the_rules_down_with_it(monkeypatch) ->
     monkeypatch.setattr(file_service, "extract_text", explode)
     templates._FORM_TEXT.clear()
     try:
-        assert page._guide(row) == row.instructions
+        guide = page._guide(row)
+        assert guide == f"{row.instructions}\n\n{row.markup}"
+        assert "빈 양식" not in guide
     finally:
         templates._FORM_TEXT.clear()
 

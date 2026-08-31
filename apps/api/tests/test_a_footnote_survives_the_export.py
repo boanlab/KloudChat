@@ -41,7 +41,7 @@ def test_two_notes_stay_two_notes() -> None:
 
 
 def test_a_note_is_not_a_bullet() -> None:
-    kinds = [k for k, _, _ in report_export._markdown_to_lines(richtext.to_markdown(_CITED))]
+    kinds = [k for k, _, _, _d in report_export._markdown_to_lines(richtext.to_markdown(_CITED))]
     assert kinds == ["body", "body", "note", "note"], kinds
 
 

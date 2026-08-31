@@ -1,5 +1,6 @@
 import {
   Check,
+  Code2,
   Copy,
   Download,
   ExternalLink,
@@ -121,7 +122,7 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
       <Modal
         open={target !== null}
         onClose={() => setTarget(null)}
-        title={t('{name} 에 그림 넣기').replace('{name}', chosen?.heading || t('이 절'))}
+        title={t('{name}에 그림 넣기').replace('{name}', chosen?.heading || t('이 절'))}
         description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
         footer={
           <>
@@ -143,6 +144,8 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
           caption={caption}
           onCaption={setCaption}
           about={chosen?.heading}
+          title={report.title}
+          context={chosen?.content}
         />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
@@ -225,6 +228,25 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
 /** Reference list, shown beside the prose as well as at the end. */
 function SourceList({ sources, style }: { sources: Source[]; style: string }) {
   const t = useT()
+  /*
+   * Nothing to cite, said out loud.
+   *
+   * Pressing 출처 0 swapped the whole document away for a heading, a line
+   * reading APA 형식 · 0건, and white space. Somebody who did that on their
+   * first document lost the thing they were reading to look at nothing, with
+   * no word about why it was empty or what would fill it — and the report they
+   * had just written was produced with web search off, which is the answer.
+   */
+  if (sources.length === 0) {
+    return (
+      <div className="rounded-card border border-dashed border-line px-4 py-8 text-center">
+        <p className="text-base text-muted">{t('참고한 자료가 없습니다.')}</p>
+        <p className="mt-1 text-sm text-faint">
+          {t('웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.')}
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="space-y-2">
       <p className="text-xs text-faint">
@@ -1011,19 +1033,23 @@ export function ReportPanel({
               </Button>
             </>
           ) : (
-            /* 웹뷰의 수정은 마크다운을 오간다. 서식으로 꾸민 절을 그 길로
-               보내면 크기·서체·정렬·표가 저장하는 순간 조용히 사라지므로, 그
-               문서에서는 이 버튼이 페이지뷰로 데려간다.
+            /* 수정은 언제나 문서를 고치는 곳으로 데려간다.
 
-               끄지 않는 이유는 그것이 막다른 길이기 때문이다. 페이지뷰에서 한
-               번 고치고 나면 절이 서식을 갖게 되고, 그 뒤로 '수정' 은 영영
-               눌리지 않는 회색 버튼이 된다 — 고칠 방법이 있는데도 없다고
-               말하는 버튼이다. 데려가는 편이 정직하다. */
+               이 버튼은 서식이 든 문서만 페이지뷰로 보내고, 그렇지 않은 —
+               즉 갓 만들어진 모든 — 보고서는 마크다운 원문 편집기로 보냈다.
+               표를 고치려던 사람이 `| --- | --- |` 를 마주하는 자리가 거기다.
+               보고서를 쓰러 온 사람이 마크다운 표 문법을 배우러 온 것은
+               아니고, 정작 굵게·표 넣기·실행 취소가 다 있는 진짜 편집기는
+               '페이지뷰' 라는, 고치는 곳처럼 들리지 않는 이름 뒤에 있었다.
+
+               원문 편집이 나쁜 것은 아니다. 통째로 붙여 넣거나 한 번에 훑어
+               고칠 때는 그쪽이 빠르다. 그래서 없애지 않고 옆에 제 이름을
+               달아 두었다 — 아래 '원문'. */
             <Button
               size="sm"
-              onClick={() => (formatted ? setView('page') : void startEditing())}
+              onClick={() => setView('page')}
               disabled={writing}
-              title={formatted ? t('서식이 들어간 문서는 페이지뷰에서 고칩니다') : undefined}
+              title={t('굵게·표·그림을 그대로 보면서 고칩니다')}
               aria-label={t('문서 수정')}
             >
               <Pencil size={13} />
@@ -1058,6 +1084,23 @@ export function ReportPanel({
             <FileType2 size={13} />
             {view === 'page' ? t('웹뷰') : t('페이지뷰')}
           </Button>
+          {/* 마크다운 원문. 한 번에 훑어 고치거나 통째로 붙여 넣을 때의 길이고,
+              그렇게 부르지 않으면 '수정' 이라는 이름으로 사람을 그리 보내게
+              된다. 서식이 든 절은 이 길로 보내지 않는다 — 크기·서체·정렬·표가
+              저장하는 순간 조용히 사라진다. */}
+          {view !== 'page' && !formatted && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void startEditing()}
+              disabled={writing}
+              title={t('마크다운으로 한 번에 고칩니다')}
+              aria-label={t('원문 편집')}
+            >
+              <Code2 size={13} />
+              {t('원문')}
+            </Button>
+          )}
           {/* 어떤 양식으로 낼지. 생성 때 한 번 고르고 끝이던 선택을 문서를
               쓰는 도중에도 바꿀 수 있게 한다. 화면은 달라지지 않는다 — 종이는
               하나다 — 달라지는 것은 내보낸 파일이다. 메뉴가 그렇게 말한다. */}

@@ -16,6 +16,7 @@ import logging
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -54,6 +55,8 @@ from app.schemas.chat import (
     AudioRequest,
     ChooseVariant,
     CompareRequest,
+    FigureSuggestion,
+    FigureSuggestRequest,
     ImageRequest,
     MessageOut,
     SendMessage,
@@ -71,6 +74,7 @@ from app.services import (
     artifact_extract,
     audiogen,
     design_templates,
+    figures,
     governance,
     grounding,
     imagegen,
@@ -1044,6 +1048,31 @@ async def _owned_attachments(
     return rows, metadata
 
 
+def _worth_listing(rows: list[ChatSession], empty: set[str]) -> list[ChatSession]:
+    """Conversations that happened, plus anything still on its way.
+
+    Opening 새 보고서 and changing your mind used to leave a row behind, and
+    the row said 새 작업 and led to a blank screen. Four hundred of them
+    accumulated on this instance, which is what somebody's work list looks like
+    after a fortnight of trying things: a column of identical labels, none of
+    which is the thing they are looking for.
+
+    An empty conversation is only hidden once it is a minute old and holds
+    nothing. The minute is for the turn in flight — a session is written before
+    the first message is — and the artifact check is for the surfaces where the
+    answer is a file rather than a sentence.
+    """
+    fresh = utcnow() - timedelta(minutes=1)
+    return [
+        row
+        for row in rows
+        if row.id not in empty
+        or row.artifact_id
+        or row.pinned
+        or row.created_at > fresh
+    ]
+
+
 @router.get("", response_model=list[SessionOut])
 async def list_sessions(
     user: CurrentUser,
@@ -1063,6 +1092,10 @@ async def list_sessions(
     # One aggregate for the page — the sidebar asks for every conversation.
     ids = [s.id for s in rows]
     previews = await _previews(db, ids)
+    # `_previews` is absent for a conversation with no messages, which is the
+    # same question `_worth_listing` asks — so it is asked once.
+    rows = _worth_listing(rows, {sid for sid in ids if sid not in previews})
+    ids = [s.id for s in rows]
     # Empty body, not a missing row: a media answer holds the artifact and
     # quotes nothing.
     made = await _made(db, [sid for sid in ids if not previews.get(sid, (None, 0))[0]])
@@ -1338,6 +1371,50 @@ def _record_media(
     db.add(session)
 
 
+@router.post("/{session_id}/figure-suggestion", response_model=FigureSuggestion)
+async def suggest_figure(
+    session_id: str, payload: FigureSuggestRequest, user: CurrentUser, db: DbSession
+):
+    """What picture to put here — proposed, not asked for.
+
+    The picker opened on an empty box with the 장's name in the placeholder,
+    which asks somebody who wanted a picture to first become somebody who can
+    describe one. This fills it in. Nothing is drawn and nothing is charged:
+    the answer is two lines of text the person then edits or throws away, and
+    the credit is only spent by pressing 만들기.
+    """
+    session = await _owned(db, user, session_id)
+    catalogue = await model_service.list_models()
+    model = model_service.find(catalogue["models"], session.model or "")
+    if model is None or "chat" not in model.get("kinds", []):
+        usable = sorted(
+            (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
+            key=model_service.fallback_order,
+        )
+        if not usable:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_chat_models"
+            )
+        model = usable[0]
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+    figure = await figures.suggest(
+        title=payload.title or session.title or "",
+        about=payload.about,
+        context=payload.context,
+        model=str(model["id"]),
+        api_key=api_key,
+    )
+    # A suggestion that did not come back is not an error the person can act
+    # on — the box simply stays theirs to fill, exactly as it was before.
+    if figure is None:
+        return FigureSuggestion(caption="", prompt="")
+    return FigureSuggestion(caption=figure.caption, prompt=figure.prompt)
+
+
 @router.post("/{session_id}/images", response_model=list[ArtifactOut])
 async def generate_images(session_id: str, payload: ImageRequest, user: CurrentUser, db: DbSession):
     """Makes pictures and stores them as artifacts.
@@ -1351,7 +1428,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     if model is None or "image" not in model["kinds"]:
         usable = sorted(
             (m for m in catalogue["models"] if "image" in m["kinds"]),
-            key=lambda m: m["creditCost"],
+            key=model_service.fallback_order,
         )
         if not usable:
             raise HTTPException(
@@ -1790,6 +1867,57 @@ async def _settle_plan_turn(
         await db.commit()
 
 
+#: More parts than any surface writes. `deck._MAX_SLIDES` is 50 and the
+#: document track stops at 24, so this refuses a payload rather than bounding a
+#: real outline.
+_MAX_PLANNED = 60
+
+
+def _edited_plan(sent: dict | None, stored: dict) -> dict:
+    """The stored outline with the person's edits folded in, where they fit.
+
+    Titles and their order are theirs; everything else — the layouts, the
+    surface's own keys — comes from the proposal. An edit that does not
+    typecheck is not an error to report: the card cannot produce one, so the
+    only way to see it is a client that was not this card, and the right answer
+    to that is the outline everybody already looked at.
+    """
+    if not isinstance(sent, dict):
+        return stored
+    out = dict(stored)
+    for key in ("sections", "slides", "blocks"):
+        items = sent.get(key)
+        if key not in stored or not isinstance(items, list) or not items:
+            continue
+        if len(items) > _MAX_PLANNED:
+            continue
+        # `sections` is a list of headings; `slides` and `blocks` are objects
+        # carrying a layout the seed styles. The layout is never taken from the
+        # browser — a name the 서식 does not style is a slide with no design.
+        if all(isinstance(row, str) for row in items):
+            kept = [row.strip()[:200] for row in items if row.strip()]
+        else:
+            layouts = {
+                str(row.get("layout") or "")
+                for row in stored.get(key, [])
+                if isinstance(row, dict)
+            }
+            kept = []
+            for row in items:
+                if not isinstance(row, dict):
+                    continue
+                title = str(row.get("title") or "").strip()[:200]
+                layout = str(row.get("layout") or "")
+                if not title or layout not in layouts:
+                    continue
+                kept.append({"title": title, "layout": layout})
+        if kept:
+            out[key] = kept
+    if title := str(sent.get("title") or "").strip():
+        out["title"] = title[:200]
+    return out
+
+
 async def _ask_before_writing(
     db: DbSession,
     session: ChatSession,
@@ -1833,15 +1961,21 @@ async def _ask_before_writing(
             attachments=None,
         )
     )
+    said = "시작하기 전에 확인할 것이 있습니다."
     db.add(
         Message(
             session_id=session.id,
             role=Role.assistant,
-            content="시작하기 전에 확인할 것이 있습니다.",
+            content=said,
         )
     )
     await db.commit()
-    return JSONResponse({"pending": session.pending})
+    # The sentence travels with the questions. It is already stored, so a
+    # reload showed it — but the turn in flight had an empty answer bubble, and
+    # an empty bubble is what the panel draws 생각하는 중 into. The card was up,
+    # the question was asked, and above it a spinner said the model was still
+    # thinking about a turn that had already stopped.
+    return JSONResponse({"pending": session.pending, "message": said})
 
 
 def _plans_first(session: ChatSession) -> bool:
@@ -1925,6 +2059,14 @@ async def send_message(
     #: model is given. The transcript shows the first: nobody wrote the merge.
     typed_content = payload.content
     #: "있는 자료로 진행" — the card's second button, which sends an empty answers
+    #: The outline the writer will follow: what was proposed, or what the
+    #: person made of it on the card.
+    #:
+    #: Trusted for its words and not for its shape. The plan drives a run that
+    #: costs real money and cannot be half-formed, so every key is taken from
+    #: the proposal and only the strings are taken from the browser — a client
+    #: that sends `sections: 4` or thirty thousand of them gets the stored plan
+    #: back, which is what approving used to do in every case.
     #: object where a typed note sends none at all. Folded back into the
     #: request it changes nothing, so the planner meets the same sentence and
     #: asks the same question; the button then loops for as long as anybody
@@ -1943,7 +2085,7 @@ async def send_message(
         # an answer, a note, a plain sentence — goes back through planning, so
         # what finally gets written is always something somebody saw first.
         if payload.approve and pending.get("plan"):
-            approved_plan = dict(pending["plan"])
+            approved_plan = _edited_plan(payload.plan, dict(pending["plan"]))
         #: The pictures somebody agreed to pay for, or `[]` when they said no.
         #:
         #: Two questions rather than one card with a checkbox on it. A figure
@@ -2038,7 +2180,7 @@ async def send_message(
     if model is None:
         # A stale session/agent id may fall back, but only inside the user's
         # allowed intersection.
-        usable = sorted(usable, key=lambda m: m["creditCost"])
+        usable = sorted(usable, key=model_service.fallback_order)
         if not usable:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
@@ -2185,7 +2327,12 @@ async def send_message(
     # had never arrived and asked for the text to be pasted in.
     if _plans_first(session) and not pending.get("answers"):
         short = grounding.file_shortfalls(workspace.attachments)
-        if questions := grounding.questions_for(short):
+        questions = grounding.questions_for(short)
+        # Only when nothing arrived at all, so it can never displace a question
+        # about a file that did — `questions_for` is empty in exactly that case.
+        if not questions and (gap := grounding.missing_attachment(content, workspace.attachments)):
+            questions = [gap]
+        if questions:
             return await _ask_before_writing(
                 db,
                 session,
@@ -3328,7 +3475,18 @@ async def _run_turn(
     if memory_step:
         yield chat_service.sse(_step_event(memory_step))
     if new_artifact:
-        yield chat_service.sse({"type": "artifact", "artifactId": new_artifact})
+        yield chat_service.sse(
+            {
+                "type": "artifact",
+                "artifactId": new_artifact,
+                # Whether the panel should take the screen. A document somebody
+                # asked for is the deliverable and belongs open; a nine-line
+                # example lifted out of an answer is not, and opening for it
+                # squeezed the conversation into a third of the width — where
+                # the table in that same answer came out one glyph per line.
+                "deliberate": bool(ctx.pending_artifacts),
+            }
+        )
     if cost_routing:
         yield chat_service.sse({"type": "model_route", **cost_routing})
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})

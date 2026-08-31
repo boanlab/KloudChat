@@ -43,6 +43,12 @@ JsonMap = Annotated[dict[str, str], BeforeValidator(lambda v: v or {})]
 
 
 # ── files ──────────────────────────────────────────────────────────────
+class OpenedDocument(Wire):
+    """Where the document a file was read into now lives."""
+
+    id: str
+
+
 class FileOut(Wire):
     id: str
     name: str

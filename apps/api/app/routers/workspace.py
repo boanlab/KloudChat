@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import func, or_, tuple_
@@ -22,7 +23,7 @@ from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
-from app.models.chat import ChatSession, Message, Role
+from app.models.chat import ChatSession, Message, Role, SessionKind
 from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Agent,
@@ -61,6 +62,7 @@ from app.schemas.workspace import (
     KnowledgeUrl,
     MemoryIn,
     MemoryOut,
+    OpenedDocument,
     ProjectIn,
     ProjectOut,
     ProjectPatch,
@@ -84,6 +86,7 @@ from app.services import (
     design_extract,
     design_templates,
     factcheck,
+    hwpx_import,
     index_client,
     lint,
     page_export,
@@ -449,6 +452,91 @@ async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
     )
 
 
+@router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)
+async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
+    """올린 `.hwpx` 를 편집할 수 있는 문서로 연다.
+
+    The half that was missing. This server has been able to *write* `.hwpx`
+    since the report exporter learnt OWPML, and to *read* one as flat text
+    since attachments could be reference material — but a file somebody
+    uploaded and wanted to change had nowhere to go: the text came out as one
+    block with the headings and the tables gone, which is not a document any
+    more, it is a transcript of one.
+
+    What comes back is an ordinary report: the same artifact the writer
+    produces, so it opens in the same editor, prints through the same printer,
+    and exports back to `.hwpx` through the exporter that was already there.
+    Nothing is generated and nothing is charged — this is a file format being
+    read, not a model being asked.
+    """
+    stored = await _own(db, StoredFile, "user_id", user, file_id)
+    if not stored.name.lower().endswith(".hwpx"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_hwpx_file"
+        )
+    try:
+        data = file_service.read_blob(stored.storage_key)
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
+    try:
+        document = hwpx_import.read(data)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    parts = document.sections
+    if not parts:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="no_document_body"
+        )
+
+    # What the document calls itself, and failing that the file's own name minus
+    # the extension. A document opened from a file is that file until somebody
+    # renames it — but a file that carries a title on its first page is telling
+    # us the name its author chose, which beats `최종_보고서_v3(수정)`.
+    title = document.title[:200] or re.sub(r"\.hwpx$", "", stored.name, flags=re.I)[:200]
+    title = title or "한글 문서"
+    session = ChatSession(
+        user_id=user.id,
+        project_id=stored.project_id,
+        kind=SessionKind.report,
+        title=title,
+    )
+    db.add(session)
+    await db.flush()
+    artifact = Artifact(
+        user_id=user.id,
+        session_id=session.id,
+        project_id=stored.project_id,
+        kind=ArtifactKind.report,
+        title=title,
+        data={
+            "sections": [
+                {
+                    "id": uuid4().hex,
+                    "heading": part.heading,
+                    "level": part.level,
+                    "status": "done",
+                    # Read out of a file rather than written by a model, so it
+                    # is markup from the start — the editor's own format, which
+                    # is what keeps the tables tables through a save.
+                    "format": "html",
+                    "content": part.html,
+                }
+                for part in parts
+            ],
+            "sources": [],
+            "citationStyle": "APA",
+        },
+    )
+    db.add(artifact)
+    await db.flush()
+    session.artifact_id = artifact.id
+    db.add(session)
+    await db.commit()
+    return OpenedDocument(id=session.id)
+
+
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
     stored = await _own(db, StoredFile, "user_id", user, file_id)
@@ -640,7 +728,7 @@ async def factcheck_slide(
 
     catalogue = await model_service.list_models()
     usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=lambda m: m["creditCost"]
+        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=model_service.fallback_order
     )
     if not usable:
         raise HTTPException(
@@ -767,7 +855,7 @@ async def factcheck_section(
 
     catalogue = await model_service.list_models()
     usable = sorted(
-        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=lambda m: m["creditCost"]
+        (m for m in catalogue["models"] if "chat" in m["kinds"]), key=model_service.fallback_order
     )
     if not usable:
         raise HTTPException(
@@ -865,7 +953,7 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     session = (
         await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
@@ -1199,7 +1287,7 @@ async def rewrite_block(
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if template.surface.value in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     session = (
         await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
@@ -1311,7 +1399,7 @@ async def rewrite_section(
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "report" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     # An artifact carries no model: the session's if it still has one, else the
     # cheapest that can write a report.
@@ -1423,7 +1511,7 @@ async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUs
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "slides" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     session = (
         await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
@@ -1899,6 +1987,37 @@ async def _agent_has_knowledge(db: DbSession, user_id: str, agent_id: str) -> bo
     return row is not None
 
 
+def _without_legacy_copies(rows: list[Agent], *, user_id: str) -> list[Agent]:
+    """One card per name: the person's own, where they have one.
+
+    Before the shipped agents became a shared catalogue, every account was
+    handed its own copy of each. The move made the originals org-owned and left
+    the copies where they were, so an account that existed before it sees every
+    built-in twice — 리포트 도우미 above 리포트 도우미, one of them with a
+    different sentence under it, and no way to tell which is which. Somebody
+    opening KloudChat on such an account reads that as two different agents.
+
+    The catalogue entry is the one hidden, not the copy. Which of the two is
+    untouched cannot be known — the rows were rewritten by the migration that
+    made them, so their timestamps say a day passed and mean nothing — and
+    between a row the person may have edited and a row they can install again
+    from the store at any time, the safe one to hide is the one that can come
+    back. An account with no copy of its own, which is every account made since,
+    sees the catalogue exactly as before.
+    """
+    # `origin_id` is what separates the two ways an account comes to hold a
+    # copy. Taking one from the store sets it, and the store then marks the
+    # original 이미 가져감 and keeps both on screen on purpose — that pairing is
+    # the feature. The seeded copies predate the store and carry nothing, which
+    # is exactly the set to collapse.
+    legacy = {
+        row.name
+        for row in rows
+        if row.owner_id == user_id and row.visibility != "org" and row.origin_id is None
+    }
+    return [row for row in rows if row.visibility != "org" or row.name not in legacy]
+
+
 @router.get("/agents", response_model=list[AgentOut])
 async def list_agents(user: CurrentUser, db: DbSession):
     # Own agents plus anything shared with the workspace.
@@ -1909,6 +2028,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
             .order_by(col(Agent.name))
         )
     ).all()
+    rows = _without_legacy_copies(rows, user_id=user.id)
 
     # One lookup for the page: the store shows who made each agent, and
     # whether that was an administrator publishing an official one.
@@ -2454,11 +2574,33 @@ async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession)
     return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
 
 
+async def _own_or_shared(db: DbSession, user: User, template_id: str) -> Template:
+    """A template this account owns, or any shared one when an administrator asks.
+
+    공용 템플릿 is instance configuration — it is registered and listed on the
+    시스템 page, beside the proxy and the mail server — but the row still
+    belongs to whichever administrator happened to add it. With ownership as
+    the only test, a second administrator saw the list, saw the pencil and the
+    bin beside every row, and neither did anything: the delete 404ed and the
+    row came back on the next read. Nothing on screen said why, because from
+    the screen's point of view nothing had happened.
+
+    Private templates are untouched. Somebody's own drafts are not instance
+    configuration and an administrator has no business in them.
+    """
+    row = await db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if row.owner_id != user.id and not (row.shared and user.role is UserRole.admin):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return row
+
+
 @router.patch("/templates/{template_id}", response_model=TemplateOut)
 async def patch_template(
     template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession
 ):
-    template = await _own(db, Template, "owner_id", user, template_id)
+    template = await _own_or_shared(db, user, template_id)
     fields = payload.model_dump(exclude_unset=True)
     if "shared" in fields:
         _may_share(user, bool(fields["shared"]))
@@ -2475,7 +2617,7 @@ async def patch_template(
 
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
-    template = await _own(db, Template, "owner_id", user, template_id)
+    template = await _own_or_shared(db, user, template_id)
     await db.delete(template)
     await db.commit()
 
@@ -2542,7 +2684,7 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if "chat" in m["kinds"]),
-        key=lambda m: m["creditCost"],
+        key=model_service.fallback_order,
     )
     model = usable[0] if usable else None
     if model is None:

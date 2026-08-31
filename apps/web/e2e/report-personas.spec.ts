@@ -133,7 +133,16 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
   // Planned first and written only once approved, so neither the panel nor its
   // denominator exists before this.
   await approvePlan(page, 480_000)
-  await expect(page.getByText(/\d+\/[3-8] 섹션/)).toBeVisible({ timeout: 180_000 })
+  // The count is on the button that opens the contents.
+  //
+  // It used to be a line inside a column that stood beside the document at
+  // every width, and that column was 208px of the document's own room — so the
+  // contents became a drawer and the count moved onto its handle. The line is
+  // still there, inside the closed drawer, which is why looking for it by text
+  // finds an element and calls it hidden.
+  await expect(page.getByRole('button', { name: /목차 \d+\/[3-8]/ })).toBeVisible({
+    timeout: 180_000,
+  })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 
   const id = await page.evaluate(async () => {

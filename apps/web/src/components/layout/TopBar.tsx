@@ -34,7 +34,11 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           variant="ghost"
           size="sm"
           onClick={toggleLang}
-          aria-label={t('언어 전환')}
+          /* The visible text is the language it switches *to*, and an
+             `aria-label` replaces rather than adds — so a button reading EN
+             answered only to 언어 전환, which is neither what is written on it
+             nor what somebody using voice control would say. */
+          aria-label={`${t('언어 전환')} · ${lang === 'ko' ? 'EN' : '한'}`}
           title={t('언어 전환')}
         >
           <Languages size={16} />

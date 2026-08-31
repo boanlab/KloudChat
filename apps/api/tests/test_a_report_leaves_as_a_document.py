@@ -49,23 +49,23 @@ def _docx(sections=SECTIONS) -> zipfile.ZipFile:
 
 
 def test_a_gfm_table_is_read_as_a_table():
-    kinds = [kind for kind, _, _ in report_export._markdown_to_lines(_TABLE)]
+    kinds = [kind for kind, _, _, _d in report_export._markdown_to_lines(_TABLE)]
     assert kinds == ["body", "table", "bullet"]
 
 
 def test_the_rule_under_the_head_is_not_a_row():
-    rows = next(t for k, t, _ in report_export._markdown_to_lines(_TABLE) if k == "table")
-    assert rows[0] == ["기준", "외부 API", "온프레미스"]
-    assert len(rows) == 3
+    grid = next(t for k, t, _, _d in report_export._markdown_to_lines(_TABLE) if k == "table")
+    assert grid.flat()[0] == ["기준", "외부 API", "온프레미스"]
+    assert len(grid.rows) == 3
 
 
 def test_an_escaped_pipe_stays_inside_its_cell():
-    rows = next(
+    grid = next(
         t
-        for k, t, _ in report_export._markdown_to_lines("| a\\|b | c |\n| --- | --- |\n")
+        for k, t, _, _d in report_export._markdown_to_lines("| a\\|b | c |\n| --- | --- |\n")
         if k == "table"
     )
-    assert rows[0] == ["a|b", "c"]
+    assert grid.flat()[0] == ["a|b", "c"]
 
 
 # ── .docx ──────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ def test_two_tables_do_not_merge_into_one():
     # two comparisons in it comes out with one impossible table.
     kinds = [
         k
-        for k, _, _ in report_export._markdown_to_lines(
+        for k, _, _, _d in report_export._markdown_to_lines(
             "| a |\n| --- |\n\n문장\n\n| b |\n| --- |\n"
         )
         if k == "table"
@@ -218,9 +218,9 @@ def test_two_tables_do_not_merge_into_one():
 
 def test_the_exporters_read_a_loose_table_as_a_table_anyway():
     """Belt and braces: documents written before the tidier still export right."""
-    rows = next(t for k, t, _ in report_export._markdown_to_lines(_LOOSE) if k == "table")
-    assert rows[0] == ["특성", "설명"]
-    assert len(rows) == 2
+    grid = next(t for k, t, _, _d in report_export._markdown_to_lines(_LOOSE) if k == "table")
+    assert grid.flat()[0] == ["특성", "설명"]
+    assert len(grid.rows) == 2
 
 
 # ── the 서식's Word half ────────────────────────────────────────────────
@@ -300,7 +300,7 @@ def test_a_picture_pasted_into_the_body_survives_into_markdown():
 
 
 def test_the_shared_parser_reads_it_as_a_picture_in_place():
-    kinds = [k for k, _, _ in report_export._markdown_to_lines(_WITH_FIGURE)]
+    kinds = [k for k, _, _, _d in report_export._markdown_to_lines(_WITH_FIGURE)]
     assert kinds == ["body", "image", "body"]
 
 
@@ -309,7 +309,7 @@ def test_a_remote_address_is_dropped_rather_than_fetched():
     fetches whatever a body points at is a report that leaks who read it."""
     kinds = [
         k
-        for k, _, _ in report_export._markdown_to_lines("![x](https://example.com/a.png)")
+        for k, _, _, _d in report_export._markdown_to_lines("![x](https://example.com/a.png)")
     ]
     assert "image" not in kinds
 
@@ -350,7 +350,7 @@ _WITH_DIAGRAM = f"앞 문단.\n\n```mermaid\n{_MERMAID_SRC}\n```\n\n뒤 문단."
 def test_a_mermaid_fence_is_a_diagram_and_not_prose():
     """It rendered as a block of source everywhere — in the panel, and then in
     the `.docx` somebody submitted."""
-    kinds = [k for k, _, _ in report_export._markdown_to_lines(_WITH_DIAGRAM)]
+    kinds = [k for k, _, _, _d in report_export._markdown_to_lines(_WITH_DIAGRAM)]
     assert kinds == ["body", "diagram", "body"]
 
 
@@ -404,7 +404,7 @@ def test_the_source_never_leaks_into_any_format():
 
 def test_an_unclosed_fence_is_prose_rather_than_a_lost_paragraph():
     """A truncated document still has to export what it has."""
-    kinds = [k for k, _, _ in report_export._markdown_to_lines("앞\n\n```mermaid\ngraph TD\n")]
+    kinds = [k for k, _, _, _d in report_export._markdown_to_lines("앞\n\n```mermaid\ngraph TD\n")]
     assert "diagram" not in kinds
     assert kinds.count("body") >= 2
 

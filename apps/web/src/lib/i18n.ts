@@ -812,7 +812,34 @@ const EN: Record<string, string> = {
     'The image surface is switched off, so there is nothing to put here yet. An administrator can turn it on in the system settings.',
   '이미지 만들러 가기': 'Make one',
   '어느 자리에 넣을까요?': 'Where should it go?',
-  '{name} 에 그림 넣기': 'Add a picture to {name}',
+  '{name}에 그림 넣기': 'Add a picture to {name}',
+  '다시 만들기': 'Make it again',
+  '위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.':
+    'Click any words on the slide above to change them. The box below is for going through the whole slide at once — first line the title, one line per item, and a line split by | is a table row.',
+  '원문 편집':
+    'Edit the source',
+  '굵게·표·그림을 그대로 보면서 고칩니다':
+    'Edit with bold, tables and pictures as they will look',
+  '마크다운으로 한 번에 고칩니다':
+    'Edit the whole thing as Markdown',
+  '커넥터 {n}개': '{n} connectors',
+  '참고한 자료가 없습니다.':
+    'No sources were used.',
+  '웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.':
+    'Turn web search on and write it again, and what it finds is cited here. Writing with search off leaves nothing to cite.',
+  '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 그림과 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.':
+    'Credits go down each time a model runs. Writing costs a little; pictures and clips cost a lot. At zero you cannot send new requests until next month, and everything you have made stays. Click to see where they went.',
+  '{n}개 절': '{n} sections',
+  '항목 추가': 'Add an item',
+  '처음 제안으로': 'Back to the proposal',
+  '고친 대로 생성': 'Write it as edited',
+  '{n}번 제목': 'Title {n}',
+  '{n}번 위로': 'Move {n} up',
+  '{n}번 아래로': 'Move {n} down',
+  '{n}번 지우기': 'Remove {n}',
+  '제목을 직접 고치거나, 크게 바꿀 것이 있으면 아래 입력창에 적어 주세요.': 'Edit the titles here, or type a bigger change in the box below.',
+  '고친 구성으로 생성해 주세요': 'Write it as I edited it',
+  '프롬프트 고치기': 'Edit the prompt',
   '이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.':
     'A picture you made on the image surface goes inside the document itself — not linked to, so it prints and travels with the file.',
   '넣는 중…': 'Adding…',
@@ -1585,7 +1612,7 @@ const EN: Record<string, string> = {
   '{n}쪽 즈음': 'around page {n}',
   '그림을 넣을까요?': 'Add figures?',
   '문장만 · 서식은 그대로': 'Sentence only — the format stays',
-  '내 문장': 'My sentences',
+  '내 시작점': 'My starting points',
   '이 대목 고치기': 'Fix this',
   '검색으로 뒷받침되지 않았습니다': 'search did not support it',
   '확인하지 못했습니다': 'it could not be verified',

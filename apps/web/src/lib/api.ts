@@ -770,6 +770,20 @@ export const sessionsApi = {
     call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
   /** Pictures. Synchronous: the upstream is a completion whose answer is a
    *  PNG, so there is nothing to poll. */
+  /**
+   * What picture to put here, proposed rather than asked for.
+   *
+   * Draws nothing and costs nothing: two lines of text the person then edits,
+   * replaces or ignores. The credit is spent by `images` below.
+   */
+  suggestFigure: (
+    sessionId: string,
+    payload: { title?: string; about?: string; context?: string },
+  ) =>
+    call<{ caption: string; prompt: string }>(
+      `/sessions/${sessionId}/figure-suggestion`,
+      body(payload),
+    ),
   images: (
     sessionId: string,
     payload: {
@@ -880,6 +894,16 @@ export const filesApi = {
     return (await res.json()) as FileRow
   },
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
+  /**
+   * Opens an uploaded `.hwpx` as an editable document.
+   *
+   * Reads the file — headings, tables and lists — into an ordinary report, so
+   * it lands in the same editor everything else does and exports back to
+   * `.hwpx` through the exporter that was already there. Nothing is generated
+   * and nothing is charged. Returns the new session's id.
+   */
+  openAsDocument: (id: string) =>
+    call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
 }
 
@@ -1604,7 +1628,16 @@ export type StreamEvent =
   | { type: 'needs'; questions: PendingQuestion[] }
   /** The reference shelf a report's sections cite from, sent once, up front. */
   | { type: 'sources'; sources: Source[] }
-  | { type: 'artifact'; artifactId: string }
+  | {
+      type: 'artifact'
+      artifactId: string
+      /**
+       * Whether the model set out to make this rather than the server keeping
+       * a long fence out of the answer. Only the first opens the panel: a
+       * nine-line example is not worth two thirds of the screen.
+       */
+      deliberate?: boolean
+    }
   | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
   | { type: 'error'; message: string; code?: string; reason?: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
@@ -1651,6 +1684,11 @@ export async function* streamSession(
     privacyDecisionToken?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
+    /**
+     * The outline as the person edited it on the card. Sanitised server-side:
+     * titles and order are theirs, layouts stay the planner's.
+     */
+    plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
     /** Answers to a stopped turn's questions, keyed by question id. */
@@ -1762,6 +1800,41 @@ async function* postStream(
     if (res.status === 401) throw new UnauthorizedError(resolved)
     throw new ApiError(res.status, resolved)
   }
+  /*
+   * A turn that stopped to ask answers in JSON, not as a stream.
+   *
+   * The server takes that route on purpose — see `_ask_before_writing`: a
+   * one-event SSE would leave the browser holding a socket open to be told
+   * that nothing is coming. But the caller here is a stream reader, and a JSON
+   * body has no `data:` lines in it, so the loop below fell out having seen no
+   * `usage` event and the runner marked the turn cut off. Every clarifying
+   * question therefore arrived under 연결이 끊겨 답변이 중간에 멈췄습니다 and a
+   * 다시 시도 button — an error message on the one screen that is working
+   * exactly as designed.
+   *
+   * Translated here rather than in each of the four runners, which all read
+   * this generator and all handle these events already.
+   */
+  if (res.headers.get('content-type')?.includes('application/json')) {
+    const answered = (await res.json()) as { pending?: PendingPlan | null; message?: string }
+    const pending = answered.pending
+    // What the turn said, before what it is asking. Without it the answer
+    // bubble stays empty and the panel draws 생각하는 중 into it — a spinner
+    // over a turn that has already stopped and is waiting for a person.
+    if (answered.message) yield { type: 'delta', text: answered.message }
+    if (pending?.stage === 'clarify' && pending.questions) {
+      yield { type: 'needs', questions: pending.questions }
+    } else if (pending?.stage === 'outline' && pending.plan) {
+      yield { type: 'proposal', plan: pending.plan }
+    } else {
+      // Any other shape: the turn is over and produced nothing to stream.
+      // Said so, because falling out of this generator silently is what the
+      // runners read as a dropped connection.
+      yield { type: 'done' }
+    }
+    return
+  }
+
   if (!res.body) throw new Error('no response body')
 
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
