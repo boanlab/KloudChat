@@ -115,9 +115,9 @@ async function rewrite(page: import('@playwright/test').Page, markdown: string) 
   await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: '원문 편집' }).click()
   await page.getByLabel('문서 원본').fill(markdown)
-  // 편집 패널의 저장은 화면에서 마지막 저장 버튼이다 — 이름만으로는
-  // 제목 저장과 같은 다른 저장에 함께 걸린다.
-  await page.getByRole('button', { name: '저장' }).last().click()
+  // 이름이 '저장'인 버튼이 화면에 둘이라 클릭은 어느 쪽을 눌렀는지
+  // 말해 주지 않는다. 편집기 자신의 단축키가 유일하게 모호하지 않다.
+  await page.getByLabel('문서 원본').press('Control+Enter')
   await expect(page.getByLabel('문서 원본')).toBeHidden({ timeout: 20_000 })
 }
 
