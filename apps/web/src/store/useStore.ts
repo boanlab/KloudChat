@@ -536,6 +536,7 @@ interface State {
     ids: string[],
   ) => Promise<number>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
+  addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
   /**
    * The rendering catalogue, fetched once if nothing has fetched it yet.
@@ -2244,6 +2245,16 @@ export const useStore = create<State>((set, get) => ({
     }
     return row
   },
+  addProjectUrl: async (projectId, url) => {
+    touchWorkspace()
+    const row = await filesApi.addProjectUrl(projectId, url)
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.id === projectId ? { ...p, files: [toProjectFile(row), ...p.files] } : p,
+      ),
+    }))
+    return row
+  },
   deleteFile: async (id) => {
     touchWorkspace()
     set((s) => ({
@@ -2960,6 +2971,9 @@ function toProjectFile(f: FileRow): ProjectFile {
     type: f.mime || f.name.split('.').pop() || '',
     addedAt: f.createdAt,
     tokens: f.tokens,
+    sourceUrl: f.sourceUrl,
+    preview: f.preview,
+    error: f.error,
   }
 }
 
@@ -3677,6 +3691,7 @@ async function streamReport(
     projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
     sections: [],
     sources: [],
+    research: undefined,
     citationStyle: 'APA',
     wordCount: 0,
   }
@@ -3770,6 +3785,9 @@ async function streamReport(
         // populated by the time there is prose citing it.
         case 'sources':
           patchReport((a) => ({ ...a, sources: e.sources }))
+          break
+        case 'research':
+          patchReport((a) => ({ ...a, research: e.research }))
           break
         case 'section':
           patchReport((a) => {

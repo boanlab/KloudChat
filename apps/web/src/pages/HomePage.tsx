@@ -6,7 +6,6 @@ import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignGallery } from '@/components/chat/DesignGallery'
-import { DesignRail } from '@/components/chat/DesignRail'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -44,7 +43,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const { user, sessions, jobs, agents, enabledKinds, newSession, setNotice } = useStore()
   //: The 서식 already picked for this surface, if any. Read here only to
   //: decide whether the rail below would be repeating it.
-  const pendingTemplate = useStore((s) => s.pendingTemplate)
   //: Which surface the composer is currently writing for. Local, and only for
   //: as long as this screen is open — a session gets its kind at creation.
   const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
@@ -94,6 +92,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           <EmptyState
             icon={<Icon size={18} />}
             title={t('{kind} 기능이 꺼져 있습니다').replace('{kind}', t(meta.label))}
+            headingLevel="h1"
             description={
               canSwitch
                 ? t('이 워크스페이스에서 사용하지 않도록 설정되어 있습니다. 시스템 · 기능에서 켤 수 있습니다.')
@@ -165,8 +164,18 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             that the empty screen is what offers them. `/new/:kind` used to be
             that screen and now lands here, so this is the only place left
             that can — without them a starting point cannot be picked at all. */}
-        <div className="mx-auto mb-8 mt-3 flex w-full max-w-3xl flex-wrap justify-center gap-2 px-4">
-          <DesignGallery kind={active} />
+        <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4">
+          <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold">{t('빈 화면에서 시작하지 않아도 됩니다')}</h2>
+              <p className="mt-0.5 text-sm text-muted">
+                {active === 'chat'
+                  ? t('하려는 업무를 고르면 필요한 자료와 질문의 틀을 준비해 줍니다.')
+                  : t('하려는 업무와 결과물의 구성을 각각 고르고 바로 시작할 수 있습니다.')}
+              </p>
+            </div>
+            <DesignGallery key={active} kind={active} />
+          </section>
         </div>
 
         {usableAgents.length > 0 && (
@@ -175,7 +184,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
               <h2 className="text-base font-semibold">{t('에이전트에게 맡기기')}</h2>
               <button
                 onClick={() => navigate('/agents')}
-                className="text-sm text-muted hover:text-fg"
+                className="min-h-8 px-1 text-sm text-muted hover:text-fg"
               >
                 {t('전체 보기')}
               </button>
@@ -212,14 +221,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             </div>
           </section>
         )}
-
-        {/* What to make and what it can look like are one decision, taken
-            together — so this stays with the making, under the composer.
-            It folds away once that decision is made: the composer's chip is
-            already naming the pick, and the card it came from would print the
-            same two words a second time on one empty screen — only the chip
-            carries the × that undoes it, so only the chip should say it. */}
-        {pendingTemplate?.surface !== active && <DesignRail surface={active} />}
 
         {running.length > 0 && (
           <section className="mb-8">

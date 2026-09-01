@@ -87,10 +87,15 @@ def _from_pdf(data: bytes) -> str:
     pages = []
     for i, page in enumerate(reader.pages):
         try:
-            pages.append(page.extract_text() or "")
+            body = (page.extract_text() or "").strip()
+            if body:
+                # Page boundaries are evidence metadata, not decoration. They
+                # survive chunking and let a report say where in the uploaded
+                # PDF the cited passage came from.
+                pages.append(f"[페이지 {i + 1}]\n{body}")
         except Exception as exc:  # noqa: BLE001 — one bad page must not lose the rest
             log.info("pdf page %d unreadable: %s", i, exc)
-    text = "\n\n".join(p for p in pages if p.strip())
+    text = "\n\n".join(pages)
     if not text.strip():
         # Almost always a scan — more useful said than shown as an empty file.
         raise RuntimeError("텍스트를 추출하지 못했습니다. 스캔본이라면 OCR 이 필요합니다.")

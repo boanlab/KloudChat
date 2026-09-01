@@ -17,6 +17,7 @@ import base64
 import io
 import logging
 import re
+from html.parser import HTMLParser
 
 import PIL.Image
 from pptx import Presentation
@@ -34,6 +35,53 @@ from app.services import charts, deck, design, fonts, pictures
 
 log = logging.getLogger(__name__)
 
+
+class _InlineRuns(HTMLParser):
+    """Small, defensive reader for the editor's sanitised inline HTML."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[dict] = [{}]
+        self.runs: list[tuple[str, dict]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        style = dict(self.stack[-1])
+        values = dict(attrs)
+        if tag in ("b", "strong"): style["bold"] = True
+        if tag in ("i", "em"): style["italic"] = True
+        if tag == "u": style["underline"] = True
+        if tag == "font":
+            if (size := values.get("size")) and str(size).isdigit(): style["size"] = int(size)
+            if color := values.get("color"): style["color"] = color
+        if tag == "span" and (css := values.get("style")):
+            rules = {
+                key.strip().lower(): value.strip()
+                for rule in css.split(";") if ":" in rule
+                for key, value in [rule.split(":", 1)]
+            }
+            if re.fullmatch(r"[0-9.]+em", rules.get("font-size", "")):
+                style["scale"] = float(rules["font-size"][:-2])
+            if rules.get("font-weight") in ("bold", "600", "700", "800", "900"):
+                style["bold"] = True
+            if rules.get("font-style") == "italic": style["italic"] = True
+            if "underline" in rules.get("text-decoration", ""): style["underline"] = True
+            if color := rules.get("color"): style["color"] = color
+        self.stack.append(style)
+
+    def handle_endtag(self, _tag: str) -> None:
+        if len(self.stack) > 1: self.stack.pop()
+
+    def handle_data(self, data: str) -> None:
+        if data: self.runs.append((data, dict(self.stack[-1])))
+
+
+def _inline_runs(html: str | None, fallback: str) -> list[tuple[str, dict]]:
+    if not html:
+        return [(fallback, {})]
+    parser = _InlineRuns()
+    parser.feed(html)
+    return parser.runs or [(fallback, {})]
+
 #: 16:9 in points — EMU/12700, and reportlab's default unit. Drives both
 #: exporters.
 _W, _H = 960.0, 540.0
@@ -42,6 +90,13 @@ _W, _H = 960.0, 540.0
 #: the text column: smaller and it is decoration, wider and the lines beside it
 #: break every few words.
 _PICTURE_SPAN = 300.0
+
+
+def _picture_span(data: dict) -> float:
+    """Width of a picture sharing a slide with words, in export points."""
+    return {"small": 230.0, "medium": _PICTURE_SPAN, "large": 390.0}.get(
+        str((data.get("image") or {}).get("size") or "medium"), _PICTURE_SPAN
+    )
 _EMU_PER_PT = 12700
 
 #: Korean is laid out with the *East Asian* font, which python-pptx does not
@@ -178,6 +233,7 @@ def _pptx_pairs(
     tint: RGBColor,
     muted: RGBColor,
     width: float,
+    left: float = 72.0,
     paint,
 ) -> None:
     """The three paired layouts, which are one shape drawn three ways.
@@ -196,18 +252,18 @@ def _pptx_pairs(
         height = min(72.0, (room - 10 * (len(pairs) - 1)) / max(len(pairs), 1))
         for index, (name, text) in enumerate(pairs):
             y = top + index * (height + 10)
-            _block(slide, left=72, top=y, width=label, height=height, colour=accent)
+            _block(slide, left=left, top=y, width=label, height=height, colour=accent)
             _block(
-                slide, left=72 + label + 8, top=y, width=width - label - 8,
+                slide, left=left + label + 8, top=y, width=width - label - 8,
                 height=height, colour=tint,
             )
-            box = _textbox(slide, left=72, top=y + height / 2 - 12, width=label, height=24)
+            box = _textbox(slide, left=left, top=y + height / 2 - 12, width=label, height=24)
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
             run.text = name
             paint(run, size=15, bold=True, colour=_WHITE)
             body = _textbox(
-                slide, left=72 + label + 24, top=y + 10, width=width - label - 40,
+                slide, left=left + label + 24, top=y + 10, width=width - label - 40,
                 height=height - 20,
             )
             run = body.paragraphs[0].add_run()
@@ -219,14 +275,14 @@ def _pptx_pairs(
         span = (width - 16 * (len(pairs) - 1)) / max(len(pairs), 1)
         side = min(span, 96.0)
         for index, (mark, name) in enumerate(pairs):
-            left = 72 + index * (span + 16)
-            _block(slide, left=left, top=top + 20, width=side, height=side, colour=accent)
-            box = _textbox(slide, left=left, top=top + 20 + side / 2 - 26, width=side, height=52)
+            item_left = left + index * (span + 16)
+            _block(slide, left=item_left, top=top + 20, width=side, height=side, colour=accent)
+            box = _textbox(slide, left=item_left, top=top + 20 + side / 2 - 26, width=side, height=52)
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
             run.text = mark
             paint(run, size=40, bold=True, colour=_WHITE)
-            under = _textbox(slide, left=left - 8, top=top + 32 + side, width=side + 16, height=44)
+            under = _textbox(slide, left=item_left - 8, top=top + 32 + side, width=side + 16, height=44)
             under.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = under.paragraphs[0].add_run()
             run.text = name
@@ -236,23 +292,23 @@ def _pptx_pairs(
     # timeline
     axis = 128.0
     step = min(56.0, room / max(len(pairs), 1))
-    _block(slide, left=72 + axis, top=top, width=1.5, height=step * len(pairs), colour=tint)
+    _block(slide, left=left + axis, top=top, width=1.5, height=step * len(pairs), colour=tint)
     for index, (when, what) in enumerate(pairs):
         y = top + index * step
-        date = _textbox(slide, left=72, top=y, width=axis - 12, height=26)
+        date = _textbox(slide, left=left, top=y, width=axis - 12, height=26)
         date.paragraphs[0].alignment = PP_ALIGN.RIGHT
         run = date.paragraphs[0].add_run()
         run.text = when
         paint(run, size=13, bold=True, colour=accent)
-        _block(slide, left=72 + axis - 3.5, top=y + 6, width=8, height=8, colour=accent)
-        body = _textbox(slide, left=72 + axis + 16, top=y, width=width - axis - 16, height=step)
+        _block(slide, left=left + axis - 3.5, top=y + 6, width=8, height=8, colour=accent)
+        body = _textbox(slide, left=left + axis + 16, top=y, width=width - axis - 16, height=step)
         run = body.paragraphs[0].add_run()
         run.text = what
         paint(run, size=13)
 
 
 def _pptx_chart(
-    slide, chart: dict, *, accent, muted, width: float, faces: tuple[str, str]
+    slide, chart: dict, *, accent, muted, width: float, faces: tuple[str, str], left: float = 72.0
 ) -> None:
     """A native PowerPoint chart, not a picture of one.
 
@@ -275,7 +331,7 @@ def _pptx_chart(
 
     frame = slide.shapes.add_chart(
         XL_CHART_TYPE.LINE_MARKERS if chart["kind"] == "line" else XL_CHART_TYPE.COLUMN_CLUSTERED,
-        Emu(int(72 * _EMU_PER_PT)),
+        Emu(int(left * _EMU_PER_PT)),
         Emu(int(150 * _EMU_PER_PT)),
         Emu(int(width * _EMU_PER_PT)),
         Emu(int((_H - 220) * _EMU_PER_PT)),
@@ -369,6 +425,28 @@ def _textbox(
     frame = box.text_frame
     frame.word_wrap = True
     return frame
+
+
+def _outline_placeholder(slide, kind: str, index: int, text: str, colour: RGBColor) -> None:
+    """Add outline metadata without letting a master move the drawn textbox.
+
+    LibreOffice and some PowerPoint templates re-apply a placeholder's master
+    geometry even when the slide XML contains explicit coordinates. Keeping a
+    hidden semantic placeholder and a normal visible textbox preserves both
+    the outline pane and the layout the browser previews.
+    """
+    frame = _textbox(slide, left=0, top=0, width=1, height=1, placeholder=(kind, index))
+    frame.clear()
+    for line_index, line in enumerate(text.splitlines() or [text]):
+        paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
+        run = paragraph.add_run()
+        run.text = line
+        # LibreOffice ignores `cNvPr hidden` on placeholders. Explicit 1pt ink
+        # matching the cover keeps the compatibility renderer from painting
+        # the semantic copy while PowerPoint can still read it in the outline.
+        run.font.size = Pt(1)
+        run.font.color.rgb = colour
+    frame._parent.element.nvSpPr.cNvPr.set("hidden", "1")
 
 
 def _columns_of(data: dict, bullets: list[str], layout: str) -> list[list[str]]:
@@ -554,6 +632,31 @@ def _fit(data: bytes, *, box: tuple[float, float]) -> tuple[float, float]:
     return width * scale, height * scale
 
 
+def _fill(
+    data: bytes, *, box: tuple[float, float]
+) -> tuple[float, float, float, float, float, float]:
+    """Size an image over ``box`` and return its centred crop fractions.
+
+    The first two values are the oversized dimensions used by PDF. The last
+    four are PowerPoint's 0–1 left/top/right/bottom crop values. Both therefore
+    show the same central window rather than one stretching what the other
+    crops.
+    """
+    box_width, box_height = box
+    try:
+        with PIL.Image.open(io.BytesIO(data)) as picture:
+            width, height = picture.size
+    except Exception:  # noqa: BLE001 — the caller already handles bad bytes
+        return box_width, box_height, 0.0, 0.0, 0.0, 0.0
+    if not width or not height:
+        return box_width, box_height, 0.0, 0.0, 0.0, 0.0
+    scale = max(box_width / width, box_height / height)
+    drawn_width, drawn_height = width * scale, height * scale
+    horizontal = max(0.0, (drawn_width - box_width) / drawn_width / 2)
+    vertical = max(0.0, (drawn_height - box_height) / drawn_height / 2)
+    return drawn_width, drawn_height, horizontal, vertical, horizontal, vertical
+
+
 def to_pptx(
     title: str,
     slides: list[dict],
@@ -603,6 +706,25 @@ def to_pptx(
             faces=faces,
         )
 
+    def paint_rich(paragraph, data: dict, key: str, text: str, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
+        html = (data.get("richText") or {}).get(key)
+        scale = {1: 0.65, 2: 0.8, 3: 1.0, 4: 1.2, 5: 1.5, 6: 2.0, 7: 3.0}
+        for value, inline in _inline_runs(html, text):
+            run = paragraph.add_run()
+            run.text = value
+            run_colour = colour
+            raw_colour = str(inline.get("color") or "")
+            if re.fullmatch(r"#[0-9a-fA-F]{6}", raw_colour):
+                run_colour = _rgb(raw_colour)
+            paint(
+                run,
+                size=max(8, round(size * float(inline.get("scale") or scale.get(inline.get("size"), 1.0)))),
+                bold=bool(inline.get("bold", bold)),
+                colour=run_colour,
+            )
+            run.font.italic = bool(inline.get("italic"))
+            run.font.underline = bool(inline.get("underline"))
+
     # The 서식's own PowerPoint file, when it has one.
     #
     # Same reasoning as `report_export.to_docx` opening the 서식's `.docx`: the
@@ -618,6 +740,7 @@ def to_pptx(
     presentation.slide_width = Emu(int(_W * _EMU_PER_PT))
     presentation.slide_height = Emu(int(_H * _EMU_PER_PT))
     blank = presentation.slide_layouts[6]
+    visual_style = (style or {}).get("visualStyle") or "editorial"
 
     for index, data in enumerate(_written(slides)):
         slide = presentation.slides.add_slide(blank)
@@ -644,20 +767,29 @@ def to_pptx(
             # A wash rather than a flat field — same reasoning as the .pdf, and
             # the same two colours, so the two files and the preview agree.
             fill = slide.background.fill
-            try:
-                fill.gradient()
-                fill.gradient_angle = 45.0
-                stops = fill.gradient_stops
-                stops[0].color.rgb = accent
-                stops[1].color.rgb = _mix(accent, 62, onto=_INK)
-                for extra in list(stops)[2:]:
-                    extra.color.rgb = _mix(accent, 62, onto=_INK)
-            except Exception as exc:  # noqa: BLE001 — a ground, not the deck
-                log.warning("could not fill a cover with a gradient: %s", exc)
+            if visual_style == "minimal":
                 fill.solid()
-                fill.fore_color.rgb = accent
+                fill.fore_color.rgb = _mix(accent, 10)
+            else:
+                try:
+                    fill.gradient()
+                    fill.gradient_angle = 45.0
+                    stops = fill.gradient_stops
+                    stops[0].color.rgb = accent
+                    stops[1].color.rgb = _mix(accent, 48 if visual_style == "poster" else 62, onto=_INK)
+                    for extra in list(stops)[2:]:
+                        extra.color.rgb = stops[1].color.rgb
+                except Exception as exc:  # noqa: BLE001 — a ground, not the deck
+                    log.warning("could not fill a cover with a gradient: %s", exc)
+                    fill.solid()
+                    fill.fore_color.rgb = accent
         else:
-            _block(slide, left=0, top=0, width=_W, height=14, colour=accent)
+            if visual_style == "poster":
+                slide.background.fill.solid()
+                slide.background.fill.fore_color.rgb = RGBColor(0xF7, 0xF3, 0xED)
+                _block(slide, left=0, top=0, width=14, height=_H, colour=accent)
+            elif visual_style == "editorial":
+                _block(slide, left=0, top=0, width=_W, height=14, colour=accent)
 
         heading = str(data.get("title") or "")
         body = str(data.get("body") or "")
@@ -670,39 +802,53 @@ def to_pptx(
         ]
         chart = _chart_of(data)
         picture = _picture_of(data)
+        picture_span = _picture_span(data)
         pairs = _pairs_of(data, layout)
+        picture_left = bool(
+            picture
+            and (bullets or rows or metrics or chart or body)
+            and str((data.get("image") or {}).get("position") or "") == "left"
+        )
         # A picture takes the right half and the words keep the left. Alone, it
         # takes the middle of the slide. Either way the text is narrowed here
         # rather than overlapping it, which is what a slide would show.
         text_width = _W - 144 - (
-            _PICTURE_SPAN + 24
+            picture_span + 24
             if picture and (bullets or rows or metrics or chart or body)
             else 0
         )
+        text_left = 72 + (picture_span + 24 if picture_left else 0)
 
         if cover:
+            cover_ink = _INK if visual_style == "minimal" else _WHITE
+            cover_muted = _MUTED if visual_style == "minimal" else _mix(_WHITE, 80, onto=accent)
             if layout == "section" and (number := str(data.get("number") or "")):
                 # `01.` over the title. A divider that only names the part
                 # leaves the reader counting backwards to place it.
                 counter = _textbox(slide, left=72, top=150, width=200, height=40)
                 run = counter.paragraphs[0].add_run()
                 run.text = number
-                paint(run, size=22, bold=True, colour=_mix(_WHITE, 70, onto=accent))
+                paint(run, size=22, bold=True, colour=accent if visual_style == "minimal" else _mix(_WHITE, 70, onto=accent))
             else:
-                _block(slide, left=82, top=186, width=106, height=7, colour=_WHITE)
+                _block(slide, left=82, top=186, width=106, height=7, colour=accent if visual_style == "minimal" else _WHITE)
             frame = _textbox(
                 slide, left=72, top=210, width=_W - 144, height=180,
-                placeholder=("ctrTitle", 0),
             )
-            paint(frame.paragraphs[0].add_run(), size=40, bold=True, colour=_WHITE)
-            frame.paragraphs[0].runs[0].text = heading or title
+            frame.paragraphs[0].alignment = PP_ALIGN.LEFT
+            paint_rich(frame.paragraphs[0], data, "title", heading or title, size=40, bold=True, colour=cover_ink)
             if body:
                 paragraph = frame.add_paragraph()
+                paragraph.alignment = PP_ALIGN.LEFT
                 paragraph.space_before = Pt(14)
-                run = paragraph.add_run()
-                run.text = body
                 # 80% white over the accent — the preview's rgba(255,255,255,.8).
-                paint(run, size=15, colour=_mix(_WHITE, 80, onto=accent))
+                paint_rich(paragraph, data, "body", body, size=15, colour=cover_muted)
+            _outline_placeholder(
+                slide,
+                "ctrTitle",
+                0,
+                "\n".join(part for part in (heading or title, body) if part),
+                _mix(accent, 10) if visual_style == "minimal" else accent,
+            )
         elif layout == "quote":
             frame = _textbox(
                 slide, left=90, top=170, width=_W - 180, height=200,
@@ -721,14 +867,13 @@ def to_pptx(
                 paint(run, size=13, colour=muted)
         else:
             frame = _textbox(
-                slide, left=72, top=64, width=text_width, height=60,
+                slide, left=text_left, top=64, width=text_width, height=60,
                 placeholder=("title", 0),
             )
-            run = frame.paragraphs[0].add_run()
-            run.text = heading
-            paint(run, size=26, bold=True)
+            frame.paragraphs[0].alignment = PP_ALIGN.LEFT
+            paint_rich(frame.paragraphs[0], data, "title", heading, size=26, bold=True)
             # The tab under the title — the preview's 26×2, at this scale.
-            _block(slide, left=72, top=126, width=62, height=5, colour=accent)
+            _block(slide, left=text_left, top=126, width=62, height=5, colour=accent)
 
             if pairs:
                 _pptx_pairs(
@@ -739,11 +884,13 @@ def to_pptx(
                     tint=tint,
                     muted=muted,
                     width=text_width,
+                    left=text_left,
                     paint=paint,
                 )
             elif chart:
                 _pptx_chart(
-                    slide, chart, accent=accent, muted=muted, width=text_width, faces=faces
+                    slide, chart, accent=accent, muted=muted, width=text_width, faces=faces,
+                    left=text_left,
                 )
             elif metrics:
                 # Figures set large, side by side, with what each one counts
@@ -753,7 +900,7 @@ def to_pptx(
                 # remember.
                 span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
                 for position, (figure, label) in enumerate(metrics):
-                    left = 72 + position * (span + 24)
+                    left = text_left + position * (span + 24)
                     # A tinted card with a rule over it. Loose on the slide the
                     # figures were three numbers in a white field; carded, they
                     # read as one row of comparable things.
@@ -780,9 +927,9 @@ def to_pptx(
                 shape = slide.shapes.add_table(
                     len(rows),
                     max(len(row) for row in rows),
-                    Emu(int(72 * _EMU_PER_PT)),
+                    Emu(int(text_left * _EMU_PER_PT)),
                     Emu(int(150 * _EMU_PER_PT)),
-                    Emu(int((_W - 144) * _EMU_PER_PT)),
+                    Emu(int(text_width * _EMU_PER_PT)),
                     Emu(int(min(_H - 220, 34 * len(rows)) * _EMU_PER_PT)),
                 )
                 table = shape.table
@@ -837,10 +984,11 @@ def to_pptx(
                 # the preview's `columnCount: 2` and the .pdf below.
                 columns = _columns_of(data, bullets, layout)
                 span = (text_width - (24 * (len(columns) - 1))) / len(columns)
+                bullet_at = 0
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
                         slide,
-                        left=72 + column_index * (span + 24),
+                        left=text_left + column_index * (span + 24),
                         top=150,
                         width=span,
                         height=_H - 210,
@@ -858,33 +1006,49 @@ def to_pptx(
                         marker = paragraph.add_run()
                         marker.text = "• "
                         paint(marker, size=18, bold=True, colour=accent)
-                        run = paragraph.add_run()
-                        run.text = text
-                        paint(run, size=16 if len(columns) > 1 else 18)
+                        paint_rich(
+                            paragraph,
+                            data,
+                            f"bullets.{bullet_at}",
+                            text,
+                            size=16 if len(columns) > 1 else 18,
+                        )
+                        bullet_at += 1
             elif body:
                 paragraph_frame = _textbox(
-                    slide, left=72, top=150, width=text_width, height=_H - 210,
+                    slide, left=text_left, top=150, width=text_width, height=_H - 210,
                     placeholder=("body", 1),
                 )
-                run = paragraph_frame.paragraphs[0].add_run()
-                run.text = body
-                paint(run, size=16, colour=muted)
+                paint_rich(paragraph_frame.paragraphs[0], data, "body", body, size=16, colour=muted)
 
         if picture:
             image_bytes, image_caption = picture
             alone = not (bullets or rows or metrics or chart or body)
-            box = (_W - 260, _H - 230) if alone else (_PICTURE_SPAN, _H - 230)
-            width, height = _fit(image_bytes, box=box)
-            left = 72 + (text_width + 24) if not alone else (_W - width) / 2
+            box = (_W - 260, _H - 230) if alone else (picture_span, _H - 230)
+            fill = str((data.get("image") or {}).get("fit") or "") == "cover"
+            if fill:
+                _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(
+                    image_bytes, box=box
+                )
+                width, height = box
+            else:
+                width, height = _fit(image_bytes, box=box)
+                crop_left = crop_top = crop_right = crop_bottom = 0.0
+            left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
             top = 150 + max(0.0, (_H - 230 - height) / 2)
             try:
-                slide.shapes.add_picture(
+                shape = slide.shapes.add_picture(
                     io.BytesIO(image_bytes),
                     Emu(int(left * _EMU_PER_PT)),
                     Emu(int(top * _EMU_PER_PT)),
                     Emu(int(width * _EMU_PER_PT)),
                     Emu(int(height * _EMU_PER_PT)),
                 )
+                if fill:
+                    shape.crop_left = crop_left
+                    shape.crop_top = crop_top
+                    shape.crop_right = crop_right
+                    shape.crop_bottom = crop_bottom
             except Exception as exc:  # noqa: BLE001 — one bad picture, not a failed export
                 # Bytes that are not a picture any more: truncated on the way
                 # in, or a format this library refuses. The slide loses its
@@ -964,6 +1128,7 @@ def _pdf_pairs(
     width: float,
     font: str,
     scale: float,
+    left: float = 72.0,
 ) -> None:
     """The same three shapes the `.pptx` draws, at the same measurements.
 
@@ -982,51 +1147,51 @@ def _pdf_pairs(
         for index, (name, text) in enumerate(pairs):
             bottom = top - height - index * (height + 10)
             pdf.setFillColorRGB(*accent)
-            pdf.rect(72, bottom, label, height, stroke=0, fill=1)
+            pdf.rect(left, bottom, label, height, stroke=0, fill=1)
             pdf.setFillColorRGB(*tint)
-            pdf.rect(72 + label + 8, bottom, width - label - 8, height, stroke=0, fill=1)
+            pdf.rect(left + label + 8, bottom, width - label - 8, height, stroke=0, fill=1)
             pdf.setFillColorRGB(1, 1, 1)
             pdf.setFont(font, S(15))
-            pdf.drawCentredString(72 + label / 2, bottom + height / 2 - S(5), name)
+            pdf.drawCentredString(left + label / 2, bottom + height / 2 - S(5), name)
             pdf.setFillColorRGB(*ink)
             pdf.setFont(font, S(13))
             lines = _wrap(text, font, S(13), width - label - 40)[:3]
             line_top = bottom + height / 2 + S(18) * (len(lines) - 1) / 2 - S(5)
             for offset, line in enumerate(lines):
-                pdf.drawString(72 + label + 24, line_top - offset * S(18), line)
+                pdf.drawString(left + label + 24, line_top - offset * S(18), line)
         return
 
     if layout == "tiles":
         span = (width - 16 * (len(pairs) - 1)) / max(len(pairs), 1)
         side = min(span, 96.0)
         for index, (mark, name) in enumerate(pairs):
-            left = 72 + index * (span + 16)
+            item_left = left + index * (span + 16)
             pdf.setFillColorRGB(*accent)
-            pdf.rect(left, top - side - 20, side, side, stroke=0, fill=1)
+            pdf.rect(item_left, top - side - 20, side, side, stroke=0, fill=1)
             pdf.setFillColorRGB(1, 1, 1)
             pdf.setFont(font, S(40))
-            pdf.drawCentredString(left + side / 2, top - side / 2 - 20 - S(14), mark)
+            pdf.drawCentredString(item_left + side / 2, top - side / 2 - 20 - S(14), mark)
             pdf.setFillColorRGB(*muted)
             pdf.setFont(font, S(12))
             for offset, line in enumerate(_wrap(name, font, S(12), side + 16)[:2]):
-                pdf.drawCentredString(left + side / 2, top - side - 40 - offset * S(15), line)
+                pdf.drawCentredString(item_left + side / 2, top - side - 40 - offset * S(15), line)
         return
 
     # timeline
     axis = 128.0
     step = min(56.0, room / max(len(pairs), 1))
     pdf.setFillColorRGB(*tint)
-    pdf.rect(72 + axis, top - step * len(pairs), 1.5, step * len(pairs), stroke=0, fill=1)
+    pdf.rect(left + axis, top - step * len(pairs), 1.5, step * len(pairs), stroke=0, fill=1)
     for index, (when, what) in enumerate(pairs):
         line_top = top - 14 - index * step
         pdf.setFillColorRGB(*accent)
         pdf.setFont(font, S(13))
-        pdf.drawRightString(72 + axis - 12, line_top, when)
-        pdf.rect(72 + axis - 3.25, line_top - 1, 8, 8, stroke=0, fill=1)
+        pdf.drawRightString(left + axis - 12, line_top, when)
+        pdf.rect(left + axis - 3.25, line_top - 1, 8, 8, stroke=0, fill=1)
         pdf.setFillColorRGB(*ink)
         pdf.setFont(font, S(13))
         for offset, line in enumerate(_wrap(what, font, S(13), width - axis - 16)[:2]):
-            pdf.drawString(72 + axis + 16, line_top - offset * S(16), line)
+            pdf.drawString(left + axis + 16, line_top - offset * S(16), line)
 
 
 def _pdf_chart(
@@ -1038,6 +1203,7 @@ def _pdf_chart(
     top: float,
     width: float,
     font: str,
+    left: float = 72.0,
 ) -> None:
     """The same chart, drawn.
 
@@ -1049,7 +1215,6 @@ def _pdf_chart(
 
     Zero floor, again. A printed chart is the one people photograph.
     """
-    left = 72.0
     bottom = 90.0
     height = top - bottom - 30
     if height < 60 or width < 100:
@@ -1214,6 +1379,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
     #: twenty slides and the logo is the same picture on every one of them.
     mark = _logo_of(style)
     footer = (style or {}).get("footer") or ""
+    visual_style = (style or {}).get("visualStyle") or "editorial"
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(_W, _H))
     pdf.setTitle(title)
@@ -1232,14 +1398,21 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         ]
         chart = _chart_of(data)
         picture = _picture_of(data)
+        picture_span = _picture_span(data)
         pairs = _pairs_of(data, layout)
+        picture_left = bool(
+            picture
+            and (bullets or rows or metrics or chart or body)
+            and str((data.get("image") or {}).get("position") or "") == "left"
+        )
         # The same split the .pptx uses, so the printout and the projected deck
         # put the same things in the same places.
         text_width = _W - 144 - (
-            _PICTURE_SPAN + 24
+            picture_span + 24
             if picture and (bullets or rows or metrics or chart or body)
             else 0
         )
+        text_left = 72 + (picture_span + 24 if picture_left else 0)
 
         # The same shapes the preview and the .pptx draw. A cover takes the
         # accent whole and reverses out of it; every other slide gets the band
@@ -1256,23 +1429,24 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             # what a deck made by somebody with a template looks like — and it
             # is derived from the accent, so it follows whatever hue is set
             # rather than pinning a second colour beside it.
-            pdf.setFillColorRGB(*accent)
-            pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
-            pdf.saveState()
-            pdf.linearGradient(
-                0,
-                _H,
-                _W,
-                0,
-                [Color(*accent), Color(*_mix_floats(accent, 62, onto=_PDF_INK))],
-                extend=True,
-            )
-            pdf.restoreState()
+            if visual_style == "minimal":
+                pdf.setFillColorRGB(*_mix_floats(accent, 10))
+                pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
+            else:
+                pdf.setFillColorRGB(*accent)
+                pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
+                pdf.saveState()
+                pdf.linearGradient(0, _H, _W, 0, [Color(*accent), Color(*_mix_floats(accent, 48 if visual_style == "poster" else 62, onto=_PDF_INK))], extend=True)
+                pdf.restoreState()
         else:
-            pdf.setFillColorRGB(1, 1, 1)
+            pdf.setFillColorRGB(*(0.969, 0.953, 0.929) if visual_style == "poster" else (1, 1, 1))
             pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
-            pdf.setFillColorRGB(*accent)
-            pdf.rect(0, _H - 14, _W, 14, stroke=0, fill=1)
+            if visual_style == "poster":
+                pdf.setFillColorRGB(*accent)
+                pdf.rect(0, 0, 14, _H, stroke=0, fill=1)
+            elif visual_style == "editorial":
+                pdf.setFillColorRGB(*accent)
+                pdf.rect(0, _H - 14, _W, 14, stroke=0, fill=1)
 
         # This slide's own type size, applied to the sizes *and* to the line
         # advances they are paired with. Scaling only the glyphs would set 26pt
@@ -1285,24 +1459,25 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             return n * _ts
 
         if cover:
+            cover_ink = _PDF_INK if visual_style == "minimal" else (1.0, 1.0, 1.0)
             if layout == "section" and (number := str(data.get("number") or "")):
                 # `01.` over the title. A divider that only says the name of
                 # the part leaves the reader counting backwards to place it.
-                pdf.setFillColorRGB(*_mix_floats((1.0, 1.0, 1.0), 70, onto=accent))
+                pdf.setFillColorRGB(*(accent if visual_style == "minimal" else _mix_floats((1.0, 1.0, 1.0), 70, onto=accent)))
                 pdf.setFont(font, S(22))
                 pdf.drawString(72, _H / 2 + 100, number)
             else:
-                pdf.setFillColorRGB(1, 1, 1)
+                pdf.setFillColorRGB(*(accent if visual_style == "minimal" else (1, 1, 1)))
                 pdf.rect(82, _H / 2 + 74, 106, 7, stroke=0, fill=1)
-            pdf.setFillColorRGB(1, 1, 1)
+            pdf.setFillColorRGB(*cover_ink)
             pdf.setFont(font, S(40))
             y = _H / 2 + 20
             for line in _wrap(heading or title, font, S(40), _W - 144):
-                pdf.drawString(72, y, line)
+                pdf.drawString(text_left, y, line)
                 y -= S(50)
             if body:
                 # 80% white over the accent, as the preview and the .pptx have.
-                pdf.setFillColorRGB(*_mix_floats((1.0, 1.0, 1.0), 80, onto=accent))
+                pdf.setFillColorRGB(*(_PDF_MUTED if visual_style == "minimal" else _mix_floats((1.0, 1.0, 1.0), 80, onto=accent)))
                 pdf.setFont(font, S(15))
                 for line in _wrap(body, font, S(15), _W - 144)[:2]:
                     pdf.drawString(72, y - 6, line)
@@ -1329,7 +1504,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             pdf.setFillColorRGB(*accent)
             # Below the descenders, not through them: `y` has already stepped
             # past the last line of the title by one advance.
-            pdf.rect(72, y + S(4), 62, 5, stroke=0, fill=1)
+            pdf.rect(text_left, y + S(4), 62, 5, stroke=0, fill=1)
             y -= 24
 
             if pairs:
@@ -1345,17 +1520,19 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     width=text_width,
                     font=font,
                     scale=ts,
+                    left=text_left,
                 )
             elif chart:
                 _pdf_chart(
-                    pdf, chart, accent=accent, muted=muted, top=y, width=text_width, font=font
+                    pdf, chart, accent=accent, muted=muted, top=y, width=text_width, font=font,
+                    left=text_left,
                 )
             elif metrics:
                 # The same geometry the .pptx uses, so the printout and the
                 # projected deck put the same figures in the same places.
                 span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
                 for position, (figure, label) in enumerate(metrics):
-                    left = 72 + position * (span + 24)
+                    left = text_left + position * (span + 24)
                     # A tinted card with a rule over it — see the .pptx.
                     pdf.setFillColorRGB(*tint)
                     pdf.rect(left, y - S(86), span, S(86) + 18, stroke=0, fill=1)
@@ -1384,19 +1561,19 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     # body row set in ink are the same grey line.
                     if row_index == 0:
                         pdf.setFillColorRGB(*accent)
-                        pdf.rect(72, y - step * 0.3, text_width, step, stroke=0, fill=1)
+                        pdf.rect(text_left, y - step * 0.3, text_width, step, stroke=0, fill=1)
                     elif row_index % 2 == 0:
                         pdf.setFillColorRGB(*tint)
-                        pdf.rect(72, y - step * 0.3, text_width, step, stroke=0, fill=1)
+                        pdf.rect(text_left, y - step * 0.3, text_width, step, stroke=0, fill=1)
                     else:
                         pdf.setStrokeColorRGB(*hair)
                         pdf.setLineWidth(0.75)
-                        pdf.line(72, y - step * 0.3, 72 + text_width, y - step * 0.3)
+                        pdf.line(text_left, y - step * 0.3, text_left + text_width, y - step * 0.3)
                     pdf.setFillColorRGB(*((1.0, 1.0, 1.0) if row_index == 0 else ink))
                     pdf.setFont(font, cell_size)
                     for cell_index, cell in enumerate(row):
                         text = _wrap(cell, font, cell_size, width - 16)
-                        pdf.drawString(80 + cell_index * width, y, text[0] if text else "")
+                        pdf.drawString(text_left + 8 + cell_index * width, y, text[0] if text else "")
                     y -= step
                     # The foot sits at 58. Stopping at 60 put the last row
                     # through it, which is the one place an overflow is read as
@@ -1412,7 +1589,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 top = y
                 for column_index, column in enumerate(columns):
-                    left = 72 + column_index * (span + 24)
+                    left = text_left + column_index * (span + 24)
                     y = top
                     for text in column:
                         wrapped = _wrap(text, font, size, span - 26)
@@ -1427,17 +1604,33 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.setFillColorRGB(*muted)
                 pdf.setFont(font, S(16))
                 for line in _wrap(body, font, S(16), text_width):
-                    pdf.drawString(72, y, line)
+                    pdf.drawString(text_left, y, line)
                     y -= S(24)
 
         if picture:
             image_bytes, image_caption = picture
             alone = not (bullets or rows or metrics or chart or body)
-            box = (_W - 260, _H - 230) if alone else (_PICTURE_SPAN, _H - 230)
-            width, height = _fit(image_bytes, box=box)
-            left = 72 + text_width + 24 if not alone else (_W - width) / 2
-            bottom = 90 + max(0.0, (_H - 230 - height) / 2)
+            box = (_W - 260, _H - 230) if alone else (picture_span, _H - 230)
+            fill = str((data.get("image") or {}).get("fit") or "") == "cover"
+            if fill:
+                width, height, *_ = _fill(image_bytes, box=box)
+                box_width, box_height = box
+                box_left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - box_width) / 2
+                box_bottom = 90
+                left = box_left - (width - box_width) / 2
+                bottom = box_bottom - (height - box_height) / 2
+            else:
+                width, height = _fit(image_bytes, box=box)
+                box_width, box_height = width, height
+                box_left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
+                box_bottom = 90 + max(0.0, (_H - 230 - height) / 2)
+                left, bottom = box_left, box_bottom
             try:
+                if fill:
+                    pdf.saveState()
+                    clip = pdf.beginPath()
+                    clip.rect(box_left, box_bottom, box_width, box_height)
+                    pdf.clipPath(clip, stroke=0, fill=0)
                 pdf.drawImage(
                     ImageReader(io.BytesIO(image_bytes)),
                     left,
@@ -1446,13 +1639,24 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     height=height,
                     mask="auto",
                 )
+                if fill:
+                    pdf.restoreState()
             except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                if fill:
+                    try:
+                        pdf.restoreState()
+                    except Exception:  # noqa: BLE001 — recovery only
+                        pass
                 log.warning("could not draw a picture into the deck pdf: %s", exc)
             else:
                 if image_caption:
                     pdf.setFillColorRGB(*muted)
                     pdf.setFont(font, 11)
-                    pdf.drawString(left, bottom - 16, _wrap(image_caption, font, 11, width)[0])
+                    pdf.drawString(
+                        box_left,
+                        box_bottom - 16,
+                        _wrap(image_caption, font, 11, box_width)[0],
+                    )
 
         # The foot: whose deck this is on the left, where you are in it on the
         # right. A cover has neither; it is not a page of the argument yet.

@@ -153,6 +153,9 @@ export interface PendingPlan {
   questions?: PendingQuestion[]
   plan?: {
     title?: string
+    visualStyle?: 'editorial' | 'poster' | 'minimal'
+    /** Whether the deck is meant to support a speaker or stand alone when shared. */
+    density?: 'speaker' | 'reading'
     /** Slides and template blocks carry a layout; report sections are titles. */
     slides?: { title: string; layout: string }[]
     blocks?: { title: string; layout: string }[]
@@ -541,6 +544,8 @@ export interface DesignTokens {
   ink: string
   muted: string
   font: 'gothic' | 'serif'
+  /** Composition, independent from colour: the same deck can wear a different visual rhythm. */
+  visualStyle?: 'editorial' | 'poster' | 'minimal'
   /**
    * The line at the foot of every slide and page saying whose this is, and the
    * mark beside it as a `data:` URI.
@@ -558,9 +563,35 @@ export interface ReportArtifact extends ArtifactBase {
   kind: 'report'
   sections: ReportSection[]
   sources: Source[]
+  /** The reproducible search trail used to assemble this report's source shelf. */
+  research?: {
+    enabled: boolean
+    searched: boolean
+    queries: string[]
+    selected: number
+    excluded: number
+    webSelected?: number
+    projectSelected?: number
+    projectExcluded?: number
+  }
   /** Citation style the export renders. */
   citationStyle: 'APA' | 'MLA' | 'Chicago' | 'IEEE'
   wordCount: number
+  pageSettings?: {
+    header?: string
+    footer?: string
+    pageNumbers?: 'none' | 'page' | 'page-total'
+    firstPageHeader?: boolean
+    margins?: { top: number; right: number; bottom: number; left: number }
+  }
+  reviewComments?: {
+    id: string
+    sectionId: string
+    quote: string
+    body: string
+    status: 'open' | 'resolved'
+    createdAt: string
+  }[]
   /**
    * The 서식 the page view wears. A view, not a fork — the sections above are
    * the document either way, and this only decides what it is drawn in.
@@ -697,11 +728,27 @@ export interface Slide {
    */
   textScale?: number
   /**
+   * Inline formatting authored in the slide editor. Keys identify the visible
+   * text slot (`title`, `body`, `bullets.0`, `rows.1.2`, `metrics.0.1`). Values
+   * are sanitised inline HTML; the plain-text fields above remain canonical so
+   * search, rewriting and older clients continue to work.
+   */
+  richText?: Record<string, string>
+  /**
    * A picture made on the image surface, embedded rather than linked — the
    * `src` is a `data:` URI, which is what makes the deck one file that prints
    * and exports with the picture in it.
    */
-  image?: { src: string; caption?: string }
+  image?: {
+    src: string
+    caption?: string
+    /** `cover` fills the picture box by cropping its edges; absent keeps all of it. */
+    fit?: 'contain' | 'cover'
+    /** Which side of the content column holds the picture. */
+    position?: 'left' | 'right'
+    /** Width of a picture that shares the slide with text. */
+    size?: 'small' | 'medium' | 'large'
+  }
 }
 
 export interface DeckArtifact extends ArtifactBase {
@@ -710,6 +757,14 @@ export interface DeckArtifact extends ArtifactBase {
   slides: Slide[]
   /** The design system this deck wears, copied on when it was made. */
   design?: DesignTokens | null
+  /** Review notes belong to a slide, but not to its visible canvas or PPTX. */
+  reviewComments?: {
+    id: string
+    slideId: string
+    body: string
+    status: 'open' | 'resolved'
+    createdAt: string
+  }[]
 }
 
 export interface ImageArtifact extends ArtifactBase {
@@ -806,6 +861,9 @@ export interface ProjectFile {
   type: string
   addedAt: string
   tokens: number
+  sourceUrl?: string | null
+  preview: string
+  error?: string | null
 }
 
 export interface Skill {

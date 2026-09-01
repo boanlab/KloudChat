@@ -1,0 +1,33 @@
+kind = "document"
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = ["decision-memo", "brief-one-page"]
+name = "프로젝트 브리프"
+description = "색을 채운 표지 아래 개요 한 문단, 그리고 산출물·목표·이해관계자·성공 기준을 나란히 놓는 카드 격자"
+category = "업무"
+fills = ["프로젝트", "책임자", "기간"]
+example_prompt = "프로젝트 브리프를 만들어 줘. 표지에 프로젝트명·책임자·기간을 적고, 개요 한 문단 뒤에 산출물·목표·이해관계자·성공 기준을 카드로 나란히 놓아 줘.\n\n프로젝트: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Project brief"
+description_en = "A filled cover, one paragraph of overview, then deliverables, objectives, stakeholders and success criteria side by side as cards"
+category_en = "Work"
+fills_en = ["Project", "Owner", "Dates"]
+example_prompt_en = "Write a project brief. Put the project name, owner and dates on the cover, then one paragraph of overview, then deliverables, objectives, stakeholders and success criteria as cards.\n\nProject: "
+
+# 카드 격자가 이 서식의 본체다. 한 카드에 다섯 줄이 넘어가면 훑는 것이 아니라
+# 읽는 것이 되고, 그러면 카드일 이유가 없다. `services/lint` 가 이 수를 읽는다.
+[limits]
+max_bullets = 5
+
+# `filled` 하나가 이 서식과 다른 문서 서식을 가르는 표시다. 공용 seed 가
+# 그 색과 인쇄 규칙을 모두 쥐고 있으므로 여기서는 켜기만 한다.
+[wrap]
+cover = '<div class="cover filled"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

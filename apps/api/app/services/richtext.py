@@ -32,6 +32,7 @@ import html
 import re
 from dataclasses import dataclass, field
 from html import unescape
+from html.parser import HTMLParser
 
 #: Block tags that end a paragraph. Everything else is inline and folds into
 #: the line being built.
@@ -138,6 +139,102 @@ class Grid:
                     out[index][column] = cell.text.replace("\n", newline)
                 column += cell.colspan
         return out
+
+
+_FORMAT_BLOCKS = {"p", "h3", "h4", "li", "blockquote"}
+_FORMAT_INLINE = {"strong", "b", "em", "i", "u", "s", "strike", "span", "code"}
+
+
+def _style_map(value: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for declaration in value.split(";"):
+        if ":" not in declaration:
+            continue
+        name, setting = declaration.split(":", 1)
+        name, setting = name.strip().lower(), setting.strip()
+        if name in {
+            "font-size", "font-family", "font-weight", "font-style",
+            "text-align", "text-decoration", "color", "background-color", "line-height",
+        } and setting:
+            out[name] = setting
+    return out
+
+
+class _FormatReader(HTMLParser):
+    """The editable HTML as block styles and inline runs.
+
+    This travels beside Markdown; it does not replace the established parser
+    for tables, figures and structured blocks. Exporters match these ordinary
+    prose blocks in order and retain the formatting Markdown cannot express.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[dict] = []
+        self.block: dict | None = None
+        self.styles: list[dict[str, str]] = [{}]
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        attributes = {name.lower(): value or "" for name, value in attrs}
+        style = _style_map(attributes.get("style", ""))
+        if tag in _FORMAT_BLOCKS and self.block is None:
+            self.block = {
+                "tag": tag,
+                "style": style,
+                "runs": [],
+                "text": "",
+            }
+            self.styles = [{
+                key: value for key, value in style.items()
+                if key not in {"text-align", "line-height"}
+            }]
+            return
+        if tag in _FORMAT_INLINE and self.block is not None:
+            merged = dict(self.styles[-1])
+            merged.update(style)
+            if tag in {"strong", "b"}:
+                merged["font-weight"] = "bold"
+            if tag in {"em", "i"}:
+                merged["font-style"] = "italic"
+            if tag == "u":
+                merged["text-decoration"] = "underline"
+            if tag in {"s", "strike"}:
+                merged["text-decoration"] = "line-through"
+            self.styles.append(merged)
+        elif tag == "br" and self.block is not None:
+            self.handle_data("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in _FORMAT_INLINE and self.block is not None and len(self.styles) > 1:
+            self.styles.pop()
+        if tag in _FORMAT_BLOCKS and self.block is not None and self.block["tag"] == tag:
+            if self.block["text"].strip():
+                self.blocks.append(self.block)
+            self.block = None
+            self.styles = [{}]
+
+    def handle_data(self, data: str) -> None:
+        if self.block is None or not data:
+            return
+        style = dict(self.styles[-1])
+        runs = self.block["runs"]
+        if runs and runs[-1]["style"] == style:
+            runs[-1]["text"] += data
+        else:
+            runs.append({"text": data, "style": style})
+        self.block["text"] += data
+
+
+def formatted_blocks(fragment: str) -> list[dict]:
+    """Ordinary editable prose blocks with the presentation a person set."""
+    if not fragment or "<" not in fragment:
+        return []
+    reader = _FormatReader()
+    reader.feed(fragment)
+    reader.close()
+    return reader.blocks
 
 
 def _span(markup: str, name: str) -> int:
@@ -327,8 +424,16 @@ _CONSTRUCT = re.compile(
     # Ahead of the plain list: a procedure is an `<ol>` too, and matched as one
     # it would come back as `1. 자료 수집` — an ordinary list, with the fence
     # and its numbering gone for good on the next save.
-    r"<div\b[^>]*\bclass=\"[^\"]*\bkpi\b[^\"]*\"[^>]*>.*?</div\s*>"
+    r"<div\b[^>]*\bdata-page-break=(?:\"true\"|'true'|true)[^>]*>\s*</div\s*>"
+    r"|<div\b[^>]*\bclass=\"[^\"]*\bkpi\b[^\"]*\"[^>]*>.*?</div\s*>"
     r"|<ol\b[^>]*\bclass=\"[^\"]*\bsteps\b[^\"]*\"[^>]*>.*?</ol\s*>"
+    # Ahead of the plain heading and the plain list, both of which live inside
+    # a card: matched as those, a grid would come back as a run of `### 제목`
+    # and loose bullets, and the grid would be gone for good on the next save.
+    # `<section>` rather than `<div>` is what makes the lazy close correct —
+    # the cards inside are `<div>`, so the first `</section>` is this one.
+    r"|<section\b[^>]*\bclass=\"[^\"]*\bcards\b[^\"]*\"[^>]*>.*?</section\s*>"
+    r"|<section\b[^>]*\bclass=\"[^\"]*\bcallout\b[^\"]*\"[^>]*>.*?</section\s*>"
     # Ahead of the plain figure, which would keep the picture and drop the
     # source — and a diagram whose source is gone cannot be changed again by
     # anyone, here or in the browser.
@@ -359,10 +464,19 @@ _CONSTRUCT = re.compile(
 def _render(match: re.Match[str], notes: int = 0) -> str:
     markup = match.group(0)
     lowered = markup[:12].lower()
+    if re.search(r"\bdata-page-break=(?:\"true\"|'true'|true)", markup, re.I):
+        # A private-looking token would leak into a Markdown download. This is
+        # the established Pandoc/Markdown page-break comment and stays inert
+        # in ordinary Markdown readers while exporters can preserve it.
+        return "<!-- pagebreak -->"
     if _KPI_OPEN.match(markup):
         return _pairs_fence("kpi", markup, r"<div\b[^>]*>(.*?)</div\s*>")
     if _STEPS_OPEN.match(markup):
         return _pairs_fence("steps", markup, r"<li\b[^>]*>(.*?)</li\s*>")
+    if _CARDS_OPEN.match(markup):
+        return _cards_fence(markup)
+    if _CALLOUT_OPEN.match(markup):
+        return _callout_fence(markup)
     if _DIAGRAM_OPEN.match(markup):
         return _diagram_fence(markup)
     if _CHART_OPEN.match(markup):
@@ -428,9 +542,55 @@ def _note(markup: str, number: int) -> str:
 _KPI_OPEN = re.compile(r"<div\b[^>]*\bclass=\"[^\"]*\bkpi\b", re.I)
 _STEPS_OPEN = re.compile(r"<ol\b[^>]*\bclass=\"[^\"]*\bsteps\b", re.I)
 _STRONG = re.compile(r"<strong\b[^>]*>(.*?)</strong\s*>", re.S | re.I)
+_CARDS_OPEN = re.compile(r"<section\b[^>]*\bclass=\"[^\"]*\bcards\b", re.I)
+_CALLOUT_OPEN = re.compile(r"<section\b[^>]*\bclass=\"[^\"]*\bcallout\b", re.I)
+_CARD = re.compile(r"<div\b[^>]*>(.*?)</div\s*>", re.S | re.I)
+_CARD_TITLE = re.compile(r"<h[34]\b[^>]*>(.*?)</h[34]\s*>", re.S | re.I)
+_LI = re.compile(r"<li\b[^>]*>(.*?)</li\s*>", re.S | re.I)
+_P = re.compile(r"<p\b[^>]*>(.*?)</p\s*>", re.S | re.I)
 _DIAGRAM_OPEN = re.compile(r"<figure\b[^>]*\bclass=\"[^\"]*\bdiagram\b", re.I)
 _CHART_OPEN = re.compile(r"<figure\b[^>]*\bclass=\"[^\"]*\bchart\b", re.I)
 _DIAGRAM_SOURCE = re.compile(r"\bdata-source=(\"[^\"]*\"|'[^']*')", re.I)
+
+
+def _cards_fence(markup: str) -> str:
+    """A card grid back as its own fence.
+
+    It comes through here whenever somebody has touched the section in the
+    document editor, because an edited section is stored as HTML and the
+    exporters read Markdown. Rendered as anything else it stops being a grid:
+    the titles come back as sub-headings and the lines as one long list, and
+    the next save makes that the document.
+
+    `##` for a card and `- ` for its lines, which is what the writer was given
+    and what `report_export._cards` reads.
+    """
+    out: list[str] = []
+    body = markup[markup.index(">") + 1 :]
+    for card in _CARD.finditer(body):
+        inner = card.group(1)
+        found = _CARD_TITLE.search(inner)
+        title = _inline(found.group(1)) if found else ""
+        if not title:
+            continue
+        out.append(f"## {title}")
+        seen = _CARD_TITLE.sub("", inner)
+        lines = [_inline(one.group(1)) for one in _LI.finditer(seen)]
+        # A card written as prose rather than as a list. Both are what the
+        # editor stores, because a person may have typed either.
+        lines = lines or [_inline(one.group(1)) for one in _P.finditer(seen)]
+        out.extend(f"- {line}" for line in lines if line)
+    return "```cards\n" + "\n".join(out) + "\n```" if out else ""
+
+
+def _callout_fence(markup: str) -> str:
+    """The boxed line back as its own fence — title first, then what it says."""
+    body = markup[markup.index(">") + 1 :]
+    found = _CARD_TITLE.search(body)
+    title = _inline(found.group(1)) if found else ""
+    lines = [_inline(one.group(1)) for one in _P.finditer(_CARD_TITLE.sub("", body))]
+    kept = [line for line in [title, *lines] if line]
+    return "```callout\n" + "\n".join(kept) + "\n```" if kept else ""
 
 
 def _diagram_fence(markup: str) -> str:
@@ -658,10 +818,12 @@ def normalise(sections: list[dict]) -> list[dict]:
     for section in sections:
         body = str(section.get("content") or "")
         moved = {**section, "content": as_markdown(section), "format": "markdown"}
+        if section.get("format") == "html":
+            moved["_formatting"] = formatted_blocks(body)
         if section.get("format") == "html" and (found := grids(body)):
             moved["tables"] = found
         out.append(moved)
     return out
 
 
-__all__ = ["Cell", "Grid", "as_markdown", "grids", "normalise", "tidy_tables", "to_markdown"]
+__all__ = ["Cell", "Grid", "as_markdown", "formatted_blocks", "grids", "normalise", "tidy_tables", "to_markdown"]

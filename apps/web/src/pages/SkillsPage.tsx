@@ -9,6 +9,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  LoadingState,
   Field,
   Input,
   Modal,
@@ -116,6 +117,7 @@ export function SkillsPage() {
     deleteMany,
     loadWorkspace,
     loadSkillStore,
+    workspaceLoading,
   } = useStore()
 
   useEffect(() => {
@@ -343,7 +345,9 @@ export function SkillsPage() {
           {/* 승인만 받으면 스킬 여덟 개가 들어와 있던 시절이 끝났습니다. 빈
               화면이 "기능이 없다" 로 읽히지 않도록, 나머지가 어디 있는지 여기서
               말합니다. */}
-          {all.length === 0 && (
+          {workspaceLoading && all.length === 0 ? (
+            <LoadingState label={t('스킬을 불러오는 중…')} />
+          ) : all.length === 0 && (
             <EmptyState
               icon={<FileCode2 size={18} />}
               title={t('아직 스킬이 없습니다')}

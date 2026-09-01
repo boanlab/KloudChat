@@ -246,6 +246,14 @@ class ArtifactVersionOut(Wire):
         return cls.model_validate(v, from_attributes=True)
 
 
+class ArtifactVersionDetailOut(ArtifactVersionOut):
+    data: dict[str, Any] | None = None
+
+    @classmethod
+    def of(cls, v: object) -> ArtifactVersionDetailOut:
+        return cls.model_validate(v, from_attributes=True)
+
+
 class ArtifactRestore(Wire):
     version: int
 
@@ -971,12 +979,7 @@ class DesignTemplateOut(Wire):
     arguments: list[DesignArgumentOut] = Field(default_factory=list)
     #: Composer settings this template implies — aspect, duration, voice.
     defaults: dict[str, Any] = Field(default_factory=dict)
-    #: The extension of the blank form this 서식 ships — `docx`, `pptx`, or
-    #: empty where it has none yet.
-    #:
-    #: The extension rather than a flag, because the button that offers it says
-    #: which file is coming. "양식 내려받기" and then a `.pptx` when somebody
-    #: expected a `.docx` is a surprise the card could have prevented.
+    #: Blank Office form users can fill manually or send to a colleague.
     form_format: str = ""
     #: Whether `/design-templates/{id}/preview` has something to show. The
     #: card decides between a live miniature and its text-only fall-back on

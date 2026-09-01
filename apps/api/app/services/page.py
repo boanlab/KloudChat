@@ -297,6 +297,19 @@ def _guide(template: DesignTemplate) -> str:
     )
 
 
+def _citation_rule(findings: research.Findings, kind: str) -> str:
+    """Numbered markers that keep the prose connected to its stored shelf."""
+    if kind != "document" or not findings.sources:
+        return ""
+    available = ", ".join(f"[{source['ordinal']}]" for source in findings.sources)
+    return (
+        "## 출처 표시\n"
+        "웹 자료에서 가져온 사실·수치·주장은 해당 문장 끝에 자료 번호를 "
+        f"붙인다. 사용할 수 있는 번호는 {available}뿐이다. 목록에 없는 번호를 "
+        "만들지 말고, 자료를 쓰지 않은 문장에는 번호를 붙이지 않는다."
+    )
+
+
 def _fragment(text: str, template: DesignTemplate) -> str:
     """One block's markup, unfenced and reduced to the seed's vocabulary.
 
@@ -348,6 +361,7 @@ async def write(
     #: and decks run: queries planned off the request, top pages read in full,
     #: ahead of the outline so the shape is chosen from what is true.
     web_search: bool = True,
+    project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `block`, a final `page` and one `usage` event.
 
@@ -392,8 +406,48 @@ async def write(
             "status": "done",
             "detail": findings.detail,
         }
-        if findings.sources:
-            yield {"type": "sources", "sources": findings.sources}
+    findings.sources = list(findings.sources)
+    web_selected = len(findings.sources)
+    project_selected = 0
+    project_excluded = 0
+    project_reference_lines: list[str] = []
+    for item in project_sources or []:
+        if item.get("state") not in ("included", "truncated"):
+            project_excluded += 1
+            continue
+        ordinal = len(findings.sources) + 1
+        title = str(item.get("name") or "프로젝트 자료")[:200]
+        url = str(item.get("sourceUrl") or "")
+        findings.sources.append({
+            "id": str(item.get("id") or f"project-{ordinal}"),
+            "ordinal": ordinal,
+            "title": title,
+            "publisher": research._publisher(url) if url else "프로젝트 파일",
+            "url": url,
+            "origin": "web" if url else "file",
+            "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
+            "quote": (
+                " · ".join(str(v) for v in (item.get("locations") or []))
+                or ("전체 내용 전달됨" if item.get("state") == "included" else "일부 내용만 전달됨")
+            ),
+        })
+        project_reference_lines.append(f"- [{ordinal}] {title}")
+        project_selected += 1
+    if findings.sources:
+        yield {"type": "sources", "sources": findings.sources}
+    yield {
+        "type": "research",
+        "research": {
+            "enabled": web_search,
+            "searched": findings.searched,
+            "queries": findings.queries,
+            "selected": len(findings.sources),
+            "excluded": findings.dropped,
+            "webSelected": web_selected,
+            "projectSelected": project_selected,
+            "projectExcluded": project_excluded,
+        },
+    }
     # Three states, and the writer is told which one it is in. A toggle
     # somebody switched off is a choice and needs no disclaimer; a search that
     # could not run and a search that found nothing are both worth saying, and
@@ -401,9 +455,15 @@ async def write(
     research_rule = ""
     if web_search and not findings.searched:
         research_rule = research.UNRESEARCHED_RULE
-    elif web_search and not findings.sources:
+    elif web_search and web_selected == 0:
         research_rule = research.EMPTY_RULE
     document_context = list(untrusted_context or [])
+    if project_reference_lines:
+        trusted_context = list(trusted_context or []) + [
+            "# 프로젝트 자료 인용 번호\n"
+            "프로젝트 자료에서 가져온 사실을 사용한 문장 끝에는 아래 번호를 정확히 붙이세요. "
+            "목록에 없는 번호를 만들지 마세요.\n" + "\n".join(project_reference_lines)
+        ]
     if block := research.context_block(findings):
         document_context.append(block)
 
@@ -556,7 +616,11 @@ async def write(
                         layout=block["layout"],
                         outline=outline_text,
                         written="\n".join(written[-4:]) or "(없음)",
-                        guide=_guide(template),
+                        guide="\n\n".join(
+                            part
+                            for part in (_guide(template), _citation_rule(findings, template.kind))
+                            if part
+                        ),
                         request=request[:1200],
                     ),
                     trusted_context=trusted_context,

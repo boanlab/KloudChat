@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
-import { DesignGalleryModal } from '@/components/chat/DesignGallery'
+import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
 import { currentLang } from '@/lib/i18n'
@@ -704,9 +704,12 @@ export function Composer({
   // Sentences count too — 챗 has no 서식 at all, so asking only about shapes
   // hid the picker on the one surface where a saved starting point is the
   // whole of what it offers.
+  // `offersTemplates` is the same gate the gallery button uses. Without it the
+  // composer kept its own door open onto a picker 챗 no longer offers.
   const hasTemplates =
-    designTemplates.some((row) => row.surface === kind) ||
-    promptTemplates.some((row) => row.kind === kind)
+    offersTemplates(kind) &&
+    (designTemplates.some((row) => row.surface === kind) ||
+      promptTemplates.some((row) => row.kind === kind))
   //: Whether the empty screen — and its own copy of this button — is gone.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
@@ -1320,6 +1323,11 @@ export function Composer({
           onChange={(e) => {
             activeRestoreToken.current = null
             liveValue.current = e.target.value
+            // Keep it before React gets a chance to unmount this composer.
+            // Picking a starting point navigates immediately; an effect that
+            // runs after paint can otherwise lose the final keystroke — or the
+            // whole draft when typing and clicking happen in one frame.
+            drafts.set(draftKey, e.target.value)
             setValue(e.target.value)
           }}
           onKeyDown={(e) => {
@@ -1397,8 +1405,8 @@ export function Composer({
                 'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
                 shownTemplate ? 'text-accent' : 'text-muted',
               )}
-              aria-label={t('서식 고르기')}
-              title={t('결과물이 어떤 모양으로 나올지 고릅니다')}
+              aria-label={t('작업 시작하기')}
+              title={t('업무 시작점이나 결과 서식을 고릅니다')}
             >
               <LayoutGrid size={16} />
             </button>

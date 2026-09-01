@@ -39,6 +39,7 @@ from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
     figures,
+    design,
     grounding,
     hangul,
     imagegen,
@@ -1013,6 +1014,7 @@ async def _write_slides(
     research_rule: str = "",
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
+    density: str = "speaker",
 ) -> AsyncIterator[dict[str, Any]]:
     """Writes the bodies for an outline that has already been agreed to.
 
@@ -1096,6 +1098,14 @@ async def _write_slides(
             "progress": progress,
         }
         template = _PROMPTS.get(slide["layout"], _BULLETS_PROMPT)
+        density_rule = (
+            "\n\n이 자료는 발표자 없이 전달해 읽는 자료다. 표·근거·맥락을 한 장 안에서 "
+            "이해할 수 있게 쓰고, notes에만 핵심 설명을 숨기지 마라. 글자를 줄여 억지로 "
+            "채우지 말고 현재 layout의 읽기 쉬운 한도를 지켜라."
+            if density == "reading"
+            else "\n\n이 자료는 발표자가 설명하는 자료다. 한 장에는 한 가지 핵심만 두고, "
+            "짧은 문구와 넓은 여백을 우선하며 자세한 설명은 notes에 둬라."
+        )
         try:
             body, spent = await _complete(
                 model,
@@ -1108,9 +1118,9 @@ async def _write_slides(
                         written="\n".join(written)[-3000:] or "(아직 없음)",
                         # Fuller list for two columns; four bullets would leave
                         # one empty. `_QUOTE_PROMPT` ignores the extra field.
-                        count="6~8" if slide["layout"] == "two-column" else "3~5",
+                        count=("6~8" if slide["layout"] == "two-column" else "4~6") if density == "reading" else ("4~6" if slide["layout"] == "two-column" else "2~4"),
                         request=request[:1500],
-                    ),
+                    ) + density_rule,
                     trusted_context=trusted_context,
                     untrusted_context=untrusted_context,
                     research_rule=research_rule,
@@ -1415,6 +1425,7 @@ async def write(
             research_rule=research_rule,
             figures_plan=figures_plan,
             image_model=image_model,
+            density=str(approved_plan.get("density") or "speaker"),
         ):
             yield event
         return
@@ -1545,6 +1556,12 @@ async def write(
         "title": title[:200],
         "subtitle": subtitle[:200],
         "accent": accent,
+        "visualStyle": design.visual_style_for(request),
+        "density": (
+            "reading"
+            if any(word in request for word in ("읽기용", "배포용", "공유용", "회의 자료", "검토 자료", "보고 자료"))
+            else "speaker"
+        ),
         "slides": [{"title": item["title"], "layout": item["layout"]} for item in plan],
     }
     # The pictures are proposed here and asked about on a second card, once the
@@ -1632,8 +1649,14 @@ async def rewrite_slide(
     result = {**target}
     if bullets:
         result["bullets"] = bullets
+        # Content from the old attempt must not survive beside the rewrite.
+        # In particular, a failed slide carries UNWRITTEN as its old body or
+        # bullet; keeping the opposite field makes a successful retry still
+        # look failed in previews and exports.
+        result.pop("body", None)
     if body:
         result["body"] = body
+        result.pop("bullets", None)
     if notes := str(parsed.get("notes") or "").strip():
         result["notes"] = notes
     # The verdicts belonged to the old text.

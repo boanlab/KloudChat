@@ -4,16 +4,27 @@ import {
   AlignJustify,
   AlignLeft,
   AlignRight,
+  Baseline,
   Bold,
-  Columns3,
+  Eraser,
+  Highlighter,
   ImagePlus,
+  Indent,
   Italic,
   List,
+  ListTree,
   ListOrdered,
   Loader2,
+  FilePenLine,
+  Globe2,
+  MessageSquarePlus,
+  MessagesSquare,
+  Outdent,
   Quote,
+  RefreshCw,
   Redo2,
-  Rows3,
+  Search,
+  SeparatorHorizontal,
   Strikethrough,
   Table as TableIcon,
   Trash2,
@@ -26,6 +37,7 @@ import { EditableLine } from '@/components/report/EditableLine'
 import { artifactsApi } from '@/lib/api'
 import { diagramKey } from '@/lib/diagramKey'
 import { draw, rasterise, theme } from '@/lib/mermaid'
+import { parseCallout, parseCards } from '@/components/report/CardGrid'
 import { parse as parsePairs } from '@/components/report/StepList'
 import { SectionEditor } from '@/components/report/SectionEditor'
 import {
@@ -40,7 +52,7 @@ import {
   type TemplateStyle,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { ReportArtifact, ReportSection } from '@/types'
+import type { ReportArtifact, ReportSection, Source } from '@/types'
 import { useT } from '@/lib/useT'
 
 /**
@@ -61,6 +73,17 @@ const FONTS = [
   { label: '고정폭', value: "'D2Coding', 'Consolas', monospace" },
 ]
 const SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36']
+//: 절 제목은 감싸개가 그리므로 본문 안에서 쓸 수 있는 단계는 그 아래 둘이다.
+//: `StarterKit` 이 h3·h4 만 여는 것과 같은 이유이고, 서버의 허용 태그도 그
+//: 둘까지다 — 셋이 어긋나면 눌러서 만든 제목이 저장할 때 사라진다.
+const HEADINGS = [
+  { label: '본문', value: 0 },
+  { label: '소제목', value: 3 },
+  { label: '작은 제목', value: 4 },
+] as const
+//: 줄간격. 배수로만 둔다 — `pt` 로 주면 글자 크기를 바꿀 때마다 다시 잡아야
+//: 하고, 서식이 정한 본문 줄간격과도 어긋난다.
+const LINE_HEIGHTS = ['1.3', '1.5', '1.7', '2.0']
 const ALIGNMENTS = [
   { value: 'left', icon: AlignLeft, label: '왼쪽 맞춤' },
   { value: 'center', icon: AlignCenter, label: '가운데 맞춤' },
@@ -138,7 +161,7 @@ function useEditorTick(editor: Editor | null) {
   }, [editor])
 }
 
-function Toolbar({ editor }: { editor: Editor | null }) {
+function Toolbar({ editor, sources, onFind, onComment }: { editor: Editor | null; sources: Source[]; onFind: () => void; onComment: () => void }) {
   const t = useT()
   useEditorTick(editor)
   const off = !editor
@@ -173,7 +196,7 @@ function Toolbar({ editor }: { editor: Editor | null }) {
     'disabled:opacity-40 focus:outline-2 focus:outline-offset-1 focus:outline-accent'
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-line bg-panel px-3 py-1.5">
+    <div className="flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5">
       <select
         aria-label={t('서체')}
         title={t('서체')}
@@ -213,7 +236,34 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         ))}
       </select>
 
+      <select
+        aria-label={t('제목 단계')}
+        title={t('제목 단계')}
+        disabled={off}
+        value={HEADINGS.find((h) => h.value && editor?.isActive('heading', { level: h.value }))?.value ?? 0}
+        className={cn(field, 'w-24')}
+        onMouseDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const level = Number(e.target.value)
+          if (!level) editor?.chain().focus().setParagraph().run()
+          else editor?.chain().focus().setHeading({ level: level as 3 | 4 }).run()
+        }}
+      >
+        {HEADINGS.map((h) => (
+          <option key={h.value} value={h.value}>
+            {t(h.label)}
+          </option>
+        ))}
+      </select>
+
       <Sep />
+
+      <Tool label={t('찾기 및 바꾸기')} onClick={onFind}>
+        <Search size={15} />
+      </Tool>
+      <Tool label={t('선택한 문장에 메모')} disabled={off || editor?.state.selection.empty} onClick={onComment}>
+        <MessageSquarePlus size={15} />
+      </Tool>
 
       <Tool
         label={t('굵게')}
@@ -264,6 +314,91 @@ function Toolbar({ editor }: { editor: Editor | null }) {
 
       <Sep />
 
+      {/* 색은 고르는 것이라 토글이 아니다. `<input type=color>` 은 브라우저가
+          쓰는 사람의 것을 띄워 주고, 지우는 길은 그 옆에 따로 둔다 — 색을
+          한번 칠하면 되돌릴 방법이 없는 편집기가 되지 않도록. */}
+      <label
+        title={t('글자색')}
+        className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
+      >
+        <Baseline size={15} />
+        <span
+          className="pointer-events-none absolute mt-4 h-1 w-4 rounded-full"
+          style={{ background: (editor?.getAttributes('textStyle').color as string) || 'transparent' }}
+        />
+        <input
+          type="color"
+          aria-label={t('글자색')}
+          disabled={off}
+          className="sr-only"
+          value={(editor?.getAttributes('textStyle').color as string) || '#1a1a1a'}
+          onInput={(e) => editor?.chain().focus().setColor(e.currentTarget.value).run()}
+        />
+      </label>
+      <select
+        aria-label={t('글자색 빠른 선택')}
+        title={t('글자색 빠른 선택')}
+        disabled={off}
+        defaultValue=""
+        className={cn(field, 'w-20 px-1 text-xs')}
+        onMouseDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          if (e.target.value) editor?.chain().focus().setColor(e.target.value).run()
+          e.currentTarget.value = ''
+        }}
+      >
+        <option value="">{t('글자색')}</option>
+        <option value="#cc0000">{t('빨강')}</option>
+        <option value="#1d4ed8">{t('파랑')}</option>
+        <option value="#15803d">{t('초록')}</option>
+        <option value="#666666">{t('회색')}</option>
+      </select>
+      <label
+        title={t('형광펜')}
+        className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
+      >
+        <Highlighter size={15} />
+        <input
+          type="color"
+          aria-label={t('형광펜')}
+          disabled={off}
+          className="sr-only"
+          value={(editor?.getAttributes('textStyle').backgroundColor as string) || '#fff3a3'}
+          onInput={(e) => editor?.chain().focus().setBackgroundColor(e.currentTarget.value).run()}
+        />
+      </label>
+      <Tool
+        label={t('색 지우기')}
+        disabled={off}
+        onClick={run(() =>
+          editor?.chain().focus().unsetColor().unsetBackgroundColor().run(),
+        )}
+      >
+        <Eraser size={15} />
+      </Tool>
+      <select
+        aria-label={t('줄간격')}
+        title={t('줄간격')}
+        disabled={off}
+        value={String((editor?.getAttributes('paragraph').lineHeight as string) ?? '')}
+        className={cn(field, 'w-20')}
+        onMouseDown={(e) => e.stopPropagation()}
+        onChange={(e) =>
+          e.target.value
+            ? editor?.chain().focus().setLineHeight(e.target.value).run()
+            : editor?.chain().focus().unsetLineHeight().run()
+        }
+      >
+        <option value="">{t('줄간격')}</option>
+        {LINE_HEIGHTS.map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
+
+      <Sep />
+
       <Tool
         label={t('글머리 기호')}
         disabled={off}
@@ -279,6 +414,22 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         onClick={run(() => editor?.chain().focus().toggleOrderedList().run())}
       >
         <ListOrdered size={15} />
+      </Tool>
+      {/* 들여쓰기는 목록의 수준이다. 문단을 밀어 넣는 것과 달리 이쪽은
+          스키마가 아는 구조라, 저장하고 내보내도 중첩 목록으로 살아남는다. */}
+      <Tool
+        label={t('한 단계 들여쓰기')}
+        disabled={off || !editor?.can().sinkListItem('listItem')}
+        onClick={run(() => editor?.chain().focus().sinkListItem('listItem').run())}
+      >
+        <Indent size={15} />
+      </Tool>
+      <Tool
+        label={t('한 단계 내어쓰기')}
+        disabled={off || !editor?.can().liftListItem('listItem')}
+        onClick={run(() => editor?.chain().focus().liftListItem('listItem').run())}
+      >
+        <Outdent size={15} />
       </Tool>
       <Tool
         label={t('인용')}
@@ -308,13 +459,46 @@ function Toolbar({ editor }: { editor: Editor | null }) {
             label={t('아래에 행 추가')}
             onClick={run(() => editor.chain().focus().addRowAfter().run())}
           >
-            <Rows3 size={15} />
+            <span className="text-[10px] font-semibold">행+</span>
+          </Tool>
+          <Tool
+            label={t('현재 행 삭제')}
+            onClick={run(() => editor.chain().focus().deleteRow().run())}
+          >
+            <span className="text-[10px] font-semibold">행−</span>
           </Tool>
           <Tool
             label={t('오른쪽에 열 추가')}
             onClick={run(() => editor.chain().focus().addColumnAfter().run())}
           >
-            <Columns3 size={15} />
+            <span className="text-[10px] font-semibold">열+</span>
+          </Tool>
+          <Tool
+            label={t('현재 열 삭제')}
+            onClick={run(() => editor.chain().focus().deleteColumn().run())}
+          >
+            <span className="text-[10px] font-semibold">열−</span>
+          </Tool>
+          <Tool
+            label={t('선택한 셀 병합')}
+            disabled={!editor.can().mergeCells()}
+            onClick={run(() => editor.chain().focus().mergeCells().run())}
+          >
+            <span className="text-[10px] font-semibold">병합</span>
+          </Tool>
+          <Tool
+            label={t('셀 나누기')}
+            disabled={!editor.can().splitCell()}
+            onClick={run(() => editor.chain().focus().splitCell().run())}
+          >
+            <span className="text-[10px] font-semibold">분할</span>
+          </Tool>
+          <Tool
+            label={t('첫 행을 머리글로 전환')}
+            on={editor.isActive('tableHeader')}
+            onClick={run(() => editor.chain().focus().toggleHeaderRow().run())}
+          >
+            <span className="text-[10px] font-semibold">머리</span>
           </Tool>
           <Tool
             label={t('표 지우기')}
@@ -327,6 +511,36 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       <Tool label={t('그림')} disabled={off} onClick={insertImage}>
         <ImagePlus size={15} />
       </Tool>
+      <Tool
+        label={t('쪽 나누기')}
+        disabled={off}
+        onClick={run(() => editor?.chain().focus().insertContent({ type: 'pageBreak' }).run())}
+      >
+        <SeparatorHorizontal size={15} />
+      </Tool>
+
+      {sources.length > 0 && (
+        <select
+          aria-label={t('출처 인용 넣기')}
+          title={t('현재 커서에 출처 번호 넣기')}
+          disabled={off}
+          defaultValue=""
+          className={cn(field, 'max-w-40')}
+          onMouseDown={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            const ordinal = Number(e.target.value)
+            if (ordinal && editor) editor.chain().focus().insertContent(`[${ordinal}]`).run()
+            e.currentTarget.value = ''
+          }}
+        >
+          <option value="">{t('출처 인용')}</option>
+          {sources.map((source) => (
+            <option key={source.id} value={source.ordinal}>
+              [{source.ordinal}] {source.title}
+            </option>
+          ))}
+        </select>
+      )}
 
       <Sep />
 
@@ -365,22 +579,195 @@ function Toolbar({ editor }: { editor: Editor | null }) {
  * beside it reads as a fact; this reads as an estimate, which is what it is
  * until a real layout engine lays the document out.
  */
-function PageGuides({ pages, usable }: { pages: number; usable: number }) {
+function PageGuides({ breaks }: { breaks: number[] }) {
   const t = useT()
-  if (pages < 2) return null
+  if (!breaks.length) return null
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0">
-      {Array.from({ length: pages - 1 }, (_, i) => (
+      {breaks.map((top, i) => (
         <div
           key={i}
+          data-page-break={i + 2}
           className="absolute inset-x-0 border-t border-dashed border-line/80"
-          style={{ top: (i + 1) * usable }}
+          style={{ top }}
         >
           <span className="absolute -top-4 right-3 rounded bg-panel/90 px-1.5 text-[10px] text-faint">
             {t('{n}쪽 즈음').replace('{n}', String(i + 2))}
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+const escapePagedText = (text: string) => text
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+
+const escapeCssContent = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ')
+
+type PageSettings = NonNullable<ReportArtifact['pageSettings']>
+const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
+  header: '', footer: 'KloudChat', pageNumbers: 'page-total', firstPageHeader: false,
+  margins: { top: 18, right: 16, bottom: 20, left: 16 },
+}
+
+// DocumentShell is a shadow root, so application-global CSS cannot style the
+// editor inside it. Keep the page-break guide beside the template stylesheet
+// that is actually installed into that root.
+const EDITOR_PAGE_BREAK_CSS = `
+  .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
+  .ProseMirror .page-break::after { content: '쪽 나누기'; position: absolute; top: -9px; right: 8px; padding: 0 6px; background: white; color: #777; font-size: 11px; line-height: 18px; }
+  .ProseMirror .page-break.ProseMirror-selectednode { border-color: var(--accent, #5b5bd6); }
+`
+
+function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, onWebView }: { html: string; css: string; settings: Required<PageSettings>; onSettings: (next: Required<PageSettings>) => void; settingsOpen: boolean; onEdit: () => void; onWebView: () => void }) {
+  const t = useT()
+  const host = useRef<HTMLDivElement>(null)
+  const viewport = useRef<HTMLDivElement>(null)
+  const [busy, setBusy] = useState(true)
+  const [pages, setPages] = useState(0)
+  const [pageSize, setPageSize] = useState({ width: A4_WIDTH_PX, height: A4_HEIGHT_PX })
+  const [pageScale, setPageScale] = useState(1)
+  const [failure, setFailure] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    const target = host.current
+    if (!target) return
+    let live = true
+    setBusy(true)
+    setFailure(null)
+    target.replaceChildren()
+    // Paged.js authors an actual A4 canvas. It must keep that geometry while
+    // being measured; the viewport scales the finished stack as one object.
+    target.style.width = `${A4_WIDTH_PX}px`
+    const sheet = URL.createObjectURL(new Blob([`
+      @page {
+        size: A4;
+        margin: ${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm;
+        @top-left { content: ${settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)'}; color: #777; font-size: 8pt; }
+        @bottom-left { content: "${escapeCssContent(settings.footer)}"; color: #777; font-size: 8pt; }
+        @bottom-right { content: ${settings.pageNumbers === 'none' ? 'none' : settings.pageNumbers === 'page' ? 'counter(page)' : 'counter(page) " / " counter(pages)'}; color: #777; font-size: 8pt; }
+      }
+      @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
+      html, body { margin: 0; padding: 0; background: white; }
+      h1 { string-set: document-title content(text); }
+      ${css}
+      section { break-inside: auto; }
+      h1, h2, h3, h4 { break-after: avoid; }
+      p, li { orphans: 2; widows: 2; }
+      table, tbody { break-inside: auto !important; page-break-inside: auto !important; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+      figure, img, pre, blockquote { break-inside: avoid; }
+      [data-page-break="true"] { break-before: page; height: 0; }
+    `], { type: 'text/css' }))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeoutMs = (window as Window & { __KLOUDCHAT_PAGINATION_TIMEOUT_MS__?: number })
+      .__KLOUDCHAT_PAGINATION_TIMEOUT_MS__ ?? 30_000
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('pagination timed out')), timeoutMs)
+    })
+    const forceFailure = Boolean(
+      (window as Window & { __KLOUDCHAT_FORCE_PAGINATION_FAILURE__?: boolean })
+        .__KLOUDCHAT_FORCE_PAGINATION_FAILURE__,
+    )
+    void import('pagedjs')
+      .then(({ Previewer }) => forceFailure
+        ? Promise.reject(new Error('forced pagination failure'))
+        : Promise.race([new Previewer().preview(html, [sheet], target), timedOut]))
+      .then((flow) => {
+        if (!live) return
+        setPages(flow.total)
+        setPageSize({
+          width: Math.max(A4_WIDTH_PX, target.scrollWidth),
+          height: Math.max(A4_HEIGHT_PX, target.scrollHeight),
+        })
+        setBusy(false)
+      })
+      .catch(() => {
+        if (!live) return
+        setFailure(t('페이지를 나누지 못했습니다. 편집 화면에서 내용을 확인해 주세요.'))
+        setBusy(false)
+      })
+      .finally(() => {
+        if (timer) clearTimeout(timer)
+        URL.revokeObjectURL(sheet)
+      })
+    return () => { live = false; if (timer) clearTimeout(timer); URL.revokeObjectURL(sheet); target.replaceChildren() }
+  // `useT` returns a new function per render; depending on it would restart
+  // pagination after `setBusy`, forever. HTML and CSS are the actual inputs.
+  }, [html, css, settings, attempt])
+
+  useEffect(() => {
+    const node = viewport.current
+    if (!node) return
+    const fit = () => {
+      const gutter = node.clientWidth < 640 ? 16 : 48
+      const room = Math.max(1, node.clientWidth - gutter)
+      setPageScale(Math.min(1, room / pageSize.width))
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [pageSize.width])
+
+  return (
+    <div ref={viewport} className="relative min-h-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
+      <div className="sticky top-0 z-20 mb-3 flex flex-wrap justify-end gap-2">
+        {settingsOpen && (
+          <div className="basis-full rounded-card border border-line bg-panel p-3 shadow-sm" aria-label={t('페이지 설정 도구')}>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
+              <label className="text-xs text-muted">{t('꼬리말')}<input aria-label={t('꼬리말')} value={settings.footer} onChange={(event) => onSettings({ ...settings, footer: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
+              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as Required<PageSettings>['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
+              <label className="flex items-end gap-2 pb-2 text-xs text-muted"><input type="checkbox" checked={settings.firstPageHeader} onChange={(event) => onSettings({ ...settings, firstPageHeader: event.target.checked })} />{t('첫 쪽에도 머리말 표시')}</label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(['top', 'right', 'bottom', 'left'] as const).map((side) => <label key={side} className="text-xs text-muted">{t({ top: '위 여백', right: '오른쪽 여백', bottom: '아래 여백', left: '왼쪽 여백' }[side])}<input type="number" min={10} max={35} aria-label={t({ top: '위 여백', right: '오른쪽 여백', bottom: '아래 여백', left: '왼쪽 여백' }[side])} value={settings.margins[side]} onChange={(event) => onSettings({ ...settings, margins: { ...settings.margins, [side]: Math.min(35, Math.max(10, Number(event.target.value) || 10)) } })} className="ml-1 h-8 w-16 rounded-control border border-line px-2 text-sm" /> mm</label>)}
+            </div>
+          </div>
+        )}
+      </div>
+      {busy && <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted"><Loader2 size={16} className="animate-spin" />{t('페이지를 나누는 중…')}</div>}
+      {failure && (
+        <div role="alert" className="mx-auto max-w-lg rounded-card border border-danger/30 bg-panel p-5 shadow-sm">
+          <p className="font-semibold text-danger">{t('페이지뷰를 만들지 못했습니다')}</p>
+          <p className="mt-1 text-sm text-muted">{failure} {t('문서 내용은 그대로 보존되어 있습니다.')}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setAttempt((value) => value + 1)} className="inline-flex h-9 items-center gap-1.5 rounded-control bg-accent px-3 text-sm font-medium text-white hover:opacity-90">
+              <RefreshCw size={14} />{t('다시 시도')}
+            </button>
+            <button type="button" onClick={onEdit} className="inline-flex h-9 items-center gap-1.5 rounded-control border border-line px-3 text-sm hover:bg-elevated">
+              <FilePenLine size={14} />{t('내용 편집')}
+            </button>
+            <button type="button" onClick={onWebView} className="inline-flex h-9 items-center gap-1.5 rounded-control border border-line px-3 text-sm hover:bg-elevated">
+              <Globe2 size={14} />{t('웹뷰로 보기')}
+            </button>
+          </div>
+        </div>
+      )}
+      <div
+        className="mx-auto"
+        style={{ width: pageSize.width * pageScale, height: pageSize.height * pageScale }}
+      >
+        <div
+          ref={host}
+          aria-label={t('실제 페이지 미리보기')}
+          data-page-count={pages || undefined}
+          data-page-scale={pageScale.toFixed(3)}
+          className="paged-report-preview"
+          style={{
+            width: pageSize.width,
+            transform: `scale(${pageScale})`,
+            transformOrigin: 'top left',
+          }}
+        />
+      </div>
     </div>
   )
 }
@@ -403,6 +790,10 @@ export function DocumentEditor({
   templateId,
   tokens,
   editable,
+  layoutMode,
+  settingsOpen,
+  onLayoutMode,
+  onWebView,
   onDirty,
 }: {
   report: ReportArtifact
@@ -410,16 +801,37 @@ export function DocumentEditor({
   templateId: string
   tokens?: DesignTokens | null
   editable: boolean
+  layoutMode: 'pages' | 'edit'
+  settingsOpen: boolean
+  onLayoutMode?: (mode: 'pages' | 'edit') => void
+  onWebView?: () => void
   /**
    * Called with the edited sections whenever anything changes, and with the
    * document's title when that is what changed.
    */
-  onDirty?: (sections: ReportSection[], title?: string) => void
+  onDirty?: (
+    sections: ReportSection[],
+    title?: string,
+    pageSettings?: ReportArtifact['pageSettings'],
+    reviewComments?: ReportArtifact['reviewComments'],
+  ) => void
 }) {
   const t = useT()
   const [style, setStyle] = useState<TemplateStyle | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [focused, setFocused] = useState<Editor | null>(null)
+  const [focusedSection, setFocusedSection] = useState<string | null>(null)
+  const [outlineOpen, setOutlineOpen] = useState(true)
+  const sectionNodes = useRef<Record<string, HTMLElement | null>>({})
+  const sectionEditors = useRef<Record<string, Editor | null>>({})
+  const [findOpen, setFindOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [replacement, setReplacement] = useState('')
+  const [findStatus, setFindStatus] = useState('')
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [comments, setComments] = useState<NonNullable<ReportArtifact['reviewComments']>>(report.reviewComments ?? [])
+  const [commentQuote, setCommentQuote] = useState('')
+  const [commentDraft, setCommentDraft] = useState('')
   //: Held in state, not a ref: it is portalled into a shadow root that
   //: `DocumentShell` creates in its own effect, so it appears a render after
   //: everything around it. State is what tells the pagination to look again.
@@ -427,9 +839,10 @@ export function DocumentEditor({
   //: Edited bodies, keyed by section id. Absent means untouched, which is what
   //: keeps a document nobody typed in byte-identical to what was generated.
   const [edits, setEdits] = useState<Record<string, string>>({})
+  const editsRef = useRef<Record<string, string>>({})
   //: Re-measure when the stylesheet lands or the document is edited. The
   //: observer catches a block growing; neither of these changes its own size.
-  const { pages, usable, height } = usePagination(
+  const { usable, height, breaks } = usePagination(
     page,
     `${style?.css.length ?? 0}:${Object.keys(edits).length}`,
   )
@@ -449,7 +862,7 @@ export function DocumentEditor({
     if (!node) return
     const fit = () => {
       // The padding the scroll box draws, so the page is not flush to the edge.
-      const room = node.clientWidth - 48
+      const room = node.clientWidth - (node.clientWidth < 640 ? 16 : 48)
       setScale(room > 0 ? Math.min(1, room / A4_WIDTH_PX) : 1)
     }
     fit()
@@ -487,7 +900,14 @@ export function DocumentEditor({
   //: `edits` because they are text rather than markup and go back to the
   //: artifact as a heading and a title, not as a section body.
   const [renamed, setRenamed] = useState<Record<string, string>>({})
-  const [, setTitle] = useState<string | null>(null)
+  const renamedRef = useRef<Record<string, string>>({})
+  const [editedTitle, setTitle] = useState<string | null>(null)
+  const [pageSettings, setPageSettings] = useState<Required<PageSettings>>({
+    ...DEFAULT_PAGE_SETTINGS,
+    ...report.pageSettings,
+    margins: { ...DEFAULT_PAGE_SETTINGS.margins, ...report.pageSettings?.margins },
+    footer: report.pageSettings?.footer ?? tokens?.footer ?? DEFAULT_PAGE_SETTINGS.footer,
+  })
 
   const compose = (
     bodies: Record<string, string>,
@@ -502,16 +922,22 @@ export function DocumentEditor({
     }))
 
   const change = (section: ReportSection, html: string) => {
-    const next = { ...edits, [section.id]: html }
+    // Several editors can update in the same event (Replace all). React state
+    // still contains the previous render during the second callback, so using
+    // it here discarded the first section's change. The ref is the synchronous
+    // document accumulator; state remains what causes the render.
+    const next = { ...editsRef.current, [section.id]: html }
+    editsRef.current = next
     setEdits(next)
-    onDirty?.(compose(next, renamed))
+    onDirty?.(compose(next, renamedRef.current))
   }
 
   const rename = (section: ReportSection, heading: string) => {
     if (!heading || heading === section.heading) return
-    const next = { ...renamed, [section.id]: heading }
+    const next = { ...renamedRef.current, [section.id]: heading }
+    renamedRef.current = next
     setRenamed(next)
-    onDirty?.(compose(edits, next))
+    onDirty?.(compose(editsRef.current, next))
   }
 
   const retitle = (next: string) => {
@@ -519,6 +945,121 @@ export function DocumentEditor({
     setTitle(next)
     onDirty?.(compose(edits, renamed), next)
   }
+
+  const occurrences = (editor: Editor, needle: string) => {
+    const found: { from: number; to: number }[] = []
+    if (!needle) return found
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return
+      let start = 0
+      while ((start = node.text.indexOf(needle, start)) >= 0) {
+        found.push({ from: pos + start, to: pos + start + needle.length })
+        start += Math.max(needle.length, 1)
+      }
+    })
+    return found
+  }
+
+  const findNext = () => {
+    if (!query) return
+    const current = focusedSection ? report.sections.findIndex((section) => section.id === focusedSection) : -1
+    for (let step = 1; step <= report.sections.length; step += 1) {
+      const section = report.sections[(current + step + report.sections.length) % report.sections.length]
+      const editor = sectionEditors.current[section.id]
+      if (!editor) continue
+      const matches = occurrences(editor, query)
+      if (!matches.length) continue
+      const after = section.id === focusedSection ? editor.state.selection.to : 0
+      const match = matches.find((one) => one.from >= after) ?? matches[0]
+      editor.chain().focus().setTextSelection(match).run()
+      setFocused(editor)
+      setFocusedSection(section.id)
+      sectionNodes.current[section.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const total = report.sections.reduce((sum, row) => {
+        const candidate = sectionEditors.current[row.id]
+        return sum + (candidate ? occurrences(candidate, query).length : 0)
+      }, 0)
+      setFindStatus(t('{n}개 찾음').replace('{n}', String(total)))
+      return
+    }
+    setFindStatus(t('일치하는 내용이 없습니다'))
+  }
+
+  const replaceCurrent = () => {
+    if (!focused || !query) return findNext()
+    const { from, to } = focused.state.selection
+    if (focused.state.doc.textBetween(from, to) === query) {
+      focused.chain().focus().insertContentAt({ from, to }, replacement).run()
+    }
+    findNext()
+  }
+
+  const replaceAll = () => {
+    if (!query) return
+    let changed = 0
+    for (const section of report.sections) {
+      const editor = sectionEditors.current[section.id]
+      if (!editor) continue
+      const matches = occurrences(editor, query)
+      if (!matches.length) continue
+      let transaction = editor.state.tr
+      for (const match of [...matches].reverse()) {
+        transaction = transaction.insertText(replacement, match.from, match.to)
+      }
+      editor.view.dispatch(transaction)
+      changed += matches.length
+    }
+    setFindStatus(t('{n}개 바꿈').replace('{n}', String(changed)))
+  }
+
+  const beginComment = () => {
+    if (!focused || !focusedSection) return
+    const { from, to } = focused.state.selection
+    const quote = focused.state.doc.textBetween(from, to, ' ').trim()
+    if (!quote) return
+    setCommentQuote(quote)
+    setCommentDraft('')
+    setCommentsOpen(true)
+  }
+
+  const commitComments = (next: NonNullable<ReportArtifact['reviewComments']>) => {
+    setComments(next)
+    onDirty?.(compose(editsRef.current, renamedRef.current), editedTitle ?? undefined, pageSettings, next)
+  }
+
+  const addComment = () => {
+    if (!focusedSection || !commentQuote || !commentDraft.trim()) return
+    commitComments([...comments, {
+      id: crypto.randomUUID(), sectionId: focusedSection, quote: commentQuote,
+      body: commentDraft.trim(), status: 'open', createdAt: new Date().toISOString(),
+    }])
+    setCommentQuote('')
+    setCommentDraft('')
+  }
+
+  const goToComment = (comment: NonNullable<ReportArtifact['reviewComments']>[number]) => {
+    const editor = sectionEditors.current[comment.sectionId]
+    if (!editor) return
+    let match: { from: number; to: number } | undefined
+    editor.state.doc.descendants((node, pos) => {
+      if (match || !node.isText || !node.text) return
+      const offset = node.text.indexOf(comment.quote)
+      if (offset >= 0) match = { from: pos + offset, to: pos + offset + comment.quote.length }
+    })
+    if (match) editor.chain().focus().setTextSelection(match).run()
+    setFocused(editor)
+    setFocusedSection(comment.sectionId)
+    sectionNodes.current[comment.sectionId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const previewHtml = `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section><h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${bodyOf(section)}</section>`).join('')}</main>`
+  const visualStyle = tokens?.visualStyle ?? 'editorial'
+  const visualCss = visualStyle === 'poster'
+    ? `.page .cover{background:linear-gradient(145deg,var(--accent),color-mix(in srgb,var(--accent) 48%,#111827));color:#fff;padding:30mm 22mm}.page .cover h1{color:#fff;font-size:30pt;max-width:15ch}.page section>h2{font-size:18pt;border:0;padding:0 0 4mm;color:var(--accent)}.page section{margin-bottom:14mm}.page blockquote,.page .callout{border-radius:3mm;background:color-mix(in srgb,var(--accent) 8%,#fff)}`
+    : visualStyle === 'minimal'
+      ? `.page .cover{min-height:92mm;padding-top:30mm;background:color-mix(in srgb,var(--accent) 7%,#fff)}.page .cover h1{font-size:22pt;font-weight:600;max-width:22ch}.page section>h2{font-size:12pt;font-weight:650;letter-spacing:.08em;border:0;color:var(--muted)}.page section{margin-bottom:9mm}`
+      : ''
+  const pageCss = `${style?.css ?? ''}\n${visualCss}`
 
   if (error) return <p className="p-4 text-sm text-danger">{t(error)}</p>
   if (templateId && !style) {
@@ -529,10 +1070,60 @@ export function DocumentEditor({
     )
   }
 
+  if (layoutMode === 'pages') {
+    return <PagedDocument html={previewHtml} css={pageCss} settings={pageSettings} settingsOpen={settingsOpen} onEdit={() => onLayoutMode?.('edit')} onWebView={() => onWebView?.()} onSettings={(next) => { setPageSettings(next); onDirty?.(compose(edits, renamed), editedTitle ?? undefined, next) }} />
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {editable && <Toolbar editor={focused} />}
-      <div ref={viewport} className="min-h-0 flex-1 overflow-auto bg-elevated p-6">
+      <div className="flex min-w-0 items-center border-b border-line bg-panel pr-2 max-sm:pr-1">
+        <div className="min-w-0 flex-1">{editable && <Toolbar editor={focused} sources={report.sources} onFind={() => setFindOpen((value) => !value)} onComment={beginComment} />}</div>
+        <button type="button" aria-pressed={commentsOpen} aria-label={t('검토 메모')} onClick={() => setCommentsOpen((value) => !value)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2 text-xs text-muted hover:bg-elevated hover:text-fg max-sm:w-8 max-sm:px-0">
+          <MessagesSquare size={14} /><span className="max-sm:hidden">{t('검토')} {comments.filter((comment) => comment.status === 'open').length}</span>
+        </button>
+        <button type="button" aria-pressed={outlineOpen} aria-label={t('문서 개요')} onClick={() => setOutlineOpen((value) => !value)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2 text-xs text-muted hover:bg-elevated hover:text-fg max-sm:w-8 max-sm:px-0">
+          <ListTree size={14} /><span className="max-sm:hidden">{t('개요')}</span>
+        </button>
+      </div>
+      {findOpen && (
+        <div role="search" aria-label={t('찾기 및 바꾸기')} className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
+          <input autoFocus aria-label={t('찾을 내용')} value={query} onChange={(event) => { setQuery(event.target.value); setFindStatus('') }} onKeyDown={(event) => { if (event.key === 'Enter') findNext() }} placeholder={t('찾을 내용')} className="h-8 w-48 rounded-control border border-line px-2 text-sm" />
+          <input aria-label={t('바꿀 내용')} value={replacement} onChange={(event) => setReplacement(event.target.value)} placeholder={t('바꿀 내용')} className="h-8 w-48 rounded-control border border-line px-2 text-sm" />
+          <button type="button" onClick={findNext} className="h-8 rounded-control border border-line px-3 text-xs hover:bg-elevated">{t('다음 찾기')}</button>
+          <button type="button" onClick={replaceCurrent} className="h-8 rounded-control border border-line px-3 text-xs hover:bg-elevated">{t('바꾸기')}</button>
+          <button type="button" onClick={replaceAll} className="h-8 rounded-control border border-line px-3 text-xs hover:bg-elevated">{t('모두 바꾸기')}</button>
+          <span role="status" className="text-xs text-muted">{findStatus}</span>
+        </div>
+      )}
+      <div className="relative flex min-h-0 flex-1">
+        {outlineOpen && (
+          <nav aria-label={t('문서 개요')} className="w-56 shrink-0 overflow-auto border-r border-line bg-panel p-3 max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-20 max-sm:shadow-overlay">
+            <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{t('문서 개요')}</p>
+            <button type="button" onClick={() => viewport.current?.scrollTo({ top: 0, behavior: 'smooth' })} className="mb-1 block w-full truncate rounded-control px-2 py-2 text-left text-sm font-medium text-fg hover:bg-elevated">
+              {editedTitle ?? report.title}
+            </button>
+            <ol className="space-y-0.5">
+              {report.sections.map((section, index) => (
+                <li key={section.id}>
+                  <button
+                    type="button"
+                    aria-current={focusedSection === section.id ? 'location' : undefined}
+                    title={renamed[section.id] ?? section.heading}
+                    onClick={() => {
+                      setFocusedSection(section.id)
+                      sectionNodes.current[section.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }}
+                    className={cn('flex w-full gap-2 rounded-control px-2 py-1.5 text-left text-xs hover:bg-elevated', focusedSection === section.id ? 'bg-accent-soft text-accent' : 'text-muted')}
+                  >
+                    <span className="shrink-0 tabular-nums text-faint">{index + 1}</span>
+                    <span className="truncate">{renamed[section.id] ?? section.heading}</span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )}
+        <div ref={viewport} aria-label={t('보고서 편집 페이지')} className="min-h-0 min-w-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
         {/*
           The sheet is A4 and the panel is whatever the panel is.
 
@@ -562,7 +1153,7 @@ export function DocumentEditor({
             }}
           >
           <div className="relative">
-            <DocumentShell css={style?.css ?? ''}>
+            <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}`} className="report-page-shell">
               {/* `paginated` 는 서식에게 "낱장은 내가 뒤에 그린다" 고 알린다.
                   완성된 파일에는 이 클래스가 없으므로 종이색은 그대로다. */}
               <div
@@ -584,7 +1175,7 @@ export function DocumentEditor({
                   />
                 </div>
                 {report.sections.map((section) => (
-                  <section key={section.id}>
+                  <section key={section.id} ref={(node) => { sectionNodes.current[section.id] = node }}>
                     <EditableLine
                       value={section.heading}
                       editable={editable}
@@ -593,7 +1184,15 @@ export function DocumentEditor({
                     <SectionEditor
                       html={bodyOf(section)}
                       editable={editable}
-                      onReady={setFocused}
+                      onReady={(editor) => {
+                        if (editor) {
+                          setFocused(editor)
+                          setFocusedSection(section.id)
+                        } else if (focusedSection === section.id) {
+                          setFocused(null)
+                        }
+                      }}
+                      onMount={(editor) => { sectionEditors.current[section.id] = editor }}
                       onChange={(html) => change(section, html)}
                     />
                   </section>
@@ -601,9 +1200,42 @@ export function DocumentEditor({
               </div>
             </DocumentShell>
           </div>
-          <PageGuides pages={pages} usable={usable} />
+          <PageGuides breaks={breaks} />
           </div>
         </div>
+        {commentsOpen && (
+          <aside aria-label={t('검토 메모')} className="w-72 shrink-0 overflow-auto border-l border-line bg-panel p-3 max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-20 max-sm:w-[calc(100%-2rem)] max-sm:max-w-72 max-sm:shadow-overlay">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">{t('검토 메모')}</h3>
+              <span className="text-xs text-faint">{t('{n}개 미해결').replace('{n}', String(comments.filter((comment) => comment.status === 'open').length))}</span>
+            </div>
+            {commentQuote && (
+              <div className="mb-3 rounded-card border border-accent/30 bg-accent-soft p-2">
+                <blockquote className="line-clamp-3 text-xs text-muted">“{commentQuote}”</blockquote>
+                <textarea aria-label={t('메모 내용')} autoFocus value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder={t('검토 의견을 입력하세요')} className="mt-2 min-h-20 w-full resize-y rounded-control border border-line bg-panel p-2 text-sm" />
+                <div className="mt-2 flex justify-end gap-1">
+                  <button type="button" onClick={() => { setCommentQuote(''); setCommentDraft('') }} className="rounded-control px-2 py-1 text-xs text-muted hover:bg-elevated">{t('취소')}</button>
+                  <button type="button" disabled={!commentDraft.trim()} onClick={addComment} className="rounded-control bg-accent px-2 py-1 text-xs text-white disabled:opacity-40">{t('메모 추가')}</button>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              {comments.map((comment) => (
+                <article key={comment.id} className={cn('rounded-card border p-2', comment.status === 'resolved' ? 'border-line bg-elevated/40 opacity-70' : 'border-line bg-panel')}>
+                  <button type="button" onClick={() => goToComment(comment)} className="block w-full text-left">
+                    <p className="truncate text-xs font-medium text-fg">“{comment.quote}”</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{comment.body}</p>
+                  </button>
+                  <button type="button" onClick={() => commitComments(comments.map((row) => row.id === comment.id ? { ...row, status: row.status === 'open' ? 'resolved' : 'open' } : row))} className="mt-2 text-xs font-medium text-accent hover:underline">
+                    {comment.status === 'open' ? t('해결로 표시') : t('다시 열기')}
+                  </button>
+                </article>
+              ))}
+              {!comments.length && !commentQuote && <p className="py-8 text-center text-xs text-faint">{t('선택한 문장에 메모를 남겨 보세요.')}</p>}
+            </div>
+          </aside>
+        )}
+      </div>
       </div>
     </div>
   )
@@ -805,6 +1437,34 @@ function fenceHtml(
       )
       .join('')
     return items ? `<ol class="steps">${items}</ol>` : ''
+  }
+  if (lang === 'cards') {
+    // `<section>` rather than `<div>`: the cards inside are divs, and
+    // `richtext` reads this back with a lazy close — so the wrapper has to be
+    // a tag its own children never use, or the first card's close ends the
+    // grid and the rest of it comes back as loose headings.
+    const grid = parseCards(source)
+      .map(
+        (card) =>
+          '<div>' +
+          `<h3>${escape(card.title)}</h3>` +
+          (card.items.length
+            ? `<ul>${card.items.map((line) => `<li>${escape(line)}</li>`).join('')}</ul>`
+            : '') +
+          '</div>',
+      )
+      .join('')
+    return grid ? `<section class="cards">${grid}</section>` : ''
+  }
+  if (lang === 'callout') {
+    const callout = parseCallout(source)
+    if (!callout?.title) return ''
+    return (
+      '<section class="callout">' +
+      `<h3>${escape(callout.title)}</h3>` +
+      callout.items.map((line) => `<p>${escape(line)}</p>`).join('') +
+      '</section>'
+    )
   }
   if (lang === 'chart') {
     // The numbers, not a drawing of them. The 서식 styles the figure and the

@@ -1,4 +1,32 @@
+@import '@fontsource/pretendard/400.css';
+@import '@fontsource/pretendard/500.css';
+@import '@fontsource/pretendard/600.css';
+@import '@fontsource/pretendard/700.css';
+@import '@fontsource/nanum-myeongjo/400.css';
+@import '@fontsource/nanum-myeongjo/700.css';
 @import 'tailwindcss';
+
+.ProseMirror .page-break {
+  position: relative;
+  height: 24px;
+  margin: 14px 0;
+  border-top: 1px dashed color-mix(in srgb, currentColor 28%, transparent);
+  cursor: pointer;
+}
+.ProseMirror .page-break::after {
+  content: '쪽 나누기';
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  padding: 0 6px;
+  background: white;
+  color: #777;
+  font-size: 11px;
+  line-height: 18px;
+}
+.ProseMirror .page-break.ProseMirror-selectednode {
+  border-color: var(--accent, #5b5bd6);
+}
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -279,6 +307,28 @@ body {
    long report break across pages at all. */
 [data-print-doc] {
   display: none;
+}
+
+.paged-report-preview .pagedjs_pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.paged-report-preview .pagedjs_page {
+  flex: none;
+  background: white;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 10%);
+}
+
+/* A slide is edited on the slide itself. Keep the selection affordance inside
+   the scaled canvas so the thumbnail-sized geometry and the saved geometry do
+   not acquire a second, editor-only layout. */
+[data-slide-element][data-selected='true'] {
+  border-radius: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 @media print {

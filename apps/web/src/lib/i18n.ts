@@ -1475,7 +1475,6 @@ const EN: Record<string, string> = {
   '다음 쪽': 'Next page',
   '서식 수정': 'Edit form',
   '{name} 양식 내려받기': 'Download the {name} form',
-  '양식 {ext}': '{ext} form',
   '고른 서식': 'Chosen',
   '이미 고른 서식입니다': 'Already chosen',
   '고친 내용은 다음에 이 시작점을 고를 때부터 반영됩니다.':

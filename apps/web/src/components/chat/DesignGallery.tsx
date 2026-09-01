@@ -3,8 +3,6 @@ import {
   ChevronRight,
   Download,
   LayoutGrid,
-  Loader2,
-  Paperclip,
   Pencil,
   Plus,
   Search,
@@ -16,7 +14,6 @@ import {
   argumentText,
   fillPrompt,
   templateText,
-  downloadDesignTemplateForm,
   downloadFile,
   templatesApi,
   type DesignTemplateRow,
@@ -124,7 +121,11 @@ type Sentence = {
   shared: boolean
   /** Whether the caller may rewrite or remove it. Built-ins never are. */
   own: boolean
+  /** 업무별 탐색을 위한 분류. 개인 시작점에는 없을 수 있다. */
+  group: string
 }
+
+type GalleryTab = 'starting-point' | 'format'
 
 /**
  * Whether picking a sentence fills the composer or rides with the turn.
@@ -229,19 +230,6 @@ export function DesignTemplateCard({
 }) {
   const t = useT()
   const text = templateText(row, english)
-  const [saving, setSaving] = useState(false)
-  const save = async () => {
-    setSaving(true)
-    try {
-      await downloadDesignTemplateForm(row.id, text.name, row.formFormat)
-    } catch {
-      // Nothing to say that the card can say. A form that will not come down
-      // is a broken route, not a decision the reader made — and a red line
-      // under a card in a grid of cards is noise they cannot act on.
-    } finally {
-      setSaving(false)
-    }
-  }
   return (
     // `h-full` and a column: a row holds a 서식 card and a sentence card side
     // by side, and they are nothing like the same height. Without this the
@@ -313,7 +301,7 @@ export function DesignTemplateCard({
         </div>
         {row.arguments.length === 0 && (
           <div className="pt-2">
-            <Foot row={row} chosen={chosen} saving={saving} onSave={save}>
+            <Foot chosen={chosen}>
               <Button
                 size="sm"
                 disabled={chosen}
@@ -332,35 +320,23 @@ export function DesignTemplateCard({
 /**
  * The row of actions at the bottom of a card.
  *
- * The form sits beside 시작 rather than replacing it, because they answer
- * different questions: one asks the model to write in this shape, the other
- * hands over the shape itself to fill in by hand. Somebody who wants the
- * `.docx` to send to a colleague who does not use this wants the second one,
- * and until now had no way to say so.
+ * 시작 버튼 하나와, 이미 고른 서식이라는 말. 여기에는 한동안 그 서식이 싣고
+ * 다니는 빈 양식을 `.docx`·`.pptx` 로 내려받는 버튼이 함께 있었다. 파일은
+ * 그대로 남아 있다 — 모델이 무엇을 채워야 하는지 그 파일에서 읽고, 카드가
+ * 보여 주는 모양이 그 파일과 어긋나지 않는지 시험이 지킨다. 다만 그것을
+ * 사람이 받아 가는 문은 닫는다.
  */
 function Foot({
-  row,
   chosen,
-  saving,
-  onSave,
   children,
 }: {
-  row: DesignTemplateRow
   chosen?: boolean
-  saving: boolean
-  onSave: () => Promise<void>
   children: React.ReactNode
 }) {
   const t = useT()
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {children}
-      {row.formFormat && (
-        <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onSave()}>
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          {t('양식 {ext}').replace('{ext}', row.formFormat)}
-        </Button>
-      )}
       {chosen && <span className="text-xs text-faint">{t('이미 고른 서식입니다')}</span>}
     </div>
   )
@@ -394,6 +370,7 @@ export function DesignGalleryModal({
   onClose: () => void
 }) {
   const t = useT()
+  const [tab, setTab] = useState<GalleryTab>(kind === 'chat' ? 'starting-point' : 'format')
   const [category, setCategory] = useState<string | 'all'>('all')
   const rows = useDesignTemplates(open)
   const start = useStartTemplate()
@@ -486,6 +463,7 @@ export function DesignGalleryModal({
             : null,
           shared: row.shared,
           own: row.mine !== false,
+          group: row.group || '내 시작점',
         })),
       ...saved
         .filter((row) => row.kind === kind)
@@ -499,10 +477,16 @@ export function DesignGalleryModal({
           shared: false,
           // The built-in catalogue is the product's, not anybody's to edit.
           own: false,
+          group: row.group || '기본',
         })),
     ],
     [mine, saved, kind],
   )
+  // Media starting points used to repeat the same cover/clip presets already
+  // offered as formats. Do not leave an empty conceptual lane behind after
+  // removing those duplicates. A person's own row can still bring the lane
+  // back, and chat always owns this lane because it has no result format.
+  const hasStartingPoints = kind === 'chat' || sentences.length > 0
   /*
    * What this chip gathers: the starting points somebody saved, beside the
    * shipped 서식 categories. It read 내 문장 — "my sentences" — which names
@@ -510,22 +494,17 @@ export function DesignGalleryModal({
    * oddly next to 업무 · 학업 · 연구. The cards under it already say
    * 시작점으로 붙이기, so the chip says the same word.
    */
-  const MINE = '내 시작점'
-
   const categories = useMemo(
-    () => [
-      ...new Set(forSurface.map((c) => c.text.category)),
-      ...(sentences.length ? [MINE] : []),
-    ],
-    [forSurface, sentences.length],
+    () =>
+      tab === 'format'
+        ? [...new Set(forSurface.map((c) => c.text.category))]
+        : [...new Set(sentences.map((row) => row.group))],
+    [tab, forSurface, sentences],
   )
   const visible =
-    category === 'all' || category === MINE
-      ? category === MINE
-        ? []
-        : forSurface
-      : forSurface.filter((c) => c.text.category === category)
-  const showSentences = sentences.length > 0 && (category === 'all' || category === MINE)
+    category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
+  const visibleSentences =
+    category === 'all' ? sentences : sentences.filter((row) => row.group === category)
 
   /**
    * The two halves as one list, so a page can be cut across both.
@@ -536,21 +515,19 @@ export function DesignGalleryModal({
    * them makes a short page.
    */
   const cards: Card[] = useMemo(
-    () => [
-      ...visible.map(({ row, text }) => ({
-        key: row.id,
-        design: row,
-        words: `${text.name} ${text.description} ${text.category} ${text.fills.join(' ')}`,
-      })),
-      ...(showSentences
-        ? sentences.map((row) => ({
+    () =>
+      tab === 'format'
+        ? visible.map(({ row, text }) => ({
+            key: row.id,
+            design: row,
+            words: `${text.name} ${text.description} ${text.category} ${text.fills.join(' ')}`,
+          }))
+        : visibleSentences.map((row) => ({
             key: row.id,
             sentence: row,
-            words: `${row.title} ${row.description} ${row.fills.join(' ')}`,
-          }))
-        : []),
-    ],
-    [visible, sentences, showSentences],
+            words: `${row.title} ${row.description} ${row.group} ${row.fills.join(' ')}`,
+          })),
+    [tab, visible, visibleSentences],
   )
 
   const [query, setQuery] = useState('')
@@ -589,6 +566,18 @@ export function DesignGalleryModal({
     onClose()
   }
 
+  const pickStartingPoint = (row: Sentence) => {
+    if (fillsTheComposer(kind)) setDraft(row.prompt || row.title)
+    else
+      setPendingStartingTemplate({
+        id: row.id,
+        title: row.title,
+        fills: row.fills,
+      })
+    setPendingAttachment(row.form)
+    onClose()
+  }
+
   const closeForm = () => setWriting(null)
 
   /**
@@ -616,7 +605,7 @@ export function DesignGalleryModal({
           closeForm()
           onClose()
         }}
-        title={writing === 'new' ? t('서식 추가') : t('서식 수정')}
+        title={writing === 'new' ? t('시작점 만들기') : t('시작점 수정')}
         width="max-w-3xl"
       >
         <TemplateForm
@@ -642,10 +631,74 @@ export function DesignGalleryModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={t('서식 고르기')}
-      description={t('고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.')}
+      title={t('작업 시작하기')}
+      description={t('할 일을 빠르게 정하거나, 결과물이 나올 모양을 고를 수 있습니다.')}
       width="max-w-3xl"
     >
+        <div
+          className={cn('mb-4 grid grid-cols-1 gap-2', hasStartingPoints && kind !== 'chat' && 'sm:grid-cols-2')}
+          role="tablist"
+          aria-label={t('작업 시작 방법')}
+        >
+          {hasStartingPoints && <button
+            role="tab"
+            aria-selected={tab === 'starting-point'}
+            onClick={() => {
+              setTab('starting-point')
+              setCategory('all')
+              setQuery('')
+              setPage(0)
+            }}
+            className={cn(
+              'rounded-card border p-3 text-left transition-colors',
+              tab === 'starting-point' ? 'border-accent bg-accent-soft' : 'border-line hover:border-line-strong',
+            )}
+          >
+            <span className="block text-base font-semibold">{t('업무 시작점')}</span>
+            <span className="mt-0.5 block text-sm text-muted">{t('분석·작성·조사처럼 무엇을 할지 정합니다')}</span>
+            <span className="mt-2 block text-xs text-faint">{t('이번 요청에만 적용 · 선택 후 해제 가능')}</span>
+          </button>
+          }
+          {kind !== 'chat' && forSurface.length > 0 && (
+            <button
+              role="tab"
+              aria-selected={tab === 'format'}
+              onClick={() => {
+                setTab('format')
+                setCategory('all')
+                setQuery('')
+                setPage(0)
+              }}
+              className={cn(
+                'rounded-card border p-3 text-left transition-colors',
+                tab === 'format' ? 'border-accent bg-accent-soft' : 'border-line hover:border-line-strong',
+              )}
+            >
+              <span className="block text-base font-semibold">{t('결과 서식')}</span>
+              <span className="mt-0.5 block text-sm text-muted">{t('보고서 구성·슬라이드 배열처럼 결과의 모양을 정합니다')}</span>
+              <span className="mt-2 block text-xs text-faint">{t('이 작업에 유지 · 나중에 다른 서식으로 변경 가능')}</span>
+            </button>
+          )}
+        </div>
+
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold">
+              {tab === 'starting-point' ? t('어떤 일을 시작할까요?') : t('어떤 모양으로 받을까요?')}
+            </h3>
+            <p className="text-sm text-muted">
+              {tab === 'starting-point'
+                ? t('카드의 준비물만 입력하면 요청을 구체화해 줍니다.')
+                : t('미리보기와 점검 항목을 확인한 뒤 고르세요.')}
+            </p>
+          </div>
+          {tab === 'starting-point' && (
+            <Button size="sm" onClick={() => setWriting('new')}>
+              <Plus size={13} />
+              {t('내 시작점 만들기')}
+            </Button>
+          )}
+        </div>
         <div className="mb-3 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
             {categories.length > 1 &&
@@ -675,8 +728,8 @@ export function DesignGalleryModal({
               className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
             />
             <Input
-              aria-label={t('서식 검색')}
-              placeholder={t('검색')}
+              aria-label={tab === 'starting-point' ? t('시작점 검색') : t('결과 서식 검색')}
+              placeholder={tab === 'starting-point' ? t('업무 또는 준비물 검색') : t('서식 또는 용도 검색')}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -700,7 +753,7 @@ export function DesignGalleryModal({
            fixed window pins that; even rows keep the two cards of a row the
            same size; and the card below pins its buttons to its foot and
            scrolls only its middle, so neither dead air nor clipping shows. */}
-        <div className="grid h-[600px] [grid-auto-rows:1fr] content-start gap-3 sm:grid-cols-2">
+        <div className="grid min-h-80 max-h-[58vh] content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
           {shown.map((card) =>
             card.design ? (
               <DesignTemplateCard
@@ -712,37 +765,8 @@ export function DesignGalleryModal({
               />
             ) : (
               ((row) => (
-              <div key={row.id} className="group relative h-full">
-              <button
-                onClick={() => {
-                  // A sentence and no shape: the document keeps whatever 서식
-                  // it already had. Where the sentence goes depends on the
-                  // surface — see `fillsTheComposer`. This used to call
-                  // `setDraft` on every surface, which put the machinery's
-                  // framing into the transcript in the person's own voice.
-                  if (fillsTheComposer(kind)) setDraft(row.prompt || row.title)
-                  else
-                    setPendingStartingTemplate({
-                      id: row.id,
-                      title: row.title,
-                      fills: row.fills,
-                    })
-                  // The form rides along as an attachment, which is what makes
-                  // "이 양식대로 써 줘" mean anything: the model reads the
-                  // document's actual shape rather than a description of it.
-                  // Cleared when there is none, so a plain starting point does
-                  // not inherit the last one's form.
-                  setPendingAttachment(row.form)
-                  onClose()
-                }}
-                // `w-full`/`h-full` and a column, because the card is the
-                // button and the grid cell is the wrapper around it. Without
-                // them the wrapper fills its column and the button inside
-                // shrinks to its longest line — which is why every card in the
-                // grid came out a different width, and why a short one left a
-                // gap under it beside a tall 서식 card.
-                className="flex h-full w-full flex-col rounded-card border border-line p-3 text-left transition-colors hover:border-accent"
-              >
+              <div key={row.id} className="group relative min-h-44">
+              <div className="flex h-full w-full flex-col rounded-card border border-line p-3 text-left transition-colors hover:border-accent">
                 <p className="flex items-center gap-1.5 text-base font-medium">
                   {row.title}
                   {/* 조직의 것인지 내가 쓴 것인지. 같은 격자에 섞여 있으므로
@@ -752,40 +776,40 @@ export function DesignGalleryModal({
                 {row.description && (
                   <p className="mt-0.5 text-sm text-muted">{row.description}</p>
                 )}
+                <Badge className="mt-2 w-fit">{row.group}</Badge>
                 {/* 무엇을 가져와야 하는지. 고른 뒤 입력창이 이것을 이름으로
                     물으므로, 고르기 전에 같은 말을 보여 준다 — 카드가 붙여 줄
                     문장을 미리 적어 두는 것과는 다른 일이다. */}
                 {row.fills.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {row.fills.map((fill) => (
-                      <span
-                        key={fill}
-                        className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
-                      >
-                        {fill}
-                      </span>
-                    ))}
+                  <div className="mt-2">
+                    <p className="mb-1 text-xs font-medium text-muted">{t('준비할 자료')}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {row.fills.map((fill) => (
+                        <span
+                          key={fill}
+                          className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
+                        >
+                          {fill}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
-                <p className="mt-auto flex items-center gap-1 pt-1.5 text-xs text-faint">
-                  {fillsTheComposer(kind) ? t('입력창에 채우기') : t('시작점으로 붙이기')}
-                  {/* 이 카드는 다른 카드와 다르게 동작한다 — 파일 하나를 함께
-                      붙인다. 고르고 나서 알게 되면 놀랄 일이므로 미리 적는다. */}
+                <details className="mt-2 rounded-control bg-elevated px-2.5 py-2 text-xs leading-relaxed">
+                  <summary className="cursor-pointer font-medium text-muted">
+                    {t('실제 작업 방식 보기')}
+                  </summary>
+                  <p className="mt-1.5 whitespace-pre-wrap text-faint">{row.prompt}</p>
+                </details>
+                <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
+                  <Button
+                    size="sm"
+                    aria-label={t('{name} 시작점 선택').replace('{name}', row.title)}
+                    onClick={() => pickStartingPoint(row)}
+                  >
+                    {t('이 시작점 선택')}
+                  </Button>
                   {row.form && (
-                    <>
-                      <span aria-hidden>·</span>
-                      <Paperclip size={11} />
-                      {row.form.name}
-                    </>
-                  )}
-                </p>
-                </button>
-                {/* 붙어 있는 양식을 그대로 내려받는다. 기본 서식이 제 양식을
-                    내주는 것과 같은 일이고, 이것이 있어야 "서식 추가" 가
-                    이름값을 한다 — 누른 사람이 만든 것도 채워 쓸 수 있는
-                    양식이지, 문장 한 줄이 아니다. */}
-                {row.form && (
-                  <div className="absolute right-2 bottom-2">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -793,9 +817,14 @@ export function DesignGalleryModal({
                       onClick={() => void downloadFile(row.form!.id, row.form!.name)}
                     >
                       <Download size={13} />
+                      {row.form.name}
                     </Button>
-                  </div>
-                )}
+                  )}
+                  <span className="text-xs text-faint">
+                    {fillsTheComposer(kind) ? t('선택 후 입력창에서 수정') : t('이번 요청에만 적용')}
+                  </span>
+                </div>
+              </div>
                 {/* 쓴 사람만. 공용은 관리자 화면에서 고친다 — 여기서 고치면
                     한 사람이 조직 전체의 문장을 바꾸게 된다.
 
@@ -830,7 +859,7 @@ export function DesignGalleryModal({
           )}
           {shown.length === 0 && (
             <p className="col-span-full py-8 text-center text-sm text-faint">
-              {t('찾는 서식이 없습니다.')}
+              {tab === 'starting-point' ? t('조건에 맞는 시작점이 없습니다.') : t('조건에 맞는 결과 서식이 없습니다.')}
             </p>
           )}
       </div>
@@ -865,16 +894,28 @@ export function DesignGalleryModal({
 
       {/* 하나 쓰는 자리. 목록 아래에 두는 것은 '고르기' 가 이 화면의 일이고
           '쓰기' 는 그다음이기 때문이다. */}
-      {(category === 'all' || category === MINE) && (
-        <div className="mt-2 border-t border-line px-1 pt-2">
-          <Button size="sm" onClick={() => setWriting('new')}>
-            <Plus size={13} />
-            {t('서식 추가')}
-          </Button>
-        </div>
-      )}
     </Modal>
   )
+}
+
+/**
+ * Whether a surface offers this picker at all.
+ *
+ * 챗 does not. A 서식 is a shape a result comes out in — a report's sections,
+ * a deck's slides, a picture's frame — and a conversation has no shape to
+ * choose: what came back here was a list of example sentences, offered under
+ * a name that promises a document. The other three surfaces keep it, and a
+ * saved sentence for 챗 is still what 시작점 offers on the empty screen.
+ *
+ * One answer rather than a condition at each door: the composer's own button
+ * asked the same question and would otherwise have kept opening the modal the
+ * gallery button no longer shows.
+ */
+export function offersTemplates(kind: SessionKind): boolean {
+  // Chat has no rendering template, but it does have saved starting points.
+  // Hiding the only picker made those rows impossible to use from a fresh
+  // conversation even though they remained editable in settings.
+  return kind === 'chat' || kind === 'report' || kind === 'slides' || kind === 'image' || kind === 'av'
 }
 
 /**
@@ -901,12 +942,12 @@ export function DesignGallery({
       s.designTemplates.some((row) => row.surface === kind) ||
       s.promptTemplates.some((row) => row.kind === kind),
   )
-  if (!has) return null
+  if (!offersTemplates(kind) || !has) return null
   return (
     <>
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <LayoutGrid size={14} />
-        {t('서식 고르기')}
+        {t('작업 시작하기')}
       </Button>
       <DesignGalleryModal
         kind={kind}

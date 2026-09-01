@@ -10,6 +10,7 @@ lerna-debug.log*
 # ── Node ───────────────────────────────────────────────────────────────────
 node_modules
 apps/web/node_modules
+.tools/
 dist
 dist-ssr
 *.local

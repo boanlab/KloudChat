@@ -10,6 +10,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  LoadingState,
   Field,
   Input,
   Modal,
@@ -88,6 +89,7 @@ export function AgentsPage() {
     newSession,
     setNotice,
     loadWorkspace,
+    workspaceLoading,
     user,
   } = useStore()
   const [skillQuery, setSkillQuery] = useState('')
@@ -368,7 +370,9 @@ export function AgentsPage() {
         </div>
         {/* 새 계정은 이제 빈 화면으로 시작합니다. 나머지가 어디 있는지 말하지
             않으면 빈 화면은 "기능이 없다" 로 읽힙니다. */}
-        {all.length === 0 && (
+        {workspaceLoading && all.length === 0 ? (
+          <LoadingState label={t('에이전트를 불러오는 중…')} />
+        ) : all.length === 0 && (
           <EmptyState
             icon={<Bot size={18} />}
             title={tab === 'store' ? t('공유된 에이전트가 없습니다') : t('아직 에이전트가 없습니다')}

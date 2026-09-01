@@ -1,6 +1,7 @@
 import { AudioLines, Code2, Copy, Download, Eye, ImagePlus, Play, RefreshCw } from 'lucide-react'
 import { SlideView } from '@/components/slides/DeckPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { ChartPanel, ChartThumb } from '@/components/chart/ChartPanel'
 import { LintFindings } from '@/components/artifacts/LintFindings'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
@@ -16,7 +17,7 @@ import { sectionText } from '@/components/report/SectionBody'
 import { Badge, Button, ButtonLink, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact, errorMessage, fileUrl } from '@/lib/api'
 import { cn, relativeTime } from '@/lib/utils'
-import { useNarrowLayout } from '@/lib/useMediaQuery'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useStore } from '@/store/useStore'
 import type { Artifact, CodeArtifact } from '@/types'
 import { copyText } from '@/lib/clipboard'
@@ -548,7 +549,14 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
  * and needs the same controls — check, rewrite a block, add a picture,
  * export.
  */
-export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'code' | 'html' }> }) {
+export function CodePanel({
+  artifact,
+  headerControls,
+}: {
+  artifact: Extract<Artifact, { kind: 'code' | 'html' }>
+  /** Controls supplied by a host whose width this panel can change. */
+  headerControls?: ReactNode
+}) {
   const t = useT()
   const [tab, setTab] = useState<'preview' | 'source'>(
     artifact.kind === 'html' ? 'preview' : 'source',
@@ -557,7 +565,7 @@ export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'c
   return (
     <div className="flex h-full min-h-0 flex-col">
       {artifact.kind === 'html' && (
-        <div className="flex items-center gap-1 border-b border-line px-3 py-1.5">
+        <header className="flex items-center gap-1 border-b border-line px-3 py-1.5">
           {(
             [
               { id: 'preview', label: t('미리보기'), icon: Eye },
@@ -577,6 +585,7 @@ export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'c
             </button>
           ))}
           <span className="flex-1" />
+          {headerControls}
           <LintFindings findings={artifact.lint} artifact={artifact} />
           <AddBlockImage artifact={artifact} />
           <RewriteBlock artifact={artifact} />
@@ -589,11 +598,31 @@ export function CodePanel({ artifact }: { artifact: Extract<Artifact, { kind: 'c
               같은 차례로 세운다 — 두 화면이 같은 줄을 읽게 하려는 것이 이
               두 가지를 한 자리에 놓은 이유이므로. */}
           <VersionHistory artifact={artifact} />
-        </div>
+        </header>
       )}
       <div className="min-h-0 flex-1">
         {tab === 'preview' && artifact.kind === 'html' ? (
-          <ArtifactPreview artifact={artifact} />
+          isDeck ? (
+            /* A slide is 16:9, and the deck seed says so as `min-height:
+               100vh` — one slide, one viewport. The preview's viewport is this
+               panel, which is a tall column, so a slide was drawn the panel's
+               shape: a 960×540 design adrift in a box half again as tall, with
+               the cover title stranded at the bottom. It matched neither 발표,
+               nor the `.pptx`, nor the printed page — all three of which put
+               the slide in a 16:9 frame. The same frame, here.
+
+               No `max-h`: an aspect box given a height cap keeps its width and
+               loses its ratio, which is the bug again in the other direction.
+               The column scrolls instead — what the deck panel's own stage
+               does. */
+            <div className="h-full overflow-auto p-4">
+              <div className="mx-auto aspect-video w-full max-w-6xl overflow-hidden rounded-card border border-line shadow-raised">
+                <ArtifactPreview artifact={artifact} />
+              </div>
+            </div>
+          ) : (
+            <ArtifactPreview artifact={artifact} />
+          )
         ) : (
           <pre className="h-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">
             <code className="font-mono">{artifact.content}</code>
@@ -730,6 +759,8 @@ export function MediaPanel({
  */
 /** Where the split was left, so it survives a reload. */
 const WIDTH_KEY = 'kchat-panel-width'
+// Left navigation plus a chat column wide enough for a prompt and its controls.
+const CHAT_EDGE_MIN = 700
 
 /**
  * A split the reader can move, remembered across reloads.
@@ -753,7 +784,7 @@ function useSplit(enabled: boolean) {
       // the transcript takes whatever is left.
       const next = Math.round(window.innerWidth - e.clientX)
       const min = 320
-      const max = Math.max(min, window.innerWidth - 360)
+      const max = Math.max(min, window.innerWidth - CHAT_EDGE_MIN)
       setWidth(Math.min(max, Math.max(min, next)))
     }
     const onUp = () => {
@@ -786,7 +817,7 @@ function useSplit(enabled: boolean) {
   const nudge = (by: number) =>
     setWidth((w) => {
       const from = w ?? Math.round(window.innerWidth * 0.45)
-      const next = Math.min(Math.max(320, from + by), window.innerWidth - 360)
+      const next = Math.min(Math.max(320, from + by), Math.max(320, window.innerWidth - CHAT_EDGE_MIN))
       localStorage.setItem(WIDTH_KEY, String(next))
       return next
     })
@@ -796,7 +827,10 @@ function useSplit(enabled: boolean) {
 
 export function ArtifactPanel() {
   const t = useT()
-  const narrow = useNarrowLayout()
+  // The application navigation still fits on a laptop, but navigation + chat
+  // + an A4/slide editor do not. Only the result panel becomes an overlay at
+  // this wider breakpoint; the rest of the app keeps its normal layout.
+  const narrow = useMediaQuery('(max-width: 1359px)')
   //: Set by whichever panel is inside — a document asks for the room it needs
   //: and this is what has it. Declared above the early return: this panel
   //: renders once with no artifact, and a hook below `return null` changes the
@@ -816,6 +850,25 @@ export function ArtifactPanel() {
   // open editor would otherwise impose — they can see the editor and decide.
   const dragged = !narrow && split.width !== null
 
+  /**
+   * The mode changing, and the dragged width getting out of its way.
+   *
+   * Both controls set this panel's width and the drag won whenever it had a
+   * number — which is always, because that number is remembered across
+   * reloads. So anybody who had once pulled the split found 넓게 보기 ·
+   * 문서만 보기 · 패널 좁히기 dead for good: the icon walked round its three
+   * positions and the panel never moved. Pressing the button is a width the
+   * reader is asking for now, so it takes the drag's place.
+   *
+   * Only when the position actually changes. A panel announces `wide` as it
+   * mounts — see `usePanelWidth` — and an announcement of the mode already in
+   * effect must not throw away a width somebody set.
+   */
+  const changeMode = (next: PanelMode) => {
+    if (next !== mode) split.reset()
+    setMode(next)
+  }
+
   return (
     <aside
       data-panel="artifact"
@@ -823,7 +876,7 @@ export function ArtifactPanel() {
       className={cn(
         'relative flex shrink-0 flex-col border-l border-line bg-panel',
         narrow
-          ? 'absolute inset-0 z-20 w-full min-w-0'
+          ? '!absolute inset-0 z-20 w-full min-w-0'
           : dragged
             ? 'min-w-0'
             : mode === 'full'
@@ -833,12 +886,12 @@ export function ArtifactPanel() {
               // — a thing too narrow to use and too wide to ignore. The same
               // treatment the narrow screen already uses, for the same reason.
               // The way back is the same button, still in this panel's header.
-              ? 'absolute inset-0 z-20 w-full min-w-0'
+              ? '!absolute inset-0 z-20 w-full min-w-0'
               : mode === 'wide'
                 // Editing needs source and preview side by side, and the
                 // document column is only ~350px — so the panel borrows width
                 // while an editor is open, or while the reader is reading.
-                ? 'w-[72%] min-w-[720px]'
+                ? 'w-[60%] min-w-[720px]'
                 : selfWide
                   ? 'w-[52%] min-w-[460px]'
                   : 'w-[38%] min-w-[340px]',
@@ -904,7 +957,7 @@ export function ArtifactPanel() {
               패널에서 전부 접히고, 그림은 썸네일만 한 크기로 남는다. */}
           <PanelControls
             mode={mode}
-            onCycle={narrow ? undefined : () => setMode(nextMode(mode))}
+            onCycle={narrow ? undefined : () => changeMode(nextMode(mode))}
             onClose={() => openArtifact(null)}
           />
         </header>
@@ -916,19 +969,19 @@ export function ArtifactPanel() {
             <ReportPanel
               report={artifact}
               onClose={() => openArtifact(null)}
-              onModeChange={setMode}
+              onModeChange={changeMode}
             />
           ) : artifact.kind === 'deck' ? (
             <DeckPanel
               deck={artifact}
               onClose={() => openArtifact(null)}
-              onModeChange={setMode}
+              onModeChange={changeMode}
             />
           ) : artifact.kind === 'chart' ? (
             <ChartPanel
               chart={artifact}
               onClose={() => openArtifact(null)}
-              onModeChange={setMode}
+              onModeChange={changeMode}
             />
           ) : null}
         </div>

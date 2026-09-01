@@ -28,6 +28,7 @@ from app.models.chat import SessionKind
 from app.services import deck as deck_rules
 from app.services import (
     figures,
+    design,
     grounding,
     hangul,
     imagegen,
@@ -110,6 +111,37 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
   - 표에 있는 수치를 그대로 옮기지 마라. 표는 견주는 자리고, 이 블록은
     **하나를 기억시키는** 자리다.
   - 블록만 두지 마라. 그 숫자가 무엇을 뜻하는지는 본문이 말해야 한다.
+- **훑어 읽는 대목은 카드로 써라.** 서너 갈래를 같은 무게로 나란히 놓아야 할
+  때 — 산출물·목표·이해관계자·성공 기준처럼 — ```cards 로 감싸고 `## 카드 제목`
+  아래에 `- 줄` 을 붙인다. 화면에서는 두 단 격자로, 내보낸 파일에서는 두 단 표로
+  나온다. 최대 6장.
+
+      ```cards
+      ## 산출물
+      - 네트워크 전면 교체
+      - 클라우드 이전
+      ## 목표
+      - 8개월 안에 완료
+      - 성능 40% 개선
+      ```
+
+  - **두 장이면 그것이 비교다.** 현행과 제안, 지금과 이후를 나란히 놓을 때 따로
+    쓰는 문법은 없다 — 카드 둘이 곧 두 단이다.
+  - 카드 제목은 명사로 짧게. 카드마다 줄은 **다섯 줄 안쪽**으로.
+  - **줄글로 쓸 것을 카드에 넣지 마라.** 카드는 훑는 자리다. 이어서 읽어야 이해
+    되는 문장은 본문에 둔다.
+  - 한 절에 하나까지. 절마다 격자가 있으면 격자가 배경이 된다.
+- **지나치면 안 되는 한 줄은 강조 상자로 써라.** ```callout 로 감싸고 첫 줄에
+  제목, 다음 줄부터 내용을 쓴다. 왼쪽에 색 막대가 붙어 나온다.
+
+      ```callout
+      승인 없이는 시작하지 않는다
+      9월 교무회의 승인 전까지는 계약도 발주도 하지 않는다.
+      ```
+
+  - **문서 전체에 하나까지.** 둘이면 둘 다 지나치게 된다.
+  - 경고·전제·기한처럼 **틀리면 뒤가 다 무너지는 것**만 넣는다. 요약은 여기가
+    아니라 첫 절이다.
 - **차례대로 하는 일은 절차 블록으로 써라.** ```steps 로 감싸고 `이름 | 설명` 을
   한 줄씩 쓴다. 번호가 붙어 나온다. 최대 8단계.
 
@@ -437,6 +469,7 @@ async def write(
     #: through `services.research`: the queries are planned off the request,
     #: and the top pages are read in full before a heading is chosen.
     web_search: bool = True,
+    project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -480,6 +513,56 @@ async def write(
             "status": "done",
             "detail": findings.detail,
         }
+    # `research.run` normally owns this list, but test doubles and connector
+    # adapters may reuse a Findings object. Project citations belong to this
+    # run only, so never append into the caller's shelf in place.
+    findings.sources = list(findings.sources)
+    web_selected = len(findings.sources)
+    project_selected = 0
+    project_excluded = 0
+    project_reference_lines: list[str] = []
+    for item in project_sources or []:
+        if item.get("state") not in ("included", "truncated"):
+            project_excluded += 1
+            continue
+        ordinal = len(findings.sources) + 1
+        title = str(item.get("name") or "프로젝트 자료")[:200]
+        url = str(item.get("sourceUrl") or "")
+        findings.sources.append(
+            {
+                "id": str(item.get("id") or f"project-{ordinal}"),
+                "ordinal": ordinal,
+                "title": title,
+                "publisher": research._publisher(url) if url else "프로젝트 파일",
+                "url": url,
+                "origin": "web" if url else "file",
+                "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
+                "quote": (
+                    " · ".join(str(v) for v in (item.get("locations") or []))
+                    or ("전체 내용 전달됨" if item.get("state") == "included" else "일부 내용만 전달됨")
+                ),
+            }
+        )
+        project_reference_lines.append(f"- [{ordinal}] {title}")
+        project_selected += 1
+
+    # Keep the investigation legible after the progress row disappears.  A
+    # source shelf proves what was cited; it does not prove what was searched,
+    # whether search actually ran, or how much irrelevant material was
+    # rejected.  The report artifact stores this event as its research log.
+    yield {
+        "type": "research",
+        "research": {
+            "enabled": web_search,
+            "searched": findings.searched,
+            "queries": findings.queries,
+            "selected": len(findings.sources),
+            "excluded": findings.dropped,
+            "webSelected": web_selected,
+            "projectSelected": project_selected,
+            "projectExcluded": project_excluded,
+        },
+    }
     # Three states, and the writer is told which one it is in. A toggle
     # somebody switched off is a choice and needs no disclaimer; a search that
     # could not run and a search that found nothing are both worth saying, and
@@ -487,12 +570,18 @@ async def write(
     research_rule = ""
     if web_search and not findings.searched:
         research_rule = research.UNRESEARCHED_RULE
-    elif web_search and not findings.sources:
+    elif web_search and web_selected == 0:
         research_rule = research.EMPTY_RULE
     # The pages read, as their own reference block. Appended rather than
     # substituted: an attached file is still the better source for what it
     # covers, and the two are labelled so the writer can tell them apart.
     document_context = list(untrusted_context or [])
+    if project_reference_lines:
+        trusted_context = list(trusted_context or []) + [
+            "# 프로젝트 자료 인용 번호\n"
+            "프로젝트 자료에서 가져온 사실을 사용한 문장 끝에는 아래 번호를 정확히 붙이세요. "
+            "목록에 없는 번호를 만들지 마세요.\n" + "\n".join(project_reference_lines)
+        ]
     #: Whether a figure could honestly have come from anywhere. Judged once for
     #: the run, by the same test the deck uses — a saved memory about who the
     #: user is is material and is not a measurement.
@@ -563,7 +652,11 @@ async def write(
         # the planner has the outline in front of it; asked later because two
         # decisions on one card is how somebody approves an expensive one by
         # accident.
-        plan: dict[str, Any] = {"title": title[:200], "sections": headings}
+        plan: dict[str, Any] = {
+            "title": title[:200],
+            "sections": headings,
+            "visualStyle": design.visual_style_for(request),
+        }
         if image_model:
             drawn = await figures.propose(
                 request=request,

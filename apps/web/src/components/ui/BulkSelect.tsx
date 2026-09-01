@@ -53,17 +53,21 @@ export function PickBox({
   className?: string
 }) {
   return (
-    <input
-      type="checkbox"
-      checked={checked}
-      aria-label={label}
-      className={`size-4 shrink-0 cursor-pointer accent-[var(--color-accent)] ${className}`}
+    <label
+      className={`grid size-8 shrink-0 cursor-pointer place-items-center ${className}`}
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        e.stopPropagation()
-        onChange()
-      }}
-    />
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        aria-label={label}
+        className="size-4 cursor-pointer accent-[var(--color-accent)]"
+        onChange={(e) => {
+          e.stopPropagation()
+          onChange()
+        }}
+      />
+    </label>
   )
 }
 

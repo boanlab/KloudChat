@@ -181,9 +181,17 @@ export function ArtifactsPage() {
   //: the room, and a dialog that cannot grow makes the control that asks for
   //: it a button that does nothing.
   const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
+  const [previewDirty, setPreviewDirty] = useState(false)
+  const [confirmPreviewClose, setConfirmPreviewClose] = useState(false)
   const [confirming, setConfirming] = useState<Artifact | null>(null)
 
   const preview = artifacts.find((a) => a.id === previewId) ?? null
+  const closePreview = () => {
+    setPreviewId(null)
+    setPreviewMode('wide')
+    setPreviewDirty(false)
+  }
+  const requestPreviewClose = () => previewDirty ? setConfirmPreviewClose(true) : closePreview()
   // The server already applied the filter; the store holds exactly this page.
   const visible = artifacts
   // Undefined until the counts arrive, so a tab shows no number rather than a
@@ -376,13 +384,11 @@ export function ArtifactsPage() {
 
       <Modal
         open={!!preview}
-        onClose={() => {
-          setPreviewId(null)
-          setPreviewMode('wide')
-        }}
+        onClose={requestPreviewClose}
         title={preview?.title ?? ''}
         description={preview ? `${t(kindLabel[preview.kind])} · v${preview.version}` : undefined}
         width={previewMode === 'narrow' ? 'max-w-4xl' : 'max-w-7xl'}
+        bare={preview?.kind === 'report' || preview?.kind === 'deck'}
       >
         {preview && (
           <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
@@ -394,7 +400,8 @@ export function ArtifactsPage() {
             {!(
               preview.kind === 'report' ||
               preview.kind === 'deck' ||
-              preview.kind === 'chart'
+              preview.kind === 'chart' ||
+              preview.kind === 'html'
             ) && (
               <header className="flex shrink-0 justify-end border-b border-line px-2 py-1.5">
                 <PanelControls
@@ -405,9 +412,9 @@ export function ArtifactsPage() {
             )}
             <div className="min-h-0 flex-1 overflow-hidden">
             {preview.kind === 'report' ? (
-              <ReportPanel report={preview} onModeChange={setPreviewMode} />
+              <ReportPanel report={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
             ) : preview.kind === 'deck' ? (
-              <DeckPanel deck={preview} onModeChange={setPreviewMode} />
+              <DeckPanel deck={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
             ) : preview.kind === 'chart' ? (
               <ChartPanel chart={preview} onModeChange={setPreviewMode} />
             ) : preview.kind === 'image' ||
@@ -419,7 +426,17 @@ export function ArtifactsPage() {
             ) : preview.kind === 'html' || preview.kind === 'code' ? (
               // The whole panel, not the preview: the same document must not
               // lose its check, rewrite, picture and export controls here.
-              <CodePanel artifact={preview} />
+              <CodePanel
+                artifact={preview}
+                headerControls={
+                  preview.kind === 'html' ? (
+                    <PanelControls
+                      mode={previewMode}
+                      onCycle={() => setPreviewMode(nextMode(previewMode))}
+                    />
+                  ) : undefined
+                }
+              />
             ) : (
               <ArtifactPreview artifact={preview} />
             )}
@@ -427,6 +444,14 @@ export function ArtifactsPage() {
           </div>
         )}
       </Modal>
+      <ConfirmDialog
+        open={confirmPreviewClose}
+        onClose={() => setConfirmPreviewClose(false)}
+        title={t('저장하지 않은 변경 내용이 있습니다')}
+        description={t('계속하면 결과물에서 바꾼 내용이 사라집니다.')}
+        confirmLabel={t('저장하지 않고 닫기')}
+        onConfirm={closePreview}
+      />
     </>
   )
 }

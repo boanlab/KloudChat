@@ -128,7 +128,7 @@ function SessionRow({
              as long as its own menu is open. */
           <button
             className={cn(
-              'mr-1 grid size-6 shrink-0 place-items-center rounded-control text-faint opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-line hover:text-fg [@media(hover:none)]:opacity-100',
+              'mr-1 grid size-8 shrink-0 place-items-center rounded-control text-faint transition-colors hover:bg-line hover:text-fg',
               open && 'opacity-100',
             )}
             aria-label={t('메뉴')}
