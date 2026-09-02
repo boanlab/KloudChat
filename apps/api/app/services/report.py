@@ -75,7 +75,9 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - **요청이 항목을 말했으면 그 항목이 목차다.** 「결정 사항, 반론, 다음 발표자와
   기한을 나눠」라고 했으면 절은 그 셋(과 필요한 머리말)이고, 「목적·이론·장치·절차·
   결과·오차 분석」이라고 했으면 그 여섯이다. 요청한 항목을 빼거나 다른 이름으로
-  바꾸지 마라.
+  바꾸지 마라. 축이 둘이면 — 「안건별로 결정·반론·조건·담당을 나눠」 — **한 축만
+  절로 삼는다**(안건마다 절 하나, 그 안에서 결정·반론·조건·담당을 소제목으로).
+  안건별 절과 항목별 절을 둘 다 만들면 같은 말이 두 번 나온다.
 - 섹션은 제목만. 내용은 쓰지 마라.
 - style 은 이 문서가 어디에 쓰이는지에 맞는 인상이다. 셋 중 하나만 골라라:
   · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 문서. 선과 넓은 여백.
@@ -731,9 +733,33 @@ def _grounded_figures(text: str, grounded: bool) -> str:
     compressed cycle is a claim somebody can weigh; the same claim as `8주`
     beside a heading is a measurement, and there was no measuring.
     """
-    if grounded:
-        return text
-    return _FIGURE_FENCE.sub("", text).strip()
+    if not grounded:
+        return _FIGURE_FENCE.sub("", text).strip()
+    return re.sub(r"\n{3,}", "\n\n", _KPI_FENCE.sub(_kpi_or_nothing, text)).strip()
+
+
+_KPI_FENCE = re.compile(r"^```kpi\b.*?^```\s*$", re.S | re.M)
+_UNDETERMINED = re.compile(r"미정|확인 필요|해당 없음|N/A|TBD|\?", re.I)
+
+
+def _kpi_or_nothing(match: re.Match[str]) -> str:
+    """A kpi block whose values are placeholders, removed.
+
+    A 회의록 with every figure it needed in prose closed with 「(미정) | 산학
+    프로젝트 확보 건수」 four times over — a block whose whole purpose is to set
+    a number large, with no number in it. Any line that is not a value is the
+    whole block gone; the prose already says what is undecided.
+    """
+    body = match.group(0).strip("`").split("\n", 1)[1] if "\n" in match.group(0) else ""
+    lines = [
+        line for line in body.split("\n") if line.strip() and not line.strip().startswith("```")
+    ]
+    if any(
+        _UNDETERMINED.search(line.split("|")[0]) or not re.search(r"\d", line.split("|")[0])
+        for line in lines
+    ):
+        return ""
+    return match.group(0)
 
 
 async def write(
@@ -999,7 +1025,7 @@ async def write(
             }
             yield {"type": "usage", **usage}
             return
-        if may_ask and _subject_missing(text, request):
+        if may_ask and _subject_missing(text, request, "\n".join(untrusted_context or [])):
             # 주제가 없는 요청은 묻는다. Checked here rather than trusted to the
             # prompt: the planner planned a made-up subject with the rule in
             # front of it, and a decision brief about a decision nobody named
@@ -1022,7 +1048,7 @@ async def write(
         # to write a form and not a story — see `_FRAME_RULE`.
         frame = not may_ask and (
             _results_without_data(request, list(untrusted_context or []))
-            or grounding.subject_missing(text, request)
+            or grounding.subject_missing(text, request, "\n".join(untrusted_context or []))
             or (web_search and findings.searched and web_selected == 0 and _from_the_web(request))
         )
         title, headings = _parse_outline(text)
@@ -1097,7 +1123,7 @@ async def write(
         return
     # Emitted only when the model produced one, so the caller keeps its fallback.
     if title:
-        yield {"type": "title", "title": title[:200]}
+        yield {"type": "title", "title": hangul.tidy_spacing(title)[:200]}
 
     # One shelf for every section, and the same one the outline was chosen
     # from. Researched above — before this, the search ran here, which meant

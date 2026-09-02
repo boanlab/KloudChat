@@ -103,7 +103,7 @@ def read_back(text: str) -> tuple[str, list[str]]:
 #: particles that attach to a counter: 3 일까지 → 3일까지, but 3 일반인 stays.
 _COUNTER_LONG = re.compile(
     r"([0-9][0-9,.]*) (만 원|억 원|천 원|단계|시간|개월|가지|학점|과목|개소|개교|학기|주차|"
-    r"퍼센트|%)"
+    r"학년도|학년|분반|퍼센트|%)"
 )
 _COUNTER_SHORT = re.compile(
     r"([0-9][0-9,.]*) (일|명|원|건|개|주|년|월|회|차|기|분|초|점|배|층|호|번|매|부|장|쪽|판|"

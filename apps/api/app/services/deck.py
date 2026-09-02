@@ -1349,7 +1349,7 @@ async def _write_slides(
         "detail": " · ".join(item["title"] for item in plan),
     }
     if title:
-        yield {"type": "title", "title": title[:200]}
+        yield {"type": "title", "title": hangul.tidy_spacing(title)[:200]}
 
     slides: list[dict[str, Any]] = [
         {
@@ -1878,7 +1878,7 @@ async def write(
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
         yield {"type": "usage", **usage}
         return
-    unmaterial = grounding.subject_missing(text, request) or (
+    unmaterial = grounding.subject_missing(text, request, "\n".join(untrusted_context or [])) or (
         _OWN_WORK.search(request)
         and not has_numbers(request, [])
         and len(request) < 300

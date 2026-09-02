@@ -270,7 +270,7 @@ def focus_terms(answers: dict[str, str]) -> str:
     return text
 
 
-def subject_missing(text: str, request: str) -> bool:
+def subject_missing(text: str, request: str, material: str = "") -> bool:
     """Whether the planner named a subject the request never mentioned.
 
     The outline rule says to ask when a request gives only the form of a
@@ -292,6 +292,8 @@ def subject_missing(text: str, request: str) -> bool:
     subject = str(data.get("subject") or "").strip()
     if not subject:
         return True
-    compact = re.sub(r"\s+", "", request)
+    # The attachment counts as the request's words: 「첨부한 녹취를 회의록으로」
+    # names nothing, and the planner's 「교육과정위원회」 came off the 녹취.
+    compact = re.sub(r"\s+", "", request + material)
     words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
     return bool(words) and not any(w in compact for w in words)

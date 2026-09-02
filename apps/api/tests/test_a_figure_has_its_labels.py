@@ -326,3 +326,21 @@ async def test_a_rewrite_may_use_the_numbers_the_document_already_has(monkeypatc
     )
     assert "1,200만원" in seen[0] and "120만원" in seen[0]
     assert "수치가 하나도 없다" not in seen[0]
+
+
+def test_a_subject_read_off_the_attachment_is_not_invented() -> None:
+    from app.services.grounding import subject_missing
+
+    ask = "첨부한 녹취를 회의록으로 바꿔 주세요."
+    plan = '{"title": "교육과정위원회 회의록", "subject": "교육과정위원회", "sections": []}'
+    assert subject_missing(plan, ask)
+    assert not subject_missing(plan, ask, "2026-08-28 학과 교육과정위원회 녹취 …")
+
+
+def test_a_kpi_block_of_placeholders_is_dropped_and_a_real_one_kept() -> None:
+    from app.services.report import _grounded_figures
+
+    empty = "본문.\n\n```kpi\n(미정) | 산학 프로젝트 확보 건수\n(미정) | 겸임 교원\n```\n\n끝."
+    assert _grounded_figures(empty, True) == "본문.\n\n끝."
+    real = "본문.\n\n```kpi\n32% | 오탐 감소\n1.4초 | 평균 응답 시간\n```\n\n끝."
+    assert _grounded_figures(real, True) == real
