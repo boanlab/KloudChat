@@ -1003,12 +1003,13 @@ def _reviewable(artifact: Artifact) -> tuple[str, str]:
         ]
         return critique.document(parts), ""
     if artifact.kind is ArtifactKind.deck:
+        # Every field a slide can carry, through the linter's own reader.
+        # Bullets and body alone were handed over, and the reviewer filed a
+        # filled `table` and a filled `bands` slide as 「제목만 존재」 P0s —
+        # it had been shown two headings and nothing under them.
         parts = [
-            {
-                "heading": s.get("title") or "",
-                "text": " · ".join([*(s.get("bullets") or []), s.get("body") or ""]).strip(" ·"),
-            }
-            for s in (data.get("slides") or [])
+            {"heading": part.title, "text": " · ".join([*part.labels, *part.lines]).strip(" ·")}
+            for part in lint.from_slides(data.get("slides") or [])
         ]
         return critique.document(parts), ""
     if artifact.kind is ArtifactKind.html:

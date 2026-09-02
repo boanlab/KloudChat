@@ -53,3 +53,26 @@ async def test_a_reviewers_arithmetic_complaint_is_dropped_when_the_sums_hold(mo
         api_key="k",
     )
     assert [f["where"] for f in result["findings"]] == ["요약"]
+
+
+def test_a_deck_review_sees_the_table_and_the_bands() -> None:
+    from types import SimpleNamespace
+
+    from app.models.workspace import ArtifactKind
+    from app.routers.workspace import _reviewable
+
+    artifact = SimpleNamespace(
+        kind=ArtifactKind.deck,
+        data={
+            "slides": [
+                {
+                    "title": "대안 비교",
+                    "layout": "table",
+                    "rows": [["안건", "현재"], ["캡스톤", "3학점"]],
+                },
+                {"title": "교원 확보", "layout": "bands", "bands": [["현황", "강 교수 두 분반"]]},
+            ]
+        },
+    )
+    body, _ = _reviewable(artifact)
+    assert "3학점" in body and "강 교수 두 분반" in body
