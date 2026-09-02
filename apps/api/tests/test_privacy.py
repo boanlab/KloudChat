@@ -1387,7 +1387,11 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
         **_external_model("external/economy"),
         "inputCreditCost": 1,
         "creditCost": 2,
-        "contextWindow": 4_096,
+        # 16k, not 4k. The context-fit gate measures the envelope in UTF-8
+        # bytes, and the chat system turn — house rules included — is ~4.5k
+        # bytes on its own. A 4k window disqualified every economy model
+        # before the classifier ran, which is a different test from this one.
+        "contextWindow": 16_000,
         "supportsTools": False,
     }
     await _patch_guard_dependencies(
