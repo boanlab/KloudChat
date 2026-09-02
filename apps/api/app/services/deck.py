@@ -246,7 +246,28 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 
 JSON 객체로만 답하라: {{"slides": [{{"title": "...", "layout": "...", ...}}, ...]}}
 
-원래 요청: {request}"""
+원래 요청: {request}{tail}"""
+
+
+#: Told to the writer when the person said 있는 자료로 진행 to 「어떤 연구입니까?」.
+#: A form, and it has to look like one — see `report._FRAME_RULE`.
+_FRAME_RULE = (
+    "**이 발표는 자료 없이 틀만 쓴다.** 요청에 없는 연구·프로젝트·결과·수치·이름을 어떤 "
+    "것도 지어내지 마라. 장마다 그 장에 무엇을 넣어야 하는지 항목 이름과 「(여기에: 연구 "
+    "질문)」 같은 괄호 빈칸으로만 채우고, 노트는 그 장에서 무엇을 말해야 하는지 한두 "
+    "문장으로 안내한다. metrics·chart·table 은 머리글과 빈 칸만."
+)
+
+#: The same rule again at the end of the draft prompt, with the shape shown.
+#: Put once at the top, under thirty lines of layout rules, it lost to
+#: 「그 장에서 실제로 말할 사실을 적는다」 and the deck came back as eight
+#: slides of 기존 연구의 한계를 극복 about a thesis nobody described.
+_FRAME_TAIL = (
+    "\n\n" + _FRAME_RULE + '\n예: {"title": "연구 질문", "layout": "bullets", '
+    '"bullets": ["(여기에: 연구 질문 1)", "(여기에: 연구 질문 2)", '
+    '"(여기에: 왜 이 질문인가)"], "notes": "이 장에서는 연구 질문을 하나씩 읽고 '
+    '왜 지금 이 질문인지 한 문장으로 말한다."}'
+)
 
 
 def _facts_line(request: str) -> str:
@@ -1215,6 +1236,7 @@ async def _write_slides(
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
     density: str = "speaker",
+    frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Writes the bodies for an outline that has already been agreed to.
 
@@ -1274,10 +1296,11 @@ async def _write_slides(
                         f"{i + 1}. {s['title']}  (layout: {s['layout']})"
                         for i, s in enumerate(slides)
                     ),
-                    facts=_facts_line(request),
+                    facts=_FRAME_RULE if frame else _facts_line(request),
                     count="4~6" if density == "reading" else "3~4",
                     count_two="6~8" if density == "reading" else "4~6",
                     request=request[:1500],
+                    tail=_FRAME_TAIL if frame else "",
                 ),
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
@@ -1698,6 +1721,7 @@ async def write(
             figures_plan=figures_plan,
             image_model=image_model,
             density=str(approved_plan.get("density") or "speaker"),
+            frame=bool(approved_plan.get("frame")),
         ):
             yield event
         return
@@ -1749,12 +1773,12 @@ async def write(
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
         yield {"type": "usage", **usage}
         return
-    if may_ask and (
-        grounding.subject_missing(text, request)
-        or _OWN_WORK.search(request)
+    unmaterial = grounding.subject_missing(text, request) or (
+        _OWN_WORK.search(request)
         and not has_numbers(request, [])
         and not any(block.strip() for block in (untrusted_context or []))
-    ):
+    )
+    if may_ask and unmaterial:
         # 주제가 없는 요청은 묻는다. 「캡스톤 중간발표 10분」 was planned as an
         # AI 맞춤 학습 플랫폼 nobody is building, and 「학회 구두 발표 15분,
         # 수치를 크게」 as seven slides of 500회 and 20% about nothing — the
@@ -1909,6 +1933,9 @@ async def write(
         ]
         if drawn.figures:
             proposal["figures"] = drawn.wire()
+    if unmaterial:
+        # 있는 자료로 진행 — the writing pass writes a form. See `_FRAME_RULE`.
+        proposal["frame"] = True
     yield {"type": "proposal", "plan": proposal}
     yield {"type": "usage", **usage}
 

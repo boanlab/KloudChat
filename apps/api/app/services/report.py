@@ -277,6 +277,22 @@ _NUMBER = re.compile(
 )
 
 
+#: Told to the writer when the person said 있는 자료로 진행 to a question the
+#: document could not be written without. What comes out is a form, and it
+#: has to look like one: a 회의록 for a 녹취 nobody attached once described a
+#: 차기 연구 주제 discussion that never happened, with a cost table under it.
+_FRAME_RULE = (
+    "**이 문서는 자료 없이 틀만 쓴다.** 요청에 없는 사실·논의·결정·이름·수치를 어떤 것도 "
+    "지어내지 마라. 절마다 그 절에 무엇을 적어야 하는지 한두 문장으로 안내하고, 채울 "
+    "자리는 「(여기에: 결정된 사항과 근거)」처럼 괄호 빈칸으로 둔다. 표는 머리글 행과 "
+    "빈 칸만. 비용 계산·대안 비교처럼 요청에 없던 절이나 표를 보태지 마라. "
+    "공식과 일반 원리는 써도 된다."
+)
+
+#: A request that weighs options — the only kind the cost-table advice fits.
+_DECISION = re.compile(r"대안|비교|결정|권고|비용|검토|타당성|선택")
+
+
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
     """The numbers the document may use, read off the request and the shelf.
 
@@ -295,14 +311,19 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
             if token not in found:
                 found.append(token)
     if not found:
-        return (
+        line = (
             "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
-            "퍼센트·측정값·부품값·성능 향상률을 어떤 것도 쓰지 마라.** 비용 칸은 「(미정)」, "
-            "측정 결과 칸은 「(측정값)」으로 비워 두고, 「비용 계산의 전제」「결과」 같은 절은 "
-            "값을 셈하거나 지어내는 대신 무엇을 어떻게 측정·확인해야 하는지(견적, 예산 한도, "
-            "대상 인원, 측정 조건)를 적는다. 비교표의 행은 비용 대신 「필요한 것」 「위험」 "
-            "「되돌릴 수 있는가」로. 공식과 일반 원리(f_c = 1/(2πRC) 같은 것)는 써도 된다."
+            "퍼센트·측정값·부품값·성능 향상률을 어떤 것도 쓰지 마라.** 값이 들어갈 자리는 "
+            "「(미정)」「(측정값)」으로 비워 두고, 값을 셈하거나 지어내는 대신 무엇을 어떻게 "
+            "측정·확인해야 하는지를 적는다. 공식과 일반 원리(f_c = 1/(2πRC) 같은 것)는 써도 "
+            "된다."
         )
+        if _DECISION.search(request):
+            line += (
+                " 「비용 계산의 전제」 절은 견적, 예산 한도, 대상 인원처럼 확인할 것을 적고, "
+                "비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+            )
+        return line
     return "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
 
 
@@ -952,6 +973,14 @@ async def write(
             }
             yield {"type": "usage", **usage}
             return
+        # 「있는 자료로 진행」 to a question the document needed answered. The
+        # plan carries the fact so the writing pass, a separate request, knows
+        # to write a form and not a story — see `_FRAME_RULE`.
+        frame = not may_ask and (
+            _results_without_data(request, list(untrusted_context or []))
+            or grounding.subject_missing(text, request)
+            or (web_search and findings.searched and web_selected == 0 and _from_the_web(request))
+        )
         title, headings = _parse_outline(text)
         if len(headings) < _MIN_SECTIONS:
             yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
@@ -992,6 +1021,8 @@ async def write(
                 else (_outline_style(text) or "editorial")
             ),
         }
+        if frame:
+            plan["frame"] = True
         if image_model:
             drawn = await figures.propose(
                 request=request,
@@ -1015,6 +1046,7 @@ async def write(
 
     title = str(approved_plan.get("title") or "")
     headings = [str(h).strip() for h in (approved_plan.get("sections") or []) if str(h).strip()]
+    frame = bool(approved_plan.get("frame"))
     if not headings:
         yield {"type": "error", "message": "승인된 개요가 비어 있습니다."}
         yield {"type": "usage", **usage}
@@ -1072,7 +1104,7 @@ async def write(
                 _DRAFT_PROMPT.format(
                     outline="\n".join(f"## {h}" for h in headings),
                     refs=refs,
-                    facts=_facts_line(request, sources),
+                    facts=_FRAME_RULE if frame else _facts_line(request, sources),
                     request=request[:1500],
                 ),
                 trusted_context=trusted_context,
@@ -1132,7 +1164,7 @@ async def write(
                                 section["heading"], index, len(sections), "\n".join(written)
                             )[1],
                             others=_others_line(headings, index),
-                            facts=_facts_line(request, sources or []),
+                            facts=_FRAME_RULE if frame else _facts_line(request, sources or []),
                         )
                         + (
                             # Told before the prose is written, so the section can

@@ -185,3 +185,11 @@ def test_a_results_report_with_nothing_to_report_is_asked_for_its_data() -> None
     # 「초안을 써 주세요」는 자료가 있다는 말이 아니다. 학위논문 장은 그 사람의 연구가 있어야 쓴다.
     assert not _results_without_data("행사 안내문 초안을 써 주세요.", [])
     assert _results_without_data("학위논문 3장 「제안 방법」 초안을 써 주세요.", [])
+
+
+def test_the_cost_table_advice_is_kept_for_decisions() -> None:
+    from app.services.report import _facts_line
+
+    assert "비교표의 행" in _facts_line("서버 교체와 클라우드 이전 대안을 비교해 주세요.", [])
+    assert "비교표의 행" not in _facts_line("학과 세미나 회의록을 써 주세요.", [])
+    assert "쓰지 마라" in _facts_line("학과 세미나 회의록을 써 주세요.", [])
