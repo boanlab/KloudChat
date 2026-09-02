@@ -1,6 +1,6 @@
 import { FileUp, Palette, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Button, ConfirmDialog, Field, Input, Switch, Textarea } from '@/components/ui'
+import { Badge, Button, ConfirmDialog, Field, Input, Select, Switch, Textarea } from '@/components/ui'
 import {
   designsApi,
   errorMessage,
@@ -337,17 +337,16 @@ export function DesignsSection() {
           label={t('서체')}
           hint={t('내보내는 파일에 실제로 쓰이는 두 가지입니다.')}
         >
-          <select
+          <Select
             value={tokens.font}
             onChange={(e) => setTokens({ font: e.target.value as DesignTokens['font'] })}
-            className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
           >
             {FONTS.map((f) => (
               <option key={f.key} value={f.key}>
                 {t(f.label)}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
 

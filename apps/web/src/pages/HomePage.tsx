@@ -59,6 +59,24 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
 
+  /**
+   * 시작 화면에는 앞 대화의 문서가 따라오지 않는다.
+   *
+   * `openArtifactId` is global and nothing on the way here cleared it, so
+   * leaving a deck and pressing 새로 만들기 opened an empty composer with the
+   * previous conversation's document still beside it — and it stayed there
+   * through the next turn, so somebody watching their 보고서 being written
+   * was looking at a slide deck from another session while they waited.
+   *
+   * Cleared on arrival rather than on leaving: there is one start screen and
+   * many ways to reach it, and the screen that must not show a document is
+   * this one.
+   */
+  const openArtifact = useStore((s) => s.openArtifact)
+  useEffect(() => {
+    openArtifact(null)
+  }, [openArtifact])
+
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
   /**
    * A surface an administrator has switched off, asked for by name. The chip

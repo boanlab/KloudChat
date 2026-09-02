@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Field, Input, Modal, Textarea } from '@/components/ui'
+import { Button, Field, Input, Modal, Select, Textarea } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { NAME_LIMIT } from '@/lib/limits'
 import { cn, uid } from '@/lib/utils'
@@ -154,10 +154,9 @@ export function MemoryEditor({
           </Field>
           {!lockScope && (
             <Field label={t('범위')}>
-              <select
+              <Select
                 value={draft.scope}
                 onChange={(e) => onDraft({ ...draft, scope: e.target.value })}
-                className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
               >
                 <option value="global">{t('전역')}</option>
                 {projects.map((p) => (
@@ -165,7 +164,7 @@ export function MemoryEditor({
                     {p.emoji} {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
           )}
           <Field label={t('본문')}>

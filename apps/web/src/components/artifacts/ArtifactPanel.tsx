@@ -122,7 +122,11 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
       return (
         <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
           <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
-          <p className="mb-3 text-xs text-[#999]">
+          {/* 흰 종이 위의 회색. 이 미리보기는 다크 테마를 따르지 않는다 —
+              문서는 인쇄물이고 종이는 언제나 희다 — 그래서 색이 토큰이 아니라
+              값이다. #999 는 흰 바탕에서 2.85:1 로 WCAG 의 4.5:1 에 못 미쳤고,
+              #6b6b6b 는 5.3:1 이면서 여전히 제목보다 뒤에 선다. */}
+          <p className="mb-3 text-xs text-[#6b6b6b]">
             {t('{n}개 절').replace('{n}', String(artifact.sections.length))}
           </p>
           {/* Three, not six. A thumbnail is read at a glance from across a
@@ -130,7 +134,7 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
           {artifact.sections.slice(0, 3).map((section) => (
             <div key={section.id} className="mb-2">
               <p className="truncate text-sm font-semibold">{section.heading}</p>
-              <p className="line-clamp-2 text-xs leading-relaxed text-[#777]">
+              <p className="line-clamp-2 text-xs leading-relaxed text-[#595959]">
                 {plainText(sectionText(section))}
               </p>
             </div>

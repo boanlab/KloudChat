@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Gauge, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Button, Card, Field, Switch } from '@/components/ui'
+import { Badge, Button, Card, Field, Select, Switch } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -124,7 +124,7 @@ export function AutoRoutingSection() {
           label={t('난이도 분류 모델')}
           hint={t('외부 전환이 없는 무료 strict-local 모델만 사용할 수 있습니다.')}
         >
-          <select
+          <Select
             value={classifierModelId}
             onChange={(event) => {
               setClassifierModelId(event.target.value)
@@ -132,7 +132,6 @@ export function AutoRoutingSection() {
               setSaved(false)
               setError(null)
             }}
-            className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent"
           >
             <option value="">{t('분류 모델 선택')}</option>
             {classifierModelId &&
@@ -146,7 +145,7 @@ export function AutoRoutingSection() {
                 {model.label}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field
@@ -156,7 +155,7 @@ export function AutoRoutingSection() {
           {/* Greyed out at three, and the hint above it is read once and then
               forgotten — so the reason is carried by the control that stopped
               responding, where it is looked for. */}
-          <select
+          <Select
             value=""
             disabled={economyModelIds.length >= 3}
             title={
@@ -170,7 +169,6 @@ export function AutoRoutingSection() {
               setSaved(false)
               setError(null)
             }}
-            className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent disabled:opacity-50"
           >
             <option value="">
               {economyModelIds.length >= 3 ? t('최대 3개를 선택했습니다') : t('절약 모델 선택')}
@@ -182,7 +180,7 @@ export function AutoRoutingSection() {
                   {model.label} · {model.inputCreditCost}/{model.creditCost}
                 </option>
               ))}
-          </select>
+          </Select>
         </Field>
       </div>
 
@@ -307,7 +305,7 @@ export function AutoRoutingSection() {
           label={t('상향 모델 추가')}
           hint={t('최대 3개까지 추가할 수 있으며 위에서부터 사용 가능 여부를 확인합니다.')}
         >
-          <select
+          <Select
             value=""
             disabled={qualityModelIds.length >= 3}
             title={
@@ -319,7 +317,6 @@ export function AutoRoutingSection() {
               setQualityModelIds((current) => [...current, id].slice(0, 3))
               touched()
             }}
-            className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent disabled:opacity-50"
           >
             <option value="">
               {qualityModelIds.length >= 3 ? t('최대 3개를 선택했습니다') : t('상향 모델 선택')}
@@ -331,7 +328,7 @@ export function AutoRoutingSection() {
                   {model.label} · {model.inputCreditCost}/{model.creditCost}
                 </option>
               ))}
-          </select>
+          </Select>
         </Field>
         <p className="mb-2 text-sm font-medium">{t('상향 모델 우선순위')}</p>
         {qualityModelIds.length > 0 ? (

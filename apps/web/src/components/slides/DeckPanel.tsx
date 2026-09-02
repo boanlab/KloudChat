@@ -149,6 +149,20 @@ function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide
  * save was the one that lost.
  */
 const PAIRED = ['bands', 'tiles', 'timeline'] as const
+
+/**
+ * How Korean breaks across lines, set once on each slide root.
+ *
+ * The default splits a Korean line anywhere at all, so a cover reading
+ * 「전교생 AI 기초 교육 의무화 추진 전략」 came out as 「… 교육 의무」 / 「화 추진
+ * 전략」 — a word cut in half at the widest type on the deck. `keep-all` moves
+ * the break to a space, and `break-word` keeps the one case `keep-all` cannot
+ * help — a single token wider than the slide — from running off the edge.
+ *
+ * Both properties inherit, so the root is the whole of it; the exporters' seed
+ * (`_deck/seed.html`) says the same thing for the file that leaves.
+ */
+const KOREAN_WRAP = { wordBreak: 'keep-all', overflowWrap: 'break-word' } as const
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
 const LAYOUTS: { id: Slide['layout']; label: string }[] = [
@@ -535,6 +549,32 @@ export function SlideView({
     // A timeline entry is a line of type and the air under it, no box.
     const step = Math.min(23, body / count)
     const line = Math.max(7, Math.min(10, step / 2.3))
+    /**
+     * 왼쪽 이름표의 폭 — 글자 수에서 잰다.
+     *
+     * It was 52 units, fixed, and the shape was designed for a date. The
+     * outline prompt then learned to reach for `timeline` on 절차·단계·로드맵
+     * too, where the left column holds a phrase — 「개편 방향 확정」 — and a
+     * phrase in a date's width wraps to three lines inside a row that is
+     * `overflow-hidden` and 23 units tall. The label came out sliced in half
+     * horizontally, which is what a person sees as 「개편 방향 확」.
+     *
+     * A Korean glyph is about one em wide, so the characters say what the
+     * column needs. Bounded at both ends: never narrower than the date it was
+     * built for, never wider than a third of the slide, because past that the
+     * label has taken the space the entry was supposed to explain itself in.
+     */
+    const widest = (index: number, floor: number, size: number) =>
+      Math.round(
+        Math.max(
+          floor,
+          Math.min(
+            96,
+            Math.max(0, ...pairs.map(([...pair]) => (pair[index] ?? '').length)) * size * 0.95,
+          ),
+        ),
+      )
+
     return {
       gap,
       height,
@@ -542,6 +582,8 @@ export function SlideView({
       pad: Math.max(1.5, (height - band * 1.5) / 2),
       step,
       line,
+      bandLabel: widest(0, 62, band),
+      stepLabel: widest(0, 52, line),
     }
   })()
 
@@ -571,6 +613,7 @@ export function SlideView({
               ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 10%, #fff), #fff 70%)`
               : `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} ${visualStyle === 'poster' ? 48 : 62}%, #111827))`,
           padding: px(34),
+          ...KOREAN_WRAP,
         }}
       >
         {visualStyle === 'poster' && <div className="absolute rounded-full border border-white/20" style={{ width: px(150), height: px(150), right: px(-35), top: px(-45) }} />}
@@ -632,6 +675,7 @@ export function SlideView({
         paddingRight: px(28),
         // Room for the footer, which is drawn against the bottom edge.
         paddingBottom: px(28),
+        ...KOREAN_WRAP,
       }}
     >
       {/* The band across the head. Where the 4px stripe down the left edge
@@ -679,7 +723,17 @@ export function SlideView({
               the preview and the .pptx put them in the same places. */}
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
             <div
-              className="flex min-w-0 flex-1 flex-col"
+              className={cn(
+                'flex min-w-0 flex-1 flex-col',
+                // Centred only for the three paired shapes. `stack` divides the
+                // room between their entries, so they cannot overflow — and a
+                // two-band slide otherwise sat in the top half with the bottom
+                // half blank, which reads as a slide that failed to finish
+                // rather than one with two things to say. Bullets are left
+                // alone: they can outgrow the box, and content that overflows a
+                // centred column is clipped at both ends instead of the bottom.
+                PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
+              )}
               data-overflow-box
               style={{ order: slide.image?.position === 'left' ? 2 : 1 }}
               {...selectable(contentElement)}
@@ -698,7 +752,7 @@ export function SlideView({
                       <div
                         className="grid shrink-0 place-items-center text-center"
                         style={{
-                          width: px(62),
+                          width: px(stack.bandLabel),
                           background: accent,
                           color: '#fff',
                           fontSize: type(stack.band),
@@ -763,11 +817,13 @@ export function SlideView({
                       <div
                         className="shrink-0 text-right"
                         style={{
-                          width: px(52),
+                          width: px(stack.stepLabel),
                           color: accent,
                           fontSize: type(stack.line),
                           fontWeight: 700,
                           paddingTop: px(2),
+                          // Tight, so a two-line label still clears the row.
+                          lineHeight: 1.2,
                         }}
                       >
                         {when}
@@ -3122,7 +3178,11 @@ export function DeckPanel({
                     }}
                   />
                 ) : (
-                  <div className="grid size-full place-items-center bg-white text-base text-[#999]">
+                  <div className="grid size-full place-items-center bg-white text-base text-[#6b6b6b]">
+                    {/* 흰 종이 위의 회색. 슬라이드는 테마를 따르지 않으므로
+                        색이 값이다 — #999 는 흰 바탕에서 2.85:1 이라 WCAG 의
+                        4.5:1 에 못 미쳤다. #6b6b6b 는 5.3:1 이면서 여전히
+                        물러나 있다. */}
                     {t('구성을 잡는 중…')}
                   </div>
                 )}

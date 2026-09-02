@@ -274,7 +274,9 @@ export function AgentsPage() {
                 )}
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              {/* `mb-3` is the floor under the foot's `mt-auto`, which is 0 on a
+                  card that is already as tall as its row. */}
+              <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
                 {a.kinds.map((k) => {
                   const meta = kindMeta[k]
                   const KindIcon = meta.icon
@@ -306,7 +308,14 @@ export function AgentsPage() {
                 {a.tools?.length === 0 && <Badge>{t('도구 없음')}</Badge>}
               </div>
 
-              <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
+              {/* `mt-auto`, not `mt-3`: the grid already stretches the cards in
+                  a row to one height, but the foot floated wherever the badges
+                  above it happened to end — so an agent carrying two rows of
+                  tool badges put its 실행 button 28px below its neighbour's, and
+                  a tidy two-column grid read as a broken one. Pinned to the
+                  bottom, the buttons line up across the row whatever is above
+                  them. */}
+              <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
                 <span className="flex items-center gap-2 text-xs text-faint">
                   {t('{n}회 실행').replace('{n}', String(a.runs))}
                   {a.visibility === 'org' && (

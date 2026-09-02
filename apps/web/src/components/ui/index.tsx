@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react'
+import { Check, ChevronDown, X } from 'lucide-react'
 import {
   createContext,
   useCallback,
@@ -96,6 +96,44 @@ export function Input({ className, ...props }: ComponentProps<'input'>) {
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} />
+}
+
+/**
+ * A dropdown that looks like the fields beside it.
+ *
+ * A bare `<select>` is drawn by the operating system: its own font, its own
+ * height, its own arrow, its own focus ring. Put next to `Input` it reads as a
+ * control from a different product — 설정 · 환경설정 had a row of custom model
+ * pickers and then one grey system dropdown under them, which is the kind of
+ * seam people notice without being able to name.
+ *
+ * Still a real `<select>`. The native control is what gives keyboard support,
+ * type-ahead, and a usable list on a phone; a div rebuilt to look like one
+ * loses all three. Only the chrome is replaced — `appearance-none` takes the
+ * platform's arrow off, and a chevron is drawn in its place.
+ */
+export function Select({ className, children, ...props }: ComponentProps<'select'>) {
+  return (
+    <div className="relative">
+      <select
+        className={cn(
+          fieldBase,
+          'h-9 cursor-pointer appearance-none pr-9',
+          // A disabled field must not look pressable.
+          'disabled:cursor-not-allowed disabled:opacity-60',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        size={15}
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-faint"
+      />
+    </div>
+  )
 }
 
 export function Field({
