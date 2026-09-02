@@ -561,6 +561,20 @@ _MATERIAL = re.compile(
 )
 
 
+_PAGES = re.compile(r"(\d+)\s*(?:장|쪽|페이지|p)\s*(?:이상|분량|짜리|내외|정도)")
+
+
+def _long_form(request: str) -> bool:
+    """Whether the person asked for a document longer than one draft can hold.
+
+    「15장 이상 분량으로」 came back as four pages: a single draft is capped by
+    the model's output window, and 백서 is not a shape it can fill in one
+    breath. Past eight pages every section is written on its own, long.
+    """
+    m = _PAGES.search(request)
+    return bool(m) and int(m.group(1)) >= 8
+
+
 def _carries_material(request: str) -> bool:
     """The material is in the request itself — a pasted memo, a table.
 
@@ -1169,8 +1183,16 @@ async def write(
     # written on its own below, the old way. The per-section pass stays for
     # rewrites, where one section is the whole job.
     drafted: dict[str, str] = {}
-    yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
+    long_form = _long_form(request)
+    if long_form:
+        # 긴 문서는 절마다 따로 쓴다 — see `_long_form`. The draft is skipped
+        # rather than attempted: it would come back short and be kept.
+        yield {"type": "step", "id": "draft", "label": "절마다 길게 쓰는 중", "status": "done"}
+    else:
+        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
     try:
+        if long_form:
+            raise ValueError("long form")
         draft_text, spent = await _complete(
             model,
             build_document_messages(
@@ -1194,8 +1216,9 @@ async def write(
         drafted = _carry_table(request, headings, _split_draft(draft_text, headings))
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        log.warning("report draft failed, writing section by section: %s", exc)
-        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
+        if not long_form:
+            log.warning("report draft failed, writing section by section: %s", exc)
+            yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
     #: Approved pictures by the index of the section they belong to. Empty when
     #: the figure card was answered 그림 없이, and then nothing below mentions a
     #: figure — which is the whole point of asking before the writing.
@@ -1255,6 +1278,13 @@ async def write(
                             )
                             if index in wanted_figures
                             else ""
+                        )
+                        + (
+                            "\n\n이 문서는 긴 분량으로 요청되었다. 이 절은 문단 다섯에서 "
+                            "여덟, 1,500자 이상으로 — 자료의 수치를 근거로 풀어 쓰되 같은 말을 "
+                            "되풀이해 채우지 마라."
+                            if long_form
+                            else ""
                         ),
                         request=request,
                         trusted_context=trusted_context,
@@ -1262,7 +1292,7 @@ async def write(
                         research_rule=research_rule,
                     ),
                     api_key,
-                    1200,
+                    2400 if long_form else 1200,
                 )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("report section %r failed: %s", section["heading"], exc)

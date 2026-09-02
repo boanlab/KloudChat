@@ -451,3 +451,12 @@ def test_a_rewrite_does_not_borrow_another_sections_table() -> None:
     assert "|" not in _without_borrowed_tables(body, "현황 줄글", [], "근거를 보강")
     # 표를 달라고 했으면 남긴다.
     assert table in _without_borrowed_tables(body, "현황 줄글", [], "표로 정리해 줘")
+
+
+def test_a_request_for_many_pages_is_long_form() -> None:
+    from app.services.report import _long_form
+
+    assert _long_form("「교육과정 개편 백서」 초안을 15장 이상 분량으로 써 주세요.")
+    assert _long_form("20쪽 내외 보고서")
+    assert not _long_form("한 장짜리 결재 보고")
+    assert not _long_form("슬라이드 5장 분량")
