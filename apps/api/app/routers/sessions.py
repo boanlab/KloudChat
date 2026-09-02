@@ -1926,6 +1926,9 @@ async def _settle_plan_turn(
             reason="document.plan",
             session_id=session_id,
             model=(outline_model or model)["id"],
+            # 「document」 is the one reason that does not say which surface —
+            # both 보고서 and 슬라이드 plan and stop. The session does.
+            surface=session.kind.value,
         )
         session.updated_at = utcnow()
         db.add(session)
@@ -4614,9 +4617,14 @@ async def _run_deck(
             if written:
                 artifact_design = design_tokens
                 if not artifact_design:
-                    requested_style = str((approved_plan or {}).get("visualStyle") or design_service.visual_style_for(request))
+                    requested_style = str(
+                        (approved_plan or {}).get("visualStyle")
+                        or design_service.visual_style_for(request)
+                    )
                     if requested_style != "editorial":
-                        artifact_design = design_service.normalise_tokens({"visualStyle": requested_style})
+                        artifact_design = design_service.normalise_tokens(
+                            {"visualStyle": requested_style}
+                        )
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -4890,6 +4898,7 @@ async def _revise_document(
                 reason="document.revise",
                 session_id=session_id,
                 model=model["id"],
+                surface=session.kind.value,
             )
             session.updated_at = utcnow()
             db.add(session)
@@ -5077,9 +5086,14 @@ async def _run_report(
             if written:
                 artifact_design = design_tokens
                 if not artifact_design:
-                    requested_style = str((approved_plan or {}).get("visualStyle") or design_service.visual_style_for(request))
+                    requested_style = str(
+                        (approved_plan or {}).get("visualStyle")
+                        or design_service.visual_style_for(request)
+                    )
                     if requested_style != "editorial":
-                        artifact_design = design_service.normalise_tokens({"visualStyle": requested_style})
+                        artifact_design = design_service.normalise_tokens(
+                            {"visualStyle": requested_style}
+                        )
                 artifact_id = await _store_document(
                     db,
                     session,

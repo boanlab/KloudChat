@@ -31,6 +31,7 @@ from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
 from app.services import adaptive_routing, geoip, governance, settings_store
+from app.services import credits as credits_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 
@@ -47,10 +48,11 @@ me_router = APIRouter(prefix="/me", tags=["usage"])
 MEDIA_REASONS = ("image.generate", "audio.generate", "video.generate")
 
 
-def _cycle_start() -> datetime:
-    """Midnight on the first of the current month — when allowances refill."""
-    now = datetime.now(UTC)
-    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+#: When allowances refill. Taken from the credit service rather than computed
+#: here as a UTC month boundary: the reset happens at 00:00 KST, and the two
+#: definitions disagree for the nine hours after it, which is exactly when a
+#: reader is most likely to check what is left.
+_cycle_start = credits_service.cycle_start
 
 
 def _since(days: int) -> datetime:

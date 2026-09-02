@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.models.user import User, UserRole, UserStatus, utcnow
+from app.services.credits import refill_if_due
 
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 
@@ -49,6 +50,12 @@ async def current_identity(request: Request, db: DbSession) -> User:
         raise UNAUTHORIZED
     if user.status is UserStatus.suspended:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account_suspended")
+
+    # A cycle that came due while nobody was looking is refilled here, on this
+    # account's first request of the new month. The row is already being
+    # written and committed for `last_active_at`, so the healthy path costs
+    # nothing extra and the once-a-month path costs one insert.
+    refill_if_due(db, user)
 
     user.last_active_at = utcnow()
     db.add(user)

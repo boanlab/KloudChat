@@ -27,7 +27,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.user import CreditLedger, User
 from app.routers import usage as usage_router
-from app.services.credits import settle
+from app.services.credits import cycle_start, next_cycle_reset, refill_if_due, settle
 
 _DDL = (
     """
@@ -408,3 +408,114 @@ async def test_every_day_of_the_window_is_on_the_chart(db) -> None:
     assert dates == sorted(dates)
     assert dates[-1] == datetime.now(UTC).date().isoformat()
     assert [row["requests"] for row in days] == [0, 0, 0, 1, 0, 0, 1]
+
+
+async def test_a_cycle_that_came_due_refills_itself(db) -> None:
+    """September must not inherit August's empty balance.
+
+    `refill_due` was written for a daily cron, and this deployment had no cron
+    — so on the first of the month `credits_used` stayed where the last month
+    left it. `has_headroom` reads that field, which made it a refusal and not
+    only a wrong number: an account that spent its allowance could not start a
+    turn until an administrator pressed a button.
+    """
+    user = await _account(db, allowance=1_000_000)
+    user.credits_used = 999_999
+    user.cycle_resets_at = _at(0.5)  # came due half a day ago
+    db.add(user)
+    await db.commit()
+
+    assert refill_if_due(db, user) is True
+    await db.commit()
+
+    assert user.credits_used == 0
+    assert user.cycle_resets_at > datetime.now(UTC)
+    # The refill is on the ledger, so the month it opened can be accounted for.
+    grants = (
+        await db.exec(sa.select(CreditLedger).where(CreditLedger.reason == "allowance.refill"))
+    ).all()
+    assert [row[0].delta for row in grants] == [1_000_000]
+
+
+async def test_a_cycle_still_running_is_left_alone(db) -> None:
+    """Idempotent, and only at the boundary — a mid-month call must not wipe
+    what has been spent so far."""
+    user = await _account(db, allowance=1_000_000)
+    user.credits_used = 400
+    user.cycle_resets_at = datetime.now(UTC) + timedelta(days=9)
+    db.add(user)
+    await db.commit()
+
+    assert refill_if_due(db, user) is False
+    assert user.credits_used == 400
+
+
+async def test_this_month_starts_when_the_allowance_actually_refills(db) -> None:
+    """The window the usage screen totals is the cycle, not the UTC month.
+
+    They are nine hours apart: the reset is 00:00 KST on the first, which is
+    15:00 UTC on the last day of the month before. Read as a UTC boundary, the
+    screen spends those nine hours totalling a month that has already ended.
+    """
+    # 00:00 KST on the first of September 2026 — the moment of the refill.
+    reset = datetime(2026, 8, 31, 15, 0, tzinfo=UTC)
+    # An hour after it, the cycle in progress is September's.
+    assert cycle_start(reset + timedelta(hours=1)) == reset
+    # An hour before it, the cycle in progress is still August's.
+    assert cycle_start(reset - timedelta(hours=1)) == datetime(2026, 7, 31, 15, 0, tzinfo=UTC)
+    # And the two definitions agree about where the next one begins.
+    assert next_cycle_reset(reset + timedelta(hours=1)) == datetime(2026, 9, 30, 15, 0, tzinfo=UTC)
+
+
+async def test_every_charge_says_which_surface_it_came_from(db) -> None:
+    """「기타 31,741 크레딧 · 0회」 가 나오던 자리.
+
+    `surface` was a keyword every caller could forget, and eleven of them did.
+    Forgetting was silent — the charge still landed, unattributed — so the
+    usage screen showed a third of the month's spend under 기타 with no
+    requests beside it and nothing to say what it had been for.
+
+    The reason already names the surface in all but one case, so `settle` fills
+    it in from there. `document.*` is the exception, because a plan and a
+    revision happen on both document surfaces.
+    """
+    from app.services.credits import surface_for
+
+    assert surface_for("chat.completion") == "chat"
+    assert surface_for("chat.title") == "chat"
+    assert surface_for("report.generate") == "report"
+    assert surface_for("report.factcheck") == "report"
+    assert surface_for("page.generate") == "report"
+    assert surface_for("deck.generate") == "slides"
+    assert surface_for("deck.rewrite") == "slides"
+    assert surface_for("image.generate") == "image"
+    assert surface_for("audio.generate") == "av"
+    assert surface_for("video.generate") == "av"
+    # 무엇인지 말하지 않는 것은 말하지 않는다고 답한다 — 부르는 쪽이 채운다.
+    assert surface_for("document.plan") is None
+    assert surface_for("document.revise") is None
+    assert surface_for("design.extract") is None
+
+    # 그리고 실제로 원장에 적힌다.
+    user = await _account(db)
+    settle(db, user, 900, reason="deck.factcheck", session_id="s-1", model="vendor/quality")
+    await db.commit()
+    row = (await db.exec(sa.select(CreditLedger))).one()[0]
+    assert row.surface == "slides"
+
+
+async def test_a_caller_that_knows_better_still_wins(db) -> None:
+    """유도는 기본값이지 규칙이 아니다."""
+    user = await _account(db)
+    settle(
+        db,
+        user,
+        100,
+        reason="document.plan",
+        session_id="s-2",
+        model="vendor/quality",
+        surface="slides",
+    )
+    await db.commit()
+    row = (await db.exec(sa.select(CreditLedger))).one()[0]
+    assert row.surface == "slides"

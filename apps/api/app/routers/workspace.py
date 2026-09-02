@@ -807,6 +807,7 @@ async def factcheck_slide(
         reason="deck.factcheck",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="slides",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -933,6 +934,7 @@ async def factcheck_section(
         reason="report.factcheck",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1049,6 +1051,8 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
         reason="artifact.critique",
         session_id=artifact.session_id,
         model=model["id"],
+        # Read off the artifact, because a critique is asked for on both.
+        surface="slides" if artifact.kind == ArtifactKind.deck else "report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1410,6 +1414,7 @@ async def rewrite_block(
         reason="page.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1517,6 +1522,7 @@ async def rewrite_section(
         reason="report.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1612,6 +1618,7 @@ async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUs
         reason="deck.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="slides",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -2440,19 +2447,26 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     elif format == "pdf":
         printed = await printing.to_pdf(content)
         body, media, suffix = (
-            printed or report_export.to_pdf(title, sections, tokens=tokens),
+            printed
+            or report_export.to_pdf(
+                title, sections, tokens=tokens, page_settings=page_settings
+            ),
             "application/pdf",
             "pdf",
         )
     elif format == "hwpx":
         body, media, suffix = (
-            report_export.to_hwpx(title, sections, tokens=tokens),
+            report_export.to_hwpx(
+                title, sections, tokens=tokens, page_settings=page_settings
+            ),
             "application/hwp+zip",
             "hwpx",
         )
     elif format == "docx":
         body, media, suffix = (
-            report_export.to_docx(title, sections, tokens=tokens),
+            report_export.to_docx(
+                title, sections, tokens=tokens, page_settings=page_settings
+            ),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "docx",
         )
@@ -2515,7 +2529,13 @@ async def export_artifact(
         media = "application/pdf"
         suffix = "pdf"
     elif format == "docx":
-        body = report_export.to_docx(title, sections, tokens=tokens, template=docx_template, page_settings=page_settings)
+        body = report_export.to_docx(
+            title,
+            sections,
+            tokens=tokens,
+            template=docx_template,
+            page_settings=page_settings,
+        )
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
     elif format == "hwpx":
