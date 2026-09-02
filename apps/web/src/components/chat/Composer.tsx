@@ -42,17 +42,6 @@ const placeholders: Record<SessionKind, string> = {
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
 }
 
-/**
- * A 시작점's `fills`, read back as a request. The object particle is chosen
- * from the last syllable's final consonant, since the words are the
- * template's rather than a proofread sentence.
- */
-function bringList(fills: string[]) {
-  const list = fills.join(', ')
-  const last = list.charCodeAt(list.length - 1)
-  if (last < 0xac00 || last > 0xd7a3) return `${list}을(를)`
-  return `${list}${(last - 0xac00) % 28 === 0 ? '를' : '을'}`
-}
 
 const ASPECTS = ['1:1', '16:9', '9:16', '4:3']
 const STYLES = ['미니멀', '사진', '일러스트', '3D 렌더', '수채화', '없음']
@@ -553,15 +542,23 @@ export function Composer({
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
 
+  /**
+   * 시작점의 빈칸에 적은 값. Keyed by the blank's index.
+   *
+   * 대화상자에서 받지 않는다. Five fields on a card in a dialogue asked for
+   * decisions before the person had started, and cards that tall overflowed
+   * the grid onto the row below. The dialogue picks the job; the questions
+   * are asked here, as the chat starts, where the answer is the request.
+   */
+  const [startingValues, setStartingValues] = useState<Record<number, string>>({})
+
   useEffect(() => {
     if (!pendingStartingTemplate) return
     activeRestoreToken.current = null
     liveStartingTemplate.current = pendingStartingTemplate
     setStartingTemplate(pendingStartingTemplate)
+    setStartingValues({})
     setPendingStartingTemplate(null)
-    // 카드가 문장을 만들어 왔으면 그것이 초안이다. The person reads the
-    // whole request here and fixes it before sending; a card that only
-    // listed five nouns left the box empty and the caret blinking.
     if (pendingStartingTemplate.text) setValue(pendingStartingTemplate.text)
     // 시작점이 필요하다고 한 것은 시작점이 켠다.
     //
@@ -988,8 +985,42 @@ export function Composer({
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
 
+  /**
+   * 채운 빈칸을 요청 앞에 줄로 붙인다. 채운 것만 — 「기간·언어: 」 한 줄은
+   * 모델에게 아무것도 말하지 않고 읽는 사람에게는 빠뜨렸다고 말한다.
+   */
+  const withStartingValues = (typed: string) => {
+    if (!startingTemplate) return typed
+    // 매체 서식은 문장 하나를 채운다. Its `{name}` blanks take what was
+    // filled in, and a blank left empty keeps its example — so the sentence
+    // the picture model reads is always whole. The person's own words go
+    // after it.
+    if (startingTemplate.examplePrompt && startingTemplate.blanks) {
+      const values = Object.fromEntries(
+        startingTemplate.blanks.map((blank, index) => [
+          blank.name,
+          (startingValues[index] ?? '').trim() || startingTemplate.examples?.[index] || '',
+        ]),
+      )
+      const sentence = startingTemplate.examplePrompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
+        name in values ? values[name] : whole,
+      )
+      return [sentence, typed].filter(Boolean).join('\n')
+    }
+    const lines = startingTemplate.fills
+      .map((fill, index) => [fill, (startingValues[index] ?? '').trim()] as const)
+      .filter(([, filled]) => filled)
+      .map(([fill, filled]) => `${fill}: ${filled}`)
+    if (!lines.length) return typed
+    return [startingTemplate.title, ...lines, typed].filter(Boolean).join('\n')
+  }
+  // 매체 서식은 예시만으로도 온전한 문장이 되므로 빈칸이 비어도 보낼 수 있다.
+  const startingFilled =
+    Object.values(startingValues).some((one) => one.trim()) ||
+    Boolean(startingTemplate?.examplePrompt)
+
   const submit = () => {
-    const text = value.trim()
+    const text = withStartingValues(value.trim())
     if (!text || busy || modelSelectionPending || unsupportedVideo) return
     clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
@@ -1012,6 +1043,7 @@ export function Composer({
     setAttachments([])
     setActivatedSkillIds([])
     setStartingTemplate(null)
+    setStartingValues({})
     if (kind === 'av' && avOptions.mode === 'video') {
       // A ticket, not an answer: the clip takes minutes and the job row
       // outlives this request, so the card carries it.
@@ -1201,6 +1233,12 @@ export function Composer({
                   type="button"
                   onClick={() => {
                     setPendingTemplate(null)
+                    // 서식이 가면 그 서식의 질문도 간다.
+                    if (startingTemplate?.examplePrompt) {
+                      liveStartingTemplate.current = null
+                      setStartingTemplate(null)
+                      setStartingValues({})
+                    }
                     // Sticky server-side once a turn has used it, so clearing
                     // the chip has to clear the row too.
                     if (session?.renderTemplateId) {
@@ -1221,7 +1259,9 @@ export function Composer({
                 shape the answer comes out in, this one names where the asking
                 started. Neither is in the box, so neither ends up in the
                 transcript as something the person wrote. */}
-            {startingTemplate && (
+            {/* 매체 서식은 바로 위의 서식 칩이 이미 이름을 말한다 — 같은 이름의
+                칩 둘은 하나로 읽히지 않는다. */}
+            {startingTemplate && (!startingTemplate.examplePrompt || !pendingTemplate) && (
               <Badge tone="accent">
                 <LayoutTemplate size={11} />
                 {startingTemplate.title}
@@ -1354,6 +1394,64 @@ export function Composer({
           </div>
         )}
 
+        {/* 시작점의 질문. 대화상자가 아니라 여기서 받는다 — 일을 고른 뒤,
+            챗을 시작하면서. 빈칸마다 예시가 흐리게 들어 있고, 채운 만큼이
+            요청 앞에 줄로 붙는다. 아래 상자는 덧붙일 말을 위한 자리다. */}
+        {!pending && startingTemplate && startingTemplate.fills.length > 0 && (
+          <div
+            role="group"
+            aria-label={t('{name} 시작점 질문').replace('{name}', startingTemplate.title)}
+            className="grid gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 sm:grid-cols-2"
+          >
+            {startingTemplate.fills.map((fill, index) => {
+              const blank = startingTemplate.blanks?.[index]
+              const set = (next: string) => setStartingValues((all) => ({ ...all, [index]: next }))
+              return (
+                <label key={`${fill}-${index}`} className={cn('block min-w-0', blank?.long && 'sm:col-span-2')}>
+                  <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
+                  {blank?.options?.length ? (
+                    <select
+                      // 고르지 않았으면 서식의 기본값이 보이고, 그대로 나간다.
+                      value={startingValues[index] ?? startingTemplate.examples?.[index] ?? ''}
+                      onChange={(e) => set(e.target.value)}
+                      aria-label={`${startingTemplate.title} · ${fill}`}
+                      className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
+                    >
+                      {blank.options.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  ) : blank?.long ? (
+                    <textarea
+                      value={startingValues[index] ?? ''}
+                      onChange={(e) => set(e.target.value)}
+                      rows={4}
+                      placeholder={startingTemplate.examples?.[index] || ''}
+                      aria-label={`${startingTemplate.title} · ${fill}`}
+                      className="w-full resize-y rounded-control border border-line bg-panel px-2 py-1.5 text-sm leading-relaxed placeholder:text-faint focus:border-accent focus:outline-none"
+                    />
+                  ) : (
+                    <input
+                      value={startingValues[index] ?? ''}
+                      onChange={(e) => set(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Enter 는 여기서도 보낸다 — 마지막 칸을 채우고 상자로
+                        // 옮겨 갈 이유가 없다.
+                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                          e.preventDefault()
+                          submit()
+                        }
+                      }}
+                      placeholder={startingTemplate.examples?.[index] || ''}
+                      aria-label={`${startingTemplate.title} · ${fill}`}
+                      className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
+                    />
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        )}
         <textarea
           ref={ref}
           autoFocus={autoFocus}
@@ -1389,7 +1487,7 @@ export function Composer({
               : // What this 시작점 needs, rather than what the surface generally
                 // does — the half of the template the person still has to supply.
                 startingTemplate && startingTemplate.fills.length > 0
-                ? t('{list} 적어 주세요').replace('{list}', bringList(startingTemplate.fills))
+                ? t('덧붙일 말이 있으면 여기에 적으세요')
                 : t(placeholders[kind])
           }
           aria-label={t('프롬프트 입력')}
@@ -1718,7 +1816,7 @@ export function Composer({
             )}
             <button
               onClick={streaming && sessionId ? () => stopStreaming(sessionId) : submit}
-              disabled={(!value.trim() && !streaming) || modelSelectionPending}
+              disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',
                 streaming
@@ -1731,7 +1829,7 @@ export function Composer({
                   ? t('생성을 멈춥니다')
                   : modelSelectionPending
                     ? t('모델 설정 저장 중…')
-                  : !value.trim()
+                  : !value.trim() && !startingFilled
                     ? t('보낼 내용을 먼저 입력하세요')
                     : unsupportedVideo
                       ? t('이 모델은 이 조합을 만들지 않습니다')

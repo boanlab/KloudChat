@@ -40,13 +40,14 @@ test('채팅은 시작점 한 목록이고, 카드가 무엇을 적을지 묻는
   await expect(dialog.getByRole('tab')).toHaveCount(0)
   await dialog.getByLabel('시작점 검색').fill('장애 원인')
   const card = dialog.locator('div.group', { hasText: '장애 원인 좁히기' }).first()
-  // 빈칸이 카드 위에 있다.
-  await expect(card.getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
-  await card.getByLabel('장애 원인 좁히기 · 재현 조건').fill('로그인 직후 새로고침')
+  // 카드는 무엇을 물을지만 보여 준다; 빈칸은 입력창이 묻는다.
+  await expect(card.getByText('에러 로그')).toBeVisible()
+  await expect(card.getByRole('textbox')).toHaveCount(0)
   await card.getByRole('button', { name: /시작점 선택/ }).click()
   await expect(page.getByRole('button', { name: '장애 원인 좁히기 시작점 해제' })).toBeVisible()
-  // 채운 것이 요청으로 들어 있다.
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/장애 원인 좁히기\n재현 조건: 로그인 직후 새로고침/)
+  const questions = page.getByRole('group', { name: '장애 원인 좁히기 시작점 질문' })
+  await expect(questions.getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
+  await expect(questions.getByLabel('장애 원인 좁히기 · 재현 조건')).toBeVisible()
 })
 
 test('보고서 시작점은 결과 모양을 카드에서 고른다', async ({ page }) => {

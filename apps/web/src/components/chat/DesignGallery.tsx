@@ -16,7 +16,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Dropdown, MenuItem, Modal } from '@/components/ui'
 import {
   argumentText,
-  fillPrompt,
   templateText,
   downloadFile,
   templatesApi,
@@ -41,71 +40,6 @@ import { useT } from '@/lib/useT'
  * unread would be one nobody could correct. Every value starts at the
  * template's own default, so the card is usable without typing.
  */
-function Blanks({
-  row,
-  english,
-  prompt,
-  onPick,
-}: {
-  row: DesignTemplateRow
-  english: boolean
-  prompt: string
-  onPick: (row: DesignTemplateRow, filled: string) => void
-}) {
-  const t = useT()
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(row.arguments.map((a) => [a.name, argumentText(a, english).initial])),
-  )
-  return (
-    <div className="space-y-2">
-      {row.arguments.map((argument) => {
-        const { label, options } = argumentText(argument, english)
-        const value = values[argument.name] ?? ''
-        const set = (next: string) => setValues((v) => ({ ...v, [argument.name]: next }))
-        return (
-          <label key={argument.name} className="block space-y-1">
-            <span className="text-xs text-muted">{label}</span>
-            {options.length > 0 ? (
-              <select
-                aria-label={label}
-                value={value}
-                onChange={(e) => set(e.target.value)}
-                className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
-              >
-                {options.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : argument.long ? (
-              // 문단으로 받는다. A method is sentences — the modules, what
-              // flows between them, what is trained — and a one-line field
-              // asks for a title where a description is wanted.
-              <textarea
-                aria-label={label}
-                value={value}
-                onChange={(e) => set(e.target.value)}
-                rows={5}
-                className="w-full resize-y rounded-control border border-line bg-panel px-2 py-1.5 text-sm leading-relaxed focus:border-accent focus:outline-none"
-              />
-            ) : (
-              <Input
-                aria-label={label}
-                value={value}
-                onChange={(e) => set(e.target.value)}
-                className="h-8 text-sm"
-              />
-            )}
-          </label>
-        )
-      })}
-      <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values))}>
-        {row.figure ? t('이 설명으로 도식 그리기') : t('이 서식으로 시작')}
-      </Button>
-    </div>
-  )
-}
 
 /**
  * How many of a template's rules the card prints before folding the rest away.
@@ -330,36 +264,33 @@ export function DesignTemplateCard({
               만들던 첫 번째 범인이다. */}
           <p className="line-clamp-2 text-sm text-muted">{text.description}</p>
           <Checks checks={row.checks} />
-          {row.arguments.length > 0 ? (
-            <Blanks row={row} english={english} prompt={text.examplePrompt} onPick={onPick} />
-          ) : (
-            text.fills.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {text.fills.map((fill) => (
-                  <span
-                    key={fill}
-                    className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
-                  >
-                    {fill}
-                  </span>
-                ))}
-              </div>
-            )
+          {/* 무엇을 물을지만 보여 준다. 답은 입력창에서 받는다 — 카드에
+              빈칸을 다섯 개 두면 시작하기 전에 결심을 시키는 셈이고, 그만큼
+              키가 큰 카드는 격자를 넘쳐 다음 줄 위로 겹쳤다. */}
+          {(row.arguments.length > 0 ? row.arguments.map((a) => argumentText(a, english).label) : text.fills).length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {(row.arguments.length > 0 ? row.arguments.map((a) => argumentText(a, english).label) : text.fills).map((fill) => (
+                <span
+                  key={fill}
+                  className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
+                >
+                  {fill}
+                </span>
+              ))}
+            </div>
           )}
         </div>
-        {row.arguments.length === 0 && (
-          <div className="pt-2">
-            <Foot chosen={chosen}>
-              <Button
-                size="sm"
-                disabled={chosen}
-                onClick={() => onPick(row, text.examplePrompt)}
-              >
-                {chosen ? t('고른 서식') : t('이 서식으로 시작')}
-              </Button>
-            </Foot>
-          </div>
-        )}
+        <div className="pt-2">
+          <Foot chosen={chosen}>
+            <Button
+              size="sm"
+              disabled={chosen}
+              onClick={() => onPick(row, row.arguments.length > 0 ? '' : text.examplePrompt)}
+            >
+              {chosen ? t('고른 서식') : row.figure ? t('이 도식으로 시작') : t('이 서식으로 시작')}
+            </Button>
+          </Foot>
+        </div>
       </div>
     </div>
   )
@@ -637,6 +568,24 @@ export function DesignGalleryModal({
     // 헷갈린다 — 카드가 고른 상태를 말하고 버튼이 잠기는 이유다.
     if (row.id === worn) return
     start(row, prompt)
+    // 빈칸은 입력창이 묻는다. A media 서식 with arguments used to ask them on
+    // the card; now the card names them and the composer asks, the same
+    // way a written starting point does on the other surfaces.
+    if (row.arguments.length > 0) {
+      const text = templateText(row, english)
+      setPendingStartingTemplate({
+        id: row.id,
+        title: text.name,
+        fills: row.arguments.map((a) => argumentText(a, english).label),
+        examples: row.arguments.map((a) => argumentText(a, english).initial),
+        blanks: row.arguments.map((a) => ({
+          name: a.name,
+          options: argumentText(a, english).options,
+          long: Boolean(a.long),
+        })),
+        examplePrompt: text.examplePrompt,
+      })
+    }
     onClose()
   }
 
@@ -651,34 +600,18 @@ export function DesignGalleryModal({
    * person can change before starting.
    */
   const [shapeOf, setShapeOf] = useState<Record<string, string>>({})
-  /**
-   * 카드마다 채운 빈칸. Keyed `rowId:index`.
-   *
-   * A 시작점 used to hand its five blanks to the composer as a placeholder —
-   * five nouns on one line, gone at the first keystroke — and the person was
-   * left to invent a format for a thing they had never been shown. The image
-   * cards already asked their questions on the card, one field each with an
-   * example in it. Every surface now does.
-   */
-  const [filled, setFilled] = useState<Record<string, string>>({})
-  const valueOf = (row: Sentence, index: number) => filled[`${row.id}:${index}`] ?? ''
 
   const pickStartingPoint = (row: Sentence) => {
     // 채운 빈칸을 한 문장으로. Only the ones that were filled — a blank line
     // 「기간·언어: 」 tells the model nothing and the reader that something
     // was forgotten.
-    const lines = row.fills
-      .map((fill, index) => [fill, valueOf(row, index).trim()] as const)
-      .filter(([, value]) => value)
-      .map(([fill, value]) => `${fill}: ${value}`)
-    const text = lines.length ? `${row.title}\n${lines.join('\n')}` : ''
-    if (fillsTheComposer(kind)) setDraft(text || row.prompt || row.title)
+    if (fillsTheComposer(kind)) setDraft(row.prompt || row.title)
     else
       setPendingStartingTemplate({
         id: row.id,
         title: row.title,
         fills: row.fills,
-        text,
+        examples: row.examples,
         needs: row.needs,
         skills: row.skills,
       })
@@ -751,7 +684,7 @@ export function DesignGalleryModal({
       open={open}
       onClose={onClose}
       title={t('작업 시작하기')}
-      description={t('일을 고르고 빈칸을 채우면 요청이 완성됩니다. 웹 검색이나 파일이 필요한 일은 카드가 미리 말해 줍니다.')}
+      description={t('일을 고르면 입력창이 그 일에 필요한 것만 묻습니다. 웹 검색이나 파일이 필요한 일은 카드가 미리 말해 줍니다.')}
       width="max-w-3xl"
     >
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -762,7 +695,7 @@ export function DesignGalleryModal({
             <p className="text-sm text-muted">
               {formatsAreTheJobs
                 ? t('빈칸을 채우면 그대로 요청이 됩니다.')
-                : t('빈칸마다 예시가 적혀 있습니다. 채운 만큼 요청에 들어갑니다.')}
+                : t('고르면 입력창이 그 일에 필요한 것만 묻습니다.')}
             </p>
           </div>
           {!formatsAreTheJobs && (
@@ -844,8 +777,8 @@ export function DesignGalleryModal({
               />
             ) : (
               ((row) => (
-              <div key={row.id} className="group relative min-h-44">
-              <div className="flex h-full w-full flex-col rounded-card border border-line p-3 text-left transition-colors hover:border-accent">
+              <div key={row.id} className="group relative flex min-h-44 flex-col">
+              <div className="flex w-full flex-1 flex-col rounded-card border border-line p-3 text-left transition-colors hover:border-accent">
                 <p className="flex items-center gap-1.5 text-base font-medium">
                   {row.title}
                   {/* 조직의 것인지 내가 쓴 것인지. 같은 격자에 섞여 있으므로
@@ -903,20 +836,20 @@ export function DesignGalleryModal({
                 {/* 무엇을 가져와야 하는지. 고른 뒤 입력창이 이것을 이름으로
                     물으므로, 고르기 전에 같은 말을 보여 준다 — 카드가 붙여 줄
                     문장을 미리 적어 두는 것과는 다른 일이다. */}
+                {/* 무엇을 물을지. 답은 입력창이 받는다 — 고른 뒤, 챗을 시작하면서. */}
                 {row.fills.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {row.fills.map((fill, index) => (
-                      <label key={fill} className="block">
-                        <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
-                        <Input
-                          value={valueOf(row, index)}
-                          onChange={(e) => setFilled((all) => ({ ...all, [`${row.id}:${index}`]: e.target.value }))}
-                          placeholder={row.examples[index] || ''}
-                          aria-label={`${row.title} · ${fill}`}
-                          className="h-8 text-sm"
-                        />
-                      </label>
-                    ))}
+                  <div className="mt-2">
+                    <p className="mb-1 text-xs font-medium text-muted">{t('적어 달라고 할 것')}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {row.fills.map((fill) => (
+                        <span
+                          key={fill}
+                          className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
+                        >
+                          {fill}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {/* 이 일이 무엇으로 되는지. Said before the pick: web search
@@ -941,7 +874,7 @@ export function DesignGalleryModal({
                     aria-label={t('{name} 시작점 선택').replace('{name}', row.title)}
                     onClick={() => pickStartingPoint(row)}
                   >
-                    {t('이 내용으로 시작')}
+                    {t('이 시작점 선택')}
                   </Button>
                   {row.form && (
                     <Button
@@ -957,7 +890,7 @@ export function DesignGalleryModal({
                   {/* 다음이 무엇인지. 「이번 요청에만 적용」 was scope jargon
                       nobody needed at this moment; what they need is to know
                       the request lands in the box, editable, before it goes. */}
-                  <span className="text-xs text-faint">{t('입력창에서 고친 뒤 보냅니다')}</span>
+                  <span className="text-xs text-faint">{t('고르면 입력창이 묻습니다')}</span>
                 </div>
               </div>
                 {/* 쓴 사람만. 공용은 관리자 화면에서 고친다 — 여기서 고치면

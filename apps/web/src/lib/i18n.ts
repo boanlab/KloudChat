@@ -1988,6 +1988,12 @@ const EN: Record<string, string> = {
 
   // ── 서식 카탈로그 ───────────────────────────────────────────────
   '서식': 'Formatting',
+  '일을 고르면 입력창이 그 일에 필요한 것만 묻습니다. 웹 검색이나 파일이 필요한 일은 카드가 미리 말해 줍니다.': 'Pick a task and the composer asks only for what it needs. A card says up front when its task needs web search or a file.',
+  '{name} 시작점 질문': '{name} starting-point questions',
+  '덧붙일 말이 있으면 여기에 적으세요': 'Anything to add goes here',
+  '고르면 입력창이 묻습니다': 'Pick it and the composer asks',
+  '고르면 입력창이 그 일에 필요한 것만 묻습니다.': 'Pick a task and the composer asks only for what it needs.',
+  '이 도식으로 시작': 'Start this figure',
   '적어 달라고 할 것': 'What to ask for',
   '쉼표로 구분. 카드에 빈칸으로 나옵니다': 'Comma-separated. Each becomes a blank on the card',
   '빈칸마다 예시': 'An example for each blank',

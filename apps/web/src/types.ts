@@ -327,10 +327,24 @@ export interface StartingPoint {
    * rather than trusting five blanks they filled behind a dialogue.
    */
   text?: string
+  /** One worked example per blank, in `fills` order — the placeholder. */
+  examples?: string[]
   /** What the job cannot run without: 'web' | 'file'. */
   needs?: string[]
   /** Workspace skills to switch on for the turn, by name. */
   skills?: string[]
+  /**
+   * How each blank is asked, in `fills` order. A closed list is a picker, a
+   * paragraph is a textarea, anything else a line. Media 서식 carry these
+   * from their arguments; a written starting point has plain lines.
+   */
+  blanks?: { name: string; options?: string[]; long?: boolean }[]
+  /**
+   * Media 서식 only: the sentence the blanks fill, `{name}` per blank. The
+   * composer writes the request out of it; a blank left empty keeps its
+   * example, so the sentence is always whole.
+   */
+  examplePrompt?: string
 }
 
 export interface Message {
