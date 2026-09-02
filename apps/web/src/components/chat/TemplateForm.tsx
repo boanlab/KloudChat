@@ -35,6 +35,12 @@ export function TemplateForm({
   const [title, setTitle] = useState(template?.title ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
   const [fills, setFills] = useState(template?.fills.join(', ') ?? '')
+  //: One example per blank, kept beside the blank it belongs to. A card
+  //: that names a blank without showing how to fill it asks for a format
+  //: nobody has been shown — the built-ins carry these, so this can too.
+  const [examples, setExamples] = useState<string[]>(template?.examples ?? [])
+  const [needsWeb, setNeedsWeb] = useState(template?.needs?.includes('web') ?? false)
+  const [needsFile, setNeedsFile] = useState(template?.needs?.includes('file') ?? false)
   const [prompt, setPrompt] = useState(template?.prompt ?? '')
   const [group, setGroup] = useState(template?.group ?? '')
   const [file, setFile] = useState<{ id: string; name: string } | null>(
@@ -73,6 +79,12 @@ export function TemplateForm({
         .split(',')
         .map((f) => f.trim())
         .filter(Boolean),
+      examples: fills
+        .split(',')
+        .map((f) => f.trim())
+        .filter(Boolean)
+        .map((_, index) => (examples[index] ?? '').trim()),
+      needs: [...(needsWeb ? ['web'] : []), ...(needsFile ? ['file'] : [])],
       prompt,
       fileId: file?.id ?? null,
     }
@@ -130,13 +142,43 @@ export function TemplateForm({
       <Field label={t('분류')} hint={forEverybody ? t('비우면 "공용"') : t('비우면 "내 템플릿"')}>
         <Input value={group} onChange={(e) => setGroup(e.target.value)} aria-label={t('분류')} />
       </Field>
-      <Field label={t('준비물')} hint={t('쉼표로 구분. 고르기 전에 보이는 항목입니다')}>
+      <Field label={t('적어 달라고 할 것')} hint={t('쉼표로 구분. 카드에 빈칸으로 나옵니다')}>
         <Input
           value={fills}
           onChange={(e) => setFills(e.target.value)}
           placeholder={t('수신처, 제목, 본문 요지')}
           aria-label={t('준비물')}
         />
+      </Field>
+      {fills.split(',').map((f) => f.trim()).filter(Boolean).length > 0 && (
+        <Field label={t('빈칸마다 예시')} hint={t('어떻게 적으면 되는지 보여 줍니다. 빈칸 안에 흐리게 나옵니다')}>
+          <div className="space-y-1.5">
+            {fills.split(',').map((f) => f.trim()).filter(Boolean).map((fill, index) => (
+              <div key={`${fill}-${index}`} className="flex items-center gap-2">
+                <span className="w-28 shrink-0 truncate text-sm text-muted" title={fill}>{fill}</span>
+                <Input
+                  value={examples[index] ?? ''}
+                  onChange={(e) => setExamples((all) => { const next = [...all]; next[index] = e.target.value; return next })}
+                  placeholder={t('예: …')}
+                  aria-label={t('{name} 예시').replace('{name}', fill)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
+      <Field label={t('이 일에 필요한 것')} hint={t('카드에 미리 적히고, 고르면 입력창이 맞춥니다')}>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="inline-flex items-center gap-1.5">
+            <input type="checkbox" checked={needsWeb} onChange={(e) => setNeedsWeb(e.target.checked)} />
+            {t('웹 검색')}
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input type="checkbox" checked={needsFile} onChange={(e) => setNeedsFile(e.target.checked)} />
+            {t('파일 첨부')}
+          </label>
+        </div>
       </Field>
       <Field label={t('문구')} hint={t('요청과 함께 전달됩니다. 입력창에는 나타나지 않습니다')}>
         <Textarea

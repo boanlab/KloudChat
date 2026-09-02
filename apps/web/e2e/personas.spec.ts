@@ -310,13 +310,15 @@ test.describe('페르소나 커버리지', () => {
               /* report */
               case 'eng-report-toc':
                 await openNewest(page, '보고서')
-                // Wide viewports get the left rail, narrow ones the header
-                // button; one of the two has to be visible.
-                await probe(page.getByText(/^목차/).filter({ visible: true }).first()).toBeVisible()
+                // 목차 손잡이는 리본의 보기 칸에 있다.
+                await page.getByRole('tab', { name: '보기', exact: true }).click()
+                await probe(page.getByRole('button', { name: /^목차/ }).first()).toBeVisible()
                 break
               case 'hum-sources':
               case 'res-sources':
                 await openNewest(page, '보고서')
+                // 출처는 리본의 검토 칸에 있다.
+                await page.getByRole('tab', { name: '검토', exact: true }).click()
                 await probe(page.getByRole('button', { name: /출처/ })).toBeVisible()
                 break
               case 'grad-section-regen':
@@ -324,8 +326,10 @@ test.describe('페르소나 커버리지', () => {
                 // 절 단위 컨트롤은 웹뷰에 있다. 서식을 입은 문서는 페이지뷰로
                 // 열리므로 — 패널이 `templateId` 를 읽고 거기서 시작한다 —
                 // 어느 문서가 가장 최근이냐에 따라 시작 화면이 갈린다.
+                // 페이지로 열렸으면 웹뷰로 — 버튼은 지금 보고 있는 것의 반대를
+                // 말한다: 페이지뷰에서는 「웹뷰」.
                 if ((await page.locator('.page').count()) > 0) {
-                  await page.getByRole('button', { name: '페이지뷰' }).click()
+                  await page.getByRole('button', { name: '웹뷰' }).click()
                 }
                 // 절이 할 수 있는 일은 절의 한 손잡이(절 편집 메뉴)로 모였다.
                 await page.getByRole('button', { name: /절 편집$/ }).first().click()
@@ -338,6 +342,8 @@ test.describe('페르소나 커버리지', () => {
               case 'off-docx':
               case 'res-export-pdf':
                 await openNewest(page, '보고서')
+                // 내보내기는 리본의 파일 칸에 있다.
+                await page.getByRole('tab', { name: '파일', exact: true }).click()
                 await page.getByRole('button', { name: '내보내기', exact: true }).click()
                 await probe(page.getByText(/Word|PDF/).first()).toBeVisible()
                 break
@@ -350,6 +356,8 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-pptx':
                 await openNewest(page, '슬라이드')
+                // 내보내기는 리본의 파일 칸에 있다.
+                await page.getByRole('tab', { name: '파일', exact: true }).click()
                 await page.getByRole('button', { name: '내보내기', exact: true }).click()
                 await probe(page.getByText('PowerPoint')).toBeVisible()
                 break
@@ -442,6 +450,8 @@ test.describe('페르소나 커버리지', () => {
                 // and each carries its own history — the need is that an
                 // earlier judgement is reachable, not that there is exactly
                 // one of them on screen.
+                // 버전 기록은 리본의 검토 칸에 있다.
+                await page.getByRole('tab', { name: '검토', exact: true }).click()
                 const history = page.getByRole('button', { name: '버전 기록' }).first()
                 await probe(history).toBeVisible()
                 await history.click()

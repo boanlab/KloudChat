@@ -106,15 +106,18 @@ test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async
   // 은 표면의 종류로 갈리므로 챗에서도 같다.
   await page.goto('/new/chat')
 
-  await page.getByRole('button', { name: '시작점 고르기' }).click()
-  // The card shows what you have to bring, not the prompt it will paste.
-  await expect(page.getByRole('dialog').getByText('장애 원인 좁히기')).toBeVisible()
-  await expect(page.getByRole('dialog').getByText('에러 로그', { exact: true })).toBeVisible()
-  await page.getByRole('dialog').getByText('장애 원인 좁히기').click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('시작점 검색').fill('장애 원인')
+  // The card asks for what you have to bring, on the card; the prompt it
+  // rides in with is not pasted anywhere.
+  const card = dialog.locator('div.group', { hasText: '장애 원인 좁히기' }).first()
+  await expect(card.getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
+  await card.getByRole('button', { name: /시작점 선택/ }).click()
 
   // Attached, not typed: the framing rides with the turn, and the box asks for
-  // the half only the person has. Pasted into the box, it would come back out
-  // in their own voice.
+  // the half only the person has. Nothing was filled in on the card, so the
+  // box is still empty — what it never holds is the framing itself.
   const box = page.getByLabel('프롬프트 입력')
   await expect(box).toHaveValue('')
   await expect(box).toHaveAttribute('placeholder', /에러 로그, 재현 조건/)

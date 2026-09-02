@@ -71,7 +71,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'hum-undergrad.automation': {
     text: '참고문헌 목록이 담긴 텍스트에서 저자·연도·제목을 뽑아 시카고 양식으로 다시 쓰는 파이썬 코드를 만들고, 예시 5건으로 실행해 결과를 보여 주세요.',
-    expect: ['python', '저자'],
+    expect: ['python', '파이썬', '저자'],
   },
   'hum-undergrad.trend': {
     text: '최근 5년 디지털 인문학 연구 동향을 조사해 주세요. 주요 방법론, 대표 프로젝트, 국내 도입 현황을 비교표로 만들고 출처를 남겨 주세요.',
@@ -121,7 +121,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'social-undergrad.automation': {
     text: '설문 CSV에서 역문항을 되돌리고 척도별 합산 점수를 만드는 파이썬 코드를 작성하고, 예시 데이터로 검산해 주세요.',
-    expect: ['python'],
+    expect: ['python', '파이썬'],
   },
   'social-undergrad.trend': {
     text: '최근 3년 사회과학 분야의 사전등록(preregistration) 확산 동향을 조사해 주세요. 학술지 정책 변화와 국내 현황을 비교표로 정리하고 출처를 남겨 주세요.',
@@ -171,7 +171,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'engineering-undergrad.automation': {
     text: '오실로스코프 CSV 여러 개를 읽어 채널별 RMS를 계산하고 표로 출력하는 파이썬 코드를 만들고, 예시로 실행해 검산해 주세요.',
-    expect: ['python', 'rms'],
+    expect: ['python', '파이썬', 'rms'],
   },
   'engineering-undergrad.trend': {
     text: '최근 2년 온디바이스 AI 반도체 동향을 조사해 주세요. 주요 업체, 발표 스펙, 전력 대비 성능을 비교표로 만들고 출처를 남겨 주세요.',
@@ -221,7 +221,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'masters.automation': {
     text: '실험 결과 JSON 여러 개를 모아 설정별 평균과 표준편차를 표로 만드는 파이썬 코드를 작성하고, 예시로 실행해 결과를 보여 주세요.',
-    expect: ['python'],
+    expect: ['python', '파이썬'],
   },
   'masters.trend': {
     text: '최근 1년 파라미터 효율 파인튜닝(PEFT) 동향을 조사해 주세요. 기법 계열, 대표 연구, 메모리·성능 절충을 비교표로 만들고 출처를 남겨 주세요.',
@@ -271,7 +271,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'doctoral.automation': {
     text: '실험 스윕 결과 디렉터리를 순회하며 설정별 최고 성능과 그 체크포인트 경로를 표로 뽑는 파이썬 코드를 만들고 실행해 주세요.',
-    expect: ['python'],
+    expect: ['python', '파이썬'],
   },
   'doctoral.trend': {
     text: '제 분야 상위 학회의 최근 2년 채택 논문 주제 분포 동향을 조사해 주세요. 급증·급감 주제를 비교표로 만들고 출처를 남겨 주세요.',
@@ -321,7 +321,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'administration.automation': {
     text: '엑셀에서 내려받은 수강신청 명단에서 중복과 미납자를 걸러 학과별로 나누는 파이썬 코드를 만들고 예시로 실행해 주세요.',
-    expect: ['python'],
+    expect: ['python', '파이썬'],
   },
   'administration.trend': {
     text: '최근 대학 행정의 AI 도입 동향을 조사해 주세요. 도입 영역, 국내 사례, 도입 시 유의점을 비교표로 만들고 출처를 남겨 주세요.',
@@ -371,7 +371,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'office.automation': {
     text: '매달 받는 지출결의 CSV에서 계정과목별 합계를 내고 전월 대비 증감을 붙여 표로 출력하는 파이썬 코드를 만들고 실행해 주세요.',
-    expect: ['python'],
+    expect: ['python', '파이썬'],
   },
   'office.trend': {
     text: '최근 사무 자동화(RPA·AI 비서) 도입 동향을 조사해 주세요. 적용 업무, 국내 도입 사례, 도입 비용을 비교표로 만들고 출처를 남겨 주세요.',
@@ -421,7 +421,7 @@ export const workPrompts: Record<string, WorkPrompt> = {
   },
   'research.automation': {
     text: '시험 장비가 뱉는 로그에서 조건별 측정값을 뽑아 규격 초과 여부를 판정하는 파이썬 코드를 만들고, 예시로 실행해 검산해 주세요.',
-    expect: ['python'],
+    expect: ['python', '파이썬'],
   },
   'research.trend': {
     text: '최근 2년 전고체 배터리 기술 동향을 조사해 주세요. 주요 기업, 발표 스펙, 양산 시점 전망을 비교표로 만들고 출처를 남겨 주세요.',

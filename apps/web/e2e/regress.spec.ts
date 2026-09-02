@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn } from './helpers'
+import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, ribbonTab, seedPendingUser, signIn, surfaceOn } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -345,6 +345,9 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   // contents became a drawer and the count moved onto its handle. The line is
   // still there, inside the closed drawer, which is why looking for it by text
   // finds an element and calls it hidden.
+  // 목차 손잡이는 리본의 보기 칸에 있다.
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 180_000 })
+  await ribbonTab(page, '보기')
   const counter = page.getByRole('button', { name: /목차 \d+\/[3-8]/ })
   await expect(counter).toBeVisible({ timeout: 180_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
@@ -353,6 +356,7 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   const [done, total] = progress.match(/(\d+)\/(\d+)/)!.slice(1).map(Number)
   expect(done, '작성되지 않은 섹션').toBe(total)
 
+  await ribbonTab(page, '파일')
   await page.getByRole('button', { name: '내보내기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: 'Word 문서' })).toBeVisible()
   const download = page.waitForEvent('download', { timeout: 60_000 })

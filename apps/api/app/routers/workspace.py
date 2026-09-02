@@ -716,6 +716,34 @@ def _clean_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
     return {**data, "sections": cleaned}
 
 
+def _relint(kind: ArtifactKind, data: dict) -> dict:
+    """The findings, recomputed from the document as it now is.
+
+    검사 결과는 만들 때 한 번 계산되고 그 뒤로 갱신되지 않았다. So a report
+    edited by hand carried findings that named sections it no longer had —
+    「추진 계획」 in a document with no such section — and 모두 고치기, which
+    finds each finding's section by name, found nothing to rewrite and said
+    「모두 고쳤습니다」. Findings are about the text; when the text changes,
+    they are recomputed from it, on every path that changes it.
+    """
+    try:
+        if kind is ArtifactKind.report:
+            parts = lint.from_sections(list(data.get("sections") or []))
+            findings = lint.check(parts)
+        elif kind is ArtifactKind.deck:
+            parts = lint.from_slides(list(data.get("slides") or []))
+            findings = lint.check(parts, slides=True)
+        elif data.get("blocks"):
+            parts = lint.from_blocks(list(data.get("blocks") or []))
+            findings = lint.check(parts, slides=bool(data.get("kind") == "deck"))
+        else:
+            return data
+    except Exception:  # noqa: BLE001 — a checker that cannot read the data must not block a save
+        log.warning("relint failed for %s", kind, exc_info=True)
+        return data
+    return {**data, "lint": lint.wire(findings)}
+
+
 @router.patch("/artifacts/{artifact_id}", response_model=ArtifactOut)
 async def patch_artifact(
     artifact_id: str, payload: ArtifactPatch, user: CurrentUser, db: DbSession
@@ -746,6 +774,10 @@ async def patch_artifact(
         # from a share link. `editable_styles` keeps the four things a person
         # can actually set — see `design_templates._EDITABLE_STYLE`.
         changes["data"] = _clean_report_data(changes["data"])
+
+    if "data" in changes and isinstance(changes["data"], dict):
+        # 글이 바뀌면 검사 결과도 바뀐다.
+        changes["data"] = _relint(artifact.kind, changes["data"])
 
     if "data" in changes:
         # Snapshot before overwriting; otherwise a bad edit is unrecoverable.
@@ -1535,6 +1567,8 @@ async def rewrite_section(
     target["status"] = "done"
     data["sections"] = sections
     data["wordCount"] = report_service.word_count(sections)
+    # 다시 쓴 절은 다시 검사한다 — 고친 지적이 그대로 남아 있으면 안 된다.
+    data = _relint(artifact.kind, data)
     artifact.data = data
     artifact.version += 1
     artifact.updated_at = utcnow()

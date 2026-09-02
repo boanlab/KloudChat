@@ -28,7 +28,14 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   const session = await page.evaluate(async (fn) => {
     const rows = await eval(fn)('/api/sessions')
     const list = Array.isArray(rows) ? rows : (rows?.items ?? [])
-    return list.find((s: { artifactId: string | null }) => s.artifactId) ?? null
+    // 패널이 있는 표면만. An image session shows its pictures in the
+    // transcript and has no column to split.
+    return (
+      list.find(
+        (s: { artifactId: string | null; kind: string }) =>
+          s.artifactId && (s.kind === 'report' || s.kind === 'slides'),
+      ) ?? null
+    )
   }, AS_USER)
   test.skip(!session, '결과물이 붙은 대화가 아직 없습니다.')
 
@@ -58,7 +65,10 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   await page.mouse.move(box.x - 260, box.y + box.height / 2, { steps: 12 })
   await page.mouse.up()
   const after = (await panel.boundingBox())!.width
-  expect(after, `끌어도 안 넓어짐 ${before}→${after}`).toBeGreaterThan(before + 150)
+  // 대화 칸의 최소 폭(560px)까지는 넓어진다. A panel that opened wide already
+  // has less than 150px of room, so the drag is judged against the ceiling.
+  const ceiling = viewport - 560
+  expect(after, `끌어도 안 넓어짐 ${before}→${after}`).toBeGreaterThan(Math.min(before + 150, ceiling - 8))
 
   await page.reload()
   await expect(panel).toBeVisible({ timeout: 20_000 })

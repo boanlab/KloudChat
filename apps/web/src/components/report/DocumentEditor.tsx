@@ -32,6 +32,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { DocumentShell } from '@/components/report/DocumentShell'
 import { EditableLine } from '@/components/report/EditableLine'
 import { artifactsApi } from '@/lib/api'
@@ -162,7 +163,7 @@ function useEditorTick(editor: Editor | null) {
   }, [editor])
 }
 
-function Toolbar({ editor, sources, onFind, onComment }: { editor: Editor | null; sources: Source[]; onFind: () => void; onComment: () => void }) {
+function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor | null; sources: Source[]; onFind: () => void; onComment: () => void; bare?: boolean }) {
   const t = useT()
   useEditorTick(editor)
   const off = !editor
@@ -197,7 +198,12 @@ function Toolbar({ editor, sources, onFind, onComment }: { editor: Editor | null
     'disabled:opacity-40 focus:outline-2 focus:outline-offset-1 focus:outline-accent'
 
   return (
-    <div className="flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5">
+    <div className={cn(
+      'flex flex-nowrap items-center gap-0.5 overflow-x-auto',
+      // 리본 안에 들어가면 리본이 이미 그 칸을 그리고 있다. 자기 테두리와
+      // 배경을 한 번 더 그리면 한 줄짜리 도구가 두 줄처럼 보인다.
+      bare ? 'px-0 py-0' : 'border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5',
+    )}>
       <select
         aria-label={t('서체')}
         title={t('서체')}
@@ -805,6 +811,7 @@ export function DocumentEditor({
   onLayoutMode,
   onWebView,
   onDirty,
+  toolbarSlot,
 }: {
   report: ReportArtifact
   /** Which 서식 the document wears. Empty renders the plain document seed. */
@@ -825,13 +832,32 @@ export function DocumentEditor({
     pageSettings?: ReportArtifact['pageSettings'],
     reviewComments?: ReportArtifact['reviewComments'],
   ) => void
+  /**
+   * Where the formatting bar should live.
+   *
+   * 서식 줄은 리본의 홈 칸에 있어야 한다. Left here it became a fourth bar
+   * stacked under the panel header, the ribbon tabs and a ribbon row holding
+   * two buttons — four rows of chrome over the document, and the one row that
+   * was actually the toolbar was the one that did not look like part of the
+   * ribbon. Portalled into a slot the panel provides, it is the 홈 tab's
+   * contents, which is where a word processor keeps it.
+   */
+  toolbarSlot?: HTMLElement | null
 }) {
   const t = useT()
   const [style, setStyle] = useState<TemplateStyle | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [focused, setFocused] = useState<Editor | null>(null)
   const [focusedSection, setFocusedSection] = useState<string | null>(null)
-  const [outlineOpen, setOutlineOpen] = useState(true)
+  /**
+   * 개요는 접힌 채로 연다.
+   *
+   * Opened, it takes 224px off the left of a panel that is often barely wider
+   * than the 794px page it has to show — so the document arrived already
+   * clipped at the right edge, and the first thing to do on opening the
+   * editor was to close a panel nobody asked for.
+   */
+  const [outlineOpen, setOutlineOpen] = useState(false)
   const sectionNodes = useRef<Record<string, HTMLElement | null>>({})
   const sectionEditors = useRef<Record<string, Editor | null>>({})
   const [findOpen, setFindOpen] = useState(false)
@@ -1080,21 +1106,29 @@ export function DocumentEditor({
     )
   }
 
+  //: 한 줄로 묶어 두고, 자리를 주면 그 자리에, 아니면 제자리에 그린다.
+  const bar = (
+    <>
+      <div className="min-w-0 flex-1">{editable && <Toolbar editor={focused} sources={report.sources} onFind={() => setFindOpen((value) => !value)} onComment={beginComment} bare={Boolean(toolbarSlot)} />}</div>
+      <button type="button" aria-pressed={commentsOpen} aria-label={t('검토 메모')} onClick={() => setCommentsOpen((value) => !value)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2 text-xs text-muted hover:bg-elevated hover:text-fg max-sm:w-8 max-sm:px-0">
+        <MessagesSquare size={14} /><span className="max-sm:hidden">{t('검토')} {comments.filter((comment) => comment.status === 'open').length}</span>
+      </button>
+      <button type="button" aria-pressed={outlineOpen} aria-label={t('문서 개요')} onClick={() => setOutlineOpen((value) => !value)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2 text-xs text-muted hover:bg-elevated hover:text-fg max-sm:w-8 max-sm:px-0">
+        <ListTree size={14} /><span className="max-sm:hidden">{t('개요')}</span>
+      </button>
+    </>
+  )
+  const tools = toolbarSlot
+    ? createPortal(<div className="flex items-center">{bar}</div>, toolbarSlot)
+    : <div className="flex min-w-0 items-center border-b border-line bg-panel pr-2 max-sm:pr-1">{bar}</div>
+
   if (layoutMode === 'pages') {
     return <PagedDocument html={previewHtml} css={pageCss} settings={pageSettings} settingsOpen={settingsOpen} onEdit={() => onLayoutMode?.('edit')} onWebView={() => onWebView?.()} onSettings={(next) => { setPageSettings(next); onDirty?.(compose(edits, renamed), editedTitle ?? undefined, next) }} />
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-w-0 items-center border-b border-line bg-panel pr-2 max-sm:pr-1">
-        <div className="min-w-0 flex-1">{editable && <Toolbar editor={focused} sources={report.sources} onFind={() => setFindOpen((value) => !value)} onComment={beginComment} />}</div>
-        <button type="button" aria-pressed={commentsOpen} aria-label={t('검토 메모')} onClick={() => setCommentsOpen((value) => !value)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2 text-xs text-muted hover:bg-elevated hover:text-fg max-sm:w-8 max-sm:px-0">
-          <MessagesSquare size={14} /><span className="max-sm:hidden">{t('검토')} {comments.filter((comment) => comment.status === 'open').length}</span>
-        </button>
-        <button type="button" aria-pressed={outlineOpen} aria-label={t('문서 개요')} onClick={() => setOutlineOpen((value) => !value)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control px-2 text-xs text-muted hover:bg-elevated hover:text-fg max-sm:w-8 max-sm:px-0">
-          <ListTree size={14} /><span className="max-sm:hidden">{t('개요')}</span>
-        </button>
-      </div>
+      {tools}
       {findOpen && (
         <div role="search" aria-label={t('찾기 및 바꾸기')} className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
           <input autoFocus aria-label={t('찾을 내용')} value={query} onChange={(event) => { setQuery(event.target.value); setFindStatus('') }} onKeyDown={(event) => { if (event.key === 'Enter') findNext() }} placeholder={t('찾을 내용')} className="h-8 w-48 rounded-control border border-line px-2 text-sm" />
@@ -1202,7 +1236,19 @@ export function DocumentEditor({
                           setFocused(null)
                         }
                       }}
-                      onMount={(editor) => { sectionEditors.current[section.id] = editor }}
+                      onMount={(editor) => {
+                        sectionEditors.current[section.id] = editor
+                        // 도구가 살아 있는 채로 열린다.
+                        //
+                        // `focused` was set only by `onReady`, which fires when
+                        // a paragraph takes focus — so the editor opened with
+                        // every one of its twenty formatting buttons greyed
+                        // out, and the only way to discover that they work was
+                        // to click into the text and look again. A bar that
+                        // starts dead reads as a bar that is broken.
+                        setFocused((current) => current ?? editor)
+                        setFocusedSection((current) => current ?? section.id)
+                      }}
                       onChange={(html) => change(section, html)}
                     />
                   </section>

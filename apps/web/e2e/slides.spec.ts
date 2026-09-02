@@ -56,7 +56,9 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   // The outline lands first, so the whole deck is on screen — greyed out —
   // before any of it is written. That is the point of the two-pass split.
   await page.getByRole('tab', { name: '보기', exact: true }).click({ timeout: 120_000 })
-  await expect(page.getByText(/^\d+장$/)).toBeVisible({ timeout: 120_000 })
+  // 「n장」 배지는 없앴다 — 옆의 목록이 이미 그 수를 그린다. 세는 일은
+  // 장 목록 손잡이가 한다: 「장 목록 1/8」.
+  await expect(page.getByRole('button', { name: '장 목록' })).toHaveText(/\d+\/[1-9]\d*/, { timeout: 120_000 })
 
   // Then the slides fill in. Waiting on the export button is waiting on the
   // last slide: it stays disabled while any slide is still empty.
@@ -170,7 +172,8 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   const card = page.locator('button.aspect-video').first()
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
-  await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '편집 도구' })).toBeVisible({ timeout: 20_000 })
 
   const edited = `수정한 제목 ${Date.now()}`
   await page.getByRole('button', { name: '편집 도구' }).click()

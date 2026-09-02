@@ -10,10 +10,13 @@ Ordering rules for a streaming turn:
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
 import json
 import logging
 import re
+import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import timedelta
@@ -58,6 +61,9 @@ from app.schemas.chat import (
     AudioRequest,
     ChooseVariant,
     CompareRequest,
+    DiagramOut,
+    DiagramRequest,
+    DiagramStore,
     FigureSuggestion,
     FigureSuggestRequest,
     ImageRequest,
@@ -91,6 +97,9 @@ from app.services import auto_memory as auto_memory_service
 from app.services import chat as chat_service
 from app.services import deck as deck_service
 from app.services import design as design_service
+from app.services import (
+    diagram as diagram_service,
+)
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
@@ -1606,6 +1615,133 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             status_code=status.HTTP_502_BAD_GATEWAY, detail=failure or "image_failed"
         )
     return [ArtifactOut.of(a) for a in made]
+
+
+@router.post("/{session_id}/diagrams", response_model=DiagramOut)
+async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentUser, db: DbSession):
+    """Writes a labelled figure as mermaid from a description of the method.
+
+    The image path draws shapes and cannot spell; a figure for a paper needs
+    its labels. This asks a language model for the *diagram* — nodes, zones,
+    arrows, each named — in the house style, and the client renders it. What
+    is returned is source, which is what gets stored: a picture is derived
+    from it and can be derived again after an edit.
+    """
+    session = await _owned(db, user, session_id)
+    catalogue = await model_service.list_models()
+    usable = sorted(
+        (m for m in catalogue["models"] if "chat" in m["kinds"]),
+        key=model_service.fallback_order,
+    )
+    # 글을 쓰는 모델이어야 한다. This is an image session, so `session.model`
+    # is the picture model — handed to chat/completions it answers 400. Take
+    # the asked-for model only if it can write; otherwise the cheapest that can.
+    asked = model_service.find(catalogue["models"], payload.model or session.model or "")
+    model = asked if asked and "chat" in asked["kinds"] else (usable[0] if usable else None)
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_models_available"
+        )
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+
+    try:
+        source, caption, usage = await diagram_service.draw(
+            description=payload.description,
+            figure=payload.figure,
+            model=model["id"],
+            api_key=api_key,
+            language=payload.language,
+            broken=payload.broken,
+            error=payload.error,
+        )
+    except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
+        log.warning("diagram failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="diagram_failed"
+        ) from exc
+
+    charged = charge_for_tokens(
+        model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+    )
+    if charged:
+        settle(
+            db, user, charged, reason="image.diagram",
+            session_id=session.id, model=model["id"], surface=session.kind.value,
+        )
+        await db.commit()
+    return DiagramOut(source=source, caption=caption, model=model["id"], credits=charged)
+
+
+@router.post("/{session_id}/diagrams/store", response_model=ArtifactOut)
+async def store_diagram_image(
+    session_id: str, payload: DiagramStore, user: CurrentUser, db: DbSession
+):
+    """Keeps a rendered figure as an image artifact, with its source beside it.
+
+    The client drew the mermaid and rasterised it; the server has no browser
+    and no fonts, and a figure has to be drawn in the face it will be printed
+    in. The PNG is what exports and galleries show; the source is what makes
+    it a figure rather than a screenshot of one.
+    """
+    session = await _owned(db, user, session_id)
+    try:
+        blob = base64.b64decode(payload.png, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="bad_png"
+        ) from exc
+    if len(blob) > 8_000_000:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="png_too_large"
+        )
+    file_id = uuid.uuid4().hex
+    key = file_service.write_blob(user.id, file_id, "figure.png", blob)
+    title = (payload.title or payload.caption or "도식")[:200]
+    db.add(
+        StoredFile(
+            id=file_id, user_id=user.id, session_id=session.id,
+            name=f"{title[:40]}.png", mime="image/png", size=len(blob),
+            storage_key=key, tokens=0,
+        )
+    )
+    artifact = Artifact(
+        user_id=user.id,
+        session_id=session.id,
+        project_id=session.project_id,
+        kind=ArtifactKind.image,
+        title=title,
+        data={
+            "kind": "image",
+            "jobId": None,
+            "prompt": payload.description,
+            "aspect": "16:9",
+            "actualAspect": f"{payload.width}:{payload.height}",
+            "width": payload.width,
+            "height": payload.height,
+            "style": "figure",
+            "seed": 0,
+            "model": payload.model,
+            "src": f"{settings.api_prefix}/files/{file_id}/content",
+            # 그림이 아니라 도식이다. The source is the artifact; the PNG is
+            # one rendering of it.
+            "figure": payload.figure,
+            "source": payload.source,
+            "caption": payload.caption,
+        },
+    )
+    db.add(artifact)
+    _record_media(db, session, payload.description, [artifact], model=payload.model, credits=0)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
 
 
 @router.post("/{session_id}/audio", response_model=ArtifactOut)

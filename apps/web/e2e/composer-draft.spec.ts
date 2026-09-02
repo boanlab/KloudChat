@@ -31,6 +31,8 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   // since the research figures joined it, so 포스터 is on the second page and
   // a locator that only looks at what is drawn finds nothing.
   await dialog.getByPlaceholder(/검색/).fill('포스터')
+  const search = dialog.getByLabel(/서식 검색|시작점 검색/)
+  if (await search.count()) await search.fill('포스터')
   const poster = dialog.locator('div.group', { hasText: '포스터' }).first()
   await expect(poster).toBeVisible({ timeout: 20_000 })
   await poster.getByRole('button', { name: '이 서식으로 시작' }).click()

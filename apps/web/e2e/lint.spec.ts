@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { artifactReady, signIn } from './helpers'
 
 /**
  * What the linter found, shown on the artifact that carries it.
@@ -74,6 +74,9 @@ test('검사에서 걸린 곳은 결과물 패널에서 셀 수 있고 읽을 �
 
   // The count is the P0 one: "one thing is wrong" and "two could read better"
   // are different sentences, and only the first should look urgent.
+  // 검사 결과는 리본의 검토 칸에 있다. A panel opens on 홈, so a test that
+  // reaches for it without saying which tab is looking at the wrong row.
+  await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
   await expect(badge).toContainText('고칠 곳 1')
@@ -135,6 +138,9 @@ test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', a
 
   // Offered even with nothing found automatically: the review is the thing
   // that costs a call, so it is asked for rather than run.
+  // 검사 결과는 리본의 검토 칸에 있다. A panel opens on 홈, so a test that
+  // reaches for it without saying which tab is looking at the wrong row.
+  await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
   await badge.click()
@@ -190,11 +196,12 @@ test('걸린 것이 없으면 개수 대신 검토를 권한다', async ({ page 
   const card = page.getByRole('button', { name: `${title} 열기` })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
-  await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({
-    timeout: 20_000,
-  })
+  await artifactReady(page, 20_000)
   // Nothing was found, so the badge says what it *can* offer — a review —
   // rather than a count of problems that do not exist.
+  // 검사 결과는 리본의 검토 칸에 있다. A panel opens on 홈, so a test that
+  // reaches for it without saying which tab is looking at the wrong row.
+  await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toContainText('검토')
   await expect(badge).not.toContainText('고칠 곳')

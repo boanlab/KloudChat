@@ -29,43 +29,41 @@ test.beforeEach(async ({ page }) => {
   )
 })
 
-test('채팅은 업무 시작점만 보여 주고 선택 의미를 미리 설명한다', async ({ page }) => {
+test('채팅은 시작점 한 목록이고, 카드가 무엇을 적을지 묻는다', async ({ page }) => {
+  // 결과 서식 탭은 없어졌다 — 업무 시작점으로 접혔다. What is left is one
+  // list of jobs, and each card asks its own questions on the card.
   await page.goto('/new/chat')
   await page.getByRole('button', { name: '작업 시작하기' }).click()
 
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('heading', { name: '작업 시작하기' })).toBeVisible()
-  await expect(dialog.getByRole('tab', { name: /업무 시작점/ })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
-  await expect(dialog.getByRole('tab', { name: /결과 서식/ })).toHaveCount(0)
-  await expect(dialog.getByText('이번 요청에만 적용 · 선택 후 해제 가능')).toBeVisible()
-  await expect(dialog.getByText('에러 로그')).toBeVisible()
-  await dialog.getByRole('button', { name: /장애 원인 좁히기/ }).click()
+  await expect(dialog.getByRole('tab')).toHaveCount(0)
+  await dialog.getByLabel('시작점 검색').fill('장애 원인')
+  const card = dialog.locator('div.group', { hasText: '장애 원인 좁히기' }).first()
+  // 빈칸이 카드 위에 있다.
+  await expect(card.getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
+  await card.getByLabel('장애 원인 좁히기 · 재현 조건').fill('로그인 직후 새로고침')
+  await card.getByRole('button', { name: /시작점 선택/ }).click()
   await expect(page.getByRole('button', { name: '장애 원인 좁히기 시작점 해제' })).toBeVisible()
-  await expect(page.getByLabel('프롬프트 입력')).toHaveAttribute(
-    'placeholder',
-    '에러 로그, 재현 조건을 적어 주세요',
-  )
+  // 채운 것이 요청으로 들어 있다.
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/장애 원인 좁히기\n재현 조건: 로그인 직후 새로고침/)
 })
 
-test('보고서는 업무와 결과 모양을 분리해 탐색하고 검색한다', async ({ page }) => {
+test('보고서 시작점은 결과 모양을 카드에서 고른다', async ({ page }) => {
   await page.goto('/new/report')
   await page.getByRole('button', { name: '작업 시작하기' }).click()
 
   const dialog = page.getByRole('dialog')
-  const format = dialog.getByRole('tab', { name: /결과 서식/ })
-  const starting = dialog.getByRole('tab', { name: /업무 시작점/ })
-  await expect(format).toHaveAttribute('aria-selected', 'true')
-  await expect(dialog.getByLabel('결과 서식 검색')).toBeVisible()
-  await expect(dialog.getByText('문헌 동향 조사')).toHaveCount(0)
-
-  await starting.click()
-  await expect(starting).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('tab')).toHaveCount(0)
   await expect(dialog.getByLabel('시작점 검색')).toBeVisible()
-  await expect(dialog.getByText('문헌 동향 조사')).toBeVisible()
-  await expect(dialog.getByText('미리보기와 점검 항목을 확인한 뒤 고르세요.')).toHaveCount(0)
+  await dialog.getByLabel('시작점 검색').fill('문헌 동향')
+  const card = dialog.locator('div.group', { hasText: '문헌 동향 조사' }).first()
+  await expect(card).toBeVisible()
+  // 결과 모양은 카드의 고르개다 — 열일곱 서식이 전부 여기서 닿는다.
+  await card.getByRole('button', { name: /결과 모양 고르기/ }).click()
+  await expect(page.getByRole('menuitem', { name: '한 장 요약' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '주제에 맞게 새로 만들기' })).toBeVisible()
+  await page.keyboard.press('Escape')
 })
 
 test('좁은 화면에서도 선택창이 가로로 넘치지 않는다', async ({ page }) => {

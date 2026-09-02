@@ -45,6 +45,11 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   return (
     <button
+      // Which variant this is, readable from CSS. A ribbon flattens the
+      // buttons inside it to look like ribbon commands, and it needs a way to
+      // say "all of them except the filled one" — without this it wiped the
+      // background off a primary button and left the white label on white.
+      data-variant={variant}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',

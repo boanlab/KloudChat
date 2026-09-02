@@ -10,7 +10,7 @@ export type RibbonTab<T extends string = string> = {
 export function RibbonGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section aria-label={label} className="flex min-w-max items-center px-1.5 first:pl-0 last:pr-0">
-      <div className="flex items-center gap-px [&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10">
+      <div className="flex items-center gap-px [&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button:not([data-variant=primary])]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:not([data-variant=primary]):disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10">
         {children}
       </div>
     </section>
@@ -42,7 +42,7 @@ export function ArtifactRibbon<T extends string>({
   }, [active])
 
   return (
-    <div className="-mx-4 -mb-2.5 basis-full border-t border-line bg-elevated max-sm:-mx-2">
+    <div className="-mx-4 -mb-2.5 min-w-0 basis-full border-t border-line bg-elevated max-sm:-mx-2">
       <div
         role="tablist"
         aria-label={label}
@@ -87,7 +87,10 @@ export function ArtifactRibbon<T extends string>({
           </button>
         ))}
       </div>
-      {commands.length > 0 && <div id={`${ribbonId}-panel`} role="tabpanel" aria-labelledby={`${ribbonId}-tab-${active}`} className="min-h-11 min-w-0 overflow-visible border-t border-line bg-panel px-2 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] max-sm:overflow-x-auto">
+      {commands.length > 0 && <div id={`${ribbonId}-panel`} role="tabpanel" aria-labelledby={`${ribbonId}-tab-${active}`} /* 넘치면 스크롤한다. 데스크톱에서만 `overflow-visible` 이었고, 편집기의
+           서식 줄이 들어오자 그 줄이 리본 오른쪽 밖으로 흘러 나가 웹뷰 버튼이
+           패널 가장자리에서 잘렸다. 메뉴는 portal 로 뜨므로 잘릴 것이 없다. */
+        className="min-h-11 min-w-0 overflow-x-auto border-t border-line bg-panel px-2 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
         <div
           role="toolbar"
           aria-label={tabs.find((tab) => tab.id === active)?.label}

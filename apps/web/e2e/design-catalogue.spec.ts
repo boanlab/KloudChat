@@ -46,6 +46,8 @@ test('디자인 화면은 만드는 것과 제품이 주는 것을 탭으로 나
   await expect(decks.getByText('회의록', { exact: true })).toHaveCount(0)
 
   // ── and it is the gallery's own card ────────────────────────────────
+  const catalogueSearch = documents.getByLabel(/서식 검색|시작점 검색/)
+  if (await catalogueSearch.count()) await catalogueSearch.fill('회의록')
   const minutes = documents.locator('div.group', { hasText: '회의록' })
   await expect(minutes).toHaveCount(1)
   // What it asks you to bring…

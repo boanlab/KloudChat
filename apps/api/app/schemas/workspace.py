@@ -768,6 +768,9 @@ class TemplateOut(Wire):
     title: str
     description: str
     fills: JsonList = Field(default_factory=list)
+    #: One example per blank, and what the job needs — same as a built-in's.
+    examples: JsonList = Field(default_factory=list)
+    needs: JsonList = Field(default_factory=list)
     prompt: str
     file_id: str | None = None
     #: Resolved by the router; the row holds only the id. Enough of the file to
@@ -792,6 +795,8 @@ class TemplateOut(Wire):
     ) -> TemplateOut:
         out = cls.model_validate(t, from_attributes=True)
         out.fills = list(t.fills or [])
+        out.examples = list(t.examples or [])
+        out.needs = list(t.needs or [])
         out.mine = owner_id is None or t.owner_id == owner_id
         if stored is not None:
             out.file_name = stored.name
@@ -806,6 +811,10 @@ class TemplateIn(Wire):
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=400)
     fills: list[str] | None = None
+    #: One example per blank, in `fills` order. Blank strings are allowed.
+    examples: list[str] | None = None
+    #: `web` · `file`.
+    needs: list[str] | None = None
     prompt: str = Field(default="", max_length=8000)
     file_id: str | None = None
     #: Validated against the rendering catalogue by the router — an id that is
@@ -846,6 +855,15 @@ class PromptTemplateOut(Wire):
     #: The 서식 this job comes out wearing, or `""` when the job has no fixed
     #: shape and the surface should choose one from the subject.
     render_template_id: str = ""
+    #: One worked example per blank, in `fills` order — 「예: 2020~2024,
+    #: 영어·한국어」 next to 「기간·언어」, so the blank says how to fill it.
+    examples: JsonList = Field(default_factory=list)
+    examples_en: JsonList = Field(default_factory=list)
+    #: What the job cannot run without: `web`, `file`. The card says so before
+    #: the pick and the composer holds to it after.
+    needs: JsonList = Field(default_factory=list)
+    #: Workspace skills to switch on for the turn, by name.
+    skills: JsonList = Field(default_factory=list)
     #: Ships in the image, so nobody can edit or remove it.
     builtin: bool = True
 
@@ -865,6 +883,10 @@ class PromptTemplateOut(Wire):
             fills_en=list(t.fills_en),
             prompt_en=t.prompt_en,
             render_template_id=t.render_template_id,
+            examples=list(t.examples),
+            examples_en=list(t.examples_en),
+            needs=list(t.needs),
+            skills=list(t.skills),
         )
 
 
@@ -907,6 +929,8 @@ class DesignArgumentOut(Wire):
     default_en: str = ""
     options: JsonList = Field(default_factory=list)
     options_en: JsonList = Field(default_factory=list)
+    #: A paragraph field rather than a one-line one.
+    long: bool = False
 
 
 class DesignExtractIn(Wire):
@@ -989,6 +1013,9 @@ class DesignTemplateOut(Wire):
     arguments: list[DesignArgumentOut] = Field(default_factory=list)
     #: Composer settings this template implies — aspect, duration, voice.
     defaults: dict[str, Any] = Field(default_factory=dict)
+    #: `method` · `flow` · `concept` when this image 서식 is a labelled figure
+    #: drawn by the diagram path; empty when it is a picture.
+    figure: str = ""
     #: Blank Office form users can fill manually or send to a colleague.
     form_format: str = ""
     #: Whether `/design-templates/{id}/preview` has something to show. The
@@ -1006,6 +1033,7 @@ class DesignTemplateOut(Wire):
             description=t.description,
             category=t.category,
             fills=list(t.fills),
+            figure=getattr(t, "figure", "") or "",
             example_prompt=t.example_prompt,
             name_en=t.name_en,
             description_en=t.description_en,
@@ -1022,6 +1050,7 @@ class DesignTemplateOut(Wire):
                     default_en=a.default_en,
                     options=list(a.options),
                     options_en=list(a.options_en),
+                    long=bool(getattr(a, "long", False)),
                 )
                 for a in t.arguments
             ],

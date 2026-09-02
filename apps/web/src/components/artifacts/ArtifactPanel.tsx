@@ -764,7 +764,12 @@ export function MediaPanel({
 /** Where the split was left, so it survives a reload. */
 const WIDTH_KEY = 'kchat-panel-width'
 // Left navigation plus a chat column wide enough for a prompt and its controls.
-const CHAT_EDGE_MIN = 700
+//
+// 700 left the panel no wider than 740px on a 1440px screen — narrower than
+// an A4 page, so the page view could never show a page at its own size and
+// the separator moved twenty pixels however far it was dragged. The sidebar
+// is 268px and the composer reads fine at 320px; the rest is the document's.
+const CHAT_EDGE_MIN = 560
 
 /**
  * A split the reader can move, remembered across reloads.

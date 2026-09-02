@@ -552,6 +552,12 @@ class Template(SQLModel, table=True):
     description: str = Field(default="")
     #: What the person has to bring, shown as chips before they commit.
     fills: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: One worked example per blank, in `fills` order — the same thing the
+    #: built-ins carry, so a starting point somebody wrote does not ask worse
+    #: questions than one that shipped. Absent means no examples.
+    examples: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: `web` · `file`. What the job cannot run without; see the built-ins.
+    needs: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: Ends mid-sentence, where the person takes over. Same rule as built-ins.
     prompt: str = Field(default="")
     #: An uploaded form this template writes *into*. The file's extracted text

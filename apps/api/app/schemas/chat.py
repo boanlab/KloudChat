@@ -102,6 +102,41 @@ class FigureSuggestion(Wire):
     prompt: str
 
 
+class DiagramRequest(Wire):
+    """A figure asked for in words — the method, not the picture."""
+
+    description: str = Field(min_length=1, max_length=6000)
+    #: `method` · `flow` · `concept`. What kind of figure the words describe.
+    figure: str = Field(default="method", max_length=20)
+    model: str | None = None
+    language: str = Field(default="ko", max_length=5)
+    #: The Critic's half: the source the client could not draw, and why.
+    broken: str = Field(default="", max_length=20000)
+    error: str = Field(default="", max_length=500)
+
+
+class DiagramOut(Wire):
+    source: str
+    caption: str = ""
+    model: str = ""
+    credits: int = 0
+
+
+class DiagramStore(Wire):
+    """A rendered figure, sent back to be kept beside its source."""
+
+    source: str = Field(min_length=1, max_length=20000)
+    caption: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=6000)
+    figure: str = Field(default="method", max_length=20)
+    title: str = Field(default="", max_length=200)
+    model: str = Field(default="", max_length=120)
+    #: PNG bytes, base64. Drawn by the client in the document's face.
+    png: str = Field(min_length=1)
+    width: int = Field(default=0, ge=0, le=10000)
+    height: int = Field(default=0, ge=0, le=10000)
+
+
 class AudioRequest(Wire):
     """What the a/v surface sends for a sound clip.
 

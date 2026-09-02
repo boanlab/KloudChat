@@ -111,10 +111,15 @@ test.describe('슬라이드 패널', () => {
       stage.evaluate((node) => ({ width: node.getBoundingClientRect().width, font: Number.parseFloat(getComputedStyle(node.querySelector('h3')!).fontSize) })),
     ])
     expect(Math.abs(thumbMetric.font / thumbMetric.width - stageMetric.font / stageMetric.width)).toBeLessThan(0.015)
-    // One thumbnail per slide, and the deck's own count beside the title.
+    // One thumbnail per slide, and where you are in them.
     await expect(panel.locator('button.aspect-video')).toHaveCount(SLIDES.length)
+    // 보기 held a count badge — a number nobody could press, next to a list
+    // already showing every slide. The tab holds the list toggle now, and that
+    // says the same count as part of saying where you are.
     await panel.getByRole('tab', { name: '보기' }).click()
-    await expect(panel.getByText(`${SLIDES.length}장`)).toBeVisible()
+    await expect(
+      panel.getByRole('button', { name: '장 목록' }),
+    ).toContainText(`/${SLIDES.length}`)
 
     // The stage follows the rail. Slide 3's bullet is the proof it is the one
     // being drawn large, not just highlighted in the list.
@@ -157,7 +162,7 @@ test.describe('슬라이드 패널', () => {
     const fileTabBox = await fileTab.boundingBox()
     expect(fileTabBox?.x).toBeGreaterThanOrEqual(0)
     expect((fileTabBox?.x ?? 0) + (fileTabBox?.width ?? 0)).toBeLessThanOrEqual(320)
-    for (const [tab, name] of [['홈', '슬라이드 디자인'], ['검토', '검토 메모'], ['보기', '장 목록'], ['슬라이드 쇼', '발표'], ['파일', '내보내기']] as const) {
+    for (const [tab, name] of [['홈', '편집형'], ['검토', '검토 메모'], ['보기', '장 목록'], ['슬라이드 쇼', '발표'], ['파일', '내보내기']] as const) {
       await menu.getByRole('tab', { name: tab }).click()
       const button = panel.getByRole('button', { name }).first()
       await expect(button).toBeVisible()
@@ -167,7 +172,7 @@ test.describe('슬라이드 패널', () => {
     }
 
     await menu.getByRole('tab', { name: '홈' }).click()
-    await panel.getByRole('button', { name: '슬라이드 디자인' }).click()
+    await panel.getByRole('button', { name: '덱 색 고르기' }).click()
     const designMenu = page.getByRole('menu')
     await expect(designMenu).toBeVisible()
     const designMenuBox = await designMenu.boundingBox()
@@ -183,7 +188,11 @@ test.describe('슬라이드 패널', () => {
       expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(39.5)
     }
     await expect(panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '이 장 다시 만들기' })).toHaveCount(0)
-    expect(await toolbar.evaluate((node) => node.clientWidth)).toBeLessThanOrEqual(320)
+    // 도구는 리본의 편집 칸 안에 있고, 넘치면 리본 줄이 스크롤한다 — 도구
+    // 자체가 아니라. 화면을 넘지 않아야 하는 것은 그 줄이다.
+    const ribbonRow = panel.getByRole('tabpanel', { name: '편집' })
+    expect(await ribbonRow.evaluate((node) => node.clientWidth)).toBeLessThanOrEqual(320)
+    await expect(ribbonRow.getByLabel('슬라이드 편집 도구')).toBeVisible()
     await expect(toolbar.getByRole('button', { name: '슬라이드 편집 실행 취소' })).toHaveCSS('flex-shrink', '0')
   })
 
@@ -257,6 +266,8 @@ test.describe('슬라이드 패널', () => {
     // A later slide edit must not replace the whole deck payload and erase
     // review metadata that is not part of the visible slide canvas.
     await restored.getByRole('button', { name: '검토 메모 닫기' }).click()
+    // 메모는 검토 탭에서 열었으므로 리본은 아직 거기에 있다. 편집 도구는 홈에.
+    await panel.getByRole('tab', { name: '홈' }).click()
     await panel.getByRole('button', { name: '편집 도구' }).click()
     await panel.getByLabel('슬라이드 텍스트').fill('가상환경 관리\n연구실 신입생 대상\n검토 뒤에도 남는 본문')
     await panel.getByRole('button', { name: '저장', exact: true }).click()
@@ -391,7 +402,7 @@ test.describe('슬라이드 패널', () => {
     const panel = await openPreview(page, title)
     await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집 도구' }).click()
     await panel.getByLabel('슬라이드 텍스트').fill('저장하지 않은 슬라이드 편집')
-    await panel.getByRole('tab', { name: '파일' }).click()
+    await panel.getByRole('tab', { name: '검토' }).click()
     await panel.getByRole('button', { name: /버전 기록/ }).click()
     const history = page.getByRole('dialog', { name: '버전 기록' })
     await history.getByRole('button', { name: `v${before.version} 내용 보기` }).click()
@@ -417,18 +428,21 @@ test.describe('슬라이드 패널', () => {
     const panel = await openPreview(page, title)
 
     const captures: Buffer[] = []
-    for (const [menuName, buttonName, storedStyle] of [
-      ['포스터형 · 강한 색면과 큰 번호', '포스터형', 'poster'],
-      ['미니멀 · 옅은 색과 절제된 제목', '미니멀', 'minimal'],
-      ['편집형 · 선과 넓은 여백', '편집형', 'editorial'],
+    // 셋뿐인 선택은 리본에 그대로 서 있다 — 드롭다운을 열면 고른 것 하나만
+    // 보이고 나머지는 눌러 봐야 알았다.
+    for (const [buttonName, storedStyle] of [
+      ['포스터형', 'poster'],
+      ['미니멀', 'minimal'],
+      ['편집형', 'editorial'],
     ] as const) {
-      await panel.getByRole('button', { name: '슬라이드 디자인' }).click()
       const saved = page.waitForResponse((response) =>
         response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH',
       )
-      await page.getByRole('menuitemcheckbox', { name: menuName }).click()
+      await panel.getByRole('button', { name: buttonName, exact: true }).click()
       await saved
-      await expect(panel.getByRole('button', { name: '슬라이드 디자인' })).toContainText(buttonName)
+      await expect(
+        panel.getByRole('button', { name: buttonName, exact: true }),
+      ).toHaveAttribute('aria-pressed', 'true')
       const artifact = await page.evaluate(
         async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`),
         [AS_USER, deckId] as const,
@@ -439,7 +453,7 @@ test.describe('슬라이드 패널', () => {
     expect(captures[0].equals(captures[1])).toBe(false)
     expect(captures[1].equals(captures[2])).toBe(false)
 
-    await panel.getByRole('button', { name: '슬라이드 디자인' }).click()
+    await panel.getByRole('button', { name: '덱 색 고르기' }).click()
     const recoloured = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH')
     await page.getByRole('menuitemcheckbox', { name: '청록', exact: true }).click()
     await recoloured
@@ -807,7 +821,7 @@ test.describe('보고서 패널', () => {
   test('저장 시점과 목차 진행이 머리말에 함께 보인다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('tab', { name: '파일' }).click()
+    await panel.getByRole('tab', { name: '검토' }).click()
     // Version history is reachable by the same name the restore flow uses.
     await expect(panel.getByRole('button', { name: '버전 기록' })).toBeVisible()
     await expect(panel.getByText('저장 시점 v1')).toBeVisible()
@@ -837,7 +851,8 @@ test.describe('보고서 패널', () => {
   test('리본 드롭다운은 버튼 상태를 알리고 메뉴 안에서 초점을 돌려준다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    const trigger = panel.getByRole('button', { name: '보고서 디자인' })
+    // 인상은 버튼 셋이 되었고(덱과 같게), 남은 드롭다운은 색 고르기다.
+    const trigger = panel.getByRole('button', { name: '보고서 색 고르기' })
     await trigger.focus()
     await trigger.press('Enter')
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
@@ -870,14 +885,14 @@ test.describe('보고서 패널', () => {
     expect(await page.evaluate(async () => (await document.fonts.load('13px Pretendard', '한글')).length > 0)).toBe(true)
     expect(await page.evaluate(async () => (await document.fonts.load('13px Nanum Myeongjo', '한글')).length > 0)).toBe(true)
     for (const tab of ['홈', '삽입', '레이아웃', '검토', '보기', '파일']) await expect(webMenu.getByRole('tab', { name: tab })).toBeVisible()
-    for (const name of ['문서 수정', '페이지뷰', '보고서 디자인']) {
+    for (const name of ['문서 수정', '페이지뷰', '편집형', '보고서 색 고르기']) {
       const button = panel.getByRole('button', { name }).first()
       await expect(button).toBeVisible()
       const box = await button.boundingBox()
       expect(box?.height).toBeGreaterThanOrEqual(31.5)
       expect(box?.width).toBeGreaterThanOrEqual(31.5)
     }
-    await panel.getByRole('button', { name: '보고서 디자인' }).click()
+    await panel.getByRole('button', { name: '보고서 색 고르기' }).click()
     const designMenu = page.getByRole('menu')
     await expect(designMenu).toBeVisible()
     const designMenuBox = await designMenu.boundingBox()
@@ -911,19 +926,19 @@ test.describe('보고서 패널', () => {
     const panel = await openPreview(page, title)
     // The design control is discoverable from the normal reading view. The
     // first choice opens the page view so the consequence is visible at once.
-    await expect(panel.getByRole('button', { name: '보고서 디자인' })).toBeVisible()
+    // 인상은 리본에 버튼 셋으로 바로 있다 — 덱과 같은 모양이다.
+    await expect(panel.getByRole('button', { name: '편집형', exact: true })).toBeVisible()
 
     const captures: Buffer[] = []
-    for (const [menuName, buttonName, storedStyle] of [
-      ['매거진형 · 색면 표지와 큰 제목', '매거진형', 'poster'],
-      ['미니멀 · 작은 제목과 넓은 여백', '미니멀', 'minimal'],
-      ['편집형 · 선명한 절 구분', '편집형', 'editorial'],
+    for (const [buttonName, storedStyle] of [
+      ['매거진형', 'poster'],
+      ['미니멀', 'minimal'],
+      ['편집형', 'editorial'],
     ] as const) {
-      await panel.getByRole('button', { name: '보고서 디자인' }).click()
       const saved = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${reportId}`) && response.request().method() === 'PATCH')
-      await page.getByRole('menuitemcheckbox', { name: menuName }).click()
+      await panel.getByRole('button', { name: buttonName, exact: true }).click()
       await saved
-      await expect(panel.getByRole('button', { name: '보고서 디자인' })).toContainText(buttonName)
+      await expect(panel.getByRole('button', { name: buttonName, exact: true })).toHaveAttribute('aria-pressed', 'true')
       await expect(panel.getByRole('button', { name: '웹뷰' })).toBeVisible()
       const artifact = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, reportId] as const)
       expect((artifact as { data: { design: { visualStyle: string } } }).data.design.visualStyle).toBe(storedStyle)
@@ -932,7 +947,7 @@ test.describe('보고서 패널', () => {
     expect(captures[0].equals(captures[1])).toBe(false)
     expect(captures[1].equals(captures[2])).toBe(false)
 
-    await panel.getByRole('button', { name: '보고서 디자인' }).click()
+    await panel.getByRole('button', { name: '보고서 색 고르기' }).click()
     const recoloured = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${reportId}`) && response.request().method() === 'PATCH')
     await page.getByRole('menuitemcheckbox', { name: '청록', exact: true }).click()
     await recoloured
@@ -1015,8 +1030,11 @@ test.describe('보고서 패널', () => {
     await expect(panel.getByRole('button', { name: '페이지 설정' })).toHaveCount(1)
     await panel.getByRole('tab', { name: '보기' }).click()
     await expect(panel.getByRole('button', { name: /목차 \d+\/\d+/ })).toHaveCount(1)
+    // 내보내기는 파일을 만드는 일이라 파일에, 저장 시점은 되돌아보는 일이라
+    // 검토에 있다.
     await panel.getByRole('tab', { name: '파일' }).click()
     await expect(panel.getByRole('button', { name: '내보내기' })).toHaveCount(1)
+    await panel.getByRole('tab', { name: '검토' }).click()
     await expect(panel.getByRole('button', { name: /버전 기록/ })).toHaveCount(1)
   })
 
@@ -1078,6 +1096,11 @@ test.describe('보고서 패널', () => {
   test('원문 편집 중 다른 저장을 덮어쓰지 않고 최신본으로 복구한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
+    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
+    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
+      await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
+    }
     await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '원문 편집' }).click()
     const source = panel.getByLabel('문서 원본')
     await source.fill(`${await source.inputValue()}\n\n로컬 원문 편집`)
@@ -1107,6 +1130,11 @@ test.describe('보고서 패널', () => {
   test('Ctrl+S로 보고서 원문 편집을 저장한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
+    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
+    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
+      await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
+    }
     await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '원문 편집' }).click()
     const source = panel.getByLabel('문서 원본')
     await source.fill(`${await source.inputValue()}\n\n## 키보드 저장\nCtrl+S로 저장한 보고서`)
@@ -1127,18 +1155,37 @@ test.describe('보고서 패널', () => {
     await page.keyboard.type(' 페이지 키보드 저장')
     const saveButton = panel.getByLabel('빠른 도구').getByRole('button', { name: '저장' })
     await expect(saveButton).toBeVisible()
+    // 저장하지 않은 편집은 길을 막지 않는다. These used to be disabled while
+    // anything was unsaved, so one keystroke greyed out the way back to the
+    // web view and the design menu with nothing saying why — the 저장 that
+    // would free them sitting in a different row. They stay usable and commit
+    // the text on the way through; the guard that matters is beforeunload.
     const webViewButton = panel.getByRole('button').filter({ hasText: /^웹뷰$/ })
-    await expect(webViewButton).toBeDisabled()
-    await expect(panel.getByRole('button', { name: '보고서 디자인' })).toBeDisabled()
+    await expect(webViewButton).toBeEnabled()
+    await expect(panel.getByRole('button', { name: '편집형', exact: true })).toBeEnabled()
     expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false)
     const saved = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${reportId}`) && response.request().method() === 'PATCH')
     await editor.press('Control+s')
     await saved
     await expect(saveButton).toHaveCount(0)
-    await expect(webViewButton).toBeEnabled()
     expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true)
     const stored = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, reportId] as const)
     expect((stored as { data: { sections: Array<{ content: string }> } }).data.sections[0].content).toContain('페이지 키보드 저장')
+  })
+
+  test('웹뷰로 넘어가면 쓰던 것이 먼저 저장된다', async ({ page }) => {
+    await signIn(page)
+    const panel = await openPreview(page, title)
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' }).click()
+    const editor = panel.locator('.ProseMirror').first()
+    await editor.click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' 넘어가며 저장')
+    const saved = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${reportId}`) && response.request().method() === 'PATCH')
+    await panel.getByRole('button').filter({ hasText: /^웹뷰$/ }).click()
+    await saved
+    const stored = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, reportId] as const)
+    expect((stored as { data: { sections: Array<{ content: string }> } }).data.sections[0].content).toContain('넘어가며 저장')
   })
 
   test('이전 보고서를 확인 후 복원하고 바로 다시 편집한다', async ({ page }) => {
@@ -1152,9 +1199,14 @@ test.describe('보고서 패널', () => {
     }), [AS_USER, reportId, changed, before.version] as const)
 
     const panel = await openPreview(page, title)
+    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
+    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
+      await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
+    }
     await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '원문 편집' }).click()
     await panel.getByLabel('문서 원본').fill('저장하지 않은 보고서 편집')
-    await panel.getByRole('tab', { name: '파일' }).click()
+    await panel.getByRole('tab', { name: '검토' }).click()
     await panel.getByRole('button', { name: /버전 기록/ }).click()
     const history = page.getByRole('dialog', { name: '버전 기록' })
     await history.getByRole('button', { name: `v${before.version} 내용 보기` }).click()
@@ -1169,6 +1221,11 @@ test.describe('보고서 패널', () => {
     await expect(panel.getByText('복원하면 사라질 보고서 문장')).toHaveCount(0)
 
     await panel.getByRole('tab', { name: '홈' }).click()
+    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
+    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
+      await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
+    }
     await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '원문 편집' }).click()
     const source = panel.getByLabel('문서 원본')
     await source.fill(`${await source.inputValue()}\n\n## 복원 뒤 재저장\n정상 저장 확인`)

@@ -1,6 +1,7 @@
-import { Download, PencilLine, RefreshCw } from 'lucide-react'
+import { Code2, Download, PencilLine, RefreshCw } from 'lucide-react'
 import { Button, ButtonLink } from '@/components/ui'
 import { fileUrl } from '@/lib/api'
+import { copyText } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { AudioArtifact, ImageArtifact, VideoArtifact } from '@/types'
@@ -91,17 +92,49 @@ export function MediaResult({
                 title={t('크게 보기')}
                 className={cn(
                   'group relative overflow-hidden rounded-card border border-line bg-elevated',
-                  aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square',
+                  // 도식은 자르지 않는다. A picture can lose its edges to a
+                  // tidy frame; a figure that loses an edge loses a module.
+                  img.source ? 'bg-white' : (aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square'),
                 )}
+                style={img.source && img.width && img.height ? { aspectRatio: `${img.width} / ${img.height}` } : undefined}
               >
                 <img
                   src={fileUrl(img.src)}
-                  alt={img.prompt}
-                  className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  alt={img.caption || img.prompt}
+                  className={cn(
+                    'size-full transition-transform duration-300 group-hover:scale-[1.03]',
+                    img.source ? 'object-contain p-2' : 'object-cover',
+                  )}
                 />
               </button>
             ))}
           </div>
+          {/* 도식은 캡션과 소스가 있다. The caption goes under the figure the
+              way it will in the paper; the source is what makes it a figure
+              rather than a screenshot of one, and can be pasted into a
+              report's ```mermaid block or edited by hand. */}
+          {images.some((img) => img.source) && (
+            <div className="mt-2 max-w-md space-y-1">
+              {images.filter((img) => img.caption).map((img) => (
+                <p key={img.id} className="text-sm text-muted">{t('그림')}. {img.caption}</p>
+              ))}
+              <div className="flex flex-wrap items-center gap-1">
+                {images.filter((img) => img.source).map((img) => (
+                  <Button
+                    key={img.id}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void copyText(img.source ?? '')}
+                    aria-label={t('도식 소스(mermaid) 복사')}
+                    title={t('보고서의 mermaid 블록에 붙여 넣거나 직접 고칠 수 있습니다')}
+                  >
+                    <Code2 size={13} />
+                    {t('소스 복사')}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Saving it is the point, and it was not on the picture.
               The only way out of a picture somebody had just made was to open
               the artifact panel and find it again — the download lives there.

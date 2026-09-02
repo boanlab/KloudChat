@@ -1,50 +1,47 @@
 kind = "image"
 name = "개념도"
-description = "구조를 암시하는 그림. 이름표는 붙이지 않고 자리만 남깁니다"
+description = "개념들의 관계와 층위를 그린 그림. 개념마다 이름이 붙어 나옵니다"
 category = "연구"
-fills = ["무엇의 구조인지", "구조의 형태", "그리는 결"]
-example_prompt = "{subject}의 구조를 한 장으로 보여 주는 그림. {shape} 형태로, {texture} 느낌으로 그려 줘."
+fills = ["개념 설명", "강조할 것", "이름표 언어"]
+example_prompt = "{description}\n\n강조할 것: {highlight}\n이름표 언어: {language}"
 layouts = ["cover"]
-# Two things are true of every picture this template asks for, and both are
-# about what a picture model cannot do: it renders lettering badly, and a
-# diagram it draws by itself has labels that say nothing. So the prompt asks
-# for the shape of a structure and leaves the naming to the slide it lands on.
-prompt_suffix = "conceptual schematic figure, draw the things the subject actually names as recognisable objects — devices, sensors, servers, racks, documents, containers, people — each one a distinct silhouette rather than an empty rectangle, because a figure with no lettering has only its shapes to say anything; group related objects inside a pale tinted zone, and let size and colour weight say which part matters, pale desaturated fills with one accent colour at most, rounded outlines for ideas and squared outlines for material, at most six objects, thin uniform strokes, flat even lighting, no drop shadows, clear separation between objects so none of them touch, no text, no lettering, no numbers, no logos, no faces"
 
-# English half of the catalogue. The UI picks a side by language;
-# the instructions the model follows stay Korean, because the surfaces
-# they belong to answer in Korean by default.
+# 도식 경로로 간다 — `image-method/template.toml` 의 설명과 같은 이유다.
+figure = "concept"
+prompt_suffix = ""
+
 name_en = "Concept diagram"
-description_en = "An image that suggests structure, with the labels left for you to add"
+description_en = "Concepts and how they relate, each one named"
 category_en = "Research"
-fills_en = ["What the structure is", "Shape of the structure", "Rendering"]
-example_prompt_en = "An image showing how {subject} is structured, {shape}, drawn in {texture}."
+fills_en = ["Concept description", "What to highlight", "Label language"]
+example_prompt_en = "{description}\n\nWhat to highlight: {highlight}\nLabel language: {language}"
 
 [defaults]
 aspect = "16:9"
 style = "미니멀"
 
 [[arguments]]
-name = "subject"
-label = "무엇의 구조"
-label_en = "Structure of what"
-default = "연구실 데이터 처리 흐름"
-default_en = "a lab's data-processing pipeline"
+name = "description"
+label = "개념 설명"
+label_en = "Concept description"
+long = true
+default = "디지털 리터러시는 정보 리터러시, 미디어 리터러시, 데이터 리터러시 세 갈래로 나뉜다. 정보 리터러시는 검색과 평가를, 미디어 리터러시는 해석과 제작을, 데이터 리터러시는 읽기와 분석을 포함한다. 세 갈래는 모두 비판적 사고를 바탕에 두고, 시민 참여라는 하나의 목표로 모인다."
+default_en = "Digital literacy divides into information, media and data literacy. Information literacy covers search and evaluation; media literacy interpretation and production; data literacy reading and analysis. All three rest on critical thinking and converge on one goal, civic participation."
 
 [[arguments]]
-name = "shape"
-label = "형태"
-label_en = "Shape"
-default = "층으로 쌓인"
-default_en = "stacked in layers"
-options = ["층으로 쌓인", "가운데에서 뻗어 나가는", "왼쪽에서 오른쪽으로 흐르는", "격자로 맞물린"]
-options_en = ["stacked in layers", "radiating from a centre", "flowing left to right", "meshed in a grid"]
+name = "highlight"
+label = "강조할 것"
+label_en = "What to highlight"
+default = "가운데 개념"
+default_en = "the central concept"
+options = ["가운데 개념", "바탕이 되는 것", "목표", "없음"]
+options_en = ["the central concept", "the foundation", "the goal", "none"]
 
 [[arguments]]
-name = "texture"
-label = "결"
-label_en = "Rendering"
-default = "가는 선의 도면"
-default_en = "thin drafting lines"
-options = ["가는 선의 도면", "색면 구성", "연필 스케치"]
-options_en = ["thin drafting lines", "flat colour planes", "a pencil sketch"]
+name = "language"
+label = "이름표 언어"
+label_en = "Label language"
+default = "한국어"
+default_en = "Korean"
+options = ["한국어", "영어"]
+options_en = ["Korean", "English"]

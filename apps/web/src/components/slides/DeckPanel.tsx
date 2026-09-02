@@ -41,7 +41,7 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Badge, Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
@@ -1746,6 +1746,8 @@ export function DeckPanel({
   const [selected, setSelected] = useState(0)
   const [ribbon, setRibbon] = useState<'home' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
   const [editing, setEditing] = useState(false)
+  //: 리본의 편집 칸. 없으면 도구는 제자리에 그려진다.
+  const [editToolbarSlot, setEditToolbarSlot] = useState<HTMLElement | null>(null)
   const [discardAction, setDiscardAction] = useState<'cancel' | 'close' | null>(null)
   const [draft, setDraft] = useState('')
   // Structured fields such as chart series cannot make a safe round trip
@@ -1779,7 +1781,19 @@ export function DeckPanel({
   //: the same way the report's contents do. Beside the stage it is 132px of a
   //: 390px panel, which leaves the slide 119px — a picture of a slide rather
   //: than the slide.
-  const [railOpen, setRailOpen] = useState(false)
+  /**
+   * 장 목록을 접었는가.
+   *
+   * The two widths start opposite ways round: on a narrow panel the list is a
+   * drawer that starts closed, on a wide one it is a rail that starts open. One
+   * flag for "the person has pressed the toggle" keeps both honest — what the
+   * screen shows, and what `aria-pressed` says, are both read off `railShown`
+   * below rather than off the flag.
+   */
+  const [railToggled, setRailToggled] = useState(false)
+  //: 좁으면 서랍이라 닫힌 채로 시작하고, 넓으면 옆줄이라 펼친 채로 시작한다.
+  //: 누르면 어느 쪽이든 반대가 된다.
+  const railShown = panel.narrow ? railToggled : !railToggled
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
   const [bulkAccent, setBulkAccent] = useState(deck.design?.accent ?? '#5b5bd6')
@@ -2459,7 +2473,7 @@ export function DeckPanel({
     setSlideDraft(null)
     // Picking one is the end of the errand: what you wanted to see is the
     // stage the drawer is covering.
-    setRailOpen(false)
+    setRailToggled(false)
   }
 
   const saveReviewComments = async (comments: typeof reviewComments, summary: string) => {
@@ -2571,396 +2585,20 @@ export function DeckPanel({
     else { setEditing(false); setSlideDraft(null) }
   }
 
-  return (
-    <div
-      ref={panel.ref}
-      className="flex h-full min-h-0 flex-col"
-      onKeyDown={(event) => {
-        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
-        event.preventDefault()
-        if (hasUnsavedEdit) void save()
-      }}
-    >
-      {/* 접히는 머리말. 390px 에서는 이 줄이 화면보다 넓고, flex 는 그럴 때
-          자식을 줄여서 "내보내기" 를 한 자씩 네 줄로 세운다. 제목은 줄어들되
-          버튼은 줄어들지 않는 것이 옳은 순서다. */}
-      <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
-          <Presentation size={15} className="shrink-0 text-accent" />
-          <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={deck.title}>
-            {deck.title}
-          </p>
-        </div>
-        <QuickAccess label={t('빠른 도구')}>
-          {editing && <>
-            <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
-              <X size={14} />{t('취소')}
-            </Button>
-            <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{t('저장')}
-            </Button>
-          </>}
-          <PanelControls mode={width.mode} onCycle={width.cycle} onClose={() => discardOr('close')} />
-        </QuickAccess>
-        <ArtifactRibbon
-          label={t('슬라이드 메뉴')}
-          tabs={(editing
-            ? [{ id: 'home', label: t('편집') }, { id: 'file', label: t('파일') }]
-            : [
-                { id: 'home', label: t('홈') }, { id: 'insert', label: t('삽입') },
-                { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
-                { id: 'show', label: t('슬라이드 쇼') }, { id: 'file', label: t('파일') },
-              ]) as Array<{ id: 'home' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
-          active={ribbon}
-          onChange={setRibbon}
-        >
-        {/* 장수와 테마는 참고 정보다. 좁으면 먼저 접는다. */}
-        {ribbon === 'view' && <RibbonGroup label={t('표시')}><Badge>
-          {t('{n}장').replace('{n}', String(deck.slides.length))}
-        </Badge></RibbonGroup>}
-        {/* 장마다 눌러 보지 않아도 확인이 필요한 곳이 몇 군데인지 보이게 한다 */}
-        {ribbon === 'review' && (weakSlides.length > 0 || overflowRisks.length > 0) && <RibbonGroup label={t('검사')}>
-        {weakSlides.length > 0 && (
-          <button
-            onClick={() => go(weakSlides[0])}
-            title={t('{list}번 장').replace('{list}', weakSlides.map((i) => i + 1).join(', '))}
-          >
-            <Badge tone="warn">
-              <TriangleAlert size={10} />
-              {t('확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
-            </Badge>
-          </button>
-        )}
-        {overflowRisks.length > 0 && (
-          <button
-            onClick={() => go(overflowRisks.find((candidate) => candidate > index) ?? overflowRisks[0])}
-            title={t('잘림 위험: {list}번 장').replace('{list}', overflowRisks.map((i) => i + 1).join(', '))}
-            aria-label={t('잘림 위험 장으로 이동')}
-          >
-            <Badge tone="warn">
-              <TriangleAlert size={10} />
-              {t('잘림 위험 {n}장').replace('{n}', String(overflowRisks.length))}
-            </Badge>
-          </button>
-        )}
-        </RibbonGroup>}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('디자인')}><Dropdown
-          align="right"
-          trigger={() => (
-            <Button size="sm" disabled={saving} aria-label={t('슬라이드 디자인')}>
-              <Palette size={13} />
-              {visualStyle === 'poster' ? t('포스터형') : visualStyle === 'minimal' ? t('미니멀') : t('편집형')}
-            </Button>
-          )}
-        >
-          <MenuLabel>{t('같은 내용, 다른 인상')}</MenuLabel>
-          <MenuItem checked={visualStyle === 'editorial'} onClick={() => void saveDeckVisualStyle('editorial')}>
-            {t('편집형 · 선과 넓은 여백')}
-          </MenuItem>
-          <MenuItem checked={visualStyle === 'poster'} onClick={() => void saveDeckVisualStyle('poster')}>
-            {t('포스터형 · 강한 색면과 큰 번호')}
-          </MenuItem>
-          <MenuItem checked={visualStyle === 'minimal'} onClick={() => void saveDeckVisualStyle('minimal')}>
-            {t('미니멀 · 옅은 색과 절제된 제목')}
-          </MenuItem>
-          <MenuLabel>{t('색 구성')}</MenuLabel>
-          {([
-            ['#5b5bd6', '보라'], ['#1f6feb', '파랑'], ['#0f766e', '청록'],
-            ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹색'],
-          ] as const).map(([colour, label]) => (
-            <MenuItem key={colour} icon={<span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
-              {t(label)}
-            </MenuItem>
-          ))}
-        </Dropdown></RibbonGroup>}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('슬라이드 작업')}><Button
-          size="sm"
-          variant={slide?.bullets?.includes('이 장을 쓰지 못했습니다.') || slide?.body?.includes('이 장을 쓰지 못했습니다.') ? 'primary' : 'secondary'}
-          disabled={writing || rewritingSlide}
-          onClick={() => void regenerateSlide()}
-          aria-label={t('이 장 다시 만들기')}
-        >
-          <RefreshCw size={14} className={rewritingSlide ? 'animate-spin' : undefined} />
-          {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
-        </Button>
-        <Button size="sm" variant="primary" disabled={writing || rewritingSlide} onClick={() => void startEditing()} aria-label={t('편집 도구')}>
-          <Pencil size={14} />{t('편집 도구')}
-        </Button></RibbonGroup>}
-        {ribbon === 'insert' && !editing && slide && <RibbonGroup label={t('콘텐츠')}>
-          <SlidePicture deck={deck} slide={slide} />
-        </RibbonGroup>}
-        {ribbon === 'review' && !editing && <RibbonGroup label={t('문서 검사')}><LintFindings
-          findings={deck.lint}
-          artifact={deck}
-          onFix={fixFinding}
-          onFixAll={fixAllFindings}
-        /></RibbonGroup>}
-        {ribbon === 'review' && !editing && <RibbonGroup label={t('메모')}><Button
-          size="sm"
-          aria-label={t('검토 메모')}
-          aria-pressed={reviewOpen}
-          onClick={() => setReviewOpen((open) => !open)}
-        >
-          <MessageSquare size={13} />
-          {t('검토')} {reviewComments.filter((comment) => comment.status === 'open').length}
-        </Button></RibbonGroup>}
-        {/* Only where there is a drawer to open: with the rail standing beside
-            the stage this button opens what is already on screen. */}
-        {ribbon === 'view' && panel.narrow && <RibbonGroup label={t('탐색')}>{(
-          <Button
-            size="sm"
-            aria-label={t('장 목록')}
-            title={t('장 목록을 엽니다')}
-            onClick={() => setRailOpen((o) => !o)}
-          >
-            <Rows3 size={13} />
-            {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-          </Button>
-        )}</RibbonGroup>}
-        {/* 발표 모드. 덱은 방에서 보이는 크기로 한 번 넘겨 봐야 끝난다 */}
-        {ribbon === 'show' && !editing && <RibbonGroup label={t('재생')}><Button size="sm" disabled={writing} onClick={() => setPresenting(true)}>
-          <Play size={13} />
-          {t('발표')}
-        </Button></RibbonGroup>}
-        {ribbon === 'file' && !editing && <RibbonGroup label={t('내보내기')}><Dropdown
-          align="right"
-          trigger={() => (
-            <Button size="sm" disabled={writing}>
-              <Download size={14} />
-              {t('내보내기')}
-            </Button>
-          )}
-        >
-          {exportWarningCount > 0 && (
-            <>
-              <MenuLabel>{t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}</MenuLabel>
-              {overflowRisks.length > 0 && (
-                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => go(overflowRisks[0])}>
-                  {t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length))}
-                </MenuItem>
-              )}
-              {weakSlides.length > 0 && (
-                <MenuItem icon={<ShieldQuestion size={14} />} onClick={() => go(weakSlides[0])}>
-                  {t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
-                </MenuItem>
-              )}
-              {unresolvedReviews.length > 0 && (
-                <MenuItem icon={<MessageSquare size={14} />} onClick={() => {
-                  const target = deck.slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
-                  if (target >= 0) go(target)
-                  setReviewOpen(true)
-                }}>
-                  {t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length))}
-                </MenuItem>
-              )}
-            </>
-          )}
-          <MenuLabel>{t('형식 선택')}</MenuLabel>
-          <MenuItem hint="PPTX" onClick={() => void download(deck.id, 'pptx', deck.title)}>
-            PowerPoint
-          </MenuItem>
-          <MenuItem hint="PDF" onClick={() => void download(deck.id, 'pdf', deck.title)}>
-            {t('PDF (발표용)')}
-          </MenuItem>
-          <MenuItem hint="MD" onClick={() => void download(deck.id, 'md', deck.title)}>
-            {t('텍스트 (노트 포함)')}
-          </MenuItem>
-        </Dropdown></RibbonGroup>}
-        {/* 저장 시점. 한 장을 고쳐 놓고 원래가 나았다는 것은 고친 뒤에야
-            알게 되고, 그때 되돌릴 곳이 이 줄 말고는 없다. */}
-        {ribbon === 'file' && !editing && <RibbonGroup label={t('버전')}><VersionHistory
-          artifact={deck}
-          hasUnsavedChanges={hasUnsavedEdit}
-          currentData={deck}
-          // 되돌린 덱의 몇째 장인지는 편집기가 열릴 때 잡아 둔 것과 다르다.
-          // 열어 둔 초안을 그대로 저장하면 방금 되돌린 장을 덮어쓴다.
-          onRestored={() => {
-            setEditing(false)
-            setSlideDraft(null)
-            setDraft('')
-            setNotes('')
-            baseline.current = ''
-            setError(null)
-          }}
-        /></RibbonGroup>}
-        </ArtifactRibbon>
-      </header>
-
-      <div className="relative flex min-h-0 flex-1">
-        {reviewOpen && (
-          <aside aria-label={t('검토 메모')} className="absolute inset-y-0 right-0 z-30 flex w-80 max-w-full flex-col border-l border-line bg-panel shadow-float">
-            <div className="flex items-center gap-2 border-b border-line p-3">
-              <MessageSquare size={14} className="text-accent" />
-              <h3 className="flex-1 text-sm font-semibold">{t('검토 메모')}</h3>
-              <button aria-label={t('검토 메모 닫기')} onClick={() => setReviewOpen(false)} className="rounded-control p-1 hover:bg-elevated">
-                <X size={15} />
-              </button>
-            </div>
-            <div className="border-b border-line p-3">
-              <p className="mb-2 text-xs text-faint">{t('{n}번 장에 메모').replace('{n}', String(index + 1))}</p>
-              <Textarea rows={3} value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} aria-label={t('메모 내용')} placeholder={t('수정할 점이나 확인할 내용을 적으세요')} />
-              <Button size="sm" className="mt-2 w-full" disabled={!reviewDraft.trim() || reviewSaving} onClick={addReviewComment}>
-                {reviewSaving ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
-                {t('메모 추가')}
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-              {reviewComments.length === 0 && <p className="text-sm text-faint">{t('아직 검토 메모가 없습니다.')}</p>}
-              {reviewComments.map((comment) => {
-                const slideIndex = deck.slides.findIndex((candidate) => candidate.id === comment.slideId)
-                return (
-                  <article key={comment.id} className={cn('rounded-card border p-3', comment.status === 'resolved' ? 'border-line bg-elevated/40 opacity-65' : 'border-line bg-panel')}>
-                    <button className="text-xs font-semibold text-accent hover:underline" onClick={() => slideIndex >= 0 && go(slideIndex)}>
-                      {slideIndex >= 0 ? t('{n}번 장').replace('{n}', String(slideIndex + 1)) : t('삭제된 장')}
-                    </button>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{comment.body}</p>
-                    <div className="mt-2 flex items-center gap-3">
-                      <button className="text-xs text-muted hover:text-fg" disabled={reviewSaving} onClick={() => toggleReviewComment(comment.id)}>
-                        {comment.status === 'open' ? t('해결로 표시') : t('다시 열기')}
-                      </button>
-                      <button aria-label={t('메모 삭제')} className="ml-auto text-xs text-faint hover:text-danger" disabled={reviewSaving} onClick={() => deleteReviewComment(comment.id)}>
-                        {t('삭제')}
-                      </button>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-          </aside>
-        )}
-        {panel.narrow && railOpen && (
-          <button
-            aria-label={t('장 목록 닫기')}
-            className="absolute inset-0 z-10 bg-black/30"
-            onClick={() => setRailOpen(false)}
-          />
-        )}
-        {/* ── 장 목록 레일 ───────────────────────────────────────────────
-            Slides are ordered argument, and the order is the thing under
-            revision for as long as the deck exists. A rail keeps the whole
-            sequence beside the slide being worked on rather than below it. */}
-        <nav
-          className={cn(
-            'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
-            panel.narrow
-              ? railOpen
-                ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
-                : 'hidden'
-              : 'flex',
-          )}
-        >
-          <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1.5">
-            {(
-              [
-                { id: 'thumbs', icon: Grid2x2, label: '그림으로' },
-                { id: 'outline', icon: Rows3, label: '차례로' },
-              ] as const
-            ).map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setRail(v.id)}
-                aria-pressed={rail === v.id}
-                aria-label={t(v.label)}
-                title={t(v.label)}
-                className={cn(
-                  'grid size-6 place-items-center rounded-control transition-colors',
-                  rail === v.id ? 'bg-elevated text-fg' : 'text-faint hover:text-fg',
-                )}
-              >
-                <v.icon size={13} />
-              </button>
-            ))}
-            <button
-              onClick={() => { setBulkMode((value) => !value); setBulkSelected(new Set()) }}
-              aria-pressed={bulkMode}
-              aria-label={t('여러 장 선택')}
-              title={t('여러 장 선택')}
-              className={cn('grid size-6 place-items-center rounded-control transition-colors', bulkMode ? 'bg-accent/10 text-accent' : 'text-faint hover:text-fg')}
-            >
-              <Rows3 size={13} />
-            </button>
-            <span className="ml-auto pr-1 text-xs text-faint tabular-nums">
-              {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-            </span>
-          </div>
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-1.5">
-            {deck.slides.map((s, i) => {
-              const weak = s.factCheck?.claims.some((c) => c.verdict !== 'supported')
-              const openReviews = reviewComments.filter((comment) => comment.slideId === s.id && comment.status === 'open').length
-              return rail === 'thumbs' ? (
-                <div key={s.id} className="relative">
-                <button
-                  onClick={() => go(i)}
-                  aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
-                  aria-current={i === index}
-                  className={cn(
-                    'relative block aspect-video w-full overflow-hidden rounded-control border-2 bg-white transition-colors',
-                    i === index ? 'border-accent' : 'border-line hover:border-line-strong',
-                  )}
-                >
-                  <SlideThumbnail
-                    deck={deck}
-                    slide={editing && i === index && slideDraft ? slideDraft : s}
-                    index={i}
-                    writing={writing}
-                  />
-                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/55 px-1 text-2xs font-medium text-white tabular-nums">
-                    {i + 1}
-                  </span>
-                  {weak && (
-                    <span className="absolute top-0.5 right-0.5 grid size-3.5 place-items-center rounded-full bg-warn text-white">
-                      <TriangleAlert size={9} />
-                    </span>
-                  )}
-                  {openReviews > 0 && (
-                    <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(openReviews))} className="absolute bottom-0.5 right-0.5 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-2xs font-semibold text-white">
-                      {openReviews}
-                    </span>
-                  )}
-                </button>
-                {bulkMode && (
-                  <label className="absolute left-0.5 top-0.5 z-10 grid size-5 cursor-pointer place-items-center rounded bg-white/90 shadow-sm" onClick={(event) => event.stopPropagation()}>
-                    <input type="checkbox" className="size-3.5 accent-[var(--color-accent)]" checked={bulkSelected.has(s.id)} onChange={() => toggleBulkSlide(s.id)} aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />
-                  </label>
-                )}
-                </div>
-              ) : (
-                <div key={s.id} className="flex items-start">
-                {bulkMode && <input type="checkbox" className="mt-1 size-3.5 shrink-0 accent-[var(--color-accent)]" checked={bulkSelected.has(s.id)} onChange={() => toggleBulkSlide(s.id)} aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />}
-                <button
-                  onClick={() => go(i)}
-                  aria-current={i === index}
-                  className={cn(
-                    'flex w-full items-start gap-1.5 rounded-control px-1.5 py-1 text-left text-xs leading-snug transition-colors',
-                    i === index ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
-                  )}
-                >
-                  <span className="shrink-0 text-faint tabular-nums">{i + 1}</span>
-                  <span className="min-w-0 flex-1 line-clamp-2">{s.title}</span>
-                  {weak && <TriangleAlert size={10} className="mt-0.5 shrink-0 text-warn" />}
-                  {openReviews > 0 && <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(openReviews))} className="shrink-0 rounded-full bg-accent px-1 text-2xs font-semibold text-white">{openReviews}</span>}
-                </button>
-                </div>
-              )
-            })}
-          </div>
-        </nav>
-
-        {/* ── 무대 ─────────────────────────────────────────────────────── */}
-        {/* The slide takes the room, the notes take the rest.
-            Both used to sit in one band capped at `max-w-lg` — 32rem — so on a
-            940px panel the slide was drawn a third of the width it had and
-            everything below the notes was empty. That cap made sense when this
-            lived beside a transcript in a 330px column; it stopped making sense
-            the moment the panel could be widened, and nothing followed.
-            A column instead: the slide keeps its 16:9 across the full width,
-            and the notes are their own band under a rule, growing into whatever
-            height is left rather than trailing the slide as a caption. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-          {slide && (editing || bulkMode) && (
+  /**
+   * 편집 도구는 리본 안으로 들어간다.
+   *
+   * 보고서와 슬라이드의 메뉴가 서로 달랐다. Editing a slide added a second
+   * sticky bar under a ribbon whose 편집 tab was empty — the same fourth-row
+   * stacking the report had, and the reason the two panels did not look like
+   * one product. The tab that says 편집 now holds the editing tools.
+   */
+  const editBar = !slide ? null : (
             <div
               aria-label={t('슬라이드 편집 도구')}
-              className="sticky top-0 z-10 flex min-h-12 items-center gap-1 overflow-x-auto border-b border-line bg-panel/95 px-3 py-1.5 shadow-sm backdrop-blur"
+              className={editToolbarSlot
+                ? 'flex items-center gap-1'
+                : 'sticky top-0 z-10 flex min-h-12 items-center gap-1 overflow-x-auto border-b border-line bg-panel/95 px-3 py-1.5 shadow-sm backdrop-blur'}
             >
               <span className="mr-2 shrink-0 text-xs font-medium text-muted">
                 {t('{n}번 장').replace('{n}', String(index + 1))}
@@ -3142,7 +2780,427 @@ export function DeckPanel({
                 </>
               ) : null}
             </div>
+  )
+  const editTools = !editBar || !(editing || bulkMode)
+    ? null
+    : editToolbarSlot ? createPortal(editBar, editToolbarSlot) : editBar
+
+  return (
+    <div
+      ref={panel.ref}
+      className="flex h-full min-h-0 flex-col"
+      onKeyDown={(event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
+        event.preventDefault()
+        if (hasUnsavedEdit) void save()
+      }}
+    >
+      {/* 접히는 머리말. 390px 에서는 이 줄이 화면보다 넓고, flex 는 그럴 때
+          자식을 줄여서 "내보내기" 를 한 자씩 네 줄로 세운다. 제목은 줄어들되
+          버튼은 줄어들지 않는 것이 옳은 순서다. */}
+      <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
+          <Presentation size={15} className="shrink-0 text-accent" />
+          <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={deck.title}>
+            {deck.title}
+          </p>
+        </div>
+        <QuickAccess label={t('빠른 도구')}>
+          {editing && <>
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
+              <X size={14} />{t('취소')}
+            </Button>
+            <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{t('저장')}
+            </Button>
+          </>}
+          <PanelControls mode={width.mode} onCycle={width.cycle} onClose={() => discardOr('close')} />
+        </QuickAccess>
+        <ArtifactRibbon
+          label={t('슬라이드 메뉴')}
+          tabs={(editing
+            // 편집 중에도 검토는 남긴다. 저장 시점이 그 안에 있고, 되돌리고
+            // 싶어지는 때는 대개 고치고 있는 중이다 — 고치던 것을 저장하거나
+            // 버려야만 되돌릴 곳에 닿는다면 그 길은 없는 것과 같다.
+            ? [
+                { id: 'home', label: t('편집') },
+                { id: 'review', label: t('검토') },
+                { id: 'file', label: t('파일') },
+              ]
+            : [
+                { id: 'home', label: t('홈') }, { id: 'insert', label: t('삽입') },
+                { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
+                { id: 'show', label: t('슬라이드 쇼') }, { id: 'file', label: t('파일') },
+              ]) as Array<{ id: 'home' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
+          active={ribbon}
+          onChange={setRibbon}
+        >
+        {/* 장수 배지가 여기 있었다. 누를 수 없는 숫자였고, 바로 옆 목록이
+            여덟 장을 그려 놓고 「1/8」 이라고 적어 두는 자리다 — 리본은
+            할 일을 두는 곳이지 이미 보이는 것을 다시 적는 곳이 아니다. */}
+        {/* 장마다 눌러 보지 않아도 확인이 필요한 곳이 몇 군데인지 보이게 한다 */}
+        {ribbon === 'review' && (weakSlides.length > 0 || overflowRisks.length > 0) && <RibbonGroup label={t('검사')}>
+        {weakSlides.length > 0 && (
+          <Button
+            size="sm"
+            onClick={() => go(weakSlides[0])}
+            title={t('{list}번 장').replace('{list}', weakSlides.map((i) => i + 1).join(', '))}
+          >
+            <TriangleAlert size={13} className="text-warn" />
+            {t('확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
+          </Button>
+        )}
+        {overflowRisks.length > 0 && (
+          <Button
+            size="sm"
+            onClick={() => go(overflowRisks.find((candidate) => candidate > index) ?? overflowRisks[0])}
+            title={t('잘림 위험: {list}번 장').replace('{list}', overflowRisks.map((i) => i + 1).join(', '))}
+            aria-label={t('잘림 위험 장으로 이동')}
+          >
+            <TriangleAlert size={13} className="text-warn" />
+            {t('잘림 위험 {n}장').replace('{n}', String(overflowRisks.length))}
+          </Button>
+        )}
+        </RibbonGroup>}
+        {/* 셋뿐인 선택은 메뉴 뒤에 두지 않는다.
+            드롭다운은 고른 것 하나만 보이고 나머지는 눌러 봐야 안다 — 세
+            가지를 나란히 세우면 무엇을 고를 수 있는지가 곧 화면이고, 지금
+            어느 것인지도 같은 자리에서 읽힌다. 색은 여섯이고 이름보다 색이
+            빠르니 그대로 메뉴에 둔다. */}
+        {ribbon === 'home' && (editing || bulkMode) && (
+          <RibbonGroup label={t('슬라이드 편집')}>
+            <div ref={setEditToolbarSlot} className="flex items-center" />
+          </RibbonGroup>
+        )}
+        {ribbon === 'home' && !editing && <RibbonGroup label={t('인상')}>
+          {([
+            ['editorial', '편집형', '선과 넓은 여백'],
+            ['poster', '포스터형', '강한 색면과 큰 번호'],
+            ['minimal', '미니멀', '옅은 색과 절제된 제목'],
+          ] as const).map(([value, label, why]) => (
+            <Button
+              key={value}
+              size="sm"
+              disabled={saving}
+              aria-pressed={visualStyle === value}
+              title={t(why)}
+              onClick={() => void saveDeckVisualStyle(value)}
+            >
+              {t(label)}
+            </Button>
+          ))}
+        </RibbonGroup>}
+        {ribbon === 'home' && !editing && <RibbonGroup label={t('색')}><Dropdown
+          align="right"
+          trigger={() => (
+            <Button size="sm" disabled={saving} aria-label={t('덱 색 고르기')}>
+              <span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: bulkAccent }} />
+              {t('색')}
+            </Button>
           )}
+        >
+          {([
+            ['#5b5bd6', '보라'], ['#1f6feb', '파랑'], ['#0f766e', '청록'],
+            ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹색'],
+          ] as const).map(([colour, label]) => (
+            <MenuItem key={colour} icon={<span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
+              {t(label)}
+            </MenuItem>
+          ))}
+        </Dropdown></RibbonGroup>}
+        {ribbon === 'home' && !editing && <RibbonGroup label={t('슬라이드 작업')}><Button
+          size="sm"
+          variant={slide?.bullets?.includes('이 장을 쓰지 못했습니다.') || slide?.body?.includes('이 장을 쓰지 못했습니다.') ? 'primary' : 'secondary'}
+          disabled={writing || rewritingSlide}
+          onClick={() => void regenerateSlide()}
+          aria-label={t('이 장 다시 만들기')}
+        >
+          <RefreshCw size={14} className={rewritingSlide ? 'animate-spin' : undefined} />
+          {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
+        </Button>
+        <Button size="sm" variant="primary" disabled={writing || rewritingSlide} onClick={() => void startEditing()} aria-label={t('편집 도구')}>
+          <Pencil size={14} />{t('편집 도구')}
+        </Button></RibbonGroup>}
+        {ribbon === 'insert' && !editing && slide && <RibbonGroup label={t('콘텐츠')}>
+          <SlidePicture deck={deck} slide={slide} />
+        </RibbonGroup>}
+        {ribbon === 'review' && !editing && <RibbonGroup label={t('문서 검사')}><LintFindings
+          findings={deck.lint}
+          artifact={deck}
+          onFix={fixFinding}
+          onFixAll={fixAllFindings}
+        /></RibbonGroup>}
+        {ribbon === 'review' && !editing && <RibbonGroup label={t('메모')}><Button
+          size="sm"
+          aria-label={t('검토 메모')}
+          aria-pressed={reviewOpen}
+          onClick={() => setReviewOpen((open) => !open)}
+        >
+          <MessageSquare size={13} />
+          {t('검토')} {reviewComments.filter((comment) => comment.status === 'open').length}
+        </Button></RibbonGroup>}
+        {/* Only where there is a drawer to open: with the rail standing beside
+            the stage this button opens what is already on screen. */}
+        {/* 보고서의 보기 탭이 「목차」 하나로 서 있는 자리, 그 짝.
+            좁을 때만 세웠더니 넓은 화면에서는 보기 탭을 눌러도 아무것도 없는
+            탭이었다 — 그 자리를 채우고 있던 것은 장수 배지 하나였고, 그것은
+            누를 수 없는 숫자였다. 목록을 접었다 펴는 것은 넓은 화면에서도
+            할 일이다: 한 장을 크게 볼 때 옆줄은 자리를 차지한다. */}
+        {ribbon === 'view' && <RibbonGroup label={t('탐색')}>
+          <Button
+            size="sm"
+            aria-label={t('장 목록')}
+            aria-pressed={railShown}
+            title={t('장 목록을 접었다 폅니다')}
+            onClick={() => setRailToggled((pressed) => !pressed)}
+          >
+            <Rows3 size={13} />
+            {t('장 목록')} {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
+          </Button>
+        </RibbonGroup>}
+        {/* 발표 모드. 덱은 방에서 보이는 크기로 한 번 넘겨 봐야 끝난다 */}
+        {ribbon === 'show' && !editing && <RibbonGroup label={t('재생')}><Button size="sm" disabled={writing} onClick={() => setPresenting(true)}>
+          <Play size={13} />
+          {t('발표')}
+        </Button></RibbonGroup>}
+        {ribbon === 'file' && !editing && <RibbonGroup label={t('내보내기')}><Dropdown
+          align="right"
+          trigger={() => (
+            <Button size="sm" disabled={writing}>
+              <Download size={14} />
+              {t('내보내기')}
+            </Button>
+          )}
+        >
+          {exportWarningCount > 0 && (
+            <>
+              <MenuLabel>{t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}</MenuLabel>
+              {overflowRisks.length > 0 && (
+                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => go(overflowRisks[0])}>
+                  {t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length))}
+                </MenuItem>
+              )}
+              {weakSlides.length > 0 && (
+                <MenuItem icon={<ShieldQuestion size={14} />} onClick={() => go(weakSlides[0])}>
+                  {t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
+                </MenuItem>
+              )}
+              {unresolvedReviews.length > 0 && (
+                <MenuItem icon={<MessageSquare size={14} />} onClick={() => {
+                  const target = deck.slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
+                  if (target >= 0) go(target)
+                  setReviewOpen(true)
+                }}>
+                  {t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length))}
+                </MenuItem>
+              )}
+            </>
+          )}
+          <MenuLabel>{t('형식 선택')}</MenuLabel>
+          <MenuItem hint="PPTX" onClick={() => void download(deck.id, 'pptx', deck.title)}>
+            PowerPoint
+          </MenuItem>
+          <MenuItem hint="PDF" onClick={() => void download(deck.id, 'pdf', deck.title)}>
+            {t('PDF (발표용)')}
+          </MenuItem>
+          <MenuItem hint="MD" onClick={() => void download(deck.id, 'md', deck.title)}>
+            {t('텍스트 (노트 포함)')}
+          </MenuItem>
+        </Dropdown></RibbonGroup>}
+        {/* 저장 시점. 한 장을 고쳐 놓고 원래가 나았다는 것은 고친 뒤에야
+            알게 되고, 그때 되돌릴 곳이 이 줄 말고는 없다. */}
+        {/* 편집 중에도 선다. 되돌리고 싶어지는 때는 대개 고치고 있는 중이고,
+            `VersionHistory` 는 저장하지 않은 편집이 있으면 그것부터 말한다. */}
+        {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
+          artifact={deck}
+          hasUnsavedChanges={hasUnsavedEdit}
+          currentData={deck}
+          // 되돌린 덱의 몇째 장인지는 편집기가 열릴 때 잡아 둔 것과 다르다.
+          // 열어 둔 초안을 그대로 저장하면 방금 되돌린 장을 덮어쓴다.
+          onRestored={() => {
+            setEditing(false)
+            setSlideDraft(null)
+            setDraft('')
+            setNotes('')
+            baseline.current = ''
+            setError(null)
+          }}
+        /></RibbonGroup>}
+        </ArtifactRibbon>
+      </header>
+
+      <div className="relative flex min-h-0 flex-1">
+        {reviewOpen && (
+          <aside aria-label={t('검토 메모')} className="absolute inset-y-0 right-0 z-30 flex w-80 max-w-full flex-col border-l border-line bg-panel shadow-float">
+            <div className="flex items-center gap-2 border-b border-line p-3">
+              <MessageSquare size={14} className="text-accent" />
+              <h3 className="flex-1 text-sm font-semibold">{t('검토 메모')}</h3>
+              <button aria-label={t('검토 메모 닫기')} onClick={() => setReviewOpen(false)} className="rounded-control p-1 hover:bg-elevated">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="border-b border-line p-3">
+              <p className="mb-2 text-xs text-faint">{t('{n}번 장에 메모').replace('{n}', String(index + 1))}</p>
+              <Textarea rows={3} value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} aria-label={t('메모 내용')} placeholder={t('수정할 점이나 확인할 내용을 적으세요')} />
+              <Button size="sm" className="mt-2 w-full" disabled={!reviewDraft.trim() || reviewSaving} onClick={addReviewComment}>
+                {reviewSaving ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+                {t('메모 추가')}
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+              {reviewComments.length === 0 && <p className="text-sm text-faint">{t('아직 검토 메모가 없습니다.')}</p>}
+              {reviewComments.map((comment) => {
+                const slideIndex = deck.slides.findIndex((candidate) => candidate.id === comment.slideId)
+                return (
+                  <article key={comment.id} className={cn('rounded-card border p-3', comment.status === 'resolved' ? 'border-line bg-elevated/40 opacity-65' : 'border-line bg-panel')}>
+                    <button className="text-xs font-semibold text-accent hover:underline" onClick={() => slideIndex >= 0 && go(slideIndex)}>
+                      {slideIndex >= 0 ? t('{n}번 장').replace('{n}', String(slideIndex + 1)) : t('삭제된 장')}
+                    </button>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{comment.body}</p>
+                    <div className="mt-2 flex items-center gap-3">
+                      <button className="text-xs text-muted hover:text-fg" disabled={reviewSaving} onClick={() => toggleReviewComment(comment.id)}>
+                        {comment.status === 'open' ? t('해결로 표시') : t('다시 열기')}
+                      </button>
+                      <button aria-label={t('메모 삭제')} className="ml-auto text-xs text-faint hover:text-danger" disabled={reviewSaving} onClick={() => deleteReviewComment(comment.id)}>
+                        {t('삭제')}
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </aside>
+        )}
+        {panel.narrow && railShown && (
+          <button
+            aria-label={t('장 목록 닫기')}
+            className="absolute inset-0 z-10 bg-black/30"
+            onClick={() => setRailToggled(false)}
+          />
+        )}
+        {/* ── 장 목록 레일 ───────────────────────────────────────────────
+            Slides are ordered argument, and the order is the thing under
+            revision for as long as the deck exists. A rail keeps the whole
+            sequence beside the slide being worked on rather than below it. */}
+        <nav
+          className={cn(
+            'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
+            railShown
+              ? panel.narrow
+                ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
+                : 'flex'
+              : 'hidden',
+          )}
+        >
+          <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1.5">
+            {(
+              [
+                { id: 'thumbs', icon: Grid2x2, label: '그림으로' },
+                { id: 'outline', icon: Rows3, label: '차례로' },
+              ] as const
+            ).map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setRail(v.id)}
+                aria-pressed={rail === v.id}
+                aria-label={t(v.label)}
+                title={t(v.label)}
+                className={cn(
+                  'grid size-6 place-items-center rounded-control transition-colors',
+                  rail === v.id ? 'bg-elevated text-fg' : 'text-faint hover:text-fg',
+                )}
+              >
+                <v.icon size={13} />
+              </button>
+            ))}
+            <button
+              onClick={() => { setBulkMode((value) => !value); setBulkSelected(new Set()) }}
+              aria-pressed={bulkMode}
+              aria-label={t('여러 장 선택')}
+              title={t('여러 장 선택')}
+              className={cn('grid size-6 place-items-center rounded-control transition-colors', bulkMode ? 'bg-accent/10 text-accent' : 'text-faint hover:text-fg')}
+            >
+              <Rows3 size={13} />
+            </button>
+            <span className="ml-auto pr-1 text-xs text-faint tabular-nums">
+              {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
+            </span>
+          </div>
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-1.5">
+            {deck.slides.map((s, i) => {
+              const weak = s.factCheck?.claims.some((c) => c.verdict !== 'supported')
+              const openReviews = reviewComments.filter((comment) => comment.slideId === s.id && comment.status === 'open').length
+              return rail === 'thumbs' ? (
+                <div key={s.id} className="relative">
+                <button
+                  onClick={() => go(i)}
+                  aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
+                  aria-current={i === index}
+                  className={cn(
+                    'relative block aspect-video w-full overflow-hidden rounded-control border-2 bg-white transition-colors',
+                    i === index ? 'border-accent' : 'border-line hover:border-line-strong',
+                  )}
+                >
+                  <SlideThumbnail
+                    deck={deck}
+                    slide={editing && i === index && slideDraft ? slideDraft : s}
+                    index={i}
+                    writing={writing}
+                  />
+                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/55 px-1 text-2xs font-medium text-white tabular-nums">
+                    {i + 1}
+                  </span>
+                  {weak && (
+                    <span className="absolute top-0.5 right-0.5 grid size-3.5 place-items-center rounded-full bg-warn text-white">
+                      <TriangleAlert size={9} />
+                    </span>
+                  )}
+                  {openReviews > 0 && (
+                    <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(openReviews))} className="absolute bottom-0.5 right-0.5 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-2xs font-semibold text-white">
+                      {openReviews}
+                    </span>
+                  )}
+                </button>
+                {bulkMode && (
+                  <label className="absolute left-0.5 top-0.5 z-10 grid size-5 cursor-pointer place-items-center rounded bg-white/90 shadow-sm" onClick={(event) => event.stopPropagation()}>
+                    <input type="checkbox" className="size-3.5 accent-[var(--color-accent)]" checked={bulkSelected.has(s.id)} onChange={() => toggleBulkSlide(s.id)} aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />
+                  </label>
+                )}
+                </div>
+              ) : (
+                <div key={s.id} className="flex items-start">
+                {bulkMode && <input type="checkbox" className="mt-1 size-3.5 shrink-0 accent-[var(--color-accent)]" checked={bulkSelected.has(s.id)} onChange={() => toggleBulkSlide(s.id)} aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />}
+                <button
+                  onClick={() => go(i)}
+                  aria-current={i === index}
+                  className={cn(
+                    'flex w-full items-start gap-1.5 rounded-control px-1.5 py-1 text-left text-xs leading-snug transition-colors',
+                    i === index ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
+                  )}
+                >
+                  <span className="shrink-0 text-faint tabular-nums">{i + 1}</span>
+                  <span className="min-w-0 flex-1 line-clamp-2">{s.title}</span>
+                  {weak && <TriangleAlert size={10} className="mt-0.5 shrink-0 text-warn" />}
+                  {openReviews > 0 && <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(openReviews))} className="shrink-0 rounded-full bg-accent px-1 text-2xs font-semibold text-white">{openReviews}</span>}
+                </button>
+                </div>
+              )
+            })}
+          </div>
+        </nav>
+
+        {/* ── 무대 ─────────────────────────────────────────────────────── */}
+        {/* The slide takes the room, the notes take the rest.
+            Both used to sit in one band capped at `max-w-lg` — 32rem — so on a
+            940px panel the slide was drawn a third of the width it had and
+            everything below the notes was empty. That cap made sense when this
+            lived beside a transcript in a 330px column; it stopped making sense
+            the moment the panel could be widened, and nothing followed.
+            A column instead: the slide keeps its 16:9 across the full width,
+            and the notes are their own band under a rule, growing into whatever
+            height is left rather than trailing the slide as a caption. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          {editTools}
           <div className="flex shrink-0 items-center gap-2 p-4">
               <button
                 onClick={() => go(index - 1)}

@@ -1,53 +1,58 @@
 kind = "image"
 name = "방법 구조도"
-description = "논문·보고서의 제안 방법을 한 장으로 보여 주는 그림. 이름표 자리는 비워 둡니다"
+description = "논문의 제안 방법을 구성 요소와 흐름으로 그린 그림. 이름표가 붙어 나옵니다"
 category = "연구"
-fills = ["무엇의 구조인지", "구성 방식", "그리는 결"]
-example_prompt = "{subject}의 구조를 논문 그림처럼 한 장으로 보여 줘. {shape} 구성으로, {texture} 느낌으로 그려 줘."
+fills = ["방법 설명", "강조할 것", "이름표 언어"]
+example_prompt = "{description}\n\n강조할 것: {highlight}\n이름표 언어: {language}"
 layouts = ["cover"]
 
-# 학술 도판의 관례를 그대로 적는다.
+# 그림 모델이 아니라 도식 경로로 간다.
 #
-# 그림 모델이 글자를 제대로 못 쓴다는 사실은 그대로다. 그래서 이름표는 여전히
-# 맡기지 않고 자리만 남긴다 — 논문 그림의 이름표는 본문 용어와 한 글자도
-# 어긋나면 안 되고, 그건 사람이 얹어야 정확하다.
+# 그림 모델은 글자를 못 쓴다. 그래서 앞판은 「이름표 자리는 비워 둡니다」라고
+# 스스로 적어 두었고, 이름표 없는 방법 그림은 논문에 넣을 수 없다 — 장식이지
+# 그림이 아니다. `figure` 가 있는 서식은 설명을 언어 모델에 주어 mermaid 로
+# 쓰게 하고, 화면이 서식의 글꼴로 그려 저장한다. 이름표는 설명에 쓴 용어
+# 그대로다.
 #
-# 나머지는 최근 학회 도판이 실제로 지키는 것들이다: 채도 낮은 파스텔 바탕으로
-# 단계를 묶고, 진한 색은 정말 강조할 하나에만 쓰고, 처리 단계는 모서리를 둥글게,
-# 자료는 각지게, 데이터 흐름은 실선, 보조 흐름은 점선으로 가른다.
-prompt_suffix = "academic paper method figure, clean modular schematic with clear left-to-right progression, draw the things the subject actually names as recognisable objects — devices, sensors, servers, racks, documents, containers, people — each one a distinct silhouette rather than an empty rectangle, because a figure with no lettering has only its shapes to say anything; group related objects inside a pale tinted zone, and let size and colour weight say which part matters, pale desaturated pastel zones grouping stages, medium-saturation fills reserved for the two or three active modules, one accent colour only for the highlighted path, rounded outlines for processes and squared outlines for data, solid connectors for the forward path and dashed connectors for auxiliary paths, at most seven objects, thin uniform strokes, flat even lighting, no drop shadows, clear separation between objects so none of them touch, no text, no lettering, no numbers, no logos, no faces"
+# 규칙은 PaperBanana 의 NeurIPS 2025 도식 스타일 가이드를 mermaid 가 말할 수
+# 있는 것으로 옮긴 것이다(`services/diagram.py`): 단계마다 옅은 파스텔 존,
+# 처리는 둥근 모양, 자료는 각진 모양, 저장소는 원통, 본류는 실선, 보조 흐름은
+# 점선, 강조는 하나.
+figure = "method"
+prompt_suffix = ""
 
 name_en = "Method figure"
-description_en = "The proposed method as a single paper-style figure, with label slots left empty"
+description_en = "The proposed method as components and flows, with its labels on"
 category_en = "Research"
-fills_en = ["What the structure is", "How it is arranged", "Rendering"]
-example_prompt_en = "A paper-style figure showing how {subject} is structured, arranged {shape}, drawn in {texture}."
+fills_en = ["Method description", "What to highlight", "Label language"]
+example_prompt_en = "{description}\n\nWhat to highlight: {highlight}\nLabel language: {language}"
 
 [defaults]
 aspect = "16:9"
 style = "미니멀"
 
 [[arguments]]
-name = "subject"
-label = "무엇의 구조"
-label_en = "Structure of what"
-default = "제안 모델의 학습 파이프라인"
-default_en = "the proposed model's training pipeline"
+name = "description"
+label = "방법 설명"
+label_en = "Method description"
+long = true
+default = "입력 문장을 인코더가 토큰 임베딩으로 바꾼다. 검색 모듈이 외부 문서 저장소에서 관련 문단 세 개를 가져와 임베딩과 이어 붙인다. 디코더가 이어 붙인 표현으로 답을 생성하고, 검증기가 답과 문단을 대조해 점수를 낸다. 점수는 디코더에만 되먹임되어 학습에 쓰인다."
+default_en = "An encoder turns the input sentence into token embeddings. A retrieval module fetches three related passages from an external document store and concatenates them with the embeddings. A decoder generates the answer from the joined representation, and a verifier scores the answer against the passages. The score is fed back to the decoder only, for training."
 
 [[arguments]]
-name = "shape"
-label = "구성 방식"
-label_en = "Arrangement"
-default = "왼쪽에서 오른쪽으로 흐르는"
-default_en = "flowing left to right"
-options = ["왼쪽에서 오른쪽으로 흐르는", "층으로 쌓인", "가운데 모듈을 중심으로 갈라지는", "두 갈래를 나란히 견주는", "되먹임 고리가 있는"]
-options_en = ["flowing left to right", "stacked in layers", "branching from a central module", "two branches side by side", "with a feedback loop"]
+name = "highlight"
+label = "강조할 것"
+label_en = "What to highlight"
+default = "학습되는 부분"
+default_en = "the trained part"
+options = ["학습되는 부분", "최종 출력", "새로 제안한 모듈", "없음"]
+options_en = ["the trained part", "the final output", "the newly proposed module", "none"]
 
 [[arguments]]
-name = "texture"
-label = "결"
-label_en = "Rendering"
-default = "옅은 파스텔 면과 가는 선"
-default_en = "pale pastel planes and thin lines"
-options = ["옅은 파스텔 면과 가는 선", "흑백에 강조색 하나", "점선으로 단계를 나눈 도면", "입체 블록으로 쌓은"]
-options_en = ["pale pastel planes and thin lines", "greyscale with a single accent", "a drafting sheet with dashed stages", "stacked isometric blocks"]
+name = "language"
+label = "이름표 언어"
+label_en = "Label language"
+default = "한국어"
+default_en = "Korean"
+options = ["한국어", "영어"]
+options_en = ["Korean", "English"]
