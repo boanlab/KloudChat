@@ -267,3 +267,14 @@ def test_a_timeline_padded_with_invented_steps_becomes_bullets() -> None:
         draft2, [{"title": "적용 시점", "layout": "timeline"}], set(), request2
     )
     assert [t[0] for t in out2[0]["timeline"]] == ["2027년 1월 1일", "9월 15일"]
+
+
+def test_years_in_a_table_header_do_not_make_it_a_new_slide() -> None:
+    from app.services.deck import _claims
+
+    assert _claims(
+        {"rows": [["혜택", "2026년", "2027년"], ["학자금", "500만 원", "700만 원"]]}
+    ) == {
+        "500만원",
+        "700만원",
+    }

@@ -157,6 +157,8 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 - **"timeline" 은 요청에 시점이나 절차의 순서가 있을 때만.** 연혁·일정·절차. 시점이
   없는 내용을 timeline 으로 잡으면 연도를 지어내게 된다. 절차라도 명령어 순서면
   bullets 가 낫다.
+- 문의처·연락처·적용 시기·신청 방법처럼 **사실을 전하는 장은 "bullets"** 다. quote 로
+  잡으면 내선 번호 대신 표어가 남는다.
 - 확신이 없으면 "bullets" 다. 초안을 쓰는 단계에서 내용에 맞게 layout 을 바꿀 수
   있으니, 여기서 화려한 layout 을 미리 고르지 마라.
 - **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
@@ -311,7 +313,13 @@ def _claims(row: dict[str, Any]) -> set[str]:
     text = json.dumps(
         {k: v for k, v in row.items() if k not in ("notes", "layout", "title")}, ensure_ascii=False
     )
-    return {re.sub(r"\s+", "", m.group(0)) for m in _CLAIM.finditer(text) if len(m.group(0)) >= 2}
+    # A year is context, not a claim: 「2026년 | 2027년」 as table headers must
+    # not make the table a different slide from the bands above it.
+    return {
+        re.sub(r"\s+", "", m.group(0))
+        for m in _CLAIM.finditer(text)
+        if len(m.group(0)) >= 2 and not re.fullmatch(r"\d{4}\s*년", m.group(0))
+    }
 
 
 def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) -> set[int]:
