@@ -980,6 +980,7 @@ async def write(
                         hi=_MAX_SECTIONS,
                         request=request[:2000],
                     ),
+                    request=request,
                     trusted_context=trusted_context,
                     untrusted_context=document_context,
                     research_rule=research_rule,
@@ -1177,6 +1178,7 @@ async def write(
                     facts=_FRAME_RULE if frame else _facts_line(request, sources),
                     request=request[:1500],
                 ),
+                request=request,
                 trusted_context=trusted_context,
                 untrusted_context=document_context,
                 research_rule=research_rule,
@@ -1251,6 +1253,7 @@ async def write(
                             if index in wanted_figures
                             else ""
                         ),
+                        request=request,
                         trusted_context=trusted_context,
                         untrusted_context=document_context,
                         research_rule=research_rule,
@@ -1412,7 +1415,7 @@ async def rewrite_section(
         )
     return await _complete(
         model,
-        build_document_messages(SessionKind.report, prompt),
+        build_document_messages(SessionKind.report, prompt, request=request),
         api_key,
         1200,
     )

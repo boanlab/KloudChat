@@ -384,3 +384,19 @@ def test_a_slide_that_says_the_same_thing_in_other_words_is_dropped() -> None:
     }
     # 같은 말을 bands 로 다시 한 장이 뒤에 오면 bullets 쪽이 빠진다. 일정 장은 남는다.
     assert _retold(slides, drafted) == {1}
+
+
+def test_an_english_request_gets_an_english_rule_and_a_korean_one_none() -> None:
+    from app.models.chat import SessionKind
+    from app.services.context import build_document_messages, language_rule
+
+    english = (
+        "Write a one-page decision memo for the department head on whether to renew "
+        "our annual JMP licence (30 seats, $4,800/yr) or switch to R."
+    )
+    assert "entire output in English" in language_rule(english)
+    assert language_rule("학과 서버 교체 여부를 정하는 보고서를 써 주세요.") == ""
+    # 한국어 요청에 영어 낱말이 섞여도 한국어다.
+    assert language_rule("PEFT 기법 LoRA, Adapter, Prefix Tuning 동향을 정리해 주세요.") == ""
+    messages = build_document_messages(SessionKind.report, "prompt", request=english)
+    assert "entire output in English" in messages[0]["content"]

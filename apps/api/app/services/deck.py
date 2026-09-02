@@ -1429,6 +1429,7 @@ async def _write_slides(
                     request=request[:1500],
                     tail=_FRAME_TAIL if frame else "",
                 ),
+                request=request,
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
                 research_rule=research_rule,
@@ -1530,6 +1531,7 @@ async def _write_slides(
                             request=request[:1500],
                         )
                         + density_rule,
+                        request=request,
                         trusted_context=trusted_context,
                         untrusted_context=untrusted_context,
                         research_rule=research_rule,
@@ -1881,6 +1883,7 @@ async def write(
                     request=request[:2000],
                 )
                 + nudge,
+                request=request,
                 trusted_context=trusted_context,
                 untrusted_context=document_context,
                 research_rule=research_rule,
@@ -2123,7 +2126,7 @@ async def rewrite_slide(
         prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
-        model, build_document_messages(SessionKind.slides, prompt), api_key, 600
+        model, build_document_messages(SessionKind.slides, prompt, request=request), api_key, 600
     )
     parsed = _json_object(text)
     bullets = _clean_bullets(parsed.get("bullets"))

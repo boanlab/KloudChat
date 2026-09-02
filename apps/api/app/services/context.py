@@ -11,6 +11,7 @@ note.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -119,7 +120,8 @@ _WRITING = """글 쓰는 법:
 _SURFACE_DEFAULTS: dict[SessionKind, str] = {
     SessionKind.chat: (
         "당신은 KloudChat의 어시스턴트입니다. 한국어로 답하되, 사용자가 다른 언어로 "
-        "물으면 그 언어로 답합니다. 모르는 것은 모른다고 말하고, 도구가 준 결과를 "
+        "물으면 **그 언어로** 답합니다 — 영어 질문에는 영어로, 아래 글쓰기 규칙은 "
+        "그대로 지키되 언어만 바꿉니다. 모르는 것은 모른다고 말하고, 도구가 준 결과를 "
         "실제로 확인하지 않은 채 확인했다고 말하지 않습니다."
     ),
     SessionKind.report: (
@@ -350,10 +352,35 @@ def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
     return merged
 
 
+_HANGUL = re.compile(r"[가-힣]")
+_LATIN = re.compile(r"[A-Za-z]")
+
+
+def language_rule(request: str) -> str:
+    """An instruction to answer in the request's language, when it is not Korean.
+
+    Every generation prompt is written in Korean and asks for 합니다체, and a
+    memo requested in English came back in Korean — 「department에서는 30석
+    규모의」 — with the English facts translated. Empty for a Korean request,
+    so the Korean prompts keep working as they are.
+    """
+    hangul = len(_HANGUL.findall(request))
+    latin = len(_LATIN.findall(request))
+    if latin < 40 or hangul * 4 > latin:
+        return ""
+    return (
+        "The request is written in English, so write the entire output in English — "
+        "headings, table headers, bullet points, speaker notes, captions, everything. "
+        "The structural rules in the prompt still apply; the Korean style rules "
+        "(합니다체, 한글 표기) do not. Do not translate the request's facts into Korean."
+    )
+
+
 def build_document_messages(
     kind: SessionKind,
     prompt: str,
     *,
+    request: str = "",
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
     #: Rule appended to the system turn about where this document's facts come
@@ -376,6 +403,8 @@ def build_document_messages(
     trusted = list(trusted_context or [])
     if research_rule:
         trusted.append(research_rule)
+    if rule := language_rule(request):
+        trusted.append(rule)
     messages = [
         {
             "role": "system",
