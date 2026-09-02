@@ -88,6 +88,7 @@ from app.services import (
     design_extract,
     design_templates,
     factcheck,
+    hangul,
     hwpx_import,
     index_client,
     lint,
@@ -1527,7 +1528,10 @@ async def rewrite_section(
             summary=f"{target.get('heading')} 다시 씀",
         )
     )
-    target["content"] = body
+    # The same door the first pass goes through — stray ideographs read back,
+    # the tokenizer's 「120 만 원」 closed up — so a rewritten section is not
+    # the one section in the document written differently.
+    target["content"] = hangul.tidy_spacing(hangul.read_back(body)[0])
     # The model writes Markdown. A section that had been edited into HTML goes
     # back to Markdown when it is rewritten, because what is stored now *is*
     # Markdown — leaving the old flag on would have the panel render `**가**`
