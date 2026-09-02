@@ -136,7 +136,7 @@ so it can be set in `.env` like the variables above.
 | `REFRESH_GRACE_SEC` | `15` | Window in which a just-rotated refresh token may be replayed without being treated as theft. Two tabs restoring a session at once send the same cookie; without the leeway, the loser is logged out of everything. |
 | `CHAT_TIMEOUT_SEC` | `900` | A tool-using turn on a local 122B model genuinely runs for minutes. |
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |
-| `MAX_TOOL_HOPS` | `5` | Model↔tool round trips per turn. Past five, a model is almost always in a retry loop. |
+| `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn. A fact-check that searches one claim per axis needs six or seven; past eight, a model is almost always in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. |
 | `FILE_CONTEXT_CHARS` | `24000` | Characters of a file injected per turn before excerpting. |
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |

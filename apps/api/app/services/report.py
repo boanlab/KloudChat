@@ -57,7 +57,19 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
   요구하는 뼈대로 잡아라. 요청에 없던 분야나 연도를 골라 채운 보고서는 읽는
   사람의 것이 아니어서 그대로 쓸 수 없다.
 - 섹션 {lo}~{hi}개.
-- 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다.
+- 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다. 절마다
+  **서로 다른 물음 하나**에 답한다 — 「비용 비교」와 「옵션 비교 분석」처럼 같은
+  물음을 둘로 쪼개지 마라.
+- 판단을 구하는 문서(보고·검토·의사결정·제안)는 첫 절이 「요약」, 마지막 절이
+  「권고안과 다음 단계」다. 결론과 권고는 그 마지막 절 하나에만 있다.
+- **대안이 여럿인 결정 문서는 대안마다 절을 만들지 마라.** 「A의 경제적 분석」
+  「B의 경제적 분석」은 표 하나의 열을 절로 쪼갠 것이다. 대신 「대안 비교」 절
+  하나에서 같은 기준으로 견준다. **절 제목에 특정 대안의 이름(클라우드, 교체,
+  연장)을 넣지 마라** — 대안 이름이 제목에 있으면 그 절은 절이 아니라 표의 열이다.
+  그런 문서의 뼈대는 대개 이렇다: 요약 → 현황과 결정할 사안 → 비용 계산의 전제 →
+  대안 비교 → 위험과 남는 문제 → 권고안과 다음 단계. 계산이 비교보다 앞이다 —
+  표의 숫자는 그 앞 절에서 식으로 구한 값을 옮겨 적는 것이지 표에서 새로 셈하는
+  것이 아니다.
 - 섹션은 제목만. 내용은 쓰지 마라.
 - style 은 이 문서가 어디에 쓰이는지에 맞는 인상이다. 셋 중 하나만 골라라:
   · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 문서. 선과 넓은 여백.
@@ -68,9 +80,15 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - 참고할 자료에 양식·서식 문서가 있으면 그 문서의 항목 순서를 그대로 목차로 써라.
   개수도 그 양식을 따르고, 일반적인 보고서 목차로 바꾸지 마라.
 
-JSON 객체로만 답하라.
-예: {{"title": "전이학습의 소량 데이터 효율성", "style": "미니멀",
-     "sections": ["요약", "배경", "방법", "결과", "한계", "결론"]}}
+JSON 객체로만 답하라. "subject" 에는 이 문서가 무엇에 대한 것인지를 **요청에 적힌
+말 그대로** 적어라 — 요청에 주제가 없으면 빈 문자열. 요청이 대안 여럿 가운데
+고르는 것이면 "alternatives" 에 그 대안들의 짧은 이름을 적어라(없으면 빈 배열).
+예: {{"title": "전이학습의 소량 데이터 효율성", "style": "미니멀", "subject": "전이학습",
+     "sections": ["요약", "배경", "방법", "결과", "한계", "결론"], "alternatives": []}}
+예: {{"title": "학과 서버 교체 여부 결정", "style": "편집형", "subject": "학과 서버 교체",
+     "sections": ["요약", "현황과 결정할 사안", "비용 계산의 전제", "대안 비교",
+                  "위험과 남는 문제", "권고안과 다음 단계"],
+     "alternatives": ["교체", "1년 연장", "클라우드 이전"]}}
 
 요청: {request}"""
 
@@ -85,144 +103,262 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 참고 자료:
 {refs}
 
+이 절의 역할: {role}
+{others}
+{facts}
+
 규칙:
-- "{heading}" 에 해당하는 내용만 써라. 다른 섹션의 내용을 미리 쓰지 마라.
-- 제목 줄은 쓰지 마라. 본문만.
-- 마크다운을 쓰되 최상위 제목(#)은 쓰지 마라.
-- 앞에서 한 말을 되풀이하지 마라.
-- **비교·수치·일정은 표로 써라.** 두 가지 이상을 같은 기준으로 견주거나, 항목별
-  값이 나열되거나, 날짜와 담당이 붙는 대목은 줄글보다 표가 읽힌다. 줄글로 늘어
-  놓은 비교는 읽는 사람이 머릿속에서 표로 다시 그려야 한다.
-- **다만 한 항목이 시점에 따라 변하는 값은 표가 아니라 아래의 ```chart 다.**
-  1월·2월·3월…처럼 시점이 열로 늘어서는 표는 단 폭을 넘기고, 읽는 사람은 결국
-  그 숫자들을 머릿속에서 선으로 잇는다. **시점이 4개를 넘으면 표를 쓰지 마라.**
-- **같은 숫자를 두 번 쓰지 마라.** 표나 차트에 넣은 값을 문단에서 다시 읊지
-  마라. 본문은 그 숫자가 무엇을 뜻하는지 말하는 자리다.
-- 표는 이 형식으로 쓴다. **행 사이에 빈 줄을 넣지 마라** — 빈 줄이 들어가면
-  표가 아니라 문장으로 그려진다.
-
-      | 기준 | 대안 A | 대안 B |
-      | --- | --- | --- |
-      | 초기 비용 | 0원 | 약 3억 원 |
-      | 도입 기간 | 2주 | 4개월 |
-
-- **핵심 수치는 강조 블록으로 뽑아라.** 절의 결론이 되는 숫자가 두셋 있으면
-  ```kpi 로 감싼 블록에 `값 | 이름` 을 한 줄씩 쓴다. 화면과 내보낸 파일 양쪽에
-  큰 숫자로 나온다. 최대 4개.
-
-      ```kpi
-      32% | 오탐 감소
-      1.4초 | 평균 응답 시간
-      99.2% | 가용성
-      ```
-
-  - **한 절에 하나까지.** 매 절마다 붙이면 강조가 아니라 배경이 된다.
-  - 값은 짧게 — `32%`, `1.4초`, `3억 원`. 문장을 넣지 마라.
-  - 표에 있는 수치를 그대로 옮기지 마라. 표는 견주는 자리고, 이 블록은
-    **하나를 기억시키는** 자리다.
-  - 블록만 두지 마라. 그 숫자가 무엇을 뜻하는지는 본문이 말해야 한다.
-- **훑어 읽는 대목은 카드로 써라.** 서너 갈래를 같은 무게로 나란히 놓아야 할
-  때 — 산출물·목표·이해관계자·성공 기준처럼 — ```cards 로 감싸고 `## 카드 제목`
-  아래에 `- 줄` 을 붙인다. 화면에서는 두 단 격자로, 내보낸 파일에서는 두 단 표로
-  나온다. 최대 6장.
-
-      ```cards
-      ## 산출물
-      - 네트워크 전면 교체
-      - 클라우드 이전
-      ## 목표
-      - 8개월 안에 완료
-      - 성능 40% 개선
-      ```
-
-  - **두 장이면 그것이 비교다.** 현행과 제안, 지금과 이후를 나란히 놓을 때 따로
-    쓰는 문법은 없다 — 카드 둘이 곧 두 단이다.
-  - 카드 제목은 명사로 짧게. 카드마다 줄은 **다섯 줄 안쪽**으로.
-  - **줄글로 쓸 것을 카드에 넣지 마라.** 카드는 훑는 자리다. 이어서 읽어야 이해
-    되는 문장은 본문에 둔다.
-  - 한 절에 하나까지. 절마다 격자가 있으면 격자가 배경이 된다.
-- **지나치면 안 되는 한 줄은 강조 상자로 써라.** ```callout 로 감싸고 첫 줄에
-  제목, 다음 줄부터 내용을 쓴다. 왼쪽에 색 막대가 붙어 나온다.
-
-      ```callout
-      승인 없이는 시작하지 않는다
-      9월 교무회의 승인 전까지는 계약도 발주도 하지 않는다.
-      ```
-
-  - **문서 전체에 하나까지.** 둘이면 둘 다 지나치게 된다.
-  - 경고·전제·기한처럼 **틀리면 뒤가 다 무너지는 것**만 넣는다. 요약은 여기가
-    아니라 첫 절이다.
-- **차례대로 하는 일은 절차 블록으로 써라.** ```steps 로 감싸고 `이름 | 설명` 을
-  한 줄씩 쓴다. 번호가 붙어 나온다. 최대 8단계.
-
-      ```steps
-      자료 수집 | 공개 데이터와 내부 로그를 모은다
-      정제 | 중복과 결측을 걸러낸다
-      분석 | 세 가지 기준으로 견준다
-      ```
-
-  - 번호를 직접 쓰지 마라. 번호는 자동으로 붙는다.
-  - 이름은 짧게, 설명은 한 줄로. 두 문장이 필요하면 그건 절차가 아니라 본문이다.
-  - **갈라지는 흐름은 이걸로 쓰지 마라.** 조건에 따라 길이 나뉘거나 되돌아가면
-    아래의 mermaid 를 써라. 반대로 곧게 이어지는 순서를 mermaid 로 그리면
-    목록을 그림으로 만든 것뿐이고, 파일에서는 글자를 잃는다.
-- **구조·흐름·관계는 mermaid 로 그려라.** ```mermaid 로 감싼 블록을 쓰면 화면과
-  내보낸 파일 양쪽에 도해로 나온다. 아키텍처, 절차, 조직, 상태 변화가 대상이다.
-  글로 세 문단 걸릴 관계도를 열 줄로 적을 수 있다.
-- 도해는 **가로로 긴 직사각형**이어야 한다. 종이에 인쇄되는 그림이고, 세로로
-  길면 한 쪽을 통째로 먹는다. 폭에 맞춰 줄이면 이번에는 글자가 읽을 수 없게
-  작아진다. 아래 규칙은 전부 그 모양 하나를 위한 것이다.
-  - **층은 3개까지.** `graph TD` 에서 층의 수가 곧 세로 길이다. `A --> B --> C
-    --> D --> E` 처럼 한 줄로 이어지면 다섯 층이 되어 좁고 길어진다.
-  - **한 줄로 이어지면 도해가 아니다.** 그건 절차이므로 위의 ```steps 로 써라.
-    도해는 **갈라질 때만** 쓴다.
-  - 한 층에 **2~4개를 나란히** 놓아라. 형제 노드가 가로로 퍼지면서 그림이
-    납작해진다. 이것이 폭을 쓰는 유일한 방법이다.
-  - 노드는 **8개 이하**, 이름은 **10자 안쪽**. 긴 이름은 칸을 넓히는 게 아니라
-    줄바꿈되어 칸을 높이고, 그만큼 그림이 세로로 자란다. `/` 로 두 가지를 한
-    칸에 넣지 마라 — `서버리스/컨테이너` 는 칸 하나가 아니라 노드 둘이다.
-  - **화살표에 글을 붙이는 문법은 `A -->|성공| B` 하나뿐이다.** 파이프는 화살표
-    **바로 뒤**에 오고 그 뒤에 도착 노드가 온다. `A --> B|성공| C` 처럼 쓰면
-    mermaid 가 그리지 못하고, 읽는 사람은 도해 대신 소스를 보게 된다.
-  - 화살표에 붙이는 글은 **6자 안쪽.** 노드 이름보다 더 잘 줄바꿈되고, 줄바꿈된
-    화살표 글씨는 선 옆에 두 줄로 떠서 그림을 어지럽게 만든다. 길어질 것 같으면
-    아예 붙이지 마라.
-  - `subgraph` 는 **하나까지**. 둘을 나란히 놓으면 각각이 절반으로 줄어든다.
-    비교가 목적이면 도해 두 개로 나누거나 표로 써라.
-  - `style`·`classDef`·`linkStyle` 로 색을 칠하지 마라. 색은 서식이 정한다.
-    써도 그리기 전에 지워진다.
-- **수치의 모양이 요점이면 ```chart 로 그려라.** 표는 값을 **읽는** 자리고
-  차트는 값의 **모양**을 보는 자리다. 항목별 크기 비교는 `bar`, 시간에 따른
-  추이는 `line`. **시점이 4개 이상이면 표가 아니라 언제나 차트다.**
-
-      ```chart
-      bar | 건
-      분기 | 처리 건수 | 반려 건수
-      1분기 | 120 | 8
-      2분기 | 210 | 11
-      3분기 | 380 | 9
-      ```
-
-  - 첫 줄은 `종류 | 단위`. 둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
-  - 가로축 항목은 **8개까지**, 계열은 **2개까지**.
-  - **모든 줄의 값 개수가 계열 수와 같아야 한다.** 하나라도 비면 그 줄은 통째로
-    빠진다 — 빈칸을 0으로 채우면 그리지 않은 0이 그래프에 주장으로 남는다.
-  - 값이 서넛뿐이면 차트 대신 표나 강조 수치를 써라. 막대 세 개짜리 그림은
-    표보다 자리만 넓게 차지한다.
-  - **지어낸 수치를 쓰지 마라.** 그래프는 숫자보다 더 사실처럼 읽힌다.
-  - 색과 축 눈금은 정하지 마라. 서식이 정하고, 세로축은 언제나 0에서 시작한다.
-- 표는 3~5행이 적당하다. 그보다 길면 본문에서 요점을 먼저 말하고 표는 근거로
-  둔다. 표 하나로 절을 대신하지 마라 — 표 앞에 무엇을 비교하는지, 뒤에 그래서
-  무엇인지 한 문장씩은 있어야 한다.
-- 참고 자료에서 가져온 사실은 그 자료의 번호를 문장 끝에 [1] 처럼 붙여라.
-  목록에 없는 번호는 절대 쓰지 마라. 참고 자료가 없으면 번호도 쓰지 마라.
+- "{heading}" 에 해당하는 내용만 써라. 보고서 전체를 이 절에 넣지 마라. 다른
+  절의 몫(비교, 일정, 권고)은 그 절이 쓴다.
+- 제목 줄은 쓰지 마라 — 굵은 글씨로도. 본문만. 최상위 제목(#)도 쓰지 마라.
+- 앞에서 한 말과 앞에서 그린 표·블록을 되풀이하지 마라.
+- 줄글이 기본이다. 한 절은 보통 문단 두셋에서 넷이고, 문단은 이어지는 문장으로
+  쓴다. 「- **1번 항목**:」 같은 번호 목록으로 절을 채우지 마라.
+- **수치는 위의 「쓸 수 있는 수치」 목록에 있는 것과 그것으로 계산한 값만 쓴다.**
+  단위와 자릿수까지 그대로 — 「연 380만 원」은 「3,800만 원」도 「38백만 원」도
+  아니다. 계산한 값은 식을 함께 적어라(「62만 원 × 12개월 = 744만 원」). 목록에
+  없는 수치 — 사용자 수, 비율, 장애 원인, 피해 규모, 다른 비용, 연도 — 는 만들지
+  말고, 필요하면 「(미정)」 「(확인 필요)」 로 적어라. 장애의 원인이나 경위처럼
+  요청에 없는 사정을 지어내지 마라.
+- 문체는 문서 전체가 하나다. 앞 절이 「~합니다」로 썼으면 이 절도 그렇게 쓴다.
+  첫 절이면 「~합니다」 로 쓴다.
 - **자료에 없는 고유한 값을 지어내지 마라.** 금액, 날짜, 기관 이름, 사람 이름,
   계약 상대가 그렇다. 결정해야 할 자리라면 값을 채우지 말고 무엇을 정해야
   하는지를 적어라 — "예산 2억 원" 이 아니라 "예산 규모(미정)", "A社·B社" 가
-  아니라 "협약 기업(선정 필요)" 이다. 지어낸 고유값은 읽는 사람이 그대로
-  옮겨 적고, 그 뒤에 아무도 그것이 어디서 왔는지 묻지 않는다.
+  아니라 "협약 기업(선정 필요)" 이다.
+- 참고 자료에서 가져온 사실은 그 자료의 번호를 문장 끝에 [1] 처럼 붙여라.
+  목록에 없는 번호는 절대 쓰지 마라. 참고 자료가 없으면 번호도 쓰지 마라.
+- 이 규칙 문장들을 본문에 옮겨 적지 마라. 읽는 사람에게 규칙은 보이지 않는다.
+{blocks}
 
 원래 요청: {request}"""
+
+_DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
+
+목차(이 제목을 이 순서로, `## 제목` 줄로 그대로 쓴다):
+{outline}
+
+참고 자료:
+{refs}
+
+{facts}
+
+규칙:
+- 절마다 `## 제목` 줄로 시작한다. 목차에 없는 절을 만들지 말고, 목차의 절을
+  빼지도 마라. 최상위 제목(#)은 쓰지 마라 — 제목은 표지에 따로 붙는다.
+- 첫 절이 「요약」이면: 무엇을 결정해야 하는지, 권고가 무엇인지, 근거 둘을 문단
+  하나에서 둘로. 표·목록 없이 줄글로만, 200자 안팎.
+- 마지막 절이 「권고안」이나 「다음 단계」이면: 권고 하나를 분명히 말하고 그 근거,
+  그리고 할 일을 순서대로. 결론과 권고는 이 절에만 있다 — 가운데 절들은 사실과
+  비교를 말하고 판단은 여기로 미룬다.
+- 가운데 절은 각각 다른 물음에 답한다. **한 절은 문단 둘 이상, 문단은 문장
+  서너 개.** 한 문단짜리 절은 절이 아니라 메모다 — 무엇이 그런지, 왜 그런지,
+  그래서 읽는 사람에게 무엇이 달라지는지를 쓰면 문단 둘은 나온다. 절 안에
+  「결론」 「요약」 「다음 단계」 같은 소제목을 만들지 마라. 「- **1번 항목**:」
+  같은 번호 목록으로 절을 채우지 마라. 절 제목을 본문에 굵은 글씨로 다시 쓰지 마라.
+- 대안이 둘 이상인 문서는 비교하는 절 첫머리에 표 하나를 반드시 둔다. 열은
+  대안, 행은 기준이고, 기준에는 첫해 비용·3년 총비용(식과 함께)·장애 위험·결정
+  뒤 남는 문제가 들어간다. 표 위에 이름표를 붙이지 말고 바로 표를 그린 뒤, 아래
+  문단에서 표가 무엇을 말하는지 풀어 쓴다 — 열 이름을 하나씩 풀이하는 「비교표
+  설명」 목록은 쓰지 마라. 표가 말하는 결론 한두 문장이면 된다. **같은 표를 다른 절에 다시 그리지
+  마라** — 문서에 비교표는 하나다.
+- 줄글이 기본이다. 비교·항목별 값은 표로 쓰되(행 사이 빈 줄 없이, 3~5행), 문서
+  전체에 표는 두 개까지. 표 앞에 무엇을 견주는지, 뒤에 그래서 무엇인지 한 문장씩.
+  절의 결론이 되는 숫자 둘셋은 문서 전체에 한 번만 ```kpi 블록(`값 | 이름` 한 줄씩,
+  최대 4개)으로. 틀리면 뒤가 무너지는 전제 하나는 문서 전체에 한 번만 ```callout
+  블록(첫 줄 제목, 다음 줄 내용)으로. 그 밖의 블록은 쓰지 마라.
+- **수치는 위 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만 쓴다.** 요청에
+  적힌 표기 그대로 아라비아 숫자로 — 「연 380만 원」은 「3,800만 원」도 「38백만
+  원」도 「3백8십만 원」도 아니다.
+  계산은 식과 결과를 함께 적고 나눗셈은 소수 첫째 자리까지 쓴다(「62만 원 ×
+  12개월 = 744만 원」, 「2,400만 원 ÷ 744만 원 ≈ 3.2년」). 목록에 없는 수치 —
+  사용자 수, 비율, 기간, 다른 비용, 잔존 가치, 연도, 영업일 — 는 만들지 말고
+  「(미정)」「(확인 필요)」로 적는다. 장애 원인이나 경위처럼 요청에 없는 사정을
+  지어내지 마라. 큰 수와 작은 수를 견줄 때는 두 수를 나란히 적어 방향을 확인한다.
+- 참고 자료의 사실은 자료 번호를 문장 끝에 [1] 처럼 붙인다. 목록에 없는 번호,
+  [설계도면] 같은 이름표는 쓰지 마라. 자료가 없으면 번호도 없다.
+- 문체는 문서 전체가 「~합니다」 하나다. 1인칭(「저는」「우리는」)을 쓰지 않는다 —
+  「클라우드 이전을 권고합니다」이지 「저는 … 권고합니다」가 아니다.
+- 비교표의 숫자는 앞 절에서 식으로 구한 값을 그대로 옮긴다. 표에서 새로 셈하지
+  말고, 표와 본문의 같은 항목이 다른 값을 갖지 않게 한다.
+- 이 규칙 문장을 본문에 옮겨 적지 마라.
+
+원래 요청: {request}"""
+
+
+def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
+    """The draft, cut into its sections by the `## ` lines it was asked to write.
+
+    Matched loosely — a heading the model wrote with a stray number, a trailing
+    colon or different spacing still lands in its section. A heading it did not
+    write at all is simply absent, and the caller writes that one on its own.
+    """
+
+    def key(text: str) -> str:
+        text = re.sub(r"^[\d.\s]+", "", text.strip())
+        return re.sub(r"[\s:：.]+", "", text).lower()
+
+    wanted = {key(h): h for h in headings}
+    found: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in draft.splitlines():
+        m = re.match(r"^\s*#{1,3}\s+(.+?)\s*$", line)
+        if m:
+            k = key(m.group(1))
+            if k in wanted:
+                current = wanted[k]
+                found[current] = []
+                continue
+            # A heading that is not one of ours: a stray sub-heading inside a
+            # section. Kept as bold text so the structure stays the outline's.
+            if current is not None:
+                found[current].append(f"**{m.group(1).strip()}**")
+                continue
+        if current is not None:
+            found[current].append(line)
+    return {h: "\n".join(lines).strip() for h, lines in found.items() if "\n".join(lines).strip()}
+
+
+#: 절의 역할과 그 절에서 쓸 수 있는 블록. 제목의 낱말로 고른다.
+#:
+#: 블록 여섯 종을 보기와 함께 한꺼번에 주자 모델은 절마다 여섯을 다 썼다 —
+#: 요약 절에 표·절차·강조 수치·카드·강조 상자가 전부 들어가고, 다음 절이 그것을
+#: 되풀이했다. 보기는 틀이 된다. 그래서 절마다 그 절이 쓸 수 있는 것만 말한다.
+_BLOCK_SYNTAX = {
+    "table": (
+        "- 비교·항목별 값은 표로 쓴다. 행 사이에 빈 줄을 넣지 마라. 3~5행이 알맞고,\n"
+        "  표 앞에 무엇을 견주는지, 뒤에 그래서 무엇인지 한 문장씩 둔다.\n"
+        "      | 기준 | 대안 A | 대안 B |\n"
+        "      | --- | --- | --- |\n"
+        "      | 초기 비용 | 0원 | 약 3억 원 |"
+    ),
+    "kpi": (
+        "- 절의 결론이 되는 숫자가 둘셋이면 ```kpi 블록에 `값 | 이름` 을 한 줄씩(최대 4개).\n"
+        "  표에 있는 값을 다시 넣지 마라. 그 숫자의 뜻은 본문이 말한다.\n"
+        "      ```kpi\n      32% | 오탐 감소\n      1.4초 | 평균 응답 시간\n      ```"
+    ),
+    "steps": (
+        "- 차례대로 하는 일은 ```steps 블록에 `이름 | 설명` 을 한 줄씩(최대 8단계).\n"
+        "      ```steps\n      자료 수집 | 공개 데이터와 내부 로그를 모은다\n"
+        "      정제 | 중복과 결측을 걸러낸다\n      ```"
+    ),
+    "cards": (
+        "- 서너 갈래를 같은 무게로 나란히 놓을 때(이해관계자·산출물·목표)는 ```cards 블록에\n"
+        "  `## 카드 제목` 아래 `- 줄` 을 붙인다(최대 6장, 장마다 다섯 줄 안쪽).\n"
+        "      ```cards\n      ## 산출물\n      - 네트워크 전면 교체\n      ## 목표\n"
+        "      - 8개월 안에 완료\n      ```"
+    ),
+    "callout": (
+        "- 틀리면 뒤가 다 무너지는 전제·경고·기한 하나는 ```callout 블록에 첫 줄 제목,\n"
+        "  다음 줄 내용으로. 문서 전체에 하나까지.\n"
+        "      ```callout\n      승인 없이는 시작하지 않는다\n"
+        "      9월 교무회의 승인 전까지는 계약도 발주도 하지 않는다.\n      ```"
+    ),
+    "chart": (
+        "- 한 항목이 시점에 따라 변하는 값(시점 4개 이상)은 표가 아니라 ```chart 블록.\n"
+        "  첫 줄 `종류 | 단위`, 둘째 줄 `가로축 이름 | 계열 이름들`, 나머지가 값이다.\n"
+        "  가로축 8개, 계열 2개까지. 값이 빈 줄은 통째로 빠진다. 지어낸 수치를 쓰지 마라.\n"
+        "      ```chart\n      bar | 건\n      분기 | 처리 건수 | 반려 건수\n"
+        "      1분기 | 120 | 8\n      2분기 | 210 | 11\n      ```"
+    ),
+}
+
+_NUMBER = re.compile(
+    r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장|쪽|GB|TB|MB|kg|km|m|건수)?",
+)
+
+
+def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
+    """The numbers the document may use, read off the request and the shelf.
+
+    A decision report the person seeded with 「연 380만 원」 came back saying
+    3,800만 원 in one section and 380만 원 in the next, with a network
+    migration cost of 2,400만 원 that nobody had mentioned. The rule 「자료에
+    없는 값을 지어내지 마라」 was in the prompt the whole time. A closed list is
+    something a model can be held to; a principle is not.
+    """
+    found: list[str] = []
+    for text in [request, *[str(s.get("quote") or "") for s in sources]]:
+        for match in _NUMBER.finditer(text):
+            token = re.sub(r"\s+", "", match.group(0))
+            if len(token) < 2 or token.isdigit() and len(token) > 4:
+                continue
+            if token not in found:
+                found.append(token)
+    if not found:
+        return (
+            "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
+            "퍼센트를 어떤 것도 쓰지 마라.** 비용 칸은 「(미정)」, 「비용 계산의 전제」 같은 "
+            "절은 값을 셈하는 대신 무엇을 확인해야 하는지(견적, 예산 한도, 대상 인원)를 "
+            "적는다. 비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+        )
+    return "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
+
+
+def _others_line(headings: list[str], index: int) -> str:
+    """What the other sections own, so this one does not write them."""
+    others = [h for i, h in enumerate(headings) if i != index and h.strip()]
+    if not others:
+        return ""
+    return (
+        "다른 절의 몫(여기서 쓰지 마라): "
+        + " / ".join(others)
+        + ". 결론·권고·다음 단계는 그 이름을 가진 절에서만 쓴다."
+    )
+
+
+_SUMMARY_WORDS = ("요약", "개요", "핵심", "결론", "제언", "executive", "summary")
+_COMPARE_WORDS = ("비교", "분석", "비용", "대안", "옵션", "검토", "평가", "현황", "결과", "이력")
+_PLAN_WORDS = ("일정", "계획", "추진", "실행", "절차", "단계", "로드맵", "방법")
+_PEOPLE_WORDS = ("이해관계자", "역할", "산출물", "목표", "담당", "체계", "조직")
+_TREND_WORDS = ("추이", "추세", "변화", "월별", "연도별", "분기별", "시계열")
+
+
+def _section_role(heading: str, index: int, total: int, written: str) -> tuple[str, str]:
+    """What this section is for, and the blocks it may use.
+
+    Returns `(role, block_rules)`. The summary gets no blocks and a length
+    cap; a comparison gets the table; a plan gets steps; people get cards.
+    Callout and kpi are document-wide singletons, offered only while the
+    document has not used them yet.
+    """
+    name = heading.lower()
+    has = lambda words: any(w in name for w in words)  # noqa: E731
+    allowed: list[str] = []
+    if has(_SUMMARY_WORDS) and index == 0:
+        role = (
+            "보고서를 읽지 않을 사람을 위한 요약. 무엇을 결정해야 하는지, 권고가 무엇인지, "
+            "그 근거 둘을 문단 하나에서 둘로 쓴다. 표·블록·목록 없이 줄글로만. 200자 안팎."
+        )
+        return role, ""
+    if has(_SUMMARY_WORDS) and index == total - 1:
+        role = (
+            "결론. 앞에서 말한 것 가운데 남는 한 가지와 다음에 할 일을 문단 하나로. 표·블록 없이."
+        )
+        return role, ""
+    if has(_TREND_WORDS):
+        allowed.append("chart")
+    if has(_COMPARE_WORDS):
+        allowed.append("table")
+        if "```kpi" not in written:
+            allowed.append("kpi")
+    if has(_PLAN_WORDS):
+        allowed.append("steps")
+        allowed.append("table")
+    if has(_PEOPLE_WORDS):
+        allowed.append("cards")
+    if not allowed:
+        allowed.append("table")
+    if "```callout" not in written and index >= total - 2:
+        allowed.append("callout")
+    seen: list[str] = []
+    for one in allowed:
+        if one not in seen:
+            seen.append(one)
+    role = "본문 절. 이 절의 제목이 약속한 것을 쓴다. 블록은 아래 허용된 것만, 한 절에 하나까지."
+    rules = "\n".join(_BLOCK_SYNTAX[one] for one in seen)
+    return role, "- 이 절에서 쓸 수 있는 블록:\n" + rules
+
 
 #: Placeholder for an empty shelf. An empty block reads as withheld material and
 #: the model invents citations.
@@ -335,6 +471,63 @@ def _outline_style(text: str) -> str:
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
+def _subject_missing(text: str, request: str) -> bool:
+    """Whether the planner named a subject the request never mentioned.
+
+    The outline rule says to ask when a request gives only the form of a
+    document — 「결재용 한 장 보고: 결정할 것, 대안 둘, 권고」 — and the
+    planner planned 「전산망 교체」 anyway, twice, with the rule in bold. So
+    the planner is asked to *state* the subject in the request's own words,
+    and that statement is checked: a subject whose words are not in the
+    request is a subject the planner made up.
+    """
+    obj = re.search(r"\{.*\}", text, re.S)
+    if not obj:
+        return False
+    try:
+        data = json.loads(obj.group(0))
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict) or "subject" not in data:
+        return False
+    subject = str(data.get("subject") or "").strip()
+    if not subject:
+        return True
+    compact = re.sub(r"\s+", "", request)
+    words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
+    return bool(words) and not any(w in compact for w in words)
+
+
+def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str]:
+    """One comparison section instead of one section per alternative.
+
+    Told in the outline prompt, in bold, not to make a section per option,
+    the planner made 「기존 서버 1년 연장 사용」「전체 서버 교체」「클라우드
+    마이그레이션」 anyway — three sections that are the columns of one table,
+    each repeating the same facts, and then a fourth section with the table.
+    The planner names the alternatives it saw; this drops any section named
+    after one of them and makes sure a single comparison section remains.
+    """
+    if not alternatives or not headings:
+        return headings
+    names = [a for a in alternatives if len(a) >= 2]
+    keep: list[str] = []
+    dropped = 0
+    for h in headings:
+        compact = h.replace(" ", "")
+        if any(n.replace(" ", "") in compact for n in names) and "비교" not in h:
+            dropped += 1
+            continue
+        keep.append(h)
+    if dropped and not any("비교" in h for h in keep):
+        # After the section that works the numbers out, if there is one, so
+        # the table copies computed values rather than computing its own;
+        # otherwise after the situation, before the rest.
+        at = next((i + 1 for i, h in enumerate(keep) if "계산" in h or "전제" in h), None)
+        keep.insert(min(len(keep), 2) if at is None else at, "대안 비교")
+    return keep
+
+
 def _parse_outline(text: str) -> tuple[str, list[str]]:
     """`(title, headings)` from whatever the model wrapped its JSON in.
 
@@ -350,6 +543,10 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
                 title = str(data.get("title") or "").strip()
                 items = data.get("sections") or []
                 headings = [str(x).strip() for x in items if str(x).strip()]
+                alternatives = [
+                    str(x).strip() for x in (data.get("alternatives") or []) if str(x).strip()
+                ]
+                headings = _fold_alternatives(headings, alternatives)
                 if headings:
                     return title, headings[:_MAX_SECTIONS]
         except json.JSONDecodeError:
@@ -405,9 +602,7 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
             base_url=base,
             api_key=api_key,
             model=str(image_model.get("id") or ""),
-            prompt=imagegen.compose_prompt(
-                str(figure.get("prompt") or ""), aspect="4:3", style=""
-            ),
+            prompt=imagegen.compose_prompt(str(figure.get("prompt") or ""), aspect="4:3", style=""),
         )
     except Exception as exc:  # noqa: BLE001 — a missing figure is not a failed report
         log.warning("figure could not be drawn: %s", exc)
@@ -526,9 +721,7 @@ async def write(
     # configuration as though it were this document's result.
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
-        findings = await research.run(
-            request, model=outline_model or model, api_key=api_key
-        )
+        findings = await research.run(request, model=outline_model or model, api_key=api_key)
         usage["outlineInputTokens" if outline_model else "inputTokens"] += findings.usage[
             "inputTokens"
         ]
@@ -568,7 +761,11 @@ async def write(
                 "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
                 "quote": (
                     " · ".join(str(v) for v in (item.get("locations") or []))
-                    or ("전체 내용 전달됨" if item.get("state") == "included" else "일부 내용만 전달됨")
+                    or (
+                        "전체 내용 전달됨"
+                        if item.get("state") == "included"
+                        else "일부 내용만 전달됨"
+                    )
                 ),
             }
         )
@@ -652,6 +849,24 @@ async def write(
         if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
+            yield {"type": "usage", **usage}
+            return
+        if may_ask and _subject_missing(text, request):
+            # 주제가 없는 요청은 묻는다. Checked here rather than trusted to the
+            # prompt: the planner planned a made-up subject with the rule in
+            # front of it, and a decision brief about a decision nobody named
+            # is worse than no brief.
+            yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+            yield {
+                "type": "needs",
+                "questions": [
+                    grounding.Question(
+                        id="subject",
+                        question="무엇에 대한 문서입니까? 결정할 사안이나 주제를 적어 주세요.",
+                        options=[],
+                    ).wire()
+                ],
+            }
             yield {"type": "usage", **usage}
             return
         title, headings = _parse_outline(text)
@@ -748,12 +963,53 @@ async def write(
 
     outline_text = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headings))
     written: list[str] = []
+
+    # 한 번에 쓴다.
+    #
+    # Section by section, each call saw the outline, a 4,000-character tail of
+    # what came before, and the same list of allowed numbers — and still wrote
+    # 3,800만 원 in one section and 380만 원 in the next, turned a maintenance
+    # cost into a residual value two sections later, and recommended the cloud
+    # in one section and the replacement in another. A writer who cannot see
+    # the whole document cannot keep it consistent, and a model of this size
+    # does not hold a document in its head across calls.
+    #
+    # So the whole document is drafted in one call, with every number and
+    # every section in one context, and then cut into sections along the
+    # headings it was asked to write. A section the draft failed to write is
+    # written on its own below, the old way. The per-section pass stays for
+    # rewrites, where one section is the whole job.
+    drafted: dict[str, str] = {}
+    yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
+    try:
+        draft_text, spent = await _complete(
+            model,
+            build_document_messages(
+                SessionKind.report,
+                _DRAFT_PROMPT.format(
+                    outline="\n".join(f"## {h}" for h in headings),
+                    refs=refs,
+                    facts=_facts_line(request, sources),
+                    request=request[:1500],
+                ),
+                trusted_context=trusted_context,
+                untrusted_context=document_context,
+                research_rule=research_rule,
+            ),
+            api_key,
+            max_tokens=min(9000, 1400 * len(headings)),
+        )
+        usage["inputTokens"] += spent["inputTokens"]
+        usage["outputTokens"] += spent["outputTokens"]
+        drafted = _split_draft(draft_text, headings)
+        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
+    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+        log.warning("report draft failed, writing section by section: %s", exc)
+        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
     #: Approved pictures by the index of the section they belong to. Empty when
     #: the figure card was answered 그림 없이, and then nothing below mentions a
     #: figure — which is the whole point of asking before the writing.
-    wanted_figures = {
-        int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")
-    }
+    wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
 
     for index, section in enumerate(sections):
         # The position lives in `progress`, not in the text: spelled into both,
@@ -771,38 +1027,52 @@ async def write(
             "progress": progress,
         }
         try:
-            body, spent = await _complete(
-                model,
-                build_document_messages(
-                    SessionKind.report,
-                    _SECTION_PROMPT.format(
-                        heading=section["heading"],
-                        outline=outline_text,
-                        # Tail only: the whole document would crowd out the
-                        # instruction by section six.
-                        written="\n\n".join(written)[-4000:] or "(아직 없음)",
-                        refs=refs,
-                        request=request[:1500],
-                    )
-                    + (
-                        # Told before the prose is written, so the section can
-                        # refer to its figure. A picture added afterwards is a
-                        # picture nobody mentioned.
-                        "\n\n" + figures.note_for(figures.Figure(
-                            section=index,
-                            caption=str(wanted_figures[index].get("caption") or ""),
-                            prompt="",
-                        ))
-                        if index in wanted_figures
-                        else ""
+            if section["heading"] in drafted:
+                body, spent = drafted[section["heading"]], {"inputTokens": 0, "outputTokens": 0}
+            else:
+                body, spent = await _complete(
+                    model,
+                    build_document_messages(
+                        SessionKind.report,
+                        _SECTION_PROMPT.format(
+                            heading=section["heading"],
+                            outline=outline_text,
+                            # Tail only: the whole document would crowd out the
+                            # instruction by section six.
+                            written="\n\n".join(written)[-4000:] or "(아직 없음)",
+                            refs=refs,
+                            request=request[:1500],
+                            role=_section_role(
+                                section["heading"], index, len(sections), "\n".join(written)
+                            )[0],
+                            blocks=_section_role(
+                                section["heading"], index, len(sections), "\n".join(written)
+                            )[1],
+                            others=_others_line(headings, index),
+                            facts=_facts_line(request, sources or []),
+                        )
+                        + (
+                            # Told before the prose is written, so the section can
+                            # refer to its figure. A picture added afterwards is a
+                            # picture nobody mentioned.
+                            "\n\n"
+                            + figures.note_for(
+                                figures.Figure(
+                                    section=index,
+                                    caption=str(wanted_figures[index].get("caption") or ""),
+                                    prompt="",
+                                )
+                            )
+                            if index in wanted_figures
+                            else ""
+                        ),
+                        trusted_context=trusted_context,
+                        untrusted_context=document_context,
+                        research_rule=research_rule,
                     ),
-                    trusted_context=trusted_context,
-                    untrusted_context=document_context,
-                    research_rule=research_rule,
-                ),
-                api_key,
-                1200,
-            )
+                    api_key,
+                    1200,
+                )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("report section %r failed: %s", section["heading"], exc)
             yield {
@@ -927,6 +1197,8 @@ async def rewrite_section(
         for s in sections
         if s.get("id") != target_id and (s.get("content") or "").strip()
     )
+    position = next((i for i, s in enumerate(sections) if s.get("id") == target_id), 0)
+    role, blocks = _section_role(heading, position, len(sections), written)
     prompt = _SECTION_PROMPT.format(
         heading=heading,
         outline=outline,
@@ -935,6 +1207,10 @@ async def rewrite_section(
         # the shelf would renumber them against nothing.
         refs=_refs_block(sources or []),
         request=request[:1500],
+        role=role,
+        blocks=blocks,
+        others=_others_line([str(x.get("heading") or "") for x in sections], position),
+        facts=_facts_line(request, sources or []),
     )
     if note.strip():
         # Last and labelled: an unlabelled sentence appended to a prompt reads

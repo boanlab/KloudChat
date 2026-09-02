@@ -134,7 +134,7 @@ async def test_the_approved_outline_is_what_gets_written(gateway):
     # Planned once, not twice. Asking the model to plan again on the second
     # pass would produce a different deck from the one that was agreed to and
     # put it on screen as though it had been.
-    assert sum(1 for p in posts if "slides" in str(p)) == 1
+    assert sum(1 for p in posts if "발표 슬라이드의 제목과 구성" in str(p)) == 1
 
 
 async def test_an_empty_approval_writes_nothing(gateway):

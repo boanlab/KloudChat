@@ -20,7 +20,12 @@ from app.services import settings_store
 log = logging.getLogger(__name__)
 
 CLASSIFIER_VERSION = "auto-cost-2026-08-18.v1"
-MAX_CLASSIFIER_CHARS = 8_000
+# 집 프롬프트가 자라면 여기도 자라야 한다. 8,000 was set when the chat system
+# turn was three sentences; the writing rules added to it (`context._WRITING`)
+# pushed an ordinary turn with tool definitions past the bound, and Auto then
+# refused every routing decision without saying why. The classifier reads the
+# same envelope the answer model does, so the bound tracks that envelope.
+MAX_CLASSIFIER_CHARS = 12_000
 MIN_LOW_CONFIDENCE = 0.9
 #: The same bar in the other direction. Both lanes fail closed to the model
 #: the person chose, so neither gets to act on a guess the other would not.

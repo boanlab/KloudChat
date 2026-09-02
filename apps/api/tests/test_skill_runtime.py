@@ -1030,11 +1030,11 @@ def _assert_document_payload_boundaries(
 
 @pytest.mark.asyncio
 async def test_report_upstream_payloads_keep_workspace_context_role_separated(monkeypatch):
+    # 개요 한 번, 초안 한 번. The draft writes every section in one call, so
+    # nothing is left for the per-section pass — two upstream posts.
     responses = [
         '{"title":"검증 보고서","sections":["요약","분석","결론"]}',
-        "요약 본문",
-        "분석 본문",
-        "결론 본문",
+        "## 요약\n요약 본문\n\n## 분석\n분석 본문\n\n## 결론\n결론 본문",
     ]
     posts: list[tuple[str, dict]] = []
 
@@ -1065,7 +1065,7 @@ async def test_report_upstream_payloads_keep_workspace_context_role_separated(mo
 
     assert responses == []
     assert any(event["type"] == "report" for event in events)
-    assert len(posts) == 4
+    assert len(posts) == 2
     _assert_document_payload_boundaries(posts, trusted, untrusted)
 
 
@@ -1077,7 +1077,10 @@ async def test_deck_upstream_payloads_keep_workspace_context_role_separated(monk
             '"slides":[{"title":"검증 발표","layout":"title"},'
             '{"title":"핵심 분석","layout":"bullets"}]}'
         ),
-        '{"bullets":["역할 분리","참고 데이터 격리"],"notes":"경계를 설명한다."}',
+        # The draft: the whole deck in one answer, so no per-slide call follows.
+        '{"slides":[{"title":"검증 발표","layout":"title","notes":""},'
+        '{"title":"핵심 분석","layout":"bullets","bullets":["역할 분리","참고 데이터 격리"],'
+        '"notes":"경계를 설명한다."}]}',
     ]
     posts: list[tuple[str, dict]] = []
 

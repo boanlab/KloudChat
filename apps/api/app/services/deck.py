@@ -138,12 +138,10 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   누구에게 무엇을 말하는지 적어라. 요청 문장을 그대로 옮기지 마라.
 - 슬라이드 {lo}~{hi}장.
 - 첫 장은 반드시 layout "title" 이고, 그 장의 제목은 발표 제목과 같게 하라.
-- **수치의 모양이 요점인 장은 "chart" 로 잡아라.** 시간에 따른 추이, 항목별
-  크기 비교처럼 값이 여럿이고 그 **모양**을 봐야 하는 내용이다. 값을 하나하나
-  읽어야 하면 "table", 하나만 기억시키면 "metrics", 모양이면 "chart" 다.
-- **기억시킬 숫자가 두셋인 장은 "metrics" 로 잡아라.** 성과, 규모, 목표치처럼
-  값 자체가 요점인 내용이다. 표는 견주는 자리고 metrics 는 하나를 남기는
-  자리다 — 같은 숫자를 두 장에 나눠 쓰지 마라.
+- **"chart" 와 "metrics" 는 요청에 그 숫자가 있을 때만.** 요청에 수치가 없는데
+  이 layout 을 고르면 그 장은 숫자를 지어내게 된다. 요청에 값이 여럿 있고 그
+  **모양**을 봐야 하면 "chart", 기억시킬 숫자가 두셋 있으면 "metrics", 값을
+  하나하나 읽어야 하면 "table".
 - **같은 기준으로 두셋을 견주는 장은 "table" 로 잡아라.** 대안 비교, 전후 대비,
   단계별 조건처럼 값이 기준마다 갈리는 내용이다. 이런 내용을 bullets 로 늘어
   놓으면 읽는 사람이 머릿속에서 표를 다시 그려야 한다.
@@ -154,12 +152,13 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   이름이 붙는 내용이다 — 미션·배경·추진전략, 대상·기간·방식·수료, 학점·증명·연계
   처럼. 이런 장 제목은 대개 "~은 무엇인가", "~ 개요", "~ 체계", "혜택" 이다.
   같은 것을 bullets 로 쓰면 이름이 문장의 첫 낱말이 되고 이름이기를 그만둔다.
-- **머리글자나 번호로 묶인 것을 보여 주는 장은 "tiles" 로 잡아라.** 4대 분야,
-  3대 전략, P·H·A·S·E 처럼 표식을 크게 세우고 그 아래 이름을 붙인다. 제목에
-  "N대", "핵심 N가지", "구성 요소" 가 있으면 거의 이 장이다.
-- **시간 순서가 요점인 장은 "timeline" 으로 잡아라.** 연혁, 일정, 절차, 단계,
-  로드맵. 제목에 "절차", "단계", "일정", "연혁", "로드맵" 이 있으면 이 장이다.
-  이런 내용을 bullets 로 쓰면 순서가 우연처럼 읽힌다.
+- **"tiles" 는 요청이 머리글자·번호 묶음을 줄 때만**(4대 분야, P·H·A·S·E). 없는
+  묶음을 표식으로 세우면 「V·C·U」 같은 뜻 없는 글자가 된다.
+- **"timeline" 은 요청에 시점이나 절차의 순서가 있을 때만.** 연혁·일정·절차. 시점이
+  없는 내용을 timeline 으로 잡으면 연도를 지어내게 된다. 절차라도 명령어 순서면
+  bullets 가 낫다.
+- 확신이 없으면 "bullets" 다. 초안을 쓰는 단계에서 내용에 맞게 layout 을 바꿀 수
+  있으니, 여기서 화려한 layout 을 미리 고르지 마라.
 - **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
   그 뒤에 오는 묶음의 이름만 적는 간지다. number 에 "01." 처럼 순서를 적고,
   제목은 그 묶음의 이름으로 한다. 내용은 쓰지 마라 — 간지에 항목을 적으면
@@ -187,6 +186,169 @@ JSON 객체로만 답하라.
              {{"title": "사전학습과 미세조정 비교", "layout": "table"}}]}}
 
 요청: {request}"""
+
+_DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장마다 JSON 객체 하나.
+
+구성(이 순서, 이 제목, 이 layout 그대로):
+{outline}
+
+{facts}
+
+장의 내용 필드 — layout 마다 하나만 채운다:
+- bullets: "bullets": ["항목", ...] {count}개. 각 항목은 한 줄 40자 이내, 마침표 없이.
+  **제목을 되풀이하는 항목(「requirements.txt 활용 방법」)이 아니라 그 장에서 실제로
+  말할 사실·명령·규칙**을 적는다. 명령어·파일 이름은 그대로 쓴다(`python -m venv .venv`).
+- two-column: "bullets": [...] {count_two}개. 앞 절반이 왼쪽, 뒤 절반이 오른쪽.
+- table: "rows": [["기준", "A", "B"], ["행", "값", "값"], ...] 첫 줄이 머리글. 3~5행,
+  2~4열. 칸은 짧게(15자 안쪽).
+- timeline: "timeline": [["시점 또는 단계", "일"], ...] 3~6개. 일은 한 줄.
+- bands: "bands": [["이름", "내용"], ...] 3~4개. 이름은 낱말 하나둘, 내용은 한 줄.
+- tiles: "tiles": [["표식", "이름"], ...] 3~6개. 표식은 머리글자·번호 한두 글자. **요청에
+  그런 묶음이 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.**
+- metrics: "metrics": [["값", "이름"], ...] 2~4개. **값은 「쓸 수 있는 수치」에 있는
+  것만.** 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.
+- chart: "chart": {{"kind": "bar"|"line", "unit": "단위", "categories": [...],
+  "series": [{{"name": "이름", "values": [...]}}]}}. 값은 「쓸 수 있는 수치」에 있는
+  것만. 없으면 bullets 로.
+- quote: "body": "한 문장" (60자 안쪽). 남길 만한 한 문장이 없으면 bullets 로.
+- title, section: 내용 없이 "notes" 만.
+
+모든 장에 "notes": 발표자가 이 장에서 **실제로 말할 문장** 3~5개. 「이 장에서는 ~를
+설명합니다」처럼 장을 소개하는 문장이 아니라, 청중에게 하는 말 그대로. 개념은 보기
+하나로 설명하고, 명령어가 있으면 무엇을 하는지 말한다.
+
+규칙:
+- 장마다 그 장에서만 하는 말. 앞 장을 다른 낱말로 되풀이하지 마라.
+- **수치는 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만.** 없는 수치(비용,
+  퍼센트, 초, 명)를 만들지 마라. 겁을 주거나 재촉하는 장을 만들지 마라.
+- 영어 낱말을 한국어 문장에 섞지 말고, 중국어 한자를 쓰지 마라.
+- 구성의 layout 은 제안이다. **내용이 그 모양이 아니면 바꿔라** — 이름 규칙을
+  timeline 으로, 요약을 metrics 로 쓰지 마라. 기본은 bullets 이고, 두셋을 같은
+  기준으로 견주면 table, 항목마다 이름이 붙으면 bands, 시간 순서가 요청에 있을
+  때만 timeline, 남길 한 문장이 있을 때만 quote(전체 1장), 「쓸 수 있는 수치」에 값이
+  있을 때만 metrics·chart, 요청이 머리글자 묶음을 줄 때만 tiles. 제목과 순서는
+  바꾸지 마라.
+- 규칙·명령어를 가르치는 장이면 명령어 자체를 항목으로 쓴다: `python -m venv .venv`,
+  `pip freeze > requirements.txt`, `conda env create -f environment.yml`. **확신하는
+  명령어와 옵션만 쓴다.** 기억이 흐린 플래그(`--with-env`, `-s /archive`)를 만들어
+  넣으면 신입생이 그대로 쳐 보고 실패한다. 모르면 명령어 이름까지만 쓰고 옵션은
+  「(문서 참고)」로 둔다. 틀린 관행(`.venv` 를 git 에 올리기)을 가르치지 마라.
+- 요청이 규칙의 **이름만** 주고 내용을 주지 않았으면(「이름 규칙」, 「requirements
+  고정」) 내용을 지어내지 마라. 무엇을 정해야 하는지를 적는다 — 「환경 이름:
+  프로젝트명-연도 꼴로 통일(연구실에서 정함)」처럼. 「4~12자」 「밑줄 불가」 같은
+  세부는 요청에 없으면 없는 것이다.
+- 이모지(1️⃣ ✅ 🚀)를 쓰지 마라. 번호가 필요하면 timeline 이나 「1.」 을 쓴다.
+- 요청에 없는 주제로 장을 채우지 마라. 구성에 그런 제목이 있으면 요청이 말한 것으로
+  좁혀서 쓴다.
+
+JSON 객체로만 답하라: {{"slides": [{{"title": "...", "layout": "...", ...}}, ...]}}
+
+원래 요청: {request}"""
+
+
+def _facts_line(request: str) -> str:
+    """The numbers a deck may put on a slide, read off the request.
+
+    A summary slide came back as `metrics` with 「2억 원 | 재현 실패 연간
+    비용」 and 「3초 | 초기 설정 평균 시간」 — numbers nobody had said, on the
+    layout that makes a number look most like a fact. See `report._facts_line`.
+    """
+    found: list[str] = []
+    for match in re.finditer(
+        r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
+        request,
+    ):
+        token = re.sub(r"\s+", "", match.group(0))
+        if len(token) >= 2 and token not in found:
+            found.append(token)
+    if not found:
+        return (
+            "쓸 수 있는 수치: (요청에 수치가 없다 — metrics·chart 를 쓰지 말고 숫자를 만들지 마라)"
+        )
+    return "쓸 수 있는 수치(요청에 있는 것 전부): " + ", ".join(found[:30])
+
+
+def _facts_set(request: str) -> set[str]:
+    """Every digit run in the request, so a number on a slide can be checked."""
+    return {re.sub(r"[^\d.]", "", m) for m in re.findall(r"\d[\d,]*(?:\.\d+)?", request)}
+
+
+def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
+    """Whether every number in `values` appears in the request.
+
+    A value with no digits at all (「높음」) passes; a value with digits the
+    request never had (「2억」, 「100%」, 「30MB」) fails the slide.
+    """
+    for value in values:
+        digits = re.sub(r"[^\d.]", "", value)
+        if digits and digits not in facts:
+            return False
+    return True
+
+
+def _split_deck_draft(
+    text: str, slides: list[dict[str, Any]], facts: set[str]
+) -> dict[int, dict[str, Any]]:
+    """The draft's slides matched to the outline's, by position then by title.
+
+    Returns `{index: data}`. A slide the draft skipped is simply absent and is
+    written on its own below. A slide whose content is empty is absent too —
+    the per-slide pass has a better chance than an empty object does.
+    """
+    data = _json_object(text)
+    rows = data.get("slides") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return {}
+
+    def key(t: Any) -> str:
+        return re.sub(r"[\s:：.]+", "", str(t or "")).lower()
+
+    by_title = {key(r.get("title")): r for r in rows if isinstance(r, dict)}
+    out: dict[int, dict[str, Any]] = {}
+    seen_bullets: list[list[str]] = []
+    for index, slide in enumerate(slides):
+        row = rows[index] if index < len(rows) and isinstance(rows[index], dict) else None
+        if row is None or key(row.get("title")) != key(slide["title"]):
+            row = by_title.get(key(slide["title"]), row)
+        if not isinstance(row, dict):
+            continue
+        # 앞 장을 그대로 베낀 장은 초안에서 빼고 따로 쓴다 — 그쪽은 앞 장을
+        # 「이미 말한 내용」으로 받으므로 되풀이할 수 없다.
+        bullets = [str(b).strip() for b in (row.get("bullets") or []) if str(b).strip()]
+        if bullets and any(bullets == earlier for earlier in seen_bullets):
+            continue
+        if bullets:
+            seen_bullets.append(bullets)
+        # 요청에 없는 숫자로 채운 metrics·chart 는 버린다. 그 layout 은 숫자를
+        # 가장 사실처럼 보이게 하는 자리라, 지어낸 숫자가 가장 해로운 자리다.
+        if row.get("metrics") and not _numbers_come_from(
+            [str(v) for v, *_ in (m for m in row["metrics"] if isinstance(m, list) and m)], facts
+        ):
+            row = {k: v for k, v in row.items() if k != "metrics"}
+            row["layout"] = "bullets"
+        if isinstance(row.get("chart"), dict) and not _numbers_come_from(
+            [
+                str(v)
+                for series in (row["chart"].get("series") or [])
+                if isinstance(series, dict)
+                for v in (series.get("values") or [])
+            ],
+            facts,
+        ):
+            row = {k: v for k, v in row.items() if k != "chart"}
+            row["layout"] = "bullets"
+        # 초안이 layout 을 바꿨으면 따른다 — 내용에 맞지 않는 layout 을 고집한 장이
+        # 빈 사각형이 되는 것보다 낫다. 표지와 간지는 그대로.
+        wanted = str(row.get("layout") or "")
+        if wanted and slide["layout"] not in ("title", "section") and wanted in _LAYOUTS:
+            slide["layout"] = wanted
+        if slide["layout"] in ("title", "section") or any(
+            row.get(k)
+            for k in ("bullets", "rows", "timeline", "bands", "tiles", "metrics", "chart", "body")
+        ):
+            out[index] = row
+    return out
+
 
 #: Which prompt each layout is written with. `title` never reaches here — the
 #: cover is filled from the outline — and anything unknown falls back to
@@ -500,9 +662,7 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
                 heading, layout = str(item).strip(), "bullets"
             if not heading:
                 continue
-            plan.append(
-                {"title": heading, "layout": layout if layout in _LAYOUTS else "bullets"}
-            )
+            plan.append({"title": heading, "layout": layout if layout in _LAYOUTS else "bullets"})
 
     if not plan:
         # Truncated JSON: a model that stops mid-array leaves text `json.loads`
@@ -659,6 +819,13 @@ def _clean_bullets(value: Any) -> list[str]:
     items = value if isinstance(value, list) else []
     out: list[str] = []
     for item in items:
+        # 객체로 온 항목(`{"left": "명령", "right": "설명"}`, `{"text": …}`)은 그
+        # 값들을 한 줄로 잇는다. `str(dict)` 를 항목으로 쓰면 화면에 중괄호가
+        # 찍히고, 버리면 그 장이 「쓰지 못했습니다」가 된다.
+        if isinstance(item, dict):
+            item = " – ".join(str(v).strip() for v in item.values() if str(v).strip())
+        elif isinstance(item, list):
+            item = " – ".join(str(v).strip() for v in item if str(v).strip())
         text = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", str(item)).strip()
         text = re.sub(r"\*\*(.+?)\*\*", r"\1", text).replace("`", "").strip()
         # A model that answered with a paragraph gets its first line used; the
@@ -1047,9 +1214,7 @@ async def _write_slides(
     that differ in ways nobody chose.
     """
     #: Approved pictures by the index of the slide they belong to.
-    wanted_figures = {
-        int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")
-    }
+    wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
         "type": "step",
         "id": "outline",
@@ -1079,6 +1244,46 @@ async def _write_slides(
     #: slides — `01.` over the first one whether it is slide 2 or slide 6, which
     #: is what a reader asking "which part are we in" wants to know.
     divider = 0
+
+    # 한 번에 쓴다 — `report.write` 와 같은 이유로.
+    #
+    # Slide by slide, each call saw the outline and a 3,000-character tail of
+    # what came before, and wrote a one-bullet slide with garbled notes, a
+    # bullets slide whose bullets were the titles of other slides, and a
+    # metrics slide with 「2억 원」 nobody had said. The whole deck in one call
+    # keeps the thread; the per-slide pass below writes whatever the draft
+    # skipped, and stays for rewrites.
+    drafted: dict[int, dict[str, Any]] = {}
+    yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
+    try:
+        draft_text, spent = await _complete(
+            model,
+            build_document_messages(
+                SessionKind.slides,
+                _DRAFT_PROMPT.format(
+                    outline="\n".join(
+                        f"{i + 1}. {s['title']}  (layout: {s['layout']})"
+                        for i, s in enumerate(slides)
+                    ),
+                    facts=_facts_line(request),
+                    count="4~6" if density == "reading" else "3~4",
+                    count_two="6~8" if density == "reading" else "4~6",
+                    request=request[:1500],
+                ),
+                trusted_context=trusted_context,
+                untrusted_context=untrusted_context,
+                research_rule=research_rule,
+            ),
+            api_key,
+            min(9000, 500 * len(slides) + 600),
+        )
+        usage["inputTokens"] += spent["inputTokens"]
+        usage["outputTokens"] += spent["outputTokens"]
+        drafted = _split_deck_draft(draft_text, slides, _facts_set(request))
+        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
+    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+        log.warning("deck draft failed, writing slide by slide: %s", exc)
+        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
 
     for index, slide in enumerate(slides):
         # The position lives in `progress`, not in the text: spelled into both,
@@ -1131,31 +1336,38 @@ async def _write_slides(
             "짧은 문구와 넓은 여백을 우선하며 자세한 설명은 notes에 둬라."
         )
         try:
-            body, spent = await _complete(
-                model,
-                build_document_messages(
-                    SessionKind.slides,
-                    template.format(
-                        heading=slide["title"],
-                        outline=outline_text,
-                        # Tail only: the whole deck would crowd out the rules.
-                        written="\n".join(written)[-3000:] or "(아직 없음)",
-                        # Fuller list for two columns; four bullets would leave
-                        # one empty. `_QUOTE_PROMPT` ignores the extra field.
-                        count=(
-                            ("6~8" if slide["layout"] == "two-column" else "4~6")
-                            if density == "reading"
-                            else ("4~6" if slide["layout"] == "two-column" else "2~4")
-                        ),
-                        request=request[:1500],
-                    ) + density_rule,
-                    trusted_context=trusted_context,
-                    untrusted_context=untrusted_context,
-                    research_rule=research_rule,
-                ),
-                api_key,
-                600,
-            )
+            if index in drafted:
+                body, spent = (
+                    json.dumps(drafted[index], ensure_ascii=False),
+                    {"inputTokens": 0, "outputTokens": 0},
+                )
+            else:
+                body, spent = await _complete(
+                    model,
+                    build_document_messages(
+                        SessionKind.slides,
+                        template.format(
+                            heading=slide["title"],
+                            outline=outline_text,
+                            # Tail only: the whole deck would crowd out the rules.
+                            written="\n".join(written)[-3000:] or "(아직 없음)",
+                            # Fuller list for two columns; four bullets would leave
+                            # one empty. `_QUOTE_PROMPT` ignores the extra field.
+                            count=(
+                                ("6~8" if slide["layout"] == "two-column" else "4~6")
+                                if density == "reading"
+                                else ("4~6" if slide["layout"] == "two-column" else "2~4")
+                            ),
+                            request=request[:1500],
+                        )
+                        + density_rule,
+                        trusted_context=trusted_context,
+                        untrusted_context=untrusted_context,
+                        research_rule=research_rule,
+                    ),
+                    api_key,
+                    600,
+                )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck slide %r failed: %s", slide["title"], exc)
             yield {
@@ -1209,7 +1421,31 @@ async def _write_slides(
                     "progress": progress,
                 }
         data = _json_object(body)
-        notes = str(data.get("notes") or "").strip()
+        # 장별 경로에도 같은 검증. 초안이 빠뜨린 장을 이쪽이 쓰는데, 여기서
+        # 지어낸 「0.8초 | 파일 파싱 속도」가 그대로 화면에 올라갔다.
+        if index not in drafted:
+            facts = _facts_set(request)
+            if data.get("metrics") and not _numbers_come_from(
+                [str(m[0]) for m in data["metrics"] if isinstance(m, list) and m], facts
+            ):
+                data.pop("metrics", None)
+                slide["layout"] = "bullets"
+            if isinstance(data.get("chart"), dict) and not _numbers_come_from(
+                [
+                    str(v)
+                    for series in (data["chart"].get("series") or [])
+                    if isinstance(series, dict)
+                    for v in (series.get("values") or [])
+                ],
+                facts,
+            ):
+                data.pop("chart", None)
+                slide["layout"] = "bullets"
+        raw_notes = data.get("notes")
+        # 배열로 온 노트는 문장으로 잇는다 — 화면에 `['…', '…']` 가 그대로 찍혔다.
+        if isinstance(raw_notes, list):
+            raw_notes = " ".join(str(n).strip() for n in raw_notes if str(n).strip())
+        notes = str(raw_notes or "").strip()
 
         if slide["layout"] == "quote":
             line = str(data.get("body") or "").strip().strip('"“”')
@@ -1304,6 +1540,7 @@ async def _write_slides(
     yield {"type": "deck", "slides": slides}
     yield {"type": "usage", **usage}
 
+
 async def write(
     *,
     request: str,
@@ -1391,9 +1628,7 @@ async def write(
     # configuration as though it were this document's result.
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
-        findings = await research.run(
-            request, model=outline_model or model, api_key=api_key
-        )
+        findings = await research.run(request, model=outline_model or model, api_key=api_key)
         usage["outlineInputTokens" if outline_model else "inputTokens"] += findings.usage[
             "inputTokens"
         ]
