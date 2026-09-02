@@ -344,3 +344,43 @@ def test_a_kpi_block_of_placeholders_is_dropped_and_a_real_one_kept() -> None:
     assert _grounded_figures(empty, True) == "본문.\n\n끝."
     real = "본문.\n\n```kpi\n32% | 오탐 감소\n1.4초 | 평균 응답 시간\n```\n\n끝."
     assert _grounded_figures(real, True) == real
+
+
+def test_a_slide_that_says_the_same_thing_in_other_words_is_dropped() -> None:
+    from app.services.deck import _retold
+
+    slides = [
+        {"title": "표지", "layout": "title"},
+        {"title": "캡스톤 학점 증설 논의", "layout": "bullets"},
+        {"title": "캡스톤 분할안과 조건", "layout": "bands"},
+        {"title": "다음 회의 일정", "layout": "bullets"},
+    ]
+    drafted = {
+        1: {
+            "layout": "bullets",
+            "bullets": [
+                "캡스톤디자인 3학점을 6학점으로 증설하는 안 논의",
+                "4학년 1학기 전공 선택 과목 감소 우려 제기",
+                "산학 프로젝트 감소로 무임승차 우려",
+                "절충안으로 캡스톤 1·2 분할 제안, 산학 프로젝트 확보 조건",
+            ],
+        },
+        2: {
+            "layout": "bands",
+            "bands": [
+                ["분할안 채택", "캡스톤디자인을 3-2와 4-1학기로 나누어 3+3학점으로 잠정 채택"],
+                ["확보 조건", "산학 프로젝트 확보 여부를 확인한 뒤 10월 회의에서 확정"],
+                ["문제 완화", "4학년 1학기 전공 선택 과목 감소와 무임승차 우려 완화"],
+            ],
+        },
+        3: {
+            "layout": "bullets",
+            "bullets": [
+                "다음 회의 10월 16일 오후 2시",
+                "박 교수 10월 9일까지 세부 초안",
+                "교학팀에 겸임 교원 요청",
+            ],
+        },
+    }
+    # 같은 말을 bands 로 다시 한 장이 뒤에 오면 bullets 쪽이 빠진다. 일정 장은 남는다.
+    assert _retold(slides, drafted) == {1}

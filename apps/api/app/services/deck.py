@@ -322,6 +322,34 @@ def _claims(row: dict[str, Any]) -> set[str]:
     }
 
 
+_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}|\d[\d,.]*")
+_STOP = frozenset(
+    "있습니다 합니다 위해 통해 대한 대해 경우 이를 위한 하는 하고 있는 됩니다 그리고 또한 다만 "
+    "따라서 것을 것이 것은 수를 있어 하며 하되 이번 오늘 해당 관련 주요 현재 방안 문제 필요 "
+    "가능 진행 확보 예정".split()
+)
+
+
+def _words(row: dict[str, Any]) -> set[str]:
+    """A slide's content words, cut to two syllables so 「채택」 meets 「채택합니다」."""
+    text = json.dumps(
+        {k: v for k, v in row.items() if k not in ("notes", "layout", "title")}, ensure_ascii=False
+    )
+    return {
+        w[:2] if len(w) > 2 and re.match(r"[가-힣]", w) else w
+        for w in _WORD.findall(text)
+        if w not in _STOP
+    }
+
+
+#: Share of a slide's words an earlier slide already used before it is the
+#: same slide again. Measured on a live deck: the pairs that said the same
+#: thing twice (논의 bullets, then 방안 bands) sat at 0.56–0.67, and the pairs
+#: that did not at 0.36–0.46.
+_RETOLD_SHARE = 0.55
+_RETOLD_WORDS = 15
+
+
 def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) -> set[int]:
     """Indices of drafted slides that only repeat figures earlier slides carry.
 
@@ -333,31 +361,35 @@ def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) ->
     table and the earlier one is not, the earlier one goes instead, because
     the table is where those figures read best.
     """
-    kept: list[tuple[int, set[str], str]] = []
+    kept: list[tuple[int, set[str], set[str], str]] = []
     dropped: set[int] = set()
     for index, slide in enumerate(slides):
         row = drafted.get(index)
         if row is None or slide["layout"] in ("title", "section"):
             continue
-        claims = _claims(row)
-        if len(claims) < 3:
-            kept.append((index, claims, str(row.get("layout") or slide["layout"])))
-            continue
-        said = set().union(*(c for _, c, _ in kept)) if kept else set()
-        if not claims <= said:
-            kept.append((index, claims, str(row.get("layout") or slide["layout"])))
-            continue
+        claims, words = _claims(row), _words(row)
         layout = str(row.get("layout") or slide["layout"])
+        said = set().union(*(c for _, c, _, _ in kept)) if kept else set()
+        by_figures = len(claims) >= 3 and claims <= said
+        twins = [
+            item
+            for item in kept
+            if len(words) >= _RETOLD_WORDS and len(words & item[2]) / len(words) >= _RETOLD_SHARE
+        ]
+        if not by_figures and not twins:
+            kept.append((index, claims, words, layout))
+            continue
         weaker = [
-            (i, c, lay)
-            for i, c, lay in kept
-            if len(c) >= 3 and c <= claims and _SHAPE_RANK.get(lay, 1) < _SHAPE_RANK.get(layout, 1)
+            item
+            for item in kept
+            if (item in twins or (len(item[1]) >= 3 and item[1] <= claims))
+            and _SHAPE_RANK.get(item[3], 1) < _SHAPE_RANK.get(layout, 1)
         ]
         if weaker:
             for item in weaker:
                 kept.remove(item)
                 dropped.add(item[0])
-            kept.append((index, claims, layout))
+            kept.append((index, claims, words, layout))
         else:
             dropped.add(index)
     return dropped
