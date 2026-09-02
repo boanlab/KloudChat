@@ -269,12 +269,22 @@ def build_messages(
 
     Truncation belongs to LiteLLM's `truncate_to_ctx` callback.
     """
+    # The language of the question, judged on the last thing the person typed.
+    # The system turn says to answer in the asker's language and the model,
+    # under a page of Korean style rules, answered an English question about
+    # false discovery rates in Korean twice. Said again, in English, last.
+    asked = next(
+        (str(m.get("content") or "") for m in reversed(history) if m.get("role") == "user"), ""
+    )
+    rules = list(extra or [])
+    if rule := language_rule(asked if isinstance(asked, str) else ""):
+        rules.append(rule.replace("write the entire output", "write the entire answer"))
     prompt = system_prompt(
         kind,
         with_tools=with_tools,
         web_search=web_search,
         web_search_available=web_search_available,
-        extra=extra,
+        extra=rules,
     )
     messages = [{"role": "system", "content": prompt}]
     references = [part for part in (untrusted_context or []) if part and part.strip()]

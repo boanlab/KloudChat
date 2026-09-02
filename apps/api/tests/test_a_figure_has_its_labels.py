@@ -400,3 +400,22 @@ def test_an_english_request_gets_an_english_rule_and_a_korean_one_none() -> None
     assert language_rule("PEFT 기법 LoRA, Adapter, Prefix Tuning 동향을 정리해 주세요.") == ""
     messages = build_document_messages(SessionKind.report, "prompt", request=english)
     assert "entire output in English" in messages[0]["content"]
+
+
+def test_an_english_question_puts_the_english_rule_in_the_chat_system_turn() -> None:
+    from app.models.chat import SessionKind
+    from app.services.context import build_messages
+
+    history = [
+        {"role": "user", "content": "학습률 웜업이 왜 필요한가요?"},
+        {"role": "assistant", "content": "초기 불안정을 줄입니다."},
+        {
+            "role": "user",
+            "content": "We are a small biology lab. Explain what a false discovery rate is "
+            "and when we should use it instead of Bonferroni correction.",
+        },
+    ]
+    messages = build_messages(SessionKind.chat, history)
+    assert "entire answer in English" in messages[0]["content"]
+    korean = build_messages(SessionKind.chat, history[:1])
+    assert "in English" not in korean[0]["content"].split("글 쓰는 법")[0]
