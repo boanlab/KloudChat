@@ -73,11 +73,24 @@ const COUNT = Number(process.env.WORK_COUNT || 12)
 const FROM = Number(process.env.WORK_FROM || 0)
 const STRIDE = process.env.WORK_STRIDE === '0' ? 0 : Number(process.env.WORK_STRIDE || 0)
 
-/** Every scenario id an earlier run already reported on. */
+/**
+ * Every scenario id an earlier run already reported on.
+ *
+ * Asked for rather than checked for. Four shards read and write this directory
+ * at once, so a `existsSync` before a `readdirSync` is a claim that has expired
+ * by the time it is used — and the only thing it can tell us is what the read
+ * itself says a moment later.
+ */
 function alreadyRun(): Set<string> {
   const done = new Set<string>()
-  if (!fs.existsSync(OUT)) return done
-  for (const name of fs.readdirSync(OUT)) {
+  let names: string[]
+  try {
+    names = fs.readdirSync(OUT)
+  } catch {
+    // Nothing has run yet, or nothing is readable. Both mean the same here.
+    return done
+  }
+  for (const name of names) {
     if (!name.startsWith('run-') || !name.endsWith('.json')) continue
     try {
       for (const row of JSON.parse(fs.readFileSync(path.join(OUT, name), 'utf8')) as Finding[]) {
@@ -196,24 +209,30 @@ interface Finding {
  */
 const EVIDENCE_SUBJECT = '교육 비용 단가 기간 이수 인원 내부 전담팀 외부 위탁'
 
-/** The evidence file a row brings, written once per run. */
+/**
+ * The evidence file a row brings.
+ *
+ * Written every time rather than written when missing. Four shards run at
+ * once and they share this path, so "does it exist? then write it" is two
+ * steps with a gap in the middle — one shard can be reading the file while
+ * another is part-way through creating it. The contents are the same bytes on
+ * every call, so writing unconditionally has no check to race against.
+ */
 function evidenceFile(): string {
   const dir = path.join(OUT, 'fixtures')
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, 'evidence.csv')
-  if (!fs.existsSync(file)) {
-    fs.writeFileSync(
-      file,
-      [
-        '항목,2024,2025,2026',
-        '내부 전담팀 단가(만원),1800,1600,1400',
-        '외부 위탁 단가(만원),1500,1800,2100',
-        '교육 기간(주),20,16,12',
-        '이수 인원(명),42,68,95',
-      ].join('\n'),
-      'utf8',
-    )
-  }
+  fs.writeFileSync(
+    file,
+    [
+      '항목,2024,2025,2026',
+      '내부 전담팀 단가(만원),1800,1600,1400',
+      '외부 위탁 단가(만원),1500,1800,2100',
+      '교육 기간(주),20,16,12',
+      '이수 인원(명),42,68,95',
+    ].join('\n'),
+    'utf8',
+  )
   return file
 }
 
