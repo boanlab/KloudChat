@@ -45,7 +45,9 @@ log = logging.getLogger(__name__)
 
 #: Each section is its own model call, so this is the multiplier on the bill.
 _MIN_SECTIONS = 3
-_MAX_SECTIONS = 8
+#: Twelve rather than eight: a 백서 asked for with nine named parts came back
+#: with eight, the 부록 silently gone.
+_MAX_SECTIONS = 12
 
 _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
 
@@ -864,6 +866,7 @@ async def write(
         and findings.searched
         and web_selected == 0
         and _from_the_web(request)
+        and not _carries_material(request)
         and not any(block.strip() for block in untrusted_context or [])
     ):
         # 검색이 빈손이면 동향·문헌 문서는 쓰지 않고 묻는다.
@@ -1184,7 +1187,7 @@ async def write(
                 research_rule=research_rule,
             ),
             api_key,
-            max_tokens=min(9000, 1400 * len(headings)),
+            max_tokens=min(11000, 1400 * len(headings)),
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
