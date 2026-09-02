@@ -1,12 +1,21 @@
 import { expect, type Page } from '@playwright/test'
 
 /** Account shared by the UI suites. The first signup on an empty database is an
- *  active administrator, which the persona tests need. */
+ *  active administrator, which the persona tests need.
+ *
+ *  `KCHAT_E2E_EMAIL` / `KCHAT_E2E_PASSWORD` point the suites at an account that
+ *  already exists — running the personas against a real workspace rather than a
+ *  seeded one. Naming an account also turns the signup fallback off: on an
+ *  instance that already has users, a failed login must say so rather than
+ *  quietly leaving a pending account behind. */
 export const E2E_ADMIN = {
-  email: 'e2e-personas@example.com',
-  password: 'personas-playwright-pass',
-  name: 'E2E 관리자',
+  email: process.env.KCHAT_E2E_EMAIL || 'e2e-personas@example.com',
+  password: process.env.KCHAT_E2E_PASSWORD || 'personas-playwright-pass',
+  name: process.env.KCHAT_E2E_NAME || 'E2E 관리자',
 }
+
+/** Whether the account was named from outside, and so must not be created. */
+const GIVEN = Boolean(process.env.KCHAT_E2E_EMAIL)
 
 async function submitAuthForm(page: Page, mode: 'login' | 'signup') {
   const form = page.locator('form')
@@ -37,6 +46,13 @@ export async function signIn(page: Page) {
   await submitAuthForm(page, 'login')
   if (await shell.isVisible({ timeout: 5_000 }).catch(() => false)) return
 
+  if (GIVEN) {
+    throw new Error(
+      `${E2E_ADMIN.email} 로 로그인하지 못했습니다. ` +
+        'KCHAT_E2E_PASSWORD 를 확인하세요 — 계정을 새로 만들지는 않습니다.',
+    )
+  }
+
   await submitAuthForm(page, 'signup')
   if (await shell.isVisible({ timeout: 5_000 }).catch(() => false)) return
 
@@ -54,6 +70,25 @@ export async function signIn(page: Page) {
     )
   }
   await expect(shell).toBeVisible({ timeout: 15_000 })
+}
+
+/** Sign in as a specifically named fixture account, independent of the
+ * administrator selected for the rest of the suite. */
+export async function signInAs(page: Page, email: string, password: string) {
+  await page.context().clearCookies()
+  await page.goto('/')
+  await page.getByRole('button', { name: '로그인', exact: true }).first().click()
+  await page.getByLabel('이메일').fill(email)
+  await page.getByLabel('비밀번호').fill(password)
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes('/api/auth/login') && r.request().method() === 'POST',
+    ),
+    page.locator('form').getByRole('button', { name: '로그인', exact: true }).click(),
+  ])
+  await expect(page.getByRole('button', { name: '사이드바 토글' })).toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 /**
@@ -140,7 +175,11 @@ export async function gotoWorkspace(page: Page, name: string) {
  */
 export async function approveOnce(page: Page, timeout = 480_000): Promise<boolean> {
   const stop = page.getByLabel('중지')
-  const approve = page.getByRole('button', { name: '이대로 생성' })
+  // 「이대로 생성」 or 「고친 대로 생성」 — the card renames its own button the
+  // moment anything in the outline is touched, and a run that edits a heading
+  // then waits for the first name waits out its whole timeout beside a card
+  // that is finished and asking.
+  const approve = page.getByRole('button', { name: /이대로 생성|고친 대로 생성/ })
   // The unconditional one. 이대로 계속 needs every question answered first, and
   // what these tests are about is the document, not the questions.
   const carryOn = page.getByRole('button', { name: '있는 자료로 진행' })
@@ -218,7 +257,7 @@ export async function approvePlan(page: Page, timeout = 480_000) {
   // because a card that never goes away is a failure to report rather than a
   // loop to keep running.
   const card = page
-    .getByRole('button', { name: '이대로 생성' })
+    .getByRole('button', { name: /이대로 생성|고친 대로 생성/ })
     .or(page.getByRole('button', { name: '있는 자료로 진행' }))
     .or(page.getByRole('button', { name: '그림 없이 생성' }))
     .first()
@@ -303,7 +342,7 @@ export async function openAndSeedReport(
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 30_000 })
   // Idle first. The card opened is whichever report comes first, and in a full
   // suite run that can be one another spec is still writing — the panel then
   // shows a document mid-stream, the seeded body is hidden behind it, and the
@@ -343,6 +382,7 @@ export async function openAndSeedReport(
       // there.
       data.sections = [{ ...data.sections[0], content, format: 'markdown' }]
       data.templateId = ''
+      data.reviewComments = []
       // A picture stored by an earlier run would be shown instead of a fresh
       // render, and some callers are about what the renderer does.
       if (clear) data.sections[0].diagrams = {}
@@ -371,7 +411,7 @@ export async function openAndSeedReport(
   // Reloaded rather than re-navigated: the panel is holding the copy it was
   // handed, and the body just written is not in it.
   await page.reload()
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 30_000 })
   return { id: seeded.id, sectionId: seeded.sectionId }
 }
 
@@ -392,4 +432,69 @@ export async function surfaceOn(page: Page, kind: string): Promise<boolean> {
   const off = page.getByText(/기능이 꺼져 있습니다/)
   await expect(composer.or(off).first()).toBeVisible({ timeout: 20_000 })
   return (await composer.count()) > 0
+}
+
+/**
+ * The artifacts this account holds, read through the API rather than the UI.
+ *
+ * An artifact is only an artifact if it was *stored*: a document that appears
+ * in the panel and is gone on the next login was a message with a border round
+ * it. The gallery would answer that too, and slowly and through three
+ * selectors — this asks the server, which is where the claim actually lives.
+ *
+ * The credentials come from `E2E_ADMIN`, so a suite pointed at another account
+ * by `KCHAT_E2E_EMAIL` reads that account's shelf instead of failing to log in
+ * as somebody else.
+ */
+export async function storedArtifacts(page: Page, kind?: string) {
+  return await page.evaluate(
+    async ({ email, password, kind }) => {
+      const login = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const { accessToken } = await login.json()
+      const headers = { Authorization: `Bearer ${accessToken}` }
+      const rows = await (await fetch('/api/artifacts', { headers })).json()
+      const list: { id: string; kind: string }[] = Array.isArray(rows) ? rows : rows.items
+      const wanted = kind ? list.filter((a) => a.kind === kind) : list
+      // The listing sends documents without their markup, so each one is
+      // fetched whole — what is being asserted is usually what is inside.
+      return await Promise.all(
+        wanted
+          .slice(0, 5)
+          .map(async (row) => await (await fetch('/api/artifacts/' + row.id, { headers })).json()),
+      )
+    },
+    { email: E2E_ADMIN.email, password: E2E_ADMIN.password, kind },
+  )
+}
+
+/**
+ * Every artifact id this account holds, whatever kind it is.
+ *
+ * Counting one kind is how a check passes for the wrong reason: a mail draft
+ * refused as `html` and stored as `code` leaves an `html` count unchanged, and
+ * the assertion reads as "no document was made" while one sits in the panel.
+ * Ids rather than a number, so "one added and one removed" cannot look like
+ * nothing happening either.
+ */
+export async function artifactIds(page: Page): Promise<string[]> {
+  return await page.evaluate(
+    async ({ email, password }) => {
+      const login = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const { accessToken } = await login.json()
+      const rows = await (
+        await fetch('/api/artifacts', { headers: { Authorization: `Bearer ${accessToken}` } })
+      ).json()
+      const list: { id: string }[] = Array.isArray(rows) ? rows : rows.items
+      return list.map((row) => row.id)
+    },
+    { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
+  )
 }

@@ -9,3 +9,5 @@ blob-report/
 # Discovery-spec output — regenerated on every run
 audit/
 shots/
+qa-shots/
+work-findings/
