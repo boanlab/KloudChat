@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { expect, test, type Page } from '@playwright/test'
-import { approvePlan, signIn, surfaceOn } from './helpers'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { approvePlan, artifactReady, ribbonTab, signIn, surfaceOn } from './helpers'
 
 /**
  * The names in a zip's central directory, without pulling in a zip library.
@@ -47,6 +47,22 @@ async function shot(page: Page, name: string) {
  * painted — waiting on the responses that fill them is the closest honest
  * signal, and without it a screenshot catches two empty boxes.
  */
+/**
+ * 이름으로 카드를 찾는다. 쪽이 아니라 검색으로.
+ *
+ * The gallery pages its grid, and the catalogue keeps growing — a card that
+ * was on the first page when a test was written ends up on the third, and the
+ * test then reports a missing card for a card that is merely elsewhere. The
+ * search field is how a person finds one too, so use it.
+ */
+async function findCard(dialog: Locator, name: string) {
+  const search = dialog.getByLabel(/서식 검색|시작점 검색/)
+  if (await search.count()) await search.fill(name)
+  const found = dialog.locator('div.group', { hasText: name })
+  await expect(found.first()).toBeVisible({ timeout: 20_000 })
+  return found.first()
+}
+
 async function openGallery(page: Page, ids: string[]) {
   // Reopened within one test on the a/v surface, where four templates share
   // the gallery — the responses are cached after the first open, so only the
@@ -155,33 +171,21 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   // ── 1. The gallery shows each template's own shape ──────────────────
   await page.goto('/new/slides')
   const gallery = await openGallery(page, ['deck-editorial', 'deck-signal'])
-  const card = gallery.locator('div.group', { hasText: '편집형 덱' })
-  await expect(card).toBeVisible({ timeout: 20_000 })
+  // 서식은 시작점이 입고 나오는 모양이다.
+  //
+  // 결과 서식 was its own tab, and this test used to pick a 서식 card there.
+  // The tab was folded into the starting points, so the shape is chosen on
+  // the card of the job that will wear it. What a 서식 card itself looks like
+  // is `design-catalogue.spec.ts`, where those cards still live.
+  const job = gallery.locator('div.group').first()
+  await job.getByRole('button', { name: /결과 모양 고르기/ }).click()
+  await page.getByRole('menuitem', { name: '편집형 덱' }).click()
+  await expect(job.getByRole('button', { name: /결과 모양 고르기/ })).toHaveText(/편집형 덱/)
 
-  // ── the discipline is on the card ───────────────────────────────────
-  // A name and one line do not tell two decks apart; what the result will be
-  // read against does. Three rules are printed and the rest fold away, so what
-  // is asserted is that shape rather than the sentences — the catalogue can
-  // rewrite a rule without anybody having to edit this.
-  await expect(card.getByText('이 서식이 확인하는 것')).toBeVisible()
-  await expect(card.locator('ul[lang="ko"]').first().locator('li')).toHaveCount(3)
-  const folded = card.locator('details li').last()
-  await expect(folded).toBeHidden()
-  await card.locator('details summary').click()
-  await expect(folded).toBeVisible()
-
-  // The preview is the seed rendered around its sample, served as a document.
   await shot(page, '01-deck-gallery')
 
-  // What the card carries now that it carries no picture: the rules the
-  // finished deck is read against, and the blanks it asks you to bring. The
-  // previews went with the seeds — six 서식 drew the same one, so the picture
-  // told two of them apart less well than the name did.
-  await expect(card.getByText(/확인하는 것 \d+개/)).toBeVisible()
-  await expect(card.getByRole('button', { name: /양식 pptx/ })).toBeVisible()
-
   // ── 2. Picking one names itself and leaves the box alone ────────────
-  await card.getByRole('button', { name: '이 서식으로 시작' }).click()
+  await job.getByRole('button', { name: /시작점 선택/ }).click()
   await expect(gallery).toBeHidden()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   // Named once, by the chip — the only copy of the name that can take it off.
@@ -201,9 +205,8 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   // aborts the stream that would have saved it.
   // The turn ends on a proposal and writes nothing; the card is what writes.
   await approvePlan(page, 480_000)
-  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   // 승인 뒤에도 블록은 지금부터 쓰인다 — 20초는 접수 확인이지 생성이 아니다.
-  await expect(exportButton).toBeVisible({ timeout: 480_000 })
+  await artifactReady(page)
 
   await shot(page, '03-deck-rendered')
 
@@ -226,6 +229,9 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   expect((html.match(/<section class="slide/g) ?? []).length).toBeGreaterThanOrEqual(4)
 
   // ── 4. The file is the artifact… ────────────────────────────────────
+  // 내보내기는 리본의 파일 칸에 있다.
+  await ribbonTab(page, '파일')
+  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   const savedHtml = page.waitForEvent('download', { timeout: 60_000 })
   await exportButton.click()
   await page.getByRole('menuitem', { name: '원본 HTML' }).click()
@@ -327,10 +333,12 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
 
   await page.goto('/new/report')
   const gallery = await openGallery(page, ['doc-report', 'doc-brief'])
-  const card = gallery.locator('div.group', { hasText: '한 장 요약' })
-  await expect(card).toBeVisible({ timeout: 20_000 })
+  // 서식은 시작점 카드에서 고른다 — 결과 서식 탭이 접힌 뒤로 그 자리다.
+  const job = gallery.locator('div.group').first()
+  await job.getByRole('button', { name: /결과 모양 고르기/ }).click()
+  await page.getByRole('menuitem', { name: '한 장 요약' }).click()
   await shot(page, '04-document-gallery')
-  await card.getByRole('button', { name: '이 서식으로 시작' }).click()
+  await job.getByRole('button', { name: /시작점 선택/ }).click()
 
   await page.getByLabel('프롬프트 입력').fill('학과 서버를 교체할지 정하는 한 장 요약을 써줘')
   await page.getByLabel('프롬프트 입력').press('Enter')
@@ -339,9 +347,7 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
 
   // The turn ends on a proposal and writes nothing; the card is what writes.
   await approvePlan(page, 480_000)
-  await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeVisible({
-    timeout: 480_000,
-  })
+  await artifactReady(page)
 
   await shot(page, '05-document-rendered')
 
@@ -378,7 +384,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   // ── image: blanks become a sentence, and the chips follow ───────────
   test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   const imageGallery = await openGallery(page, ['image-poster', 'image-cover'])
-  const poster = imageGallery.locator('div.group', { hasText: '포스터' })
+  const poster = await findCard(imageGallery, '포스터')
   await expect(poster).toBeVisible({ timeout: 20_000 })
 
   // Every blank starts filled, so the card is usable without typing.
@@ -401,7 +407,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   // ── video: the same, plus the settings that surface has ─────────────
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   const avGallery = await openGallery(page, ['video-product', 'video-opening'])
-  const opener = avGallery.locator('div.group', { hasText: '발표 오프닝' })
+  const opener = await findCard(avGallery, '발표 오프닝')
   await expect(opener).toBeVisible({ timeout: 20_000 })
   await opener.getByLabel('움직임').selectOption('가볍게 떠다니는 입자')
   await shot(page, '09-video-blanks')
@@ -417,7 +423,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
 
   // ── audio: picking one switches the surface's mode ──────────────────
   const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
-  const bed = audioGallery.locator('div.group', { hasText: '배경 음악' })
+  const bed = await findCard(audioGallery, '배경 음악')
   await bed.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/잔잔하고 따뜻한/)
   // A music template on the video mode would generate the wrong thing.
@@ -431,7 +437,7 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
 
   test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   const gallery = await openGallery(page, ['image-poster', 'image-cover'])
-  const card = gallery.locator('div.group', { hasText: '포스터' })
+  const card = await findCard(gallery, '포스터')
   await expect(card).toBeVisible({ timeout: 20_000 })
 
   // The card for an image template shows its recipe rather than a picture:
@@ -469,9 +475,7 @@ test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나
   // the shape of what it writes, which only exists after the approval.
   await approvePlan(page, 480_000)
 
-  await expect(page.getByRole('button', { name: '내보내기', exact: true })).toBeEnabled({
-    timeout: 480_000,
-  })
+  await artifactReady(page)
   await shot(page, '07-builtin-deck-unchanged')
   const stored = await artifactOf(page, sessionId)
   expect(stored.kind).toBe('deck')

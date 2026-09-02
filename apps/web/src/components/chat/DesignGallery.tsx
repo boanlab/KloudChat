@@ -1,15 +1,19 @@
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
+  Globe,
   LayoutGrid,
+  Paperclip,
   Pencil,
   Plus,
   Search,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, Modal } from '@/components/ui'
+import { Badge, Button, Dropdown, MenuItem, Modal } from '@/components/ui'
 import {
   argumentText,
   fillPrompt,
@@ -37,6 +41,22 @@ import { useT } from '@/lib/useT'
  * unread would be one nobody could correct. Every value starts at the
  * template's own default, so the card is usable without typing.
  */
+/**
+ * 도식 서식의 나머지 빈칸을 요청 끝에 줄로 붙인다.
+ *
+ * A figure's `example_prompt` is the description alone — the sentence *is*
+ * the method. What to highlight and which language the labels are in are
+ * instructions to the diagram writer, and they read best as two labelled
+ * lines under the paragraph, where the person can still see and change them.
+ */
+function trailer(row: DesignTemplateRow, values: Record<string, string>, english: boolean): string {
+  if (!row.figure) return ''
+  const lines = row.arguments
+    .filter((a) => a.name !== 'description' && (values[a.name] ?? '').trim())
+    .map((a) => `${argumentText(a, english).label}: ${values[a.name]}`)
+  return lines.length ? `\n\n${lines.join('\n')}` : ''
+}
+
 function Blanks({
   row,
   english,
@@ -74,6 +94,17 @@ function Blanks({
                   </option>
                 ))}
               </select>
+            ) : argument.long ? (
+              // 문단으로 받는다. A method is sentences — the modules, what
+              // flows between them, what is trained — and a one-line field
+              // asks for a title where a description is wanted.
+              <textarea
+                aria-label={label}
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                rows={5}
+                className="w-full resize-y rounded-control border border-line bg-panel px-2 py-1.5 text-sm leading-relaxed focus:border-accent focus:outline-none"
+              />
             ) : (
               <Input
                 aria-label={label}
@@ -85,8 +116,8 @@ function Blanks({
           </label>
         )
       })}
-      <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values))}>
-        {t('이 서식으로 시작')}
+      <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values) + trailer(row, values, english))}>
+        {row.figure ? t('이 설명으로 도식 그리기') : t('이 서식으로 시작')}
       </Button>
     </div>
   )
@@ -125,6 +156,12 @@ type Sentence = {
   group: string
   /** The 서식 this job comes out wearing, or `''` when it has no fixed shape. */
   renderTemplateId: string
+  /** One worked example per blank, in `fills` order. */
+  examples: string[]
+  /** What the job cannot run without: 'web' | 'file'. */
+  needs: string[]
+  /** Workspace skills to switch on for the turn, by name. */
+  skills: string[]
 }
 
 /**
@@ -501,6 +538,9 @@ export function DesignGalleryModal({
           own: row.mine !== false,
           group: row.group || '내 시작점',
           renderTemplateId: row.renderTemplateId || '',
+          examples: row.examples ?? [],
+          needs: row.needs ?? [],
+          skills: [],
         })),
       ...saved
         .filter((row) => row.kind === kind)
@@ -516,6 +556,9 @@ export function DesignGalleryModal({
           own: false,
           group: row.group || '기본',
           renderTemplateId: row.renderTemplateId || '',
+          examples: row.examples ?? [],
+          needs: row.needs ?? [],
+          skills: row.skills ?? [],
         })),
     ],
     [mine, saved, kind],
@@ -613,13 +656,47 @@ export function DesignGalleryModal({
     onClose()
   }
 
+  /**
+   * 시작점마다 사람이 골라 준 모양.
+   *
+   * 서식 열일곱 가운데 열이 어떤 시작점의 이름에도 없어 고를 길이 없었다.
+   * They are built, previewed and maintained, and the only door to them —
+   * the 결과 서식 tab — was folded into this list without bringing them
+   * along, so 「사건 보고서」 was reachable and 「연구 노트」 was not. The
+   * shape stays a property of the job, as it should be; it is now one the
+   * person can change before starting.
+   */
+  const [shapeOf, setShapeOf] = useState<Record<string, string>>({})
+  /**
+   * 카드마다 채운 빈칸. Keyed `rowId:index`.
+   *
+   * A 시작점 used to hand its five blanks to the composer as a placeholder —
+   * five nouns on one line, gone at the first keystroke — and the person was
+   * left to invent a format for a thing they had never been shown. The image
+   * cards already asked their questions on the card, one field each with an
+   * example in it. Every surface now does.
+   */
+  const [filled, setFilled] = useState<Record<string, string>>({})
+  const valueOf = (row: Sentence, index: number) => filled[`${row.id}:${index}`] ?? ''
+
   const pickStartingPoint = (row: Sentence) => {
-    if (fillsTheComposer(kind)) setDraft(row.prompt || row.title)
+    // 채운 빈칸을 한 문장으로. Only the ones that were filled — a blank line
+    // 「기간·언어: 」 tells the model nothing and the reader that something
+    // was forgotten.
+    const lines = row.fills
+      .map((fill, index) => [fill, valueOf(row, index).trim()] as const)
+      .filter(([, value]) => value)
+      .map(([fill, value]) => `${fill}: ${value}`)
+    const text = lines.length ? `${row.title}\n${lines.join('\n')}` : ''
+    if (fillsTheComposer(kind)) setDraft(text || row.prompt || row.title)
     else
       setPendingStartingTemplate({
         id: row.id,
         title: row.title,
         fills: row.fills,
+        text,
+        needs: row.needs,
+        skills: row.skills,
       })
     setPendingAttachment(row.form)
     // 그 일이 입고 나올 모양까지 함께 걸친다.
@@ -630,9 +707,8 @@ export function DesignGalleryModal({
     // that shape is `doc-incident`. A 시작점 that names one applies it here;
     // one that names none leaves the surface to pick a look from the subject,
     // which is what `deck._theme_style` and `report._outline_style` do.
-    const shape = row.renderTemplateId
-      ? rows.find((one) => one.id === row.renderTemplateId)
-      : undefined
+    const wanted = shapeOf[row.id] ?? row.renderTemplateId
+    const shape = wanted ? rows.find((one) => one.id === wanted) : undefined
     if (shape && shape.id !== worn) start(shape, '')
     onClose()
   }
@@ -691,7 +767,7 @@ export function DesignGalleryModal({
       open={open}
       onClose={onClose}
       title={t('작업 시작하기')}
-      description={t('하려는 일을 고르면 필요한 자료와 결과물의 모양까지 함께 준비됩니다.')}
+      description={t('일을 고르고 빈칸을 채우면 요청이 완성됩니다. 웹 검색이나 파일이 필요한 일은 카드가 미리 말해 줍니다.')}
       width="max-w-3xl"
     >
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -702,7 +778,7 @@ export function DesignGalleryModal({
             <p className="text-sm text-muted">
               {formatsAreTheJobs
                 ? t('빈칸을 채우면 그대로 요청이 됩니다.')
-                : t('카드의 준비물만 입력하면 요청을 구체화해 줍니다.')}
+                : t('빈칸마다 예시가 적혀 있습니다. 채운 만큼 요청에 들어갑니다.')}
             </p>
           </div>
           {!formatsAreTheJobs && (
@@ -768,7 +844,11 @@ export function DesignGalleryModal({
            fixed window pins that; even rows keep the two cards of a row the
            same size; and the card below pins its buttons to its foot and
            scrolls only its middle, so neither dead air nor clipping shows. */}
-        <div className="grid min-h-80 max-h-[58vh] content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+        {/* 창은 정말로 고정이어야 한다. `min-h` 와 `max-h` 사이에서는 쪽마다
+            내용만큼 자라므로, 마지막 쪽이 넷이 아니라 둘인 순간 상자가 줄고
+            닫기 버튼이 움직인다 — 고정 창이라고 적어 둔 자리에서. 높이를
+            못박고, 넘치는 쪽은 이미 그렇듯 안에서 스크롤한다. */}
+        <div className="grid h-[58vh] min-h-80 content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
           {shown.map((card) =>
             card.design ? (
               <DesignTemplateCard
@@ -799,31 +879,71 @@ export function DesignGalleryModal({
                   {/* 이 일이 어떤 모양으로 나올지. 결과 서식을 따로 고르게
                       하던 자리를 대신한다 — 고르는 대신 말해 주는 것으로. */}
                   {(() => {
-                    const shape = row.renderTemplateId
-                      ? rows.find((one) => one.id === row.renderTemplateId)
-                      : undefined
-                    return shape ? (
-                      <Badge tone="accent">{templateText(shape, english).name}</Badge>
-                    ) : null
+                    const wanted = shapeOf[row.id] ?? row.renderTemplateId
+                    const shape = wanted ? rows.find((one) => one.id === wanted) : undefined
+                    return (
+                      <Dropdown
+                        trigger={() => (
+                          <button
+                            type="button"
+                            aria-label={t('{name} 결과 모양 고르기').replace('{name}', row.title)}
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',
+                              shape
+                                ? 'border-accent/40 bg-accent-soft text-accent hover:border-accent'
+                                : 'border-line text-muted hover:border-line-strong hover:text-fg',
+                            )}
+                          >
+                            {shape ? templateText(shape, english).name : t('모양 고르기')}
+                            <ChevronDown size={11} />
+                          </button>
+                        )}
+                      >
+                        {/* 고르지 않는 것도 하나의 선택이다 — 그때는 주제를
+                            보고 표면이 스스로 모양을 잡는다. */}
+                        <MenuItem onClick={() => setShapeOf((all) => ({ ...all, [row.id]: '' }))}>
+                          {t('주제에 맞게 새로 만들기')}
+                        </MenuItem>
+                        {forSurface.map(({ row: one, text }) => (
+                          <MenuItem
+                            key={one.id}
+                            onClick={() => setShapeOf((all) => ({ ...all, [row.id]: one.id }))}
+                          >
+                            {text.name}
+                          </MenuItem>
+                        ))}
+                      </Dropdown>
+                    )
                   })()}
                 </div>
                 {/* 무엇을 가져와야 하는지. 고른 뒤 입력창이 이것을 이름으로
                     물으므로, 고르기 전에 같은 말을 보여 준다 — 카드가 붙여 줄
                     문장을 미리 적어 두는 것과는 다른 일이다. */}
                 {row.fills.length > 0 && (
-                  <div className="mt-2">
-                    <p className="mb-1 text-xs font-medium text-muted">{t('준비할 자료')}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {row.fills.map((fill) => (
-                        <span
-                          key={fill}
-                          className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
-                        >
-                          {fill}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="mt-2 space-y-1.5">
+                    {row.fills.map((fill, index) => (
+                      <label key={fill} className="block">
+                        <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
+                        <Input
+                          value={valueOf(row, index)}
+                          onChange={(e) => setFilled((all) => ({ ...all, [`${row.id}:${index}`]: e.target.value }))}
+                          placeholder={row.examples[index] || ''}
+                          aria-label={`${row.title} · ${fill}`}
+                          className="h-8 text-sm"
+                        />
+                      </label>
+                    ))}
                   </div>
+                )}
+                {/* 이 일이 무엇으로 되는지. Said before the pick: web search
+                    the answer is found with, a file it is about, the skills it
+                    runs with. Nothing here is a surprise after sending. */}
+                {(row.needs.length > 0 || row.skills.length > 0) && (
+                  <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                    {row.needs.includes('web') && <span className="inline-flex items-center gap-1"><Globe size={11} />{t('웹 검색으로 찾습니다')}</span>}
+                    {row.needs.includes('file') && <span className="inline-flex items-center gap-1"><Paperclip size={11} />{t('파일을 첨부해야 합니다')}</span>}
+                    {row.skills.length > 0 && <span className="inline-flex items-center gap-1"><Sparkles size={11} />{row.skills.join(' · ')}</span>}
+                  </p>
                 )}
                 <details className="mt-2 rounded-control bg-elevated px-2.5 py-2 text-xs leading-relaxed">
                   <summary className="cursor-pointer font-medium text-muted">
@@ -837,7 +957,7 @@ export function DesignGalleryModal({
                     aria-label={t('{name} 시작점 선택').replace('{name}', row.title)}
                     onClick={() => pickStartingPoint(row)}
                   >
-                    {t('이 시작점 선택')}
+                    {t('이 내용으로 시작')}
                   </Button>
                   {row.form && (
                     <Button
@@ -850,9 +970,10 @@ export function DesignGalleryModal({
                       {row.form.name}
                     </Button>
                   )}
-                  <span className="text-xs text-faint">
-                    {fillsTheComposer(kind) ? t('선택 후 입력창에서 수정') : t('이번 요청에만 적용')}
-                  </span>
+                  {/* 다음이 무엇인지. 「이번 요청에만 적용」 was scope jargon
+                      nobody needed at this moment; what they need is to know
+                      the request lands in the box, editable, before it goes. */}
+                  <span className="text-xs text-faint">{t('입력창에서 고친 뒤 보냅니다')}</span>
                 </div>
               </div>
                 {/* 쓴 사람만. 공용은 관리자 화면에서 고친다 — 여기서 고치면

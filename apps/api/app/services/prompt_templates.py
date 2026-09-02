@@ -71,6 +71,26 @@ class PromptTemplate:
     description_en: str = ""
     fills_en: tuple[str, ...] = ()
     prompt_en: str = ""
+    #: 빈칸마다 하나씩, 어떻게 적으면 되는지 보여 주는 예.
+    #:
+    #: 「기간·언어」 alone is a noun; 「예: 2020~2024, 영어·한국어」 is an
+    #: instruction. The card used to hand five nouns to a placeholder and hope,
+    #: and the placeholder vanished at the first keystroke — so the person was
+    #: left inventing a format for a thing they had never been shown. One
+    #: example per blank, in the order of `fills`; missing ones stay blank.
+    examples: tuple[str, ...] = ()
+    examples_en: tuple[str, ...] = ()
+    #: What the job cannot be done without. `web` — the answer has to come from
+    #: sources found now, not remembered; `file` — the person has to bring the
+    #: document the job is about. Shown on the card before anybody commits,
+    #: and enforced by the composer once they do: 문헌 동향 조사 with web
+    #: search switched off is a survey of the model's memory, and nothing on
+    #: screen used to say so.
+    needs: tuple[str, ...] = ()
+    #: The workspace skills this job should run with, by name. A 문헌 동향
+    #: 조사 that does not carry 인용 형식 맞추기 leaves the person to remember
+    #: that such a skill exists and to switch it on by hand every time.
+    skills: tuple[str, ...] = ()
 
 
 _ALL: tuple[PromptTemplate, ...] = (
@@ -93,6 +113,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "하나로 단정하지 말고 대안을 설명한다. 원문에 없는 사실을 보충하지 말며, "
             "마지막에는 이해를 확인할 질문 3개와 더 읽어야 할 대목을 제시한다."
         ),
+        examples=(
+            "논문 PDF나 본문을 첨부·붙여넣기",
+            "예: 재료공학",
+            "예: 세미나 발표 준비",
+            "예: 핵심 주장만 / 문단별 해설",
+        ),
+        needs=("file",),
+        skills=("용어 일관성",),
     ),
     PromptTemplate(
         id="t_debug",
@@ -107,6 +135,13 @@ _ALL: tuple[PromptTemplate, ...] = (
             "확인 명령이나 로그 위치, 기대 결과, 틀렸을 때 다음 단계를 적는다. 즉시 "
             "피해를 줄이는 완화책과 근본 수정안을 나누고, 되돌리기 조건과 수정 후 검증 "
             "항목을 포함한다. 비밀값과 개인정보는 출력하지 않는다."
+        ),
+        examples=(
+            "예: 스택 트레이스 그대로 붙여넣기",
+            "예: 로그인 직후 새로고침하면",
+            "예: Ubuntu 22.04, Node 20, Postgres 15",
+            "예: 어제 인증 라이브러리 업그레이드",
+            "예: 전체 사용자 / 관리자만",
         ),
     ),
     PromptTemplate(
@@ -123,6 +158,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "성능상 필요한 인덱스 또는 실행 계획 확인점을 제시한다. 위험한 변경 쿼리는 "
             "기본적으로 트랜잭션과 롤백 절차를 포함한다."
         ),
+        examples=(
+            "예: PostgreSQL 15",
+            "예: orders(id, user_id, amount, created_at)",
+            "예: 월별 재구매율",
+            "예: 2025년 1~6월, 국내 주문만",
+            "예: 하루 50만 행",
+        ),
+        skills=("계산·단위 검증",),
     ),
     PromptTemplate(
         id="t_email",
@@ -137,6 +180,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "구분한다. 제공되지 않은 약속이나 날짜는 만들지 않는다. 관계에 맞는 존칭을 "
             "사용하되 과장된 인사말은 피하고, 마지막에 보내기 전 확인할 빈칸을 표시한다."
         ),
+        examples=(
+            "예: 협력사 담당 과장, 두 번 만난 사이",
+            "예: 납기 연장 요청",
+            "예: 6월 10일까지 회신",
+            "예: 6월 10일",
+            "예: 기존 계약 조건은 그대로",
+        ),
+        skills=("공문 문체",),
     ),
     PromptTemplate(
         id="t_meeting_prep",
@@ -152,6 +203,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "근거를 표로 정리한다. 30분 아젠다와 미팅이 성공했다고 판단할 조건, 미팅 직후 "
             "보낼 후속 조치까지 제시한다."
         ),
+        examples=(
+            "예: ○○전자 구매팀 팀장·실무자 2명",
+            "예: 2차 제안 협의",
+            "예: 4월 견적 발송 후 회신 없음",
+            "예: 유지보수 포함 연간 계약",
+            "예: 2026-09-01",
+        ),
+        needs=("web",),
+        skills=("독자별 리스크 검토",),
     ),
     PromptTemplate(
         id="t_compare",
@@ -166,6 +226,13 @@ _ALL: tuple[PromptTemplate, ...] = (
             "영향과 확인이 필요한 담당자를 적는다. 표현만 달라진 경우와 의미가 달라진 경우를 "
             "구분한다. 마지막에 즉시 반영, 검토 필요, 영향 없음으로 후속 조치 목록을 만든다."
         ),
+        examples=(
+            "기준이 되는 문서를 첨부",
+            "비교할 문서를 첨부",
+            "예: 금액·기한·책임 조항",
+            "예: 2026년 3분기부터",
+        ),
+        needs=("file",),
     ),
     PromptTemplate(
         id="t_fact_check",
@@ -181,6 +248,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "근거가 되는 대목을 짧게 요약한다. 최신성이 중요한 값은 기준일을 명시하고, 서로 "
             "충돌하는 자료는 숨기지 않는다."
         ),
+        examples=(
+            "예: 「국내 전기차 등록 대수가 100만 대를 넘었다」",
+            "예: 2026-08",
+            "예: 대한민국",
+            "예: 정부 통계·주요 언론만",
+        ),
+        needs=("web",),
+        skills=("수치에 근거 붙이기",),
     ),
     PromptTemplate(
         id="t_concept_tutor",
@@ -194,6 +269,12 @@ _ALL: tuple[PromptTemplate, ...] = (
             "정확한 정의, 대표 예제, 반례 순서로 설명한다. 새 용어는 사용하기 전에 정의하고, "
             "흔한 오개념을 왜 틀렸는지 보여 준다. 중간마다 답을 바로 공개하지 않는 확인 문제를 "
             "주고, 마지막에는 핵심 요약·연습문제 3개·다음 학습 경로를 제시한다."
+        ),
+        examples=(
+            "예: 베이즈 정리",
+            "예: 통계 입문 수강 중",
+            "예: 다음 주 시험",
+            "예: 30분",
         ),
     ),
     PromptTemplate(
@@ -209,6 +290,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "재현 조건·최소 수정안을 적고, 취향 차이는 결함과 분리한다. 통과한 부분도 명시하고, "
             "추가할 테스트를 정상·경계·실패 경로로 나눠 제안한다."
         ),
+        examples=(
+            "diff 를 붙여넣거나 파일 첨부",
+            "예: Python 3.12, FastAPI",
+            "예: 결제 재시도 로직 추가",
+            "예: 단위 테스트 통과, 통합 테스트 미실행",
+            "예: 무중단 배포 필요",
+        ),
+        needs=("file",),
+        skills=("코드 리뷰 관점",),
     ),
     PromptTemplate(
         id="t_data_review",
@@ -223,8 +313,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "통계 방법의 가정과 위반 시 대안을 적고, 다중 검정·효과크기·불확실성 보고 방식을 "
             "제안한다. 필요한 검증 표와 재현 가능한 분석 순서를 체크리스트로 마무리한다."
         ),
+        examples=(
+            "예: 온라인 강의 이수율에 영향을 주는 요인은?",
+            "예: 2024~2025 수강생 3,200명 설문",
+            "예: 이수 여부(0/1), 주당 학습 시간",
+            "예: 학과별 층화 표집",
+            "예: 로지스틱 회귀",
+        ),
+        skills=("계산·단위 검증", "설문 읽기"),
     ),
-
     # ── report: the job is independent from the document's visual shape ─
     PromptTemplate(
         id="t_report_literature",
@@ -240,6 +337,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "아직 답하지 못한 질문으로 종합한다. 모든 사실 주장에 확인 가능한 인용과 링크를 "
             "붙이고, 검색 한계와 후속 연구 질문을 명시한다."
         ),
+        examples=(
+            "예: LLM 기반 코드 리뷰의 효과는 검증되었는가?",
+            "예: 2020~2025, 영어·한국어",
+            "예: 동료 심사 논문만, 프리프린트 제외",
+            "예: 소프트웨어 공학",
+            "예: APA 7판",
+        ),
+        needs=("web",),
+        skills=("인용 형식 맞추기", "수치에 근거 붙이기"),
     ),
     PromptTemplate(
         id="t_report_trend",
@@ -255,6 +361,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "비관 시나리오를 구분한다. 수치마다 기준 시점과 출처 링크를 붙이고 앞으로 확인할 "
             "선행 지표와 권고 행동을 제시한다."
         ),
+        examples=(
+            "예: 국내 데이터센터 전력 규제",
+            "예: 대한민국, 비교로 EU",
+            "예: 최근 12개월",
+            "예: 경영진, 기술 배경 없음",
+            "예: 신규 센터 부지 선정",
+        ),
+        needs=("web",),
+        skills=("수치에 근거 붙이기",),
     ),
     PromptTemplate(
         id="t_report_executive",
@@ -271,6 +386,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "근거와 가정을 분리한다. 권고안을 뒤집어야 할 조건, 책임자, 결정 기한과 결정 후 "
             "첫 행동을 명시한다."
         ),
+        examples=(
+            "예: 학과 서버를 교체할지 유지할지",
+            "예: 학과장",
+            "예: 교체 / 1년 연장 / 클라우드 이전",
+            "예: 장애 이력, 유지비, 견적",
+            "예: 9월 예산안 제출 전",
+        ),
+        skills=("의사결정 메모", "한 장 요약"),
     ),
     PromptTemplate(
         id="t_report_research_plan",
@@ -286,6 +409,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "않으며, 검색한 자료에는 링크와 서지정보를 붙인다. 단계별 산출물과 현실적인 일정, "
             "실패 가능성과 대안을 표로 정리한다."
         ),
+        examples=(
+            "예: 소규모 언어 모델의 한국어 추론 능력",
+            "예: 데이터 규모가 추론 정확도에 미치는 영향은?",
+            "예: 공개 벤치마크 3종",
+            "예: 통제 실험과 오류 분석",
+            "예: 15쪽 이내, 2026-10-15 마감",
+        ),
+        needs=("web",),
+        skills=("인용 형식 맞추기",),
     ),
     PromptTemplate(
         id="t_report_analysis",
@@ -302,6 +434,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "불확실성, 민감도, 데이터 한계를 함께 보고한다. 결론은 분석 질문에 직접 답하고 "
             "재현에 필요한 코드·절차와 다음 수집 항목을 남긴다."
         ),
+        examples=(
+            "예: 이탈 고객의 공통 특성은?",
+            "CSV·엑셀 파일을 첨부",
+            "예: churn(0/1), tenure(월), plan",
+            "예: 6개월 미접속을 이탈로 정의",
+            "예: 마케팅팀",
+        ),
+        needs=("file",),
+        skills=("수치에 근거 붙이기", "계산·단위 검증"),
     ),
     PromptTemplate(
         id="t_report_project",
@@ -317,6 +458,13 @@ _ALL: tuple[PromptTemplate, ...] = (
             "선행 조건·마감·검토자를 붙이고 주요 의사결정 지점을 표시한다. 위험은 가능성·영향·"
             "조기 신호·대응·담당으로 정리한다. 예산과 인력이 제공되지 않았으면 추정치를 사실처럼 "
             "쓰지 말고 확인 항목으로 남긴다."
+        ),
+        examples=(
+            "예: 학사 시스템 UI 개편, 만족도 20% 향상",
+            "예: 성적 조회·수강 신청 화면",
+            "예: 개발 3명, 디자인 1명",
+            "예: 12월 말, 3,000만 원",
+            "예: 학기 중 배포 불가",
         ),
     ),
     PromptTemplate(
@@ -334,8 +482,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "역할을 쓰고, 재발 방지 항목마다 우선순위·담당·기한·검증 방법을 붙인다. 모르는 "
             "부분은 미확인으로 남긴다."
         ),
+        examples=(
+            "예: 결제 실패 2시간, 사용자 1,200명",
+            "예: 14:02 알림 → 14:30 원인 확인 → 16:05 복구",
+            "로그·모니터링 캡처 첨부",
+            "예: 전날 DB 인덱스 변경",
+            "예: 롤백, 인덱스 재생성",
+        ),
+        skills=("장애 시각열",),
     ),
-
     # ── slides: the story to tell, separately from its visual treatment ─
     PromptTemplate(
         id="t_slides_seminar",
@@ -351,6 +506,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "재현성·타당도·일반화 한계를 포함한다. 발표 시간에 맞춰 장수를 제한하고 마지막에 "
             "토론 질문 3개와 추가 확인 자료를 제시한다."
         ),
+        examples=(
+            "논문 PDF 첨부",
+            "예: 석사 1년차, 분야 기초 있음",
+            "예: 20분 + 질의 10분",
+            "예: 방법의 새로움과 한계",
+        ),
+        needs=("file",),
+        skills=("발표 노트 작성", "발표 줄기 세우기"),
     ),
     PromptTemplate(
         id="t_slides_defense",
@@ -367,6 +530,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "예상 질문과 방어 근거를 발표자 노트에 넣고, 중간 심사라면 남은 위험·일정·완료 "
             "기준으로 끝낸다."
         ),
+        examples=(
+            "예: 소규모 모델로 한국어 추론이 가능한가?",
+            "예: 벤치마크 3종에서 평균 12% 향상",
+            "예: 새 데이터셋과 평가 방법",
+            "예: 영어 이외 언어 미검증",
+            "예: 25분, 중간 심사",
+        ),
+        skills=("발표 노트 작성", "발표 줄기 세우기"),
     ),
     PromptTemplate(
         id="t_slides_lecture",
@@ -383,6 +554,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "용어를 정의 전에 사용하지 않으며, 수업 시간에 맞춰 활동과 설명 시간을 배분한다. "
             "마지막에 목표별 회고와 후속 연습을 제시한다."
         ),
+        examples=(
+            "예: 확률의 기초",
+            "예: 1학년, 수학 배경 다양",
+            "예: 75분",
+            "예: 고교 수학",
+            "예: 퀴즈 10문항",
+        ),
+        skills=("발표 노트 작성",),
     ),
     PromptTemplate(
         id="t_slides_briefing",
@@ -399,6 +578,14 @@ _ALL: tuple[PromptTemplate, ...] = (
             "권고안을 바꿀 조건을 포함하고, 마지막 장에 누가 무엇을 언제까지 결정해야 하는지 "
             "명시한다."
         ),
+        examples=(
+            "예: 클라우드 이전 여부",
+            "예: 본부장, 팀장 3명",
+            "예: 이전 / 유지 / 혼합",
+            "예: 단계적 이전",
+            "예: 10분",
+        ),
+        skills=("의사결정 메모", "발표 줄기 세우기"),
     ),
     PromptTemplate(
         id="t_slides_proposal",
@@ -415,6 +602,15 @@ _ALL: tuple[PromptTemplate, ...] = (
             "도입 단계, 고객이 준비할 것, 위험과 되돌리기 방안을 포함한다. 마지막 장에는 결정 "
             "주체·요청 사항·기한·다음 미팅을 명시한다."
         ),
+        examples=(
+            "예: ○○병원 정보전략팀",
+            "예: 예약 시스템 대기 시간 과다",
+            "예: 온라인 예약 도입",
+            "예: 유사 병원 도입 효과",
+            "예: 2억 원, 6개월",
+        ),
+        needs=("web",),
+        skills=("발표 줄기 세우기", "독자별 리스크 검토"),
     ),
     PromptTemplate(
         id="t_slides_project",
@@ -429,6 +625,13 @@ _ALL: tuple[PromptTemplate, ...] = (
             "범위·비용 변경, 주요 위험과 조기 신호, 막힌 사안과 풀 수 있는 사람을 명확히 한다. "
             "결정이 필요한 것은 선택지와 마감일을 붙이고, 마지막에는 다음 기간의 책임자별 "
             "행동과 완료 기준을 제시한다."
+        ),
+        examples=(
+            "예: 신규 앱 출시",
+            "예: 8월 1~31일",
+            "예: 베타 테스트 완료",
+            "예: 앱스토어 심사 지연",
+            "예: 출시일 2주 연기 승인",
         ),
     ),
 )

@@ -21,7 +21,11 @@ test('문서 개요에서 절을 찾고 편집 위치로 바로 이동한다', a
   await openAndSeedReport(page, '개요 이동을 검증할 본문이다.')
   await enterPageEditor(page)
 
+  // 개요는 접힌 채로 열린다 — 좁은 패널에서 224px 를 먼저 가져가면 문서가
+  // 잘리기 때문이다. 손잡이로 편다.
   const outline = page.getByRole('navigation', { name: '문서 개요' })
+  await expect(outline).toBeHidden()
+  await page.getByRole('button', { name: '문서 개요' }).click()
   await expect(outline).toBeVisible()
   const destinations = outline.locator('ol button')
   expect(await destinations.count()).toBeGreaterThan(0)

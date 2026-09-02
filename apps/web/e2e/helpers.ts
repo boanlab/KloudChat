@@ -498,3 +498,27 @@ export async function artifactIds(page: Page): Promise<string[]> {
     { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
   )
 }
+
+/**
+ * 결과물 패널이 준비될 때까지 기다린다.
+ *
+ * 여러 스펙이 「내보내기」 버튼이 보이는 것을 준비 신호로 썼다. That button
+ * lives inside the ribbon's 파일 tab, so the wait was really "is the panel
+ * open *and* on that tab" — and it broke the day the ribbon grouped its
+ * commands, in a dozen specs at once, reporting a missing export button for
+ * documents that had exported fine. The panel and a settled run are what
+ * those tests actually meant.
+ */
+export async function artifactReady(page: Page, timeout = 480_000) {
+  // 패널이거나, 갤러리가 여는 미리보기 대화상자거나. Both carry the ribbon;
+  // only the panel carries `data-panel`.
+  await expect(
+    page.locator('[data-panel="artifact"], [role="dialog"] [role="tablist"]').first(),
+  ).toBeVisible({ timeout })
+  await expect(page.getByLabel('중지')).toBeHidden({ timeout })
+}
+
+/** Opens one tab of an artifact panel's ribbon by name. */
+export async function ribbonTab(page: Page, name: string) {
+  await page.getByRole('tab', { name, exact: true }).click()
+}

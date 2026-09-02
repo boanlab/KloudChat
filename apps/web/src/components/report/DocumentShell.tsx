@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { A4_HEIGHT_PX } from '@/components/report/usePagination'
 import { createPortal } from 'react-dom'
 
 /**
@@ -58,7 +59,20 @@ export function DocumentShell({
     // Replaced rather than appended: switching 서식 mid-document would
     // otherwise leave both stylesheets fighting, and the loser is whichever
     // one happens to be less specific.
-    if (sheet.current) sheet.current.textContent = css
+    if (!sheet.current) return
+    /**
+     * 한 쪽의 높이를 알려 준다.
+     *
+     * The seeds size their cover and their full-bleed blocks against a page,
+     * and the only unit CSS gives for "as tall as the sheet" is `vh` — which
+     * inside a panel means the browser window. So the cover of a document
+     * shown on a 900px screen was 900px tall and the same document on a tall
+     * monitor had a taller cover, neither of them an A4 page, and the printed
+     * file agreed with neither. Here the sheet is a fixed 1123px, so say so;
+     * the seeds fall back to `100vh` when they are rendered standalone for
+     * print or export, where the viewport *is* the page.
+     */
+    sheet.current.textContent = `:host { --page-h: ${A4_HEIGHT_PX}px; }\n${css}`
   }, [css])
 
   return (

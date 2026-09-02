@@ -22,7 +22,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test'
-import { approvePlan, signIn } from './helpers'
+import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
 
 //: The model writes this, and a small model has moods — see report-personas.
 test.describe.configure({ retries: 1, mode: 'serial' })
@@ -36,7 +36,7 @@ const REQUEST =
 function sheet(page: Page) {
   // `.page` is the template's own root. Playwright pierces shadow roots for
   // CSS selectors, which is the only reason this reads like an ordinary one.
-  return page.locator('.page')
+  return page.locator('.page').first()
 }
 
 async function openReport(page: Page) {
@@ -46,9 +46,7 @@ async function openReport(page: Page) {
   await page.getByLabel('프롬프트 입력').press('Enter')
   await approvePlan(page)
   // The artifact panel opens itself when the document lands.
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({
-    timeout: 480_000,
-  })
+  await artifactReady(page)
 }
 
 test.describe('보고서를 처음부터 끝까지 쓴다', () => {
@@ -80,7 +78,9 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
   test('3. 문단을 눌러 그 자리에서 고칠 수 있다', async ({ page }) => {
     await signIn(page)
     await openReport(page)
-    await page.getByRole('button', { name: '페이지뷰' }).click()
+    // 눌러서 고치는 화면은 「문서 수정」이다. 「페이지뷰」는 쪽을 나눈 읽기
+    // 전용 렌더가 되었다.
+    await page.getByRole('button', { name: '문서 수정' }).click()
     await expect(sheet(page)).toBeVisible({ timeout: 30_000 })
 
     const paragraph = page.locator('.ProseMirror p').first()
@@ -95,7 +95,7 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
   test('4. 손으로 고친 것이 저장되고 다시 열어도 남는다', async ({ page }) => {
     await signIn(page)
     await openReport(page)
-    await page.getByRole('button', { name: '페이지뷰' }).click()
+    await page.getByRole('button', { name: '문서 수정' }).click()
     await expect(sheet(page)).toBeVisible({ timeout: 30_000 })
 
     const mark = `수기수정-${Date.now()}`
@@ -103,7 +103,12 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
     await paragraph.click()
     await paragraph.pressSequentially(`${mark} `)
 
+    // 저장이 서버에 닿은 뒤에 새로고침한다. The save reads the latest version
+    // first and then writes; a reload between the two cancels the write and
+    // the round trip below then proves nothing.
+    const saved = page.waitForResponse((r) => /\/api\/artifacts\/[^/]+$/.test(r.url()) && r.request().method() === 'PATCH')
     await page.getByRole('button', { name: '저장', exact: true }).click()
+    await saved
     // Proven by the round trip, not by the button going quiet.
     await page.reload()
     await expect(page.getByText(mark).first()).toBeVisible({ timeout: 30_000 })
@@ -159,6 +164,7 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
     await signIn(page)
     await openReport(page)
 
+    await ribbonTab(page, '파일')
     const download = page.waitForEvent('download', { timeout: 120_000 })
     await page.getByRole('button', { name: '내보내기' }).click()
     await page.getByRole('menuitem', { name: /docx/i }).click()

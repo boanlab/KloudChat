@@ -375,9 +375,14 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
 def _refs_block(sources: list[dict[str, Any]]) -> str:
     if not sources:
         return _NO_REFS
+    # `.get` throughout. A source a person typed by hand, or one a test
+    # seeded, carries a title and a url and nothing else — and one missing
+    # `publisher` was a KeyError that failed every rewrite of every section
+    # of that document, reported as 「고치지 못했습니다」.
     return "\n".join(
-        f"[{s['ordinal']}] {s['title']} ({s['publisher']})\n{s.get('quote') or ''}"
-        for s in sources
+        f"[{s.get('ordinal', i + 1)}] {s.get('title') or s.get('url') or ''}"
+        f" ({s.get('publisher') or ''})\n{s.get('quote') or ''}"
+        for i, s in enumerate(sources)
     )
 
 

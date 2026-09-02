@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { approvePlan, signIn } from './helpers'
+import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
 
 /**
  * Retried once, and only here among the design suites.
@@ -139,8 +139,7 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
   // export, before this.
   await approvePlan(page, 480_000)
 
-  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
-  await expect(exportButton).toBeEnabled({ timeout: 480_000 })
+  await artifactReady(page)
 
   // ── 4. The artifact wears it ────────────────────────────────────────
   const stored = await page.evaluate(
@@ -166,6 +165,8 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
   expect(stored.data.design).toMatchObject({ accent: ACCENT, font: 'serif' })
 
   // ── 5. …and so does the file ────────────────────────────────────────
+  await ribbonTab(page, '파일')
+  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await exportButton.click()
   await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
@@ -210,6 +211,8 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
   // `.hwpx` is the format with the least room for argument: Hancom parses the
   // XML, so a colour written into the wrong place is a file that will not open
   // rather than a document that looks off.
+  // 내보내기는 리본의 파일 칸에 있다.
+  await ribbonTab(page, '파일')
   const hwpxDownload = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('button', { name: '내보내기', exact: true }).click()
   await page.getByRole('menuitem', { name: '한글 문서' }).click()

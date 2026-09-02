@@ -620,6 +620,17 @@ export function ReportPanel({
   //: Whole-document edit mode. Title, headings and the space between sections
   //: belong to no section, so a per-section editor cannot reach them.
   const [editing, setEditing] = useState(false)
+  /**
+   * 서식 줄이 들어앉을 리본 홈 칸.
+   *
+   * The document editor used to draw its own formatting bar directly under
+   * this panel's header, its ribbon tabs and a ribbon row carrying two
+   * buttons — so pressing 문서 수정 produced four stacked rows of chrome and
+   * a nearly empty ribbon. The bar is portalled in here instead: the 홈 tab
+   * *is* the formatting bar while the editor is open, which is both one row
+   * fewer and where a word processor puts it.
+   */
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null)
   //: Which section is open for a rewrite, and the instruction going with it.
   const [rewriting, setRewriting] = useState<string | null>(null)
   const [rewriteNote, setRewriteNote] = useState('')
@@ -1182,6 +1193,22 @@ export function ReportPanel({
       pageBaseline.current = pageSnapshot(report.title, report)
     }
   }, [report.title, report.sections, report.pageSettings, report.reviewComments, pageEdits, pageTitle, pageSettingsEdits, reviewCommentEdits])
+  /**
+   * 저장하지 않은 편집은 길을 막는 이유가 되지 않는다.
+   *
+   * Five controls carried `disabled={hasUnsavedEdit}`, so a single keystroke
+   * in the page editor greyed out the view toggle, the design menu, the
+   * template menu and 내보내기 at once — with nothing on any of them saying
+   * why, and the 저장 that would free them in a different row. None of these
+   * is destructive; each one simply needs the pending text committed before
+   * it reads the document. So commit it, then act.
+   */
+  const afterSaving = async (act: () => void | Promise<void>) => {
+    if (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) await savePageEdits()
+    else if (editing && draft !== baseline.current) await saveDocument()
+    await act()
+  }
+
   const discardOr = (action: 'cancel' | 'close') => {
     if (hasUnsavedEdit) return setDiscardAction(action)
     if (action === 'close') onClose?.()
@@ -1652,9 +1679,22 @@ export function ReportPanel({
             size="sm"
             variant={view === 'page' ? 'primary' : 'secondary'}
             aria-label={view === 'page' ? t('웹뷰') : t('페이지뷰')}
-            title={t('서식이 적용된 A4 문서로 봅니다')}
-            disabled={hasUnsavedEdit}
+            /* 버튼이 무엇을 하는지는 버튼마다 다르다. The one title described
+               the page view and stayed put when the button became 웹뷰, so
+               half the time the tooltip explained the view you were leaving. */
+            title={view === 'page' ? t('편집하기 좋은 한 줄 문서로 봅니다') : t('서식이 적용된 A4 문서로 봅니다')}
             onClick={() => {
+              /**
+               * 저장하고 넘어간다.
+               *
+               * This was `disabled={hasUnsavedEdit}`, so one keystroke in the
+               * page editor greyed out the only way back to the web view —
+               * with no message saying why, and the 저장 button that would
+               * have freed it sitting in a different row. Switching view is
+               * not a destructive act; it just needs the edits committed
+               * first, which we can do without asking.
+               */
+              void afterSaving(() => {})
               const next = view === 'page' ? 'web' : 'page'
               setView(next)
               // A page is 794px wide and the panel is often less than half
@@ -1721,18 +1761,38 @@ export function ReportPanel({
               쓰는 도중에도 바꿀 수 있게 한다. 화면은 달라지지 않는다 — 종이는
               하나다 — 달라지는 것은 내보낸 파일이다. 메뉴가 그렇게 말한다. */}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('디자인')}><Dropdown
+            <RibbonGroup label={t('인상')}>
+              {/* 덱과 같은 모양으로 고른다.
+                  같은 것을 고르는 자리가 한쪽은 버튼 셋이고 한쪽은 메뉴
+                  하나면, 두 화면은 한 제품으로 읽히지 않는다. 셋뿐이고
+                  누르면 바로 보이는 것이므로 접어 둘 이유가 없다. */}
+              {([
+                ['editorial', '편집형', '선명한 절 구분'],
+                ['poster', '매거진형', '색면 표지와 큰 제목'],
+                ['minimal', '미니멀', '작은 제목과 넓은 여백'],
+              ] as const).map(([value, label, why]) => (
+                <Button
+                  key={value}
+                  size="sm"
+                  disabled={templateSaving}
+                  aria-pressed={visualStyle === value}
+                  title={t(why)}
+                  onClick={() => void afterSaving(() => chooseVisualStyle(value))}
+                >
+                  {t(label)}
+                </Button>
+              ))}
+            </RibbonGroup>
+          )}
+          {ribbon === 'home' && (
+            <RibbonGroup label={t('색')}><Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving || hasUnsavedEdit} aria-label={t('보고서 디자인')}>
+                <Button size="sm" variant="secondary" disabled={templateSaving} aria-label={t('보고서 색 고르기')}>
                   <Palette size={13} />
-                  {visualStyle === 'poster' ? t('매거진형') : visualStyle === 'minimal' ? t('미니멀') : t('편집형')}
+                  <span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: documentAccent }} />
                 </Button>
               )}
             >
-              <MenuLabel>{t('내용은 그대로 두고 모양만 바꿉니다')}</MenuLabel>
-              <MenuItem checked={visualStyle === 'editorial'} onClick={() => void chooseVisualStyle('editorial')}>{t('편집형 · 선명한 절 구분')}</MenuItem>
-              <MenuItem checked={visualStyle === 'poster'} onClick={() => void chooseVisualStyle('poster')}>{t('매거진형 · 색면 표지와 큰 제목')}</MenuItem>
-              <MenuItem checked={visualStyle === 'minimal'} onClick={() => void chooseVisualStyle('minimal')}>{t('미니멀 · 작은 제목과 넓은 여백')}</MenuItem>
               <MenuLabel>{t('색 구성')}</MenuLabel>
               {([
                 ['#5b5bd6', '보라'], ['#1f6feb', '파랑'], ['#0f766e', '청록'],
@@ -1743,9 +1803,9 @@ export function ReportPanel({
             </Dropdown></RibbonGroup>
           )}
           {ribbon === 'home' && view === 'page' && (
-            <RibbonGroup label={t('서식')}><Dropdown
+            <RibbonGroup label={t('양식')}><Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving || hasUnsavedEdit}>
+                <Button size="sm" variant="secondary" disabled={templateSaving} onClick={() => void afterSaving(() => {})}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
                   {documentTemplates.find((row) => row.id === templateId)?.name ?? t('서식')}
                 </Button>
@@ -1766,7 +1826,6 @@ export function ReportPanel({
           {ribbon === 'review' && <RibbonGroup label={t('근거')}><Button
             size="sm"
             variant={pane === 'sources' ? 'primary' : 'secondary'}
-            disabled={hasUnsavedEdit}
             aria-label={
               evidenceWarningCount > 0
                 ? t('출처 {sources} · 확인 {count}')
@@ -1784,9 +1843,18 @@ export function ReportPanel({
               </span>
             )}
           </Button></RibbonGroup>}
+          {/* 서식. 편집기가 열려 있을 때만 채워진다 — 편집기가 자기 줄을
+              따로 그리는 대신 이 자리로 보낸다. 홈 탭의 마지막에 두는 이유는
+              이것만 폭이 스무 개 버튼만큼이기 때문이다: 앞에 두면 웹뷰도
+              디자인도 양식도 리본 오른쪽 밖으로 밀려난다. */}
+          {ribbon === 'home' && view === 'page' && documentLayout === 'edit' && (
+            <RibbonGroup label={t('서식')}>
+              <div ref={setToolbarSlot} className="flex items-center" />
+            </RibbonGroup>
+          )}
           {/* 저장 시점. 되돌릴 수 있다는 사실이 편집 버튼 옆에 붙어 있어야,
               고치기 전에 "잘못 고치면 어쩌지" 를 묻지 않는다. */}
-          {ribbon === 'file' && <RibbonGroup label={t('버전')}><VersionHistory
+          {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
             artifact={report}
             hasUnsavedChanges={hasUnsavedEdit}
             currentData={report}
@@ -1801,11 +1869,11 @@ export function ReportPanel({
               setSaveError(null)
             }}
           /></RibbonGroup>}
-          {ribbon === 'insert' && !hasUnsavedEdit && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
+          {ribbon === 'insert' && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
           {ribbon === 'file' && <RibbonGroup label={t('내보내기')}><Dropdown
             align="right"
             trigger={() => (
-              <Button size="sm" disabled={hasUnsavedEdit}>
+              <Button size="sm" onClick={() => void afterSaving(() => {})}>
                 <Download size={14} />
                 {t('내보내기')}
               </Button>
@@ -1987,6 +2055,7 @@ export function ReportPanel({
                 settingsOpen={pageSettingsOpen}
                 onLayoutMode={setDocumentLayout}
                 onWebView={() => setView('web')}
+                toolbarSlot={ribbon === 'home' ? toolbarSlot : null}
                 onDirty={(sections, title, pageSettings, reviewComments) => {
                   setPageEdits(sections)
                   if (title !== undefined) setPageTitle(title)

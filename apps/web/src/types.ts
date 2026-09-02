@@ -321,6 +321,16 @@ export interface StartingPoint {
   id: string
   title: string
   fills: string[]
+  /**
+   * The request as the card's form assembled it, when the card had one. Put
+   * into the composer so the person reads the whole thing before sending
+   * rather than trusting five blanks they filled behind a dialogue.
+   */
+  text?: string
+  /** What the job cannot run without: 'web' | 'file'. */
+  needs?: string[]
+  /** Workspace skills to switch on for the turn, by name. */
+  skills?: string[]
 }
 
 export interface Message {
@@ -783,6 +793,13 @@ export interface ImageArtifact extends ArtifactBase {
   model: string
   /** Object-store URL, once an image producer exists. */
   src: string
+  /**
+   * 도식일 때. The mermaid the picture was drawn from — the artifact proper;
+   * the PNG is one rendering of it — and the caption the writer gave it.
+   */
+  figure?: string
+  source?: string
+  caption?: string
 }
 
 /**

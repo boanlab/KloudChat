@@ -11,7 +11,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test'
-import { approvePlan, signIn } from './helpers'
+import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
 
 test.describe.configure({ mode: 'serial', retries: 1 })
 test.setTimeout(600_000)
@@ -35,7 +35,7 @@ async function openReport(page: Page) {
   )
   await page.getByLabel('프롬프트 입력').press('Enter')
   await approvePlan(page)
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 480_000 })
+  await artifactReady(page)
   sessionId = page.url().split('/s/')[1] ?? ''
 }
 
@@ -44,7 +44,7 @@ async function reopen(page: Page) {
   expect(sessionId, '첫 사례가 문서를 만들지 못했습니다').not.toBe('')
   await signIn(page)
   await page.goto(`/s/${sessionId}`)
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 60_000 })
+  await artifactReady(page, 60_000)
   // The revision the case before it started may still be streaming, and a
   // panel mid-run is not the panel these controls belong to.
   await expect(page.getByLabel('중지')).toBeHidden({ timeout: 300_000 })
@@ -52,7 +52,10 @@ async function reopen(page: Page) {
 
 /** The section headings the panel is showing, in order. */
 async function headings(page: Page): Promise<string[]> {
-  return page.locator('article h2').allInnerTexts()
+  // 패널 안의 절 제목만. The transcript is articles too, and an answer that
+  // quotes a heading — 「3. 보관 정책 개선 방안」 in a revision's summary —
+  // would be counted as a section the document grew.
+  return page.locator('[data-panel="artifact"] article h2').allInnerTexts()
 }
 
 test('완성된 문서 아래에 쓴 문장은 그 문서를 고친다', async ({ page }) => {
@@ -71,7 +74,9 @@ test('완성된 문서 아래에 쓴 문장은 그 문서를 고친다', async (
   // rendering rather than the revision.
   const step = page.getByRole('button', { name: /고치는 중/ })
   await expect(step).toBeVisible({ timeout: 300_000 })
-  await expect(step).toContainText(target.slice(0, 8))
+  // 「3. 」 is the panel's numbering, not the section's name; the step names
+  // the section as it is stored.
+  await expect(step).toContainText(target.replace(/^\d+\.\s*/, '').slice(0, 8))
 
   // And the document is the same document: no proposal card, same outline.
   await expect(page.getByRole('button', { name: '이대로 생성' })).toBeHidden()
@@ -82,6 +87,7 @@ test('고치기 전 판은 저장 시점에 남는다', async ({ page }) => {
   // A revision is destructive in the way a regeneration was; the way back has
   // to exist before anybody trusts typing into the box.
   await reopen(page)
+  await ribbonTab(page, '검토')
   await page.getByRole('button', { name: '버전 기록' }).click()
   await expect(page.getByText(/v1/).first()).toBeVisible()
 })

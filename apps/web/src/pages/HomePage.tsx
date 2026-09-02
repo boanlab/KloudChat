@@ -185,11 +185,16 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
         <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4">
           <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold">{t('빈 화면에서 시작하지 않아도 됩니다')}</h2>
+              {/* 무엇을 해 주는지를 말한다. 「빈 화면에서 시작하지 않아도
+                  됩니다」 was a negation — it said what you need not do and
+                  nothing about what pressing the button does. */}
+              <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
               <p className="mt-0.5 text-sm text-muted">
                 {active === 'chat'
-                  ? t('하려는 업무를 고르면 필요한 자료와 질문의 틀을 준비해 줍니다.')
-                  : t('하려는 업무와 결과물의 구성을 각각 고르고 바로 시작할 수 있습니다.')}
+                  ? t('원문 읽기, 장애 원인 좁히기, 사실 확인… 일을 고르면 그 일에 필요한 것만 묻고 요청을 대신 씁니다.')
+                  : active === 'image'
+                    ? t('개념도, 처리 흐름도, 표지 그림… 그림의 쓰임을 고르면 빈칸 몇 개로 요청이 완성됩니다.')
+                    : t('문헌 동향 조사, 의사결정 보고서, 논문 세미나 발표… 일을 고르면 필요한 것만 묻고 결과물 모양까지 정해 줍니다.')}
               </p>
             </div>
             <DesignGallery key={active} kind={active} />

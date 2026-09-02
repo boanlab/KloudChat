@@ -559,9 +559,31 @@ export function Composer({
     liveStartingTemplate.current = pendingStartingTemplate
     setStartingTemplate(pendingStartingTemplate)
     setPendingStartingTemplate(null)
-    // The composer is deliberately left empty; what moves is the caret, so
-    // the person is already writing the thing the placeholder asks for.
+    // 카드가 문장을 만들어 왔으면 그것이 초안이다. The person reads the
+    // whole request here and fixes it before sending; a card that only
+    // listed five nouns left the box empty and the caret blinking.
+    if (pendingStartingTemplate.text) setValue(pendingStartingTemplate.text)
+    // 시작점이 필요하다고 한 것은 시작점이 켠다.
+    //
+    // 문헌 동향 조사 with web search off is a survey of the model's memory,
+    // and the card said nothing about it. Now the card says, and the
+    // composer holds to it: search on, the job's skills switched on by
+    // name. The person can still turn either off — it is a default, not a
+    // lock — but it is no longer something they have to know to do.
+    if (pendingStartingTemplate.needs?.includes('web')) setWebSearch(true)
+    const wanted = pendingStartingTemplate.skills ?? []
+    if (wanted.length) {
+      const ids = usableSkills
+        .filter((skill) => wanted.includes(skill.name))
+        .map((skill) => skill.id)
+        .slice(0, 3)
+      if (ids.length) setActivatedSkillIds(ids)
+    }
     requestAnimationFrame(() => ref.current?.focus())
+    // usableSkills is derived from store state that does not change between a
+    // pick and this effect; listing it would re-run the effect on every store
+    // tick and re-apply the pick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -1217,6 +1239,19 @@ export function Composer({
                 </button>
               </Badge>
             )}
+            {/* 파일이 있어야 하는 일인데 아직 없다. Said beside the chip
+                rather than discovered after sending: 전공 원문 읽기 without
+                the 원문 answers about nothing. */}
+            {startingTemplate?.needs?.includes('file') && attachments.length === 0 && (
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                className="inline-flex h-6 items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs text-warn hover:bg-warn/20"
+              >
+                <Paperclip size={11} />
+                {t('이 일에는 파일이 필요합니다 — 첨부하기')}
+              </button>
+            )}
             {activeSkills.map((skill) => (
               <Badge key={skill.id} tone="accent">
                 <Sparkles size={11} />
@@ -1310,7 +1345,11 @@ export function Composer({
             >
               {unsupportedVideo
                 ? t('이 모델은 이 조합을 만들지 않습니다')
-                : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
+                : pendingTemplate?.kind === 'image' && pendingTemplate.figure
+                  // 도식은 글 모델이 쓴다. The image price on the bar would
+                  // be the price of a picture nobody is about to make.
+                  ? t('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')
+                  : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
             </span>
           </div>
         )}

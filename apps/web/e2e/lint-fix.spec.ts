@@ -12,7 +12,7 @@
  * button that fixes something and a button that says it will.
  */
 import { expect, test, type Page } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, artifactReady, signIn } from './helpers'
 
 /** A section with a fault the linter reliably finds: a Chinese character. */
 const FAULTY = '분산 시스템의 威胁 환경은 계속 넓어지고 있다. 대응이 필요하다.\n'
@@ -103,7 +103,9 @@ test('고치기를 누르면 그 절이 실제로 바뀐다', async ({ page }) =
 
   await page.goto('/artifacts')
   await page.getByRole('button', { name: /보고/ }).first().click()
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
+  // 결과물이 다 나온 뒤에 검토 칸을 연다.
+  await artifactReady(page, 30_000)
+  await page.getByRole('tab', { name: '검토', exact: true }).click()
 
   await page.getByRole('button', { name: '검사 결과' }).click()
   const finding = page.getByText('威胁').first()

@@ -10,13 +10,15 @@ test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바�
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
   await page.getByRole('tab', { name: '보기', exact: true }).click()
 
-  const count = page.getByText(/^\d+장$/).first()
-  const before = Number((await count.innerText()).replace('장', ''))
+  // 장수는 장 목록 손잡이에 「현재/전체」로 적혀 있다.
+  const count = page.getByRole('button', { name: '장 목록' })
+  const total = async () => Number((await count.innerText()).match(/\/(\d+)/)?.[1] ?? 0)
+  const before = await total()
   const title = await page.locator('[data-slide-title], h1, h2').first().innerText().catch(() => '')
 
   await page.getByRole('button', { name: '장 편집' }).click()
   await page.getByRole('menuitem', { name: '이 장 복제' }).click()
-  await expect(count).toHaveText(`${before + 1}장`)
+  await expect.poll(total).toBe(before + 1)
   await expect(page.getByText(/사본/).first()).toBeVisible()
   await expect(page.getByText(/다른 곳에서 이미 수정/)).toHaveCount(0)
 

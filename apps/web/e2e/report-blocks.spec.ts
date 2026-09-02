@@ -99,6 +99,23 @@ async function seed(page: Page) {
   seeded = await openAndSeedReport(page, BODY)
 }
 
+
+/**
+ * 서식 마크업 위에서 바로 고치는 화면으로 들어간다.
+ *
+ * 「페이지뷰」 was that screen when these were written. It is now the
+ * paged, read-only render, and the editable one behind the same 서식 is
+ * 「문서 수정」 — or 「내용 편집」 when the document already opened on its
+ * pages. Both land on one `.page` with ProseMirror sections inside it, which
+ * is what every assertion below is about.
+ */
+async function enterEdit(page: Page) {
+  const edit = page.getByRole('button', { name: '문서 수정' })
+  if (await edit.isVisible().catch(() => false)) await edit.click()
+  else await page.getByRole('button', { name: '내용 편집' }).click()
+  await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
+}
+
 test('웹뷰에서 세 블록이 그려지고 펜스는 남지 않는다', async ({ page }) => {
   await seed(page)
   await expect(page.getByText('오탐 감소').first()).toBeVisible({ timeout: 15_000 })
@@ -119,8 +136,7 @@ test('웹뷰에서 세 블록이 그려지고 펜스는 남지 않는다', async
 
 test('페이지뷰에 같은 세 블록이 서식의 마크업으로 들어 있다', async ({ page }) => {
   await seed(page)
-  await page.getByRole('button', { name: '페이지뷰' }).click()
-  await expect(page.locator('.page')).toBeVisible({ timeout: 30_000 })
+  await enterEdit(page)
 
   // The seeded section is the first one, and the document around it is a
   // shared scratch report that other runs have left their own strips in.
@@ -136,7 +152,7 @@ test('페이지뷰에 같은 세 블록이 서식의 마크업으로 들어 있�
 
   // The 서식 owns the sizes, and the step numbers are drawn by CSS rather than
   // typed into the text — otherwise deleting a step leaves the rest misnumbered.
-  const measured = await page.locator('.page').evaluate((el) => {
+  const measured = await page.locator('.page').first().evaluate((el) => {
     const size = (s: string) =>
       parseFloat(getComputedStyle(el.querySelector(s) as HTMLElement).fontSize)
     return {
@@ -154,7 +170,7 @@ test('페이지뷰에서 다른 곳을 고쳐도 블록이 살아남는다', asy
   // whole body as HTML, so everything Tiptap could not parse is gone by then —
   // and `richtext` has to turn the markup back into fences for the exporters.
   await seed(page)
-  await page.getByRole('button', { name: '페이지뷰' }).click()
+  await enterEdit(page)
   await expect(page.locator('.page .kpi').first()).toBeVisible({ timeout: 30_000 })
 
   await page.locator('.page .ProseMirror p').first().click()
@@ -181,8 +197,7 @@ test('페이지뷰에서 고쳐도 도해가 지워지지 않는다', async ({ p
   await expect(seededFigure(page)).toBeVisible({ timeout: 20_000 })
   await expect.poll(() => storedDiagrams(page), { timeout: 25_000 }).toBeGreaterThan(0)
 
-  await page.getByRole('button', { name: '페이지뷰' }).click()
-  await expect(page.locator('.page')).toBeVisible({ timeout: 30_000 })
+  await enterEdit(page)
   // Named by its source rather than by being the only one on the page. The
   // document is a shared scratch report and other runs leave their diagrams in
   // its other sections, so "exactly one figure" was asserting something about
@@ -201,7 +216,7 @@ test('페이지뷰에서 고쳐도 도해가 지워지지 않는다', async ({ p
   // And back in the web view it is still a diagram, not a flattened picture:
   // the source came back as a fence, so it can still be changed. The same
   // button goes both ways — its label is the destination, its text is not.
-  await page.getByRole('button', { name: '페이지뷰' }).click()
+  await enterEdit(page)
   await expect(seededFigure(page)).toBeVisible({ timeout: 20_000 })
 })
 
@@ -262,8 +277,7 @@ test('페이지뷰가 아직 없는 도해를 스스로 그린다', async ({ pag
   // holds the copy of the artifact it was handed.
   await seed(page)
   await page.evaluate(() => undefined)
-  await page.getByRole('button', { name: '페이지뷰' }).click()
-  await expect(page.locator('.page')).toBeVisible({ timeout: 30_000 })
+  await enterEdit(page)
 
   const figure = page.locator('.page figure.diagram[data-source*="pie showData"]')
   await expect(figure).toHaveCount(1)

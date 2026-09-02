@@ -798,6 +798,40 @@ export const sessionsApi = {
       figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
+  /**
+   * 이름표가 있는 도식. The method described in words comes back as mermaid
+   * source in the house style; the client draws it. See `diagram.py`.
+   */
+  diagram: (
+    sessionId: string,
+    payload: {
+      description: string
+      figure: string
+      model?: string
+      language?: string
+      /** The source that would not draw, and mermaid's reason — asks for a repair. */
+      broken?: string
+      error?: string
+    },
+  ) => call<{ source: string; caption: string; model: string; credits: number }>(
+    `/sessions/${sessionId}/diagrams`,
+    body(payload),
+  ),
+  /** The drawn figure, kept as an image artifact with its source beside it. */
+  storeDiagram: (
+    sessionId: string,
+    payload: {
+      source: string
+      caption: string
+      description: string
+      figure: string
+      title: string
+      model: string
+      png: string
+      width: number
+      height: number
+    },
+  ) => call<ArtifactRow>(`/sessions/${sessionId}/diagrams/store`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
   audio: (
     sessionId: string,
@@ -1119,6 +1153,12 @@ export interface PromptTemplateRow {
    * has a shape, and that shape is `doc-incident`.
    */
   renderTemplateId: string
+  /** One worked example per blank, in `fills` order. Missing ones are ''. */
+  examples?: string[]
+  /** What the job cannot run without: 'web' | 'file'. */
+  needs?: string[]
+  /** Workspace skills to switch on for the turn, by name. */
+  skills?: string[]
 }
 
 export const promptTemplatesApi = {
@@ -1220,6 +1260,8 @@ export interface DesignArgumentRow {
   /** A closed list renders as a picker; empty renders as a text field. */
   options: string[]
   optionsEn: string[]
+  /** A paragraph field rather than a one-line one. */
+  long?: boolean
 }
 
 export interface DesignTemplateRow {
@@ -1241,6 +1283,11 @@ export interface DesignTemplateRow {
   categoryEn: string
   fillsEn: string[]
   examplePromptEn: string
+  /**
+   * `method` · `flow` · `concept` when this image 서식 is a labelled figure
+   * drawn by the diagram path rather than a picture from the image model.
+   */
+  figure?: string
   /**
    * What a review will read the finished thing against, one line each.
    *

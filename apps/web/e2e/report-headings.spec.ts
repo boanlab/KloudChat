@@ -7,7 +7,7 @@
  * appearing.
  */
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { artifactReady, signIn } from './helpers'
 
 test('페이지뷰에서 제목과 절 제목을 고칠 수 있다', async ({ page }) => {
   await signIn(page)
@@ -21,9 +21,13 @@ test('페이지뷰에서 제목과 절 제목을 고칠 수 있다', async ({ pa
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
-  await page.getByRole('button', { name: '페이지뷰' }).click()
-  await expect(page.locator('.page')).toBeVisible({ timeout: 30_000 })
+  await artifactReady(page, 30_000)
+  // 제목을 눌러 고치는 화면은 「문서 수정」이다 — 「페이지뷰」는 이제 읽기
+  // 전용으로 쪽을 나눈 렌더다.
+  const edit = page.getByRole('button', { name: '문서 수정' })
+  if (await edit.isVisible().catch(() => false)) await edit.click()
+  else await page.getByRole('button', { name: '내용 편집' }).click()
+  await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
 
   const mark = `제목수정-${Date.now()}`
   // A heading that refuses the caret reads as broken in a view that looks like

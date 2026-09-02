@@ -137,6 +137,111 @@ function endRun(set: Set, sessionId: string) {
     const { [sessionId]: _done, ...rest } = s.running
     return { running: rest }
   })
+  // 끝났으면 서버와 맞춰 본다.
+  //
+  // The transcript on screen is assembled from the events as they arrive, and
+  // that is right while they are arriving. It is not a guarantee: a stream cut
+  // in the middle, an event dropped, a browser that slept — each leaves the
+  // screen holding less than the database does, and nothing said so. The
+  // symptom people report is 「새로고침해야 보인다」.
+  //
+  // One read at the end of every turn, whichever way it ended. It costs a
+  // request per turn and it makes the screen agree with what was stored.
+  void reconcileSession(set, sessionId)
+}
+
+/**
+ * Fills in what the screen is missing, without taking anything away.
+ *
+ * Merged rather than replaced. The transcript on screen is assembled from the
+ * events as they arrive and the stored copy is assembled from what was written
+ * — and each knows something the other does not. The server has the finished
+ * answer; the screen has the work log, because the steps a turn walked through
+ * are streamed and only some of them are stored. Swapping one for the other
+ * dropped the 작업 단계 card off every finished turn.
+ *
+ * So: the server decides which messages exist and what they say, and a field
+ * the server left empty keeps whatever the screen already had for it.
+ */
+async function reconcileSession(set: Set, sessionId: string) {
+  const row = await sessionsApi.get(sessionId).catch(() => null)
+  if (!row) return
+  const fresh = toSession(row)
+  set((s) => {
+    const held = s.sessions.find((c) => c.id === sessionId)
+    // Gone, or a newer turn has started in it — a reconcile that lands then
+    // would wipe the answer being written.
+    if (!held || sessionId in s.running) return {}
+    // 짝은 아이디가 아니라 자리로 찾는다.
+    //
+    // Only the chat path adopts the server's id for the message it is
+    // streaming into; a deck or a report keeps the local one for the whole
+    // turn. Matching by id therefore paired nothing on exactly the surfaces
+    // whose steps are worth keeping, and the merge quietly became a replace —
+    // every finished deck lost its 작업 단계 card.
+    //
+    // Both lists are the same conversation in the same order, so the nth from
+    // the end is the nth from the end. Where an id does match, that wins.
+    const byId = new Map(held.messages.map((m) => [m.id, m]))
+    // 앞에서부터 짝을 맞춘다. 두 목록은 같은 대화이고, 서버가 모자란다면
+    // 그것은 늘 끝쪽이다 — 가운데가 사라지는 일은 없다. Aligning from the end
+    // instead put a stored 사용자 message beside a streamed 어시스턴트 one the
+    // moment the server was one message short.
+    const mineAt = (index: number) => held.messages[index]
+    const paired = fresh.messages.map((message, index) => {
+      const mine = byId.get(message.id) ?? mineAt(index)
+      if (!mine || mine.role !== message.role) return message
+      // 화면이 더 아는 것은 화면이 지킨다.
+      //
+      // This was an allow-list — steps, variants, attachments — and every
+      // field not on it was silently dropped: the privacy notice a turn had
+      // just streamed («이메일 1 · 기록에는 가려진 채 저장됩니다») vanished the
+      // moment the turn ended, because the server does not store it and the
+      // list did not name it. So the held message is the base and the server
+      // writes over it only where it actually said something.
+      const overlay = Object.fromEntries(
+        Object.entries(message).filter(([, value]) => {
+          if (value === undefined || value === null) return false
+          if (Array.isArray(value)) return value.length > 0
+          if (typeof value === 'string') return value.length > 0
+          return true
+        }),
+      )
+      return { ...mine, ...overlay }
+    })
+    // 화면에만 있는 것은 화면에 남는다. A stubbed turn, a message the write
+    // never reached — the stored copy is then shorter than the screen, and
+    // replacing one with the other takes an answer off a screen that had it.
+    const extra = held.messages.slice(fresh.messages.length)
+    const merged = { ...fresh, messages: [...paired, ...extra] }
+    // 달라진 것이 없으면 아무것도 쓰지 않는다.
+    //
+    // `watchForTheAnswer` reconciles every three seconds while a turn is out,
+    // and this wrote a brand-new session object with brand-new message objects
+    // every time — identical in content, different in identity. React then
+    // re-rendered the whole transcript on a timer, and anything the reader was
+    // reaching for came out from under the pointer: 「프롬프트 복사」 resolved,
+    // detached, resolved again, and a click never landed.
+    if (same(held, merged)) return {}
+    return { sessions: s.sessions.map((c) => (c.id === sessionId ? merged : c)) }
+  })
+}
+
+/** Whether a reconcile found anything worth writing. */
+function same(held: Session, merged: Session): boolean {
+  if (held.messages.length !== merged.messages.length) return false
+  if (held.title !== merged.title) return false
+  return held.messages.every((mine, index) => {
+    const theirs = merged.messages[index]
+    return (
+      mine.id === theirs.id &&
+      mine.role === theirs.role &&
+      mine.content === theirs.content &&
+      (mine.steps?.length ?? 0) === (theirs.steps?.length ?? 0) &&
+      (mine.attachments?.length ?? 0) === (theirs.attachments?.length ?? 0) &&
+      Boolean(mine.variants) === Boolean(theirs.variants)
+    )
+  })
 }
 
 async function waitForSessionPersistence(sessionId: string): Promise<void> {
@@ -1378,6 +1483,21 @@ export const useStore = create<State>((set, get) => ({
           : [session, ...s.sessions],
       }))
 
+      // 자리를 비운 사이에 끝난 답도 데려온다.
+      //
+      // The server finishes a turn whether or not anybody is reading it —
+      // `_survive_disconnect` detaches the work from the response, so leaving
+      // the page abandons the stream and not the answer. What was missing was
+      // the other half: this fetch happens once, and if the turn is still
+      // running at that moment the transcript ends on the request. The answer
+      // lands in the database a minute later and the screen never hears.
+      //
+      // So a transcript that ends on a question is watched until it is
+      // answered. Bounded, and only for a conversation still on screen: a turn
+      // that died leaves the last word with the person, and this must not poll
+      // for it forever.
+      void watchForTheAnswer(set, get, id)
+
             /**
              * Whatever is still being made in it.
              *
@@ -1910,6 +2030,35 @@ export const useStore = create<State>((set, get) => ({
     const templateId = picked?.kind === 'image' ? picked.id : undefined
     if (picked) set({ pendingTemplate: null })
     try {
+      // 도식은 그림 모델로 가지 않는다.
+      //
+      // A figure for a paper needs its labels, and the image model cannot
+      // spell. A 서식 that says `figure` sends the description to a language
+      // model that writes the diagram as mermaid, draws it here in the
+      // document face, and keeps the picture *with its source* — so it is a
+      // figure that can be edited, not a screenshot of one.
+      const figure = picked?.kind === 'image' ? picked.figure : undefined
+      if (figure) {
+        try {
+          // 글을 쓰는 모델로. The image model cannot write mermaid.
+          const rows = [await drawFigure(id, prompt, figure, modelByKind.chat || undefined)]
+          set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
+          finishMediaTurn(set, id, answerId, rows.map((row) => row.id), false)
+          await get().loadSessions()
+          await get().openSession(id)
+        } catch (err) {
+          // 무엇이 안 됐는지 말한다. `errorMessage` keeps server text off the
+          // screen, rightly; the drawing step's own sentences are ours to show.
+          const said =
+            err instanceof ApiError
+              ? errorMessage(err, tr('도식을 만들지 못했습니다.'))
+              : err instanceof Error && err.message
+                ? err.message
+                : tr('도식을 만들지 못했습니다.')
+          failMediaTurn(set, id, promptId, answerId, said)
+        }
+        return
+      }
       const rows = await sessionsApi.images(id, {
         prompt,
         model: modelByKind.image || undefined,
@@ -4454,8 +4603,116 @@ function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
 }
 
 /** Deduct on completion. Nothing is held up front, so failures cost nothing. */
+/**
+ * 물음으로 끝난 대화를, 답이 올 때까지 지켜본다.
+ *
+ * A turn outlives the page that started it: the server detaches the work from
+ * the response, so navigating away abandons the stream and not the answer. The
+ * gap was on this side — `openSession` reads once, and a turn still running at
+ * that moment leaves the transcript ending on the request. The answer is
+ * stored a minute later and nothing here asks again.
+ *
+ * Polled rather than streamed. Re-attaching to a turn already in flight would
+ * need the server to replay what it had sent, and this needs only the finished
+ * thing: the answer, once, when it exists.
+ *
+ * Stops for whichever comes first — an answer arrives, the person leaves the
+ * conversation, or two minutes pass. A turn that died on the server leaves the
+ * last word with the person, and this must not sit there asking about it.
+ */
+async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
+  const answered = () => {
+    const messages = get().sessions.find((c) => c.id === sessionId)?.messages ?? []
+    const last = messages[messages.length - 1]
+    return !last || last.role !== 'user'
+  }
+  // Already answered, or this session is being streamed into right now by the
+  // tab that started it — either way there is nothing to wait for.
+  if (answered() || get().running[sessionId]) return
+
+  for (let waited = 0; waited < 120_000; waited += 3_000) {
+    await new Promise((done) => setTimeout(done, 3_000))
+    // Somebody moved on, or a new turn took over. Either ends the watch.
+    if (get().activeSessionId !== sessionId) return
+    if (get().running[sessionId]) return
+
+    // 같은 병합을 쓴다 — 서버가 무엇이 있는지 정하고, 화면이 들고 있던
+    // 작업 기록은 서버가 비워 둔 자리에 남는다.
+    await reconcileSession(set, sessionId)
+    const messages = get().sessions.find((c) => c.id === sessionId)?.messages ?? []
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'user') return
+  }
+}
+
 function chargeCredits(set: Set, _get: Get, credits: number) {
   set((s) => ({
     user: s.user ? { ...s.user, creditsUsed: s.user.creditsUsed + credits } : s.user,
   }))
+}
+
+/**
+ * 설명 → mermaid → 그림. The three steps of the diagram path, in order.
+ *
+ * Drawn off-screen in an element that carries the app's tokens, so the
+ * figure comes out in the product's face and accent rather than mermaid's
+ * defaults. The PNG is 2× for print; the source travels with it.
+ */
+async function drawFigure(
+  sessionId: string,
+  description: string,
+  figure: string,
+  model: string | undefined,
+): Promise<ArtifactRow> {
+  const { drawOrExplain, paperStyles, paperTheme, rasterise } = await import('@/lib/mermaid')
+  // 「이름표 언어: 영어」 is written into the request by the card; read it
+  // back here so the model is asked in the right language.
+  const language = /이름표 언어\s*[:：]\s*영어|Label language\s*[:：]\s*English/i.test(description)
+    ? 'en'
+    : 'ko'
+  let written = await sessionsApi.diagram(sessionId, { description, figure, model, language })
+  const host = document.createElement('div')
+  host.style.position = 'absolute'
+  host.style.left = '-10000px'
+  host.style.width = '1200px'
+  document.body.appendChild(host)
+  try {
+    const look = paperTheme(host)
+    const { hot, ...config } = look
+    let drawn = await drawOrExplain(written.source, config)
+    if ('error' in drawn) {
+      // 한 번 되묻는다. PaperBanana's Critic: mermaid's refusal goes back to
+      // the writer with its own source, and the same figure comes back with
+      // the syntax fixed. Once — a second refusal is an answer.
+      written = await sessionsApi.diagram(sessionId, {
+        description, figure, model, language,
+        broken: written.source, error: drawn.error,
+      })
+      drawn = await drawOrExplain(written.source, config)
+    }
+    if ('error' in drawn) throw new Error(tr('도식을 그리지 못했습니다. 설명을 조금 바꿔 다시 해 보세요.'))
+    let svg = drawn.svg
+    // The highlight class and the stroke discipline go in as a stylesheet:
+    // mermaid's theme variables reach fills and text, not `:::hot`.
+    svg = svg.replace(/<svg([^>]*)>/, (m) => `${m}<style>${paperStyles(hot)}</style>`)
+    const png = await rasterise(svg)
+    if (!png) throw new Error(tr('도식을 그림으로 저장하지 못했습니다.'))
+    // 크기는 viewBox 가 안다. `width`/`height` may be percentages or absent
+    // depending on how mermaid was configured; the viewBox is the layout.
+    const box = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) ([\d.]+)"/.exec(svg)
+    const size = box ?? /width="([\d.]+)[^"]*"[^>]*height="([\d.]+)/.exec(svg)
+    return await sessionsApi.storeDiagram(sessionId, {
+      source: written.source,
+      caption: written.caption,
+      description,
+      figure,
+      title: written.caption || description.split('\n')[0].slice(0, 80),
+      model: written.model,
+      png: png.replace(/^data:image\/png;base64,/, ''),
+      width: size ? Math.round(Number(size[1]) * 2) : 0,
+      height: size ? Math.round(Number(size[2]) * 2) : 0,
+    })
+  } finally {
+    host.remove()
+  }
 }

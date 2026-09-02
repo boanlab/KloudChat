@@ -64,6 +64,31 @@ export async function draw(source: string, look: object): Promise<string | null>
 }
 
 /**
+ * `draw`, but the refusal comes back as words. The diagram path hands
+ * mermaid's own parse error back to the writer and asks for a repair —
+ * which needs the sentence, not a null.
+ */
+export async function drawOrExplain(
+  source: string,
+  look: object,
+): Promise<{ svg: string } | { error: string }> {
+  try {
+    const { default: mermaid } = await import('mermaid')
+    mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true, ...look })
+    const id = `fig-${Math.random().toString(36).slice(2)}`
+    try {
+      const { svg } = await mermaid.render(id, plain(source))
+      return { svg }
+    } finally {
+      document.getElementById(id)?.remove()
+      document.getElementById(`d${id}`)?.remove()
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
  * The diagram without its own colours.
  *
  * `style`, `classDef` and `linkStyle` are the three ways a mermaid source can
@@ -304,4 +329,83 @@ function shades(accent: string, paper: string, count: number): string[] {
     const mix = count === 1 ? 0 : (i / (count - 1)) * 0.7
     return `#${hex(ar + (pr - ar) * mix)}${hex(ag + (pg - ag) * mix)}${hex(ab + (pb - ab) * mix)}`
   })
+}
+
+/**
+ * 논문 그림의 얼굴. PaperBanana 의 NeurIPS 2025 도식 가이드가 말하는 것:
+ *
+ * "Soft tech & scientific pastels" — a high-value background organising
+ * complexity, saturation reserved for the one thing that matters. Zones in
+ * very light desaturated pastel (the "zone strategy"), process nodes rounded,
+ * thin uniform strokes, sans-serif labels, and one highlight colour for the
+ * trained part or the final output. Everything the base theme does, with the
+ * fills that base theme deliberately leaves out — a document's own figure
+ * should not compete with its prose, but a figure that *is* the deliverable
+ * should look like the ones in the proceedings.
+ *
+ * `hot` is the one class the prompt may write (`node:::hot`); everything
+ * else the model is told not to colour, and `diagram._parse` strips it.
+ */
+export function paperTheme(node: HTMLElement) {
+  const base = theme(node)
+  const read = (name: string, fallback: string) =>
+    getComputedStyle(node).getPropertyValue(name).trim() || fallback
+  const accent = read('--accent', '#5b5bd6')
+  const ink = read('--ink', '#1a1a1a')
+  return {
+    ...base,
+    // A print figure is read at its own size; the column-fitting that serves
+    // a document paragraph makes a figure grow downward instead.
+    fontFamily: "'Pretendard', 'Inter', 'Helvetica Neue', Arial, sans-serif",
+    themeVariables: {
+      ...base.themeVariables,
+      // 존은 옅은 얼음색, 노드는 옅은 회청색 면에 중간 채도 테두리.
+      clusterBkg: '#eef4fb',
+      clusterBorder: '#b7c7de',
+      mainBkg: '#f7f9fc',
+      primaryColor: '#f7f9fc',
+      primaryBorderColor: '#7f96b8',
+      nodeBorder: '#7f96b8',
+      secondaryColor: '#fff8ec',
+      tertiaryColor: '#eef7f2',
+      lineColor: '#5b6b82',
+      textColor: ink,
+      primaryTextColor: ink,
+      fontSize: '17px',
+    },
+    flowchart: {
+      ...base.flowchart,
+      // 제 크기로 그린다. `useMaxWidth` fits a diagram to the column it is
+      // read in, which is right for a paragraph's figure and wrong for a
+      // figure that *is* the deliverable: the SVG then says `width="100%"`,
+      // the rasteriser has no size to draw at, and the file comes out as a
+      // thumbnail of itself.
+      useMaxWidth: false,
+      curve: 'basis' as const,
+      padding: 16,
+      rankSpacing: 44,
+      nodeSpacing: 40,
+    },
+    // Read by `paperStyles` below, not by mermaid.
+    hot: accent,
+  }
+}
+
+/**
+ * The one highlight, and the stroke discipline mermaid's theme variables do
+ * not reach. Injected into the SVG after drawing: `:::hot` is a class, and a
+ * class needs a rule.
+ */
+export function paperStyles(hot: string): string {
+  // `!important` because mermaid writes its own rules as `#<svg id> .node
+  // rect` — an id selector outranks any class this sheet can name, and the
+  // highlight never showed. There is no other stylesheet to fight; this one
+  // is only ever inside the figure it was written for.
+  return [
+    `.node.hot rect, .node.hot polygon, .node.hot path, .node.hot circle { fill: ${hot}22 !important; stroke: ${hot} !important; stroke-width: 2px !important; }`,
+    `.node rect, .node polygon, .node path, .node circle { stroke-width: 1.4px; }`,
+    `.cluster rect { rx: 10px; ry: 10px; stroke-dasharray: 4 3; }`,
+    `.edgePath path { stroke-width: 1.5px; }`,
+    `.edgeLabel { font-size: 14px; }`,
+  ].join('\n')
 }

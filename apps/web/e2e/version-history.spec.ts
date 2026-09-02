@@ -82,7 +82,8 @@ test('HTML 문서도 되돌릴 수 있고, 되돌리기 자체가 판으로 남�
   await dialog.getByRole('button', { name: '소스' }).click()
   await expect(dialog.locator('pre')).toContainText('고쳐 쓴 문단', { timeout: 20_000 })
 
-  // 이 버튼이 이 화면에 있다는 것이 이 수정의 전부다.
+  // 이 버튼이 이 화면에 있다는 것이 이 수정의 전부다. HTML 패널에는 리본이
+  // 없으므로 탭 없이 바로 있다.
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await expect(history).toContainText('v2')
   await history.click()
@@ -133,6 +134,9 @@ test('덱도 같은 버튼으로 되돌린다', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고친 제목').first()).toBeVisible({ timeout: 20_000 })
 
+  // 버전 기록은 리본의 검토 칸에 있다 — 되돌리고 싶어지는 때는 대개
+  // 고치던 중이고, 검토는 편집 중에도 남는 탭이다.
+  await dialog.getByRole('tab', { name: '검토', exact: true }).click()
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await expect(history).toContainText('v2')
   await history.click()
@@ -172,6 +176,9 @@ test('보고서의 되돌리기는 옮겨진 뒤에도 그대로다', async ({ p
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고쳐 쓴 본문입니다.')).toBeVisible({ timeout: 20_000 })
 
+  // 버전 기록은 리본의 검토 칸에 있다 — 되돌리고 싶어지는 때는 대개
+  // 고치던 중이고, 검토는 편집 중에도 남는 탭이다.
+  await dialog.getByRole('tab', { name: '검토', exact: true }).click()
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await history.click()
   await page.getByRole('button', { name: 'v1 로 되돌리기' }).click()

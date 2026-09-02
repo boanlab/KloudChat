@@ -178,6 +178,10 @@ class Argument:
     #: A closed list renders as a picker; empty renders as a text field.
     options: tuple[str, ...]
     options_en: tuple[str, ...]
+    #: A paragraph rather than a phrase. A method is described in sentences —
+    #: the modules, what flows between them, what is trained — and a one-line
+    #: field asks for a title where a description is wanted.
+    long: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +237,12 @@ class DesignTemplate:
     #: writing surfaces — a picture model reads neither well nor at that
     #: length.
     prompt_suffix: str
+    #: `image` templates only: when set, the template is a *figure* rather
+    #: than a picture — `method` · `flow` · `concept` — and its request goes
+    #: to the diagram path, which writes it as mermaid with its labels on,
+    #: instead of to the image model, which cannot spell. Empty for the
+    #: illustrations (표지, 티저, 포스터), which stay pictures.
+    figure: str
     #: The 서식's Word half — a real `.docx` whose styles, page setup and
     #: theme the exporter opens and writes into. Empty when the folder has
     #: none, and then `report_export` falls back to Word's own defaults.
@@ -452,6 +462,7 @@ def _load() -> dict[str, DesignTemplate]:
             markup=_seed_markup(folder, meta),
             checklist=_read(folder, "checklist.md"),
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
+            figure=str(meta.get("figure") or ""),
             dark=bool(meta.get("dark")),
             arguments=tuple(
                 Argument(
@@ -462,6 +473,7 @@ def _load() -> dict[str, DesignTemplate]:
                     default_en=str(arg.get("default_en") or ""),
                     options=tuple(str(o) for o in (arg.get("options") or [])),
                     options_en=tuple(str(o) for o in (arg.get("options_en") or [])),
+                    long=bool(arg.get("long")),
                 )
                 for arg in (meta.get("arguments") or [])
                 if arg.get("name")

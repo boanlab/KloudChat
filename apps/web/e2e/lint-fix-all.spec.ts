@@ -27,11 +27,11 @@ const BODY = [
 
 test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page }) => {
   const rewrites: { sectionId: string; note: string }[] = []
-  await page.route('**/api/artifacts/*/sections/*/rewrite', async (route) => {
+  // 절 id 는 경로가 아니라 본문에 있다: `/sections/rewrite` + `{ sectionId }`.
+  await page.route('**/api/artifacts/*/sections/rewrite', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
-    const body = route.request().postDataJSON() as { note: string }
-    const sectionId = new URL(route.request().url()).pathname.split('/').at(-2) ?? ''
-    rewrites.push({ sectionId, note: body.note })
+    const body = route.request().postDataJSON() as { sectionId: string; note: string }
+    rewrites.push({ sectionId: body.sectionId, note: body.note })
     // Answered with an unchanged document: this is about what is asked for,
     // not about what a model writes back.
     await route.fulfill({ json: { id: 'x', version: 99, data: {} } })
@@ -42,6 +42,8 @@ test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page 
   // document happens to draw fewer than two.
   await openAndSeedReport(page, BODY)
 
+  // 검사 결과는 리본의 검토 칸에 있다.
+  await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
   await badge.click()
