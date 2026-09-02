@@ -278,3 +278,21 @@ def test_years_in_a_table_header_do_not_make_it_a_new_slide() -> None:
         "500만원",
         "700만원",
     }
+
+
+def test_the_requests_data_table_is_carried_into_the_results() -> None:
+    from app.services.report import _carry_table
+
+    request = (
+        "실험 보고서.\n| f (Hz) | Vout |\n|---|---|\n| 100 | 1.99 |\n| 1000 | 1.71 |\n이론 fc."
+    )
+    headings = ["목적", "결과", "오차 분석"]
+    drafted = {"목적": "목적입니다.", "결과": "100 Hz에서 1.99…", "오차 분석": "오차."}
+    out = _carry_table(request, headings, dict(drafted))
+    assert out["결과"].startswith("측정 데이터는 다음과 같습니다.\n\n| f (Hz) | Vout |")
+    assert out["결과"].endswith("100 Hz에서 1.99…")
+    # 초안에 이미 표가 있으면 그대로.
+    with_table = {**drafted, "결과": "| f | g |\n|---|---|\n| 100 | 1 |"}
+    assert _carry_table(request, headings, dict(with_table)) == with_table
+    # 요청에 표가 없으면 그대로.
+    assert _carry_table("표 없는 요청", headings, dict(drafted)) == drafted

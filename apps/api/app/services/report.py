@@ -176,6 +176,14 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
   절의 결론이 되는 숫자 둘셋은 문서 전체에 한 번만 ```kpi 블록(`값 | 이름` 한 줄씩,
   최대 4개)으로. 틀리면 뒤가 무너지는 전제 하나는 문서 전체에 한 번만 ```callout
   블록(첫 줄 제목, 다음 줄 내용)으로. 그 밖의 블록은 쓰지 마라.
+- **요청에 측정 데이터 표가 있으면 결과 절에 그 표를 다시 싣는다** — 요청의 열
+  그대로에, 그 값으로 계산한 열(이득, dB, 이론값, 오차 %)을 더해서. 표 없이 값을
+  줄글에 흩어 놓은 실험 보고서는 읽는 사람이 표를 다시 만들어야 한다. 이 표는 표
+  두 개 한도에 든다.
+- **차이를 말하려면 두 수를 계산해 나란히 적어라.** 「고주파에서 위상이 이론값보다
+  다소 크다」처럼 계산하지 않은 편차를 말하지 마라 — 이론값을 식으로 구해 측정값
+  옆에 두고, 차이가 1% 안이면 「일치한다」고 쓴다. 「3회 반복 측정」처럼 요청에 없는
+  절차도 지어내지 마라.
 - **수치는 위 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만 쓴다.** 요청에
   적힌 표기 그대로 아라비아 숫자로 — 「연 380만 원」은 「3,800만 원」도 「38백만
   원」도 「3백8십만 원」도 아니다.
@@ -193,6 +201,32 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
 - 이 규칙 문장을 본문에 옮겨 적지 마라.
 
 원래 요청: {request}"""
+
+
+_TABLE = re.compile(r"(?m)^\|.+\|\s*\n\|[\s:|-]+\|\s*\n(?:^\|.+\|\s*\n?)+")
+_RESULTS_HEADING = re.compile(r"결과|측정|데이터|분석")
+
+
+def _carry_table(request: str, headings: list[str], drafted: dict[str, str]) -> dict[str, str]:
+    """The request's data table, put into the results section if the draft left it out.
+
+    An RC-filter report was asked for with nine rows of f, Vin, Vout and phase,
+    and told — in bold — to print that table again in 결과 with the derived
+    columns. Twice it narrated the rows in prose instead. The table the person
+    typed is the one thing in the report nobody can dispute, so it goes in
+    whether or not the writer chose to.
+    """
+    found = _TABLE.search(request)
+    if not found or not drafted:
+        return drafted
+    if any(_TABLE.search(text) for text in drafted.values()):
+        return drafted
+    target = next((h for h in headings if _RESULTS_HEADING.search(h) and h in drafted), None)
+    if target is None:
+        return drafted
+    table = found.group(0).strip()
+    drafted[target] = f"측정 데이터는 다음과 같습니다.\n\n{table}\n\n{drafted[target]}"
+    return drafted
 
 
 def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
@@ -1126,7 +1160,7 @@ async def write(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        drafted = _split_draft(draft_text, headings)
+        drafted = _carry_table(request, headings, _split_draft(draft_text, headings))
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("report draft failed, writing section by section: %s", exc)
