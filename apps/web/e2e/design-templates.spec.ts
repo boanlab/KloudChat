@@ -387,45 +387,49 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   const poster = await findCard(imageGallery, '포스터')
   await expect(poster).toBeVisible({ timeout: 20_000 })
 
-  // Every blank starts filled, so the card is usable without typing.
-  await expect(poster.getByLabel('무엇을')).toHaveValue('학과 연구 성과 발표회')
-  await poster.getByLabel('무엇을').fill('연구실 개방 행사')
-  await poster.getByLabel('분위기').selectOption('밝고 활기찬')
-  await shot(page, '08-image-blanks')
+  // 카드는 무엇을 물을지만 보여 준다; 빈칸은 입력창이 묻는다.
+  await expect(poster.getByText('무엇을')).toBeVisible()
+  await expect(poster.getByRole('textbox')).toHaveCount(0)
   await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
 
-  // The sentence arrives filled in — and still editable, which is the whole
-  // reason it goes to the composer rather than straight to the model.
-  const composer = page.getByLabel('프롬프트 입력')
-  await expect(composer).toHaveValue(/연구실 개방 행사/)
-  await expect(composer).toHaveValue(/밝고 활기찬/)
-  await expect(composer).not.toHaveValue(/\{/)
+  // The questions open above the box, every blank with its example in it, and
+  // the picker showing the 서식's default — usable without typing.
+  const imageQuestions = page.getByRole('group', { name: '포스터 시작점 질문' })
+  await expect(imageQuestions.getByLabel('포스터 · 무엇을')).toHaveAttribute('placeholder', '학과 연구 성과 발표회')
+  await imageQuestions.getByLabel('포스터 · 무엇을').fill('연구실 개방 행사')
+  await imageQuestions.getByLabel('포스터 · 분위기').selectOption('밝고 활기찬')
+  await shot(page, '08-image-blanks')
   // Picking a shape and then setting its aspect by hand would be asking twice.
   await expect(page.getByRole('button', { name: '비율 9:16' })).toBeVisible()
   await expect(page.getByRole('button', { name: '스타일 일러스트' })).toBeVisible()
+  // 보낼 때 문장이 된다 — 채운 값으로, 빈 칸은 예시로.
+  let asked = ''
+  await page.route('**/api/sessions/*/images', async (route) => {
+    asked = (route.request().postDataJSON() as { prompt: string }).prompt
+    await route.fulfill({ json: [] })
+  })
+  await page.getByRole('button', { name: '전송' }).click()
+  await expect.poll(() => asked, { timeout: 30_000 }).toMatch(/연구실 개방 행사/)
+  expect(asked).toMatch(/밝고 활기찬/)
+  expect(asked).not.toMatch(/\{/)
 
   // ── video: the same, plus the settings that surface has ─────────────
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   const avGallery = await openGallery(page, ['video-product', 'video-opening'])
   const opener = await findCard(avGallery, '발표 오프닝')
   await expect(opener).toBeVisible({ timeout: 20_000 })
-  await opener.getByLabel('움직임').selectOption('가볍게 떠다니는 입자')
-  await shot(page, '09-video-blanks')
   await opener.getByRole('button', { name: '이 서식으로 시작' }).click()
-
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/가볍게 떠다니는 입자/)
+  const videoQuestions = page.getByRole('group', { name: '발표 오프닝 시작점 질문' })
+  await videoQuestions.getByLabel('발표 오프닝 · 움직임').selectOption('가볍게 떠다니는 입자')
+  await shot(page, '09-video-blanks')
   await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
   await expect(page.getByRole('button', { name: '종류 영상' })).toBeVisible()
-  // And no chip afterwards. An a/v 서식 is spent on the sentence and the chips
-  // it just set — it has no clause to send with the turn, so a badge saying it
-  // is still in force would name a shape nothing carries.
-  await expect(page.getByText('발표 오프닝', { exact: true })).toHaveCount(0)
 
   // ── audio: picking one switches the surface's mode ──────────────────
   const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
   const bed = await findCard(audioGallery, '배경 음악')
   await bed.getByRole('button', { name: '이 서식으로 시작' }).click()
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(/잔잔하고 따뜻한/)
+  await expect(page.getByRole('group', { name: '배경 음악 시작점 질문' })).toBeVisible()
   // A music template on the video mode would generate the wrong thing.
   await expect(page.getByRole('button', { name: '유형 음악' })).toBeVisible()
   await expect(page.getByRole('button', { name: '종류 오디오' })).toBeVisible()
@@ -452,10 +456,9 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
 
   await shot(page, '06-image-gallery')
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
-  await expect(page.getByLabel('프롬프트 입력')).not.toHaveValue('')
-  // Same rule on this surface: the pick is named once, on the chip that clears
-  // it, and not a second time by the empty screen above.
-  await expect(page.getByText('포스터', { exact: true })).toHaveCount(1)
+  // 문장은 상자에 오지 않는다 — 질문이 상자 위에 열린다.
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
+  await expect(page.getByRole('group', { name: '포스터 시작점 질문' })).toBeVisible()
   await expect(page.getByRole('button', { name: '포스터 서식 해제' })).toBeVisible()
 })
 

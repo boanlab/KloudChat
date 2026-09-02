@@ -42,19 +42,10 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   // `startsWith` rather than a regex built from the string: escaping one
   // metacharacter and not the rest is the kind of half-measure that passes
   // until somebody puts a `(` in a fixture.
-  await expect
-    .poll(async () => ((await composer.inputValue()) ?? '').startsWith(mine))
-    .toBe(true)
-  await expect(composer).toHaveValue(/포스터 그림/)
-
-  // And the arriving half is selected, so the one keystroke that takes it back
-  // out takes out exactly what the gallery put in.
-  const selected = await composer.evaluate((el) => {
-    const box = el as HTMLTextAreaElement
-    return box.value.slice(box.selectionStart, box.selectionEnd)
-  })
-  expect(selected).toContain('포스터 그림')
-  expect(selected).not.toContain('골목 어귀')
+  // 쓰던 글은 그대로 남는다. 서식의 문장은 상자에 들어오지 않는다 — 그 서식이
+  // 묻는 것(주제, 분위기)이 상자 위에 질문으로 열리고, 보낼 때 문장이 된다.
+  await expect(composer).toHaveValue(mine)
+  await expect(page.getByRole('group', { name: '포스터 시작점 질문' })).toBeVisible()
 })
 
 /**

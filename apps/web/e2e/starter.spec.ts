@@ -112,7 +112,7 @@ test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async
   // The card asks for what you have to bring, on the card; the prompt it
   // rides in with is not pasted anywhere.
   const card = dialog.locator('div.group', { hasText: '장애 원인 좁히기' }).first()
-  await expect(card.getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
+  await expect(card.getByText('에러 로그')).toBeVisible()
   await card.getByRole('button', { name: /시작점 선택/ }).click()
 
   // Attached, not typed: the framing rides with the turn, and the box asks for
@@ -120,7 +120,8 @@ test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async
   // box is still empty — what it never holds is the framing itself.
   const box = page.getByLabel('프롬프트 입력')
   await expect(box).toHaveValue('')
-  await expect(box).toHaveAttribute('placeholder', /에러 로그, 재현 조건/)
+  // 질문은 상자 위에 따로 있고, 상자는 덧붙일 말을 위한 자리다.
+  await expect(page.getByRole('group', { name: '장애 원인 좁히기 시작점 질문' }).getByLabel('장애 원인 좁히기 · 에러 로그')).toBeVisible()
   await expect(page.getByRole('button', { name: /장애 원인 좁히기 시작점 해제/ })).toBeVisible()
   await expect(page).toHaveURL(/\/new\/chat$/)
 })
