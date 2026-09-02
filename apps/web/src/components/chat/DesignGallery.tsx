@@ -41,22 +41,6 @@ import { useT } from '@/lib/useT'
  * unread would be one nobody could correct. Every value starts at the
  * template's own default, so the card is usable without typing.
  */
-/**
- * 도식 서식의 나머지 빈칸을 요청 끝에 줄로 붙인다.
- *
- * A figure's `example_prompt` is the description alone — the sentence *is*
- * the method. What to highlight and which language the labels are in are
- * instructions to the diagram writer, and they read best as two labelled
- * lines under the paragraph, where the person can still see and change them.
- */
-function trailer(row: DesignTemplateRow, values: Record<string, string>, english: boolean): string {
-  if (!row.figure) return ''
-  const lines = row.arguments
-    .filter((a) => a.name !== 'description' && (values[a.name] ?? '').trim())
-    .map((a) => `${argumentText(a, english).label}: ${values[a.name]}`)
-  return lines.length ? `\n\n${lines.join('\n')}` : ''
-}
-
 function Blanks({
   row,
   english,
@@ -116,7 +100,7 @@ function Blanks({
           </label>
         )
       })}
-      <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values) + trailer(row, values, english))}>
+      <Button size="sm" onClick={() => onPick(row, fillPrompt(prompt, values))}>
         {row.figure ? t('이 설명으로 도식 그리기') : t('이 서식으로 시작')}
       </Button>
     </div>

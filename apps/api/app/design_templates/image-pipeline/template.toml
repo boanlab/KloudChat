@@ -3,7 +3,7 @@ name = "처리 흐름도"
 description = "자료가 단계를 거쳐 결과가 되기까지. 단계마다 이름이 붙어 나옵니다"
 category = "연구"
 fills = ["흐름 설명", "강조할 것", "이름표 언어"]
-example_prompt = "{description}"
+example_prompt = "{description}\n\n강조할 것: {highlight}\n이름표 언어: {language}"
 layouts = ["cover"]
 
 # 도식 경로로 간다 — `image-method/template.toml` 의 설명과 같은 이유다. 흐름도는
@@ -15,7 +15,7 @@ name_en = "Process flow"
 description_en = "Data through its stages to a result, each stage named"
 category_en = "Research"
 fills_en = ["Flow description", "What to highlight", "Label language"]
-example_prompt_en = "{description}"
+example_prompt_en = "{description}\n\nWhat to highlight: {highlight}\nLabel language: {language}"
 
 [defaults]
 aspect = "16:9"

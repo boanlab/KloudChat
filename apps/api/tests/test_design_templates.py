@@ -286,8 +286,11 @@ def test_only_image_templates_hide_a_clause_from_the_composer():
     where the person can read and edit it.
     """
     for template in dt.all_templates():
-        if template.kind == "image":
+        if template.kind == "image" and not template.figure:
             assert template.prompt_suffix.strip(), template.id
+        elif template.kind == "image":
+            # 도식은 그림 모델로 가지 않는다 — 감출 화풍 문구가 없다.
+            assert not template.prompt_suffix, template.id
         else:
             assert not template.prompt_suffix, template.id
 
@@ -1071,11 +1074,12 @@ def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
 def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
     """논문에 들어갈 그림은 그림 모델의 기본값과 다르다.
 
-    A picture model's default is an illustration: saturated, lit, shadowed,
-    and captioned with lettering it renders badly. None of that belongs in a
-    paper. The research family exists to say so, and what it says is the
-    template — so this pins the four clauses that make the difference, rather
-    than pinning prose that will be reworded.
+    A method figure needs its labels, and a picture model cannot spell. So
+    the three that *are* diagrams — 개념도, 처리 흐름도, 방법 구조도 — do not
+    go to the picture model at all: they declare `figure`, take the method as
+    a paragraph, and are written as mermaid with the labels on
+    (`services/diagram.py`). The teaser stays a picture, and keeps the rules
+    a printed illustration needs.
     """
     from app.services import design_templates
 
@@ -1086,55 +1090,47 @@ def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
     }
     assert set(family) == {"image-diagram", "image-method", "image-pipeline", "image-teaser"}
 
-    for template_id, template in family.items():
-        suffix = template.prompt_suffix.lower()
-        # 글자는 사람이 얹는다. A label a picture model writes is a label that
-        # does not match the body text, and in a paper that is worse than none.
-        for banned in ("no text", "no lettering", "no logos"):
-            assert banned in suffix, f"{template_id}: {banned}"
-        # 인쇄되는 도판이다 — 그림자와 광원은 종이에서 지저분해진다.
-        assert "flat even lighting" in suffix, template_id
-        assert "no drop shadows" in suffix, template_id
-        # 요소가 서로 붙지 않아야 읽힌다.
-        assert "clear separation between objects" in suffix, template_id
-        # 글자를 막았으면 형상이 뜻을 날라야 한다.
-        #
-        # 「Edge-Cloud 간 데이터 처리 흐름」을 부탁했더니 빈 둥근 상자 여섯
-        # 개가 나왔다 — 4,479 크레딧을 쓰고. 화풍 지시가 주제를 덮은 것이다:
-        # 「simple blocks」와 「suggest structure rather than drawing a real
-        # labelled diagram」이 있었고, 주제가 말하는 것을 알아볼 수 있게
-        # 그리라는 말은 어디에도 없었다.
-        assert "recognisable objects" in suffix, template_id
-        assert "rather than an empty rectangle" in suffix, template_id
-        # 그리지 말라고 억누르던 문구가 돌아오지 않게.
-        assert "suggest structure rather than" not in suffix, template_id
-        assert "simple blocks" not in suffix, template_id
-        # 고를 것이 있어야 시작점이다: 주제와, 모양과, 결.
-        assert len(template.arguments) == 3, template_id
-        assert template.arguments[0].name == "subject", template_id
-        # 주제를 뺀 나머지는 고르는 값이라 보기가 있어야 한다.
+    figures = {"image-diagram": "concept", "image-pipeline": "flow", "image-method": "method"}
+    for template_id, figure in figures.items():
+        template = family[template_id]
+        assert template.figure == figure, template_id
+        # 그림 프롬프트가 없다 — 도식은 언어 모델이 쓴다.
+        assert not template.prompt_suffix, template_id
+        # 설명은 문단으로 받는다. 다섯 글자 주제와 「결」 고르기가 아니라.
+        assert template.arguments[0].name == "description", template_id
+        assert template.arguments[0].long, template_id
+        # 강조할 것과 이름표 언어는 고르는 값이다.
+        names = [argument.name for argument in template.arguments]
+        assert names == ["description", "highlight", "language"], template_id
         for argument in template.arguments[1:]:
-            assert len(argument.options) >= 3, f"{template_id}.{argument.name}"
+            assert len(argument.options) >= 2, f"{template_id}.{argument.name}"
+        # 채운 값이 전부 요청에 들어간다.
+        for argument in template.arguments:
+            assert f"{{{argument.name}}}" in template.example_prompt, argument.name
+
+    teaser = family["image-teaser"]
+    assert not teaser.figure
+    suffix = teaser.prompt_suffix.lower()
+    for banned in ("no text", "no lettering", "no logos"):
+        assert banned in suffix, f"image-teaser: {banned}"
+    assert "flat even lighting" in suffix
+    assert "no drop shadows" in suffix
 
 
 def test_a_research_figure_prompt_carries_both_halves() -> None:
-    """사람이 쓴 문장과 서식이 붙이는 화풍이 함께 모델에 간다.
+    """사람이 쓴 설명과 서식의 규칙이 함께 모델에 간다.
 
-    The person types the subject; the template says how a paper draws it. If
-    only one half reached the model the figure would be either a description
-    with no style or a style with nothing in it.
+    On the diagram path the person's paragraph is the whole subject and the
+    house rules are the system message. If only one half reached the model
+    the figure would be either a method with no style or a style with nothing
+    in it — and the reply has to come back as a fenced mermaid block, which
+    is the only thing the client knows how to draw.
     """
-    from app.services import design_templates, imagegen
+    from app.services import diagram
 
-    template = design_templates.get("image-method")
-    assert template is not None
-    composed = imagegen.compose_prompt(
-        "제안 모델의 학습 파이프라인 구조를 보여 줘",
-        aspect="16:9",
-        style="미니멀",
-        template=template.prompt_suffix,
-    )
-    assert "제안 모델의 학습 파이프라인" in composed
-    assert "academic paper method figure" in composed
-    # 사람이 쓴 말이 먼저다.
-    assert composed.index("제안 모델") < composed.index("academic paper method figure")
+    messages = diagram._messages("인코더가 입력을 임베딩으로 바꾼다.", "method", "ko")
+    system, user = messages[0]["content"], messages[1]["content"]
+    assert "flowchart" in system and "subgraph" in system
+    assert "인코더가 입력을 임베딩으로 바꾼다." in user
+    # 사람이 쓴 말은 사용자 메시지에, 규칙은 시스템 메시지에 — 섞이지 않는다.
+    assert "subgraph" not in user

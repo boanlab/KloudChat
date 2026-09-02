@@ -3,7 +3,7 @@ name = "방법 구조도"
 description = "논문의 제안 방법을 구성 요소와 흐름으로 그린 그림. 이름표가 붙어 나옵니다"
 category = "연구"
 fills = ["방법 설명", "강조할 것", "이름표 언어"]
-example_prompt = "{description}"
+example_prompt = "{description}\n\n강조할 것: {highlight}\n이름표 언어: {language}"
 layouts = ["cover"]
 
 # 그림 모델이 아니라 도식 경로로 간다.
@@ -25,7 +25,7 @@ name_en = "Method figure"
 description_en = "The proposed method as components and flows, with its labels on"
 category_en = "Research"
 fills_en = ["Method description", "What to highlight", "Label language"]
-example_prompt_en = "{description}"
+example_prompt_en = "{description}\n\nWhat to highlight: {highlight}\nLabel language: {language}"
 
 [defaults]
 aspect = "16:9"
