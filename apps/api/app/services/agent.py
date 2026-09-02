@@ -336,6 +336,9 @@ async def run_turn(
     #: Every URL a tool returned this turn, and everything the model wrote.
     seen_urls: set[str] = set()
     answer_text: list[str] = []
+    #: Searches run this turn, and how many of them found nothing.
+    searches = 0
+    empty_searches = 0
     while True:
         acc: _Accumulator | None = None
         stream_kwargs: dict[str, Any] = {
@@ -543,6 +546,9 @@ async def run_turn(
                 }
             )
             seen_urls.update(_urls_in(result.content))
+            if call["name"] == "web_search":
+                searches += 1
+                empty_searches += int(result.empty)
 
     # 검색에 없던 링크는 그렇다고 말한다.
     #
@@ -553,6 +559,18 @@ async def run_turn(
     # tool returned is in `seen_urls`, so a URL in the answer that is not
     # there is one the model made up or remembered, and it is listed as such.
     answer = "".join(answer_text)
+    if searches and empty_searches == searches and answer.strip():
+        # 검색이 전부 빈손이었으면 답 밑에 그렇다고 적는다.
+        #
+        # The tool told the model to say so; the model, handed a literature
+        # question it knew the answer to, wrote five real papers and forgot.
+        # The reader is the one who has to know that nothing here was checked.
+        note = (
+            "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
+            "서지·수치·최신 사항은 확인이 필요합니다._"
+        )
+        answer_text.append(note)
+        yield {"type": "delta", "text": note}
     unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
     if unverified and seen_urls:
         yield {

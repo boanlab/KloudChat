@@ -158,7 +158,9 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
     if not hits:
-        return ToolResult(content=f"'{query}' 에 대한 검색 결과가 없습니다.", detail="0개 결과")
+        return ToolResult(
+            content=f"'{query}' 에 대한 검색 결과가 없습니다.", detail="0개 결과", empty=True
+        )
     if _off_topic(hits, query):
         return ToolResult(
             content=(
@@ -167,6 +169,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
                 "검색으로 확인하지 못했다고 밝히세요."
             ),
             detail=f"{len(hits)}개 결과 · 모두 무관",
+            empty=True,
         )
 
     # Top few read in full — snippets alone are too thin to answer from. The

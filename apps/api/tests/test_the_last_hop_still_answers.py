@@ -276,3 +276,51 @@ async def test_a_rate_limit_is_retried_before_it_is_reported(monkeypatch) -> Non
     ]
     assert "".join(e["text"] for e in events if e["type"] == "delta") == "답"
     assert len(seen) == 2 and waited == [agent._RETRY_AFTER[0]]
+
+
+@pytest.mark.asyncio
+async def test_an_answer_whose_searches_all_came_back_empty_says_so(monkeypatch) -> None:
+    """검색이 전부 빈손이면 답 밑에 확인하지 못했다고 적힌다."""
+    seen: list[dict] = []
+
+    class _Searching(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response(
+                    [
+                        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1",'
+                        '"function":{"name":"web_search","arguments":"{}"}}]}}]}',
+                        "data: [DONE]",
+                    ]
+                )
+            answer = 'data: {"choices":[{"delta":{"content":"Twenge (2018) 은 ..."}}]}'
+            return _Response([answer, "data: [DONE]"])
+
+    async def client(*_args, **_kwargs):
+        return _Searching(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def search(_args):
+        return ToolResult(content="검색 결과가 질문과 무관한 것뿐입니다", empty=True)
+
+    tool = Tool(
+        name="web_search",
+        description="검색",
+        parameters={"type": "object"},
+        run=search,
+        label="검색",
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "선행연구 정리"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert text.startswith("Twenge (2018)")
+    assert "검색으로 확인하지 못했습니다" in text
