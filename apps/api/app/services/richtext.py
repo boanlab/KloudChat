@@ -322,6 +322,8 @@ def _table(markup: str) -> str:
 
 #: A list opening or closing, so nesting can be counted rather than guessed.
 _LIST_EDGE = re.compile(r"<(/?)(ul|ol)\b[^>]*>", re.I)
+#: The same, for a `<div>` that holds `<div>`s — the strip of figures.
+_DIV_EDGE = re.compile(r"<(/?)div\b[^>]*>", re.I)
 #: An item opening, likewise.
 _ITEM_OPEN = re.compile(r"<li\b[^>]*>", re.I)
 
@@ -425,7 +427,13 @@ _CONSTRUCT = re.compile(
     # it would come back as `1. 자료 수집` — an ordinary list, with the fence
     # and its numbering gone for good on the next save.
     r"<div\b[^>]*\bdata-page-break=(?:\"true\"|'true'|true)[^>]*>\s*</div\s*>"
-    r"|<div\b[^>]*\bclass=\"[^\"]*\bkpi\b[^\"]*\"[^>]*>.*?</div\s*>"
+    # The opening tag only, like `<ul` below and for the same reason. A strip
+    # of figures is a `<div>` whose cells are `<div>`s, so a lazy close lands
+    # on the *first cell's* — the block was cut off after one figure, and every
+    # figure after it came back as loose prose: `**68%**기초 도구 사용 한계`,
+    # which is what the exported .docx and .hwpx then printed. `_balanced`
+    # walks the nesting; the pattern only has to find where the strip starts.
+    r"|<div\b[^>]*\bclass=\"[^\"]*\bkpi\b[^\"]*\"[^>]*>"
     r"|<ol\b[^>]*\bclass=\"[^\"]*\bsteps\b[^\"]*\"[^>]*>.*?</ol\s*>"
     # Ahead of the plain heading and the plain list, both of which live inside
     # a card: matched as those, a grid would come back as a run of `### 제목`
@@ -675,10 +683,15 @@ def _picture(markup: str) -> str:
     return f"![{label}]({src})"
 
 
-def _balanced(fragment: str, start: int) -> int:
-    """Where the list opening at `start` actually closes."""
+def _balanced(fragment: str, start: int, edges: re.Pattern[str] = _LIST_EDGE) -> int:
+    """Where the construct opening at `start` actually closes.
+
+    `edges` matches both halves of the tag pair, with group 1 holding the `/`
+    of a closing tag — so the same walk serves a list holding a list and a
+    `<div>` holding `<div>`s.
+    """
     depth = 0
-    for edge in _LIST_EDGE.finditer(fragment, start):
+    for edge in edges.finditer(fragment, start):
         depth += -1 if edge.group(1) else 1
         if depth == 0:
             return edge.end()
@@ -716,6 +729,13 @@ def to_markdown(fragment: str) -> str:
             stop = _balanced(fragment, match.start())
             rendered = _list(
                 fragment[match.start() : stop], match.group(0).lower() == "<ol"
+            )
+        elif _KPI_OPEN.match(match.group(0)):
+            # Matched as an opening tag, so the whole strip has to be found
+            # before its cells can be read off it.
+            stop = _balanced(fragment, match.start(), _DIV_EDGE)
+            rendered = _pairs_fence(
+                "kpi", fragment[match.start() : stop], r"<div\b[^>]*>(.*?)</div\s*>"
             )
         else:
             rendered = _render(match, notes)
@@ -826,4 +846,13 @@ def normalise(sections: list[dict]) -> list[dict]:
     return out
 
 
-__all__ = ["Cell", "Grid", "as_markdown", "formatted_blocks", "grids", "normalise", "tidy_tables", "to_markdown"]
+__all__ = [
+    "Cell",
+    "Grid",
+    "as_markdown",
+    "formatted_blocks",
+    "grids",
+    "normalise",
+    "tidy_tables",
+    "to_markdown",
+]

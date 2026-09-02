@@ -79,3 +79,56 @@ def test_a_page_with_none_of_them_is_unchanged() -> None:
     plain = "<section><h2>요약</h2><p>한 문단.</p><ul><li>가</li></ul></section>"
     content = page_export.to_sections(plain)[0]["content"]
     assert content == "한 문단.\n\n- 가"
+
+
+def test_an_edited_section_keeps_every_figure_in_the_strip() -> None:
+    """The other reader of the same markup.
+
+    A section touched in the document editor is stored as `format: "html"` and
+    reaches the exporters through `richtext.to_markdown`, not through
+    `page_export`. That reader matched the strip with a lazy `</div>` — and a
+    strip is a `<div>` whose cells are `<div>`s, so it closed on the first
+    cell. One figure came out as a fence and every figure after it as loose
+    prose: `**68%**기초 도구 사용 한계`, run together without so much as a
+    space, which is what the exported .docx and .hwpx printed.
+    """
+    from app.services import richtext
+
+    strip = (
+        '<div class="kpi">'
+        "<div><strong>32%</strong><span>고급 AI 활용 가능</span></div>"
+        "<div><strong>68%</strong><span>기초 도구 사용 한계</span></div>"
+        "<div><strong>4.2</strong><span>월 평균 학습 주기</span></div>"
+        "<div><strong>12</strong><span>주 교육 필요 기간</span></div>"
+        "</div><p>뒤 문단</p>"
+    )
+    markdown = richtext.to_markdown(strip)
+
+    assert markdown.startswith("```kpi\n")
+    fence = markdown.split("```")[1].removeprefix("kpi\n").strip().splitlines()
+    assert fence == [
+        "32% | 고급 AI 활용 가능",
+        "68% | 기초 도구 사용 한계",
+        "4.2 | 월 평균 학습 주기",
+        "12 | 주 교육 필요 기간",
+    ]
+    # Nothing escaped the fence to become prose.
+    assert "**68%**" not in markdown
+    assert "뒤 문단" in markdown
+
+
+def test_two_strips_in_one_section_stay_separate() -> None:
+    """The balanced walk must stop at *this* strip's close, not run to the
+    document's last `</div>` and swallow what is between them."""
+    from app.services import richtext
+
+    markdown = richtext.to_markdown(
+        '<div class="kpi"><div><strong>1</strong><span>가</span></div></div>'
+        "<p>사이 문단</p>"
+        '<div class="kpi"><div><strong>2</strong><span>나</span></div>'
+        "<div><strong>3</strong><span>다</span></div></div>"
+    )
+
+    assert markdown.count("```kpi") == 2
+    assert "사이 문단" in markdown
+    assert "3 | 다" in markdown
