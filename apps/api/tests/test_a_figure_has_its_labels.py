@@ -84,3 +84,70 @@ def test_a_source_without_a_publisher_does_not_fail_the_rewrite() -> None:
 
     block = _refs_block([{"title": "출처 하나", "url": "https://example.org"}])
     assert "출처 하나" in block
+
+
+def test_a_draft_is_cut_along_the_headings_it_was_asked_to_write() -> None:
+    """한 번에 쓴 초안은 목차의 제목 줄에서 잘린다 — 번호·콜론·띄어쓰기가 달라도."""
+    from app.services.report import _split_draft
+
+    draft = (
+        "## 1. 요약\n권고는 교체입니다.\n\n"
+        "## 세 대안의 비교:\n| 기준 | A |\n| --- | --- |\n\n"
+        "### 결론\n이건 소제목.\n"
+        "## 권고안과 다음 단계\n교체를 권고합니다.\n"
+    )
+    parts = _split_draft(draft, ["요약", "세 대안의 비교", "권고안과 다음 단계"])
+    assert parts["요약"] == "권고는 교체입니다."
+    assert parts["세 대안의 비교"].startswith("| 기준 | A |")
+    # 목차에 없는 소제목은 절 안에 굵은 글씨로 남는다.
+    assert "**결론**" in parts["세 대안의 비교"]
+    assert parts["권고안과 다음 단계"] == "교체를 권고합니다."
+
+
+def test_the_numbers_a_report_may_use_are_read_off_the_request() -> None:
+    from app.services.report import _facts_line
+
+    line = _facts_line("유지비(연 380만 원), 교체 견적(2,400만 원), 최근 6개월 4회", [])
+    assert "380만원" in line and "2,400만원" in line and "6개월" in line and "4회" in line
+
+
+def test_sections_named_after_alternatives_fold_into_one_comparison() -> None:
+    from app.services.report import _fold_alternatives
+
+    folded = _fold_alternatives(
+        [
+            "요약",
+            "장애 현황과 결정할 사안",
+            "기존 서버 1년 연장 사용",
+            "전체 서버 교체",
+            "클라우드 마이그레이션",
+            "위험과 남은 문제",
+            "권고안과 다음 단계",
+        ],
+        ["교체", "1년 연장", "클라우드"],
+    )
+    assert folded == [
+        "요약",
+        "장애 현황과 결정할 사안",
+        "대안 비교",
+        "위험과 남은 문제",
+        "권고안과 다음 단계",
+    ]
+    # 비교 절이 이미 있으면 그대로 두고, 대안 이름이 없는 문서는 손대지 않는다.
+    assert _fold_alternatives(["요약", "대안 비교", "권고"], ["교체"]) == [
+        "요약",
+        "대안 비교",
+        "권고",
+    ]
+    assert _fold_alternatives(["요약", "배경", "결론"], []) == ["요약", "배경", "결론"]
+
+
+def test_bullets_that_arrive_as_objects_become_lines() -> None:
+    """모델이 불릿을 `{"left","right"}` 객체로 내면 그 값을 한 줄로 잇는다 —
+    버리면 그 장이 「쓰지 못했습니다」가 된다."""
+    from app.services.deck import _clean_bullets
+
+    out = _clean_bullets(
+        [{"left": "python -m venv .venv", "right": "순수 파이썬"}, ["a", "b"], "- 셋째"]
+    )
+    assert out == ["python -m venv .venv – 순수 파이썬", "a – b", "셋째"]

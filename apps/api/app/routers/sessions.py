@@ -2359,6 +2359,17 @@ async def send_message(
     # default, used only when the session carries none.
     try:
         agent_model, agent_tools, agent_temperature = await agent_settings(db, user, session)
+        # 집 문체를 지키려면 편차를 줄여야 한다.
+        #
+        # A turn with no agent used to send no temperature, and the model
+        # shipped at ~0.7. Same question, same rules, three runs: one in
+        # paragraphs, one in a numbered list with bold labels, one with an
+        # analogy about toy cars and a summary — the rules were followed
+        # about half the time. At 0.4 the same rules held run after run, and
+        # the answers were still written, not stiff. An agent that sets its
+        # own temperature keeps it.
+        if agent_temperature is None:
+            agent_temperature = 0.4
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
     model_id = session.model if auto_turn else payload.model or session.model or agent_model
