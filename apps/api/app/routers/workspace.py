@@ -160,9 +160,7 @@ async def _owned_many(db: DbSession, model, owner_field: str, user: User, ids: l
         return []
     rows = (
         await db.exec(
-            select(model).where(
-                col(model.id).in_(ids), getattr(model, owner_field) == user.id
-            )
+            select(model).where(col(model.id).in_(ids), getattr(model, owner_field) == user.id)
         )
     ).all()
     return list(rows)
@@ -231,9 +229,7 @@ async def _validate_design_system_id(db: DbSession, user: User, design_id: str |
         return
     row = await db.get(DesignSystem, design_id)
     if row is None or (row.owner_id != user.id and not row.shared):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="design_system_not_found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="design_system_not_found")
 
 
 def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | None:
@@ -336,9 +332,7 @@ async def get_project(project_id: str, user: CurrentUser, db: DbSession):
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectOut)
-async def patch_project(
-    project_id: str, payload: ProjectPatch, user: CurrentUser, db: DbSession
-):
+async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUser, db: DbSession):
     project = await _own(db, Project, "user_id", user, project_id)
     changes = payload.model_dump(exclude_unset=True)
     if "skill_ids" in changes:
@@ -459,9 +453,7 @@ async def upload_file(
     response_model=FileOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def add_project_url(
-    project_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession
-):
+async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession):
     """Read a web page now and retain that snapshot as project knowledge."""
     await _own(db, Project, "user_id", user, project_id)
     url = payload.url.strip()
@@ -648,8 +640,7 @@ async def list_artifacts(
         query = query.where(col(Artifact.title).ilike(f"%{q.strip()[:80]}%"))
     if before_at is not None:
         query = query.where(
-            tuple_(col(Artifact.updated_at), col(Artifact.id))
-            < tuple_(before_at, before_id or "")
+            tuple_(col(Artifact.updated_at), col(Artifact.id)) < tuple_(before_at, before_id or "")
         )
     rows = (
         await db.exec(
@@ -761,8 +752,7 @@ async def patch_artifact(
         raise HTTPException(
             status_code=409,
             detail=(
-                "이 결과물은 다른 곳에서 이미 수정되었습니다. "
-                "최신 내용을 받은 뒤 다시 저장하세요."
+                "이 결과물은 다른 곳에서 이미 수정되었습니다. 최신 내용을 받은 뒤 다시 저장하세요."
             ),
         )
 
@@ -843,9 +833,7 @@ async def factcheck_slide(
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
 
-    verdicts, usage = await factcheck.check_slide(
-        slide=target, model=model["id"], api_key=api_key
-    )
+    verdicts, usage = await factcheck.check_slide(slide=target, model=model["id"], api_key=api_key)
     target["factCheck"] = verdicts
     data["slides"] = slides
     artifact.data = data
@@ -1017,9 +1005,7 @@ def _reviewable(artifact: Artifact) -> tuple[str, str]:
         parts = [
             {
                 "heading": s.get("title") or "",
-                "text": " · ".join(
-                    [*(s.get("bullets") or []), s.get("body") or ""]
-                ).strip(" ·"),
+                "text": " · ".join([*(s.get("bullets") or []), s.get("body") or ""]).strip(" ·"),
             }
             for s in (data.get("slides") or [])
         ]
@@ -1054,9 +1040,7 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
         (m for m in catalogue["models"] if "chat" in m["kinds"]),
         key=model_service.fallback_order,
     )
-    session = (
-        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    )
+    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
     model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
         usable[0] if usable else None
     )
@@ -1122,6 +1106,7 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
 #: document stops being something a panel opens quickly.
 _MAX_EMBED_BYTES = 3 * 1024 * 1024
 
+
 async def _picture_bytes(db: DbSession, user: User, artifact_id: str) -> tuple[str, bytes]:
     """The bytes behind an `image` artifact, or an HTTPException saying why not.
 
@@ -1158,9 +1143,7 @@ async def _picture_bytes(db: DbSession, user: User, artifact_id: str) -> tuple[s
 
 
 @router.post("/artifacts/{artifact_id}/slides/image", response_model=ArtifactOut)
-async def add_slide_image(
-    artifact_id: str, payload: SlideImage, user: CurrentUser, db: DbSession
-):
+async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUser, db: DbSession):
     """Puts a picture this workspace already made on one slide of a JSON deck.
 
     The same path the HTML track has, on the track that has no HTML: a deck's
@@ -1204,9 +1187,7 @@ async def add_slide_image(
 
 
 @router.post("/artifacts/{artifact_id}/blocks/image", response_model=ArtifactOut)
-async def add_block_image(
-    artifact_id: str, payload: BlockImage, user: CurrentUser, db: DbSession
-):
+async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUser, db: DbSession):
     """Puts a picture this workspace already made into one block of a page.
 
     The writing model cannot produce a picture and `sanitise` drops every `src`
@@ -1231,9 +1212,7 @@ async def add_block_image(
             status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
         )
     if "html" not in blocks[payload.index]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable")
 
     mime, blob = await _picture_bytes(db, user, payload.artifact_id)
 
@@ -1322,9 +1301,7 @@ async def add_section_image(
         # The same door a hand-edited body goes through on PATCH — see
         # `_clean_report_data`. The picture is trusted and the markup around it
         # is built here, and neither gets to skip it.
-        target["content"] = design_templates.sanitise(
-            f"{body}{figure}", editable_styles=True
-        )
+        target["content"] = design_templates.sanitise(f"{body}{figure}", editable_styles=True)
     else:
         # The alt text is what the exporters print as the caption, so it holds
         # the caption rather than a description of it.
@@ -1350,9 +1327,7 @@ async def add_section_image(
 
 
 @router.post("/artifacts/{artifact_id}/blocks/rewrite", response_model=ArtifactOut)
-async def rewrite_block(
-    artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession
-):
+async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession):
     """Rewrites one block of an HTML artifact and re-renders the file.
 
     Blocks are the source and `content` is what they render to, so this replaces
@@ -1381,18 +1356,14 @@ async def rewrite_block(
         # Written before the blocks kept their markup. Rewriting one would
         # rebuild the document out of the pieces that were kept, silently
         # dropping the rest.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="blocks_not_editable")
 
     catalogue = await model_service.list_models()
     usable = sorted(
         (m for m in catalogue["models"] if template.surface.value in m["kinds"]),
         key=model_service.fallback_order,
     )
-    session = (
-        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    )
+    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
     model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
         usable[0] if usable else None
     )
@@ -1505,9 +1476,7 @@ async def rewrite_section(
     )
     # An artifact carries no model: the session's if it still has one, else the
     # cheapest that can write a report.
-    session = (
-        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    )
+    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
     model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
         usable[0] if usable else None
     )
@@ -1528,7 +1497,7 @@ async def rewrite_section(
 
     try:
         body, usage = await report_service.rewrite_section(
-            request=artifact.title or "",
+            request=str(data.get("request") or artifact.title or ""),
             heading=target.get("heading") or "",
             # The surrounding sections as prose. A rewrite reads them for
             # continuity, and markup in that window is noise it may copy.
@@ -1618,9 +1587,7 @@ async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUs
         (m for m in catalogue["models"] if "slides" in m["kinds"]),
         key=model_service.fallback_order,
     )
-    session = (
-        await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
-    )
+    session = await db.get(ChatSession, artifact.session_id) if artifact.session_id else None
     model = model_service.find(catalogue["models"], (session.model if session else "") or "") or (
         usable[0] if usable else None
     )
@@ -1707,9 +1674,7 @@ async def list_artifact_versions(artifact_id: str, user: CurrentUser, db: DbSess
     "/artifacts/{artifact_id}/versions/{version}",
     response_model=ArtifactVersionDetailOut,
 )
-async def get_artifact_version(
-    artifact_id: str, version: int, user: CurrentUser, db: DbSession
-):
+async def get_artifact_version(artifact_id: str, version: int, user: CurrentUser, db: DbSession):
     """One historical body, fetched only when the user asks to inspect it."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     row = (
@@ -1837,9 +1802,7 @@ async def _shared(db: DbSession, model, user: User, item_id: str):
     if row is None or row.visibility is not Visibility.org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     if row.owner_id == user.id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="already_yours"
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already_yours")
     return row
 
 
@@ -1878,9 +1841,7 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
     edit over there never reaches a procedure somebody is relying on over here.
     Idempotent, so pressing 가져오기 twice is not two rows.
     """
-    mine = list(
-        (await db.exec(select(Skill).where(Skill.owner_id == user.id))).all()
-    )
+    mine = list((await db.exec(select(Skill).where(Skill.owner_id == user.id))).all())
     if (existing := _copy_of(mine, origin)) is not None:
         return existing
 
@@ -1896,9 +1857,7 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
         # a shipped procedure stays 기본, anything a colleague wrote arrives as
         # 워크스페이스 rather than pretending this account authored it.
         source=(
-            SkillSource.built_in
-            if origin.source is SkillSource.built_in
-            else SkillSource.workspace
+            SkillSource.built_in if origin.source is SkillSource.built_in else SkillSource.workspace
         ),
         kinds=list(origin.kinds or []),
         required_tools=list(origin.required_tools or []),
@@ -1920,9 +1879,7 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
 @router.get("/skills", response_model=list[SkillOut])
 async def list_skills(user: CurrentUser, db: DbSession):
     rows = (
-        await db.exec(
-            select(Skill).where(Skill.owner_id == user.id).order_by(col(Skill.name))
-        )
+        await db.exec(select(Skill).where(Skill.owner_id == user.id).order_by(col(Skill.name)))
     ).all()
     return [SkillOut.of(s) for s in rows]
 
@@ -2186,9 +2143,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
             official=agent.owner_id in admins,
             # Only meaningful for somebody else's row, and false on your own so
             # a card never tells you that you have a copy of yourself.
-            installed=(
-                agent.owner_id != user.id and _copy_of(mine, agent) is not None
-            ),
+            installed=(agent.owner_id != user.id and _copy_of(mine, agent) is not None),
         )
         for agent in rows
     ]
@@ -2239,9 +2194,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
     if origin.skill_ids is not None:
         wanted = list(origin.skill_ids)
         rows = (
-            (await db.exec(select(Skill).where(col(Skill.id).in_(wanted)))).all()
-            if wanted
-            else []
+            (await db.exec(select(Skill).where(col(Skill.id).in_(wanted)))).all() if wanted else []
         )
         by_id = {row.id: row for row in rows}
         copied: list[str] = []
@@ -2462,9 +2415,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     is_deck = template.kind == "deck" if template else 'class="slide' in content
 
     if is_deck:
-        slides = page_export.to_slides(
-            content, accent=str((tokens or {}).get("accent") or "")
-        )
+        slides = page_export.to_slides(content, accent=str((tokens or {}).get("accent") or ""))
         if format == "md":
             return _attachment(
                 deck_service.to_markdown(title, slides).encode(),
@@ -2508,25 +2459,19 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
         printed = await printing.to_pdf(content)
         body, media, suffix = (
             printed
-            or report_export.to_pdf(
-                title, sections, tokens=tokens, page_settings=page_settings
-            ),
+            or report_export.to_pdf(title, sections, tokens=tokens, page_settings=page_settings),
             "application/pdf",
             "pdf",
         )
     elif format == "hwpx":
         body, media, suffix = (
-            report_export.to_hwpx(
-                title, sections, tokens=tokens, page_settings=page_settings
-            ),
+            report_export.to_hwpx(title, sections, tokens=tokens, page_settings=page_settings),
             "application/hwp+zip",
             "hwpx",
         )
     elif format == "docx":
         body, media, suffix = (
-            report_export.to_docx(
-                title, sections, tokens=tokens, page_settings=page_settings
-            ),
+            report_export.to_docx(title, sections, tokens=tokens, page_settings=page_settings),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "docx",
         )
@@ -2536,9 +2481,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
 
 
 @router.get("/artifacts/{artifact_id}/export")
-async def export_artifact(
-    artifact_id: str, user: CurrentUser, db: DbSession, format: str = "docx"
-):
+async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, format: str = "docx"):
     """A report, a deck, or an HTML artifact as a file.
 
     Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`.
@@ -2549,9 +2492,7 @@ async def export_artifact(
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable")
 
     if artifact.kind is ArtifactKind.html:
         return await _export_page(artifact, format)
@@ -2600,9 +2541,7 @@ async def export_artifact(
         suffix = "docx"
     elif format == "hwpx":
         # Same sections and structure — see report_export.to_hwpx.
-        body = report_export.to_hwpx(
-            title, sections, tokens=tokens, page_settings=page_settings
-        )
+        body = report_export.to_hwpx(title, sections, tokens=tokens, page_settings=page_settings)
         media = "application/hwp+zip"
         suffix = "hwpx"
     else:
@@ -2648,9 +2587,7 @@ async def list_templates(user: CurrentUser, db: DbSession):
     ids = {t.file_id for t in rows if t.file_id}
     found: dict[str, StoredFile] = {}
     if ids:
-        files = (
-            await db.exec(select(StoredFile).where(col(StoredFile.id).in_(ids)))
-        ).all()
+        files = (await db.exec(select(StoredFile).where(col(StoredFile.id).in_(ids)))).all()
         found = {f.id: f for f in files}
     return [TemplateOut.of(t, found.get(t.file_id or ""), owner_id=user.id) for t in rows]
 
@@ -2750,9 +2687,7 @@ async def _own_or_shared(db: DbSession, user: User, template_id: str) -> Templat
 
 
 @router.patch("/templates/{template_id}", response_model=TemplateOut)
-async def patch_template(
-    template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession
-):
+async def patch_template(template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession):
     template = await _own_or_shared(db, user, template_id)
     fields = payload.model_dump(exclude_unset=True)
     if "shared" in fields:
@@ -2813,9 +2748,7 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
     Charged like any other model call.
     """
     if bool(payload.file_id) == bool(payload.url):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_or_url"
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_or_url")
 
     if payload.file_id:
         stored = await db.get(StoredFile, payload.file_id)
@@ -2899,9 +2832,7 @@ async def create_design(payload: DesignSystemIn, user: CurrentUser, db: DbSessio
 
 
 @router.patch("/designs/{design_id}", response_model=DesignSystemOut)
-async def patch_design(
-    design_id: str, payload: DesignSystemIn, user: CurrentUser, db: DbSession
-):
+async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUser, db: DbSession):
     row = await _own(db, DesignSystem, "owner_id", user, design_id)
     fields = payload.model_dump(exclude_unset=True)
     if "shared" in fields:
@@ -2930,9 +2861,7 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
     """
     row = await _own(db, DesignSystem, "owner_id", user, design_id)
     await db.exec(
-        update(Project)
-        .where(col(Project.design_system_id) == row.id)
-        .values(design_system_id=None)
+        update(Project).where(col(Project.design_system_id) == row.id).values(design_system_id=None)
     )
     await db.delete(row)
     await db.commit()
@@ -2997,9 +2926,7 @@ async def design_template_usage(user: CurrentUser, db: DbSession):
         )
         if mine_only:
             query = query.where(ChatSession.user_id == user.id)
-        counts[key] = {
-            template: total for template, total in await db.exec(query) if template
-        }
+        counts[key] = {template: total for template, total in await db.exec(query) if template}
     return DesignTemplateUsageOut(**counts)
 
 
@@ -3159,9 +3086,7 @@ async def add_agent_file(
     response_model=FileOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def add_agent_url(
-    agent_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession
-):
+async def add_agent_url(agent_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession):
     """A page, read once and shelved as text.
 
     A snapshot, not a subscription — the page can change and this row will not.
@@ -3252,9 +3177,7 @@ async def reindex_agent_knowledge(
         )
     rows = (
         await db.exec(
-            select(StoredFile).where(
-                StoredFile.agent_id == agent_id, StoredFile.user_id == user.id
-            )
+            select(StoredFile).where(StoredFile.agent_id == agent_id, StoredFile.user_id == user.id)
         )
     ).all()
     todo = [r for r in rows if r.text.strip() and (force or r.indexed_at is None)]
@@ -3265,12 +3188,8 @@ async def reindex_agent_knowledge(
     return {"total": len(rows), "attempted": len(todo), "indexed": done}
 
 
-@router.delete(
-    "/agents/{agent_id}/knowledge/{file_id}", status_code=status.HTTP_204_NO_CONTENT
-)
-async def delete_agent_knowledge(
-    agent_id: str, file_id: str, user: CurrentUser, db: DbSession
-):
+@router.delete("/agents/{agent_id}/knowledge/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent_knowledge(agent_id: str, file_id: str, user: CurrentUser, db: DbSession):
     agent = await _own(db, Agent, "owner_id", user, agent_id)
     stored = await db.get(StoredFile, file_id)
     if stored is None or stored.user_id != user.id or stored.agent_id != agent_id:
@@ -3293,9 +3212,7 @@ async def delete_agent_knowledge(
 
 
 @router.patch("/messages/{message_id}/rating", response_model=MessageOut)
-async def rate_message(
-    message_id: str, payload: MessageRatingIn, user: CurrentUser, db: DbSession
-):
+async def rate_message(message_id: str, payload: MessageRatingIn, user: CurrentUser, db: DbSession):
     """Records what the reader thought of one answer, or takes it back.
 
     Ownership goes through the session: a message has no `user_id` of its own,

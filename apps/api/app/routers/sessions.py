@@ -5244,6 +5244,9 @@ async def _run_report(
                             for s in sections
                         ],
                         "sources": sources,
+                        # What the document was asked for, kept with it: a
+                        # section rewritten later is held to the same numbers.
+                        "request": request[:4000],
                         **({"research": research_log} if research_log is not None else {}),
                         "lint": lint.wire(lint.check(lint.from_sections(sections))),
                         # Same snapshot rule as the deck: the exporters read

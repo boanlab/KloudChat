@@ -1369,12 +1369,21 @@ async def rewrite_section(
         role=role,
         blocks=blocks,
         others=_others_line([str(x.get("heading") or "") for x in sections], position),
-        facts=_facts_line(request, sources or []),
+        # The numbers the document already carries are the numbers the rewrite
+        # may use. Read off the title alone, the list came up empty and a
+        # 권고안 that said 연간 120만 원 절감 was rewritten to 「(미정)」.
+        facts=_facts_line(
+            "\n".join([request, *[str(s.get("content") or "") for s in sections]]), sources or []
+        ),
     )
     if note.strip():
         # Last and labelled: an unlabelled sentence appended to a prompt reads
         # as part of the original request.
-        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
+        prompt += (
+            f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}\n"
+            "이유가 형식을 말하면(번호 목록 셋, 표 하나, 세 문장) 그 형식 그대로 쓴다. "
+            "이유에 없는 표·블록을 새로 보태지 말고, 다른 절에 이미 있는 표를 다시 그리지 마라."
+        )
     return await _complete(
         model,
         build_document_messages(SessionKind.report, prompt),

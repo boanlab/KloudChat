@@ -9,6 +9,8 @@ says what it needs before anybody commits.
 
 from __future__ import annotations
 
+import pytest
+
 from app.services import diagram, prompt_templates
 
 
@@ -296,3 +298,31 @@ def test_the_requests_data_table_is_carried_into_the_results() -> None:
     assert _carry_table(request, headings, dict(with_table)) == with_table
     # 요청에 표가 없으면 그대로.
     assert _carry_table("표 없는 요청", headings, dict(drafted)) == drafted
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_may_use_the_numbers_the_document_already_has(monkeypatch) -> None:
+    from app.services import report
+
+    seen: list[str] = []
+
+    async def complete(_model, messages, _key, _max):
+        seen.append(messages[-1]["content"])
+        return "다시 쓴 절", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete", complete)
+    sections = [
+        {"id": "a", "heading": "비용", "content": "시험 기간 운영은 연 1,200만 원이다."},
+        {"id": "b", "heading": "권고안", "content": "대안 1을 권고한다. 연간 120만 원 절감."},
+    ]
+    await report.rewrite_section(
+        request="열람실 야간 운영",
+        heading="권고안",
+        sections=sections,
+        target_id="b",
+        model="m",
+        api_key="k",
+        note="근거를 숫자로 앞에.",
+    )
+    assert "1,200만원" in seen[0] and "120만원" in seen[0]
+    assert "수치가 하나도 없다" not in seen[0]
