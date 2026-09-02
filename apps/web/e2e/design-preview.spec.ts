@@ -69,7 +69,7 @@ test('디자인 편집 화면과 갤러리 카드가 그 디자인을 그대로 
   // was the honest signal. The previews went with the seeds they were drawn
   // from, and the design now reaches the document rather than a thumbnail of
   // it: the file the 서식 hands over carries it, and so does the page view.
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').getByRole('button').first()).toBeVisible({
     timeout: 20_000,

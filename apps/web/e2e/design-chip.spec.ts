@@ -63,7 +63,7 @@ async function wearing(
 
 /** The gallery card for one 서식, once its preview has had time to arrive. */
 async function card(page: Page, name: string) {
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   const found = page.getByRole('dialog').locator('div.group', { hasText: name })
   await expect(found).toBeVisible({ timeout: 20_000 })
   return found
@@ -171,7 +171,7 @@ test('이미지 서식은 그 그림에서 끝나고, 남은 옵션은 누가 �
 
   // Setting one by hand makes them the person's own, and the name goes with it.
   await page.getByRole('button', { name: '장수 1장' }).click()
-  await page.getByRole('menuitem', { name: '2장' }).click()
+  await page.getByRole('menuitemcheckbox', { name: /2장/ }).click()
   await expect(page.getByText('포스터 서식이 정한 값')).toHaveCount(0)
 })
 

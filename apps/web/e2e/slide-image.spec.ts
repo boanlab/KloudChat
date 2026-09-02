@@ -136,6 +136,7 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   const dialog = page.getByRole('dialog')
   // The second slide: the picture belongs to the one being shown.
   await dialog.getByRole('button', { name: '다음 장' }).click()
+  await dialog.getByRole('tab', { name: '삽입' }).click()
   await dialog.getByRole('button', { name: '그림 넣기' }).click()
   await page.getByRole('button', { name: pictureTitle, exact: true }).click()
   await page.getByLabel('설명').fill('그림 1. 슬라이드')
@@ -156,6 +157,7 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   expect(slides[0].image).toBeUndefined()
 
   // ── and it leaves in the file ───────────────────────────────────────
+  await dialog.getByRole('tab', { name: '파일' }).click()
   const saved = page.waitForEvent('download', { timeout: 60_000 })
   await dialog.getByRole('button', { name: '내보내기' }).click()
   await page.getByRole('menuitem', { name: 'PowerPoint' }).click()

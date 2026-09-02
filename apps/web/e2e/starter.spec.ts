@@ -72,7 +72,11 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
   for (const id of attached) expect(ids.has(id), '연결된 스킬이 존재하지 않습니다').toBe(true)
 
   // And each skill carries a procedure, not just a title.
-  for (const skill of catalogue) {
+  // Personal/shared rows may intentionally be a one-line instruction. The
+  // shipped official catalogue is what promises a complete procedure.
+  for (const skill of catalogue.filter((s: { official?: boolean; catalogKey?: string | null }) =>
+    s.official || s.catalogKey,
+  )) {
     expect(skill.body.length, `${skill.name} 내용 없음`).toBeGreaterThan(40)
     expect(skill.whenToUse.length, `${skill.name} 사용 시점 없음`).toBeGreaterThan(0)
   }
@@ -102,7 +106,7 @@ test('시작점을 고르면 입력창은 비어 있고 칩만 붙는다', async
   // 은 표면의 종류로 갈리므로 챗에서도 같다.
   await page.goto('/new/chat')
 
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '시작점 고르기' }).click()
   // The card shows what you have to bring, not the prompt it will paste.
   await expect(page.getByRole('dialog').getByText('장애 원인 좁히기')).toBeVisible()
   await expect(page.getByRole('dialog').getByText('에러 로그', { exact: true })).toBeVisible()

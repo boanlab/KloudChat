@@ -17,6 +17,9 @@ test('에이전트로 시작하면 그 에이전트가 화면의 주어가 된�
   await signIn(page)
 
   await page.goto('/agents')
+  if ((await page.getByRole('button', { name: '실행' }).count()) === 0) {
+    await page.getByRole('tab', { name: /스토어/ }).click()
+  }
   const run = page.getByRole('button', { name: '실행' }).first()
   await expect(run).toBeVisible({ timeout: 30_000 })
   await run.click()

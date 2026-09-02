@@ -35,18 +35,22 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
 
   // It reaches the gallery, where it is marked as everybody's.
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   // Searched for. The gallery is paged four to a screen, so a card is on some
   // page rather than on the page.
-  await page.getByLabel('서식 검색').fill(title)
-  // A sentence card is one button, not a panel with a button inside it: the
-  // two pickers were merged and a shared 시작점 now sits in the 서식 grid.
-  const card = page.getByRole('dialog').getByRole('button').filter({ hasText: title })
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(title)
+  // A 시작점 is a panel with its own button now — it grew a 준비할 자료 list
+  // and a 실제 작업 방식 보기 fold, and neither of those belongs inside a
+  // control you press.
+  const card = page.getByRole('dialog').locator('.grid > *').filter({ hasText: title })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await expect(card).toContainText('공용')
 
   // Picking it works like any other card.
-  await card.click()
+  // By its accessible name, which carries the 시작점's own title — the visible
+  // words on every card are the same three, so anything matching those picks
+  // whichever card sorts first.
+  await page.getByRole('button', { name: `${title} 시작점 선택` }).click()
   await expect(page.getByRole('button', { name: `${title} 시작점 해제` })).toBeVisible()
 
   // Corrected from the same screen it was added on. This is the whole point of
@@ -61,11 +65,11 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
   await expect(section.locator('li', { hasText: fixed })).toBeVisible({ timeout: 20_000 })
   // Still shared, not quietly turned private by the edit.
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '서식 고르기' }).click()
-  await page.getByLabel('서식 검색').fill(fixed)
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(fixed)
   // `filter`, not a name regex: the revised title ends in "(개정)" and those
   // are regex metacharacters — the pattern matched a group, never the words.
-  const revised = page.getByRole('dialog').getByRole('button').filter({ hasText: fixed })
+  const revised = page.getByRole('dialog').locator('.grid > *').filter({ hasText: fixed })
   await expect(revised).toBeVisible({ timeout: 20_000 })
   await expect(revised).toContainText('공용')
 

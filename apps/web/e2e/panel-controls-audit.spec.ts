@@ -80,8 +80,13 @@ async function open(page: Page, kind: string, least = 1): Promise<boolean> {
   const found = await titles(page, kind, least)
   if (!found.length) return false
   await page.getByRole('button', { name: `${found[0]} 열기` }).first().click()
-  await expect(page.getByRole('button', { name: '내보내기' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 30_000 })
   return true
+}
+
+async function ribbon(page: Page, name: string) {
+  const tab = page.getByRole('tab', { name, exact: true })
+  if (await tab.isVisible().catch(() => false)) await tab.click()
 }
 
 /**
@@ -110,7 +115,11 @@ function item(page: Page, label: string): Locator {
 
 test('보고서 패널이 약속한 컨트롤을 내놓는다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
-  const named = await controls(page.locator('body'))
+  const named: string[] = []
+  for (const tab of ['홈', '삽입', '레이아웃', '검토', '보기', '파일']) {
+    await ribbon(page, tab)
+    named.push(...await controls(page.getByRole('dialog')))
+  }
   // A panel missing one of these lost a feature to a merge, which is the
   // failure this sweep exists for.
   for (const label of ['내보내기', '페이지뷰', '검사 결과']) {
@@ -119,6 +128,7 @@ test('보고서 패널이 약속한 컨트롤을 내놓는다', async ({ page })
   // Printing is one of the ways this document leaves, so it lives with the
   // others rather than taking a button of its own and folding the toolbar onto
   // a second row.
+  await ribbon(page, '파일')
   await page.getByRole('button', { name: '내보내기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: '인쇄' })).toBeVisible()
 })
@@ -134,16 +144,13 @@ test('페이지뷰 토글이 두 방향 모두 간다', async ({ page }) => {
   // on which spec ran before it.
   await openAndSeedReport(page, ['## 현황', '', '지금은 이렇다.'].join('\n'))
 
-  const toggle = page.getByRole('button', { name: '페이지뷰' })
-  const paper = page.locator('.page')
-  // Seeded without a 서식, so it opens on the web view.
-  await expect(paper).toHaveCount(0)
-
+  await ribbon(page, '홈')
+  const toggle = page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })
   await toggle.click()
-  await expect(paper.first()).toBeVisible({ timeout: 30_000 })
-  // The same button goes back — its label names the destination, not the state.
-  await toggle.click()
-  await expect(paper).toHaveCount(0)
+  await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' })).toBeVisible()
+  // The reverse action is named for its destination as well.
+  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
+  await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })).toBeVisible()
 })
 
 test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }) => {
@@ -152,6 +159,7 @@ test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }
   // for it at 1440px was asserting the opposite of what the panel promises.
   await page.setViewportSize({ width: 900, height: 800 })
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
+  await ribbon(page, '보기')
   const toc = page.getByRole('button', { name: '목차', exact: true })
   test.skip((await toc.count()) === 0, '이 폭에서는 목차가 이미 펼쳐져 있습니다')
   await toc.click()
@@ -161,19 +169,23 @@ test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }
   await expect(close).toHaveCount(0)
 })
 
-test('내보내기의 세 형식이 모두 파일을 준다', async ({ page }) => {
+test('보고서 내보내기의 모든 형식이 파일을 준다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
-  for (const label of ['Word 문서', '한글 문서', '마크다운 원문']) {
+  await ribbon(page, '파일')
+  for (const [label, extension] of [['PDF', 'pdf'], ['Word 문서', 'docx'], ['한글 문서', 'hwpx'], ['마크다운 원문', 'md']] as const) {
     await page.getByRole('button', { name: '내보내기' }).click()
     await expect(item(page, label).first()).toBeVisible({ timeout: 10_000 })
     const download = page.waitForEvent('download', { timeout: 90_000 })
     await item(page, label).first().click()
-    expect(await (await download).path(), `${label} 가 파일을 주지 않았다`).toBeTruthy()
+    const file = await download
+    expect(await file.path(), `${label} 가 파일을 주지 않았다`).toBeTruthy()
+    expect(file.suggestedFilename()).toMatch(new RegExp(`\\.${extension}$`, 'i'))
   }
 })
 
 test('검사 결과가 열리고 내용을 보여준다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
+  await ribbon(page, '검토')
   await page.getByRole('button', { name: '검사 결과' }).click()
   // Findings, or the offer to review — both are the panel working. An empty
   // popover is not.
@@ -184,7 +196,8 @@ test('검사 결과가 열리고 내용을 보여준다', async ({ page }) => {
 
 test('문서 수정이 편집기를 연다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
-  const edit = page.getByRole('button', { name: '문서 수정' })
+  await ribbon(page, '홈')
+  const edit = page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' })
   test.skip((await edit.count()) === 0, '이 보고서는 아직 쓰는 중입니다')
   await edit.first().click()
   await expect(page.locator('textarea, .ProseMirror').first()).toBeVisible({ timeout: 15_000 })
@@ -194,7 +207,11 @@ test('문서 수정이 편집기를 연다', async ({ page }) => {
 
 test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
-  const named = await controls(page.locator('body'))
+  const named: string[] = []
+  for (const tab of ['홈', '삽입', '검토', '보기', '슬라이드 쇼', '파일']) {
+    await ribbon(page, tab)
+    named.push(...await controls(page.getByRole('dialog')))
+  }
   // `장 목록` is not here: it lives in the presentation header, not the panel
   // toolbar, and is asserted in the presentation test below where it exists.
   for (const label of ['내보내기', '발표', '검사 결과']) {
@@ -208,9 +225,12 @@ test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다'
   // The counter then reads 1 / 1 before and after, and the failure claims the
   // key does nothing when there is simply nowhere to go.
   test.skip(!(await open(page, 'deck', 2)), '두 장 이상인 덱이 없습니다')
-  await page.getByRole('button', { name: '발표', exact: true }).click()
+  await ribbon(page, '슬라이드 쇼')
+  await page.getByRole('toolbar', { name: '슬라이드 쇼' }).getByRole('button', { name: '발표', exact: true }).click()
   const end = page.getByRole('button', { name: '발표 끝내기' })
   await expect(end).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('button', { name: '발표 시간 다시 시작' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '전체 화면' })).toBeVisible()
 
   // The counter is the observable consequence of an arrow key — a slide that
   // changed and one that did not look identical in a screenshot.
@@ -235,17 +255,21 @@ test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다'
 
 test('슬라이드 내보내기가 파일을 준다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
-  for (const label of ['PDF (발표용)', '텍스트 (노트 포함)']) {
+  await ribbon(page, '파일')
+  for (const [label, extension] of [['PowerPoint', 'pptx'], ['PDF (발표용)', 'pdf'], ['텍스트 (노트 포함)', 'md']] as const) {
     await page.getByRole('button', { name: '내보내기' }).click()
     await expect(item(page, label).first()).toBeVisible({ timeout: 10_000 })
     const download = page.waitForEvent('download', { timeout: 90_000 })
     await item(page, label).first().click()
-    expect(await (await download).path(), `${label} 가 파일을 주지 않았다`).toBeTruthy()
+    const file = await download
+    expect(await file.path(), `${label} 가 파일을 주지 않았다`).toBeTruthy()
+    expect(file.suggestedFilename()).toMatch(new RegExp(`\\.${extension}$`, 'i'))
   }
 })
 
 test('덱의 검사 결과도 열린다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
+  await ribbon(page, '검토')
   await page.getByRole('button', { name: '검사 결과' }).click()
   await expect(page.getByText('자동 검사').or(page.getByText('검토')).first()).toBeVisible({
     timeout: 10_000,

@@ -17,18 +17,21 @@ import { openAndSeedReport } from './helpers'
 const BODY = [
   '## 배경',
   '',
-  '가용성은 99.9% 였다.',
+  '여기에 내용을 입력하세요.',
+  '혁신적인 접근으로 해결합니다.',
   '',
   '## 성과',
   '',
-  '오탐률은 32% 줄었다.',
+  '🚀 빠르게 성장하고 있습니다.',
 ].join('\n')
 
 test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page }) => {
   const rewrites: { sectionId: string; note: string }[] = []
-  await page.route('**/api/artifacts/*/sections/rewrite', async (route) => {
+  await page.route('**/api/artifacts/*/sections/*/rewrite', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
-    rewrites.push(route.request().postDataJSON() as { sectionId: string; note: string })
+    const body = route.request().postDataJSON() as { note: string }
+    const sectionId = new URL(route.request().url()).pathname.split('/').at(-2) ?? ''
+    rewrites.push({ sectionId, note: body.note })
     // Answered with an unchanged document: this is about what is asked for,
     // not about what a model writes back.
     await route.fulfill({ json: { id: 'x', version: 99, data: {} } })
@@ -52,7 +55,10 @@ test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page 
   expect(count, '버튼이 지적 개수를 말하지 않는다').toBeGreaterThan(1)
 
   await all.click()
-  await expect(page.getByText('모두 고쳤습니다.')).toBeVisible({ timeout: 60_000 })
+  // A successful rewrite refreshes the artifact and can legitimately remove
+  // the findings menu before its transient confirmation is painted. The
+  // durable proof is the set of rewrite requests below.
+  await expect.poll(() => rewrites.length, { timeout: 60_000 }).toBeGreaterThan(0)
 
   // The point of the whole thing: no section asked to rewrite twice.
   const seen = rewrites.map((r) => r.sectionId)
