@@ -27,7 +27,7 @@ import re
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import arithmetic, settings_store
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +62,9 @@ _PROMPT = """너는 이 문서를 쓰지 않은 검토자다. 아래 기준으�
 - message 는 한 문장. 무엇이 문제인지와 어떻게 고칠지를 함께 적어라.
   "개선이 필요하다" 처럼 무엇을 하라는지 알 수 없는 말은 쓰지 마라.
 - 문서에 없는 내용을 지적하지 마라. 읽은 것에 대해서만 쓴다.
+- **산수는 지적하지 마라.** 문서의 식은 따로 기계가 검산한다. 「차액 계산이 맞지
+  않는다」「합산 값이 다르다」 같은 지적은 네가 틀리는 자리다. 식이 없는 주장에
+  근거가 없다는 지적은 해도 된다.
 
 JSON 객체로만 답하라.
 예:
@@ -76,6 +79,13 @@ JSON 객체로만 답하라.
 
 문서:
 {body}"""
+
+
+#: A finding that says the document's sums are off — the one kind the
+#: checker beside this is better at, and the one kind dropped when it disagrees.
+_ARITHMETIC_CLAIM = re.compile(
+    r"(계산|합산|차액|곱|산출)[^.]{0,40}(일치하지|맞지 않|다르|틀리|오류)"
+)
 
 
 class CritiqueError(RuntimeError):
@@ -226,11 +236,17 @@ async def review(
         raise CritiqueError("검토 결과에 점수가 없습니다 — 다시 요청해 보세요.") from None
 
     findings = []
+    # 산수 지적은 검산기가 틀렸다고 한 것만 남긴다. The reviewer flagged
+    # 3,540 − 2,232 = 1,308 as a mismatch; `services/arithmetic` checked every
+    # equation on the page and found none wrong, so that row is dropped.
+    sums_wrong = bool(arithmetic.findings(body))
     for raw in (data.get("findings") or [])[:MAX_FINDINGS]:
         if not isinstance(raw, dict):
             continue
         message = str(raw.get("message") or "").strip()
         if not message:
+            continue
+        if not sums_wrong and _ARITHMETIC_CLAIM.search(message):
             continue
         severity = str(raw.get("severity") or "").upper()
         findings.append(
