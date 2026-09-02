@@ -413,6 +413,31 @@ def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
     return True
 
 
+_QUANTITY = re.compile(
+    r"\d[\d,.]*\s*(?:만|억|천)?\s*(?:개소|개월|시간|퍼센트|명|분|초|일|주|년|월|회|건|대|개|석|층|원|%|"
+    r"km|kg|m|cm|mm|㎡|Hz|kHz|V|A|W)"
+)
+
+
+def _unrequested_quantity(text: str, request: str) -> bool:
+    """A number with a unit the request never gave — 「강의실 11개소」 for a
+    request that said 11월, 「10분 간격」 for one that said 10분 발표.
+
+    Bare digits were the check, and 11 was in the request, so 11개소 passed.
+    The unit is what makes a number a fact, so it is checked with the unit.
+    """
+    compact = re.sub(r"\s+", "", request)
+    for m in _QUANTITY.finditer(text):
+        token = re.sub(r"\s+", "", m.group(0))
+        if re.fullmatch(r"\d{4}년", token) or token in compact:
+            continue
+        # 「2,400만원」 in the text and 「2,400만 원」 in the request.
+        if token.replace(",", "") in compact.replace(",", ""):
+            continue
+        return True
+    return False
+
+
 def _moment_in_request(moment: str, request: str) -> bool:
     """Whether a timeline's 'when' was given — a date the request has, or its words."""
     compact = re.sub(r"\s+", "", request)
@@ -476,6 +501,15 @@ def _split_deck_draft(
         ):
             row = {k: v for k, v in row.items() if k != "chart"}
             row["layout"] = "bullets"
+        # 요청에 없는 수량으로 채운 항목은 뺀다 — 둘 이상 남을 때만. 캡스톤 발표가
+        # 「강의실 11개소를 선정」「10분 간격으로 수집」을 계획으로 내놓았다; 11은
+        # 11월에서, 10은 10분 발표에서 온 숫자다.
+        if request_text and isinstance(row.get("bullets"), list):
+            sure_bullets = [
+                b for b in row["bullets"] if not _unrequested_quantity(str(b), request_text)
+            ]
+            if 2 <= len(sure_bullets) < len(row["bullets"]):
+                row = {**row, "bullets": sure_bullets}
         # 요청에 없는 시점으로 채운 timeline 은 bullets 로 내린다. 「2027년 1월
         # 1일 발효」 하나가 요청에 있었고, 「매주 월요일 제출」「분기별 점검」 넷이
         # 그 뒤에 따라왔다 — 절차를 지어내 칸을 채운 것이다.
@@ -1439,7 +1473,10 @@ async def _write_slides(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        drafted = _split_deck_draft(draft_text, slides, _facts_set(request), request)
+        # The request and what was attached to it: a number the 녹취 gave is
+        # a number the deck may use.
+        given = "\n".join([request, *(untrusted_context or [])])
+        drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
         # 같은 사실을 다른 모양으로 되풀이한 장은 뺀다.
         retold = _retold(slides, drafted)
         if retold:
@@ -1595,7 +1632,7 @@ async def _write_slides(
         # 장별 경로에도 같은 검증. 초안이 빠뜨린 장을 이쪽이 쓰는데, 여기서
         # 지어낸 「0.8초 | 파일 파싱 속도」가 그대로 화면에 올라갔다.
         if index not in drafted:
-            facts = _facts_set(request)
+            facts = _facts_set("\n".join([request, *(untrusted_context or [])]))
             if data.get("metrics") and not _numbers_come_from(
                 [str(m[0]) for m in data["metrics"] if isinstance(m, list) and m], facts
             ):

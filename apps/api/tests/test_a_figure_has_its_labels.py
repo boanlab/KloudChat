@@ -419,3 +419,20 @@ def test_an_english_question_puts_the_english_rule_in_the_chat_system_turn() -> 
     assert "entire answer in English" in messages[0]["content"]
     korean = build_messages(SessionKind.chat, history[:1])
     assert "in English" not in korean[0]["content"].split("글 쓰는 법")[0]
+
+
+def test_a_bullet_with_a_quantity_the_request_never_gave_is_dropped() -> None:
+    from app.services.deck import _split_deck_draft, _unrequested_quantity
+
+    request = "캡스톤 중간발표 10분 슬라이드. 센서 3종 연동 완료, 대시보드 70%, 11월 말 시연."
+    assert _unrequested_quantity("교내 강의실 11개소를 선정하여 설치합니다", request)
+    assert _unrequested_quantity("10분 간격으로 데이터를 수집합니다", request) is False
+    assert not _unrequested_quantity("센서 3종 연동을 완료했습니다", request)
+    assert not _unrequested_quantity("2026년 계획", request)
+    slides = [{"title": "다음 단계", "layout": "bullets"}]
+    draft = (
+        '{"slides":[{"title":"다음 단계","layout":"bullets","bullets":['
+        '"11월 시연 준비","교내 강의실 11개소 선정","대시보드 70% → 완성"]}]}'
+    )
+    out = _split_deck_draft(draft, slides, set(), request)
+    assert out[0]["bullets"] == ["11월 시연 준비", "대시보드 70% → 완성"]
