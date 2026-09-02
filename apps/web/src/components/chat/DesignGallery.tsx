@@ -8,7 +8,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Modal } from '@/components/ui'
 import {
   argumentText,
@@ -123,9 +123,9 @@ type Sentence = {
   own: boolean
   /** 업무별 탐색을 위한 분류. 개인 시작점에는 없을 수 있다. */
   group: string
+  /** The 서식 this job comes out wearing, or `''` when it has no fixed shape. */
+  renderTemplateId: string
 }
-
-type GalleryTab = 'starting-point' | 'format'
 
 /**
  * Whether picking a sentence fills the composer or rides with the turn.
@@ -171,6 +171,58 @@ type Card = {
  * and writing one here would put words in the reviewer's mouth. `lang` says
  * which language it is, so a browser breaks its lines as Korean.
  */
+
+/**
+ * The 서식 itself, miniature.
+ *
+ * Seventeen 서식 differ almost entirely in CSS, and text on a card cannot show
+ * CSS — so the card shows the finished thing, shrunk. sandbox with no
+ * permissions: nothing in a card is meant to be clicked, and the route is
+ * public static.
+ *
+ * The scale is measured rather than written down. A fixed `scale(0.39)` is a
+ * scale for one card width, and the card is a grid cell — at 1440px it is
+ * 480px wide, and a 820px page shrunk by 0.39 covers 320 of them, leaving a
+ * third of every card blank. Measured against the window it goes in, the page
+ * fills the card at any width the grid hands it.
+ */
+function Thumbnail({ id, deck }: { id: string; deck: boolean }) {
+  const window_ = useRef<HTMLDivElement>(null)
+  // Decks are wide, documents are tall; both are shown from the top.
+  const width = deck ? 1280 : 820
+  const [scale, setScale] = useState(0)
+
+  useEffect(() => {
+    const node = window_.current
+    if (!node) return
+    const fit = () => setScale(node.clientWidth / width)
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [width])
+
+  return (
+    <div
+      ref={window_}
+      className="relative h-28 shrink-0 overflow-hidden border-b border-line bg-elevated"
+      aria-hidden="true"
+    >
+      <iframe
+        src={`/api/design-templates/${id}/preview`}
+        sandbox=""
+        tabIndex={-1}
+        loading="lazy"
+        title=""
+        className="pointer-events-none absolute left-0 top-0 origin-top-left"
+        // Hidden until measured: drawn at scale 1 for even one frame, an 820px
+        // page paints over the card beside it.
+        style={{ width, height: 448, transform: `scale(${scale})`, visibility: scale ? 'visible' : 'hidden' }}
+      />
+    </div>
+  )
+}
+
 function Checks({ checks }: { checks: string[] }) {
   const t = useT()
   if (checks.length === 0) return null
@@ -243,32 +295,7 @@ export function DesignTemplateCard({
         chosen ? 'border-accent' : 'border-line hover:border-line-strong',
       )}
     >
-      {row.hasPreview && (
-        /* The 서식 itself, miniature. Seventeen 서식 differ almost entirely
-           in CSS, and text on a card cannot show CSS — so the card shows the
-           finished thing, shrunk. A fixed window with the full page scaled
-           into it: decks are wide, documents are tall, and the window is the
-           card's, not the content's. sandbox with no permissions — nothing in
-           a card is meant to be clicked, and the route is public static. */
-        <div
-          className="relative h-28 shrink-0 overflow-hidden border-b border-line bg-elevated"
-          aria-hidden="true"
-        >
-          <iframe
-            src={`/api/design-templates/${row.id}/preview`}
-            sandbox=""
-            tabIndex={-1}
-            loading="lazy"
-            title=""
-            className="pointer-events-none absolute left-0 top-0 origin-top-left"
-            style={
-              row.kind === 'deck'
-                ? { width: '1280px', height: '448px', transform: 'scale(0.25)' }
-                : { width: '820px', height: '448px', transform: 'scale(0.39)' }
-            }
-          />
-        </div>
-      )}
+      {row.hasPreview && <Thumbnail id={row.id} deck={row.kind === 'deck'} />}
       {/* 가운데는 스크롤하고 발치는 고정한다. 행 높이는 격자가 정하므로,
           펼친 점검 목록처럼 행보다 큰 내용은 여기 안에서 흘러야 한다 —
           카드째 잘리면 시작 버튼이 사라지고, 카드째 늘리면 쪽 높이가 흔들린다. */}
@@ -370,7 +397,13 @@ export function DesignGalleryModal({
   onClose: () => void
 }) {
   const t = useT()
-  const [tab, setTab] = useState<GalleryTab>(kind === 'chat' ? 'starting-point' : 'format')
+  // 이 대화상자는 이제 한 가지만 묻는다: 무슨 일을 시작할 것인가.
+  //
+  // 결과 서식 was the other tab, and asking it separately meant asking about
+  // typography of somebody who came to write an incident report. A 시작점
+  // brings the shape its job comes in; a job with no fixed shape leaves the
+  // surface to choose one from the subject. The whole 서식 catalogue is still
+  // its own screen for anybody who wants to browse it — /designs.
   const [category, setCategory] = useState<string | 'all'>('all')
   const rows = useDesignTemplates(open)
   const start = useStartTemplate()
@@ -382,7 +415,10 @@ export function DesignGalleryModal({
 
   const english = currentLang() === 'en'
   const forSurface = useMemo(
-    () => rows.filter((r) => r.surface === kind).map((r) => ({ row: r, text: templateText(r, english) })),
+    () =>
+      rows
+        .filter((r) => r.surface === kind)
+        .map((r) => ({ row: r, text: templateText(r, english) })),
     [rows, kind, english],
   )
 
@@ -464,6 +500,7 @@ export function DesignGalleryModal({
           shared: row.shared,
           own: row.mine !== false,
           group: row.group || '내 시작점',
+          renderTemplateId: row.renderTemplateId || '',
         })),
       ...saved
         .filter((row) => row.kind === kind)
@@ -478,15 +515,11 @@ export function DesignGalleryModal({
           // The built-in catalogue is the product's, not anybody's to edit.
           own: false,
           group: row.group || '기본',
+          renderTemplateId: row.renderTemplateId || '',
         })),
     ],
     [mine, saved, kind],
   )
-  // Media starting points used to repeat the same cover/clip presets already
-  // offered as formats. Do not leave an empty conceptual lane behind after
-  // removing those duplicates. A person's own row can still bring the lane
-  // back, and chat always owns this lane because it has no result format.
-  const hasStartingPoints = kind === 'chat' || sentences.length > 0
   /*
    * What this chip gathers: the starting points somebody saved, beside the
    * shipped 서식 categories. It read 내 문장 — "my sentences" — which names
@@ -494,17 +527,31 @@ export function DesignGalleryModal({
    * oddly next to 업무 · 학업 · 연구. The cards under it already say
    * 시작점으로 붙이기, so the chip says the same word.
    */
+  /**
+   * 이 표면에서 시작점 노릇을 하는 것.
+   *
+   * On 챗 · 보고서 · 슬라이드 a 시작점 is a job and a 서식 is the shape it
+   * comes in, so the cards are the jobs and each one names its own shape.
+   *
+   * On 이미지 and 오디오/동영상 there is no such split: the 서식 *is* the job —
+   * 방법 구조도, 티저 그림, 포스터 — and its example sentence is the prompt.
+   * Those surfaces ship no 시작점 at all, so a dialogue that only ever draws
+   * 시작점 came up empty on them: 「조건에 맞는 시작점이 없습니다」 on a screen
+   * with six 서식 behind it.
+   */
+  const formatsAreTheJobs = sentences.length === 0 && forSurface.length > 0
+
   const categories = useMemo(
     () =>
-      tab === 'format'
+      formatsAreTheJobs
         ? [...new Set(forSurface.map((c) => c.text.category))]
         : [...new Set(sentences.map((row) => row.group))],
-    [tab, forSurface, sentences],
+    [formatsAreTheJobs, forSurface, sentences],
   )
-  const visible =
-    category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
   const visibleSentences =
     category === 'all' ? sentences : sentences.filter((row) => row.group === category)
+  const visibleFormats =
+    category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
 
   /**
    * The two halves as one list, so a page can be cut across both.
@@ -516,8 +563,8 @@ export function DesignGalleryModal({
    */
   const cards: Card[] = useMemo(
     () =>
-      tab === 'format'
-        ? visible.map(({ row, text }) => ({
+      formatsAreTheJobs
+        ? visibleFormats.map(({ row, text }) => ({
             key: row.id,
             design: row,
             words: `${text.name} ${text.description} ${text.category} ${text.fills.join(' ')}`,
@@ -527,7 +574,7 @@ export function DesignGalleryModal({
             sentence: row,
             words: `${row.title} ${row.description} ${row.group} ${row.fills.join(' ')}`,
           })),
-    [tab, visible, visibleSentences],
+    [formatsAreTheJobs, visibleFormats, visibleSentences],
   )
 
   const [query, setQuery] = useState('')
@@ -575,6 +622,18 @@ export function DesignGalleryModal({
         fills: row.fills,
       })
     setPendingAttachment(row.form)
+    // 그 일이 입고 나올 모양까지 함께 걸친다.
+    //
+    // 결과 서식 was a second tab: choose the job, then choose what it looks
+    // like. The second question is about typography and it was being asked of
+    // somebody who came to write an incident report — which has a shape, and
+    // that shape is `doc-incident`. A 시작점 that names one applies it here;
+    // one that names none leaves the surface to pick a look from the subject,
+    // which is what `deck._theme_style` and `report._outline_style` do.
+    const shape = row.renderTemplateId
+      ? rows.find((one) => one.id === row.renderTemplateId)
+      : undefined
+    if (shape && shape.id !== worn) start(shape, '')
     onClose()
   }
 
@@ -632,67 +691,21 @@ export function DesignGalleryModal({
       open={open}
       onClose={onClose}
       title={t('작업 시작하기')}
-      description={t('할 일을 빠르게 정하거나, 결과물이 나올 모양을 고를 수 있습니다.')}
+      description={t('하려는 일을 고르면 필요한 자료와 결과물의 모양까지 함께 준비됩니다.')}
       width="max-w-3xl"
     >
-        <div
-          className={cn('mb-4 grid grid-cols-1 gap-2', hasStartingPoints && kind !== 'chat' && 'sm:grid-cols-2')}
-          role="tablist"
-          aria-label={t('작업 시작 방법')}
-        >
-          {hasStartingPoints && <button
-            role="tab"
-            aria-selected={tab === 'starting-point'}
-            onClick={() => {
-              setTab('starting-point')
-              setCategory('all')
-              setQuery('')
-              setPage(0)
-            }}
-            className={cn(
-              'rounded-card border p-3 text-left transition-colors',
-              tab === 'starting-point' ? 'border-accent bg-accent-soft' : 'border-line hover:border-line-strong',
-            )}
-          >
-            <span className="block text-base font-semibold">{t('업무 시작점')}</span>
-            <span className="mt-0.5 block text-sm text-muted">{t('분석·작성·조사처럼 무엇을 할지 정합니다')}</span>
-            <span className="mt-2 block text-xs text-faint">{t('이번 요청에만 적용 · 선택 후 해제 가능')}</span>
-          </button>
-          }
-          {kind !== 'chat' && forSurface.length > 0 && (
-            <button
-              role="tab"
-              aria-selected={tab === 'format'}
-              onClick={() => {
-                setTab('format')
-                setCategory('all')
-                setQuery('')
-                setPage(0)
-              }}
-              className={cn(
-                'rounded-card border p-3 text-left transition-colors',
-                tab === 'format' ? 'border-accent bg-accent-soft' : 'border-line hover:border-line-strong',
-              )}
-            >
-              <span className="block text-base font-semibold">{t('결과 서식')}</span>
-              <span className="mt-0.5 block text-sm text-muted">{t('보고서 구성·슬라이드 배열처럼 결과의 모양을 정합니다')}</span>
-              <span className="mt-2 block text-xs text-faint">{t('이 작업에 유지 · 나중에 다른 서식으로 변경 가능')}</span>
-            </button>
-          )}
-        </div>
-
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold">
-              {tab === 'starting-point' ? t('어떤 일을 시작할까요?') : t('어떤 모양으로 받을까요?')}
+              {formatsAreTheJobs ? t('어떤 모양으로 받을까요?') : t('어떤 일을 시작할까요?')}
             </h3>
             <p className="text-sm text-muted">
-              {tab === 'starting-point'
-                ? t('카드의 준비물만 입력하면 요청을 구체화해 줍니다.')
-                : t('미리보기와 점검 항목을 확인한 뒤 고르세요.')}
+              {formatsAreTheJobs
+                ? t('빈칸을 채우면 그대로 요청이 됩니다.')
+                : t('카드의 준비물만 입력하면 요청을 구체화해 줍니다.')}
             </p>
           </div>
-          {tab === 'starting-point' && (
+          {!formatsAreTheJobs && (
             <Button size="sm" onClick={() => setWriting('new')}>
               <Plus size={13} />
               {t('내 시작점 만들기')}
@@ -728,8 +741,10 @@ export function DesignGalleryModal({
               className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
             />
             <Input
-              aria-label={tab === 'starting-point' ? t('시작점 검색') : t('결과 서식 검색')}
-              placeholder={tab === 'starting-point' ? t('업무 또는 준비물 검색') : t('서식 또는 용도 검색')}
+              aria-label={formatsAreTheJobs ? t('서식 검색') : t('시작점 검색')}
+              placeholder={
+                formatsAreTheJobs ? t('서식 또는 용도 검색') : t('업무 또는 준비물 검색')
+              }
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -776,7 +791,22 @@ export function DesignGalleryModal({
                 {row.description && (
                   <p className="mt-0.5 text-sm text-muted">{row.description}</p>
                 )}
-                <Badge className="mt-2 w-fit">{row.group}</Badge>
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  {/* 제목 옆에 이미 공용이라고 적혀 있다. 분류가 마침 공용인
+                      시작점은 같은 낱말을 한 카드에 두 번 싣게 되므로, 여기서는
+                      뺀다 — 두 번 적힌 말은 두 가지를 뜻하는 것처럼 읽힌다. */}
+                  {!(row.shared && row.group === '공용') && <Badge>{row.group}</Badge>}
+                  {/* 이 일이 어떤 모양으로 나올지. 결과 서식을 따로 고르게
+                      하던 자리를 대신한다 — 고르는 대신 말해 주는 것으로. */}
+                  {(() => {
+                    const shape = row.renderTemplateId
+                      ? rows.find((one) => one.id === row.renderTemplateId)
+                      : undefined
+                    return shape ? (
+                      <Badge tone="accent">{templateText(shape, english).name}</Badge>
+                    ) : null
+                  })()}
+                </div>
                 {/* 무엇을 가져와야 하는지. 고른 뒤 입력창이 이것을 이름으로
                     물으므로, 고르기 전에 같은 말을 보여 준다 — 카드가 붙여 줄
                     문장을 미리 적어 두는 것과는 다른 일이다. */}
@@ -859,7 +889,9 @@ export function DesignGalleryModal({
           )}
           {shown.length === 0 && (
             <p className="col-span-full py-8 text-center text-sm text-faint">
-              {tab === 'starting-point' ? t('조건에 맞는 시작점이 없습니다.') : t('조건에 맞는 결과 서식이 없습니다.')}
+              {formatsAreTheJobs
+                ? t('조건에 맞는 서식이 없습니다.')
+                : t('조건에 맞는 시작점이 없습니다.')}
             </p>
           )}
       </div>

@@ -265,6 +265,32 @@ def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | 
     return chosen
 
 
+def _validated_starting_format(template_id: str, kind: str) -> str:
+    """The 서식 a starting point carries, refused rather than stored and ignored.
+
+    Same rule as `_validated_render_templates`, for one id: a shape that does
+    not exist, or one this surface cannot wear, is an error. Stored anyway it
+    would be dropped silently at render time, and the person who attached it
+    would find their 시작점 producing the default shape with nothing saying why.
+
+    Empty is allowed and is the common answer — a job with no fixed shape lets
+    the surface choose one from the subject.
+    """
+    if not template_id:
+        return ""
+    template = design_templates.get(template_id)
+    if template is None or template.kind not in design_templates.HTML_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
+    if template.surface.value != kind:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="design_template_surface_mismatch",
+        )
+    return template.id
+
+
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
     files = (
         await db.exec(
@@ -2650,6 +2676,9 @@ async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession)
     data = payload.model_dump()
     _may_share(user, bool(data.get("shared")))
     data["file_id"] = await _own_file(db, user, data.get("file_id"))
+    data["render_template_id"] = _validated_starting_format(
+        str(data.get("render_template_id") or ""), str(data.get("kind") or "")
+    )
     # A shared template filed under "내 템플릿" reads as somebody's private one
     # in every other account's gallery.
     if data.get("shared") and data.get("group") == _OWN_GROUP:
@@ -2696,6 +2725,14 @@ async def patch_template(
         _may_share(user, bool(fields["shared"]))
     if "file_id" in fields:
         fields["file_id"] = await _own_file(db, user, fields["file_id"])
+    if "render_template_id" in fields:
+        # Against the kind being saved, which a patch may be changing in the
+        # same call — checking the stored one would accept a 보고서 서식 onto a
+        # starting point that is becoming a 슬라이드.
+        fields["render_template_id"] = _validated_starting_format(
+            str(fields["render_template_id"] or ""),
+            str(fields.get("kind") or template.kind),
+        )
     for field, value in fields.items():
         setattr(template, field, value)
     template.updated_at = utcnow()

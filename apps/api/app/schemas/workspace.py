@@ -776,6 +776,9 @@ class TemplateOut(Wire):
     file_name: str = ""
     file_tokens: int = 0
     file_error: str | None = None
+    #: The 서식 this starting point writes into, same as a built-in's. Empty
+    #: means the surface chooses the look from the subject.
+    render_template_id: str = ""
     #: Offered to every account rather than only its author.
     shared: bool = False
     #: Whether the caller may edit or remove it. False on somebody else's
@@ -805,6 +808,9 @@ class TemplateIn(Wire):
     fills: list[str] | None = None
     prompt: str = Field(default="", max_length=8000)
     file_id: str | None = None
+    #: Validated against the rendering catalogue by the router — an id that is
+    #: not a 서식 for this surface is refused rather than stored and ignored.
+    render_template_id: str = Field(default="", max_length=60)
     #: Administrator-only. A non-administrator setting it is refused rather
     #: than silently ignored.
     shared: bool = False
@@ -837,6 +843,9 @@ class PromptTemplateOut(Wire):
     description_en: str = ""
     fills_en: JsonList = Field(default_factory=list)
     prompt_en: str = ""
+    #: The 서식 this job comes out wearing, or `""` when the job has no fixed
+    #: shape and the surface should choose one from the subject.
+    render_template_id: str = ""
     #: Ships in the image, so nobody can edit or remove it.
     builtin: bool = True
 
@@ -855,6 +864,7 @@ class PromptTemplateOut(Wire):
             description_en=t.description_en,
             fills_en=list(t.fills_en),
             prompt_en=t.prompt_en,
+            render_template_id=t.render_template_id,
         )
 
 

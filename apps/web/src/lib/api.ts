@@ -1109,6 +1109,16 @@ export interface PromptTemplateRow {
    * everywhere else the server adds it and the composer never sees it.
    */
   prompt: string
+  /**
+   * The 서식 this job comes out wearing, or `''` when the job has no fixed
+   * shape and the surface should choose one from the subject.
+   *
+   * 결과 서식 was the other half of a two-tab dialogue: pick what you are
+   * doing, then pick what it looks like. The second is a question about
+   * typography asked of somebody who came to write an incident report — which
+   * has a shape, and that shape is `doc-incident`.
+   */
+  renderTemplateId: string
 }
 
 export const promptTemplatesApi = {

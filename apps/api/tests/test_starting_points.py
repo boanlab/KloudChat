@@ -37,21 +37,37 @@ from app.services.workspace_context import WorkspaceContextError, assemble
 # ── the shipped catalogue ──────────────────────────────────────────────
 
 
-def test_every_starting_point_is_offered_once_and_hands_the_turn_back():
-    """The two promises the module makes about its own entries.
+def test_every_starting_point_is_a_small_workflow_not_a_label():
+    """A shipped card must carry enough procedure to improve a real result.
 
-    A duplicate id would silently shadow one card with another — the dict is
-    built by id, so the second entry wins and the first stops existing. And a
-    prompt that ends in a full stop is a template that says everything, which
-    leaves the person nothing to add and puts the whole request in the
-    product's voice again.
+    Names and one-line example prompts made a catalogue look populated while
+    leaving the model to invent the actual job. Four inputs force the card to
+    ask for context, and a substantive framing must define evidence, output,
+    and completion instead of merely restating its title.
     """
     ids = [t.id for t in prompt_templates.all_templates()]
     assert len(ids) == len(set(ids))
     for template in prompt_templates.all_templates():
         assert template.id.startswith("t_"), template.id
-        assert template.title and template.description and template.fills
-        assert template.prompt.endswith(": "), template.id
+        assert template.title and template.description
+        assert len(template.fills) >= 4, template.id
+        assert len(template.prompt) >= 150, template.id
+
+
+def test_work_surfaces_have_real_breadth_and_media_does_not_duplicate_formats():
+    by_surface = {
+        kind: [t for t in prompt_templates.all_templates() if t.kind is kind]
+        for kind in SessionKind
+    }
+    assert len(by_surface[SessionKind.chat]) >= 10
+    assert len(by_surface[SessionKind.report]) >= 6
+    assert len(by_surface[SessionKind.slides]) >= 6
+    assert by_surface[SessionKind.image] == []
+    assert by_surface[SessionKind.av] == []
+
+    # A catalogue aimed at one office persona is breadth in card count only.
+    groups = {t.group for t in prompt_templates.all_templates()}
+    assert {"학업", "대학원", "연구", "업무", "개발", "영업", "조사"} <= groups
 
 
 def test_a_built_in_card_travels_in_the_shape_the_gallery_already_renders():
@@ -386,3 +402,52 @@ def _patch_document_turn(monkeypatch) -> dict:
 
     monkeypatch.setattr(sessions_router, "_run_report", run_report)
     return captured
+
+
+def test_a_starting_point_carries_the_shape_its_job_comes_in() -> None:
+    """결과 서식을 따로 고르지 않아도 되는 이유.
+
+    결과 서식 was the other half of a two-tab dialogue: pick what you are
+    doing, then pick what it looks like. The second decision is a question
+    about typography asked of somebody who came to write an incident report —
+    which has a shape, and that shape is `doc-incident`.
+
+    Empty stays a real answer and the common one: a 동향 조사 has no house
+    style, and then the writing surface picks the colour and the impression
+    from the subject instead.
+    """
+    from app.services import design_templates, prompt_templates
+
+    catalogue = {t.id: t for t in design_templates.all_templates()}
+    carried = [t for t in prompt_templates.all_templates() if t.render_template_id]
+    assert carried, "서식을 데려오는 시작점이 하나도 없습니다"
+
+    for point in carried:
+        shape = catalogue.get(point.render_template_id)
+        assert shape is not None, f"{point.id}: 없는 서식 {point.render_template_id}"
+        # 표면이 맞아야 한다 — 보고서 시작점이 덱 서식을 데려오면 렌더러가
+        # 조용히 버린다.
+        assert shape.surface.value == point.kind.value, (
+            f"{point.id}: {point.kind.value} 시작점에 {shape.surface.value} 서식"
+        )
+        assert shape.kind in design_templates.HTML_KINDS, point.id
+
+    # 챗과 이미지에는 조판할 문서가 없다.
+    for point in prompt_templates.all_templates():
+        if point.kind.value not in ("report", "slides"):
+            assert not point.render_template_id, point.id
+
+
+def test_the_shape_reaches_the_client() -> None:
+    """카드가 무엇을 입고 나올지 미리 말해 줄 수 있어야 한다."""
+    from app.schemas.workspace import PromptTemplateOut
+    from app.services import prompt_templates
+
+    point = next(
+        t for t in prompt_templates.all_templates() if t.id == "t_report_incident"
+    )
+    wire = PromptTemplateOut.of(point)
+    assert wire.render_template_id == "doc-incident"
+
+    plain = next(t for t in prompt_templates.all_templates() if t.kind.value == "chat")
+    assert PromptTemplateOut.of(plain).render_template_id == ""

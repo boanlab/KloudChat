@@ -53,6 +53,18 @@ class PromptTemplate:
     #: Ends mid-sentence, where the person takes over. That is the whole shape
     #: of a starting point: it says what is being made and hands the turn back.
     prompt: str
+    #: The 서식 this job comes out wearing, when one of them is right for it.
+    #:
+    #: 결과 서식 used to be the other half of a two-tab dialogue: pick what you
+    #: are doing, then pick what it looks like. Two decisions for one job, and
+    #: the second one is a question about typography asked of somebody who came
+    #: to write an incident report. A 실험 노트 has a shape — that shape *is*
+    #: `doc-lab`, and nobody starting one wants a different answer.
+    #:
+    #: Empty is a real answer and the common one: a 동향 조사 has no house
+    #: style, so the writing surfaces choose the colour and the impression from
+    #: the subject instead (`deck._theme_style`, `report._outline_style`).
+    render_template_id: str = ""
     #: The English half. Empty until somebody writes it; the client falls back
     #: to the Korean, which leaves a card readable rather than blank.
     title_en: str = ""
@@ -247,6 +259,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_report_executive",
         kind=SessionKind.report,
+        render_template_id="doc-brief",
         group="업무",
         title="의사결정 보고서",
         description="결정할 사안과 대안, 근거, 위험을 앞부분에서 한눈에 보여 줍니다",
@@ -277,6 +290,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_report_analysis",
         kind=SessionKind.report,
+        render_template_id="doc-report",
         group="연구",
         title="데이터 분석 보고서",
         description="데이터 처리 과정과 분석 결과, 한계, 재현 방법을 보고서로 정리합니다",
@@ -292,6 +306,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_report_project",
         kind=SessionKind.report,
+        render_template_id="doc-project-brief",
         group="업무",
         title="프로젝트 실행 계획",
         description="목표와 산출물, 일정, 담당자, 위험, 완료 기준을 구체적으로 정합니다",
@@ -307,6 +322,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_report_incident",
         kind=SessionKind.report,
+        render_template_id="doc-incident",
         group="공대",
         title="장애 사후 분석",
         description="장애 영향과 시간대별 대응, 근본 원인, 재발 방지책을 기록합니다",
@@ -339,6 +355,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_slides_defense",
         kind=SessionKind.slides,
+        render_template_id="deck-defense",
         group="대학원",
         title="학위·중간 심사 발표",
         description="연구의 기여와 근거, 한계, 남은 계획을 심사 발표로 구성합니다",
@@ -354,6 +371,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_slides_lecture",
         kind=SessionKind.slides,
+        render_template_id="deck-lecture",
         group="교육",
         title="강의 자료 만들기",
         description="학습 목표에 맞춰 설명과 예시, 확인 문제, 마무리 활동을 구성합니다",
@@ -369,6 +387,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_slides_briefing",
         kind=SessionKind.slides,
+        render_template_id="deck-briefing",
         group="업무",
         title="의사결정 브리핑",
         description="결정할 사안과 대안, 권고안, 요청 사항을 짧은 발표로 정리합니다",
@@ -384,6 +403,7 @@ _ALL: tuple[PromptTemplate, ...] = (
     PromptTemplate(
         id="t_slides_proposal",
         kind=SessionKind.slides,
+        render_template_id="deck-proposal",
         group="영업",
         title="고객 제안 발표",
         description="고객의 문제에서 시작해 해결 방법과 도입 계획, 요청 사항을 설명합니다",
