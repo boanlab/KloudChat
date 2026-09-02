@@ -436,3 +436,18 @@ def test_a_bullet_with_a_quantity_the_request_never_gave_is_dropped() -> None:
     )
     out = _split_deck_draft(draft, slides, set(), request)
     assert out[0]["bullets"] == ["11월 시연 준비", "대시보드 70% → 완성"]
+
+
+def test_a_rewrite_does_not_borrow_another_sections_table() -> None:
+    from app.services.report import _without_borrowed_tables
+
+    table = "| 기준 | 교체 | 클라우드 |\n|---|---|---|\n| 첫해 | 2,780만 원 | 744만 원 |"
+    body = f"현황입니다.\n\n{table}\n\n그래서 셋을 견줍니다."
+    # 다른 절에 같은 표가 있으면 뺀다.
+    assert _without_borrowed_tables(body, "", [f"비교.\n\n{table}"], "근거를 보강") == (
+        "현황입니다.\n\n그래서 셋을 견줍니다."
+    )
+    # 원래 표가 없었고 표를 달라고도 안 했으면 뺀다.
+    assert "|" not in _without_borrowed_tables(body, "현황 줄글", [], "근거를 보강")
+    # 표를 달라고 했으면 남긴다.
+    assert table in _without_borrowed_tables(body, "현황 줄글", [], "표로 정리해 줘")

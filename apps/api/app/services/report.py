@@ -1422,7 +1422,39 @@ async def rewrite_section(
     # The same door the first pass goes through — see `write`. Two callers
     # (the panel's 다시 쓰기 and a revision typed in the chat) store what this
     # returns, and only one of them remembered to close 「2,400 만 원」 up.
-    return hangul.tidy_spacing(hangul.read_back(body)[0]), spent
+    body = hangul.tidy_spacing(hangul.read_back(body)[0])
+    target = next((s for s in sections if s.get("id") == target_id), {})
+    others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
+    return _without_borrowed_tables(body, target.get("content") or "", others, note), spent
+
+
+def _without_borrowed_tables(body: str, before: str, others: list[str], note: str) -> str:
+    """The rewrite's tables, minus any the document already has elsewhere.
+
+    Told to make 「현황」 say why the 1년 더 option was costed the way it was,
+    the writer answered with the comparison table from 「대안 비교」, header for
+    header — and the linter then filed the section for repeating itself. A
+    table that another section already draws is not this section's to draw;
+    a table the section never had, and the note never asked for, is not
+    either.
+    """
+    if not _TABLE.search(body):
+        return body
+    elsewhere = {_table_key(m.group(0)) for text in others for m in _TABLE.finditer(text)}
+    had_table = bool(_TABLE.search(before)) or bool(re.search(r"표", note))
+
+    def keep_or_drop(m: re.Match[str]) -> str:
+        if _table_key(m.group(0)) in elsewhere or not had_table:
+            return ""
+        return m.group(0)
+
+    return re.sub(r"\n{3,}", "\n\n", _TABLE.sub(keep_or_drop, body)).strip()
+
+
+def _table_key(table: str) -> str:
+    """A table's header row, spacing and alignment marks removed."""
+    head = table.strip().split("\n", 1)[0]
+    return re.sub(r"[\s:|-]+", "", head)
 
 
 def word_count(sections: list[dict]) -> int:
