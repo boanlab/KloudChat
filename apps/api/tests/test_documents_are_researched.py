@@ -322,3 +322,11 @@ def test_the_research_rule_is_a_system_instruction():
     assert research.UNRESEARCHED_RULE in system
     # The attachment stays where attachments go.
     assert "첨부된 자료" not in system
+
+
+def test_a_compound_or_particled_word_still_counts_as_relevant() -> None:
+    from app.services.research import relevance
+
+    hit = {"title": "전고체 배터리, 기업들이 2025년 양산 경쟁", "snippet": ""}
+    assert relevance("고체 배터리 기업 양산 2025", hit) == 1.0
+    assert relevance("고체 배터리 기업 양산 2025", {"title": "UPS Tracking", "snippet": ""}) == 0.0

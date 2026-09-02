@@ -182,3 +182,6 @@ def test_a_results_report_with_nothing_to_report_is_asked_for_its_data() -> None
     assert not _results_without_data("학과 세미나 녹취를 회의록으로 바꿔 주세요.", ["녹취: …"])
     # 동향·문헌처럼 검색으로 쓰는 문서는 자료를 묻지 않는다.
     assert not _results_without_data("PEFT 최근 1년 동향 분석 보고서를 써 주세요.", [])
+    # 「초안을 써 주세요」는 자료가 있다는 말이 아니다. 학위논문 장은 그 사람의 연구가 있어야 쓴다.
+    assert not _results_without_data("행사 안내문 초안을 써 주세요.", [])
+    assert _results_without_data("학위논문 3장 「제안 방법」 초안을 써 주세요.", [])

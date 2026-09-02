@@ -883,6 +883,12 @@ def _offered_layouts(request: str, context: list[str]) -> list[str]:
 #: So: a decimal, a run of three or more digits, or a number carrying a unit
 #: that measures. A bare year is deliberately not one — a date can ground a
 #: timeline and cannot ground a chart.
+#: A deck about the person's own work — nothing to say without it. 「학위논문
+#: 연구계획 발표자료」 came back as 새로운 알고리즘으로 정확도를 높임 over eight
+#: slides, for a thesis nobody described; the planner's `subject` was the
+#: request's own words, so the subject check let it through.
+_OWN_WORK = re.compile(r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취")
+
 _FIGURE = re.compile(
     # A year is not a measurement. `2026년 계획` matched the three-digit rule
     # and let a deck about next year's plan draw a chart of nothing.
@@ -1743,7 +1749,12 @@ async def write(
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
         yield {"type": "usage", **usage}
         return
-    if may_ask and grounding.subject_missing(text, request):
+    if may_ask and (
+        grounding.subject_missing(text, request)
+        or _OWN_WORK.search(request)
+        and not has_numbers(request, [])
+        and not any(block.strip() for block in (untrusted_context or []))
+    ):
         # 주제가 없는 요청은 묻는다. 「캡스톤 중간발표 10분」 was planned as an
         # AI 맞춤 학습 플랫폼 nobody is building, and 「학회 구두 발표 15분,
         # 수치를 크게」 as seven slides of 500회 and 20% about nothing — the
@@ -1756,7 +1767,10 @@ async def write(
                 grounding.Question(
                     id="subject",
                     question=(
-                        "무엇에 대한 발표입니까? 주제와, 보여 줄 결과·수치가 있으면 "
+                        "어떤 연구입니까? 주제, 연구 질문, 방법과 지금까지의 결과를 "
+                        "적거나 파일을 붙여 주세요."
+                        if _OWN_WORK.search(request)
+                        else "무엇에 대한 발표입니까? 주제와, 보여 줄 결과·수치가 있으면 "
                         "함께 적어 주세요."
                     ),
                     options=[],

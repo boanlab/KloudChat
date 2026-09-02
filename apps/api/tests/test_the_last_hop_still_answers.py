@@ -236,3 +236,43 @@ async def test_a_looping_answer_is_cut_and_told(monkeypatch) -> None:
     assert "되풀이되어 여기서 멈췄습니다" in text
     assert text.count(paragraph) < 40
     assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_rate_limit_is_retried_before_it_is_reported(monkeypatch) -> None:
+    """429 는 잠깐 기다렸다 다시 하고, 두 번째에 답이 오면 그 답을 쓴다."""
+    seen: list[dict] = []
+    waited: list[float] = []
+
+    class _Limited(_Response):
+        status_code = 429
+
+        async def aread(self) -> bytes:
+            return b"rate limited"
+
+    class _Client429(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Limited([])
+            return _Response(['data: {"choices":[{"delta":{"content":"답"}}]}', "data: [DONE]"])
+
+    async def client(*_args, **_kwargs):
+        return _Client429(seen)
+
+    async def sleep(seconds: float) -> None:
+        waited.append(seconds)
+
+    monkeypatch.setattr(agent, "_client", client)
+    monkeypatch.setattr(agent.asyncio, "sleep", sleep)
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "안녕"}],
+            [],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    assert "".join(e["text"] for e in events if e["type"] == "delta") == "답"
+    assert len(seen) == 2 and waited == [agent._RETRY_AFTER[0]]

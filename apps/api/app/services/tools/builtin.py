@@ -39,6 +39,56 @@ def _truncate(text: str, limit: int) -> str:
 # ── web search ─────────────────────────────────────────────────────────
 
 
+def _terms(query: str) -> list[str]:
+    """The words a result has to carry to be about the query."""
+    words = re.findall(r"[\w가-힣-]+", query.lower())
+    return [w for w in words if len(w) >= 2 and not w.isdigit()]
+
+
+def _covers(text: str, term: str) -> bool:
+    if term in text:
+        return True
+    # 「청소년의」 in the query and 「청소년」 in the title: drop a trailing
+    # particle before giving up on a Korean word.
+    return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도" and term[:-1] in text
+
+
+def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
+    """Results that carry more of the query first.
+
+    The engines behind the shim rank oddly: 「social media depression
+    meta-analysis」 came back with Social Blade and the Rockstar Social Club
+    ahead of the Springer meta-analysis, and 「adolescent social media use
+    depression effect size」 returned eight dictionary entries for
+    *adolescent*. The model read the top three, found statistics sites and
+    a game launcher, and told the person no research existed. Scoring each
+    hit by how many query words its title, snippet and URL carry — and
+    keeping the engine's order among equals — puts the paper first.
+    """
+    terms = _terms(query)
+    if len(terms) < 2:
+        return rows
+
+    return sorted(rows, key=lambda row: _overlap(row, terms), reverse=True)
+
+
+def _overlap(row: dict[str, str], terms: list[str]) -> int:
+    text = f"{row['title']} {row['snippet']} {row['url']}".lower()
+    return sum(1 for t in terms if _covers(text, t))
+
+
+def _off_topic(rows: list[dict[str, str]], query: str) -> bool:
+    """Not one result carries even one word of a multi-word query.
+
+    The engines behind the shim, when suspended or captcha'd, still answer —
+    with UPS parcel tracking for 「전고체 배터리 양산 일정」 and Bihar river
+    news for 「고체 배터리 주요 기업」. Handing those to the model costs it
+    three page reads and a hop before it decides nothing exists.
+    """
+    terms = _terms(query)
+    return len(terms) >= 2 and all(_overlap(row, terms) == 0 for row in rows)
+
+
 async def _searxng(base_url: str, query: str, count: int) -> list[dict[str, str]]:
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
         response = await client.get(
@@ -48,7 +98,8 @@ async def _searxng(base_url: str, query: str, count: int) -> list[dict[str, str]
         response.raise_for_status()
         data = response.json()
     hits = []
-    for row in (data.get("results") or [])[:count]:
+    # Three times what is wanted, then the best of those — see `_rank`.
+    for row in (data.get("results") or [])[: count * 3]:
         hits.append(
             {
                 "title": row.get("title") or "",
@@ -56,7 +107,7 @@ async def _searxng(base_url: str, query: str, count: int) -> list[dict[str, str]
                 "snippet": row.get("content") or "",
             }
         )
-    return hits
+    return _rank(hits, query)[:count]
 
 
 async def _scrape(base_url: str, url: str) -> str:
@@ -108,6 +159,15 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
     if not hits:
         return ToolResult(content=f"'{query}' 에 대한 검색 결과가 없습니다.", detail="0개 결과")
+    if _off_topic(hits, query):
+        return ToolResult(
+            content=(
+                f"'{query}' 검색 결과가 질문과 무관한 것뿐입니다 — 검색 엔진이 제대로 "
+                "응답하지 않는 것 같습니다. 같은 검색을 되풀이하지 말고, 아는 것으로 답하되 "
+                "검색으로 확인하지 못했다고 밝히세요."
+            ),
+            detail=f"{len(hits)}개 결과 · 모두 무관",
+        )
 
     # Top few read in full — snippets alone are too thin to answer from. The
     # rest stay as titles the model can request by URL.
@@ -206,8 +266,7 @@ WEB_SEARCH = Tool(
 FETCH_URL = Tool(
     name="fetch_url",
     description=(
-        "특정 URL 의 본문을 마크다운으로 읽어 옵니다. 검색 결과의 출처를 직접 "
-        "확인할 때 사용하세요."
+        "특정 URL 의 본문을 마크다운으로 읽어 옵니다. 검색 결과의 출처를 직접 확인할 때 사용하세요."
     ),
     parameters={
         "type": "object",
@@ -248,8 +307,27 @@ _ARTIFACT_KINDS = {"html", "code"}
 #: they suggest a page, and letting a page through is the cheaper mistake.
 _PROSE_TAGS = frozenset(
     {
-        "p", "br", "hr", "span", "a", "b", "i", "u", "em", "strong", "small",
-        "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6",
+        "p",
+        "br",
+        "hr",
+        "span",
+        "a",
+        "b",
+        "i",
+        "u",
+        "em",
+        "strong",
+        "small",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
     }
 )
 
@@ -356,10 +434,10 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         language = "markdown"
 
     visible = _visible_length(kind, content)
-        # The one call the description cannot prevent, the model having already
-        # decided by the time it reads one. Only the model's own guess is
-        # overruled; `userRequested` carries an explicit ask through. Not `failed`,
-        # because nothing went wrong — an errored step paints the whole turn 중단됨.
+    # The one call the description cannot prevent, the model having already
+    # decided by the time it reads one. Only the model's own guess is
+    # overruled; `userRequested` carries an explicit ask through. Not `failed`,
+    # because nothing went wrong — an errored step paints the whole turn 중단됨.
     # `userRequested` alone used to skip this whole check, which made
     # `_PROSE_MAX_CHARS` — "prose shorter than this is an answer **even when the
     # user said 만들어 줘**" — a comment describing something the code did not
@@ -709,8 +787,7 @@ SHARE_NOTE = Tool(
             "key": {
                 "type": "string",
                 "description": (
-                    "고쳐 쓸 수 있게 하는 이름. 같은 key 는 덮어씁니다. "
-                    "비우면 title 을 씁니다."
+                    "고쳐 쓸 수 있게 하는 이름. 같은 key 는 덮어씁니다. 비우면 title 을 씁니다."
                 ),
             },
         },
@@ -750,9 +827,7 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     return tools
 
 
-def knowledge_tool(
-    documents: list[tuple[str, str, str | None]], collection: str = ""
-) -> Tool:
+def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
     """Search inside the documents attached to the agent running this turn.
 
     Built per turn around a preloaded shelf rather than reaching for a database:
@@ -764,11 +839,12 @@ def knowledge_tool(
     에이전트에는 자료가 없습니다" teaches the model to stop calling it, and then
     it is ignored on the agent that does have a shelf.
     """
-        # Contents list per document: filenames are often meaningless, and a model
-        # choosing tools by description needs to know what the shelf covers.
-        #
-        # Headings, not an excerpt — given a sample the model reads it as the
-        # material and rules the shelf out without searching.
+
+    # Contents list per document: filenames are often meaningless, and a model
+    # choosing tools by description needs to know what the shelf covers.
+    #
+    # Headings, not an excerpt — given a sample the model reads it as the
+    # material and rules the shelf out without searching.
     def _outline(text: str, limit: int = 12) -> str:
         seen: list[str] = []
         for line in text.splitlines():

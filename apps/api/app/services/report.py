@@ -487,8 +487,19 @@ _subject_missing = grounding.subject_missing
 
 
 _RESULTS = re.compile(r"결과|시험|실험|측정")
+#: Documents whose facts all come from outside — nothing to write without a search.
+_FROM_THE_WEB = re.compile(r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표")
+
+
+def _from_the_web(request: str) -> bool:
+    return bool(_FROM_THE_WEB.search(request))
+
+
 #: Words that point at a thing the person has and did not attach.
-_MATERIAL = re.compile(r"녹취|녹음|원고|초안|피드백|기록을|표가 있|표를|파일|첨부|자료를|메모를")
+_MATERIAL = re.compile(
+    r"녹취|녹음|피드백|기록을|표가 있|파일|첨부|메모를|학위논문|논문 ?\d+ ?장"
+    r"|(?:표|자료)를 (?:붙|드립|줍|보냅|첨부)"
+)
 
 
 def _results_without_data(request: str, attached: list[str]) -> bool:
@@ -755,6 +766,41 @@ async def write(
     # run only, so never append into the caller's shelf in place.
     findings.sources = list(findings.sources)
     web_selected = len(findings.sources)
+    if (
+        may_ask
+        and approved_plan is None
+        and web_search
+        and findings.searched
+        and web_selected == 0
+        and _from_the_web(request)
+        and not any(block.strip() for block in untrusted_context or [])
+    ):
+        # 검색이 빈손이면 동향·문헌 문서는 쓰지 않고 묻는다.
+        #
+        # 「최근 2년 전고체 배터리 동향, 주요 기업·스펙·양산 시점 비교표, 출처」
+        # ran four searches on a backend whose engines were all suspended, kept
+        # nothing, and wrote the report anyway: A사·B사·C사 with 500 Wh/kg and
+        # 15분 충전 in a table, no source, and the rule to say so ignored. A
+        # document whose every fact is external and whose search found none
+        # is not a document with a caveat — it is a form filled with guesses.
+        yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+        yield {
+            "type": "needs",
+            "questions": [
+                grounding.Question(
+                    id="sources",
+                    question=(
+                        "웹 검색이 쓸 만한 자료를 찾지 못했습니다(검색 엔진이 응답하지 "
+                        "않거나 무관한 결과뿐). 참고할 자료를 붙이거나 잠시 뒤 다시 시도해 "
+                        "주세요. 「있는 자료로 진행」이면 기억으로 쓰되 확인이 필요한 "
+                        "항목을 그렇게 표시합니다."
+                    ),
+                    options=[],
+                ).wire()
+            ],
+        }
+        yield {"type": "usage", **usage}
+        return
     project_selected = 0
     project_excluded = 0
     project_reference_lines: list[str] = []
@@ -874,9 +920,13 @@ async def write(
                     grounding.Question(
                         id="data",
                         question=(
-                            "바탕이 될 자료(녹취, 표, 측정값, 파일)를 붙이거나 적어 주세요. "
-                            "없으면 「있는 자료로 진행」— 내용 자리는 (미정)으로 비워 둔 "
-                            "틀을 씁니다."
+                            "어떤 연구입니까? 제안 방법의 이름과 핵심 아이디어, 있으면 "
+                            "수식과 결과를 적어 주세요. 없으면 「있는 자료로 진행」— 내용 "
+                            "자리는 (미정)으로 비워 둔 틀을 씁니다."
+                            if re.search(r"논문", request)
+                            else "바탕이 될 자료(녹취, 표, 측정값, 파일)를 붙이거나 적어 "
+                            "주세요. 없으면 「있는 자료로 진행」— 내용 자리는 (미정)으로 "
+                            "비워 둔 틀을 씁니다."
                         ),
                         options=[],
                     ).wire()

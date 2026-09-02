@@ -158,7 +158,21 @@ async def _stream_once(
     acc = _Accumulator()
     try:
         async with await _client(api_key, redact_logging=redact_logging) as client:
-            async with client.stream("POST", "/v1/chat/completions", json=payload) as response:
+            for attempt in range(len(_RETRY_AFTER) + 1):
+                opened = client.stream("POST", "/v1/chat/completions", json=payload)
+                response = await opened.__aenter__()
+                if response.status_code == 429 and attempt < len(_RETRY_AFTER):
+                    # 한도에 걸리면 조금 기다렸다 다시 한다.
+                    #
+                    # A per-key token limit refreshes by the minute; the person
+                    # who hit it got 「모델 응답을 받지 못했습니다」 in under a
+                    # second, with nothing to do but press 다시 시도 — which this
+                    # does for them, twice, before giving up.
+                    await opened.__aexit__(None, None, None)
+                    await asyncio.sleep(_RETRY_AFTER[attempt])
+                    continue
+                break
+            try:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode(errors="replace")[:400]
                     detail = "response redacted" if redact_logging else body
@@ -186,10 +200,16 @@ async def _stream_once(
                             # The stream is closed here; the caller adds a line.
                             acc.looped = True
                             break
+            finally:
+                await opened.__aexit__(None, None, None)
     except httpx.HTTPError as exc:
         raise ChatStreamError(f"upstream_unreachable: {exc}") from exc
 
     yield "done", acc
+
+
+#: Seconds to wait before retrying a 429, one per retry.
+_RETRY_AFTER = (5.0, 15.0)
 
 
 def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool:

@@ -292,9 +292,7 @@ def _planner_model(
     return planner
 
 
-async def _enrichment_model(
-    writer: dict, *, strict_local: bool, disable_fallbacks: bool
-) -> dict:
+async def _enrichment_model(writer: dict, *, strict_local: bool, disable_fallbacks: bool) -> dict:
     """The catalogue row that titles the session and extracts its memories.
 
     A row, not an id: side work billed at its own price, since titles and memory
@@ -393,9 +391,7 @@ async def _resolve_cost_routing(
     upgrading = lane == RoutingMode.auto_quality.value
     #: Each direction is switched on separately — they are opposite decisions
     #: about money, and an instance may want either without the other.
-    lane_enabled = (
-        policy.adaptive_quality_enabled if upgrading else policy.adaptive_routing_enabled
-    )
+    lane_enabled = policy.adaptive_quality_enabled if upgrading else policy.adaptive_routing_enabled
     if not lane_enabled:
         return quality_model, _cost_routing(
             mode=lane,
@@ -416,9 +412,7 @@ async def _resolve_cost_routing(
     allowed = set(user.allowed_models or [])
     classifier_id = str(policy.adaptive_classifier_model_id or "")
     classifier_model = model_service.find(catalogue, classifier_id)
-    if not adaptive_routing.classifier_is_usable(
-        classifier_model, allowed_model_ids=allowed
-    ):
+    if not adaptive_routing.classifier_is_usable(classifier_model, allowed_model_ids=allowed):
         return quality_model, _cost_routing(
             mode=lane,
             decision="classifier_unavailable",
@@ -507,11 +501,7 @@ async def _resolve_cost_routing(
             classifier_model=classifier_id,
         )
     wanted = "high" if upgrading else "low"
-    bar = (
-        adaptive_routing.MIN_HIGH_CONFIDENCE
-        if upgrading
-        else adaptive_routing.MIN_LOW_CONFIDENCE
-    )
+    bar = adaptive_routing.MIN_HIGH_CONFIDENCE if upgrading else adaptive_routing.MIN_LOW_CONFIDENCE
     if classification.complexity != wanted or classification.confidence < bar:
         if classification.complexity == "uncertain":
             reason = "uncertain"
@@ -607,8 +597,10 @@ def _privacy_sources(
         "memory": "memory",
     }
     for block in blocks or []:
-        source = "skills" if block.source.startswith("skill:") else source_kinds.get(
-            block.source, block.source
+        source = (
+            "skills"
+            if block.source.startswith("skill:")
+            else source_kinds.get(block.source, block.source)
         )
         existing = sources.get(source)
         if existing is None:
@@ -886,10 +878,7 @@ def _skill_step(event: dict | None) -> dict | None:
         # have to parse those display strings to recover what ran.
         "skills": list(event.get("skills") or []),
         "estimatedTokens": int(event.get("estimatedTokens") or 0),
-        "detail": (
-            " · ".join(names)
-            + f" · 약 {int(event.get('estimatedTokens') or 0):,} 토큰"
-        ),
+        "detail": (" · ".join(names) + f" · 약 {int(event.get('estimatedTokens') or 0):,} 토큰"),
     }
 
 
@@ -937,9 +926,7 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
         if fates
         else f"{subject} {len(files)}개 반영"
     )
-    notes = [
-        _FILE_NOTE[file.state].format(name=file.name, kept=file.kept_chars) for file in short
-    ]
+    notes = [_FILE_NOTE[file.state].format(name=file.name, kept=file.kept_chars) for file in short]
     detail = _named(notes or [file.name for file in files], "개")
     return {
         "id": step_id,
@@ -1078,10 +1065,7 @@ def _worth_listing(rows: list[ChatSession], empty: set[str]) -> list[ChatSession
     return [
         row
         for row in rows
-        if row.id not in empty
-        or row.artifact_id
-        or row.pinned
-        or row.created_at > fresh
+        if row.id not in empty or row.artifact_id or row.pinned or row.created_at > fresh
     ]
 
 
@@ -1673,8 +1657,13 @@ async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentU
     )
     if charged:
         settle(
-            db, user, charged, reason="image.diagram",
-            session_id=session.id, model=model["id"], surface=session.kind.value,
+            db,
+            user,
+            charged,
+            reason="image.diagram",
+            session_id=session.id,
+            model=model["id"],
+            surface=session.kind.value,
         )
         await db.commit()
     return DiagramOut(source=source, caption=caption, model=model["id"], credits=charged)
@@ -1707,9 +1696,14 @@ async def store_diagram_image(
     title = (payload.title or payload.caption or "도식")[:200]
     db.add(
         StoredFile(
-            id=file_id, user_id=user.id, session_id=session.id,
-            name=f"{title[:40]}.png", mime="image/png", size=len(blob),
-            storage_key=key, tokens=0,
+            id=file_id,
+            user_id=user.id,
+            session_id=session.id,
+            name=f"{title[:40]}.png",
+            mime="image/png",
+            size=len(blob),
+            storage_key=key,
+            tokens=0,
         )
     )
     artifact = Artifact(
@@ -1851,9 +1845,7 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             model=model["id"],
             surface=session.kind.value,
         )
-    _record_media(
-        db, session, payload.prompt, [artifact], model=model["id"], credits=charged
-    )
+    _record_media(db, session, payload.prompt, [artifact], model=model["id"], credits=charged)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
@@ -1880,9 +1872,7 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
     # See `delete_session`: the job row has to go or the delete is refused.
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
-    made = (
-        await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(ids)))
-    ).all()
+    made = (await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(ids)))).all()
     if payload.artifacts and made:
         # Asked for: the versions go first, then the rows. A shared link to one
         # dies with it — the token points at an artifact, and `shares` cascades.
@@ -1950,9 +1940,7 @@ async def _store_document(
     different thing and gets its own artifact, because a version history that
     alternates between two documents is not a history of either.
     """
-    existing = (
-        await db.get(Artifact, session.artifact_id) if session.artifact_id else None
-    )
+    existing = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if (
         existing is not None
         and existing.kind is kind
@@ -2102,9 +2090,7 @@ def _edited_plan(sent: dict | None, stored: dict) -> dict:
             kept = [row.strip()[:200] for row in items if row.strip()]
         else:
             layouts = {
-                str(row.get("layout") or "")
-                for row in stored.get(key, [])
-                if isinstance(row, dict)
+                str(row.get("layout") or "") for row in stored.get(key, []) if isinstance(row, dict)
             }
             kept = []
             for row in items:
@@ -2282,10 +2268,7 @@ async def send_message(
     #: asks the same question; the button then loops for as long as anybody
     #: keeps pressing it. This is what tells the next pass not to ask.
     proceed_as_is = bool(
-        pending
-        and not payload.approve
-        and payload.answers is not None
-        and not payload.answers
+        pending and not payload.approve and payload.answers is not None and not payload.answers
     )
     if pending:
         answers = {**(pending.get("answers") or {}), **(payload.answers or {})}
@@ -2304,9 +2287,7 @@ async def send_message(
         #: different documents, and asking about them together invites somebody
         #: to change the expensive half by mistake.
         if pending.get("stage") == "figures" and payload.include_figures is not None:
-            approved_figures = (
-                list(pending.get("figures") or []) if payload.include_figures else []
-            )
+            approved_figures = list(pending.get("figures") or []) if payload.include_figures else []
         payload = payload.model_copy(
             update={
                 "content": grounding.merge_answers(
@@ -2339,9 +2320,7 @@ async def send_message(
     # falls back to the built-in track produces a document in the wrong shape
     # and bills for it.
     if payload.render_template_id is not None:
-        session.render_template_id = _resolved_template_id(
-            payload.render_template_id, session.kind
-        )
+        session.render_template_id = _resolved_template_id(payload.render_template_id, session.kind)
 
     # Policy before any write, billing entry, virtual-key issue or model call.
     policy = await _require_egress_policy()
@@ -2471,15 +2450,19 @@ async def send_message(
         ]
 
     requested_is_strict = _strict_model(requested_model)
-    strict_candidate_available = requested_is_strict or any(
-        model.get("id") in set(policy.privacy_safe_model_ids or []) and _strict_model(model)
-        for model in catalogue_models
-    ) or (
-        auto_turn
-        and any(
-            model.get("id") in set(policy.adaptive_economy_model_ids or [])
-            and _strict_model(model)
+    strict_candidate_available = (
+        requested_is_strict
+        or any(
+            model.get("id") in set(policy.privacy_safe_model_ids or []) and _strict_model(model)
             for model in catalogue_models
+        )
+        or (
+            auto_turn
+            and any(
+                model.get("id") in set(policy.adaptive_economy_model_ids or [])
+                and _strict_model(model)
+                for model in catalogue_models
+            )
         )
     )
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
@@ -2571,9 +2554,7 @@ async def send_message(
         # classifier, key operation or model call, even when the organisation
         # has disabled the optional external-data decision UI.
         auto_preflight_findings = (
-            governance.findings(privacy_sources, legacy=policy.pii_masking)
-            if auto_turn
-            else []
+            governance.findings(privacy_sources, legacy=policy.pii_masking) if auto_turn else []
         )
         resolved = await _resolve_privacy(
             user=user,
@@ -2641,9 +2622,7 @@ async def send_message(
                 ]
         if resolved.mask_outbound:
             content = masker(content)[0]
-            outbound_history = _mask_list(
-                outbound_history, legacy=policy.pii_masking
-            )
+            outbound_history = _mask_list(outbound_history, legacy=policy.pii_masking)
             # A JSON-Schema name/key cannot safely be rewritten while retaining
             # its runtime argument mapping. Drop the complete sensitive tool;
             # clean tools keep the exact detached definitions inspected above.
@@ -2931,42 +2910,43 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_page(
-                may_ask=not proceed_as_is,
-                figures_plan=approved_figures,
-                image_model=image_model,
-                user_id=user.id,
-                api_key=api_key,
-                session_id=session.id,
-                # Set only on the second pass, when somebody has approved what
-                # the first pass offered. `None` plans and offers again.
-                approved_plan=approved_plan,
-                attachments=list(payload.attachments or []),
-                answers=dict(pending.get("answers") or {}),
-                model=model,
-                request=content,
-                project_id=session.project_id,
-                routing=document_routing,
-                template=render_template,
-                trusted_context=trusted_context,
-                untrusted_context=untrusted_context,
-                design_tokens=workspace.design_tokens,
-                skills_event=skills_event,
-                context_steps=context_steps,
-                outline_model=outline_model,
-                project_sources=[
-                    {
-                        "id": item.id,
-                        "name": item.name,
-                        "state": item.state,
-                        "sourceUrl": item.source_url,
-                        "locations": list(item.locations),
-                    }
-                    for item in workspace.knowledge
-                ],
-                # A strict-local route is given no network anywhere else, and
-                # a document is not the place to make the one exception.
-                web_search=payload.web_search and not strict_local,
-            )),
+                    may_ask=not proceed_as_is,
+                    figures_plan=approved_figures,
+                    image_model=image_model,
+                    user_id=user.id,
+                    api_key=api_key,
+                    session_id=session.id,
+                    # Set only on the second pass, when somebody has approved what
+                    # the first pass offered. `None` plans and offers again.
+                    approved_plan=approved_plan,
+                    attachments=list(payload.attachments or []),
+                    answers=dict(pending.get("answers") or {}),
+                    model=model,
+                    request=content,
+                    project_id=session.project_id,
+                    routing=document_routing,
+                    template=render_template,
+                    trusted_context=trusted_context,
+                    untrusted_context=untrusted_context,
+                    design_tokens=workspace.design_tokens,
+                    skills_event=skills_event,
+                    context_steps=context_steps,
+                    outline_model=outline_model,
+                    project_sources=[
+                        {
+                            "id": item.id,
+                            "name": item.name,
+                            "state": item.state,
+                            "sourceUrl": item.source_url,
+                            "locations": list(item.locations),
+                        }
+                        for item in workspace.knowledge
+                    ],
+                    # A strict-local route is given no network anywhere else, and
+                    # a document is not the place to make the one exception.
+                    web_search=payload.web_search and not strict_local,
+                )
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -2982,13 +2962,14 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _revise_document(
-                user_id=user.id,
-                api_key=api_key,
-                session_id=session.id,
-                model=model,
-                instruction=content,
-                routing=document_routing,
-            )),
+                    user_id=user.id,
+                    api_key=api_key,
+                    session_id=session.id,
+                    model=model,
+                    instruction=content,
+                    routing=document_routing,
+                )
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -3001,43 +2982,44 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_report(
-                may_ask=not proceed_as_is,
-                figures_plan=approved_figures,
-                image_model=image_model,
-                user_id=user.id,
-                api_key=api_key,
-                session_id=session.id,
-                # Set only on the second pass, when somebody has approved what
-                # the first pass offered. `None` plans and offers again.
-                approved_plan=approved_plan,
-                attachments=list(payload.attachments or []),
-                answers=dict(pending.get("answers") or {}),
-                model=model,
-                request=content,
-                project_id=session.project_id,
-                routing=document_routing,
-                # The same context blocks the chat surface gets: project instructions,
-                # memories, attached forms.
-                trusted_context=trusted_context,
-                untrusted_context=untrusted_context,
-                design_tokens=workspace.design_tokens,
-                skills_event=skills_event,
-                context_steps=context_steps,
-                outline_model=outline_model,
-                project_sources=[
-                    {
-                        "id": item.id,
-                        "name": item.name,
-                        "state": item.state,
-                        "sourceUrl": item.source_url,
-                        "locations": list(item.locations),
-                    }
-                    for item in workspace.knowledge
-                ],
-                # A strict-local route is given no network anywhere else, and
-                # a document is not the place to make the one exception.
-                web_search=payload.web_search and not strict_local,
-            )),
+                    may_ask=not proceed_as_is,
+                    figures_plan=approved_figures,
+                    image_model=image_model,
+                    user_id=user.id,
+                    api_key=api_key,
+                    session_id=session.id,
+                    # Set only on the second pass, when somebody has approved what
+                    # the first pass offered. `None` plans and offers again.
+                    approved_plan=approved_plan,
+                    attachments=list(payload.attachments or []),
+                    answers=dict(pending.get("answers") or {}),
+                    model=model,
+                    request=content,
+                    project_id=session.project_id,
+                    routing=document_routing,
+                    # The same context blocks the chat surface gets: project instructions,
+                    # memories, attached forms.
+                    trusted_context=trusted_context,
+                    untrusted_context=untrusted_context,
+                    design_tokens=workspace.design_tokens,
+                    skills_event=skills_event,
+                    context_steps=context_steps,
+                    outline_model=outline_model,
+                    project_sources=[
+                        {
+                            "id": item.id,
+                            "name": item.name,
+                            "state": item.state,
+                            "sourceUrl": item.source_url,
+                            "locations": list(item.locations),
+                        }
+                        for item in workspace.knowledge
+                    ],
+                    # A strict-local route is given no network anywhere else, and
+                    # a document is not the place to make the one exception.
+                    web_search=payload.web_search and not strict_local,
+                )
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -3050,33 +3032,34 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_deck(
-                may_ask=not proceed_as_is,
-                figures_plan=approved_figures,
-                image_model=image_model,
-                user_id=user.id,
-                api_key=api_key,
-                session_id=session.id,
-                # Set only on the second pass, when somebody has approved what
-                # the first pass offered. `None` plans and offers again.
-                approved_plan=approved_plan,
-                attachments=list(payload.attachments or []),
-                answers=dict(pending.get("answers") or {}),
-                model=model,
-                request=content,
-                project_id=session.project_id,
-                routing=document_routing,
-                # The same context blocks the chat surface gets: project instructions,
-                # memories, attached forms.
-                trusted_context=trusted_context,
-                untrusted_context=untrusted_context,
-                design_tokens=workspace.design_tokens,
-                skills_event=skills_event,
-                context_steps=context_steps,
-                outline_model=outline_model,
-                # A strict-local route is given no network anywhere else, and
-                # a document is not the place to make the one exception.
-                web_search=payload.web_search and not strict_local,
-            )),
+                    may_ask=not proceed_as_is,
+                    figures_plan=approved_figures,
+                    image_model=image_model,
+                    user_id=user.id,
+                    api_key=api_key,
+                    session_id=session.id,
+                    # Set only on the second pass, when somebody has approved what
+                    # the first pass offered. `None` plans and offers again.
+                    approved_plan=approved_plan,
+                    attachments=list(payload.attachments or []),
+                    answers=dict(pending.get("answers") or {}),
+                    model=model,
+                    request=content,
+                    project_id=session.project_id,
+                    routing=document_routing,
+                    # The same context blocks the chat surface gets: project instructions,
+                    # memories, attached forms.
+                    trusted_context=trusted_context,
+                    untrusted_context=untrusted_context,
+                    design_tokens=workspace.design_tokens,
+                    skills_event=skills_event,
+                    context_steps=context_steps,
+                    outline_model=outline_model,
+                    # A strict-local route is given no network anywhere else, and
+                    # a document is not the place to make the one exception.
+                    web_search=payload.web_search and not strict_local,
+                )
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -3214,9 +3197,7 @@ async def _until_stopped(
     try:
         while not stopping.is_set():
             nxt = asyncio.ensure_future(anext(iterator))
-            done, _ = await asyncio.wait(
-                {nxt, waiting}, return_when=asyncio.FIRST_COMPLETED
-            )
+            done, _ = await asyncio.wait({nxt, waiting}, return_when=asyncio.FIRST_COMPLETED)
             if nxt not in done:
                 # Stopped while this one was still in the air. Cancelling it is
                 # what releases the socket underneath — and it has to be waited
@@ -3234,6 +3215,7 @@ async def _until_stopped(
     finally:
         waiting.cancel()
         await iterator.aclose()
+
 
 #: Strong references to tasks whose reader has gone — otherwise the loop is
 #: the only thing holding them and they are collectible mid-turn.
@@ -3518,7 +3500,14 @@ async def _run_turn(
     except chat_service.ChatStreamError as exc:
         log.warning("chat stream failed for session %s: %s", session_id, exc)
         failed = str(exc)
-        yield chat_service.sse(_error_event("모델 응답을 받지 못했습니다.", exc))
+        yield chat_service.sse(
+            _error_event(
+                "모델 사용량 한도에 닿았습니다. 잠시 후 다시 시도해 주세요."
+                if failed.startswith("upstream_429")
+                else "모델 응답을 받지 못했습니다.",
+                exc,
+            )
+        )
     except Exception as exc:  # noqa: BLE001 — turn still has to settle and close
         log.exception("chat stream crashed for session %s", session_id)
         failed = "internal_error"
@@ -3832,9 +3821,7 @@ async def compare_models(
     chosen = [model for model in chosen if model is not None]
 
     history = await _history(db, session.id)
-    attachment_rows, attachment_meta = await _owned_attachments(
-        db, user, payload.attachments
-    )
+    attachment_rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
     try:
         workspace = await assemble(
             db,
@@ -4275,9 +4262,7 @@ async def _enrich(
                 settle(
                     db,
                     user,
-                    charge_for_tokens(
-                        enrichment, spent["inputTokens"], spent["outputTokens"]
-                    ),
+                    charge_for_tokens(enrichment, spent["inputTokens"], spent["outputTokens"]),
                     reason="chat.memory",
                     session_id=session_id,
                     model=enrichment["id"],
@@ -4786,9 +4771,7 @@ async def _run_deck(
                         # Copied onto the artifact rather than resolved at export time: a deck
                         # presented last month should not repaint itself when the project changes.
                         **({"design": artifact_design} if artifact_design else {}),
-                        "lint": lint.wire(
-                            lint.check(lint.from_slides(slides), slides=True)
-                        ),
+                        "lint": lint.wire(lint.check(lint.from_slides(slides), slides=True)),
                         # Every slide, including unwritten ones — a gap stays
                         # visible so it can be fixed.
                         "slides": slides,
