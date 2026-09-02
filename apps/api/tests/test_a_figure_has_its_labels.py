@@ -165,3 +165,20 @@ def test_a_subject_the_request_never_named_becomes_a_question() -> None:
     assert not _subject_missing('{"subject": "학과 서버 교체", "sections": []}', topical)
     # 계획이 subject 를 말하지 않았으면 판단하지 않는다.
     assert not _subject_missing('{"title": "x", "sections": ["a"]}', ask)
+
+
+def test_a_results_report_with_nothing_to_report_is_asked_for_its_data() -> None:
+    from app.services.report import _results_without_data
+
+    ask = "「신규 소재 적용 타당성 검토」 보고서를 써 주세요. 시험 방법, 결과, 위험, 권고 순서로."
+    assert _results_without_data(ask, [])
+    # 수치가 요청에 있거나 파일이 붙었으면 묻지 않는다.
+    assert not _results_without_data(ask + " 인장 강도 420 MPa, 피로 수명 12% 향상.", [])
+    assert not _results_without_data(ask, ["# 시험 성적서\n인장 강도 420"])
+    # 결과를 말하지 않는 문서는 자료가 없어도 쓴다.
+    assert not _results_without_data("신입생 오리엔테이션 안내문을 써 주세요.", [])
+    # 자료가 있다고 말하고 붙이지 않았으면 묻는다.
+    assert _results_without_data("학과 세미나 녹취를 회의록으로 바꿔 주세요.", [])
+    assert not _results_without_data("학과 세미나 녹취를 회의록으로 바꿔 주세요.", ["녹취: …"])
+    # 동향·문헌처럼 검색으로 쓰는 문서는 자료를 묻지 않는다.
+    assert not _results_without_data("PEFT 최근 1년 동향 분석 보고서를 써 주세요.", [])

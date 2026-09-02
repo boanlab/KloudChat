@@ -167,12 +167,10 @@ def missing_attachment(request: str, files: tuple[ContextFile, ...]) -> Question
     return Question(
         id="no_attachment",
         question=(
-            "첨부한 파일을 근거로 만들라고 하셨는데, "
-            "이번 요청에는 파일이 실려 오지 않았습니다."
+            "첨부한 파일을 근거로 만들라고 하셨는데, 이번 요청에는 파일이 실려 오지 않았습니다."
         ),
         detail=(
-            "파일이 없으면 요청 문장만 남고, "
-            "그 문장으로 만든 문서는 첨부와 무관한 내용이 됩니다."
+            "파일이 없으면 요청 문장만 남고, 그 문장으로 만든 문서는 첨부와 무관한 내용이 됩니다."
         ),
         options=[
             "파일을 다시 첨부하겠습니다",
@@ -270,3 +268,30 @@ def focus_terms(answers: dict[str, str]) -> str:
     if not text or text.startswith("읽은 앞부분"):
         return ""
     return text
+
+
+def subject_missing(text: str, request: str) -> bool:
+    """Whether the planner named a subject the request never mentioned.
+
+    The outline rule says to ask when a request gives only the form of a
+    document — 「결재용 한 장 보고: 결정할 것, 대안 둘, 권고」 — and the
+    planner planned 「전산망 교체」 anyway, twice, with the rule in bold. So
+    the planner is asked to *state* the subject in the request's own words,
+    and that statement is checked: a subject whose words are not in the
+    request is a subject the planner made up.
+    """
+    obj = re.search(r"\{.*\}", text, re.S)
+    if not obj:
+        return False
+    try:
+        data = json.loads(obj.group(0))
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict) or "subject" not in data:
+        return False
+    subject = str(data.get("subject") or "").strip()
+    if not subject:
+        return True
+    compact = re.sub(r"\s+", "", request)
+    words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
+    return bool(words) and not any(w in compact for w in words)

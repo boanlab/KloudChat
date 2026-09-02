@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -61,6 +62,8 @@ class _Accumulator:
         self.usage = {"inputTokens": 0, "outputTokens": 0}
         self.finish_reason: str | None = None
         self.actual_model: str | None = None
+        #: Cut off for repeating itself — see `_is_looping`.
+        self.looped = False
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Returns newly emitted visible text, if any."""
@@ -174,10 +177,49 @@ async def _stream_once(
                     text = acc.add_chunk(chunk)
                     if text:
                         yield "delta", text
+                        if _is_looping(acc.content):
+                            # 같은 문단을 되풀이하면 끊는다.
+                            #
+                            # A small model once wrote the same two sentences
+                            # about tax invoices two hundred times — 64k tokens,
+                            # thirteen minutes — before anything stopped it.
+                            # The stream is closed here; the caller adds a line.
+                            acc.looped = True
+                            break
     except httpx.HTTPError as exc:
         raise ChatStreamError(f"upstream_unreachable: {exc}") from exc
 
     yield "done", acc
+
+
+def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool:
+    """True when the tail of the text has already appeared `times` times.
+
+    Cheap enough to run per chunk: a slice, then one `count` over what has
+    been written so far. Checked only once the text is long enough for a
+    genuine repeat — a short answer that says 「네」 twice is not a loop.
+    """
+    text = "".join(pieces[-400:])
+    if len(text) < window * times:
+        return False
+    needle = text[-window:].strip()
+    return len(needle) >= window // 2 and text.count(needle) >= times
+
+
+_URL = re.compile(r"https?://[^\s)\]>\"'」』,]+")
+
+
+def _urls_in(text: str) -> list[str]:
+    """Every http(s) URL in `text`, trailing punctuation dropped."""
+    return [u.rstrip(".,;:") for u in _URL.findall(text or "")]
+
+
+def _looks_like_a_source(url: str) -> bool:
+    """A link that stands for a source — a paper, a page — rather than a home page."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return bool(parsed.netloc) and parsed.path not in ("", "/")
 
 
 async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
@@ -271,6 +313,9 @@ async def run_turn(
     #: Set when the hop cap has been reached: the next call is the last, it
     #: gets no tools, and it is told to answer from what it has.
     closing = False
+    #: Every URL a tool returned this turn, and everything the model wrote.
+    seen_urls: set[str] = set()
+    answer_text: list[str] = []
     while True:
         acc: _Accumulator | None = None
         stream_kwargs: dict[str, Any] = {
@@ -299,6 +344,7 @@ async def run_turn(
             **stream_kwargs,
         ):
             if kind == "delta":
+                answer_text.append(value)
                 yield {"type": "delta", "text": value}
             else:
                 acc = value
@@ -314,7 +360,36 @@ async def run_turn(
                 "actualModel": acc.actual_model,
             }
 
-        if not acc.calls or closing:
+        if acc.looped:
+            note = (
+                "\n\n_같은 내용이 되풀이되어 여기서 멈췄습니다. "
+                "다시 시도하거나 다른 모델을 골라 보세요._"
+            )
+            answer_text.append(note)
+            yield {"type": "delta", "text": note}
+            break
+        if closing:
+            break
+        if not acc.calls:
+            if hop and not "".join(acc.content).strip():
+                # 도구는 썼는데 답이 비었다.
+                #
+                # Two searches, three pages read, then a completion with no
+                # text and no calls — the person waited three minutes for
+                # 「답이 오지 않았습니다」. Ask once more, with no tools, the
+                # way the hop cap does; the material is all in the conversation.
+                conversation.append(acc.assistant_message())
+                conversation.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "답이 비어 있습니다. 지금까지 모은 자료로 답을 쓰세요. "
+                            "자료가 부족하면 무엇이 더 필요한지 물으세요."
+                        ),
+                    }
+                )
+                closing = True
+                continue
             break
 
         hop += 1
@@ -447,5 +522,25 @@ async def run_turn(
                     "content": result.content,
                 }
             )
+            seen_urls.update(_urls_in(result.content))
+
+    # 검색에 없던 링크는 그렇다고 말한다.
+    #
+    # A literature survey came back with eleven arXiv links, six of which
+    # did not exist — plausible ids the model wrote from memory, under real
+    # authors' names with the wrong years. A reader has no way to tell those
+    # from the five that came out of a search. The turn knows: every URL a
+    # tool returned is in `seen_urls`, so a URL in the answer that is not
+    # there is one the model made up or remembered, and it is listed as such.
+    answer = "".join(answer_text)
+    unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
+    if unverified and seen_urls:
+        yield {
+            "type": "delta",
+            "text": (
+                "\n\n_다음 링크는 이 답을 쓰며 검색·열람한 결과에 없던 것입니다. 기억으로 적은 "
+                "것이니 열어 보고 확인하세요: " + ", ".join(dict.fromkeys(unverified)) + "_"
+            ),
+        }
 
     yield {"type": "usage", **usage}

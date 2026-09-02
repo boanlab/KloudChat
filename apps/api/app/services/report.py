@@ -70,6 +70,12 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
   대안 비교 → 위험과 남는 문제 → 권고안과 다음 단계. 계산이 비교보다 앞이다 —
   표의 숫자는 그 앞 절에서 식으로 구한 값을 옮겨 적는 것이지 표에서 새로 셈하는
   것이 아니다.
+  **그 뼈대는 대안을 고르는 문서에만 쓴다.** 회의록·실험 보고서·안내문·동향 분석에
+  「비용 계산의 전제」「대안 비교」를 넣지 마라.
+- **요청이 항목을 말했으면 그 항목이 목차다.** 「결정 사항, 반론, 다음 발표자와
+  기한을 나눠」라고 했으면 절은 그 셋(과 필요한 머리말)이고, 「목적·이론·장치·절차·
+  결과·오차 분석」이라고 했으면 그 여섯이다. 요청한 항목을 빼거나 다른 이름으로
+  바꾸지 마라.
 - 섹션은 제목만. 내용은 쓰지 마라.
 - style 은 이 문서가 어디에 쓰이는지에 맞는 인상이다. 셋 중 하나만 골라라:
   · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 문서. 선과 넓은 여백.
@@ -89,6 +95,9 @@ JSON 객체로만 답하라. "subject" 에는 이 문서가 무엇에 대한 것
      "sections": ["요약", "현황과 결정할 사안", "비용 계산의 전제", "대안 비교",
                   "위험과 남는 문제", "권고안과 다음 단계"],
      "alternatives": ["교체", "1년 연장", "클라우드 이전"]}}
+예: {{"title": "9월 학과 세미나 회의록", "style": "편집형", "subject": "학과 세미나",
+     "sections": ["회의 개요", "결정 사항", "반론과 남은 쟁점", "다음 발표자와 기한"],
+     "alternatives": []}}
 
 요청: {request}"""
 
@@ -288,9 +297,11 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
     if not found:
         return (
             "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
-            "퍼센트를 어떤 것도 쓰지 마라.** 비용 칸은 「(미정)」, 「비용 계산의 전제」 같은 "
-            "절은 값을 셈하는 대신 무엇을 확인해야 하는지(견적, 예산 한도, 대상 인원)를 "
-            "적는다. 비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+            "퍼센트·측정값·부품값·성능 향상률을 어떤 것도 쓰지 마라.** 비용 칸은 「(미정)」, "
+            "측정 결과 칸은 「(측정값)」으로 비워 두고, 「비용 계산의 전제」「결과」 같은 절은 "
+            "값을 셈하거나 지어내는 대신 무엇을 어떻게 측정·확인해야 하는지(견적, 예산 한도, "
+            "대상 인원, 측정 조건)를 적는다. 비교표의 행은 비용 대신 「필요한 것」 「위험」 "
+            "「되돌릴 수 있는가」로. 공식과 일반 원리(f_c = 1/(2πRC) 같은 것)는 써도 된다."
         )
     return "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
 
@@ -471,31 +482,35 @@ def _outline_style(text: str) -> str:
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
-def _subject_missing(text: str, request: str) -> bool:
-    """Whether the planner named a subject the request never mentioned.
+#: The planner's stated subject, checked against the request — see grounding.
+_subject_missing = grounding.subject_missing
 
-    The outline rule says to ask when a request gives only the form of a
-    document — 「결재용 한 장 보고: 결정할 것, 대안 둘, 권고」 — and the
-    planner planned 「전산망 교체」 anyway, twice, with the rule in bold. So
-    the planner is asked to *state* the subject in the request's own words,
-    and that statement is checked: a subject whose words are not in the
-    request is a subject the planner made up.
+
+_RESULTS = re.compile(r"결과|시험|실험|측정")
+#: Words that point at a thing the person has and did not attach.
+_MATERIAL = re.compile(r"녹취|녹음|원고|초안|피드백|기록을|표가 있|표를|파일|첨부|자료를|메모를")
+
+
+def _results_without_data(request: str, attached: list[str]) -> bool:
+    """A report asked for on material that is not here.
+
+    「신규 소재 적용 타당성 검토 — 시험 방법, 결과, 위험, 권고」 with no
+    material, no numbers, no file came back with 「압축 강도와 피로 수명이
+    12%~15% 향상」: a result nobody measured, in a document whose whole point is
+    the measurement. 「세미나 녹취를 회의록으로」 with no 녹취 came back as a
+    decision brief about adopting a minutes system. A frame with (미정) in it
+    is honest and a made-up result is not, so a request that names its
+    material (녹취, 표, 파일) or asks for results, and carries no figure and no
+    attachment, is asked for the material first — 있는 자료로 진행 still writes
+    the frame.
     """
-    obj = re.search(r"\{.*\}", text, re.S)
-    if not obj:
+    if any(block.strip() for block in attached):
         return False
-    try:
-        data = json.loads(obj.group(0))
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(data, dict) or "subject" not in data:
-        return False
-    subject = str(data.get("subject") or "").strip()
-    if not subject:
+    if _MATERIAL.search(request):
         return True
-    compact = re.sub(r"\s+", "", request)
-    words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
-    return bool(words) and not any(w in compact for w in words)
+    if not _RESULTS.search(request):
+        return False
+    return not deck_rules.has_numbers(request, [])
 
 
 def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str]:
@@ -849,6 +864,24 @@ async def write(
         if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
+            yield {"type": "usage", **usage}
+            return
+        if may_ask and _results_without_data(request, list(untrusted_context or [])):
+            yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+            yield {
+                "type": "needs",
+                "questions": [
+                    grounding.Question(
+                        id="data",
+                        question=(
+                            "바탕이 될 자료(녹취, 표, 측정값, 파일)를 붙이거나 적어 주세요. "
+                            "없으면 「있는 자료로 진행」— 내용 자리는 (미정)으로 비워 둔 "
+                            "틀을 씁니다."
+                        ),
+                        options=[],
+                    ).wire()
+                ],
+            }
             yield {"type": "usage", **usage}
             return
         if may_ask and _subject_missing(text, request):

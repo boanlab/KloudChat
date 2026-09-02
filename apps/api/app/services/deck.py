@@ -177,10 +177,13 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 - 참고할 자료에 발표 양식·서식 문서가 있으면 그 문서의 장 순서를 그대로 따라라.
   장수도 그 양식을 따르고, 일반적인 발표 구성으로 바꾸지 마라.
 
-JSON 객체로만 답하라.
+JSON 객체로만 답하라. "subject" 에는 이 발표가 무엇에 대한 것인지를 **요청에 적힌
+말 그대로** 적어라 — 요청이 쓰임(중간발표, 학회 발표, 신청 발표)만 말하고 무엇에
+대한 것인지 말하지 않았으면 빈 문자열.
 예:
 {{"title": "전이학습의 소량 데이터 효율성",
   "subtitle": "의료 영상 연구자를 위한 30분 개요",
+  "subject": "전이학습",
   {theme_example}"slides": [{{"title": "전이학습의 소량 데이터 효율성", "layout": "title"}},
              {{"title": "왜 데이터가 부족한가", "layout": "bullets"}},
              {{"title": "사전학습과 미세조정 비교", "layout": "table"}}]}}
@@ -1738,6 +1741,28 @@ async def write(
     if may_ask and (asked := grounding.parse_needs(text)):
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
+        yield {"type": "usage", **usage}
+        return
+    if may_ask and grounding.subject_missing(text, request):
+        # 주제가 없는 요청은 묻는다. 「캡스톤 중간발표 10분」 was planned as an
+        # AI 맞춤 학습 플랫폼 nobody is building, and 「학회 구두 발표 15분,
+        # 수치를 크게」 as seven slides of 500회 and 20% about nothing — the
+        # rule against invented 소재 was in the prompt both times. Same check
+        # as the report's, on the same field.
+        yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+        yield {
+            "type": "needs",
+            "questions": [
+                grounding.Question(
+                    id="subject",
+                    question=(
+                        "무엇에 대한 발표입니까? 주제와, 보여 줄 결과·수치가 있으면 "
+                        "함께 적어 주세요."
+                    ),
+                    options=[],
+                ).wire()
+            ],
+        }
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
