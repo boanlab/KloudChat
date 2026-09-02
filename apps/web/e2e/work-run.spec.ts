@@ -388,15 +388,32 @@ async function followUp(page: Page, scenario: WorkScenario): Promise<string> {
       await make.click()
     }
 
-    const field = dialog.getByLabel('공유 링크').first()
-    if (!(await field.isVisible({ timeout: 30_000 }).catch(() => false))) {
-      await page.keyboard.press('Escape')
-      return '링크를 만들었는데 주소가 나오지 않았습니다'
+    // 값이 들어올 때까지. `getByLabel` finds the field the moment it is drawn,
+    // and it is drawn empty for the instant between the request going out and
+    // the row coming back — reading it then gives `''` and reads as a link
+    // that was never made, while the top bar is already saying 공유 중.
+    let link = ''
+    for (let waited = 0; waited < 40_000; waited += 500) {
+      link = await page
+        .getByLabel('공유 링크')
+        .first()
+        .inputValue()
+        .catch(() => '')
+      if (/\/share\/[A-Za-z0-9_-]+/.test(link)) break
+      await page.waitForTimeout(500)
     }
-    const link = await field.inputValue().catch(() => '')
     await page.keyboard.press('Escape')
     if (!/\/share\/[A-Za-z0-9_-]+/.test(link)) {
-      return `공유 링크가 주소 모양이 아닙니다: ${link}`
+      // 공유 중 배지가 떴는지도 함께 본다 — 링크는 못 읽었는데 공유는 된
+      // 경우와, 정말 아무 일도 없었던 경우는 다른 결함이다.
+      const badge = await page
+        .getByText('공유 중')
+        .first()
+        .isVisible()
+        .catch(() => false)
+      return badge
+        ? '공유는 되었는데 링크 주소를 읽지 못했습니다'
+        : `공유 링크가 만들어지지 않았습니다: ${link}`
     }
     return ''
   }
