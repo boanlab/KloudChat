@@ -157,7 +157,9 @@ def test_a_subject_the_request_never_named_becomes_a_question() -> None:
     from app.services.report import _subject_missing
 
     ask = "처장님 결재용 한 장 보고를 써 주세요. 결정할 것, 대안 두 개, 권고안을 담아 주세요."
-    assert _subject_missing('{"title": "전산망 교체", "subject": "전산망 교체", "sections": []}', ask)
+    assert _subject_missing(
+        '{"title": "전산망 교체", "subject": "전산망 교체", "sections": []}', ask
+    )
     assert _subject_missing('{"title": "보고", "subject": "", "sections": []}', ask)
     topical = "학과 서버 교체 여부를 정하는 보고서를 써 줘"
     assert not _subject_missing('{"subject": "학과 서버 교체", "sections": []}', topical)
