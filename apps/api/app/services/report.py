@@ -1413,12 +1413,16 @@ async def rewrite_section(
             "이유가 형식을 말하면(번호 목록 셋, 표 하나, 세 문장) 그 형식 그대로 쓴다. "
             "이유에 없는 표·블록을 새로 보태지 말고, 다른 절에 이미 있는 표를 다시 그리지 마라."
         )
-    return await _complete(
+    body, spent = await _complete(
         model,
         build_document_messages(SessionKind.report, prompt, request=request),
         api_key,
         1200,
     )
+    # The same door the first pass goes through — see `write`. Two callers
+    # (the panel's 다시 쓰기 and a revision typed in the chat) store what this
+    # returns, and only one of them remembered to close 「2,400 만 원」 up.
+    return hangul.tidy_spacing(hangul.read_back(body)[0]), spent
 
 
 def word_count(sections: list[dict]) -> int:
