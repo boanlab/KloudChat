@@ -523,6 +523,16 @@ _MATERIAL = re.compile(
 )
 
 
+def _carries_material(request: str) -> bool:
+    """The material is in the request itself — a pasted memo, a table.
+
+    「아래 랩 미팅 메모를 회의록으로」 followed by the memo was asked what
+    research it was about, because the memo mentioned 논문 4장. A request
+    long enough to hold its own material, or with a table in it, has it.
+    """
+    return len(request) >= 300 or "|" in request
+
+
 def _results_without_data(request: str, attached: list[str]) -> bool:
     """A report asked for on material that is not here.
 
@@ -536,7 +546,7 @@ def _results_without_data(request: str, attached: list[str]) -> bool:
     attachment, is asked for the material first — 있는 자료로 진행 still writes
     the frame.
     """
-    if any(block.strip() for block in attached):
+    if any(block.strip() for block in attached) or _carries_material(request):
         return False
     if _MATERIAL.search(request):
         return True

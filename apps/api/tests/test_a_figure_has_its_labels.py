@@ -193,3 +193,77 @@ def test_the_cost_table_advice_is_kept_for_decisions() -> None:
     assert "비교표의 행" in _facts_line("서버 교체와 클라우드 이전 대안을 비교해 주세요.", [])
     assert "비교표의 행" not in _facts_line("학과 세미나 회의록을 써 주세요.", [])
     assert "쓰지 마라" in _facts_line("학과 세미나 회의록을 써 주세요.", [])
+
+
+def test_material_pasted_into_the_request_is_not_asked_for() -> None:
+    from app.services.report import _results_without_data
+
+    memo = (
+        "아래 랩 미팅 메모를 회의록으로 바꿔 주세요.\n"
+        + "- 교수: 논문 4장 그림 3 축 라벨 빠짐.\n" * 12
+    )
+    assert not _results_without_data(memo, [])
+    assert not _results_without_data(
+        "표를 붙입니다.\n| 학과 | 2024 |\n|---|---|\n| 컴공 | 312 |", []
+    )
+
+
+def test_a_slide_that_retells_earlier_figures_is_dropped_and_the_table_wins() -> None:
+    from app.services.deck import _retold
+
+    slides = [
+        {"title": "개편안", "layout": "title"},
+        {"title": "변경 사항", "layout": "two-column"},
+        {"title": "증액 수치", "layout": "metrics"},
+        {"title": "비교 요약", "layout": "table"},
+        {"title": "유지 원칙", "layout": "quote"},
+    ]
+    drafted = {
+        1: {
+            "layout": "two-column",
+            "bullets": [
+                "학자금 연 500만 원→700만 원",
+                "재택 주 1일→2일",
+                "경조사비 100만 원→150만 원",
+            ],
+        },
+        2: {
+            "layout": "metrics",
+            "metrics": [["700만 원", "학자금"], ["150만 원", "경조사비"], ["2일", "재택"]],
+        },
+        3: {
+            "layout": "table",
+            "rows": [
+                ["구분", "기존", "변경"],
+                ["학자금", "500만 원", "700만 원"],
+                ["재택", "주 1일", "주 2일"],
+                ["경조사비", "100만 원", "150만 원"],
+            ],
+        },
+        4: {"layout": "quote", "body": "연차 15일, 식대 월 20만 원, 상여 각 50만 원은 그대로"},
+    }
+    assert _retold(slides, drafted) == {1, 2}
+
+
+def test_a_timeline_padded_with_invented_steps_becomes_bullets() -> None:
+    from app.services.deck import _split_deck_draft
+
+    request = "복지제도 개편안. 바뀌는 점(2027년 1월 1일부터): 재택 주 2일."
+    slides = [{"title": "적용 시점", "layout": "timeline"}]
+    draft = (
+        '{"slides":[{"title":"적용 시점","layout":"timeline","timeline":['
+        '["2027년 1월 1일","규정 발효"],["매주 월요일","일정 제출"],["분기별","점검"]]}]}'
+    )
+    out = _split_deck_draft(draft, slides, set(), request)
+    assert out[0]["layout"] == "bullets" and "timeline" not in out[0]
+    assert out[0]["bullets"][0].startswith("2027년 1월 1일")
+    # 요청에 시점이 둘 이상 있으면 그것만 남긴다.
+    request2 = request + " 9월 15일 초안 리뷰, 9월 20일 마감."
+    draft2 = (
+        '{"slides":[{"title":"적용 시점","layout":"timeline","timeline":['
+        '["2027년 1월 1일","발효"],["9월 15일","초안 리뷰"],["매주 월요일","제출"]]}]}'
+    )
+    out2 = _split_deck_draft(
+        draft2, [{"title": "적용 시점", "layout": "timeline"}], set(), request2
+    )
+    assert [t[0] for t in out2[0]["timeline"]] == ["2027년 1월 1일", "9월 15일"]

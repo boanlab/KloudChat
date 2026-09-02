@@ -204,7 +204,9 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 - two-column: "bullets": [...] {count_two}개. 앞 절반이 왼쪽, 뒤 절반이 오른쪽.
 - table: "rows": [["기준", "A", "B"], ["행", "값", "값"], ...] 첫 줄이 머리글. 3~5행,
   2~4열. 칸은 짧게(15자 안쪽).
-- timeline: "timeline": [["시점 또는 단계", "일"], ...] 3~6개. 일은 한 줄.
+- timeline: "timeline": [["시점 또는 단계", "일"], ...] 3~6개. 일은 한 줄. **시점과 단계는
+  요청에 있는 것만** — 요청에 날짜가 하나뿐이면 timeline 이 아니라 bullets 다. 「매주
+  월요일 제출」「분기별 점검」처럼 요청에 없는 절차를 만들어 칸을 채우지 마라.
 - bands: "bands": [["이름", "내용"], ...] 3~4개. 이름은 낱말 하나둘, 내용은 한 줄.
 - tiles: "tiles": [["표식", "이름"], ...] 3~6개. 표식은 머리글자·번호 한두 글자. **요청에
   그런 묶음이 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.**
@@ -213,7 +215,10 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 - chart: "chart": {{"kind": "bar"|"line", "unit": "단위", "categories": [...],
   "series": [{{"name": "이름", "values": [...]}}]}}. 값은 「쓸 수 있는 수치」에 있는
   것만. 없으면 bullets 로.
-- quote: "body": "한 문장" (60자 안쪽). 남길 만한 한 문장이 없으면 bullets 로.
+- quote: "body": "한 문장" (60자 안쪽). 남길 만한 한 문장이 없으면 bullets 로. **요청에
+  있는 문장이거나 발표자가 직접 하는 한 문장 요약만.** 직원·고객·전문가의 소감이나
+  「직원들의 목소리」 같은 남의 말을 지어내지 마라 — 안내 자료에 없는 사람의 말을
+  실으면 그 자료는 거짓말을 한 것이다.
 - title, section: 내용 없이 "notes" 만.
 
 모든 장에 "notes": 발표자가 이 장에서 **실제로 말할 문장** 3~5개. 「이 장에서는 ~를
@@ -292,6 +297,64 @@ def _facts_line(request: str) -> str:
     return "쓸 수 있는 수치(요청에 있는 것 전부): " + ", ".join(found[:30])
 
 
+_CLAIM = re.compile(
+    r"\d[\d,.]*\s*(?:억|만|천)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장|석)?"
+)
+
+#: Layouts that hold the same facts better, highest first. When a slide is a
+#: retelling of an earlier one, the better shape survives.
+_SHAPE_RANK = {"table": 3, "bands": 2, "two-column": 1, "bullets": 1, "metrics": 0}
+
+
+def _claims(row: dict[str, Any]) -> set[str]:
+    """The figures a slide asserts, as text — what makes two slides the same."""
+    text = json.dumps(
+        {k: v for k, v in row.items() if k not in ("notes", "layout", "title")}, ensure_ascii=False
+    )
+    return {re.sub(r"\s+", "", m.group(0)) for m in _CLAIM.finditer(text) if len(m.group(0)) >= 2}
+
+
+def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) -> set[int]:
+    """Indices of drafted slides that only repeat figures earlier slides carry.
+
+    A 복지제도 개편 deck put the same four changes — 500만→700만, 격년→매년,
+    주 1일→2일, 100만→150만 — on a two-column, then metrics, then bands, then
+    a table: four slides, one fact set, and 「한 장에는 그 장에서만 하는 말」
+    in the prompt the whole time. A slide with three or more figures all of
+    which earlier kept slides already state is dropped; when the newcomer is a
+    table and the earlier one is not, the earlier one goes instead, because
+    the table is where those figures read best.
+    """
+    kept: list[tuple[int, set[str], str]] = []
+    dropped: set[int] = set()
+    for index, slide in enumerate(slides):
+        row = drafted.get(index)
+        if row is None or slide["layout"] in ("title", "section"):
+            continue
+        claims = _claims(row)
+        if len(claims) < 3:
+            kept.append((index, claims, str(row.get("layout") or slide["layout"])))
+            continue
+        said = set().union(*(c for _, c, _ in kept)) if kept else set()
+        if not claims <= said:
+            kept.append((index, claims, str(row.get("layout") or slide["layout"])))
+            continue
+        layout = str(row.get("layout") or slide["layout"])
+        weaker = [
+            (i, c, lay)
+            for i, c, lay in kept
+            if len(c) >= 3 and c <= claims and _SHAPE_RANK.get(lay, 1) < _SHAPE_RANK.get(layout, 1)
+        ]
+        if weaker:
+            for item in weaker:
+                kept.remove(item)
+                dropped.add(item[0])
+            kept.append((index, claims, layout))
+        else:
+            dropped.add(index)
+    return dropped
+
+
 def _facts_set(request: str) -> set[str]:
     """Every digit run in the request, so a number on a slide can be checked."""
     return {re.sub(r"[^\d.]", "", m) for m in re.findall(r"\d[\d,]*(?:\.\d+)?", request)}
@@ -310,8 +373,20 @@ def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
     return True
 
 
+def _moment_in_request(moment: str, request: str) -> bool:
+    """Whether a timeline's 'when' was given — a date the request has, or its words."""
+    compact = re.sub(r"\s+", "", request)
+    cell = re.sub(r"\s+", "", moment)
+    if not cell:
+        return False
+    if cell in compact:
+        return True
+    digits = re.findall(r"\d+", cell)
+    return bool(digits) and all(d in compact for d in digits)
+
+
 def _split_deck_draft(
-    text: str, slides: list[dict[str, Any]], facts: set[str]
+    text: str, slides: list[dict[str, Any]], facts: set[str], request_text: str = ""
 ) -> dict[int, dict[str, Any]]:
     """The draft's slides matched to the outline's, by position then by title.
 
@@ -361,6 +436,18 @@ def _split_deck_draft(
         ):
             row = {k: v for k, v in row.items() if k != "chart"}
             row["layout"] = "bullets"
+        # 요청에 없는 시점으로 채운 timeline 은 bullets 로 내린다. 「2027년 1월
+        # 1일 발효」 하나가 요청에 있었고, 「매주 월요일 제출」「분기별 점검」 넷이
+        # 그 뒤에 따라왔다 — 절차를 지어내 칸을 채운 것이다.
+        if isinstance(row.get("timeline"), list):
+            steps = [t for t in row["timeline"] if isinstance(t, list) and t]
+            sure = [t for t in steps if _moment_in_request(str(t[0]), request_text)]
+            if len(sure) < 2:
+                row = {k: v for k, v in row.items() if k != "timeline"}
+                row["bullets"] = [f"{t[0]} – {t[1]}" if len(t) > 1 else str(t[0]) for t in steps]
+                row["layout"] = "bullets"
+            elif len(sure) < len(steps):
+                row = {**row, "timeline": sure}
         # 초안이 layout 을 바꿨으면 따른다 — 내용에 맞지 않는 layout 을 고집한 장이
         # 빈 사각형이 되는 것보다 낫다. 표지와 간지는 그대로.
         wanted = str(row.get("layout") or "")
@@ -1311,7 +1398,17 @@ async def _write_slides(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        drafted = _split_deck_draft(draft_text, slides, _facts_set(request))
+        drafted = _split_deck_draft(draft_text, slides, _facts_set(request), request)
+        # 같은 사실을 다른 모양으로 되풀이한 장은 뺀다.
+        retold = _retold(slides, drafted)
+        if retold:
+            log.info("deck retold slides dropped: %s", ",".join(str(i) for i in sorted(retold)))
+            kept = [i for i in range(len(slides)) if i not in retold]
+            slides[:] = [slides[i] for i in kept]
+            drafted = {new: drafted[old] for new, old in enumerate(kept) if old in drafted}
+            wanted_figures = {
+                new: wanted_figures[old] for new, old in enumerate(kept) if old in wanted_figures
+            }
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("deck draft failed, writing slide by slide: %s", exc)
@@ -1776,6 +1873,7 @@ async def write(
     unmaterial = grounding.subject_missing(text, request) or (
         _OWN_WORK.search(request)
         and not has_numbers(request, [])
+        and len(request) < 300
         and not any(block.strip() for block in (untrusted_context or []))
     )
     if may_ask and unmaterial:
