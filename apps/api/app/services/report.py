@@ -80,11 +80,12 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - 참고할 자료에 양식·서식 문서가 있으면 그 문서의 항목 순서를 그대로 목차로 써라.
   개수도 그 양식을 따르고, 일반적인 보고서 목차로 바꾸지 마라.
 
-JSON 객체로만 답하라. 요청이 대안 여럿 가운데 고르는 것이면 "alternatives" 에
-그 대안들의 짧은 이름을 적어라(없으면 빈 배열).
-예: {{"title": "전이학습의 소량 데이터 효율성", "style": "미니멀",
+JSON 객체로만 답하라. "subject" 에는 이 문서가 무엇에 대한 것인지를 **요청에 적힌
+말 그대로** 적어라 — 요청에 주제가 없으면 빈 문자열. 요청이 대안 여럿 가운데
+고르는 것이면 "alternatives" 에 그 대안들의 짧은 이름을 적어라(없으면 빈 배열).
+예: {{"title": "전이학습의 소량 데이터 효율성", "style": "미니멀", "subject": "전이학습",
      "sections": ["요약", "배경", "방법", "결과", "한계", "결론"], "alternatives": []}}
-예: {{"title": "학과 서버 교체 여부 결정", "style": "편집형",
+예: {{"title": "학과 서버 교체 여부 결정", "style": "편집형", "subject": "학과 서버 교체",
      "sections": ["요약", "현황과 결정할 사안", "비용 계산의 전제", "대안 비교",
                   "위험과 남는 문제", "권고안과 다음 단계"],
      "alternatives": ["교체", "1년 연장", "클라우드 이전"]}}
@@ -285,7 +286,12 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
             if token not in found:
                 found.append(token)
     if not found:
-        return "쓸 수 있는 수치: (요청과 자료에 수치가 없다 — 수치를 쓰지 마라)"
+        return (
+            "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
+            "퍼센트를 어떤 것도 쓰지 마라.** 비용 칸은 「(미정)」, 「비용 계산의 전제」 같은 "
+            "절은 값을 셈하는 대신 무엇을 확인해야 하는지(견적, 예산 한도, 대상 인원)를 "
+            "적는다. 비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+        )
     return "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
 
 
@@ -463,6 +469,33 @@ def _outline_style(text: str) -> str:
     """
     match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
     return _STYLES.get((match.group(1).strip() if match else ""), "")
+
+
+def _subject_missing(text: str, request: str) -> bool:
+    """Whether the planner named a subject the request never mentioned.
+
+    The outline rule says to ask when a request gives only the form of a
+    document — 「결재용 한 장 보고: 결정할 것, 대안 둘, 권고」 — and the
+    planner planned 「전산망 교체」 anyway, twice, with the rule in bold. So
+    the planner is asked to *state* the subject in the request's own words,
+    and that statement is checked: a subject whose words are not in the
+    request is a subject the planner made up.
+    """
+    obj = re.search(r"\{.*\}", text, re.S)
+    if not obj:
+        return False
+    try:
+        data = json.loads(obj.group(0))
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict) or "subject" not in data:
+        return False
+    subject = str(data.get("subject") or "").strip()
+    if not subject:
+        return True
+    compact = re.sub(r"\s+", "", request)
+    words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
+    return bool(words) and not any(w in compact for w in words)
 
 
 def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str]:
@@ -816,6 +849,24 @@ async def write(
         if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
+            yield {"type": "usage", **usage}
+            return
+        if may_ask and _subject_missing(text, request):
+            # 주제가 없는 요청은 묻는다. Checked here rather than trusted to the
+            # prompt: the planner planned a made-up subject with the rule in
+            # front of it, and a decision brief about a decision nobody named
+            # is worse than no brief.
+            yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+            yield {
+                "type": "needs",
+                "questions": [
+                    grounding.Question(
+                        id="subject",
+                        question="무엇에 대한 문서입니까? 결정할 사안이나 주제를 적어 주세요.",
+                        options=[],
+                    ).wire()
+                ],
+            }
             yield {"type": "usage", **usage}
             return
         title, headings = _parse_outline(text)

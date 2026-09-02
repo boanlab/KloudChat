@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     tool_timeout_sec: float = 300.0
     # Model↔tool round trips per turn. Five covers search → read → compute →
     # answer; beyond that a model is usually in a retry loop.
-    max_tool_hops: int = 5
+    max_tool_hops: int = 8
 
     # ── files ──────────────────────────────────────────────────────────
     file_storage_dir: str = "/srv/data/files"

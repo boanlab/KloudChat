@@ -268,19 +268,24 @@ async def run_turn(
             label, _ = sanitize_step_detail(label)
         return label
 
+    #: Set when the hop cap has been reached: the next call is the last, it
+    #: gets no tools, and it is told to answer from what it has.
+    closing = False
     while True:
         acc: _Accumulator | None = None
         stream_kwargs: dict[str, Any] = {
             "strict_local": strict_local,
             "redact_logging": redact_next_request,
         }
+        hop_tools = [] if closing else tools
+        hop_definitions = [] if closing else tool_definitions
         if disable_fallbacks:
             stream_kwargs["disable_fallbacks"] = True
         # Tests and third-party extensions that call ``run_turn`` directly can
         # keep the legacy conversion path.  Production passes the preflighted
         # snapshot so every hop sends byte-for-byte equivalent definitions.
-        if tool_definitions is not None:
-            stream_kwargs["tool_definitions"] = tool_definitions
+        if hop_definitions is not None:
+            stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
         if force_tool and hop == 0:
@@ -288,7 +293,7 @@ async def run_turn(
         async for kind, value in _stream_once(
             model,
             conversation,
-            tools,
+            hop_tools,
             ctx.user_id,
             ctx.api_key,
             **stream_kwargs,
@@ -309,18 +314,39 @@ async def run_turn(
                 "actualModel": acc.actual_model,
             }
 
-        if not acc.calls:
+        if not acc.calls or closing:
             break
 
         hop += 1
         if hop > settings.max_tool_hops:
-            # Runaway loop, stated in the transcript: an answer that just stops
-            # reads as a crash.
-            yield {
-                "type": "delta",
-                "text": f"\n\n_도구 호출이 {settings.max_tool_hops}회를 넘어 중단했습니다._",
-            }
-            break
+            # 한도에 닿으면 답을 쓰게 한다.
+            #
+            # This used to print 「도구 호출이 5회를 넘어 중단했습니다」 and
+            # stop — and since a model that is still calling tools has
+            # written no prose yet, the person got that one line and nothing
+            # else: a fact-check that ran five searches and reported none of
+            # them. The last hop now runs with no tools and one instruction:
+            # answer from what you have, and say what you could not check.
+            conversation.append(acc.assistant_message())
+            for index, call in sorted(acc.calls.items()):
+                conversation.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.get("id") or f"call_{index}",
+                        "content": "(도구 호출 한도에 닿아 실행하지 않았습니다.)",
+                    }
+                )
+            conversation.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "도구는 더 쓸 수 없습니다. 지금까지 모은 자료로 답을 쓰세요. "
+                        "확인하지 못한 항목은 확인하지 못했다고 밝히세요."
+                    ),
+                }
+            )
+            closing = True
+            continue
 
         conversation.append(acc.assistant_message())
 
