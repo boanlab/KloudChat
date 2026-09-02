@@ -61,6 +61,24 @@
     /* The one weakened accent: 2px of it under a table head reads as a rule
        rather than as a second heading. */
     --rule: color-mix(in srgb, var(--accent) 40%, transparent);
+
+    /* ── 강조의 세 단계 ────────────────────────────────────────────────
+       하나의 accent 에서 나온다. 서식이 자기 색을 따로 정하면 표지 띠도
+       패널도 같이 따라가고, 정하지 않으면 셋 다 기본 accent 의 농담이 된다 —
+       색을 세 군데에 적어 두면 프로젝트 색을 바꾼 사람이 표지만 바뀌고 패널은
+       그대로인 문서를 받게 된다. */
+    --accent-deep: color-mix(in srgb, var(--accent) 68%, #000);
+    --accent-wash: color-mix(in srgb, var(--accent) 8%, #fff);
+    --accent-band: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+
+    /* ── 뜻이 있는 색 ──────────────────────────────────────────────────
+       위의 셋과 달리 이것들은 토큰이 아니다. 기준을 넘겼다는 표시를 브랜드
+       색으로 칠하면 넘겼다는 뜻이 사라지고 그냥 예쁜 숫자가 된다. 초록·주황·
+       빨강은 취향이 아니라 약속이고, 약속은 프로젝트마다 달라지면 안 된다.
+       한 서식이 정말로 다른 색을 써야 한다면 자기 `design.css` 에서 덮는다. */
+    --positive: #12805c;
+    --caution: #a86a00;
+    --negative: #b42318;
   }
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -139,6 +157,48 @@
     background: var(--accent);
   }
 
+  /* ── 채워진 표지 ────────────────────────────────────────────────────
+     같은 표지의 다른 얼굴. 흰 종이 위 제목 대신, 색이 깔린 띠 위에 흰 글씨가
+     앉는다 — 첫 장을 넘기기 전에 이것이 어느 조직의 무슨 문서인지 말하는 방식
+     이고, 인쇄된 표지가 실제로 하는 일이다.
+
+     서식이 `[wrap] cover` 에 `class="cover filled"` 를 적어 켠다. 여기 두는
+     이유는 색이 accent 에서 나오기 때문이다: 서식마다 그라데이션을 다시 적으면
+     프로젝트 색을 바꾼 사람이 표지만 옛 색인 문서를 받는다.
+
+     쪽 전체가 아니라 띠다. A4 한 장을 통째로 칠하면 인쇄에서 잉크가 그만큼
+     들고, 흑백으로 뽑으면 제목이 회색 판 위의 흰 글씨가 되어 읽히지 않는다. */
+  .cover.filled {
+    min-height: 0;
+    padding: 3.2rem 2.4rem 2.6rem;
+    margin: 0 0 2.8rem;
+    background: var(--accent-band);
+    color: #fff;
+    border-radius: 4px;
+  }
+  .cover.filled h1 { color: #fff; }
+  .cover.filled .lead,
+  .cover.filled > p { color: rgba(255, 255, 255, 0.86); margin-bottom: 1.6rem; }
+  .cover.filled dt { color: rgba(255, 255, 255, 0.7); }
+  .cover.filled dd { color: #fff; }
+  /* 아래 규칙이 그리는 accent 막대는 색 위의 색이라 보이지 않는다. */
+  .cover.filled::after { display: none; }
+  @media print {
+    /* 배경을 지우는 프린터가 있고, 그러면 흰 글씨만 남아 표지가 백지가 된다.
+       인쇄에서는 색을 글자 쪽으로 옮긴다 — 같은 위계, 다른 방법. */
+    .cover.filled {
+      background: none; color: var(--ink);
+      border-left: 4px solid var(--accent);
+      border-radius: 0;
+      padding-left: 1.2rem;
+    }
+    .cover.filled h1 { color: var(--accent); }
+    .cover.filled .lead,
+    .cover.filled > p { color: var(--muted); }
+    .cover.filled dt { color: var(--muted); }
+    .cover.filled dd { color: var(--ink); }
+  }
+
   /* ── a section: text column, and the column beside it ──────────────
      Auto-placement does the alignment. Everything is pinned to column 1, so
      the placement cursor walks down that column; a `<small>` asks for column 2
@@ -182,6 +242,17 @@
   h3 {
     margin: 1.7rem 0 0.4rem;
     font-size: 1.12rem;
+    font-weight: 650;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  /* One step under `h3`, and the last one. The editor's heading picker offers
+     it and the sanitiser now keeps it, so it needs a rule of its own — without
+     one it lands at the browser's `h4`, which is smaller than the paragraph
+     under it and reads as a mistake. */
+  h4 {
+    margin: 1.2rem 0 0.3rem;
+    font-size: 1rem;
     font-weight: 650;
     color: var(--ink);
     text-wrap: balance;
@@ -353,7 +424,7 @@
   }
   .kpi > div { flex: 1 1 0; min-width: 5.5rem; text-align: center; }
   .kpi strong {
-    display: block; font-family: var(--font-head);
+    display: block; font-family: var(--font-num);
     font-size: 1.55rem; line-height: 1.15; color: var(--accent);
     font-variant-numeric: tabular-nums;
   }
@@ -361,6 +432,66 @@
     display: block; margin-top: 0.2rem;
     font-size: 0.72rem; color: var(--muted); letter-spacing: 0.01em;
   }
+  /* 카드 격자. `report_export._cards`가 같은 블록을 세 파일 형식에서 두 단
+     표로 그린다. 읽는 사람이 훑는 대목 — 산출물 옆에 목표, 이해관계자 옆에
+     성공 기준 — 을 줄글로 늘어놓으면 결국 머릿속에서 이 격자를 다시 그리게
+     된다. 서식이 칸과 색을 쥐고 모델은 제목과 줄만 쓴다. */
+  .cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem;
+    margin: 1.4rem 0; break-inside: avoid;
+  }
+  .cards > div {
+    border: 1px solid var(--rule); border-radius: 3px;
+    padding: 0.85rem 0.95rem 0.9rem;
+    break-inside: avoid;
+  }
+  /* 제목 앞의 짧은 색 막대. 카드가 넷이면 넷 다 같은 무게로 읽히고, 그러면
+     격자가 아니라 상자 넷이 된다 — 막대는 어디부터가 한 칸인지 말한다. */
+  .cards > div > :first-child::before {
+    content: ""; display: block;
+    width: 1.6rem; height: 0.28rem; margin-bottom: 0.5rem;
+    background: var(--accent);
+  }
+  /* 카드마다 다른 띠. 넷이 모두 같은 색이면 띠는 장식이 되고, 다르면 "이건
+     저것과 다른 갈래" 라는 말을 한다 — 격자에서 눈이 자리를 잡는 방식이다.
+     accent 에서 나온 농담이므로 브랜드 색을 바꾸면 넷이 함께 움직인다. */
+  .cards > div:nth-child(2) > :first-child::before {
+    background: var(--accent-deep);
+  }
+  .cards > div:nth-child(3) > :first-child::before {
+    background: color-mix(in srgb, var(--accent) 55%, var(--ink));
+  }
+  .cards > div:nth-child(4) > :first-child::before {
+    background: color-mix(in srgb, var(--accent) 45%, #fff);
+  }
+  .cards h3, .cards h4 {
+    margin: 0 0 0.45rem; font-size: 0.98rem; line-height: 1.35;
+  }
+  .cards ul, .cards ol { margin: 0; padding-left: 1.05rem; }
+  .cards li { margin: 0 0 0.3rem; font-size: 0.9rem; line-height: 1.5; }
+  .cards p { margin: 0 0 0.4rem; font-size: 0.9rem; }
+  .cards > div > :last-child { margin-bottom: 0; }
+
+  /* 지나치면 안 되는 한 대목. 상자가 아니라 왼쪽 막대다 — 상자는 위의 카드와
+     표까지 상자여서 하나 더 그리면 무엇이 강조인지 알 수 없게 된다. */
+  .callout {
+    display: block; margin: 1.3rem 0;
+    padding: 0.15rem 0 0.15rem 0.95rem;
+    border-left: 3px solid var(--accent);
+    break-inside: avoid;
+  }
+  .callout h3, .callout h4 {
+    margin: 0 0 0.3rem; font-size: 1rem; color: var(--accent);
+  }
+  .callout p { margin: 0 0 0.35rem; }
+  .callout > :last-child { margin-bottom: 0; }
+
+  /* 한 단으로 접힌다. 두 단을 폭 360px 에 밀어 넣으면 카드마다 한 줄에 두세
+     글자가 되고, 그건 격자가 아니라 세로로 긴 글자 기둥 둘이다. */
+  @media screen and (max-width: 620px) {
+    .cards { grid-template-columns: 1fr; }
+  }
+
   figure { margin: 1.3rem 0; break-inside: avoid; }
   /* A page scrolls, so width is the constraint — but a picture taller than the
      paper still breaks across two pages with nothing on the second. */

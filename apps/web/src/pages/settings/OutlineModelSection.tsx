@@ -1,6 +1,6 @@
 import { ListTree } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Field } from '@/components/ui'
+import { Button, Card, Field, Select } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -73,7 +73,7 @@ export function OutlineModelSection() {
           label={t('구성에 쓸 모델')}
           hint={t('비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다. 개인정보 때문에 strict-local 로 보낸 대화, 그리고 본문 모델보다 데이터 경계가 넓은 경우에는 이 설정이 적용되지 않습니다.')}
         >
-          <select
+          <Select
             aria-label={t('구성에 쓸 모델')}
             value={modelId}
             onChange={(event) => {
@@ -82,7 +82,6 @@ export function OutlineModelSection() {
               setSaved(false)
               setError(null)
             }}
-            className="w-full rounded-control border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent"
           >
             <option value="">{t('화면의 모델을 그대로 사용')}</option>
             {/* A model that has been removed from the catalogue still has to be
@@ -98,7 +97,7 @@ export function OutlineModelSection() {
                 {model.label} · {model.inputCreditCost}/{model.creditCost}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       </div>
 

@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react'
+import { Check, ChevronDown, X } from 'lucide-react'
 import {
   createContext,
   useCallback,
@@ -13,6 +13,7 @@ import {
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 
@@ -95,6 +96,44 @@ export function Input({ className, ...props }: ComponentProps<'input'>) {
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} />
+}
+
+/**
+ * A dropdown that looks like the fields beside it.
+ *
+ * A bare `<select>` is drawn by the operating system: its own font, its own
+ * height, its own arrow, its own focus ring. Put next to `Input` it reads as a
+ * control from a different product — 설정 · 환경설정 had a row of custom model
+ * pickers and then one grey system dropdown under them, which is the kind of
+ * seam people notice without being able to name.
+ *
+ * Still a real `<select>`. The native control is what gives keyboard support,
+ * type-ahead, and a usable list on a phone; a div rebuilt to look like one
+ * loses all three. Only the chrome is replaced — `appearance-none` takes the
+ * platform's arrow off, and a chevron is drawn in its place.
+ */
+export function Select({ className, children, ...props }: ComponentProps<'select'>) {
+  return (
+    <div className="relative">
+      <select
+        className={cn(
+          fieldBase,
+          'h-9 cursor-pointer appearance-none pr-9',
+          // A disabled field must not look pressable.
+          'disabled:cursor-not-allowed disabled:opacity-60',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        size={15}
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-faint"
+      />
+    </div>
+  )
 }
 
 export function Field({
@@ -224,6 +263,7 @@ export function Modal({
   children,
   footer,
   width = 'max-w-lg',
+  bare = false,
 }: {
   open: boolean
   onClose: () => void
@@ -232,6 +272,8 @@ export function Modal({
   children?: ReactNode
   footer?: ReactNode
   width?: string
+  /** The child owns its title bar and close control (document/deck editors). */
+  bare?: boolean
 }) {
   const t = useT()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -286,7 +328,7 @@ export function Modal({
        off and out of reach, and the edit forms here are taller than a short
        window. Auto margins centre it while it fits and stop at the padding
        when it does not. */
-    <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto p-4">
+    <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto p-4 max-sm:p-2">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
         ref={panelRef}
@@ -301,18 +343,18 @@ export function Modal({
           width,
         )}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
-          <div>
-            <h2 className="text-md font-semibold">{title}</h2>
-            {description && <p className="mt-0.5 text-base text-muted">{description}</p>}
+        {!bare && <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 max-sm:px-3 max-sm:py-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate whitespace-nowrap text-md font-semibold" title={title}>{title}</h2>
+            {description && <p className="mt-0.5 truncate whitespace-nowrap text-base text-muted" title={description}>{description}</p>}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('닫기')}>
             <X size={16} />
           </Button>
-        </header>
-        {children && <div className="space-y-4 px-5 py-4">{children}</div>}
+        </header>}
+        {children && <div className={bare ? 'min-w-0' : 'min-w-0 space-y-4 px-5 py-4 max-sm:px-3'}>{children}</div>}
         {footer && (
-          <footer className="flex justify-end gap-2 border-t border-line px-5 py-3.5">
+          <footer className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3.5 max-sm:px-3 max-sm:py-3">
             {footer}
           </footer>
         )}
@@ -397,11 +439,15 @@ export function Dropdown({
    * a few pixels above the bottom of the window, so downward-only with no
    * height cap puts them off-screen.
    */
-  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number }>({
+  const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number }>({
     up: false,
     maxHeight: 0,
+    left: 0,
+    top: 0,
+    bottom: 0,
   })
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const measure = useCallback(() => {
     const rect = ref.current?.getBoundingClientRect()
@@ -411,12 +457,36 @@ export function Dropdown({
     const above = rect.top - margin
     // Downward by preference; flipped only when the other side has more room.
     const up = below < 220 && above > below
-    setPlacement({ up, maxHeight: Math.max(160, up ? above : below) })
-  }, [])
+    const menuWidth = menuRef.current?.getBoundingClientRect().width ?? 208
+    const left = align === 'right'
+      ? Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right - menuWidth))
+      : Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.left))
+    setPlacement({
+      up,
+      maxHeight: Math.max(160, up ? above : below),
+      left,
+      top: rect.bottom + 6,
+      bottom: window.innerHeight - rect.top + 6,
+    })
+  }, [align])
 
   useLayoutEffect(() => {
     if (open) measure()
   }, [open, measure])
+
+  useLayoutEffect(() => {
+    const button = ref.current?.querySelector<HTMLButtonElement>('button')
+    if (!button) return
+    button.setAttribute('aria-haspopup', 'menu')
+    button.setAttribute('aria-expanded', String(open))
+    if (!open) return
+    const frame = requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+        ?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [open])
 
   /**
    * Arrow-key navigation, as `role="menu"` promises. Down/Up walk the items,
@@ -425,14 +495,16 @@ export function Dropdown({
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+      if (!ref.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setOpen(false)
     }
     const items = () =>
-      [...(ref.current?.querySelectorAll<HTMLElement>('[role="menu"] button') ?? [])].filter(
-        (el) => el.offsetWidth > 0 || el.offsetHeight > 0,
+      [...(menuRef.current?.querySelectorAll<HTMLElement>('button') ?? [])].filter(
+        (el) => !el.hasAttribute('disabled') && (el.offsetWidth > 0 || el.offsetHeight > 0),
       )
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopImmediatePropagation()
         setOpen(false)
         // Back to the trigger, which is the only landmark the reader has.
         ref.current?.querySelector<HTMLElement>('button')?.focus()
@@ -473,31 +545,34 @@ export function Dropdown({
        without it the wrapper shrinks while the button inside keeps its own
        `shrink-0` — so the label wraps one character per line and spills out of
        the button, which is what a narrow artifact panel showed. */
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className={cn('relative shrink-0', open && 'z-50')}>
       {/* The trigger is whatever the caller rendered — usually a button — so the
           menu semantics are declared on the wrapper and the panel instead. */}
       <div
         onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
-        aria-expanded={open}
       >
         {trigger({ open })}
       </div>
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <MenuCtx.Provider value={{ close: () => setOpen(false) }}>
           <div
+            ref={menuRef}
             role="menu"
-            style={{ maxHeight: placement.maxHeight || undefined }}
+            style={{
+              position: 'fixed',
+              maxHeight: placement.maxHeight || undefined,
+              left: placement.left,
+              ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
+            }}
             className={cn(
-              'animate-fade-up absolute z-40 min-w-52 overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
-              placement.up ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
-              align === 'right' ? 'right-0' : 'left-0',
+              'animate-fade-up z-[100] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
               className,
             )}
           >
             {children}
           </div>
-        </MenuCtx.Provider>
+        </MenuCtx.Provider>,
+        document.body,
       )}
     </div>
   )
@@ -587,19 +662,23 @@ export function EmptyState({
   title,
   description,
   action,
+  headingLevel,
 }: {
   icon: ReactNode
   title: string
   description?: string
   action?: ReactNode
+  /** Use h1 only when the empty state is itself the whole named screen. */
+  headingLevel?: 'h1' | 'h2'
 }) {
+  const Heading = headingLevel ?? 'p'
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
       <div className="grid size-11 place-items-center rounded-card border border-line bg-elevated text-muted">
         {icon}
       </div>
       <div className="space-y-1">
-        <p className="text-base font-medium">{title}</p>
+        <Heading className="text-base font-medium">{title}</Heading>
         {description && <p className="max-w-sm text-base text-muted">{description}</p>}
       </div>
       {action}

@@ -54,10 +54,45 @@ function Spinner() {
   )
 }
 
+/**
+ * Re-reads the account when its allowance refills.
+ *
+ * The client keeps a running total — every turn adds its cost to `creditsUsed`
+ * locally — and only re-reads the account at sign-in. That is right for
+ * spending, which the client witnesses, and wrong for the refill, which
+ * happens on the server at a moment no turn marks: the balance in the sidebar
+ * went on counting down a month that had ended until somebody reloaded.
+ *
+ * The moment is not a guess. `cycleResetsAt` says when, so this waits for it
+ * and asks once — and asking is itself what performs the refill, because every
+ * authenticated request resolves the account through `refill_if_due`. The
+ * answer carries the new cycle, which re-arms this for the month after.
+ */
+function useAllowanceRefresh() {
+  const resetsAt = useStore((s) => s.user?.cycleResetsAt)
+  const refreshMe = useStore((s) => s.refreshMe)
+
+  useEffect(() => {
+    const at = resetsAt ? Date.parse(resetsAt) : Number.NaN
+    if (!Number.isFinite(at)) return
+    const wait = at - Date.now()
+    // Already past: the cycle rolled over while nothing was open.
+    if (wait <= 0) {
+      void refreshMe()
+      return
+    }
+    // `setTimeout` treats anything over ~24.8 days as zero, which would spin.
+    if (wait > 2_000_000_000) return
+    const timer = setTimeout(() => void refreshMe(), wait + 1_000)
+    return () => clearTimeout(timer)
+  }, [resetsAt, refreshMe])
+}
+
 function Authenticated() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
   const status = useStore((s) => s.user?.status)
+  useAllowanceRefresh()
 
   if (authLoading) return <Spinner />
 

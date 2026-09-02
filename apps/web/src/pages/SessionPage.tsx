@@ -349,13 +349,13 @@ export function SessionPage() {
               {session?.title ?? t('새 {kind}').replace('{kind}', t(meta.label))}
             </span>
             {project && (
-              <Badge tone="accent">
+              <Badge tone="accent" className="max-sm:hidden">
                 <Boxes size={11} />
                 {project.name}
               </Badge>
             )}
             {agent && (
-              <Badge>
+              <Badge className="max-sm:hidden">
                 <Bot size={11} />
                 {agent.name}
               </Badge>

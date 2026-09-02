@@ -70,6 +70,16 @@ class ToolContext:
     #: plain conversation, which is the note saying nobody in particular wrote
     #: it rather than inventing an author.
     agent_name: str = ""
+    #: What the person actually typed this turn.
+    #:
+    #: Carried because one rule cannot be decided from the payload alone:
+    #: whether a short piece of writing was asked for *as a file*. The model
+    #: reports that itself in `create_artifact(userRequested=…)` and reports it
+    #: wrong in the one direction that matters — asked for a mail draft, it sets
+    #: the flag because a draft was requested, and a three-sentence mail lands
+    #: behind a preview tab, a source tab and a version history. The person's
+    #: own words are the evidence; the model's claim about them is not.
+    request: str = ""
     #: Artifacts the model asked to create this turn, in call order.
     #:
     #: Collected rather than written on the spot: the turn owns one database

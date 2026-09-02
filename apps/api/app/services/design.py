@@ -34,6 +34,7 @@ DEFAULT_TOKENS: dict[str, str] = {
     "ink": "#1a1a1a",
     "muted": "#666666",
     "font": "gothic",
+    "visualStyle": "editorial",
     #: The two marks a deck carries on every slide but its cover. Empty by
     #: default, which is exactly what the product drew before they existed.
     #:
@@ -114,6 +115,9 @@ def normalise_tokens(raw: dict | None) -> dict[str, str]:
     font = str((raw or {}).get("font") or "").strip().lower()
     if font in FONTS:
         out["font"] = font
+    visual_style = str((raw or {}).get("visualStyle") or "").strip()
+    if visual_style in ("editorial", "poster", "minimal"):
+        out["visualStyle"] = visual_style
     # One line. A footer that wraps is a second line of body text at the foot of
     # every slide, which is what the slide's own words are for.
     footer = " ".join(str((raw or {}).get("footer") or "").split())[:80]
@@ -183,6 +187,16 @@ def image_clause(design) -> str:
     return ". ".join(parts)
 
 
+def visual_style_for(request: str) -> str:
+    """A stated visual direction should reach the first draft, not a later menu."""
+    text = (request or "").lower()
+    if any(word in text for word in ("매거진", "포스터", "강렬", "임팩트", "피치", "홍보", "색면")):
+        return "poster"
+    if any(word in text for word in ("미니멀", "절제", "담백", "간결한 디자인", "여백", "학술적")):
+        return "minimal"
+    return "editorial"
+
+
 __all__ = [
     "CRAFT",
     "DEFAULT_TOKENS",
@@ -195,4 +209,5 @@ __all__ = [
     "normalise_tokens",
     "prompt_block",
     "tokens_of",
+    "visual_style_for",
 ]

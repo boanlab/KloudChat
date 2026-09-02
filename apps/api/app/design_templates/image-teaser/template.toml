@@ -1,0 +1,47 @@
+kind = "image"
+name = "티저 그림"
+description = "논문 첫 장 그림. 기존과 무엇이 다른지를 한눈에 견줍니다"
+category = "연구"
+fills = ["무엇을 견주는지", "견주는 방식", "그리는 결"]
+example_prompt = "{subject}을(를) 기존 방식과 견주어 한눈에 보여 주는 그림. {shape}으로, {texture} 느낌으로 그려 줘."
+layouts = ["cover"]
+
+# 티저는 설명이 아니라 대비다. 논문 1페이지의 그 그림은 "우리가 무엇을 다르게
+# 했는가"를 한 번에 보이는 것이 전부이고, 그래서 좌우 두 덩이의 무게가 다르게
+# 그려져야 한다 — 기존은 흐리게, 제안은 또렷하게.
+prompt_suffix = "academic teaser figure, a side-by-side contrast of two approaches, draw the things the subject actually names as recognisable objects — devices, sensors, servers, racks, documents, containers, people — each one a distinct silhouette rather than an empty rectangle, because a figure with no lettering has only its shapes to say anything; group related objects inside a pale tinted zone, and let size and colour weight say which part matters, the left side drawn muted and greyed to read as the existing way and the right side crisp with a single saturated accent to read as the proposed way, a clear visual gap or divider between them, matched composition on both sides so the difference is the only thing that changes, thin uniform strokes, flat even lighting, no drop shadows, clear separation between objects so none of them touch, no text, no lettering, no numbers, no logos, no faces"
+
+name_en = "Teaser figure"
+description_en = "The first figure of a paper: what is different, seen at once"
+category_en = "Research"
+fills_en = ["What is contrasted", "How they are set against each other", "Rendering"]
+example_prompt_en = "A figure contrasting {subject} against the existing approach, {shape}, drawn in {texture}."
+
+[defaults]
+aspect = "16:9"
+style = "미니멀"
+
+[[arguments]]
+name = "subject"
+label = "무엇을 견주는지"
+label_en = "What is contrasted"
+default = "제안한 방법"
+default_en = "the proposed method"
+
+[[arguments]]
+name = "shape"
+label = "견주는 방식"
+label_en = "Contrast"
+default = "왼쪽 기존 · 오른쪽 제안"
+default_en = "existing on the left, proposed on the right"
+options = ["왼쪽 기존 · 오른쪽 제안", "위 기존 · 아래 제안", "가운데를 두고 갈라지는", "한 장면에 겹쳐 견주는"]
+options_en = ["existing on the left, proposed on the right", "existing above, proposed below", "splitting around a centre", "overlaid in one scene"]
+
+[[arguments]]
+name = "texture"
+label = "결"
+label_en = "Rendering"
+default = "흑백에 강조색 하나"
+default_en = "greyscale with a single accent"
+options = ["흑백에 강조색 하나", "옅은 파스텔 면과 가는 선", "가는 선의 도면", "단순한 블록과 화살표"]
+options_en = ["greyscale with a single accent", "pale pastel planes and thin lines", "thin drafting lines", "simple blocks and arrows"]

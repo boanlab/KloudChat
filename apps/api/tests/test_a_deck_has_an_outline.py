@@ -21,6 +21,7 @@ from __future__ import annotations
 import io
 
 from pptx import Presentation
+from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 
 from app.services import deck_export
@@ -67,6 +68,24 @@ def test_the_cover_is_a_centred_title_and_the_rest_are_titles() -> None:
     kinds = [_placeholders(s)[0][0] for s in _opened(_SLIDES).slides]
     assert kinds[0] == "ctrTitle"
     assert set(kinds[1:]) == {"title"}
+
+
+def test_the_cover_placeholder_keeps_the_drawn_left_alignment() -> None:
+    """`ctrTitle` identifies the cover without restyling its visible textbox."""
+    cover = _opened(_SLIDES).slides[0]
+    title = next(
+        shape for shape in cover.shapes
+        if shape.has_text_frame
+        and "전교생 AI기초 교육 의무화" in shape.text_frame.text
+        and shape.element.nvSpPr.nvPr.find(qn("p:ph")) is None
+    )
+    assert title.text_frame.paragraphs[0].alignment == PP_ALIGN.LEFT
+    assert title.text_frame.paragraphs[1].alignment == PP_ALIGN.LEFT
+    semantic = next(
+        shape for shape in cover.shapes
+        if shape.has_text_frame and shape.element.nvSpPr.nvPr.find(qn("p:ph")) is not None
+    )
+    assert semantic.element.nvSpPr.cNvPr.get("hidden") == "1"
 
 
 def test_the_bullets_are_the_body_so_the_outline_holds_the_content() -> None:

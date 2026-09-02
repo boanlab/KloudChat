@@ -1,11 +1,13 @@
 import { Bot, Boxes, FileText, Layers, LayoutGrid, Lock } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { Badge } from '@/components/ui'
 import { ApiError, sharesApi, type SharedContext, type SharedPayload } from '@/lib/api'
 import { currentLang, translate } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
+import { SlideView } from '@/components/slides/DeckPanel'
+import type { DesignTokens, Slide } from '@/types'
 
 /**
  * What shaped the answers below, said in the words the app's own empty screen
@@ -154,12 +156,7 @@ export function SharedPage() {
   // The result first, the conversation that produced it after. A shared deck
   // opened to a one-line prompt and nothing else, which is the wrong way round:
   // the recipient came for the document, not for how it was asked for.
-  const body =
-    payload.kind === 'artifact'
-      ? renderArtifact(payload)
-      : payload.artifact
-        ? `${renderArtifact(payload.artifact)}\n\n---\n\n## ${t('대화 기록')}\n\n${conversation}`
-        : conversation
+  const artifact = payload.kind === 'artifact' ? payload : payload.artifact
 
   return (
     <div className="mx-auto min-h-dvh max-w-3xl px-6 py-10">
@@ -172,7 +169,13 @@ export function SharedPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{payload.title}</h1>
         {startedWith && <StartedWithPanel context={startedWith} />}
       </header>
-      <Markdown>{body}</Markdown>
+      {artifact ? <SharedArtifact payload={artifact} title={payload.title} /> : <Markdown>{conversation}</Markdown>}
+      {payload.kind !== 'artifact' && payload.artifact && (
+        <section className="mt-10 border-t border-line pt-8">
+          <h2 className="mb-5 text-lg font-semibold">{t('대화 기록')}</h2>
+          <Markdown>{conversation}</Markdown>
+        </section>
+      )}
       <footer className="mt-10 border-t border-line pt-4 text-xs text-faint">
         {t('공유된 자료입니다. 원본은 공유한 사람만 수정할 수 있습니다.')}
       </footer>
@@ -180,27 +183,51 @@ export function SharedPage() {
   )
 }
 
-/** Artifacts are stored per kind; only the readable ones have a shape here. */
-function renderArtifact(payload: { data: unknown }): string {
+function SharedSlide({ slide, design, index, total, title }: { slide: Slide; design?: DesignTokens | null; index: number; total: number; title: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const resize = () => setScale(Math.max(0.45, node.clientWidth / 400))
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+  return <div ref={ref} className="aspect-video w-full overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10"><SlideView slide={slide} scale={scale} writing={false} deckTitle={title} brand={design ?? undefined} index={index} total={total} /></div>
+}
+
+function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
   const data = (payload.data ?? {}) as {
     sections?: { heading: string; content: string }[]
-    slides?: { title: string; bullets?: string[]; body?: string; notes?: string }[]
+    slides?: Slide[]
+    design?: DesignTokens | null
     content?: string
   }
-  if (data.sections) {
-    return data.sections.map((s) => `## ${s.heading}\n\n${s.content}`).join('\n\n')
-  }
+  const artifactTitle = payload.title || title
   if (data.slides) {
-    return data.slides
-      .map((s, i) => {
-        const lines = [`## ${i + 1}. ${s.title}`]
-        for (const b of s.bullets ?? []) lines.push(`- ${b}`)
-        if (s.body) lines.push(`\n> ${s.body}`)
-        if (s.notes) lines.push(`\n_${s.notes}_`)
-        return lines.join('\n')
-      })
-      .join('\n\n')
+    return <div className="space-y-6">{data.slides.map((slide, index) => <SharedSlide key={slide.id || index} slide={slide} design={data.design} index={index} total={data.slides!.length} title={artifactTitle} />)}</div>
   }
-  if (data.content) return `\`\`\`\n${data.content}\n\`\`\``
-  return '_' + translate(currentLang(), '이 종류의 결과물은 아직 공유 화면에서 보여 줄 수 없습니다.') + '_'
+  if (data.sections) {
+    const visual = data.design?.visualStyle ?? 'editorial'
+    const accent = data.design?.accent ?? '#5b5bd6'
+    return (
+      <article className="overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10">
+        <div className={visual === 'poster' ? 'px-8 py-16 text-white' : visual === 'minimal' ? 'px-8 py-12' : 'border-t-8 px-8 py-12'} style={visual === 'poster' ? { background: `linear-gradient(145deg,${accent},color-mix(in srgb,${accent} 48%,#111827))` } : visual === 'minimal' ? { background: `color-mix(in srgb,${accent} 7%,#fff)` } : { borderColor: accent }}>
+          <h2 className={visual === 'poster' ? 'max-w-[15ch] text-4xl font-bold leading-tight' : visual === 'minimal' ? 'max-w-[22ch] text-2xl font-semibold' : 'text-3xl font-bold'}>{artifactTitle}</h2>
+        </div>
+        <div className="space-y-10 px-8 py-10">
+          {data.sections.map((section, index) => (
+            <section key={index}>
+              <h3 className={visual === 'poster' ? 'mb-4 text-2xl font-bold' : visual === 'minimal' ? 'mb-3 text-sm font-semibold tracking-widest text-muted' : 'mb-4 border-b pb-2 text-xl font-semibold'} style={visual === 'poster' ? { color: accent } : undefined}>{section.heading}</h3>
+              <Markdown>{section.content}</Markdown>
+            </section>
+          ))}
+        </div>
+      </article>
+    )
+  }
+  if (data.content) return <Markdown>{`\`\`\`\n${data.content}\n\`\`\``}</Markdown>
+  return <p className="text-muted">{translate(currentLang(), '이 종류의 결과물은 아직 공유 화면에서 보여 줄 수 없습니다.')}</p>
 }

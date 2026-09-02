@@ -114,7 +114,8 @@ function ConnectorCard({
         </p>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      {/* The floor under the foot's `mt-auto`. */}
+      <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
         <Badge>{t(connector.category)}</Badge>
         <Badge>{t('도구 {n}').replace('{n}', String(connector.tools.length))}</Badge>
         {writeTools > 0 && (
@@ -128,7 +129,10 @@ function ConnectorCard({
         ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
+      {/* Pinned to the bottom for the same reason the agent card's foot is: the
+          grid stretches cards in a row to one height, and a foot left to float
+          lands wherever the badges above it happened to end. */}
+      <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
         <span className="text-xs text-faint">
           {connector.lastSyncAt
             ? t('{when} 동기화').replace('{when}', relativeTime(connector.lastSyncAt))

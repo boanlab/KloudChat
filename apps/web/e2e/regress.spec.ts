@@ -224,6 +224,14 @@ test('컴포저 메뉴가 화면 밖으로 나가지 않는다', async ({ page }
   ]
 
   for (const [label, open] of opens) {
+    // A connector menu exists only after this account has a usable connector.
+    // Its absence is an honest empty state, not a geometry regression.
+    if (
+      label === '커넥터' &&
+      (await page.getByRole('button', { name: '커넥터', exact: true }).count()) === 0
+    ) {
+      continue
+    }
     await open()
     const menu = page.getByRole('menu').first()
     await expect(menu, label).toBeVisible({ timeout: 10_000 })

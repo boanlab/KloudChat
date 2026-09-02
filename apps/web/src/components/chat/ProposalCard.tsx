@@ -56,6 +56,27 @@ export function ProposalCard({
    * order on the next render.
    */
   const [edited, setEdited] = useState<{ title: string; layout?: string }[] | null>(null)
+  /*
+   * 고른 적이 없으면 계획을 따른다.
+   *
+   * These were `useState(pending.plan?.visualStyle ?? 'editorial')`, and
+   * `useState` keeps only the value of the first render. The card mounts while
+   * the turn is still streaming, so on the render that matters `pending.plan`
+   * is often not there yet — the initial value froze at `editorial`, the plan
+   * arrived a moment later saying `minimal`, and two things went wrong at
+   * once: the impression the outline had chosen for the subject was silently
+   * replaced by the default, and `dirty` went true, so a card nobody had
+   * touched offered 「고친 대로 생성」.
+   *
+   * Held as "what the person picked, or nothing yet". Nothing yet means the
+   * plan decides, however late it arrives.
+   */
+  const [pickedStyle, setPickedStyle] = useState<string | null>(null)
+  const [pickedDensity, setPickedDensity] = useState<string | null>(null)
+  const visualStyle = pickedStyle ?? pending.plan?.visualStyle ?? 'editorial'
+  const density = pickedDensity ?? pending.plan?.density ?? 'speaker'
+  const setVisualStyle = setPickedStyle
+  const setDensity = setPickedDensity
 
   const run = (
     opts: {
@@ -215,13 +236,20 @@ export function ProposalCard({
     ;[next[from], next[to]] = [next[to], next[from]]
     change(next)
   }
-  const dirty = edited !== null && JSON.stringify(edited) !== JSON.stringify(proposed)
+  // 사람이 고른 것만 「고침」이다 — 계획이 말한 것을 그대로 쓰는 것은 고친 것이
+  // 아니다.
+  const dirty =
+    (edited !== null && JSON.stringify(edited) !== JSON.stringify(proposed)) ||
+    (pickedStyle !== null && pickedStyle !== (plan.visualStyle ?? 'editorial')) ||
+    (Boolean(plan.slides) &&
+      pickedDensity !== null &&
+      pickedDensity !== (plan.density ?? 'speaker'))
   //: Only the shape the surface actually stores. `sections` is headings.
   const asPlan = () =>
     plan.sections
-      ? { ...plan, sections: items.map((i) => i.title) }
+      ? { ...plan, visualStyle, sections: items.map((i) => i.title) }
       : plan.slides
-        ? { ...plan, slides: items }
+        ? { ...plan, visualStyle, density, slides: items }
         : { ...plan, blocks: items }
 
   return (
@@ -277,6 +305,52 @@ export function ProposalCard({
           </li>
         ))}
       </ol>
+      {(plan.sections || plan.slides) && (
+        <fieldset className="mt-4">
+          <legend className="mb-2 text-sm font-medium text-fg">{t('어떤 인상으로 만들까요?')}</legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label={t('결과물 디자인')}>
+            {([
+              ['editorial', t('정돈된 편집'), t('선명한 구분과 안정적인 정보 배치')],
+              ['poster', t('강한 인상'), t('큰 제목과 색면으로 메시지를 강조')],
+              ['minimal', t('차분한 여백'), t('장식을 덜고 내용에 집중')],
+            ] as const).map(([value, label, description]) => (
+              <button
+                type="button"
+                key={value}
+                aria-pressed={visualStyle === value}
+                onClick={() => setVisualStyle(value)}
+                className={cn('overflow-hidden rounded-lg border text-left transition', visualStyle === value ? 'border-accent ring-2 ring-accent/20' : 'border-line hover:border-muted')}
+              >
+                <span className={cn('relative block aspect-video overflow-hidden', value === 'poster' ? 'bg-[#f7f0e6]' : value === 'minimal' ? 'bg-white' : 'bg-[#253b80]')}>
+                  {value === 'editorial' && <><span className="absolute inset-x-0 top-0 h-1 bg-[#6d7fea]"/><span className="absolute left-[12%] top-[29%] h-1 w-[18%] bg-white/80"/><span className="absolute left-[12%] top-[42%] h-3 w-[58%] bg-white"/><span className="absolute left-[12%] top-[62%] h-1.5 w-[40%] bg-white/50"/></>}
+                  {value === 'poster' && <><span className="absolute inset-y-0 left-0 w-2 bg-[#d84a35]"/><span className="absolute -right-5 -top-5 size-20 rounded-full border-[10px] border-[#d84a35]/15"/><span className="absolute left-[12%] top-[22%] text-3xl font-black text-[#d84a35]/15">01</span><span className="absolute left-[12%] top-[52%] h-3 w-[70%] bg-[#27211e]"/><span className="absolute left-[12%] top-[70%] h-1.5 w-[45%] bg-[#d84a35]"/></>}
+                  {value === 'minimal' && <><span className="absolute -right-8 -top-8 size-24 rounded-full bg-[#4c6fbf]/10"/><span className="absolute left-[12%] top-[35%] h-1 w-[16%] bg-[#4c6fbf]"/><span className="absolute left-[12%] top-[50%] h-2.5 w-[52%] bg-[#252525]"/><span className="absolute left-[12%] top-[68%] h-1 w-[35%] bg-[#aaa]"/></>}
+                </span>
+                <span className="block px-2.5 py-2">
+                  <span className="block text-sm font-medium text-fg">{label}</span>
+                  <span className="mt-0.5 block text-xs leading-4 text-muted">{description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      {plan.slides && (
+        <fieldset className="mt-4">
+          <legend className="mb-2 text-sm font-medium text-fg">{t('어떻게 사용할 자료인가요?')}</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {([
+              ['speaker', t('발표하면서 설명'), t('한 장에 한 가지 핵심, 큰 글자와 짧은 문장')],
+              ['reading', t('자료만 전달'), t('설명 없이 읽어도 이해되는 표·근거·세부 내용')],
+            ] as const).map(([value, label, description]) => (
+              <button type="button" key={value} aria-pressed={density === value} onClick={() => setDensity(value)} className={cn('rounded-lg border px-3 py-2 text-left transition', density === value ? 'border-accent bg-accent-soft' : 'border-line hover:bg-elevated')}>
+                <span className="block text-sm font-medium text-fg">{label}</span>
+                <span className="block text-xs text-muted">{description}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
@@ -289,7 +363,12 @@ export function ProposalCard({
           {t('항목 추가')}
         </Button>
         {dirty && (
-          <Button size="sm" variant="ghost" onClick={() => setEdited(null)}>
+          <Button size="sm" variant="ghost" onClick={() => {
+            setEdited(null)
+            // Back to "nothing picked", which is the plan.
+            setPickedStyle(null)
+            setPickedDensity(null)
+          }}>
             <RotateCcw size={13} />
             {t('처음 제안으로')}
           </Button>

@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, FileText, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Brain, ExternalLink, FileText, Link2, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -84,6 +84,7 @@ export function ProjectDetailPage() {
     setNotice,
     loadWorkspace,
     uploadFile,
+    addProjectUrl,
     deleteFile,
     moveSessionToProject,
     deleteMemory,
@@ -101,6 +102,10 @@ export function ProjectDetailPage() {
   const [memoryDraft, setMemoryDraft] = useState<MemoryEntry | null>(null)
   const [uploading, setUploading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [urlOpen, setUrlOpen] = useState(false)
+  const [urlDraft, setUrlDraft] = useState('')
+  const [urlBusy, setUrlBusy] = useState(false)
+  const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   /**
    * The drop target for 지식.
@@ -184,6 +189,22 @@ export function ProjectDetailPage() {
     }
   }
 
+  const saveUrl = async () => {
+    const url = urlDraft.trim()
+    if (!/^https?:\/\//i.test(url)) return
+    setUrlBusy(true)
+    setFileError(null)
+    try {
+      await addProjectUrl(project.id, url)
+      setUrlDraft('')
+      setUrlOpen(false)
+    } catch (err) {
+      setFileError(errorMessage(err, t('웹페이지를 읽어 오지 못했습니다.')))
+    } finally {
+      setUrlBusy(false)
+    }
+  }
+
   return (
     <>
       <TopBar
@@ -197,6 +218,24 @@ export function ProjectDetailPage() {
           </button>
         }
       />
+      <Modal
+        open={urlOpen}
+        onClose={() => !urlBusy && setUrlOpen(false)}
+        title={t('웹 자료 추가')}
+        description={t('페이지를 지금 읽어 프로젝트에 보관합니다. 이후 원문이 바뀌어도 작업에는 저장된 내용이 사용됩니다.')}
+        footer={
+          <>
+            <Button onClick={() => setUrlOpen(false)} disabled={urlBusy}>{t('취소')}</Button>
+            <Button variant="primary" onClick={() => void saveUrl()} disabled={urlBusy || !/^https?:\/\//i.test(urlDraft.trim())}>
+              {urlBusy ? t('읽는 중…') : t('읽어서 보관')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('웹페이지 주소')}>
+          <Input value={urlDraft} onChange={(event) => setUrlDraft(event.target.value)} placeholder="https://example.com/report" autoFocus />
+        </Field>
+      </Modal>
       {/* 클로드의 프로젝트 화면처럼: 왼쪽은 하는 일(대화·지식·스킬·메모리),
           오른쪽은 그 일에 매번 걸리는 설정(지침·디자인·서식). 셋이었던 카드가
           제목보다 먼저 눈에 들어오던 것을 여기서 나눕니다. */}
@@ -599,10 +638,16 @@ export function ProjectDetailPage() {
                     void addKnowledgeFiles(picked)
                   }}
                 />
-                <Button size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>
-                  <Upload size={14} className={uploading ? 'animate-pulse' : undefined} />
-                  {uploading ? t('업로드 중') : t('파일 추가')}
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => setUrlOpen(true)}>
+                    <Link2 size={14} />
+                    {t('웹 자료')}
+                  </Button>
+                  <Button size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>
+                    <Upload size={14} className={uploading ? 'animate-pulse' : undefined} />
+                    {uploading ? t('업로드 중') : t('파일 추가')}
+                  </Button>
+                </div>
               </div>
               {project.files.length === 0 ? (
                 <EmptyState
@@ -612,23 +657,30 @@ export function ProjectDetailPage() {
                 />
               ) : (
                 project.files.map((f) => (
-                  <Card key={f.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <FileText size={15} className="shrink-0 text-faint" />
+                  <Card key={f.id} className="px-4 py-2.5" data-knowledge={f.id}>
+                    <div className="flex items-center gap-3">
+                    {f.sourceUrl ? <Link2 size={15} className="shrink-0 text-accent" /> : <FileText size={15} className="shrink-0 text-faint" />}
                     <span className="min-w-0 flex-1">
                       {/* The name is the button that opens it. Until it was,
                           the only way to see what a file held was to delete it
                           and upload it again. */}
                       <button
-                        onClick={() => void openFile(f.id, f.name)}
+                        onClick={() => f.sourceUrl ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer') : void openFile(f.id, f.name)}
                         title={t('원본 파일을 내려받습니다')}
                         className="block max-w-full truncate text-left text-base text-accent hover:underline"
                       >
                         {f.name}
                       </button>
                       <span className="block text-xs text-faint">
-                        {f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
+                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
                       </span>
                     </span>
+                    {f.preview && (
+                      <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>
+                        {expandedFile === f.id ? t('미리보기 닫기') : t('읽은 내용 확인')}
+                      </Button>
+                    )}
+                    {f.sourceUrl && <a href={f.sourceUrl} target="_blank" rel="noreferrer" aria-label={t('{name} 원문 열기').replace('{name}', f.name)} className="text-faint hover:text-accent"><ExternalLink size={14} /></a>}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -637,6 +689,12 @@ export function ProjectDetailPage() {
                     >
                       <Trash2 size={14} />
                     </Button>
+                    </div>
+                    {expandedFile === f.id && f.preview && (
+                      <div className="mt-2 rounded-control border border-line bg-elevated px-3 py-2 text-sm leading-relaxed text-muted" data-testid="knowledge-preview">
+                        {f.preview}
+                      </div>
+                    )}
                   </Card>
                 ))
               )}

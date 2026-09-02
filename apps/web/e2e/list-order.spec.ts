@@ -25,6 +25,14 @@ for (const [label, path] of [
   test(`${label} 카드는 켜고 꺼도 자리를 지킨다`, async ({ page }) => {
     await signIn(page)
     await page.goto(path)
+    if (label === '에이전트' && (await page.getByRole('switch').count()) === 0) {
+      await page.getByRole('tab', { name: /스토어/ }).click()
+      const installs = page.getByRole('button', { name: '가져오기' })
+      for (let i = 0; i < Math.min(2, await installs.count()); i += 1) {
+        await installs.first().click()
+      }
+      await page.getByRole('tab', { name: /내 에이전트/ }).click()
+    }
     // The list arrives from the API after the header does; reading the order
     // before it lands would compare two empty arrays and pass.
     await expect(page.getByRole('switch').first()).toBeVisible({ timeout: 20_000 })

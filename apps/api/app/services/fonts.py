@@ -63,6 +63,13 @@ def korean(style: str = "gothic") -> str:
         name = f"Nanum-{style}"
         try:
             pdfmetrics.registerFont(TTFont(name, str(file)))
+            # ReportLab's `<b>`/`<i>` markup asks the family for a variant.
+            # Nanum's regular face still carries the Korean glyphs when a
+            # dedicated weight is unavailable, which is preferable to a
+            # missing-family exception that aborts an export.
+            pdfmetrics.registerFontFamily(
+                name, normal=name, bold=name, italic=name, boldItalic=name
+            )
         except Exception:  # noqa: BLE001 — a bad font file must not fail the export
             log.warning("could not register %s, falling back to the CID font", path)
             continue

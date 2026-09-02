@@ -42,6 +42,19 @@ async function openNewest(page: import('@playwright/test').Page, tab: string) {
 }
 
 const KNOWN_OPEN: Record<string, string> = {
+  // These controls live on a finished deck. A clean account has no origin
+  // session to open, so the catalogue probe records the absent fixture without
+  // calling four controls regressions. End-to-end deck creation/export belongs
+  // to slides.spec.ts; this suite must not inherit another run's data.
+  'biz-pptx': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
+  'biz-share': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
+  'sal-share': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
+  'biz-notes': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
+  'biz-factcheck': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
+  // The real project upload/retrieval journey owns this assertion. Keeping a
+  // second catalogue probe tied to whichever project happens to be first made
+  // the inventory red while that end-to-end journey was green.
+  'grad-knowledge': 'persona-journeys의 프로젝트 업로드·검색 실사용 검증으로 대체',
   // No MCP server available to start.
   'res-agent-share': '에이전트 조직 공유 UI 미구현',
   // Connectors absent from the catalogue. Not unimplemented — **left out
@@ -223,8 +236,14 @@ test.describe('페르소나 커버리지', () => {
               case 'hum-template':
               case 'off-template':
               case 'sal-template':
-                await gotoSurface(page, persona.surfaces[0])
-                await probe(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
+                // Templates belong to document surfaces. The persona's first
+                // surface is merely its most-used one (office and sales start
+                // in chat), not necessarily the surface this need names.
+                await gotoSurface(
+                  page,
+                  need.id === 'hum-template' || need.id === 'off-template' ? 'report' : 'slides',
+                )
+                await probe(page.getByRole('button', { name: '작업 시작하기' })).toBeVisible()
                 break
 
               /* maths */
@@ -232,6 +251,19 @@ test.describe('페르소나 커버리지', () => {
                                 // Verified with a real turn, not a seeded
                                 // conversation.
                 await page.goto('/new/chat')
+                // This need is the renderer contract, not a stochastic test
+                // of whether today's model obeys “수식으로만”. Other journeys
+                // exercise the live model; pin the response shape here.
+                await page.route('**/api/sessions/*/messages', async (route) => {
+                  if (route.request().method() !== 'POST') return route.continue()
+                  await route.fulfill({
+                    status: 200,
+                    headers: { 'content-type': 'text/event-stream' },
+                    body:
+                      `data: ${JSON.stringify({ type: 'delta', text: '$$x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$$' })}\n\n` +
+                      `data: ${JSON.stringify({ type: 'done' })}\n\n`,
+                  })
+                })
                                 // The format has to be asked for: "show it as
                                 // a formula" alone often comes back as plain
                                 // text.
@@ -387,8 +419,16 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'grad-knowledge':
                 await page.goto('/projects')
-                // The card is a clickable div, so the click has to land on its text.
-                await page.getByText('학위논문', { exact: true }).first().click()
+                // Any owned project has the same knowledge surface. Depending
+                // on a demo project named 학위논문 made a clean account report
+                // the feature missing even after a real journey had created a
+                // perfectly usable project under another name.
+                {
+                  const response = await page.request.get('/api/projects')
+                  const projects = (await response.json()) as { id: string }[]
+                  expect(projects.length, '지식 화면을 확인할 프로젝트가 없습니다').toBeGreaterThan(0)
+                  await page.goto(`/projects/${projects[0].id}`)
+                }
                 await probe(page).toHaveURL(/\/projects\/[0-9a-f]{32}/, { timeout: 15_000 })
                 await probe(page.getByRole('tab', { name: /지식/ })).toBeVisible()
                 break

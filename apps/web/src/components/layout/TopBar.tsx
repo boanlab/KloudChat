@@ -16,7 +16,7 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
        strip, where the conversation painted straight over it and the buttons
        could not be pressed. Nothing ever scrolls under this bar for the blur
        to blur, so the bar simply stops being see-through. */
-    <header className="flex h-13 shrink-0 items-center gap-2 border-b border-line bg-bg px-3">
+    <header className="flex h-13 min-w-0 shrink-0 items-center gap-2 border-b border-line bg-bg px-3 max-sm:px-2">
       <Button
         variant="ghost"
         size="icon"
@@ -26,8 +26,11 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
       >
         <PanelLeft size={16} />
       </Button>
-      <div className="flex min-w-0 flex-1 items-center gap-2">{left}</div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">{left}</div>
+      {/* A phone cannot hold 공유·결과물·언어·테마 as full text buttons on one
+          fixed-height row. Keep every action at a 32px target and let its icon
+          carry the compact view; the aria-label/title remains the full name. */}
+      <div className="flex shrink-0 items-center gap-1.5 max-sm:gap-0.5 max-sm:[&>button]:w-8 max-sm:[&>button]:overflow-hidden max-sm:[&>button]:px-0 max-sm:[&>button]:text-[0px] max-sm:[&>span]:hidden">
         {right}
         {/* 아이콘만으로는 무엇으로 바뀌는지 알 수 없어 바뀔 언어를 함께 적는다 */}
         <Button

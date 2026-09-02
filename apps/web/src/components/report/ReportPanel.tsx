@@ -12,6 +12,7 @@ import {
   Loader2,
   RefreshCw,
   Paperclip,
+  Palette,
   Pencil,
   Plug,
   FileType2,
@@ -31,15 +32,16 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
+import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Button, Dropdown, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens } from '@/lib/utils'
 import type { LintFinding, ReportArtifact, ReportSection, Source } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { DocumentEditor } from '@/components/report/DocumentEditor'
-import { SectionBody } from '@/components/report/SectionBody'
+import { SectionBody, sectionText } from '@/components/report/SectionBody'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
@@ -180,6 +182,75 @@ interface Picked {
 }
 
 const originIcon = { web: Link2, connector: Plug, file: Paperclip }
+const citationStyles: ReportArtifact['citationStyle'][] = ['APA', 'MLA', 'Chicago', 'IEEE']
+
+/** A reference as it will read in the exported document. */
+export function citationText(src: Source, style: ReportArtifact['citationStyle']): string {
+  const title = src.title.trim() || '제목 없음'
+  const author = src.author?.trim() ?? ''
+  const publisher = src.publisher?.trim() ?? ''
+  const year = src.year?.trim() ?? ''
+  const url = src.url?.trim() ?? ''
+  if (style === 'IEEE') {
+    const details = [publisher, year].filter(Boolean).join(', ')
+    return `[${src.ordinal}] ${author ? `${author}, ` : ''}“${title}.”${details ? ` ${details}.` : ''}${url ? ` [온라인]. ${url}` : ''}`
+  }
+  if (style === 'MLA') {
+    return [`${author ? `${author}.` : ''}`, `“${title}.”`, publisher, year, url]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\.*$/, '.')
+  }
+  if (style === 'Chicago') {
+    const details = [publisher, year].filter(Boolean).join(', ')
+    return `${author ? `${author}. ` : ''}“${title}.”${details ? ` ${details}.` : ''}${url ? ` ${url}` : ''}`
+  }
+  return `${author ? `${author}. ` : ''}${year ? `(${year}). ` : ''}${title}${[publisher, url].filter(Boolean).length ? `. ${[publisher, url].filter(Boolean).join('. ')}` : ''}`
+}
+
+/** Sections that visibly carry this source's numbered marker. */
+export function citedSections(source: Source, sections: ReportSection[]): ReportSection[] {
+  const marker = new RegExp(`(?:\\[|［)\\s*${source.ordinal}\\s*(?:\\]|］)`)
+  return sections.filter((section) => marker.test(sectionText(section)))
+}
+
+/** Every numbered marker found in the body, including numbers with no source. */
+export function citationNumbers(sections: ReportSection[]): number[] {
+  const found = new Set<number>()
+  for (const section of sections) {
+    for (const match of sectionText(section).matchAll(/(?:\[|［)\s*(\d+)\s*(?:\]|］)/g)) {
+      found.add(Number(match[1]))
+    }
+  }
+  return [...found].sort((left, right) => left - right)
+}
+
+export interface NumericEvidenceGap {
+  section: ReportSection
+  excerpts: string[]
+}
+
+/** Numeric claims that have no `[n]` marker in the same sentence. */
+export function numericEvidenceGaps(sections: ReportSection[]): NumericEvidenceGap[] {
+  const numericFact = /\d[\d,.]*\s*(?:%|％|원|명|건|개|배|년|월|일|시간|분|초|점|대|회|쪽|페이지|GB|MB|km|kg)/i
+  const marker = /(?:\[|［)\s*\d+\s*(?:\]|］)/
+  const gaps: NumericEvidenceGap[] = []
+  for (const section of sections) {
+    const excerpts = sectionText(section)
+      .split(/(?<=[.!?。！？])\s+|\n+/)
+      .map((sentence) => sentence.trim())
+      .filter(
+        (sentence) =>
+          sentence.length > 0 &&
+          numericFact.test(sentence) &&
+          !marker.test(sentence) &&
+          !/^\d+[.)]\s/.test(sentence),
+      )
+      .slice(0, 3)
+    if (excerpts.length) gaps.push({ section, excerpts })
+  }
+  return gaps
+}
 
 /**
  * The document as paper, portalled to `<body>`.
@@ -210,12 +281,7 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
           <h2>{t('참고문헌')}</h2>
           <ol>
             {report.sources.map((src) => (
-              <li key={src.id}>
-                {src.title}
-                {[src.author, src.publisher, src.year].filter(Boolean).length > 0 &&
-                  ` — ${[src.author, src.publisher, src.year].filter(Boolean).join(', ')}`}
-                {src.url && <div className="print-url">{src.url}</div>}
-              </li>
+              <li key={src.id}>{citationText(src, report.citationStyle)}</li>
             ))}
           </ol>
         </section>
@@ -226,8 +292,72 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
 }
 
 /** Reference list, shown beside the prose as well as at the end. */
-function SourceList({ sources, style }: { sources: Source[]; style: string }) {
+function SourceList({
+  sources,
+  research,
+  style,
+  onStyle,
+  sections,
+  onJump,
+  onRemove,
+  saving,
+}: {
+  sources: Source[]
+  research?: ReportArtifact['research']
+  style: ReportArtifact['citationStyle']
+  onStyle: (style: ReportArtifact['citationStyle']) => void
+  sections: ReportSection[]
+  onJump: (sectionId: string) => void
+  onRemove: (source: Source) => void
+  saving: boolean
+}) {
   const t = useT()
+  const numericGaps = numericEvidenceGaps(sections)
+  const researchSummary = research && (
+    <div className="rounded-card border border-line bg-elevated p-3" data-testid="research-log">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">{t('조사 기록')}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {!research.enabled
+              ? t('웹 검색을 사용하지 않았습니다.')
+              : research.searched
+                ? t('검색어 {queries}개 · 채택 {selected}건 · 제외 {excluded}건')
+                    .replace('{queries}', String(research.queries.length))
+                    .replace('{selected}', String(research.selected))
+                    .replace('{excluded}', String(research.excluded))
+                : t('웹 검색을 요청했지만 검색 서비스를 사용할 수 없었습니다.')}
+          </p>
+        </div>
+        {research.searched && (
+          <span className="rounded-control bg-success/10 px-2 py-1 text-xs text-success">
+            {t('검색 완료')}
+          </span>
+        )}
+      </div>
+      {((research.projectSelected ?? 0) > 0 || (research.projectExcluded ?? 0) > 0) && (
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2 text-xs text-muted">
+          <span>{t('웹 검색 {n}건').replace('{n}', String(research.webSelected ?? 0))}</span>
+          <span>{t('프로젝트 자료 {n}건 사용').replace('{n}', String(research.projectSelected ?? 0))}</span>
+          {(research.projectExcluded ?? 0) > 0 && (
+            <span className="text-danger">
+              {t('분량 때문에 제외 {n}건').replace('{n}', String(research.projectExcluded))}
+            </span>
+          )}
+        </div>
+      )}
+      {research.queries.length > 0 && (
+        <ol className="mt-3 space-y-1 border-t border-line pt-2">
+          {research.queries.map((query, index) => (
+            <li key={`${index}-${query}`} className="flex gap-2 text-sm text-fg">
+              <span className="text-faint">{index + 1}</span>
+              <span>{query}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
   /*
    * Nothing to cite, said out loud.
    *
@@ -239,21 +369,109 @@ function SourceList({ sources, style }: { sources: Source[]; style: string }) {
    */
   if (sources.length === 0) {
     return (
-      <div className="rounded-card border border-dashed border-line px-4 py-8 text-center">
-        <p className="text-base text-muted">{t('참고한 자료가 없습니다.')}</p>
-        <p className="mt-1 text-sm text-faint">
-          {t('웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.')}
-        </p>
+      <div className="space-y-3">
+        {researchSummary}
+        <div className="rounded-card border border-dashed border-line px-4 py-8 text-center">
+          <p className="text-base text-muted">{t('참고한 자료가 없습니다.')}</p>
+          <p className="mt-1 text-sm text-faint">
+            {t('웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.')}
+          </p>
+          {numericGaps.length > 0 && (
+            <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm text-danger">
+              <span>
+                {t('근거 표시가 필요한 수치 문장 {count}개').replace(
+                  '{count}',
+                  String(numericGaps.reduce((sum, gap) => sum + gap.excerpts.length, 0)),
+                )}
+              </span>
+              {numericGaps.map((gap) => (
+                <button key={gap.section.id} type="button" onClick={() => onJump(gap.section.id)} className="underline">
+                  {gap.section.heading}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
+  const usedNumbers = citationNumbers(sections)
+  const knownNumbers = new Set(sources.map((source) => source.ordinal))
+  const unknownNumbers = usedNumbers.filter((number) => !knownNumbers.has(number))
+  const usedSources = sources.filter((source) => usedNumbers.includes(source.ordinal)).length
   return (
     <div className="space-y-2">
-      <p className="text-xs text-faint">
-        {t('{style} 형식 · {n}건').replace('{style}', style).replace('{n}', String(sources.length))}
-      </p>
+      {researchSummary}
+      <div
+        className={cn(
+          'rounded-card border px-3 py-2 text-sm',
+          unknownNumbers.length
+            ? 'border-danger/30 bg-danger/10 text-danger'
+            : 'border-line bg-elevated text-muted',
+        )}
+      >
+        <span className="font-medium">{t('인용 점검')}</span>
+        <span className="ml-2">
+          {t('자료 {used}/{total}개 사용')
+            .replace('{used}', String(usedSources))
+            .replace('{total}', String(sources.length))}
+        </span>
+        {unknownNumbers.length > 0 && (
+          <span className="ml-2">
+            {t('목록에 없는 인용 {numbers}').replace(
+              '{numbers}',
+              unknownNumbers.map((number) => `[${number}]`).join(', '),
+            )}
+          </span>
+        )}
+        {numericGaps.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-danger/20 pt-2">
+            <span>
+              {t('근거 표시가 필요한 수치 문장 {count}개').replace(
+                '{count}',
+                String(numericGaps.reduce((sum, gap) => sum + gap.excerpts.length, 0)),
+              )}
+            </span>
+            {numericGaps.map((gap) => (
+              <button
+                key={gap.section.id}
+                type="button"
+                title={gap.excerpts.join('\n')}
+                onClick={() => onJump(gap.section.id)}
+                className="rounded-control bg-panel px-2 py-1 text-xs underline decoration-danger/50 underline-offset-2"
+              >
+                {gap.section.heading}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-faint">{t('{n}건').replace('{n}', String(sources.length))}</p>
+        <Dropdown
+          align="right"
+          trigger={() => (
+            <Button size="sm" disabled={saving} aria-label={t('인용 형식')}>
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              {style}
+            </Button>
+          )}
+        >
+          <MenuLabel>{t('인용 형식')}</MenuLabel>
+          {citationStyles.map((candidate) => (
+            <MenuItem
+              key={candidate}
+              checked={candidate === style}
+              onClick={() => onStyle(candidate)}
+            >
+              {candidate}
+            </MenuItem>
+          ))}
+        </Dropdown>
+      </div>
       {sources.map((src) => {
         const Icon = originIcon[src.origin]
+        const used = citedSections(src, sections)
         return (
           <div key={src.id} className="rounded-card border border-line bg-panel p-3">
             <div className="flex items-start gap-2">
@@ -261,15 +479,31 @@ function SourceList({ sources, style }: { sources: Source[]; style: string }) {
                 {src.ordinal}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-base font-medium">{src.title}</p>
-                <p className="mt-0.5 text-sm text-muted">
-                  {[src.author, src.publisher, src.year].filter(Boolean).join(' · ')}
-                </p>
+                <p className="text-base leading-relaxed">{citationText(src, style)}</p>
                 {src.quote && (
                   <p className="mt-1.5 border-l-2 border-line-strong pl-2 text-sm text-muted">
                     {src.quote}
                   </p>
                 )}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-faint">{t('본문에서 사용')}</span>
+                  {used.length > 0 ? (
+                    used.map((section) => (
+                      <button
+                        key={section.id}
+                        type="button"
+                        onClick={() => onJump(section.id)}
+                        className="rounded-control bg-elevated px-2 py-1 text-xs text-fg hover:bg-accent-soft hover:text-accent"
+                      >
+                        {section.heading}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="rounded-control border border-danger/30 bg-danger/10 px-2 py-1 text-xs text-danger">
+                      {t('인용되지 않음')}
+                    </span>
+                  )}
+                </div>
                 <p className="mt-1.5 flex items-center gap-1.5 text-xs text-faint">
                   <Icon size={11} />
                   {src.originLabel}
@@ -282,6 +516,16 @@ function SourceList({ sources, style }: { sources: Source[]; style: string }) {
                     >
                       {t('원문')} <ExternalLink size={9} />
                     </a>
+                  )}
+                  {used.length === 0 && (
+                    <button
+                      type="button"
+                      aria-label={t('{title} 자료 삭제').replace('{title}', src.title)}
+                      onClick={() => onRemove(src)}
+                      className="ml-auto rounded-control p-1 text-faint hover:bg-danger/10 hover:text-danger"
+                    >
+                      <X size={12} />
+                    </button>
                   )}
                 </p>
               </div>
@@ -330,6 +574,7 @@ export function ReportPanel({
   report,
   onClose,
   onModeChange,
+  onDirtyChange,
 }: {
   report: ReportArtifact
   onClose?: () => void
@@ -337,6 +582,7 @@ export function ReportPanel({
    *  any: the same report sits in a resizable side panel on one screen and in
    *  a fixed-width preview dialog on another. */
   onModeChange?: (mode: PanelMode) => void
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const t = useT()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -352,7 +598,14 @@ export function ReportPanel({
   //: writing that happens by hand rather than by asking. One more press on the
   //: same control, and one more press comes back.
   const [mode, setMode] = useState<PanelMode>('wide')
+  const [ribbon, setRibbon] = useState<'home' | 'insert' | 'layout' | 'review' | 'view' | 'file'>('home')
+  const [documentLayout, setDocumentLayout] = useState<'pages' | 'edit'>('pages')
+  const [pageSettingsOpen, setPageSettingsOpen] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
+  const [citationSaving, setCitationSaving] = useState(false)
+  const [citationError, setCitationError] = useState<string | null>(null)
+  const [addingSource, setAddingSource] = useState(false)
+  const [sourceDraft, setSourceDraft] = useState({ title: '', url: '', author: '', publisher: '', year: '' })
   // The parent holds the split and starts it narrow, so the default above has
   // to be announced rather than assumed. Once — this is an opening position,
   // not a thing to re-assert over a reader who has folded it back.
@@ -383,6 +636,72 @@ export function ReportPanel({
   //: is being verified, and it never is.
   const [checking, setChecking] = useState<string | null>(null)
   const [checkError, setCheckError] = useState<string | null>(null)
+  const bodyCitationNumbers = citationNumbers(report.sections)
+  const knownCitationNumbers = new Set(report.sources.map((source) => source.ordinal))
+  const evidenceWarningCount =
+    bodyCitationNumbers.filter((number) => !knownCitationNumbers.has(number)).length +
+    numericEvidenceGaps(report.sections).reduce((sum, gap) => sum + gap.excerpts.length, 0)
+
+  const chooseCitationStyle = async (style: ReportArtifact['citationStyle']) => {
+    if (style === report.citationStyle) return
+    setCitationSaving(true)
+    setCitationError(null)
+    try {
+      const row = await artifactsApi.update(report.id, {
+        data: documentBody({ ...report, citationStyle: style }),
+        summary: t('인용 형식 변경'),
+        expectedVersion: report.version,
+      })
+      report.citationStyle = style
+      report.version = row.version
+    } catch (err) {
+      setCitationError(errorMessage(err, t('인용 형식을 바꾸지 못했습니다.')))
+    } finally {
+      setCitationSaving(false)
+    }
+  }
+
+  const saveSources = async (sources: Source[], summary: string) => {
+    setCitationSaving(true)
+    setCitationError(null)
+    try {
+      const row = await artifactsApi.update(report.id, {
+        data: documentBody({ ...report, sources }),
+        summary,
+        expectedVersion: report.version,
+      })
+      report.sources = sources
+      report.version = row.version
+      return true
+    } catch (err) {
+      setCitationError(errorMessage(err, t('참고 자료를 저장하지 못했습니다.')))
+      return false
+    } finally {
+      setCitationSaving(false)
+    }
+  }
+
+  const addSource = async () => {
+    const title = sourceDraft.title.trim()
+    const url = sourceDraft.url.trim()
+    if (!title || !/^https?:\/\//i.test(url)) return
+    const ordinal = Math.max(0, ...report.sources.map((source) => source.ordinal)) + 1
+    const source: Source = {
+      id: `manual_${crypto.randomUUID()}`,
+      ordinal,
+      title,
+      url,
+      author: sourceDraft.author.trim() || undefined,
+      publisher: sourceDraft.publisher.trim() || undefined,
+      year: sourceDraft.year.trim() || undefined,
+      origin: 'web',
+      originLabel: t('직접 추가'),
+    }
+    if (await saveSources([...report.sources, source], t('참고 자료 추가'))) {
+      setAddingSource(false)
+      setSourceDraft({ title: '', url: '', author: '', publisher: '', year: '' })
+    }
+  }
 
   /**
    * One section's figures, against the web.
@@ -582,8 +901,10 @@ export function ReportPanel({
     onModeChange?.(next)
   }
   const [draft, setDraft] = useState('')
+  const [discardAction, setDiscardAction] = useState<'cancel' | 'close' | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [recoveryCopied, setRecoveryCopied] = useState(false)
   const [restructuring, setRestructuring] = useState(false)
   //: The sections live on the artifact object rather than in state — every
   //: other edit here mutates it and the panel re-renders when the store
@@ -646,6 +967,8 @@ export function ReportPanel({
   //: choice belongs on the document, and this is where it is made.
   const [templateId, setTemplateId] = useState(report.templateId || 'doc-report')
   const [templateSaving, setTemplateSaving] = useState(false)
+  const [visualStyle, setVisualStyle] = useState(report.design?.visualStyle ?? 'editorial')
+  const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#5b5bd6')
 
   /** Writes the 서식 onto the document, so the exported file carries it. */
   /**
@@ -700,6 +1023,24 @@ export function ReportPanel({
     return restructureSections(next, t('{n}번째 절 옮김').replace('{n}', String(at + 1)))
   }
 
+  const duplicateSection = (at: number) => {
+    const source = report.sections[at]
+    const copy: ReportSection = {
+      ...source,
+      id: `s${Date.now().toString(36)}`,
+      heading: t('{name} 사본').replace('{name}', source.heading || t('제목 없음')),
+      // 검토 결과는 원문의 특정 문장을 가리킨다. 본문은 복제하되 그 판정까지
+      // 새 절에 붙이면 수정 전 판정이 새 내용에도 유효하다고 오해하게 된다.
+      factCheck: undefined,
+    }
+    const next = [
+      ...report.sections.slice(0, at + 1),
+      copy,
+      ...report.sections.slice(at + 1),
+    ]
+    return restructureSections(next, t('{n}번째 절 복제').replace('{n}', String(at + 1)))
+  }
+
   const removeSection = (at: number) => {
     // The last one is not removable: a report with no sections is a title and
     // nothing else, and the way to be rid of it is to delete the report.
@@ -733,6 +1074,60 @@ export function ReportPanel({
       setTemplateSaving(false)
     }
   }
+
+  const chooseVisualStyle = async (next: NonNullable<ReportArtifact['design']>['visualStyle']) => {
+    if (!next || next === visualStyle) return
+    setTemplateSaving(true)
+    setSaveError(null)
+    try {
+      const latest = await artifactsApi.get(report.id)
+      const current = report.design
+      const design = {
+        accent: current?.accent ?? '#5b5bd6', ink: current?.ink ?? '#1a1a1a',
+        muted: current?.muted ?? '#666666', font: current?.font ?? 'serif' as const,
+        ...(current?.footer ? { footer: current.footer } : {}),
+        ...(current?.logo ? { logo: current.logo } : {}), visualStyle: next,
+      }
+      const row = await artifactsApi.update(report.id, {
+        data: documentBody({ ...report, design }), summary: t('문서 디자인 변경'), expectedVersion: latest.version,
+      })
+      report.design = design
+      report.version = row.version
+      setVisualStyle(next)
+      setView('page')
+      setTick((value) => value + 1)
+    } catch (err) {
+      setSaveError(errorMessage(err, t('디자인을 바꾸지 못했습니다.')))
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
+
+  const chooseDocumentAccent = async (accent: string) => {
+    if (accent === documentAccent) return
+    setTemplateSaving(true)
+    setSaveError(null)
+    try {
+      const latest = await artifactsApi.get(report.id)
+      const current = report.design
+      const design = {
+        accent, ink: current?.ink ?? '#1a1a1a', muted: current?.muted ?? '#666666',
+        font: current?.font ?? 'serif' as const, visualStyle,
+        ...(current?.footer ? { footer: current.footer } : {}),
+        ...(current?.logo ? { logo: current.logo } : {}),
+      }
+      const row = await artifactsApi.update(report.id, { data: documentBody({ ...report, design }), summary: t('문서 색 변경'), expectedVersion: latest.version })
+      report.design = design
+      report.version = row.version
+      setDocumentAccent(accent)
+      setView('page')
+      setTick((value) => value + 1)
+    } catch (err) {
+      setSaveError(errorMessage(err, t('색을 바꾸지 못했습니다.')))
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
   /**
    * The 서식 this panel may offer.
    *
@@ -758,7 +1153,40 @@ export function ReportPanel({
   //: And the title, when that is what was retyped. Held apart because it goes
   //: back as the artifact's own title rather than as part of its data.
   const [pageTitle, setPageTitle] = useState<string | null>(null)
+  const [pageSettingsEdits, setPageSettingsEdits] = useState<ReportArtifact['pageSettings'] | null>(null)
+  const [reviewCommentEdits, setReviewCommentEdits] = useState<ReportArtifact['reviewComments'] | null>(null)
   const [pageSaving, setPageSaving] = useState(false)
+  const pageSnapshot = (title: string, data: Partial<ReportArtifact>) => JSON.stringify({
+    title,
+    sections: data.sections ?? [],
+    pageSettings: data.pageSettings ?? null,
+    reviewComments: data.reviewComments ?? [],
+  })
+  const pageBaseline = useRef(pageSnapshot(report.title, report))
+  const hasUnsavedEdit = (editing && draft !== baseline.current) || Boolean(pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits)
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedEdit)
+    return () => onDirtyChange?.(false)
+  }, [hasUnsavedEdit, onDirtyChange])
+  useEffect(() => {
+    if (!hasUnsavedEdit) return
+    const protect = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', protect)
+    return () => window.removeEventListener('beforeunload', protect)
+  }, [hasUnsavedEdit])
+  useEffect(() => {
+    if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits) {
+      pageBaseline.current = pageSnapshot(report.title, report)
+    }
+  }, [report.title, report.sections, report.pageSettings, report.reviewComments, pageEdits, pageTitle, pageSettingsEdits, reviewCommentEdits])
+  const discardOr = (action: 'cancel' | 'close') => {
+    if (hasUnsavedEdit) return setDiscardAction(action)
+    if (action === 'close') onClose?.()
+    else openEditor(false)
+  }
 
   /**
    * The page view's save. Separate from `saveDocument` because that one round-
@@ -766,15 +1194,26 @@ export function ReportPanel({
    * survive.
    */
   const savePageEdits = async () => {
-    if (!pageEdits && !pageTitle) return
+    if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits) return
     setPageSaving(true)
     setSaveError(null)
     try {
       const sections = pageEdits ?? report.sections
       const title = pageTitle ?? report.title
       const latest = await artifactsApi.get(report.id).catch(() => null)
+      const latestData = (latest?.data ?? null) as Partial<ReportArtifact> | null
+      if (latest && latestData && pageSnapshot(latest.title, latestData) !== pageBaseline.current) {
+        setSaveError(
+          t('이 보고서는 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.'),
+        )
+        return
+      }
       const row = await artifactsApi.update(report.id, {
-        data: documentBody({ ...report, title, sections }),
+        data: documentBody({
+          ...report, title, sections,
+          ...(pageSettingsEdits ? { pageSettings: pageSettingsEdits } : {}),
+          ...(reviewCommentEdits ? { reviewComments: reviewCommentEdits } : {}),
+        }),
         title,
         summary: t('서식 편집'),
         expectedVersion: latest?.version ?? report.version,
@@ -782,10 +1221,53 @@ export function ReportPanel({
       report.sections = sections
       report.title = title
       report.version = row.version
+      if (pageSettingsEdits) report.pageSettings = pageSettingsEdits
+      if (reviewCommentEdits) report.reviewComments = reviewCommentEdits
+      pageBaseline.current = pageSnapshot(title, {
+        ...report,
+        sections,
+        ...(pageSettingsEdits ? { pageSettings: pageSettingsEdits } : {}),
+        ...(reviewCommentEdits ? { reviewComments: reviewCommentEdits } : {}),
+      })
       setPageEdits(null)
       setPageTitle(null)
+      setPageSettingsEdits(null)
+      setReviewCommentEdits(null)
     } catch (err) {
       setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+    } finally {
+      setPageSaving(false)
+    }
+  }
+
+  const copyPageRecovery = async () => {
+    await copyText(toMarkdown({
+      title: pageTitle ?? report.title,
+      sections: pageEdits ?? report.sections,
+    }))
+    setRecoveryCopied(true)
+    window.setTimeout(() => setRecoveryCopied(false), 1800)
+  }
+
+  const reloadLatestPage = async () => {
+    setPageSaving(true)
+    try {
+      const latest = await artifactsApi.get(report.id)
+      const data = latest.data as Partial<ReportArtifact>
+      report.title = latest.title
+      report.version = latest.version
+      report.sections = data.sections ?? []
+      report.pageSettings = data.pageSettings
+      report.reviewComments = data.reviewComments
+      pageBaseline.current = pageSnapshot(latest.title, data)
+      setPageEdits(null)
+      setPageTitle(null)
+      setPageSettingsEdits(null)
+      setReviewCommentEdits(null)
+      setSaveError(null)
+      setTick((value) => value + 1)
+    } catch (err) {
+      setSaveError(errorMessage(err, t('최신 내용을 불러오지 못했습니다.')))
     } finally {
       setPageSaving(false)
     }
@@ -851,6 +1333,33 @@ export function ReportPanel({
       openEditor(false)
     } catch (err) {
       setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const copyDocumentRecovery = async () => {
+    await copyText(draft)
+    setRecoveryCopied(true)
+    window.setTimeout(() => setRecoveryCopied(false), 1800)
+  }
+
+  const reloadLatestDocument = async () => {
+    setSaving(true)
+    try {
+      const latest = await artifactsApi.get(report.id)
+      const data = latest.data as Partial<ReportArtifact>
+      const sections = data.sections ?? []
+      report.title = latest.title
+      report.sections = sections
+      report.version = latest.version
+      const current = toMarkdown({ title: latest.title, sections })
+      baseline.current = current
+      setDraft(current)
+      setSaveError(null)
+      setTick((value) => value + 1)
+    } catch (err) {
+      setSaveError(errorMessage(err, t('최신 내용을 불러오지 못했습니다.')))
     } finally {
       setSaving(false)
     }
@@ -928,7 +1437,75 @@ export function ReportPanel({
   }
 
   return (
-    <div ref={panel.ref} className="relative flex h-full min-h-0">
+    <div
+      ref={panel.ref}
+      className="relative flex h-full min-h-0"
+      onKeyDown={(event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
+        event.preventDefault()
+        if (!hasUnsavedEdit) return
+        if (editing) void saveDocument()
+        else void savePageEdits()
+      }}
+    >
+      <Modal
+        open={addingSource}
+        onClose={() => setAddingSource(false)}
+        title={t('참고 자료 추가')}
+        description={t('보고서에서 실제로 확인한 원문의 정보를 입력하세요. 추가한 뒤 본문에 표시된 번호를 붙이면 사용 위치도 연결됩니다.')}
+        footer={
+          <>
+            <Button onClick={() => setAddingSource(false)} disabled={citationSaving}>{t('취소')}</Button>
+            <Button
+              variant="primary"
+              disabled={
+                citationSaving ||
+                !sourceDraft.title.trim() ||
+                !/^https?:\/\//i.test(sourceDraft.url.trim())
+              }
+              onClick={() => void addSource()}
+            >
+              {citationSaving ? t('저장 중…') : t('추가')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <label className="block text-sm text-muted">
+            {t('자료 제목')}
+            <Input
+              value={sourceDraft.title}
+              onChange={(event) => setSourceDraft((draft) => ({ ...draft, title: event.target.value }))}
+              placeholder={t('원문에 표시된 제목')}
+              autoFocus
+            />
+          </label>
+          <label className="block text-sm text-muted">
+            {t('원문 주소')}
+            <Input
+              type="url"
+              value={sourceDraft.url}
+              onChange={(event) => setSourceDraft((draft) => ({ ...draft, url: event.target.value }))}
+              placeholder="https://"
+            />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              ['author', t('저자')],
+              ['publisher', t('발행처')],
+              ['year', t('연도')],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="block text-sm text-muted">
+                {label}
+                <Input
+                  value={sourceDraft[key]}
+                  onChange={(event) => setSourceDraft((draft) => ({ ...draft, [key]: event.target.value }))}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </Modal>
       {/* Mounted with the panel, not on the print click: `window.print()` is
           synchronous, so a tree created in that handler is not on screen when
           the browser takes its snapshot. */}
@@ -995,26 +1572,55 @@ export function ReportPanel({
       {/* 본문 */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* 덱과 같은 이유로 접힌다. 이쪽은 버튼이 하나 더 많다. */}
-        <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
-          <FileText size={15} className="shrink-0 text-accent" />
-          <p className="min-w-0 flex-1 truncate text-base font-medium max-sm:basis-full">
-            {report.title}
-          </p>
+        <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
+            <FileText size={15} className="shrink-0 text-accent" />
+            <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={report.title}>
+              {report.title}
+            </p>
+          </div>
+          <QuickAccess label={t('빠른 도구')}>
+            {editing && <>
+              <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
+                <X size={13} />{t('취소')}
+              </Button>
+              <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveDocument()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{t('저장')}
+              </Button>
+            </>}
+            {view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) && (
+              <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+                {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                {t('저장')}
+              </Button>
+            )}
+            <PanelControls mode={mode} onCycle={onModeChange && cycleMode} onClose={() => discardOr('close')} />
+          </QuickAccess>
+          <ArtifactRibbon
+            label={t('보고서 메뉴')}
+            tabs={[
+              { id: 'home', label: t('홈') }, { id: 'insert', label: t('삽입') },
+              { id: 'layout', label: t('레이아웃') }, { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
+              { id: 'file', label: t('파일') },
+            ] as const}
+            active={ribbon}
+            onChange={setRibbon}
+          >
           {/* No `aria-label`: the words on the button are the name, and an
               `aria-label` of 목차 would replace them — announcing "목차" and
               swallowing the count that is the reason to look at it. */}
-          <Button size="sm" onClick={() => setTocOpen((o) => !o)}>
+          {ribbon === 'view' && <RibbonGroup label={t('탐색')}><Button size="sm" onClick={() => setTocOpen((o) => !o)}>
             <ListTree size={13} />
             {t('목차')} {done}/{report.sections.length}
-          </Button>
+          </Button></RibbonGroup>}
           {/* `저장 시점 v3` 이 바로 옆에서 같은 숫자를 말한다. 둘 중 하나는
               읽는 사람에게 아무것도 더 주지 않으면서 줄 하나를 접히게 만든다. */}
-          <LintFindings
+          {ribbon === 'review' && <RibbonGroup label={t('문서 검사')}><LintFindings
             findings={report.lint}
             artifact={report}
             onFix={fixFinding}
             onFixAll={fixAllFindings}
-          />
+          /></RibbonGroup>}
           {/* 편집 진입점. 항상 보이는 자리에 둔다 — hover 로만 드러나면 보고서가
               편집 가능하다는 것을 알아낼 방법이 마우스를 훑는 것뿐이 된다.
 
@@ -1022,47 +1628,32 @@ export function ReportPanel({
               여기 있는 '수정' 은 마크다운 편집기를 여는 다른 것이다. 나란히
               두면 서식이 적용된 문서를 고치려고 누른 버튼이 마크다운 원문을
               띄우게 된다. */}
-          {view === 'page' ? null : editing ? (
-            <>
-              <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveDocument()}>
-                <Check size={13} />
-                {saving ? t('저장 중…') : t('저장')}
-              </Button>
-              <Button size="sm" onClick={() => openEditor(false)}>
-                {t('취소')}
-              </Button>
-            </>
-          ) : (
-            /* 수정은 언제나 문서를 고치는 곳으로 데려간다.
-
-               이 버튼은 서식이 든 문서만 페이지뷰로 보내고, 그렇지 않은 —
-               즉 갓 만들어진 모든 — 보고서는 마크다운 원문 편집기로 보냈다.
-               표를 고치려던 사람이 `| --- | --- |` 를 마주하는 자리가 거기다.
-               보고서를 쓰러 온 사람이 마크다운 표 문법을 배우러 온 것은
-               아니고, 정작 굵게·표 넣기·실행 취소가 다 있는 진짜 편집기는
-               '페이지뷰' 라는, 고치는 곳처럼 들리지 않는 이름 뒤에 있었다.
-
-               원문 편집이 나쁜 것은 아니다. 통째로 붙여 넣거나 한 번에 훑어
-               고칠 때는 그쪽이 빠르다. 그래서 없애지 않고 옆에 제 이름을
-               달아 두었다 — 아래 '원문'. */
+          {ribbon === 'home' && view !== 'page' && !editing && (
+            <RibbonGroup label={t('편집')}>
             <Button
               size="sm"
-              onClick={() => setView('page')}
+              onClick={() => {
+                setView('page')
+                setDocumentLayout('edit')
+                setPageSettingsOpen(false)
+              }}
               disabled={writing}
               title={t('굵게·표·그림을 그대로 보면서 고칩니다')}
               aria-label={t('문서 수정')}
             >
               <Pencil size={13} />
-              {t('수정')}
+              {t('문서 수정')}
             </Button>
+            </RibbonGroup>
           )}
           {/* 웹뷰와 페이지뷰. 같은 문서를 두 가지로 볼 뿐이고, 어느 쪽에서
               고쳐도 같은 절에 저장된다. */}
-          <Button
+          {ribbon === 'home' && <RibbonGroup label={t('보기')}><Button
             size="sm"
             variant={view === 'page' ? 'primary' : 'secondary'}
-            aria-label={t('페이지뷰')}
+            aria-label={view === 'page' ? t('웹뷰') : t('페이지뷰')}
             title={t('서식이 적용된 A4 문서로 봅니다')}
+            disabled={hasUnsavedEdit}
             onClick={() => {
               const next = view === 'page' ? 'web' : 'page'
               setView(next)
@@ -1084,11 +1675,35 @@ export function ReportPanel({
             <FileType2 size={13} />
             {view === 'page' ? t('웹뷰') : t('페이지뷰')}
           </Button>
+          {view === 'page' && <Button
+            size="sm"
+            variant={documentLayout === 'edit' ? 'primary' : 'secondary'}
+            aria-label={documentLayout === 'edit' ? t('실제 페이지') : t('내용 편집')}
+            onClick={() => setDocumentLayout((current) => current === 'edit' ? 'pages' : 'edit')}
+          >
+            <Pencil size={13} />
+            {documentLayout === 'edit' ? t('실제 페이지') : t('내용 편집')}
+          </Button>}
+          </RibbonGroup>}
+          {ribbon === 'layout' && <RibbonGroup label={t('페이지')}><Button
+            size="sm"
+            variant={pageSettingsOpen ? 'primary' : 'secondary'}
+            aria-label={t('페이지 설정')}
+            aria-pressed={pageSettingsOpen}
+            onClick={() => {
+              setView('page')
+              setDocumentLayout('pages')
+              setPageSettingsOpen((open) => !open)
+            }}
+          >
+            <FileType2 size={13} />{t('페이지 설정')}
+          </Button></RibbonGroup>}
           {/* 마크다운 원문. 한 번에 훑어 고치거나 통째로 붙여 넣을 때의 길이고,
               그렇게 부르지 않으면 '수정' 이라는 이름으로 사람을 그리 보내게
               된다. 서식이 든 절은 이 길로 보내지 않는다 — 크기·서체·정렬·표가
               저장하는 순간 조용히 사라진다. */}
-          {view !== 'page' && !formatted && (
+          {ribbon === 'home' && view !== 'page' && !formatted && (
+            <RibbonGroup label={t('원문')}>
             <Button
               size="sm"
               variant="ghost"
@@ -1100,14 +1715,37 @@ export function ReportPanel({
               <Code2 size={13} />
               {t('원문')}
             </Button>
+            </RibbonGroup>
           )}
           {/* 어떤 양식으로 낼지. 생성 때 한 번 고르고 끝이던 선택을 문서를
               쓰는 도중에도 바꿀 수 있게 한다. 화면은 달라지지 않는다 — 종이는
               하나다 — 달라지는 것은 내보낸 파일이다. 메뉴가 그렇게 말한다. */}
-          {view === 'page' && (
-            <Dropdown
+          {ribbon === 'home' && (
+            <RibbonGroup label={t('디자인')}><Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving}>
+                <Button size="sm" variant="secondary" disabled={templateSaving || hasUnsavedEdit} aria-label={t('보고서 디자인')}>
+                  <Palette size={13} />
+                  {visualStyle === 'poster' ? t('매거진형') : visualStyle === 'minimal' ? t('미니멀') : t('편집형')}
+                </Button>
+              )}
+            >
+              <MenuLabel>{t('내용은 그대로 두고 모양만 바꿉니다')}</MenuLabel>
+              <MenuItem checked={visualStyle === 'editorial'} onClick={() => void chooseVisualStyle('editorial')}>{t('편집형 · 선명한 절 구분')}</MenuItem>
+              <MenuItem checked={visualStyle === 'poster'} onClick={() => void chooseVisualStyle('poster')}>{t('매거진형 · 색면 표지와 큰 제목')}</MenuItem>
+              <MenuItem checked={visualStyle === 'minimal'} onClick={() => void chooseVisualStyle('minimal')}>{t('미니멀 · 작은 제목과 넓은 여백')}</MenuItem>
+              <MenuLabel>{t('색 구성')}</MenuLabel>
+              {([
+                ['#5b5bd6', '보라'], ['#1f6feb', '파랑'], ['#0f766e', '청록'],
+                ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹색'],
+              ] as const).map(([colour, label]) => (
+                <MenuItem key={colour} icon={<span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={documentAccent.toLowerCase() === colour} onClick={() => void chooseDocumentAccent(colour)}>{t(label)}</MenuItem>
+              ))}
+            </Dropdown></RibbonGroup>
+          )}
+          {ribbon === 'home' && view === 'page' && (
+            <RibbonGroup label={t('서식')}><Dropdown
+              trigger={() => (
+                <Button size="sm" variant="secondary" disabled={templateSaving || hasUnsavedEdit}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
                   {documentTemplates.find((row) => row.id === templateId)?.name ?? t('서식')}
                 </Button>
@@ -1123,42 +1761,69 @@ export function ReportPanel({
                   {row.name}
                 </MenuItem>
               ))}
-            </Dropdown>
+            </Dropdown></RibbonGroup>
           )}
-          {view === 'page' && (pageEdits || pageTitle) && (
-            <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()}>
-              {pageSaving && <Loader2 size={13} className="animate-spin" />}
-              {t('저장')}
-            </Button>
-          )}
-          <Button
+          {ribbon === 'review' && <RibbonGroup label={t('근거')}><Button
             size="sm"
             variant={pane === 'sources' ? 'primary' : 'secondary'}
-            aria-label={t('출처')}
+            disabled={hasUnsavedEdit}
+            aria-label={
+              evidenceWarningCount > 0
+                ? t('출처 {sources} · 확인 {count}')
+                    .replace('{sources}', String(report.sources.length))
+                    .replace('{count}', String(evidenceWarningCount))
+                : t('출처 {sources}').replace('{sources}', String(report.sources.length))
+            }
             onClick={() => setPane((p) => (p === 'sources' ? 'document' : 'sources'))}
           >
             <Quote size={13} />
             {t('출처')} {report.sources.length}
-          </Button>
+            {evidenceWarningCount > 0 && (
+              <span className="text-danger">
+                · {t('확인 {count}').replace('{count}', String(evidenceWarningCount))}
+              </span>
+            )}
+          </Button></RibbonGroup>}
           {/* 저장 시점. 되돌릴 수 있다는 사실이 편집 버튼 옆에 붙어 있어야,
               고치기 전에 "잘못 고치면 어쩌지" 를 묻지 않는다. */}
-          <VersionHistory
+          {ribbon === 'file' && <RibbonGroup label={t('버전')}><VersionHistory
             artifact={report}
+            hasUnsavedChanges={hasUnsavedEdit}
+            currentData={report}
             // 되돌린 뒤에도 열려 있는 편집기는 되돌리기 이전의 글을 들고 있다.
             // 그대로 저장하면 방금 되돌린 일이 취소된다.
-            onRestored={() => openEditor(false)}
-          />
-          <PanelControls mode={mode} onCycle={onModeChange && cycleMode} />
-          <AddSectionImage report={report} />
-          <Dropdown
+            onRestored={() => {
+              openEditor(false)
+              setPageEdits(null)
+              setPageTitle(null)
+              setPageSettingsEdits(null)
+              setReviewCommentEdits(null)
+              setSaveError(null)
+            }}
+          /></RibbonGroup>}
+          {ribbon === 'insert' && !hasUnsavedEdit && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
+          {ribbon === 'file' && <RibbonGroup label={t('내보내기')}><Dropdown
             align="right"
             trigger={() => (
-              <Button size="sm">
+              <Button size="sm" disabled={hasUnsavedEdit}>
                 <Download size={14} />
                 {t('내보내기')}
               </Button>
             )}
           >
+            {evidenceWarningCount > 0 && (
+              <>
+                <MenuLabel>
+                  {t('내보내기 전 근거 확인 {count}건').replace(
+                    '{count}',
+                    String(evidenceWarningCount),
+                  )}
+                </MenuLabel>
+                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => setPane('sources')}>
+                  {t('먼저 근거 확인')}
+                </MenuItem>
+              </>
+            )}
             <MenuLabel>{t('형식 선택')}</MenuLabel>
             {/* Built server-side from the stored sections, so the file matches
                 what this panel shows rather than a fresh run of the model. */}
@@ -1181,8 +1846,8 @@ export function ReportPanel({
             <MenuItem icon={<Printer size={14} />} onClick={() => window.print()}>
               {t('인쇄')}
             </MenuItem>
-          </Dropdown>
-          <PanelControls mode={mode} onClose={onClose} />
+          </Dropdown></RibbonGroup>}
+          </ArtifactRibbon>
         </header>
 
         <div
@@ -1218,8 +1883,32 @@ export function ReportPanel({
           )}
           {pane === 'sources' ? (
             <div className="mx-auto max-w-2xl px-6 py-6">
-              <h2 className="mb-3 text-lg font-semibold">{t('참고문헌')}</h2>
-              <SourceList sources={report.sources} style={report.citationStyle} />
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">{t('참고문헌')}</h2>
+                <Button size="sm" onClick={() => setAddingSource(true)}>
+                  <ListPlus size={13} />
+                  {t('자료 추가')}
+                </Button>
+              </div>
+              <SourceList
+                sources={report.sources}
+                research={report.research}
+                style={report.citationStyle}
+                onStyle={(style) => void chooseCitationStyle(style)}
+                sections={report.sections}
+                onJump={(sectionId) => {
+                  setPane('document')
+                  requestAnimationFrame(() => scrollTo(sectionId))
+                }}
+                onRemove={(source) => {
+                  void saveSources(
+                    report.sources.filter((candidate) => candidate.id !== source.id),
+                    t('미사용 참고 자료 삭제'),
+                  )
+                }}
+                saving={citationSaving}
+              />
+              {citationError && <p className="mt-3 text-sm text-danger">{citationError}</p>}
             </div>
           ) : editing ? (
             /* Source on the left, live render on the right. What is edited stays
@@ -1264,23 +1953,65 @@ export function ReportPanel({
                   </div>
                 </div>
               </div>
-              {saveError && <p className="text-base text-danger">{saveError}</p>}
+              {saveError && (
+                <div role="alert" className="rounded-card border border-danger/30 bg-panel px-3 py-2">
+                  <p className="text-base text-danger">{saveError}</p>
+                  {saveError.includes(t('다른 곳에서 이미 수정')) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => void copyDocumentRecovery()}>
+                        <Copy size={13} />
+                        {recoveryCopied ? t('복사됨') : t('내 편집 내용 복사')}
+                      </Button>
+                      <Button size="sm" variant="primary" disabled={saving} onClick={() => void reloadLatestDocument()}>
+                        <RefreshCw size={13} />
+                        {t('최신본 불러오기')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
               <p className="text-xs text-faint">
                 {t('⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다')}
               </p>
             </div>
           ) : (
           view === 'page' ? (
-            <DocumentEditor
-              report={report}
-              templateId={templateId}
-              tokens={report.design ?? null}
-              editable={!writing}
-              onDirty={(sections, title) => {
-                setPageEdits(sections)
-                if (title !== undefined) setPageTitle(title)
-              }}
-            />
+            <div className="relative min-h-0 flex-1">
+              <DocumentEditor
+                key={`${report.id}-${report.version}`}
+                report={report}
+                templateId={templateId}
+                tokens={report.design ?? null}
+                editable={!writing}
+                layoutMode={documentLayout}
+                settingsOpen={pageSettingsOpen}
+                onLayoutMode={setDocumentLayout}
+                onWebView={() => setView('web')}
+                onDirty={(sections, title, pageSettings, reviewComments) => {
+                  setPageEdits(sections)
+                  if (title !== undefined) setPageTitle(title)
+                  if (pageSettings !== undefined) setPageSettingsEdits(pageSettings)
+                  if (reviewComments !== undefined) setReviewCommentEdits(reviewComments)
+                }}
+              />
+              {saveError && (
+                <div role="alert" className="absolute inset-x-4 bottom-4 z-20 rounded-card border border-danger/30 bg-panel px-4 py-3 shadow-lg">
+                  <p className="text-base text-danger">{saveError}</p>
+                  {saveError.includes(t('다른 곳에서 이미 수정')) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => void copyPageRecovery()}>
+                        <Copy size={13} />
+                        {recoveryCopied ? t('복사됨') : t('내 편집 내용 복사')}
+                      </Button>
+                      <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void reloadLatestPage()}>
+                        <RefreshCw size={13} />
+                        {t('최신본 불러오기')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
           <article className="mx-auto max-w-2xl px-6 py-6">
             <h1 className="mb-6 text-2xl font-semibold tracking-tight">{report.title}</h1>
@@ -1316,6 +2047,9 @@ export function ReportPanel({
                       </MenuItem>
                       <MenuItem onClick={() => void addSection(sectionIndex + 1)}>
                         {t('뒤에 절 추가')}
+                      </MenuItem>
+                      <MenuItem onClick={() => void duplicateSection(sectionIndex)}>
+                        {t('이 절 복제')}
                       </MenuItem>
                       <MenuItem
                         onClick={() => void moveSection(sectionIndex, -1)}
@@ -1470,6 +2204,22 @@ export function ReportPanel({
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={discardAction !== null}
+        onClose={() => setDiscardAction(null)}
+        title={t('저장하지 않은 변경 내용이 있습니다')}
+        description={t('계속하면 보고서에서 바꾼 내용이 사라집니다.')}
+        confirmLabel={discardAction === 'close' ? t('저장하지 않고 닫기') : t('변경 내용 버리기')}
+        onConfirm={() => {
+          const action = discardAction
+          openEditor(false)
+          setPageEdits(null)
+          setPageTitle(null)
+          setPageSettingsEdits(null)
+          setReviewCommentEdits(null)
+          if (action === 'close') onClose?.()
+        }}
+      />
     </div>
   )
 }

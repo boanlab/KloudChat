@@ -279,6 +279,35 @@ def _visible_length(kind: str, content: str) -> int:
     return len(" ".join(unescape(text).split()))
 
 
+#: 사람이 "파일" 이나 "문서" 를 달라고 했다는 표시. 글의 내용이 아니라 요청의
+#: 말을 본다 — 무엇을 써 달라는 것과 그것을 파일로 달라는 것은 다른 부탁이고,
+#: 둘을 가르는 것은 payload 에 남지 않는다.
+_FILE_WORDS = re.compile(
+    r"파일|문서로|문서를|다운로드|내려받|내보내|첨부|저장해|"
+    r"\.(?:txt|md|docx|pptx|xlsx|csv|pdf|html|ya?ml|json)\b|"
+    r"\bfile\b|\bdocument\b|\bdownload\b|\bexport\b|\battach",
+    re.I,
+)
+
+
+def _asked_for_a_file(request: str) -> bool:
+    """Whether the person's own words asked for a file rather than for writing.
+
+    `userRequested` is the model's report of this, and it is the one field a
+    model gets wrong in the direction that costs something: asked for a mail
+    draft it sets the flag — a draft *was* requested — and three sentences land
+    behind a preview tab, a source tab, an export menu and a version history,
+    which is the failure this file's own docstring opens with.
+
+    So the flag no longer decides on its own. It still matters: a person may
+    ask for a file in words this pattern does not know, and the model reading
+    the conversation is better at that than a regular expression. What it
+    cannot do any more is open the gate while the person was only asking to be
+    written to.
+    """
+    return bool(_FILE_WORDS.search(request or ""))
+
+
 def _is_prose(kind: str, content: str, language: str) -> bool:
     """Whether this is writing to be read rather than a file to be used.
 
@@ -331,11 +360,12 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         # decided by the time it reads one. Only the model's own guess is
         # overruled; `userRequested` carries an explicit ask through. Not `failed`,
         # because nothing went wrong — an errored step paints the whole turn 중단됨.
-    if (
-        not bool(args.get("userRequested"))
-        and visible < _PROSE_MAX_CHARS
-        and _is_prose(kind, content, language)
-    ):
+    # `userRequested` alone used to skip this whole check, which made
+    # `_PROSE_MAX_CHARS` — "prose shorter than this is an answer **even when the
+    # user said 만들어 줘**" — a comment describing something the code did not
+    # do. The flag now needs the person's own words behind it.
+    requested = bool(args.get("userRequested")) and _asked_for_a_file(ctx.request)
+    if not requested and visible < _PROSE_MAX_CHARS and _is_prose(kind, content, language):
         return ToolResult(
             content=(
                 f"'{title}' 은 문서로 만들지 않았습니다. 실행하거나 다른 프로그램이 "
@@ -416,8 +446,12 @@ CREATE_ARTIFACT = Tool(
             "userRequested": {
                 "type": "boolean",
                 "description": (
-                    "사용자가 문서·파일·내보내기를 직접 요구했을 때만 true. 짧은 "
-                    "글이라도 그때는 문서로 만듭니다. 스스로 판단해 켜지 마세요."
+                    "사용자가 **파일이나 문서 자체를** 달라고 했을 때만 true. "
+                    "'메일 초안 써 줘' 는 글을 부탁한 것이지 파일을 부탁한 것이 "
+                    "아니므로 false 입니다. '그 메일 txt 파일로 만들어 줘' 가 "
+                    "true 입니다. 짧은 글은 이 값이 true 이고 사용자가 실제로 "
+                    "파일을 말했을 때만 문서가 됩니다 — 스스로 판단해 켜도 "
+                    "되돌아옵니다."
                 ),
             },
         },

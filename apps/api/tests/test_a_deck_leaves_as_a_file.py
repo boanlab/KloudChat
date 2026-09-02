@@ -249,6 +249,34 @@ def test_a_slide_can_be_set_larger_or_smaller_and_the_file_follows() -> None:
     assert sizes(1.25)[-1] > sizes(None)[-1] > sizes(0.8)[-1]
 
 
+def test_selected_text_formatting_survives_into_powerpoint() -> None:
+    """Inline emphasis must belong to the downloaded file, not only preview."""
+    from app.services import deck_export
+
+    slides = [{
+        "id": "s1",
+        "layout": "bullets",
+        "title": "선택 서식",
+        "bullets": ["중요 내용"],
+        "richText": {
+            "bullets.0": '<b><span style="font-size:1.35em;color:#c02020">중요</span></b> 내용'
+        },
+    }]
+    built = Presentation(io.BytesIO(deck_export.to_pptx("확인", slides)))
+    runs = [
+        run
+        for shape in built.slides[0].shapes
+        if shape.has_text_frame
+        for paragraph in shape.text_frame.paragraphs
+        for run in paragraph.runs
+        if "중요" in run.text
+    ]
+    assert len(runs) == 1
+    assert runs[0].font.bold is True
+    assert runs[0].font.size.pt > 18
+    assert str(runs[0].font.color.rgb) == "C02020"
+
+
 def test_an_absurd_type_size_cannot_be_stored_into_the_file() -> None:
     """It arrives on an artifact a person can PATCH.
 

@@ -11,8 +11,11 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   await signIn(page)
   await page.goto('/new/report')
 
+  // Always on the 업무 시작점 half. 작업 시작하기 opens on 결과 서식 for a
+  // document surface, and a 시작점 somebody wrote is not on that side — a
+  // search for it there finds nothing and reads as a card that was not saved.
   const openGallery = async () => {
-    await page.getByRole('button', { name: '서식 고르기' }).click()
+    await page.getByRole('button', { name: '작업 시작하기' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
   }
 
@@ -28,7 +31,7 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   await expect(cards.first(), '갤러리가 비어 있다').toBeVisible({ timeout: 20_000 })
 
   // Write one down.
-  await page.getByRole('button', { name: '서식 추가' }).click()
+  await page.getByRole('button', { name: '내 시작점 만들기' }).click()
   const name = `공문 초안 ${Date.now()}`
   await page.getByLabel('이름').fill(name)
   await page.getByLabel('설명').fill('기관 공문 양식에 맞춘 초안')
@@ -38,12 +41,12 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   // The form takes over the whole dialog, so the grid is not back until its
   // heading has gone. Reaching for the search box before that resolves it on
   // the dialog the save is still inside.
-  await expect(page.getByRole('heading', { name: '서식 추가' })).toBeHidden({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: '시작점 만들기' })).toBeHidden({ timeout: 20_000 })
 
   // Found by searching for it. The gallery is paged four to a screen now, so
   // a card is on some page rather than on the page — which is also what a
   // person does when they know the name of the thing they want.
-  await page.getByLabel('서식 검색').fill(name)
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(name)
   // It is a card now, with its chips.
   // The grid cell, which is the card. `div.group` reaches the same element
   // and then loses it: the wrapper carries `group` for the hover rules, and a
@@ -66,7 +69,7 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   await openGallery()
   // Searched again: a reload starts the gallery on its first page with an
   // empty box, and a card somebody wrote is one of many.
-  await page.getByLabel('서식 검색').fill(name)
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(name)
   const again = page.getByRole('dialog').locator('.grid > *').filter({ hasText: name })
   await expect(again).toBeVisible({ timeout: 15_000 })
 
@@ -91,7 +94,7 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
 
   // And it can be thrown away, which is what makes adding one safe.
   await openGallery()
-  await page.getByLabel('서식 검색').fill(fixed)
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(fixed)
   const doomed = page.getByRole('dialog').locator('.grid > *').filter({ hasText: fixed })
   await doomed.getByRole('button', { name: `${fixed} 삭제` }).click()
   await expect(doomed).toHaveCount(0, { timeout: 15_000 })
@@ -99,7 +102,7 @@ test('내가 만든 시작점이 갤러리에 서고, 고르면 요청에 붙고
   // The 서식 the product ships are not deletable — they are not this person's
   // to remove. 업무·기술 보고서 was one of them and is gone: the report
   // surface's built-in 시작점 were withdrawn once 서식 covered the same jobs.
-  await page.getByLabel('서식 검색').fill('보고 문서')
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill('보고 문서')
   const shipped = page.getByRole('dialog').locator('.grid > *').filter({ hasText: '보고 문서' })
   await expect(shipped.getByRole('button', { name: /삭제/ })).toHaveCount(0)
 })
@@ -117,8 +120,8 @@ test('양식 파일을 붙인 시작점을 고르면 그 파일이 첨부로 따
   await signIn(page)
   await page.goto('/new/report')
 
-  await page.getByRole('button', { name: '서식 고르기' }).click()
-  await page.getByRole('button', { name: '서식 추가' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '내 시작점 만들기' }).click()
 
   const name = `양식 시작점 ${Date.now()}`
   await page.getByLabel('이름').fill(name)
@@ -132,7 +135,7 @@ test('양식 파일을 붙인 시작점을 고르면 그 파일이 첨부로 따
   await expect(page.getByText('gongmun-form.txt')).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: '저장', exact: true }).click()
 
-  await page.getByLabel('서식 검색').fill(name)
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(name)
   const card = page.getByRole('dialog').locator('.grid > *').filter({ hasText: name })
   await expect(card).toBeVisible({ timeout: 15_000 })
   // Visible before it is chosen: this card behaves differently from the others.
@@ -146,8 +149,8 @@ test('양식 파일을 붙인 시작점을 고르면 그 파일이 첨부로 따
   })
 
   // Clean up so the gallery does not fill with test rows.
-  await page.getByRole('button', { name: '서식 고르기' }).click()
-  await page.getByLabel('서식 검색').fill(name)
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(name)
   const again = page.getByRole('dialog').locator('.grid > *').filter({ hasText: name })
   await again.getByRole('button', { name: `${name} 삭제` }).click()
   await expect(again).toHaveCount(0, { timeout: 15_000 })

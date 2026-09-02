@@ -151,6 +151,34 @@ async def test_project_knowledge_dropped_for_size_gets_the_same_line(monkeypatch
     assert step["detail"] == "규정.md 5자만 반영 · 연혁.md 분량을 넘겨 제외"
 
 
+async def test_large_project_shelf_selects_relevant_passages_instead_of_oldest_file(monkeypatch):
+    monkeypatch.setattr(settings, "file_context_chars", 1_200)
+    project = Project(id="project-1", user_id="user-1", name="연구")
+    files = [
+        _file("먼저 올린 무관 자료.md", ("복지 제도와 휴가 규정 안내입니다. " * 120)),
+        _file(
+            "배터리 실험.pdf",
+            ("[페이지 7]\n고체전해질 배터리의 이온전도도 측정 결과입니다. " * 80),
+        ),
+    ]
+    context = await assemble(
+        _Db(project=project, files=files),
+        _user(),
+        _session(project_id=project.id),
+        focus="고체전해질 배터리 이온전도도 결과",
+    )
+
+    assert [(f.name, f.state) for f in context.knowledge] == [
+        ("먼저 올린 무관 자료.md", "omitted"),
+        ("배터리 실험.pdf", "truncated"),
+    ]
+    selected = context.knowledge[1]
+    assert selected.locations == ("7쪽",)
+    block = next(b.text for b in context.blocks if b.source == "project.knowledge")
+    assert "이온전도도" in block
+    assert "복지 제도" not in block
+
+
 async def test_the_prompt_the_model_reads_is_unchanged_by_the_reporting(monkeypatch):
     """The account is new; what goes upstream is not.
 

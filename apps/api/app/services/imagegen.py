@@ -133,8 +133,33 @@ def compose_prompt(
     if design.strip():
         parts.append(design.strip())
     if aspect and aspect != "1:1":
-        parts.append(f"aspect ratio {aspect}")
+        parts.append(_shape_note(aspect))
     return ". ".join(p for p in parts if p)
+
+
+def _shape_note(aspect: str) -> str:
+    """The shape, said as an orientation and not only as a ratio.
+
+    `aspect ratio 4:3` on its own is a line picture models drop often enough
+    that this product stores what came back — `actualAspect` — beside what was
+    asked for. Dropped, a report figure comes back taller than it is wide and
+    eats a whole page; a slide figure comes back square and leaves the layout
+    with a hole beside it. Both surfaces ask for a landscape shape (4:3 and
+    16:9) and neither could insist on it.
+
+    Orientation is the half a model does honour, because it is a word rather
+    than an arithmetic constraint. Said both ways, the ratio has something to
+    fall back on.
+    """
+    try:
+        wide, tall = (float(part) for part in aspect.split(":", 1))
+    except ValueError:
+        return f"aspect ratio {aspect}"
+    if wide > tall:
+        return f"aspect ratio {aspect}, landscape orientation, wider than it is tall"
+    if tall > wide:
+        return f"aspect ratio {aspect}, portrait orientation, taller than it is wide"
+    return f"aspect ratio {aspect}, square"
 
 
 def _extract(message: dict[str, Any]) -> tuple[bytes, str]:

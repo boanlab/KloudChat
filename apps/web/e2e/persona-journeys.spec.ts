@@ -14,7 +14,7 @@
 
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { answerText, pickToolModel, signIn } from './helpers'
+import { answerText, artifactIds, pickToolModel, signIn, storedArtifacts } from './helpers'
 
 /**
  * Retried, and only here.
@@ -272,4 +272,158 @@ test('학부생 — 어제 한 대화를 제목으로 다시 찾는다', async (
       { timeout: 60_000, intervals: [2_000] },
     )
     .toBe(true)
+})
+
+/* ── the artifacts a conversation itself produces ────────────────────────
+      챗은 답만 하지 않는다. 문서를 만들어 달라거나 수치를 그려 달라고 하면
+      도구를 불러 결과물을 만들고, 그것은 대화가 끝나도 남는 것이어야 한다.
+      아래 셋이 재는 것은 화면에 무엇이 그려졌는지가 아니라 **저장되었는지**
+      다 — 패널에 떴다가 다음 로그인에 없는 문서는 테두리를 두른 메시지일
+      뿐이고, 그 차이는 화면만 봐서는 알 수 없다. */
+
+/**
+ * 만들어진 아티팩트가 서버에 남을 때까지 기다린다.
+ *
+ * 도구가 끝난 것과 아티팩트가 저장된 것은 같은 순간이 아니다 — 턴이 끝나며
+ * 기록되므로, 스트림이 멎자마자 목록을 읽으면 아직 비어 있다. 폴링하는 쪽이
+ * 고정 대기보다 빠르고, 무엇을 기다렸는지도 실패 메시지에 남는다.
+ */
+interface ArtifactRow {
+  id: string
+  title?: string
+  version?: number
+  data?: Record<string, unknown>
+}
+
+async function waitForArtifact(
+  page: Page,
+  kind: string,
+  match: (row: ArtifactRow) => boolean,
+  timeout = 120_000,
+): Promise<ArtifactRow> {
+  const deadline = Date.now() + timeout
+  let seen: ArtifactRow[] = []
+  while (Date.now() < deadline) {
+    seen = (await storedArtifacts(page, kind)) as ArtifactRow[]
+    const found = seen.find(match)
+    if (found) return found
+    await page.waitForTimeout(2_000)
+  }
+  throw new Error(
+    `${kind} 아티팩트가 저장되지 않았습니다. 최근 ${seen.length}건: ` +
+      JSON.stringify(seen.map((row) => row.title)),
+  )
+}
+
+test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하면 결과물로 남는다', async ({ page }) => {
+  test.setTimeout(300_000)
+  const token = `PLAN-${stamp().toUpperCase()}`
+  await page.goto('/new/chat')
+  await useLocalModel(page)
+  // 토큰을 본문에 넣게 한다. 아티팩트가 **이 요청에서** 나온 것인지 아니면
+  // 계정에 이미 있던 문서인지, 제목만으로는 구별되지 않는다.
+  //
+  // "파일로 저장해서 쓸 것" 이 프롬프트에 들어가는 이유는 문체가 아니라
+  // `create_artifact` 의 규칙이다. 짧은 글은 문서로 만들지 않고 되돌려 보내며,
+  // 그 관문을 여는 것은 사용자가 문서를 직접 요구했다는 사실(`userRequested`)
+  // 하나다. 사람이 애매하게 말하면 작은 모델은 그 판단을 놓치고 본문으로
+  // 답해 버린다 — 한 번 그렇게 흔들렸고, 이 문장이 그 흔들림을 줄인다.
+  await ask(
+    page,
+    `사내 보안 교육 안내 페이지를 한 페이지 HTML 문서로 만들어줘. 파일로 저장해서 ` +
+      `사내 게시판에 올릴 거야. 제목, 소개, 주요 내용 3가지로 구성하고 ` +
+      `본문 어딘가에 ${token} 를 그대로 넣어줘.`,
+  )
+
+  // 결정의 흔적. 이 줄이 없으면 모델이 본문으로 답해도 통과한다 — 그건 이
+  // 시나리오가 재려는 것이 아니다.
+  await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({
+    timeout: 240_000,
+  })
+  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
+
+  const stored = await waitForArtifact(page, 'html', (row) =>
+    String(row.data?.content ?? '').includes(token),
+  )
+  expect(String(stored.data?.content ?? '').toLowerCase()).toContain('<html')
+  expect(String(stored.title ?? '').length).toBeGreaterThan(1)
+
+  // 그리고 갤러리에서 다시 찾을 수 있다. 저장은 됐는데 화면에서 못 찾는
+  // 결과물은 만들어 준 적 없는 것과 같다.
+  await page.goto('/artifacts')
+  await expect(page.getByText(String(stored.title)).first()).toBeVisible({ timeout: 30_000 })
+})
+
+test('분석직 — 대화에서 준 숫자로 차트를 그리면 그 숫자가 결과물에 남는다', async ({ page }) => {
+  test.setTimeout(300_000)
+  await page.goto('/new/chat')
+  await useLocalModel(page)
+  await ask(
+    page,
+    '분기별 가입자 수를 막대 차트로 그려줘. 1분기 120, 2분기 340, 3분기 510, 4분기 780.',
+  )
+
+  await expect(page.getByText(/차트 (그리는 중|그리기)/).first()).toBeVisible({ timeout: 240_000 })
+  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
+
+  // 표는 그린 점에서 파생된다 — 그림과 표가 서로 다른 말을 할 수 없다는 것이
+  // `create_chart` 의 설계이고, 여기서 그 약속을 확인한다.
+  const stored = await waitForArtifact(page, 'chart', (row) =>
+    JSON.stringify(row.data ?? {}).includes('780'),
+  )
+  const source = JSON.stringify(stored.data ?? {})
+  for (const value of ['120', '340', '510', '780']) {
+    expect(source, `차트에 ${value} 가 없습니다`).toContain(value)
+  }
+})
+
+test('개발직 — 스크립트를 만들어 달라고 하면 실행할 수 있는 코드 문서로 남는다', async ({
+  page,
+}) => {
+  test.setTimeout(300_000)
+  const token = `JOB-${stamp().toUpperCase()}`
+  await page.goto('/new/chat')
+  await useLocalModel(page)
+  await ask(
+    page,
+    `로그 파일을 날짜별로 묶어 압축하는 bash 스크립트를 파일로 만들어줘. ` +
+      `스크립트 안 주석에 ${token} 를 그대로 남겨줘.`,
+  )
+  await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({
+    timeout: 240_000,
+  })
+  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
+
+  // `html` 이 아니라 `code` 다. 둘은 패널에서 다르게 그려지고 다르게 내보내지므로,
+  // 스크립트가 html 로 저장되면 미리보기가 소스를 렌더링하려 든다.
+  const stored = await waitForArtifact(page, 'code', (row) =>
+    String(row.data?.content ?? '').includes(token),
+  )
+  const content = String(stored.data?.content ?? '')
+  expect(content, '스크립트가 아니라 설명이 저장됐습니다').toMatch(/#!|for |tar |gzip|zip/i)
+  // 언어가 붙어야 패널이 색을 입히고 내보낼 때 확장자가 정해진다.
+  expect(String(stored.data?.language ?? '')).not.toBe('')
+})
+
+test('사무직 — 짧은 메일 초안은 문서가 아니라 답변으로 온다', async ({ page }) => {
+  test.setTimeout(300_000)
+  // 이 서식의 약속 하나를 지킨다. 세 문장짜리 메일을 패널에 넣으면 읽으려고
+  // 패널을 여는 수고만 늘고, `create_artifact` 는 그래서 짧은 글을 되돌려
+  // 보낸다 — 그 규칙이 풀리면 대화가 문서 공장이 된다.
+  // 종류를 가리지 않고 센다. 처음에는 `html` 만 셌는데, 실제로 만들어진
+  // 메일 초안은 `code` 였다 — 시험은 초록이었고 패널에는 문서가 앉아 있었다.
+  const before = await artifactIds(page)
+  await page.goto('/new/chat')
+  await useLocalModel(page)
+  await ask(page, '내일 회의가 30분 미뤄졌다고 알리는 짧은 메일 초안 세 문장만 써줘.')
+  await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
+
+  // 본문이 대화 안에 있다. 이것이 없으면 "문서로 만들지 않았다" 는 그냥
+  // 아무 답도 하지 않은 것이다.
+  await expect(answerText(page, /회의|미뤄|연기|30분/).first()).toBeVisible({ timeout: 60_000 })
+  const after = await artifactIds(page)
+  expect(
+    after.filter((id) => !before.includes(id)),
+    '짧은 메일 초안이 문서로 만들어졌습니다',
+  ).toEqual([])
 })

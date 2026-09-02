@@ -1,12 +1,13 @@
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkCjkFriendly from 'remark-cjk-friendly'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import 'katex/dist/katex.min.css'
 import { Diagram } from '@/components/report/Diagram'
+import { CardGrid, Callout } from '@/components/report/CardGrid'
 import { ChartBlock } from '@/components/report/ChartBlock'
 import { KpiStrip } from '@/components/report/KpiStrip'
 import { StepList } from '@/components/report/StepList'
@@ -14,6 +15,12 @@ import { diagramKey } from '@/lib/diagramKey'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
+
+//: A picture that is already inside the document — the only kind one may
+//: carry, and raster only, which is the rule `services/pictures.py` states on
+//: the server and the sanitiser enforces on the way in.
+const EMBEDDED_PICTURE =
+  /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i
 
 function CodeBlock({ children, className }: { children: ReactNode; className?: string }) {
   const t = useT()
@@ -122,6 +129,19 @@ export function MarkdownBody({
       // answer takes, so the relaxed CJK flanking rules are not optional here.
       remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]}
         rehypePlugins={[rehypeKatex]}
+        // `react-markdown` blanks every address whose protocol is not `http`,
+        // `https`, `mailto` or `xmpp` — `data:` among them. Every picture in a
+        // document is a `data:` URI, because an address is a request made on
+        // the reader's behalf and embedding is the only form allowed, so the
+        // default left `<img src="">`: a figure the page view and all three
+        // exports drew came out on the reading screen as a broken picture with
+        // its caption under it. An embedded raster passes; everything else is
+        // still the library's own answer.
+        urlTransform={(url, key, node) =>
+          key === 'src' && node.tagName === 'img' && EMBEDDED_PICTURE.test(url)
+            ? url
+            : defaultUrlTransform(url)
+        }
         components={{
           p: ({ children }) => <p className="my-2.5 first:mt-0 last:mb-0">{children}</p>,
           h1: ({ children }) => <h1 className="mt-5 mb-2 text-xl font-semibold">{children}</h1>,
@@ -208,6 +228,14 @@ export function MarkdownBody({
             if (/language-kpi/.test(className ?? '')) {
               return <KpiStrip source={String(children).trimEnd()} />
             }
+            // A grid of labelled lists, and the one box not to skip. Text, not
+            // pictures — the exporters draw the same two fences as tables.
+            if (/language-cards/.test(className ?? '')) {
+              return <CardGrid source={String(children).trimEnd()} />
+            }
+            if (/language-callout/.test(className ?? '')) {
+              return <Callout source={String(children).trimEnd()} />
+            }
             if (/language-mermaid/.test(className ?? '')) {
               return <DiagramBlock source={String(children).trimEnd()} owner={owner} />
             }
@@ -221,6 +249,22 @@ export function MarkdownBody({
               </code>
             )
           },
+          // The same figure the page view draws, in the view that renders
+          // Markdown: the picture, and the alt text under it as its caption —
+          // which is where the writer and the embed endpoint both put it.
+          // Spans rather than `<figure>`/`<figcaption>`, because a picture on
+          // its own line is a paragraph and a `<figure>` inside a `<p>` is
+          // closed by the browser before it starts.
+          img: ({ src, alt }) => (
+            <span className="my-3 block">
+              <img
+                src={typeof src === 'string' ? src : undefined}
+                alt={alt ?? ''}
+                className="block h-auto max-w-full rounded-card border border-line"
+              />
+              {alt ? <span className="mt-1.5 block text-base text-muted">{alt}</span> : null}
+            </span>
+          ),
           pre: ({ children }) => <>{children}</>,
         }}
       >

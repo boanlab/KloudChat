@@ -261,6 +261,58 @@ def test_a_json_deck_slide_carries_a_picture_as_its_own_address():
     ).count(b"/Image")
 
 
+def test_cover_fit_crops_the_same_central_window_in_pptx_and_pdf():
+    image = base64.b64decode(png(width=800, height=200))
+    width, height, left, top, right, bottom = deck_export._fill(
+        image, box=(300, 310)
+    )
+    assert height == pytest.approx(310)
+    assert width > 300
+    assert left == pytest.approx(right)
+    assert left > 0
+    assert top == bottom == 0
+
+    slide = {
+        "id": "s1",
+        "layout": "bullets",
+        "title": "채우기",
+        "bullets": ["본문"],
+        "image": {
+            "src": pictures.encode("image/png", image),
+            "caption": "가운데를 남긴다",
+            "fit": "cover",
+        },
+    }
+    archive = zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("t", [slide], tokens=TOKENS)))
+    xml = archive.read("ppt/slides/slide1.xml").decode()
+    assert "a:srcRect" in xml
+    assert re.search(r'<a:srcRect l="[1-9]\d*" r="[1-9]\d*"', xml)
+    pdf = deck_export.to_pdf("t", [slide], tokens=TOKENS)
+    assert pdf.startswith(b"%PDF")
+    assert b"/Image" in pdf
+
+
+def test_a_left_picture_moves_the_text_column_right_in_powerpoint():
+    image = base64.b64decode(png(width=320, height=240))
+    slide = {
+        "id": "s1",
+        "layout": "bullets",
+        "title": "왼쪽 그림",
+        "bullets": ["오른쪽 본문"],
+        "image": {
+            "src": pictures.encode("image/png", image),
+            "position": "left",
+        },
+    }
+    presentation = deck_export.Presentation(
+        io.BytesIO(deck_export.to_pptx("t", [slide], tokens=TOKENS))
+    )
+    shapes = presentation.slides[0].shapes
+    picture = next(shape for shape in shapes if shape.shape_type == 13)
+    title = next(shape for shape in shapes if getattr(shape, "text", "") == "왼쪽 그림")
+    assert picture.left < title.left
+
+
 def test_a_slide_picture_that_is_not_an_address_is_ignored():
     """A remote one cannot be stored, and nothing fetches it if it appears."""
     slides = [

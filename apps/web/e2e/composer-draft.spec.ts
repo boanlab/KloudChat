@@ -24,8 +24,14 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   const mine = '골목 어귀에서 손을 흔드는 아이. 늦은 오후 빛으로.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '서식 고르기' }).click()
-  const poster = page.getByRole('dialog').locator('div.group', { hasText: '포스터' })
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible({ timeout: 20_000 })
+  // Searched rather than scrolled to. The picture surface carries six 서식
+  // since the research figures joined it, so 포스터 is on the second page and
+  // a locator that only looks at what is drawn finds nothing.
+  await dialog.getByPlaceholder(/검색/).fill('포스터')
+  const poster = dialog.locator('div.group', { hasText: '포스터' }).first()
   await expect(poster).toBeVisible({ timeout: 20_000 })
   await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
 
@@ -56,25 +62,26 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
  * empty — appending must not have quietly given it a sentence to type, which
  * is the failure the fix above could most easily introduce.
  */
-test('문서 시작점은 여전히 입력창에 아무것도 쓰지 않는다', async ({ page }) => {
+test('표면을 옮겨도 챗 초안은 그대로 있고, 문서 입력창은 비어 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  // 챗에서 확인한다. 규칙은 표면의 종류로 갈린다 — 그림과 영상에서는 문장이
-  // 곧 프롬프트라 입력창에 들어가고, 나머지에서는 그 틀이 기계의 것이라 턴에
-  // 실린다. 챗도 보고서도 '나머지' 쪽이고, 보고서의 기본 시작점은 같은 일을
-  // 하는 서식이 생기면서 걷어냈으므로 카드가 남아 있는 쪽에서 본다.
   await page.goto('/new/chat')
 
   const composer = page.getByLabel('프롬프트 입력')
   const mine = '3월 정기 점검 결과를 정리해 줘.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '서식 고르기' }).click()
-  // A sentence card is one button, not a panel with a button inside it.
-  const card = page.getByRole('dialog').getByRole('button').filter({ hasText: '장애 원인 좁히기' })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // The home rail this used to press is gone — 서식 moved inside 작업 시작하기,
+  // and the gallery shows only the surface it is open on. The way somebody
+  // moves between surfaces now is the chip row, and the promise is the same
+  // one: an unfinished sentence belongs to the surface it was typed on.
+  // The chip switches the surface in place — one start screen, many surfaces —
+  // so the check is on the composer rather than on the address.
+  await page.getByRole('button', { name: '보고서', exact: true }).first().click()
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
 
-  await expect(page.getByRole('button', { name: '장애 원인 좁히기 시작점 해제' })).toBeVisible()
-  await expect(composer).toHaveValue(mine)
+  // And back. A draft belongs to the surface it was typed on; moving away and
+  // returning must not have spent it.
+  await page.getByRole('button', { name: '챗', exact: true }).first().click()
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue(mine)
 })

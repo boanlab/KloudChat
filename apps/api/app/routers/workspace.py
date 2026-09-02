@@ -48,6 +48,7 @@ from app.schemas.workspace import (
     ArtifactOut,
     ArtifactPatch,
     ArtifactRestore,
+    ArtifactVersionDetailOut,
     ArtifactVersionOut,
     BlockImage,
     BlockRewrite,
@@ -264,6 +265,32 @@ def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | 
     return chosen
 
 
+def _validated_starting_format(template_id: str, kind: str) -> str:
+    """The 서식 a starting point carries, refused rather than stored and ignored.
+
+    Same rule as `_validated_render_templates`, for one id: a shape that does
+    not exist, or one this surface cannot wear, is an error. Stored anyway it
+    would be dropped silently at render time, and the person who attached it
+    would find their 시작점 producing the default shape with nothing saying why.
+
+    Empty is allowed and is the common answer — a job with no fixed shape lets
+    the surface choose one from the subject.
+    """
+    if not template_id:
+        return ""
+    template = design_templates.get(template_id)
+    if template is None or template.kind not in design_templates.HTML_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
+        )
+    if template.surface.value != kind:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="design_template_surface_mismatch",
+        )
+    return template.id
+
+
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
     files = (
         await db.exec(
@@ -421,6 +448,43 @@ async def upload_file(
         log.info("extraction failed for %s: %s", stored.name, exc)
         stored.error = str(exc)
 
+    db.add(stored)
+    await db.commit()
+    await db.refresh(stored)
+    return FileOut.of(stored)
+
+
+@router.post(
+    "/projects/{project_id}/knowledge/url",
+    response_model=FileOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_project_url(
+    project_id: str, payload: KnowledgeUrl, user: CurrentUser, db: DbSession
+):
+    """Read a web page now and retain that snapshot as project knowledge."""
+    await _own(db, Project, "user_id", user, project_id)
+    url = payload.url.strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_url")
+    backends = await settings_store.tools_config()
+    if not backends.fetch:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="fetch_unavailable"
+        )
+    text = await builtin_tools.scrape(backends.fetch, url)
+    if not text.strip():
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="page_unreadable")
+    stored = StoredFile(
+        user_id=user.id,
+        project_id=project_id,
+        name=_page_name(url),
+        size=len(text.encode()),
+        mime="text/markdown",
+        source_url=url,
+        text=text,
+        tokens=file_service.estimate_tokens(text),
+    )
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
@@ -769,6 +833,7 @@ async def factcheck_slide(
         reason="deck.factcheck",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="slides",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -895,6 +960,7 @@ async def factcheck_section(
         reason="report.factcheck",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1011,6 +1077,8 @@ async def critique_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
         reason="artifact.critique",
         session_id=artifact.session_id,
         model=model["id"],
+        # Read off the artifact, because a critique is asked for on both.
+        surface="slides" if artifact.kind == ArtifactKind.deck else "report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1372,6 +1440,7 @@ async def rewrite_block(
         reason="page.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1479,6 +1548,7 @@ async def rewrite_section(
         reason="report.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="report",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1574,6 +1644,7 @@ async def rewrite_slide(artifact_id: str, payload: SlideRewrite, user: CurrentUs
         reason="deck.rewrite",
         session_id=artifact.session_id,
         model=model["id"],
+        surface="slides",
     )
     await db.commit()
     await db.refresh(artifact)
@@ -1596,6 +1667,27 @@ async def list_artifact_versions(artifact_id: str, user: CurrentUser, db: DbSess
         )
     ).all()
     return [ArtifactVersionOut.of(r) for r in rows]
+
+
+@router.get(
+    "/artifacts/{artifact_id}/versions/{version}",
+    response_model=ArtifactVersionDetailOut,
+)
+async def get_artifact_version(
+    artifact_id: str, version: int, user: CurrentUser, db: DbSession
+):
+    """One historical body, fetched only when the user asks to inspect it."""
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    row = (
+        await db.exec(
+            select(ArtifactVersion)
+            .where(ArtifactVersion.artifact_id == artifact.id)
+            .where(ArtifactVersion.version == version)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such version")
+    return ArtifactVersionDetailOut.of(row)
 
 
 @router.post("/artifacts/{artifact_id}/restore", response_model=ArtifactOut)
@@ -2323,6 +2415,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     data = artifact.data or {}
     content = str(data.get("content") or "")
     tokens = data.get("design") or None
+    page_settings = data.get("pageSettings") or None
     title = artifact.title or "문서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "page"
 
@@ -2380,19 +2473,26 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     elif format == "pdf":
         printed = await printing.to_pdf(content)
         body, media, suffix = (
-            printed or report_export.to_pdf(title, sections, tokens=tokens),
+            printed
+            or report_export.to_pdf(
+                title, sections, tokens=tokens, page_settings=page_settings
+            ),
             "application/pdf",
             "pdf",
         )
     elif format == "hwpx":
         body, media, suffix = (
-            report_export.to_hwpx(title, sections, tokens=tokens),
+            report_export.to_hwpx(
+                title, sections, tokens=tokens, page_settings=page_settings
+            ),
             "application/hwp+zip",
             "hwpx",
         )
     elif format == "docx":
         body, media, suffix = (
-            report_export.to_docx(title, sections, tokens=tokens),
+            report_export.to_docx(
+                title, sections, tokens=tokens, page_settings=page_settings
+            ),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "docx",
         )
@@ -2428,15 +2528,22 @@ async def export_artifact(
     # Markdown, whichever way each section was stored. A report somebody edited
     # in the document editor holds HTML; `_markdown_to_lines` in every exporter
     # reads Markdown and would draw the tags as text.
-    sections = richtext.normalise(list((artifact.data or {}).get("sections") or []))
-    tokens = (artifact.data or {}).get("design") or None
+    data = artifact.data or {}
+    sections = richtext.normalise(list(data.get("sections") or []))
+    sections = report_export.with_references(
+        sections,
+        list(data.get("sources") or []),
+        str(data.get("citationStyle") or "APA"),
+    )
+    tokens = data.get("design") or None
+    page_settings = data.get("pageSettings") or None
     title = artifact.title or "보고서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "report"
 
     # The 서식 this report wears, so the `.docx` comes out as that 서식 rather
     # than in Word's defaults. Stored on the artifact by the page track and
     # chosen in the panel; absent, the exporter uses its own page setup.
-    chosen = design_templates.get(str((artifact.data or {}).get("templateId") or ""))
+    chosen = design_templates.get(str(data.get("templateId") or ""))
     docx_template = chosen.docx_template if chosen else ""
 
     if format == "md":
@@ -2444,16 +2551,24 @@ async def export_artifact(
         media = "text/markdown; charset=utf-8"
         suffix = "md"
     elif format == "pdf":
-        body = report_export.to_pdf(title, sections, tokens=tokens)
+        body = report_export.to_pdf(title, sections, tokens=tokens, page_settings=page_settings)
         media = "application/pdf"
         suffix = "pdf"
     elif format == "docx":
-        body = report_export.to_docx(title, sections, tokens=tokens, template=docx_template)
+        body = report_export.to_docx(
+            title,
+            sections,
+            tokens=tokens,
+            template=docx_template,
+            page_settings=page_settings,
+        )
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
     elif format == "hwpx":
         # Same sections and structure — see report_export.to_hwpx.
-        body = report_export.to_hwpx(title, sections, tokens=tokens)
+        body = report_export.to_hwpx(
+            title, sections, tokens=tokens, page_settings=page_settings
+        )
         media = "application/hwp+zip"
         suffix = "hwpx"
     else:
@@ -2561,6 +2676,9 @@ async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession)
     data = payload.model_dump()
     _may_share(user, bool(data.get("shared")))
     data["file_id"] = await _own_file(db, user, data.get("file_id"))
+    data["render_template_id"] = _validated_starting_format(
+        str(data.get("render_template_id") or ""), str(data.get("kind") or "")
+    )
     # A shared template filed under "내 템플릿" reads as somebody's private one
     # in every other account's gallery.
     if data.get("shared") and data.get("group") == _OWN_GROUP:
@@ -2607,6 +2725,14 @@ async def patch_template(
         _may_share(user, bool(fields["shared"]))
     if "file_id" in fields:
         fields["file_id"] = await _own_file(db, user, fields["file_id"])
+    if "render_template_id" in fields:
+        # Against the kind being saved, which a patch may be changing in the
+        # same call — checking the stored one would accept a 보고서 서식 onto a
+        # starting point that is becoming a 슬라이드.
+        fields["render_template_id"] = _validated_starting_format(
+            str(fields["render_template_id"] or ""),
+            str(fields.get("kind") or template.kind),
+        )
     for field, value in fields.items():
         setattr(template, field, value)
     template.updated_at = utcnow()
@@ -2911,7 +3037,6 @@ async def design_template_style(
     }
 
 
-#: What a form is served as, by the extension it was built with.
 _FORM_MEDIA = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -2920,20 +3045,7 @@ _FORM_MEDIA = {
 
 @router.get("/design-templates/{template_id}/form")
 async def download_design_template_form(template_id: str, user: CurrentUser):
-    """The 서식 as a blank file to fill in by hand.
-
-    The catalogue shapes what the model writes, and until now that was the only
-    way to get a document in one of these shapes: ask for one. Somebody who
-    wanted the 회의록 form to type into themselves — or to send to a colleague
-    who does not use this — had nothing to take away.
-
-    The file the 서식 already carries, not one made here. It is the same
-    styles the export comes out in, so a document written by hand in this form
-    and one written by the model are the same document twice.
-
-    Authenticated, unlike `preview`: a preview is a picture of a shape and this
-    is a file, and files come from a workspace somebody belongs to.
-    """
+    """Return the template's real blank Office file for manual work."""
     chosen = design_templates.get(template_id)
     if chosen is None or not chosen.form_file:
         raise HTTPException(
@@ -2947,8 +3059,6 @@ async def download_design_template_form(template_id: str, user: CurrentUser):
     return _attachment(
         path.read_bytes(),
         _FORM_MEDIA.get(path.suffix, "application/octet-stream"),
-        # The 서식's own name, so the file in somebody's downloads folder says
-        # what it is rather than `form.docx` four times over.
         re.sub(r'[\\/:*?"<>|]+', "_", chosen.name)[:60] or "form",
         path.suffix.lstrip("."),
     )

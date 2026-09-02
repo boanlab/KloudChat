@@ -1926,6 +1926,9 @@ async def _settle_plan_turn(
             reason="document.plan",
             session_id=session_id,
             model=(outline_model or model)["id"],
+            # 「document」 is the one reason that does not say which surface —
+            # both 보고서 and 슬라이드 plan and stop. The session does.
+            surface=session.kind.value,
         )
         session.updated_at = utcnow()
         db.add(session)
@@ -1980,6 +1983,12 @@ def _edited_plan(sent: dict | None, stored: dict) -> dict:
             out[key] = kept
     if title := str(sent.get("title") or "").strip():
         out["title"] = title[:200]
+    visual_style = str(sent.get("visualStyle") or "").strip()
+    if visual_style in ("editorial", "poster", "minimal"):
+        out["visualStyle"] = visual_style
+    density = str(sent.get("density") or "").strip()
+    if density in ("speaker", "reading"):
+        out["density"] = density
     return out
 
 
@@ -2372,7 +2381,7 @@ async def send_message(
             # What the person said to concentrate on, when they were told the
             # file would not fit whole and answered. Empty takes the head, which
             # is what an unasked request has always got.
-            focus=focus,
+            focus=focus or (content if session.kind is not SessionKind.chat else ""),
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -2797,6 +2806,16 @@ async def send_message(
                 skills_event=skills_event,
                 context_steps=context_steps,
                 outline_model=outline_model,
+                project_sources=[
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "state": item.state,
+                        "sourceUrl": item.source_url,
+                        "locations": list(item.locations),
+                    }
+                    for item in workspace.knowledge
+                ],
                 # A strict-local route is given no network anywhere else, and
                 # a document is not the place to make the one exception.
                 web_search=payload.web_search and not strict_local,
@@ -2858,6 +2877,16 @@ async def send_message(
                 skills_event=skills_event,
                 context_steps=context_steps,
                 outline_model=outline_model,
+                project_sources=[
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "state": item.state,
+                        "sourceUrl": item.source_url,
+                        "locations": list(item.locations),
+                    }
+                    for item in workspace.knowledge
+                ],
                 # A strict-local route is given no network anywhere else, and
                 # a document is not the place to make the one exception.
                 web_search=payload.web_search and not strict_local,
@@ -3219,6 +3248,17 @@ async def _run_turn(
         api_key=api_key,
         project_id=project_id,
         agent_name=agent_name,
+        # The last thing the person said, which is what this turn answers.
+        # `first_user_message` is the conversation's opening line and would
+        # have a tool five turns later reading a request nobody made here.
+        request=next(
+            (
+                str(one.get("content") or "")
+                for one in reversed(messages)
+                if one.get("role") == "user"
+            ),
+            "",
+        ),
     )
     masker = governance.mask_legacy if legacy_masking else governance.mask
     strict_local = _strict_model(model)
@@ -4185,6 +4225,7 @@ async def _run_page(
     figures_plan: list[dict] | None = None,
     #: The model that draws them — the image default, not the writer's model.
     image_model: dict | None = None,
+    project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one HTML artifact to completion and settles it.
 
@@ -4203,6 +4244,7 @@ async def _run_page(
     #: plain track does — the citations belong to the document, not to the
     #: track it happened to be written on.
     sources: list[dict] = []
+    research_log: dict[str, Any] | None = None
 
     if routing:
         # Before the first block of the document, for the same reason chat
@@ -4225,6 +4267,7 @@ async def _run_page(
             tokens=design_tokens,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
+            project_sources=project_sources,
         )
         async for event in stream:
             if event["type"] in ("proposal", "needs"):
@@ -4243,6 +4286,8 @@ async def _run_page(
                 continue
             if event["type"] == "sources":
                 sources = list(event.get("sources") or [])
+            if event["type"] == "research":
+                research_log = dict(event.get("research") or {})
             if event["type"] == "title":
                 doc_title = str(event.get("title") or "").strip()
             if event["type"] == "usage":
@@ -4336,6 +4381,7 @@ async def _run_page(
                             if block.get("layout") != "cover"
                         ],
                         "sources": sources,
+                        **({"research": research_log} if research_log is not None else {}),
                         "citationStyle": "APA",
                         "lint": lint.wire(
                             lint.check(
@@ -4569,6 +4615,16 @@ async def _run_deck(
         if session is not None and user is not None:
             title = (doc_title or session.title or request.strip()[:60] or "슬라이드")[:200]
             if written:
+                artifact_design = design_tokens
+                if not artifact_design:
+                    requested_style = str(
+                        (approved_plan or {}).get("visualStyle")
+                        or design_service.visual_style_for(request)
+                    )
+                    if requested_style != "editorial":
+                        artifact_design = design_service.normalise_tokens(
+                            {"visualStyle": requested_style}
+                        )
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -4582,7 +4638,7 @@ async def _run_deck(
                         "theme": "기본",
                         # Copied onto the artifact rather than resolved at export time: a deck
                         # presented last month should not repaint itself when the project changes.
-                        **({"design": design_tokens} if design_tokens else {}),
+                        **({"design": artifact_design} if artifact_design else {}),
                         "lint": lint.wire(
                             lint.check(lint.from_slides(slides), slides=True)
                         ),
@@ -4842,6 +4898,7 @@ async def _revise_document(
                 reason="document.revise",
                 session_id=session_id,
                 model=model["id"],
+                surface=session.kind.value,
             )
             session.updated_at = utcnow()
             db.add(session)
@@ -4900,6 +4957,7 @@ async def _run_report(
     figures_plan: list[dict] | None = None,
     #: The model that draws them — the image default, not the writer's model.
     image_model: dict | None = None,
+    project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it.
 
@@ -4916,6 +4974,7 @@ async def _run_report(
     #: The shelf the sections cited from, kept so the artifact carries the same
     #: numbering the prose refers to.
     sources: list[dict] = []
+    research_log: dict[str, Any] | None = None
 
     if routing:
         # Before the first block of the document, for the same reason chat
@@ -4938,6 +4997,7 @@ async def _run_report(
             api_key=api_key,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
+            project_sources=project_sources,
         )
         async for event in stream:
             if event["type"] in ("proposal", "needs"):
@@ -4957,6 +5017,8 @@ async def _run_report(
                 sources = list(event.get("sources") or [])
                 # Forwarded too: the panel shows the shelf while the sections
                 # are still being written.
+            if event["type"] == "research":
+                research_log = dict(event.get("research") or {})
             if event["type"] == "title":
                 doc_title = str(event.get("title") or "").strip()
                 # Forwarded: until it arrives the panel heads the draft with
@@ -5022,6 +5084,16 @@ async def _run_report(
             # model's output and reads as the raw prompt on a cover page.
             title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
             if written:
+                artifact_design = design_tokens
+                if not artifact_design:
+                    requested_style = str(
+                        (approved_plan or {}).get("visualStyle")
+                        or design_service.visual_style_for(request)
+                    )
+                    if requested_style != "editorial":
+                        artifact_design = design_service.normalise_tokens(
+                            {"visualStyle": requested_style}
+                        )
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -5042,10 +5114,11 @@ async def _run_report(
                             for s in sections
                         ],
                         "sources": sources,
+                        **({"research": research_log} if research_log is not None else {}),
                         "lint": lint.wire(lint.check(lint.from_sections(sections))),
                         # Same snapshot rule as the deck: the exporters read
                         # this, not the project the report came from.
-                        **({"design": design_tokens} if design_tokens else {}),
+                        **({"design": artifact_design} if artifact_design else {}),
                         "citationStyle": "APA",
                         "wordCount": report_service.word_count(sections),
                     },

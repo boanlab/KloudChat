@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, storedArtifacts } from './helpers'
 
 /**
  * Chat makes a thing when it is asked for a thing.
@@ -35,31 +35,12 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
   await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
 
-  // It is a stored artifact, of the kind asked for, with a real document in it.
-  const stored = await page.evaluate(async () => {
-    const login = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: 'e2e-personas@example.com',
-        password: 'personas-playwright-pass',
-      }),
-    })
-    const { accessToken } = await login.json()
-    const rows = await (
-      await fetch('/api/artifacts', { headers: { Authorization: `Bearer ${accessToken}` } })
-    ).json()
-    const list = Array.isArray(rows) ? rows : rows.items
-    const row = list.find((a: { kind: string }) => a.kind === 'html')
-    // The listing sends HTML documents without their markup. Fetch the file.
-    if (!row) return null
-    return await (
-      await fetch('/api/artifacts/' + row.id, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-    ).json()
-  })
-  expect(stored, 'html 아티팩트가 만들어지지 않았습니다').not.toBeNull()
+  // It is a stored artifact, of the kind asked for, with a real document in
+  // it. Read through `storedArtifacts` rather than a login written out here —
+  // the account can be named from outside now, and a spec that logs in as
+  // somebody else reads an empty shelf and calls it a missing artifact.
+  const [stored] = await storedArtifacts(page, 'html')
+  expect(stored, 'html 아티팩트가 만들어지지 않았습니다').toBeTruthy()
   expect(String(stored.data.content).toLowerCase()).toContain('<html')
   expect(stored.title.length).toBeGreaterThan(1)
 })

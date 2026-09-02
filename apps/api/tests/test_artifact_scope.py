@@ -25,12 +25,12 @@ EMAIL_DRAFT = (
 COMPOSE = "services:\n  api:\n    image: kloudchat/api:local\n    ports: ['8100:8100']\n"
 
 
-def ctx() -> ToolContext:
-    return ToolContext(user_id="u", session_id="s")
+def ctx(request: str = "") -> ToolContext:
+    return ToolContext(user_id="u", session_id="s", request=request)
 
 
-async def call(**args) -> tuple[ToolContext, object]:
-    context = ctx()
+async def call(request: str = "", **args) -> tuple[ToolContext, object]:
+    context = ctx(request)
     return context, await builtin_tools.create_artifact(args, context)
 
 
@@ -91,8 +91,58 @@ async def test_prose_long_enough_to_lose_in_a_transcript_earns_the_panel():
 
 @pytest.mark.asyncio
 async def test_the_person_asking_for_a_file_beats_the_guess():
+    """여전히 사람이 이긴다 — 다만 사람이 실제로 파일을 말했을 때."""
     context, _result = await call(
-        kind="html", title="휴강 문의 메일", content=EMAIL_DRAFT, userRequested=True
+        request="이 메일 txt 파일로 만들어 줘",
+        kind="html",
+        title="휴강 문의 메일",
+        content=EMAIL_DRAFT,
+        userRequested=True,
+    )
+    assert len(context.pending_artifacts) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_flag_cannot_speak_for_a_person_who_only_asked_for_writing():
+    """모델이 켠 깃발 하나로 짧은 글이 문서가 되지는 않는다.
+
+    화면에서 그대로 일어난 일이다. "내일 회의가 30분 미뤄졌다고 알리는 짧은 메일
+    초안 세 문장만 써줘" 에 모델은 "사용자가 메일 초안을 요청했으므로" 라며
+    `userRequested` 를 켰고, 세 문장짜리 메일이 미리보기 탭·소스 탭·버전 기록을
+    거느린 문서가 되어 옆 패널에 앉았다. 사람이 부탁한 것은 글이었지 파일이
+    아니었고, 그 차이는 payload 가 아니라 사람이 쓴 말에만 남아 있다.
+    """
+    context, result = await call(
+        request="내일 회의가 30분 미뤄졌다고 알리는 짧은 메일 초안 세 문장만 써줘.",
+        kind="code",
+        title="회의 연기 알림 메일 초안",
+        content="제목: 내일 회의 시간 변경 안내\n\n내일 회의가 30분 미뤄졌습니다.",
+        language="text",
+        userRequested=True,
+    )
+    assert context.pending_artifacts == []
+    assert "답변에 그대로" in result.content
+
+
+@pytest.mark.asyncio
+async def test_a_file_asked_for_in_english_is_still_a_file():
+    context, _result = await call(
+        request="make that a .md file I can download",
+        kind="code",
+        title="notes.md",
+        content="# 회의\n- 30분 연기",
+        language="markdown",
+        userRequested=True,
+    )
+    assert len(context.pending_artifacts) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_real_document_never_needed_the_flag():
+    """이 관문은 글에만 선다. 프로그램이 읽어 갈 파일은 사람이 무엇이라 했든
+    문서이고, 그래서 이 시험은 요청을 비워 둔 채로 통과해야 한다."""
+    context, _result = await call(
+        kind="code", title="docker-compose.yml", content=COMPOSE, language="yaml"
     )
     assert len(context.pending_artifacts) == 1
 
@@ -122,3 +172,10 @@ def test_the_rule_the_model_reads_names_both_sides():
     assert "길이가 아니라 쓰임새" in description
     assert "메일 초안" in description
     assert "docker-compose.yml" in description
+
+
+def test_the_flag_the_model_sets_is_described_as_the_person_s_words():
+    """설명이 관문과 다른 말을 하면, 모델은 되돌아오는 호출을 계속 만든다."""
+    flag = builtin_tools.CREATE_ARTIFACT.parameters["properties"]["userRequested"]
+    assert "파일이나 문서 자체를" in flag["description"]
+    assert "메일 초안" in flag["description"]

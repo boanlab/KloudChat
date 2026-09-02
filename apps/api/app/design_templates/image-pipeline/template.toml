@@ -1,0 +1,47 @@
+kind = "image"
+name = "처리 흐름도"
+description = "자료가 단계를 거쳐 결과가 되기까지. 단계 이름은 자리만 남깁니다"
+category = "연구"
+fills = ["무엇의 흐름인지", "단계 수", "그리는 결"]
+example_prompt = "{subject}이 처리되는 흐름을 한 장으로 보여 줘. 단계는 {steps}개로, {texture} 느낌으로 그려 줘."
+layouts = ["cover"]
+
+# 흐름도는 구조도와 다르다. 구조도는 무엇으로 이루어졌는지를, 흐름도는 무엇이
+# 무엇으로 바뀌는지를 보인다. 그래서 단계 사이의 화살표가 주인공이고, 단계
+# 자체는 같은 크기·같은 간격이어야 리듬이 산다.
+prompt_suffix = "academic process-flow figure, a single horizontal chain of stages joined by clear arrows, even spacing between stages, draw the things the subject actually names as recognisable objects — devices, sensors, servers, racks, documents, containers, people — each one a distinct silhouette rather than an empty rectangle, because a figure with no lettering has only its shapes to say anything; group related objects inside a pale tinted zone, and let size and colour weight say which part matters, pale desaturated pastel fills with one medium-saturation stage marking where the work happens, the material entering the first stage and the result leaving the last drawn as distinct objects, thin uniform strokes, flat even lighting, no drop shadows, clear separation between objects so none of them touch, no text, no lettering, no numbers, no logos, no faces"
+
+name_en = "Process flow"
+description_en = "How material becomes a result, stage by stage, with the names left for you"
+category_en = "Research"
+fills_en = ["What flows", "How many stages", "Rendering"]
+example_prompt_en = "A figure showing how {subject} is processed, in {steps} stages, drawn in {texture}."
+
+[defaults]
+aspect = "16:9"
+style = "미니멀"
+
+[[arguments]]
+name = "subject"
+label = "무엇의 흐름"
+label_en = "What flows"
+default = "수집한 원자료"
+default_en = "collected raw data"
+
+[[arguments]]
+name = "steps"
+label = "단계 수"
+label_en = "Stages"
+default = "네"
+default_en = "four"
+options = ["세", "네", "다섯", "여섯"]
+options_en = ["three", "four", "five", "six"]
+
+[[arguments]]
+name = "texture"
+label = "결"
+label_en = "Rendering"
+default = "옅은 파스텔 면과 가는 선"
+default_en = "pale pastel planes and thin lines"
+options = ["옅은 파스텔 면과 가는 선", "흑백에 강조색 하나", "둥근 모서리의 단순한 블록", "가는 선의 도면"]
+options_en = ["pale pastel planes and thin lines", "greyscale with a single accent", "simple rounded blocks", "thin drafting lines"]

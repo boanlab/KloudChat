@@ -28,7 +28,7 @@ import re
 import httpx
 
 from app.core.config import settings
-from app.services import design, settings_store
+from app.services import design, settings_store, thinking
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +76,11 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 700,
+                # This call asks for one small JSON object. Letting a reasoning
+                # model spend the whole ceiling thinking produces HTTP 200
+                # with an empty content field, which used to leave the user
+                # waiting four minutes before saying extraction failed.
+                "reasoning": thinking.NO_REASONING,
             },
         )
         response.raise_for_status()

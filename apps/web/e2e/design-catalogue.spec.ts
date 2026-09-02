@@ -89,29 +89,33 @@ test('서식 탭은 주소로 바로 열리고, 홈의 줄은 몇 개만 보여 
   // `div.group` alone counts every element wearing that class, nested ones
   // included, and reported 57 where there are 17 — which then made the rail's
   // "17종 모두 보기" look wrong instead of the count.
-  const anyCard = page.locator('div.group:has(> div > p)')
+  // Count by the card's public action, not Tailwind structure. The gallery
+  // changed its card markup without changing what a user can do.
+  const anyCard = page.getByRole('button', { name: '이 서식으로 시작', exact: true })
   await expect(anyCard.first()).toBeVisible({ timeout: 20_000 })
   const all = await anyCard.count()
   expect(all).toBeGreaterThan(6)
 
   // ── the front door ──────────────────────────────────────────────────
-  await page.goto('/')
-  const rail = page.getByRole('region', { name: '서식에서 시작' })
-  await expect(rail).toBeVisible({ timeout: 20_000 })
-  const shown = await rail.getByRole('button').count()
+  // It was a rail on the home screen showing eight of these, then a 결과 서식
+  // tab beside 업무 시작점. Both are gone: 작업 시작하기 asks one question, and
+  // a 시작점 brings the shape its job comes in. So the front door offers jobs,
+  // and the shapes ride along named on the cards.
+  await page.goto('/new/slides')
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible({ timeout: 20_000 })
+  const offered = dialog.getByRole('button', { name: /시작점 선택$/ })
+  await expect(offered.first()).toBeVisible({ timeout: 20_000 })
+  const shown = await offered.count()
   expect(shown).toBeGreaterThan(0)
   expect(shown).toBeLessThan(all)
+  await page.keyboard.press('Escape')
 
-  // Breadth rather than the top of the list. The catalogue is ordered by id,
-  // so its first few are all decks and audio — a rail that would say the
-  // product makes one kind of thing.
-  await expect(rail.getByRole('button', { name: /편집형 덱/ })).toBeVisible()
-  await expect(rail.getByRole('button', { name: /한 장 요약/ })).toBeVisible()
-
-  // The rest is one link away, and the link says how much rest there is.
-  const link = rail.getByRole('link')
-  await expect(link).toHaveText(new RegExp(`${all}종 모두 보기`))
-  await link.click()
-  await expect(page).toHaveURL(/\/designs\?tab=template/)
-  await expect(page.locator('div.group:has(> div > p)')).toHaveCount(all, { timeout: 20_000 })
+  // The whole catalogue is still its own screen, and every shape is on it —
+  // for anybody who wants to browse rather than to start.
+  await page.goto('/designs?tab=template')
+  await expect(
+    page.getByRole('button', { name: '이 서식으로 시작', exact: true }),
+  ).toHaveCount(all, { timeout: 20_000 })
 })

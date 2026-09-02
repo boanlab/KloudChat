@@ -20,6 +20,7 @@ import type {
   SessionMade,
   Slide,
   Source,
+  ReportArtifact,
   Step,
   User,
 } from '@/types'
@@ -93,7 +94,15 @@ export function errorCode(err: unknown): string {
 }
 
 export function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError && err.detail && !MACHINE_CODE.test(err.detail)) {
+  // Server failures may contain proxy, provider or exception text. Besides
+  // being useless to the person retrying, that can disclose internal names.
+  // Client errors are deliberate validation copy and are safe to preserve.
+  if (
+    err instanceof ApiError &&
+    err.status < 500 &&
+    err.detail &&
+    !MACHINE_CODE.test(err.detail)
+  ) {
     return err.detail
   }
   return fallback
@@ -570,28 +579,6 @@ export async function downloadArtifact(
 }
 
 /**
- * The 서식 as a blank file to fill in by hand.
- *
- * Fetched rather than linked. The API takes a bearer token this app holds in
- * memory, so an `<a href>` to the route arrives unauthenticated and comes back
- * a 401 the browser renders as a broken download.
- */
-export async function downloadDesignTemplateForm(id: string, name: string, format: string) {
-  const res = await fetch(`${BASE_URL}/design-templates/${encodeURIComponent(id)}/form`, {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  })
-  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
-
-  const url = URL.createObjectURL(await res.blob())
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'form'}.${format}`
-  anchor.click()
-  URL.revokeObjectURL(url)
-}
-
-/**
  * URL for a stored file, used as the `src` of `<img>`, `<audio>` and `<video>`.
  *
  * Those elements cannot attach an Authorization header and the token lives in
@@ -902,6 +889,8 @@ export const filesApi = {
     }
     return (await res.json()) as FileRow
   },
+  addProjectUrl: (projectId: string, url: string) =>
+    call<FileRow>(`/projects/${projectId}/knowledge/url`, body({ url })),
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
   /**
    * Opens an uploaded `.hwpx` as an editable document.
@@ -1012,6 +1001,8 @@ export const artifactsApi = {
   ) => call<ArtifactRow>(`/artifacts/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/artifacts/${id}`, { method: 'DELETE' }),
   versions: (id: string) => call<ArtifactVersionRow[]>(`/artifacts/${id}/versions`),
+  version: (id: string, version: number) =>
+    call<ArtifactVersionDetailRow>(`/artifacts/${id}/versions/${version}`),
   /** Checks one slide's claims against the web. Costs searches and a model call. */
   factcheckSlide: (id: string, slideId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/factcheck`, body({ slideId })),
@@ -1069,6 +1060,10 @@ export interface ArtifactVersionRow {
   createdAt: string
 }
 
+export interface ArtifactVersionDetailRow extends ArtifactVersionRow {
+  data: Record<string, unknown> | null
+}
+
 export interface ArtifactRow {
   id: string
   kind: string
@@ -1114,6 +1109,16 @@ export interface PromptTemplateRow {
    * everywhere else the server adds it and the composer never sees it.
    */
   prompt: string
+  /**
+   * The 서식 this job comes out wearing, or `''` when the job has no fixed
+   * shape and the surface should choose one from the subject.
+   *
+   * 결과 서식 was the other half of a two-tab dialogue: pick what you are
+   * doing, then pick what it looks like. The second is a question about
+   * typography asked of somebody who came to write an incident report — which
+   * has a shape, and that shape is `doc-incident`.
+   */
+  renderTemplateId: string
 }
 
 export const promptTemplatesApi = {
@@ -1252,12 +1257,7 @@ export interface DesignTemplateRow {
    * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
    */
   defaults: Record<string, string | number | boolean>
-  /**
-   * The extension of the blank form this 서식 ships — `docx`, `pptx`, or empty
-   * where it has none. The card offers it by name, because "양식 내려받기" and
-   * then a `.pptx` when somebody expected a `.docx` is a surprise the card
-   * could have prevented.
-   */
+  /** Extension of the downloadable blank Office form, when present. */
   formFormat: string
   /** Whether `/design-templates/{id}/preview` has a miniature to show. */
   hasPreview: boolean
@@ -1639,6 +1639,8 @@ export type StreamEvent =
   | { type: 'needs'; questions: PendingQuestion[] }
   /** The reference shelf a report's sections cite from, sent once, up front. */
   | { type: 'sources'; sources: Source[] }
+  /** Search terms and selection counts retained with a researched report. */
+  | { type: 'research'; research: NonNullable<ReportArtifact['research']> }
   | {
       type: 'artifact'
       artifactId: string

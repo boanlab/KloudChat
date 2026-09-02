@@ -30,7 +30,11 @@ from app.services import pictures
 
 #: Block containers whose text is collected separately.
 _TEXT_TAGS = {
-    "h2", "h3", "p", "li", "blockquote", "th", "td",
+    # `h4` sits beside `h3` because the sanitiser admits both — the document
+    # editor's heading picker offers the two levels a body may carry, and a
+    # tag admitted there and unread here is exactly the drift this file's own
+    # coverage test exists to catch.
+    "h2", "h3", "h4", "p", "li", "blockquote", "th", "td",
     "small", "dt", "dd", "figcaption",
 }
 
@@ -274,7 +278,7 @@ class _Reader(HTMLParser):
         if self._pairs and tag in ("strong", "span"):
             self._pair_buffer.append(text)
             return
-        if tag in ("h2", "h3"):
+        if tag in ("h2", "h3", "h4"):
             # The document seed's cover writes `h1`; both land as the title.
             if not self._block["title"]:
                 self._block["title"] = text

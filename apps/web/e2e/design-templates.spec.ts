@@ -58,7 +58,7 @@ async function openGallery(page: Page, ids: string[]) {
       }),
     ),
   )
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   // Not fatal: a gallery opened a second time in one test serves its previews
   // from the browser's cache, and a cache hit is not a network response.
   await previews.catch(() => undefined)
@@ -99,19 +99,27 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   test.setTimeout(120_000)
   await signIn(page)
 
-  // ── the home screen ─────────────────────────────────────────────────
+  // ── 작업 시작하기 ────────────────────────────────────────────────────
   // It was reachable only from the empty state of a new session, behind a
   // secondary button — invisible to anybody who did not know it was there.
-  await page.goto('/')
-  const rail = page.getByRole('region', { name: '서식에서 시작' })
-  await expect(rail).toBeVisible({ timeout: 20_000 })
-  await expect(rail.getByRole('button').first()).toBeVisible()
-  await shot(page, '13-home-rail')
+  // Then it was a rail on the home screen; now it is one dialogue per surface,
+  // which is the only one of the three that cannot offer a shape the composer
+  // beside it would refuse.
+  await page.goto('/new/slides')
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  const gallery = page.getByRole('dialog')
+  await expect(gallery).toBeVisible({ timeout: 20_000 })
+  await shot(page, '13-work-start')
 
-  // Picking one opens its surface wearing the shape. The composer stays empty
+  // Picking one dresses the surface in the shape. The composer stays empty
   // — the chip names the 서식, and the example sentence was the same borrowed
   // voice the 시작점 chip was built to stop.
-  await rail.getByRole('button', { name: /편집형 덱/ }).click()
+  await gallery
+    .locator('div')
+    .filter({ hasText: '편집형 덱' })
+    .last()
+    .getByRole('button', { name: '이 서식으로 시작' })
+    .click()
   await expect(page).toHaveURL(/\/new\/slides/, { timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   // Once, and in the composer. "이 대화가 가지고 시작하는 것" listed the 서식
@@ -132,7 +140,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
   // composer's copy — the one that survives that turn — is checked in the deck
   // test below, where a conversation actually exists.
   await page.goto('/new/report')
-  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '작업 시작하기' })).toHaveCount(1)
 
   // 디자인 belongs to the design system alone. While the catalogue wore the
   // same word, whichever of the two you picked you believed you had picked
@@ -275,8 +283,8 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   await panel.getByRole('button', { name: '닫기' }).click()
   await expect(panel).toBeHidden()
 
-  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await expect(page.getByRole('button', { name: '작업 시작하기' })).toHaveCount(1)
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
 
@@ -452,7 +460,7 @@ test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나
   // The regression this whole track had to avoid: the built-in path is only
   // replaced when somebody picks a shape.
   await page.goto('/new/slides')
-  await expect(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '작업 시작하기' })).toBeVisible()
   await page.getByLabel('프롬프트 입력').fill('사무실 보안 수칙을 알리는 짧은 발표 자료')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
@@ -477,7 +485,7 @@ test('쪽을 넘겨도 대화상자 크기가 그대로다', async ({ page }) =>
   // 오르내린다.
   await signIn(page)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').locator('.grid > *').first()).toBeVisible({
     timeout: 20_000,

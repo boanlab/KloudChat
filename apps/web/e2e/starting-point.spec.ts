@@ -50,14 +50,14 @@ test('시작점은 입력창을 채우지 않고 요청에 실려 간다', async
   })
 
   await page.goto('/new/chat')
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   // A sentence card is one button, not a panel with a button inside it: the
   // two pickers were merged and a saved 시작점 now sits in the 서식 grid.
-  const card = page.getByRole('dialog').getByRole('button', { name: /장애 원인 좁히기/ })
+  const card = page.getByRole('dialog').locator('.grid > *').filter({ hasText: '장애 원인 좁히기' })
   await expect(card).toBeVisible({ timeout: 20_000 })
   // What the click will do, said on the card that does it.
-  await expect(card).toContainText('시작점으로 붙이기')
-  await card.click()
+  await expect(card).toContainText('이번 요청에만 적용')
+  await card.getByRole('button', { name: /장애 원인 좁히기/ }).click()
 
   // ── the composer is left alone ──────────────────────────────────────
   const box = page.getByLabel('프롬프트 입력')
@@ -74,7 +74,7 @@ test('시작점은 입력창을 채우지 않고 요청에 실려 간다', async
   await expect(box).toHaveAttribute('placeholder', '무엇이든 물어보세요')
 
   // Put it back and send.
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '작업 시작하기' }).click()
   await page.getByRole('dialog').getByRole('button', { name: /장애 원인 좁히기/ }).click()
 
   const typed = 'ConnectionResetError 가 배포 직후에만 납니다'

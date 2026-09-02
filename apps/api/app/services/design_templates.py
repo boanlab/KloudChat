@@ -65,12 +65,16 @@ HTML_KINDS = ("deck", "document")
 #: the layout, so an invented `<div class="grid-4">` gets a slide with no
 #: styling rather than a broken one.
 #: `h2` is absent: the wrapper writes the block's heading from the outline.
-#: Sub-headings use `h3`.
+#: Sub-headings use `h3`, and `h4` under it — the two levels the editor's
+#: heading picker offers and the two `StarterKit` opens. The picker offered
+#: `h4` while this set did not, so a heading somebody made with it was stripped
+#: by the save that was meant to keep it.
+
 #: `code` is inline only. `<pre>` is absent because its contents are
 #: whitespace-significant and the file exporters read markdown lines — a
 #: stack trace would arrive re-indented and half read back as a list.
 _ALLOWED_TAGS = {
-    "p", "h3", "ul", "ol", "li", "strong", "em", "blockquote", "code",
+    "p", "h3", "h4", "ul", "ol", "li", "strong", "em", "blockquote", "code",
     "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td",
     "div", "span", "section", "br", "hr", "small", "dl", "dt", "dd",
     # The footnote reference. `<small>` carries the note itself and always
@@ -128,6 +132,7 @@ _EDITABLE_STYLE = {
     "text-align",
     "text-decoration",
     "color",
+    "background-color",
     "line-height",
 }
 #: A property/value pair with nothing exotic in the value. Deliberately narrow:
@@ -623,6 +628,22 @@ def _kept_style(match: re.Match[str]) -> str:
     for part in raw.split(";"):
         if not part.strip():
             continue
+        # Browsers serialise a colour chosen as `#cc0000` back out as
+        # `rgb(204, 0, 0)`. General functions remain forbidden, but this one
+        # numeric colour form is canonicalised to the hex form the narrow
+        # declaration grammar already accepts. Without it every real colour
+        # edit disappeared on save while hand-written test markup survived.
+        colour = re.fullmatch(
+            r"\s*(color|background-color)\s*:\s*rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)\s*",
+            part,
+            re.I,
+        )
+        if colour:
+            channels = [int(colour.group(index)) for index in (2, 3, 4)]
+            if any(channel > 255 for channel in channels):
+                continue
+            hexed = "".join(f"{channel:02x}" for channel in channels)
+            part = f"{colour.group(1).lower()}: #{hexed}"
         found = _DECLARATION.match(part)
         if found and found.group(1).lower() in _EDITABLE_STYLE:
             kept.append(f"{found.group(1).lower()}: {found.group(2).strip()}")
@@ -723,6 +744,14 @@ def _token_declarations(tokens: dict[str, str]) -> str:
             # a different face sets one property in its `design.css` instead of
             # restating `font-family` at every site that uses one.
             ("font-head", "var(--font-body)"),
+            # The numeral face. The same kind of slot as the heading one, and
+            # the one the figures want: a strip of KPIs and a table of measured
+            # values are read down a column, and a proportional face puts the
+            # digits at different widths so the column does not line up. A
+            # 서식 that ships a face with tabular figures names it here; until
+            # one does this resolves to the body face, which is what those
+            # numbers were already set in.
+            ("font-num", "var(--font-head)"),
         )
     )
 

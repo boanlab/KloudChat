@@ -30,8 +30,19 @@ test('결과물 목록은 한 페이지씩 오고, 개수와 검색은 전체를
   // gallery this test would otherwise pass by never exercising paging.
   await page.evaluate(
     async ([fn, page_]) => {
-      const have = ((await eval(fn as string)('/api/artifacts/counts')) as { total: number }).total
-      for (let i = have; i <= (page_ as number); i++) {
+      // A known search hit is written first, then pushed beyond the first page
+      // by the filler below. Relying on a "보안" artifact left by another spec
+      // made this pass or fail with account history instead of search scope.
+      await eval(fn as string)('/api/artifacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'code',
+          title: `보안 검색 표적 ${Date.now()}`,
+          data: { kind: 'code', content: 'print("audit")', language: 'python' },
+        }),
+      })
+      for (let i = 0; i <= (page_ as number); i++) {
         await eval(fn as string)('/api/artifacts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -102,6 +113,22 @@ test('결과물 목록은 한 페이지씩 오고, 개수와 검색은 전체를
 test('카드에 없던 본문은 문서를 열 때 채워진다', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
+
+  await page.evaluate(
+    async (fn) =>
+      await eval(fn as string)('/api/artifacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'html',
+          title: `본문 지연 로드 ${Date.now()}`,
+          data: {
+            content: '<!doctype html><html><body><h1>지연 로드 확인</h1></body></html>',
+          },
+        }),
+      }),
+    AS_USER,
+  )
 
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /HTML/ }).click()

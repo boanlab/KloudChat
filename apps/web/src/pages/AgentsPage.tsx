@@ -10,6 +10,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  LoadingState,
   Field,
   Input,
   Modal,
@@ -88,6 +89,7 @@ export function AgentsPage() {
     newSession,
     setNotice,
     loadWorkspace,
+    workspaceLoading,
     user,
   } = useStore()
   const [skillQuery, setSkillQuery] = useState('')
@@ -272,7 +274,9 @@ export function AgentsPage() {
                 )}
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              {/* `mb-3` is the floor under the foot's `mt-auto`, which is 0 on a
+                  card that is already as tall as its row. */}
+              <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
                 {a.kinds.map((k) => {
                   const meta = kindMeta[k]
                   const KindIcon = meta.icon
@@ -304,7 +308,14 @@ export function AgentsPage() {
                 {a.tools?.length === 0 && <Badge>{t('도구 없음')}</Badge>}
               </div>
 
-              <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
+              {/* `mt-auto`, not `mt-3`: the grid already stretches the cards in
+                  a row to one height, but the foot floated wherever the badges
+                  above it happened to end — so an agent carrying two rows of
+                  tool badges put its 실행 button 28px below its neighbour's, and
+                  a tidy two-column grid read as a broken one. Pinned to the
+                  bottom, the buttons line up across the row whatever is above
+                  them. */}
+              <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
                 <span className="flex items-center gap-2 text-xs text-faint">
                   {t('{n}회 실행').replace('{n}', String(a.runs))}
                   {a.visibility === 'org' && (
@@ -368,7 +379,9 @@ export function AgentsPage() {
         </div>
         {/* 새 계정은 이제 빈 화면으로 시작합니다. 나머지가 어디 있는지 말하지
             않으면 빈 화면은 "기능이 없다" 로 읽힙니다. */}
-        {all.length === 0 && (
+        {workspaceLoading && all.length === 0 ? (
+          <LoadingState label={t('에이전트를 불러오는 중…')} />
+        ) : all.length === 0 && (
           <EmptyState
             icon={<Bot size={18} />}
             title={tab === 'store' ? t('공유된 에이전트가 없습니다') : t('아직 에이전트가 없습니다')}

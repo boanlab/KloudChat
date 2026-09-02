@@ -93,6 +93,47 @@ test('프로젝트에 올린 지식 파일이 목록과 새로고침에 남는�
   expect(readFileSync(saved, 'utf8')).toContain('표본 수는 240')
 })
 
+test('웹페이지를 프로젝트 자료로 보관하고 읽힌 내용을 확인한다', async ({ page }) => {
+  await signIn(page)
+  const projectId = await createProject(page, `웹 자료 프로젝트 ${stamp()}`)
+  const url = 'https://research.example.org/market-2026'
+
+  await page.route(`**/api/projects/${projectId}/knowledge/url`, async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ url })
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'web-snapshot-1',
+        name: 'research.example.org-market-2026',
+        size: 4200,
+        mime: 'text/markdown',
+        tokens: 930,
+        projectId,
+        sessionId: null,
+        sourceUrl: url,
+        preview: '2026년 시장 규모는 조사 표본 1,240건을 기준으로 산정했다.',
+        error: null,
+        indexed: false,
+        createdAt: new Date().toISOString(),
+      }),
+    })
+  })
+
+  await page.getByRole('tab', { name: /^지식/ }).click()
+  await page.getByRole('button', { name: '웹 자료' }).click()
+  const modal = page.getByRole('dialog', { name: '웹 자료 추가' })
+  await modal.getByLabel('웹페이지 주소').fill(url)
+  await modal.getByRole('button', { name: '읽어서 보관' }).click()
+
+  const row = page.locator('[data-knowledge="web-snapshot-1"]')
+  await expect(row).toContainText('웹페이지 스냅샷')
+  await expect(row).toContainText('930 토큰')
+  await row.getByRole('button', { name: '읽은 내용 확인' }).click()
+  await expect(row.getByTestId('knowledge-preview')).toContainText('조사 표본 1,240건')
+  await expect(row.getByRole('link', { name: /원문 열기/ })).toHaveAttribute('href', url)
+})
+
 test('프로젝트 안에서 새 작업을 시작하면 그 프로젝트에 속한다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)

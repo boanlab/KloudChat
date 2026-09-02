@@ -162,3 +162,83 @@ export const ChartNode = Node.create({
     { class: 'chart', 'data-source': node.attrs.source },
   ],
 })
+
+
+/**
+ * A card grid and a callout, as nodes Tiptap knows.
+ *
+ * Atoms, like the strip and the procedure above, and for the same reason:
+ * without a node here Tiptap drops the markup on the way in, so one keystroke
+ * anywhere in the section deletes the grid — from the document, from the web
+ * view and from every export — and nothing says so.
+ *
+ * `section.cards` rather than `div.cards`: `richtext` reads the block back
+ * with a lazy close, and a wrapper sharing its children's tag ends at the
+ * first card.
+ */
+function cardsFrom(element: HTMLElement): { title: string; items: string[] }[] {
+  return Array.from(element.querySelectorAll(':scope > div')).map((card) => ({
+    title: card.querySelector('h3, h4')?.textContent?.trim() ?? '',
+    items: Array.from(card.querySelectorAll('li, p')).map(
+      (line) => line.textContent?.trim() ?? '',
+    ),
+  }))
+}
+
+export const CardsBlock = Node.create({
+  name: 'cardsBlock',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: false,
+  addAttributes: () => ({ cards: { default: [] as { title: string; items: string[] }[] } }),
+  parseHTML: () => [
+    {
+      tag: 'section.cards',
+      priority: 60,
+      getAttrs: (node) => ({ cards: cardsFrom(node as HTMLElement) }),
+    },
+  ],
+  renderHTML: ({ node }) => [
+    'section',
+    { class: 'cards' },
+    ...(node.attrs.cards as { title: string; items: string[] }[]).map((card) => [
+      'div',
+      {},
+      ['h3', {}, card.title],
+      ...(card.items.length
+        ? [['ul', {}, ...card.items.map((line) => ['li', {}, line])]]
+        : []),
+    ]),
+  ],
+})
+
+export const CalloutBlock = Node.create({
+  name: 'calloutBlock',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: false,
+  addAttributes: () => ({ title: { default: '' }, lines: { default: [] as string[] } }),
+  parseHTML: () => [
+    {
+      tag: 'section.callout',
+      priority: 60,
+      getAttrs: (node) => {
+        const el = node as HTMLElement
+        return {
+          title: el.querySelector('h3, h4')?.textContent?.trim() ?? '',
+          lines: Array.from(el.querySelectorAll('p')).map(
+            (line) => line.textContent?.trim() ?? '',
+          ),
+        }
+      },
+    },
+  ],
+  renderHTML: ({ node }) => [
+    'section',
+    { class: 'callout' },
+    ['h3', {}, node.attrs.title],
+    ...(node.attrs.lines as string[]).map((line) => ['p', {}, line]),
+  ],
+})

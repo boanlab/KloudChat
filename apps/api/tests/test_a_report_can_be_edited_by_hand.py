@@ -24,7 +24,12 @@ on markup instead of the argument.
 
 from __future__ import annotations
 
-from app.services import richtext
+import io
+import zipfile
+
+from pypdf import PdfReader
+
+from app.services import report_export, richtext
 from app.services.design_templates import sanitise
 
 # ── what a person may set, and what they may not ───────────────────────
@@ -38,6 +43,17 @@ def test_the_four_things_a_toolbar_offers_survive():
     for declaration in ("font-size: 18pt", "font-family: Batang", "text-align: center"):
         assert declaration in kept
     assert "color: #c00" in kept
+
+
+def test_browser_canonical_rgb_colours_are_kept_as_safe_hex():
+    kept = sanitise(
+        '<p><span style="color: rgb(204, 0, 0); '
+        'background-color: rgb(255, 243, 163)">가</span></p>',
+        editable_styles=True,
+    )
+    assert "color: #cc0000" in kept
+    assert "background-color: #fff3a3" in kept
+    assert "rgb(" not in kept
 
 
 def test_layout_is_still_the_template_s():
@@ -136,3 +152,46 @@ def test_normalise_marks_what_it_converted():
     # The originals are untouched: the exporters take a normalised copy, and
     # the stored document is still the one the person typed.
     assert sections[0]["content"] == "<p>본문</p>"
+
+
+def test_editable_run_and_paragraph_formatting_reaches_docx_and_pdf():
+    html = (
+        '<p style="text-align: center; line-height: 1.5">'
+        '<strong><em><u><span style="font-size: 18pt; color: #cc0000; '
+        'background-color: #fff3a3">강조 문장</span></u></em></strong></p>'
+    )
+    sections = richtext.normalise([
+        {"heading": "서식 검증", "content": html, "format": "html"}
+    ])
+    block = sections[0]["_formatting"][0]
+    assert block["style"]["text-align"] == "center"
+    assert block["style"]["line-height"] == "1.5"
+    assert block["runs"][0]["style"]["font-size"] == "18pt"
+
+    archive = zipfile.ZipFile(io.BytesIO(report_export.to_docx("제목", sections)))
+    document = archive.read("word/document.xml").decode()
+    for expected in (
+        'w:val="center"', 'w:line="360"', '<w:b', '<w:i', '<w:u',
+        'w:sz w:val="36"', 'w:color w:val="CC0000"', 'w:fill="FFF3A3"',
+    ):
+        assert expected in document
+
+    pdf = PdfReader(io.BytesIO(report_export.to_pdf("제목", sections)))
+    assert "강조 문장" in (pdf.pages[0].extract_text() or "")
+    stream = pdf.pages[0].get_contents().get_data()
+    assert b"18 Tf" in stream or b"18.0 Tf" in stream
+    assert b".8 0 0 rg" in stream or b"0.8 0 0 rg" in stream
+
+    hwpx = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("제목", sections)))
+    header = hwpx.read("Contents/header.xml").decode()
+    section = hwpx.read("Contents/section0.xml").decode()
+    assert 'height="1800" textColor="#CC0000" shadeColor="#FFF3A3"' in header
+    assert "<hh:bold/>" in header
+    assert "<hh:italic/>" in header
+    assert '<hh:underline type="BOTTOM" shape="SOLID"' in header
+    assert '<hh:align horizontal="CENTER"' in header
+    assert '<hh:lineSpacing type="PERCENT" value="150"' in header
+    # The body must actually reference both dynamic definitions; definitions
+    # sitting unused in header.xml would only make the file look correct.
+    assert 'paraPrIDRef="10"' in section
+    assert 'charPrIDRef="6"' in section

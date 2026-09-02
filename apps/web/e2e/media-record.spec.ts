@@ -92,6 +92,7 @@ test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page })
 
 test('대화 기록에서 방금 만든 내레이션을 알아볼 수 있다', async ({ page }) => {
   await signIn(page)
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
 
   await page.goto('/history')
   const row = page.locator('div').filter({ hasText: PROMPT }).last()

@@ -557,6 +557,14 @@ class Template(SQLModel, table=True):
     #: An uploaded form this template writes *into*. The file's extracted text
     #: is what reaches the model, so the shape of a 공문 survives into the draft.
     file_id: str | None = Field(default=None, foreign_key="files.id", index=True)
+    #: The 서식 the result comes out wearing. Plain text and not a foreign key
+    #: for the same reason `sessions.render_template_id` is not: the rendering
+    #: catalogue lives in the image, not in a table, so a release that retires
+    #: a 서식 must leave the row readable rather than break the load.
+    #:
+    #: Empty means the job has no fixed shape, and then the writing surfaces
+    #: choose the colour and the impression from the subject instead.
+    render_template_id: str = Field(default="", max_length=60)
     #: Offered to every account. Administrator-only; see migration 0017.
     shared: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))

@@ -292,7 +292,10 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
       (await scope.getByRole('button', { name: n }).count()) > 0
 
     checks++
-    if (!(await hasIn(body, /넓게 보기|전체 화면|크게 보기/))) {
+    // A panel that already opens wide offers the next step as "문서만 보기".
+    // That is an expansion control too; checking only the narrow-state label
+    // reports a working three-position control as absent.
+    if (!(await hasIn(body, /넓게 보기|문서만 보기|전체 화면|크게 보기/))) {
       seen.push({ rule: 'panel-expand', subject: `${tab} 패널`, where, viewport: 'desktop',
         hurts: '좁은 패널에서만 읽어야 하고 넓힐 방법이 없다' })
     }

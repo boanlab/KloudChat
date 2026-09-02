@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ModelPicker } from '@/components/chat/ModelPicker'
-import { Switch } from '@/components/ui'
+import { Select, Switch } from '@/components/ui'
 import { authConfig } from '@/lib/api'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
@@ -64,7 +64,7 @@ export function PreferencesTab() {
         </div>
         <label className="block max-w-xl space-y-1.5">
           <span className="text-base font-medium">{t('기본 처리 방법')}</span>
-          <select
+          <Select
             value={
               prefs?.privacyDefaultAction === 'send_raw_external' && allowRawExternal === false
                 ? 'ask'
@@ -73,7 +73,6 @@ export function PreferencesTab() {
             onChange={(event) =>
               set({ privacyDefaultAction: event.target.value as Preferences['privacyDefaultAction'] })
             }
-            className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
           >
             <option value="ask">{t('매번 확인')}</option>
             <option value="route_strict_local">{t('strict-local 모델로 전환')}</option>
@@ -81,7 +80,7 @@ export function PreferencesTab() {
             {allowRawExternal === true && (
               <option value="send_raw_external">{t('원문을 외부 모델로 전송')}</option>
             )}
-          </select>
+          </Select>
           <span className="block text-sm text-faint">
             {t('모델 전환은 외부 fallback이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
           </span>

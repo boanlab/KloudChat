@@ -86,6 +86,10 @@ async def test_a_document_becomes_a_draft(monkeypatch):
         "ink": "#111827",
         "muted": "#6b7280",
         "font": "serif",
+        # Not extracted either: a page of prose carries no evidence of how a
+        # slide from the same design system should be laid out, so the draft
+        # keeps the default and the person changes it if they disagree.
+        "visualStyle": "editorial",
         # A document read for its design says nothing about whose it is: the
         # mark and the line at the foot are set by the person, not extracted.
         "footer": "",
@@ -95,6 +99,7 @@ async def test_a_document_becomes_a_draft(monkeypatch):
     assert usage == {"inputTokens": 800, "outputTokens": 120}
     # The document itself is what it read, not a summary of it.
     assert "연구실 장비 관리 지침" in posts[0]["messages"][0]["content"]
+    assert posts[0]["reasoning"] == design_extract.thinking.NO_REASONING
 
 
 @pytest.mark.asyncio
