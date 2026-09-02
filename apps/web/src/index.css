@@ -198,6 +198,24 @@ body {
   color: var(--fg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+
+  /* 한글은 공백에서 끊는다.
+   *
+   * The browser's default breaks a Korean line at any character at all,
+   * because Korean has no inter-word break opportunity the default algorithm
+   * recognises. In a Korean-first interface that shows everywhere and always
+   * looks like a rendering fault: a table header reading 「마지막 활 / 동」, a
+   * status chip reading 「승인 대 / 기」, a deck cover reading 「… 교육 의무 /
+   * 화 추진 전략」. `keep-all` moves the break to a space.
+   *
+   * Both properties inherit, so this is the whole of it for ordinary text.
+   * `break-word` is the companion `keep-all` needs: with breaks confined to
+   * spaces, one long unbroken token — a URL, an id, a German compound — would
+   * otherwise run out of its container instead of wrapping. Places that
+   * genuinely want mid-token breaks (printed URLs, code) set their own rule
+   * and still win, being more specific than this. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 *,

@@ -54,6 +54,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, Source } from '@/types'
 import { useT } from '@/lib/useT'
+import { scopePagedStyles } from '@/components/report/scopePagedStyles'
 
 /**
  * The bar, in the order a word processor puts things.
@@ -459,25 +460,25 @@ function Toolbar({ editor, sources, onFind, onComment }: { editor: Editor | null
             label={t('아래에 행 추가')}
             onClick={run(() => editor.chain().focus().addRowAfter().run())}
           >
-            <span className="text-[10px] font-semibold">행+</span>
+            <span className="text-[10px] font-semibold">{t('행+')}</span>
           </Tool>
           <Tool
             label={t('현재 행 삭제')}
             onClick={run(() => editor.chain().focus().deleteRow().run())}
           >
-            <span className="text-[10px] font-semibold">행−</span>
+            <span className="text-[10px] font-semibold">{t('행−')}</span>
           </Tool>
           <Tool
             label={t('오른쪽에 열 추가')}
             onClick={run(() => editor.chain().focus().addColumnAfter().run())}
           >
-            <span className="text-[10px] font-semibold">열+</span>
+            <span className="text-[10px] font-semibold">{t('열+')}</span>
           </Tool>
           <Tool
             label={t('현재 열 삭제')}
             onClick={run(() => editor.chain().focus().deleteColumn().run())}
           >
-            <span className="text-[10px] font-semibold">열−</span>
+            <span className="text-[10px] font-semibold">{t('열−')}</span>
           </Tool>
           <Tool
             label={t('선택한 셀 병합')}
@@ -617,6 +618,11 @@ const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
 // DocumentShell is a shadow root, so application-global CSS cannot style the
 // editor inside it. Keep the page-break guide beside the template stylesheet
 // that is actually installed into that root.
+/** The one element every paginated page is inside — and so the scope every
+ *  rule Paged.js publishes gets confined to. Shared with `index.css`, which
+ *  styles the stack, and with the pagination effect, which does the confining. */
+const PAGED_SCOPE = 'paged-report-preview'
+
 const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
   .ProseMirror .page-break::after { content: '쪽 나누기'; position: absolute; top: -9px; right: 8px; padding: 0 6px; background: white; color: #777; font-size: 11px; line-height: 18px; }
@@ -665,6 +671,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       figure, img, pre, blockquote { break-inside: avoid; }
       [data-page-break="true"] { break-before: page; height: 0; }
     `], { type: 'text/css' }))
+    // Armed before Paged.js runs, because Paged.js publishes the 서식's
+    // stylesheet to `document.head` and a 서식 styles `body`. See
+    // `scopePagedStyles` for what that did to the app around this panel.
+    const unscope = scopePagedStyles(`.${PAGED_SCOPE}`)
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeoutMs = (window as Window & { __KLOUDCHAT_PAGINATION_TIMEOUT_MS__?: number })
       .__KLOUDCHAT_PAGINATION_TIMEOUT_MS__ ?? 30_000
@@ -697,7 +707,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
         if (timer) clearTimeout(timer)
         URL.revokeObjectURL(sheet)
       })
-    return () => { live = false; if (timer) clearTimeout(timer); URL.revokeObjectURL(sheet); target.replaceChildren() }
+    return () => { live = false; if (timer) clearTimeout(timer); URL.revokeObjectURL(sheet); unscope(); target.replaceChildren() }
   // `useT` returns a new function per render; depending on it would restart
   // pagination after `setBusy`, forever. HTML and CSS are the actual inputs.
   }, [html, css, settings, attempt])
@@ -760,7 +770,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
           aria-label={t('실제 페이지 미리보기')}
           data-page-count={pages || undefined}
           data-page-scale={pageScale.toFixed(3)}
-          className="paged-report-preview"
+          className={PAGED_SCOPE}
           style={{
             width: pageSize.width,
             transform: `scale(${pageScale})`,
