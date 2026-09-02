@@ -28,8 +28,18 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import settings
+from app.routers.sessions import _edited_plan
 from app.services import deck, grounding, report
 from app.services.workspace_context import ContextFile, _excerpt, _file_report
+
+
+def test_a_person_can_change_the_visual_direction_before_approving():
+    stored = {"title": "제안", "visualStyle": "editorial", "sections": ["배경", "결론"]}
+    changed = _edited_plan({"visualStyle": "poster", "sections": ["배경", "결론"]}, stored)
+    refused = _edited_plan({"visualStyle": "neon-chaos"}, stored)
+
+    assert changed["visualStyle"] == "poster"
+    assert refused["visualStyle"] == "editorial"
 
 
 class _Client:

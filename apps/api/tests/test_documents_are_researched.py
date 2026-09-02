@@ -209,6 +209,59 @@ async def test_the_shelf_the_prose_cites_is_the_one_that_was_read(searched):
     shelf = next(e["sources"] for e in events if e["type"] == "sources")
     assert [s["url"] for s in shelf] == ["https://example.com/spec"]
 
+    audit = next(e["research"] for e in events if e["type"] == "research")
+    assert audit == {
+        "enabled": True,
+        "searched": True,
+        "queries": ["제품 사양 96GB"],
+        "selected": 1,
+        "excluded": 0,
+        "webSelected": 1,
+        "projectSelected": 0,
+        "projectExcluded": 0,
+    }
+
+
+async def test_project_knowledge_becomes_numbered_report_evidence(searched):
+    posts: list[dict] = []
+    replies = ["본문 [2]"] * 3
+    searched.setattr(report.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
+
+    events = [
+        e
+        async for e in report.write(
+            request="보고서",
+            model="m",
+            api_key="k",
+            approved_plan={"title": "제목", "sections": ["가", "나", "다"]},
+            project_sources=[
+                {
+                    "id": "project-file-1",
+                    "name": "내부 조사.md",
+                    "state": "included",
+                    "sourceUrl": "",
+                },
+                {
+                    "id": "project-file-2",
+                    "name": "분량 밖 자료.pdf",
+                    "state": "omitted",
+                    "sourceUrl": "",
+                },
+            ],
+        )
+    ]
+
+    shelf = next(e["sources"] for e in events if e["type"] == "sources")
+    assert [(s["ordinal"], s["title"], s["origin"]) for s in shelf] == [
+        (1, "제품 사양", "web"),
+        (2, "내부 조사.md", "file"),
+    ]
+    audit = next(e["research"] for e in events if e["type"] == "research")
+    assert audit["webSelected"] == 1
+    assert audit["projectSelected"] == 1
+    assert audit["projectExcluded"] == 1
+    assert all("[2] 내부 조사.md" in _system(post) for post in posts)
+
 
 # ── and when it cannot run, it says so ─────────────────────────────────
 
@@ -223,6 +276,9 @@ async def test_an_unresearchable_report_is_told_it_is_unresearched(unsearchable)
     # No step claiming a search that never happened.
     assert "sources" not in [e["id"] for e in events if e["type"] == "step"]
     assert research.UNRESEARCHED_RULE in _system(posts[0])
+    audit = next(e["research"] for e in events if e["type"] == "research")
+    assert audit["enabled"] is True
+    assert audit["searched"] is False
 
 
 async def test_a_toggle_switched_off_is_a_choice_and_gets_no_disclaimer(searched):

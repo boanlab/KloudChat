@@ -47,12 +47,17 @@ class _InlineRuns(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         style = dict(self.stack[-1])
         values = dict(attrs)
-        if tag in ("b", "strong"): style["bold"] = True
-        if tag in ("i", "em"): style["italic"] = True
-        if tag == "u": style["underline"] = True
+        if tag in ("b", "strong"):
+            style["bold"] = True
+        if tag in ("i", "em"):
+            style["italic"] = True
+        if tag == "u":
+            style["underline"] = True
         if tag == "font":
-            if (size := values.get("size")) and str(size).isdigit(): style["size"] = int(size)
-            if color := values.get("color"): style["color"] = color
+            if (size := values.get("size")) and str(size).isdigit():
+                style["size"] = int(size)
+            if color := values.get("color"):
+                style["color"] = color
         if tag == "span" and (css := values.get("style")):
             rules = {
                 key.strip().lower(): value.strip()
@@ -63,16 +68,21 @@ class _InlineRuns(HTMLParser):
                 style["scale"] = float(rules["font-size"][:-2])
             if rules.get("font-weight") in ("bold", "600", "700", "800", "900"):
                 style["bold"] = True
-            if rules.get("font-style") == "italic": style["italic"] = True
-            if "underline" in rules.get("text-decoration", ""): style["underline"] = True
-            if color := rules.get("color"): style["color"] = color
+            if rules.get("font-style") == "italic":
+                style["italic"] = True
+            if "underline" in rules.get("text-decoration", ""):
+                style["underline"] = True
+            if color := rules.get("color"):
+                style["color"] = color
         self.stack.append(style)
 
     def handle_endtag(self, _tag: str) -> None:
-        if len(self.stack) > 1: self.stack.pop()
+        if len(self.stack) > 1:
+            self.stack.pop()
 
     def handle_data(self, data: str) -> None:
-        if data: self.runs.append((data, dict(self.stack[-1])))
+        if data:
+            self.runs.append((data, dict(self.stack[-1])))
 
 
 def _inline_runs(html: str | None, fallback: str) -> list[tuple[str, dict]]:
@@ -277,12 +287,16 @@ def _pptx_pairs(
         for index, (mark, name) in enumerate(pairs):
             item_left = left + index * (span + 16)
             _block(slide, left=item_left, top=top + 20, width=side, height=side, colour=accent)
-            box = _textbox(slide, left=item_left, top=top + 20 + side / 2 - 26, width=side, height=52)
+            box = _textbox(
+                slide, left=item_left, top=top + 20 + side / 2 - 26, width=side, height=52
+            )
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
             run.text = mark
             paint(run, size=40, bold=True, colour=_WHITE)
-            under = _textbox(slide, left=item_left - 8, top=top + 32 + side, width=side + 16, height=44)
+            under = _textbox(
+                slide, left=item_left - 8, top=top + 32 + side, width=side + 16, height=44
+            )
             under.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = under.paragraphs[0].add_run()
             run.text = name
@@ -706,7 +720,16 @@ def to_pptx(
             faces=faces,
         )
 
-    def paint_rich(paragraph, data: dict, key: str, text: str, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
+    def paint_rich(
+        paragraph,
+        data: dict,
+        key: str,
+        text: str,
+        *,
+        size: int,
+        bold: bool = False,
+        colour: RGBColor | None = None,
+    ) -> None:
         html = (data.get("richText") or {}).get(key)
         scale = {1: 0.65, 2: 0.8, 3: 1.0, 4: 1.2, 5: 1.5, 6: 2.0, 7: 3.0}
         for value, inline in _inline_runs(html, text):
@@ -718,7 +741,15 @@ def to_pptx(
                 run_colour = _rgb(raw_colour)
             paint(
                 run,
-                size=max(8, round(size * float(inline.get("scale") or scale.get(inline.get("size"), 1.0)))),
+                size=max(
+                    8,
+                    round(
+                        size
+                        * float(
+                            inline.get("scale") or scale.get(inline.get("size"), 1.0)
+                        )
+                    ),
+                ),
                 bold=bool(inline.get("bold", bold)),
                 colour=run_colour,
             )
@@ -776,7 +807,9 @@ def to_pptx(
                     fill.gradient_angle = 45.0
                     stops = fill.gradient_stops
                     stops[0].color.rgb = accent
-                    stops[1].color.rgb = _mix(accent, 48 if visual_style == "poster" else 62, onto=_INK)
+                    stops[1].color.rgb = _mix(
+                        accent, 48 if visual_style == "poster" else 62, onto=_INK
+                    )
                     for extra in list(stops)[2:]:
                         extra.color.rgb = stops[1].color.rgb
                 except Exception as exc:  # noqa: BLE001 — a ground, not the deck
@@ -828,14 +861,36 @@ def to_pptx(
                 counter = _textbox(slide, left=72, top=150, width=200, height=40)
                 run = counter.paragraphs[0].add_run()
                 run.text = number
-                paint(run, size=22, bold=True, colour=accent if visual_style == "minimal" else _mix(_WHITE, 70, onto=accent))
+                paint(
+                    run,
+                    size=22,
+                    bold=True,
+                    colour=accent
+                    if visual_style == "minimal"
+                    else _mix(_WHITE, 70, onto=accent),
+                )
             else:
-                _block(slide, left=82, top=186, width=106, height=7, colour=accent if visual_style == "minimal" else _WHITE)
+                _block(
+                    slide,
+                    left=82,
+                    top=186,
+                    width=106,
+                    height=7,
+                    colour=accent if visual_style == "minimal" else _WHITE,
+                )
             frame = _textbox(
                 slide, left=72, top=210, width=_W - 144, height=180,
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
-            paint_rich(frame.paragraphs[0], data, "title", heading or title, size=40, bold=True, colour=cover_ink)
+            paint_rich(
+                frame.paragraphs[0],
+                data,
+                "title",
+                heading or title,
+                size=40,
+                bold=True,
+                colour=cover_ink,
+            )
             if body:
                 paragraph = frame.add_paragraph()
                 paragraph.alignment = PP_ALIGN.LEFT
@@ -1436,7 +1491,23 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.setFillColorRGB(*accent)
                 pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
                 pdf.saveState()
-                pdf.linearGradient(0, _H, _W, 0, [Color(*accent), Color(*_mix_floats(accent, 48 if visual_style == "poster" else 62, onto=_PDF_INK))], extend=True)
+                pdf.linearGradient(
+                    0,
+                    _H,
+                    _W,
+                    0,
+                    [
+                        Color(*accent),
+                        Color(
+                            *_mix_floats(
+                                accent,
+                                48 if visual_style == "poster" else 62,
+                                onto=_PDF_INK,
+                            )
+                        ),
+                    ],
+                    extend=True,
+                )
                 pdf.restoreState()
         else:
             pdf.setFillColorRGB(*(0.969, 0.953, 0.929) if visual_style == "poster" else (1, 1, 1))
@@ -1463,7 +1534,13 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             if layout == "section" and (number := str(data.get("number") or "")):
                 # `01.` over the title. A divider that only says the name of
                 # the part leaves the reader counting backwards to place it.
-                pdf.setFillColorRGB(*(accent if visual_style == "minimal" else _mix_floats((1.0, 1.0, 1.0), 70, onto=accent)))
+                pdf.setFillColorRGB(
+                    *(
+                        accent
+                        if visual_style == "minimal"
+                        else _mix_floats((1.0, 1.0, 1.0), 70, onto=accent)
+                    )
+                )
                 pdf.setFont(font, S(22))
                 pdf.drawString(72, _H / 2 + 100, number)
             else:
@@ -1477,7 +1554,13 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 y -= S(50)
             if body:
                 # 80% white over the accent, as the preview and the .pptx have.
-                pdf.setFillColorRGB(*(_PDF_MUTED if visual_style == "minimal" else _mix_floats((1.0, 1.0, 1.0), 80, onto=accent)))
+                pdf.setFillColorRGB(
+                    *(
+                        _PDF_MUTED
+                        if visual_style == "minimal"
+                        else _mix_floats((1.0, 1.0, 1.0), 80, onto=accent)
+                    )
+                )
                 pdf.setFont(font, S(15))
                 for line in _wrap(body, font, S(15), _W - 144)[:2]:
                     pdf.drawString(72, y - 6, line)
@@ -1573,7 +1656,9 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     pdf.setFont(font, cell_size)
                     for cell_index, cell in enumerate(row):
                         text = _wrap(cell, font, cell_size, width - 16)
-                        pdf.drawString(text_left + 8 + cell_index * width, y, text[0] if text else "")
+                        pdf.drawString(
+                            text_left + 8 + cell_index * width, y, text[0] if text else ""
+                        )
                     y -= step
                     # The foot sits at 58. Stopping at 60 put the last row
                     # through it, which is the one place an overflow is read as
@@ -1615,14 +1700,22 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             if fill:
                 width, height, *_ = _fill(image_bytes, box=box)
                 box_width, box_height = box
-                box_left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - box_width) / 2
+                box_left = (
+                    (72 if picture_left else 72 + text_width + 24)
+                    if not alone
+                    else (_W - box_width) / 2
+                )
                 box_bottom = 90
                 left = box_left - (width - box_width) / 2
                 bottom = box_bottom - (height - box_height) / 2
             else:
                 width, height = _fit(image_bytes, box=box)
                 box_width, box_height = width, height
-                box_left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
+                box_left = (
+                    (72 if picture_left else 72 + text_width + 24)
+                    if not alone
+                    else (_W - width) / 2
+                )
                 box_bottom = 90 + max(0.0, (_H - 230 - height) / 2)
                 left, bottom = box_left, box_bottom
             try:

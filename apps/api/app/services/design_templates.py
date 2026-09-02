@@ -642,7 +642,8 @@ def _kept_style(match: re.Match[str]) -> str:
             channels = [int(colour.group(index)) for index in (2, 3, 4)]
             if any(channel > 255 for channel in channels):
                 continue
-            part = f"{colour.group(1).lower()}: #{''.join(f'{channel:02x}' for channel in channels)}"
+            hexed = "".join(f"{channel:02x}" for channel in channels)
+            part = f"{colour.group(1).lower()}: #{hexed}"
         found = _DECLARATION.match(part)
         if found and found.group(1).lower() in _EDITABLE_STYLE:
             kept.append(f"{found.group(1).lower()}: {found.group(2).strip()}")

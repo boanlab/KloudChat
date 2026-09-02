@@ -28,6 +28,8 @@ import re
 import zipfile
 from xml.etree import ElementTree
 
+from pypdf import PdfReader
+
 from app.services import design_templates, pictures, report_export, richtext
 
 _TABLE = (
@@ -91,11 +93,87 @@ def test_the_docx_numbers_its_pages():
     assert any("PAGE" in archive.read(name).decode() for name in footers)
 
 
+def test_page_settings_reach_docx_and_pdf():
+    settings = {
+        "header": "대외비 검토본",
+        "footer": "전략기획실",
+        "pageNumbers": "page-total",
+        "firstPageHeader": True,
+        "margins": {"top": 25, "right": 18, "bottom": 24, "left": 19},
+    }
+    archive = zipfile.ZipFile(
+        io.BytesIO(report_export.to_docx("제목", SECTIONS, page_settings=settings))
+    )
+    headers = "".join(
+        archive.read(name).decode()
+        for name in archive.namelist()
+        if name.startswith("word/header")
+    )
+    footers = "".join(
+        archive.read(name).decode()
+        for name in archive.namelist()
+        if name.startswith("word/footer")
+    )
+    document = archive.read("word/document.xml").decode()
+    assert "대외비 검토본" in headers
+    assert "전략기획실" in footers and "PAGE" in footers and "NUMPAGES" in footers
+    assert 'w:top="1417"' in document and 'w:left="1077"' in document
+
+    pdf = report_export.to_pdf("제목", SECTIONS, page_settings=settings)
+    text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
+    assert "대외비 검토본" in text and "전략기획실" in text
+
+
+def test_reference_list_is_formatted_and_appended_for_export():
+    sources = [
+        {
+            "ordinal": 1,
+            "title": "검증된 자료",
+            "author": "김연구",
+            "publisher": "한국연구원",
+            "year": "2026",
+            "url": "https://example.org/paper",
+        }
+    ]
+    sections = report_export.with_references(SECTIONS, sources, "APA")
+
+    assert sections[-1]["heading"] == "참고문헌"
+    assert "김연구. (2026). 검증된 자료" in sections[-1]["content"]
+    assert "https://example.org/paper" in sections[-1]["content"]
+    assert len(SECTIONS) == 2, "화면의 원본 절 목록을 변경하면 안 됩니다"
+
+
+def test_incomplete_web_source_has_no_empty_citation_punctuation():
+    source = {"ordinal": 3, "title": "제목만 있는 검색 결과", "url": "https://example.org"}
+
+    assert report_export.citation_text(source, "APA") == (
+        "제목만 있는 검색 결과. https://example.org"
+    )
+    assert report_export.citation_text(source, "IEEE").startswith(
+        '[3] “제목만 있는 검색 결과.”'
+    )
+
+
 def test_the_docx_carries_a_table_of_contents_field():
     # A field, not a written-out list: Word keeps a field in step with the
     # document as the reader edits it.
     body = _docx().read("word/document.xml").decode()
     assert "TOC" in body
+
+
+def test_a_short_docx_does_not_leave_a_mostly_empty_cover_page():
+    """The live TOC stays, but the report body follows it without a forced break."""
+    body = _docx().read("word/document.xml").decode()
+    assert 'w:type="page"' not in body
+
+
+def test_a_designed_docx_table_uses_the_documents_accent_rule():
+    body = zipfile.ZipFile(
+        io.BytesIO(report_export.to_docx("제목", SECTIONS, tokens={"accent": "#0f766e"}))
+    ).read("word/document.xml").decode()
+    assert 'w:fill="F2F2F2"' in body
+    assert 'w:color="0F766E"' in body
+    assert '<w:pBdr><w:bottom w:val="single" w:sz="10" w:space="6" w:color="0F766E"' in body
 
 
 # ── .pdf and .hwpx read the same document ──────────────────────────────
@@ -106,6 +184,51 @@ def test_the_pdf_is_a_pdf_and_has_the_table_in_it():
     assert data[:5] == b"%PDF-"
     # Drawn tables make the file materially bigger than the prose alone would.
     assert len(data) > len(report_export.to_pdf("교체 검토", [SECTIONS[1]]))
+
+
+def test_pdf_page_total_is_the_actual_final_count():
+    long_sections = [
+        {"heading": f"긴 절 {number}", "content": ("검증할 본문입니다. " * 180)}
+        for number in range(1, 8)
+    ]
+    pages = PdfReader(
+        io.BytesIO(
+            report_export.to_pdf(
+                "쪽 수 검증",
+                long_sections,
+                page_settings={"pageNumbers": "page-total"},
+            )
+        )
+    ).pages
+    assert len(pages) > 1
+    for number, page in enumerate(pages, 1):
+        assert f"{number} / {len(pages)}" in (page.extract_text() or "")
+
+
+def test_a_manual_page_break_survives_html_and_all_three_document_formats():
+    html = (
+        '<p>첫 쪽의 마지막 문단</p>'
+        '<div data-page-break="true" class="page-break"></div>'
+        '<p>둘째 쪽의 첫 문단</p>'
+    )
+    clean = design_templates.sanitise(html, editable_styles=True)
+    assert 'data-page-break="true"' in clean
+    markdown = richtext.to_markdown(clean)
+    assert "<!-- pagebreak -->" in markdown
+    sections = [{"heading": "수동 나눔", "content": markdown}]
+
+    docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("제목", sections)))
+    document_xml = docx.read("word/document.xml").decode()
+    assert 'w:type="page"' in document_xml
+
+    pdf = PdfReader(io.BytesIO(report_export.to_pdf("제목", sections)))
+    assert len(pdf.pages) == 2
+    assert "첫 쪽의 마지막 문단" in (pdf.pages[0].extract_text() or "")
+    assert "둘째 쪽의 첫 문단" in (pdf.pages[1].extract_text() or "")
+
+    hwpx = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("제목", sections)))
+    section_xml = hwpx.read("Contents/section0.xml").decode()
+    assert 'pageBreak="1"' in section_xml
 
 
 def _hwpx(sections=SECTIONS) -> zipfile.ZipFile:
@@ -127,6 +250,51 @@ def test_the_hwpx_carries_a_real_table():
     # And not the lines version as well, which is what a half-applied change
     # would look like.
     assert "기준 · 외부 API" not in body
+
+
+def test_hwpx_page_geometry_and_first_page_flags_follow_page_settings():
+    archive = zipfile.ZipFile(
+        io.BytesIO(
+            report_export.to_hwpx(
+                "쪽 설정",
+                SECTIONS,
+                page_settings={
+                    "firstPageHeader": True,
+                    "pageNumbers": "none",
+                    "margins": {"top": 25, "right": 19, "bottom": 21, "left": 17},
+                },
+            )
+        )
+    )
+    body = archive.read("Contents/section0.xml").decode()
+    assert 'hideFirstHeader="0"' in body
+    assert 'hideFirstPageNum="1"' in body
+    assert 'top="7087"' in body
+    assert 'right="5386"' in body
+    assert 'bottom="5953"' in body
+    assert 'left="4819"' in body
+
+
+def test_hwpx_page_furniture_is_editable_and_uses_a_live_page_number():
+    archive = zipfile.ZipFile(
+        io.BytesIO(
+            report_export.to_hwpx(
+                "제출 보고서",
+                SECTIONS,
+                page_settings={
+                    "header": "사업 검토 자료",
+                    "footer": "기획조정실",
+                    "pageNumbers": "page-total",
+                },
+            )
+        )
+    )
+    body = archive.read("Contents/section0.xml").decode()
+    assert '<hp:header id="10001" applyPageType="BOTH">' in body
+    assert "사업 검토 자료" in body
+    assert '<hp:footer id="10002" applyPageType="BOTH">' in body
+    assert "기획조정실" in body
+    assert '<hp:pageNum pos="BOTTOM_RIGHT" formatType="DIGIT"' in body
 
 
 def test_every_border_the_cells_point_at_is_defined():

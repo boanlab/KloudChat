@@ -284,7 +284,16 @@ async def _project_blocks(
         for stored in readable:
             picked = by_name.get(stored.name, [])
             if not picked:
-                used.append(ContextFile(stored.name, "omitted", 0, len(stored.text), stored.id, stored.source_url))
+                used.append(
+                    ContextFile(
+                        stored.name,
+                        "omitted",
+                        0,
+                        len(stored.text),
+                        stored.id,
+                        stored.source_url,
+                    )
+                )
                 continue
             excerpt = "\n\n".join(
                 f"[{p.index}번째 조각]\n{p.text}" for p in picked

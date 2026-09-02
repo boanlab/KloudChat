@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.routers import workspace as workspace_router
+from app.services import deck as deck_service
 
 
 def _routes() -> dict[str, set[str]]:
@@ -76,3 +77,33 @@ def test_the_endpoint_is_mounted_and_refuses_a_stranger() -> None:
         )
     # Anything but a 404 for a missing route: the point is that it is mounted.
     assert reply.status_code != 404 or reply.json().get("detail") != "Not Found"
+
+
+@pytest.mark.asyncio
+async def test_retry_removes_the_old_failure_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A successful retry must not leave the failure placeholder beside it."""
+
+    async def complete(*_args, **_kwargs):
+        return '{"body":"이번에는 정상적으로 작성됐습니다.","notes":"발표 노트"}', {
+            "inputTokens": 10,
+            "outputTokens": 8,
+        }
+
+    monkeypatch.setattr(deck_service, "_complete", complete)
+    result, _ = await deck_service.rewrite_slide(
+        request="분기 실적 발표",
+        slides=[
+            {
+                "id": "sl1",
+                "layout": "bullets",
+                "title": "핵심 성과",
+                "bullets": [deck_service.UNWRITTEN],
+            }
+        ],
+        target_id="sl1",
+        model="test-model",
+        api_key="test-key",
+    )
+
+    assert result["body"] == "이번에는 정상적으로 작성됐습니다."
+    assert "bullets" not in result
