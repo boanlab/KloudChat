@@ -27,8 +27,8 @@ from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import deck as deck_rules
 from app.services import (
-    figures,
     design,
+    figures,
     grounding,
     hangul,
     imagegen,
@@ -52,15 +52,25 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 규칙:
 - 제목은 문서의 표지에 적힐 한 줄이다. 요청 문장을 그대로 옮기지 말고,
   주제를 가리키는 명사구로 써라. 마침표와 "~에 대한 보고서" 같은 군말은 빼라.
+- **요청에 없는 소재를 지어내지 마라.** 요청이 문서의 쓰임만 말하고 무엇에 대한
+  것인지는 말하지 않았으면 그 쓰임을 가리키는 제목을 쓰고, 목차는 그 쓰임이
+  요구하는 뼈대로 잡아라. 요청에 없던 분야나 연도를 골라 채운 보고서는 읽는
+  사람의 것이 아니어서 그대로 쓸 수 없다.
 - 섹션 {lo}~{hi}개.
 - 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다.
 - 섹션은 제목만. 내용은 쓰지 마라.
+- style 은 이 문서가 어디에 쓰이는지에 맞는 인상이다. 셋 중 하나만 골라라:
+  · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 문서. 선과 넓은 여백.
+  · 포스터형 — 안내·홍보처럼 눈길을 먼저 잡아야 하는 문서. 강한 색면.
+  · 미니멀 — 논문·심사 자료처럼 절제가 예의인 문서. 옅은 색과 작은 제목.
+  요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라.
 {ask_rule}
 - 참고할 자료에 양식·서식 문서가 있으면 그 문서의 항목 순서를 그대로 목차로 써라.
   개수도 그 양식을 따르고, 일반적인 보고서 목차로 바꾸지 마라.
 
 JSON 객체로만 답하라.
-예: {{"title": "전이학습의 소량 데이터 효율성", "sections": ["요약", "배경", "방법", "결과", "한계", "결론"]}}
+예: {{"title": "전이학습의 소량 데이터 효율성", "style": "미니멀",
+     "sections": ["요약", "배경", "방법", "결과", "한계", "결론"]}}
 
 요청: {request}"""
 
@@ -309,6 +319,20 @@ async def _complete(
         "inputTokens": int(raw.get("prompt_tokens") or 0),
         "outputTokens": int(raw.get("completion_tokens") or 0),
     }
+
+
+#: 문서가 입는 인상. 프롬프트는 한국어로 묻고, 저장은 렌더러가 아는 영어로 한다.
+_STYLES = {"편집형": "editorial", "포스터형": "poster", "미니멀": "minimal"}
+
+
+def _outline_style(text: str) -> str:
+    """The look the outline chose, or `""` when it named none.
+
+    Read with its own regex rather than off the parsed object, so an outline
+    that was salvaged from a partial answer still keeps the look it picked.
+    """
+    match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
+    return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
 def _parse_outline(text: str) -> tuple[str, list[str]]:
@@ -655,7 +679,15 @@ async def write(
         plan: dict[str, Any] = {
             "title": title[:200],
             "sections": headings,
-            "visualStyle": design.visual_style_for(request),
+            # 말한 사람이 먼저다 — `deck` 과 같은 규칙. `visual_style_for`
+            # answers only when the request says so, and its `editorial`
+            # default reached every document nobody had described, so a 논문
+            # 초안 and a 사내 안내문 came out wearing the same face.
+            "visualStyle": (
+                design.visual_style_for(request)
+                if design.visual_style_for(request) != "editorial"
+                else (_outline_style(text) or "editorial")
+            ),
         }
         if image_model:
             drawn = await figures.propose(

@@ -56,8 +56,27 @@ export function ProposalCard({
    * order on the next render.
    */
   const [edited, setEdited] = useState<{ title: string; layout?: string }[] | null>(null)
-  const [visualStyle, setVisualStyle] = useState(pending.plan?.visualStyle ?? 'editorial')
-  const [density, setDensity] = useState(pending.plan?.density ?? 'speaker')
+  /*
+   * 고른 적이 없으면 계획을 따른다.
+   *
+   * These were `useState(pending.plan?.visualStyle ?? 'editorial')`, and
+   * `useState` keeps only the value of the first render. The card mounts while
+   * the turn is still streaming, so on the render that matters `pending.plan`
+   * is often not there yet — the initial value froze at `editorial`, the plan
+   * arrived a moment later saying `minimal`, and two things went wrong at
+   * once: the impression the outline had chosen for the subject was silently
+   * replaced by the default, and `dirty` went true, so a card nobody had
+   * touched offered 「고친 대로 생성」.
+   *
+   * Held as "what the person picked, or nothing yet". Nothing yet means the
+   * plan decides, however late it arrives.
+   */
+  const [pickedStyle, setPickedStyle] = useState<string | null>(null)
+  const [pickedDensity, setPickedDensity] = useState<string | null>(null)
+  const visualStyle = pickedStyle ?? pending.plan?.visualStyle ?? 'editorial'
+  const density = pickedDensity ?? pending.plan?.density ?? 'speaker'
+  const setVisualStyle = setPickedStyle
+  const setDensity = setPickedDensity
 
   const run = (
     opts: {
@@ -217,9 +236,14 @@ export function ProposalCard({
     ;[next[from], next[to]] = [next[to], next[from]]
     change(next)
   }
-  const dirty = (edited !== null && JSON.stringify(edited) !== JSON.stringify(proposed))
-    || visualStyle !== (plan.visualStyle ?? 'editorial')
-    || (plan.slides && density !== (plan.density ?? 'speaker'))
+  // 사람이 고른 것만 「고침」이다 — 계획이 말한 것을 그대로 쓰는 것은 고친 것이
+  // 아니다.
+  const dirty =
+    (edited !== null && JSON.stringify(edited) !== JSON.stringify(proposed)) ||
+    (pickedStyle !== null && pickedStyle !== (plan.visualStyle ?? 'editorial')) ||
+    (Boolean(plan.slides) &&
+      pickedDensity !== null &&
+      pickedDensity !== (plan.density ?? 'speaker'))
   //: Only the shape the surface actually stores. `sections` is headings.
   const asPlan = () =>
     plan.sections
@@ -341,8 +365,9 @@ export function ProposalCard({
         {dirty && (
           <Button size="sm" variant="ghost" onClick={() => {
             setEdited(null)
-            setVisualStyle(plan.visualStyle ?? 'editorial')
-            setDensity(plan.density ?? 'speaker')
+            // Back to "nothing picked", which is the plan.
+            setPickedStyle(null)
+            setPickedDensity(null)
           }}>
             <RotateCcw size={13} />
             {t('처음 제안으로')}

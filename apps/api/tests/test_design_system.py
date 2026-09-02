@@ -50,6 +50,18 @@ def test_unknown_craft_keys_are_dropped_rather_than_stored():
     assert design.craft_keys(["typography", "wharrgarbl", "typography"]) == ["typography"]
 
 
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("투자 심사용으로 강렬한 피치 덱을 만들어 줘", "poster"),
+        ("여백이 넓고 절제된 학술 보고서", "minimal"),
+        ("분기 실적 보고서를 만들어 줘", "editorial"),
+    ],
+)
+def test_a_stated_visual_direction_reaches_the_first_draft(prompt, expected):
+    assert design.visual_style_for(prompt) == expected
+
+
 # ── what reaches the model ─────────────────────────────────────────────
 
 
@@ -102,7 +114,11 @@ def test_the_image_prompt_carries_the_colour_and_the_house_style():
     # The chip the person picked for this picture still leads the design's
     # standing instruction, and the aspect stays last.
     assert composed.index("photorealistic") < composed.index("bold graphic")
-    assert composed.endswith("aspect ratio 16:9")
+    # 비율만이 아니라 방향까지 — 그림 모델이 흘려듣는 쪽이 비율이라,
+    # 보고서·슬라이드에 넣을 그림이 세로로 길게 돌아오곤 했다.
+    assert composed.endswith(
+        "aspect ratio 16:9, landscape orientation, wider than it is tall"
+    )
 
 
 def test_an_image_prompt_without_a_design_system_is_unchanged():
@@ -255,6 +271,53 @@ def test_the_deck_pdf_changes_only_when_a_design_system_is_given():
     )
 
 
+def test_one_deck_can_export_in_three_distinct_visual_styles():
+    base = {**_TOKENS}
+    editorial = _pptx_xml(
+        deck_export.to_pptx("제목", _SLIDES, tokens={**base, "visualStyle": "editorial"})
+    )
+    poster = _pptx_xml(
+        deck_export.to_pptx("제목", _SLIDES, tokens={**base, "visualStyle": "poster"})
+    )
+    minimal = _pptx_xml(
+        deck_export.to_pptx("제목", _SLIDES, tokens={**base, "visualStyle": "minimal"})
+    )
+
+    assert len({editorial, poster, minimal}) == 3
+    assert "F7F3ED" in poster  # warm paper and a vertical accent rail
+    assert "F7F3ED" not in editorial
+    assert len({
+        _drawn(deck_export.to_pdf("제목", _SLIDES, tokens={**base, "visualStyle": style}))
+        for style in ("editorial", "poster", "minimal")
+    }) == 3
+
+
+def test_one_report_can_export_in_three_distinct_visual_styles():
+    docx_files = [
+        report_export.to_docx("제목", _SECTIONS, tokens={**_TOKENS, "visualStyle": style})
+        for style in ("editorial", "poster", "minimal")
+    ]
+    document_xml = []
+    for blob in docx_files:
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            document_xml.append(archive.read("word/document.xml"))
+    assert len(set(document_xml)) == 3
+    assert b'w:fill="7a1f3d"' in document_xml[1]
+    assert len({
+        _drawn(report_export.to_pdf("제목", _SECTIONS, tokens={**_TOKENS, "visualStyle": style}))
+        for style in ("editorial", "poster", "minimal")
+    }) == 3
+    hwpx_headers = []
+    for visual_style in ("editorial", "poster", "minimal"):
+        built = report_export.to_hwpx(
+            "제목", _SECTIONS, tokens={**_TOKENS, "visualStyle": visual_style}
+        )
+        with zipfile.ZipFile(io.BytesIO(built)) as archive:
+            hwpx_headers.append(archive.read("Contents/header.xml"))
+    assert len(set(hwpx_headers)) == 3
+    assert b'height="2400" textColor="#FFFFFF" shadeColor="#7a1f3d"' in hwpx_headers[1]
+
+
 def test_report_headings_take_the_accent_and_the_body_stays_black():
     with zipfile.ZipFile(
         io.BytesIO(report_export.to_hwpx("제목", _SECTIONS, tokens=_TOKENS))
@@ -339,3 +402,63 @@ async def test_a_look_that_stopped_being_shared_drops_out_rather_than_failing_th
 def test_a_project_wears_nothing_by_default():
     """The migration's whole safety argument in one line."""
     assert Project(user_id="u1", name="p").design_system_id is None
+
+
+def test_the_outline_picks_a_look_when_nobody_described_one() -> None:
+    """주제가 인상을 고른다.
+
+    `visual_style_for` only answers when the request says so — 「포스터처럼」,
+    「담백하게」 — and returns `editorial` for everything else. That default
+    reached every deck nobody had described, so a 학술 심사 발표 and a 홍보
+    설명회 came out wearing the same face, and the only way to change it was a
+    menu after the fact. The outline call already picks the accent colour from
+    the subject; this is the same question about the rest of the look.
+    """
+    from app.services import deck
+
+    # 아웃라인이 고른 인상은 그대로 쓰인다.
+    assert deck._theme_style('{"theme": "청록", "style": "포스터형"}') == "poster"
+    assert deck._theme_style('{"style": "미니멀"}') == "minimal"
+    assert deck._theme_style('{"style": "편집형"}') == "editorial"
+    # 이름을 모르면 고르지 않았다고 답한다 — 부르는 쪽이 기본값을 정한다.
+    assert deck._theme_style('{"style": "무지개"}') == ""
+    assert deck._theme_style("{}") == ""
+
+
+def test_a_request_that_names_a_look_still_wins() -> None:
+    """사람이 말한 것이 모델이 고른 것보다 먼저다."""
+    from app.services import design
+
+    # 요청에 적힌 인상은 그대로 읽힌다.
+    assert design.visual_style_for("포스터처럼 강렬하게 만들어 줘") == "poster"
+    assert design.visual_style_for("담백하고 절제된 학술 발표") == "minimal"
+    # 아무 말이 없으면 기본값이고, 그 자리를 아웃라인이 채운다.
+    assert design.visual_style_for("전사 교육 계획 발표자료") == "editorial"
+
+
+def test_a_document_also_picks_its_look_from_the_subject() -> None:
+    """보고서도 덱과 같은 규칙을 쓴다.
+
+    Two document surfaces reading the same field the same way is the point:
+    a 논문 초안 and a 사내 안내문 are not the same document, and neither is a
+    thing anybody wants to restyle from a menu after it is written.
+    """
+    from app.services import report
+
+    assert report._outline_style('{"title": "…", "style": "미니멀"}') == "minimal"
+    assert report._outline_style('{"style": "포스터형"}') == "poster"
+    assert report._outline_style('{"style": "편집형"}') == "editorial"
+    assert report._outline_style('{"style": "없는이름"}') == ""
+    assert report._outline_style("{}") == ""
+
+
+def test_both_surfaces_name_the_looks_the_renderers_know() -> None:
+    """이름표가 어긋나면 고른 인상이 조용히 버려진다."""
+    from app.services import deck, design, report
+
+    assert set(deck._STYLES.values()) == {"editorial", "poster", "minimal"}
+    assert deck._STYLES == report._STYLES
+    # `normalise_tokens` is the gate everything passes through; a value it does
+    # not recognise falls back to the default and the choice is lost.
+    for stored in deck._STYLES.values():
+        assert design.normalise_tokens({"visualStyle": stored})["visualStyle"] == stored

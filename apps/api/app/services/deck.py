@@ -38,8 +38,8 @@ import httpx
 from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
-    figures,
     design,
+    figures,
     grounding,
     hangul,
     imagegen,
@@ -100,7 +100,15 @@ _ACCENT = "#5b5bd6"
 #: worse, it would show the model a choice it does not have.
 _THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중에서만 골라라:
   {themes}
+- style 은 이 발표가 어떤 자리에서 읽히는지에 맞는 인상이다. 셋 중 하나만 골라라:
+  · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 자리. 선과 넓은 여백.
+  · 포스터형 — 홍보·설명회·발표회처럼 눈길을 먼저 잡아야 하는 자리. 강한 색면.
+  · 미니멀 — 학술 발표·심사처럼 절제가 예의인 자리. 옅은 색과 작은 제목.
+  요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라.
 """
+
+#: 이름표와 렌더러가 아는 값. 프롬프트는 한국어로 묻고, 저장은 영어로 한다.
+_STYLES = {"편집형": "editorial", "포스터형": "poster", "미니멀": "minimal"}
 
 #: Accent palette the outline picks from by name. Curated rather than free hex:
 #: each is dark enough to carry white text and to print.
@@ -121,6 +129,11 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 규칙:
 - title 은 표지에 적힐 한 줄이다. 요청 문장을 그대로 옮기지 말고 주제를 가리키는
   명사구로 써라. 마침표와 "~에 대한 발표" 같은 군말은 빼라.
+- **요청에 없는 소재를 지어내지 마라.** 요청이 문서의 쓰임만 말하고 무엇에 대한
+  것인지는 말하지 않았으면 — "연구계획 발표자료", "제안 발표" 처럼 — 그 쓰임을
+  가리키는 제목을 쓰고, 각 장은 그 쓰임이 요구하는 뼈대(배경·목표·방법·일정
+  따위)로 잡아라. 요청에 없던 분야나 연도를 골라 채운 발표는 듣는 사람의 것이
+  아니어서 그대로 쓸 수 없다.
 - subtitle 은 표지에서 제목 아래 작게 붙는 한 줄이다. 40자 이내로, 이 발표가
   누구에게 무엇을 말하는지 적어라. 요청 문장을 그대로 옮기지 마라.
 - 슬라이드 {lo}~{hi}장.
@@ -443,6 +456,17 @@ def requested_slides(request: str) -> int | None:
         return None
     asked = int(match.group(1))
     return max(_MIN_SLIDES, min(asked, _MAX_SLIDES)) if asked > 0 else None
+
+
+def _theme_style(text: str) -> str:
+    """The visual impression the outline chose, or `""` when it named none.
+
+    Read with its own regex for the same reason `_theme_accent` is: a salvaged
+    outline — one whose JSON did not parse whole — should still keep the look
+    the model picked for it.
+    """
+    match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
+    return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
 def _theme_accent(text: str) -> str:
@@ -1118,7 +1142,11 @@ async def _write_slides(
                         written="\n".join(written)[-3000:] or "(아직 없음)",
                         # Fuller list for two columns; four bullets would leave
                         # one empty. `_QUOTE_PROMPT` ignores the extra field.
-                        count=("6~8" if slide["layout"] == "two-column" else "4~6") if density == "reading" else ("4~6" if slide["layout"] == "two-column" else "2~4"),
+                        count=(
+                            ("6~8" if slide["layout"] == "two-column" else "4~6")
+                            if density == "reading"
+                            else ("4~6" if slide["layout"] == "two-column" else "2~4")
+                        ),
                         request=request[:1500],
                     ) + density_rule,
                     trusted_context=trusted_context,
@@ -1442,7 +1470,9 @@ async def write(
                     theme_rule=(
                         "" if fixed_accent else _THEME_RULE.format(themes=" / ".join(_THEMES))
                     ),
-                    theme_example="" if fixed_accent else '"theme": "청록",\n  ',
+                    theme_example=(
+                        "" if fixed_accent else '"theme": "청록",\n  "style": "편집형",\n  '
+                    ),
                     request=request[:2000],
                 )
                 + nudge,
@@ -1556,10 +1586,29 @@ async def write(
         "title": title[:200],
         "subtitle": subtitle[:200],
         "accent": accent,
-        "visualStyle": design.visual_style_for(request),
+        # 말한 사람이 먼저다. `visual_style_for` only answers when the request
+        # actually says so — 「포스터처럼」, 「담백하게」 — and returns the
+        # editorial default otherwise. That default used to reach every deck,
+        # so a 학술 심사 발표 and a 홍보 설명회 came out wearing the same face.
+        # The outline picks for the ones nobody described.
+        "visualStyle": (
+            design.visual_style_for(request)
+            if design.visual_style_for(request) != "editorial"
+            else (_theme_style(text) or "editorial")
+        ),
         "density": (
             "reading"
-            if any(word in request for word in ("읽기용", "배포용", "공유용", "회의 자료", "검토 자료", "보고 자료"))
+            if any(
+                word in request
+                for word in (
+                    "읽기용",
+                    "배포용",
+                    "공유용",
+                    "회의 자료",
+                    "검토 자료",
+                    "보고 자료",
+                )
+            )
             else "speaker"
         ),
         "slides": [{"title": item["title"], "layout": item["layout"]} for item in plan],
