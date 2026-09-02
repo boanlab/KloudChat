@@ -29,7 +29,7 @@ from app.routers import sessions as sessions_router
 from app.routers import workspace as workspace_router
 from app.schemas.workspace import DesignTemplateOut
 from app.services import design_templates as dt
-from app.services import imagegen, page
+from app.services import imagegen, page, research
 
 # ── the shipped catalogue ──────────────────────────────────────────────
 
@@ -377,6 +377,45 @@ def test_a_title_cannot_break_out_of_the_document():
     assert "&lt;script&gt;" in html
 
 
+def test_a_card_shows_the_shape_the_form_actually_has():
+    """The gallery card's sample and the 양식 file are one shape or none.
+
+    The card is not a decoration: it says "this is what comes out", and beside
+    it is a button that hands over the blank form. Every 문서 서식 shipped with
+    a sample that had been scaffolded and never written — one `개요` on all ten
+    cards — while the forms underneath said 결정할 것, 권고, 요약, 목적, 참석,
+    근거, 고객의 과제, 검토 범위, 조사 개요, 서론. Somebody comparing the two
+    found a card advertising a 서식 that does not exist.
+
+    Headings only. The words in the example are the example's own business;
+    the section names are the shape, and the shape is what the two files have
+    to agree on.
+    """
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    checked = 0
+    for template in dt.all_templates():
+        if not template.sample or not template.form_file.endswith(".docx"):
+            continue
+        with zipfile.ZipFile(template.form_file) as archive:
+            document = ET.fromstring(archive.read("word/document.xml"))
+        headings = {
+            "".join(node.text or "" for node in para.iter(f"{ns}t")).strip()
+            for para in document.iter(f"{ns}p")
+            if (style := para.find(f"{ns}pPr/{ns}pStyle")) is not None
+            and str(style.get(f"{ns}val")).startswith("Heading")
+        }
+        for shown in re.findall(r"<h2[^>]*>(.*?)</h2>", template.sample, re.S):
+            assert shown.strip() in headings, (
+                f"{template.id}: 카드는 '{shown.strip()}' 절을 보여 주는데 "
+                f"양식에는 그런 절이 없다 — {sorted(headings)}"
+            )
+        checked += 1
+    assert checked >= 10, "문서 서식이 이만큼은 있어야 이 시험이 무언가를 지킨다"
+
+
 # ── the outline ────────────────────────────────────────────────────────
 
 
@@ -429,7 +468,11 @@ def test_an_image_template_shapes_the_prompt_after_the_chip_and_before_the_desig
     )
     assert composed.index("photorealistic") < composed.index("poster composition")
     assert composed.index("poster composition") < composed.index("#7a1f3d")
-    assert composed.endswith("aspect ratio 16:9")
+    # 비율만이 아니라 방향까지 — 그림 모델이 흘려듣는 쪽이 비율이라,
+    # 보고서·슬라이드에 넣을 그림이 세로로 길게 돌아오곤 했다.
+    assert composed.endswith(
+        "aspect ratio 16:9, landscape orientation, wider than it is tall"
+    )
 
 
 def test_without_a_template_the_image_prompt_is_unchanged():
@@ -724,6 +767,21 @@ def test_nothing_is_salvaged_from_prose():
     assert not blocks and not title
 
 
+def test_researched_document_blocks_are_told_which_citation_numbers_exist():
+    findings = research.Findings(
+        sources=[
+            {"ordinal": 1, "title": "첫 자료"},
+            {"ordinal": 4, "title": "넷째 자료"},
+        ]
+    )
+
+    rule = page._citation_rule(findings, "document")
+    assert "[1], [4]" in rule
+    assert "목록에 없는 번호를 만들지" in rule
+    assert page._citation_rule(findings, "deck") == ""
+    assert page._citation_rule(research.Findings(), "document") == ""
+
+
 # ── rewriting one block ────────────────────────────────────────────────
 
 
@@ -1008,3 +1066,75 @@ def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
     assert "onclick" not in cleaned
     assert "style=" not in cleaned
     assert "href=" not in cleaned
+
+
+def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
+    """논문에 들어갈 그림은 그림 모델의 기본값과 다르다.
+
+    A picture model's default is an illustration: saturated, lit, shadowed,
+    and captioned with lettering it renders badly. None of that belongs in a
+    paper. The research family exists to say so, and what it says is the
+    template — so this pins the four clauses that make the difference, rather
+    than pinning prose that will be reworded.
+    """
+    from app.services import design_templates
+
+    family = {
+        template.id: template
+        for template in design_templates.all_templates()
+        if template.kind == "image" and template.category == "연구"
+    }
+    assert set(family) == {"image-diagram", "image-method", "image-pipeline", "image-teaser"}
+
+    for template_id, template in family.items():
+        suffix = template.prompt_suffix.lower()
+        # 글자는 사람이 얹는다. A label a picture model writes is a label that
+        # does not match the body text, and in a paper that is worse than none.
+        for banned in ("no text", "no lettering", "no logos"):
+            assert banned in suffix, f"{template_id}: {banned}"
+        # 인쇄되는 도판이다 — 그림자와 광원은 종이에서 지저분해진다.
+        assert "flat even lighting" in suffix, template_id
+        assert "no drop shadows" in suffix, template_id
+        # 요소가 서로 붙지 않아야 읽힌다.
+        assert "clear separation between objects" in suffix, template_id
+        # 글자를 막았으면 형상이 뜻을 날라야 한다.
+        #
+        # 「Edge-Cloud 간 데이터 처리 흐름」을 부탁했더니 빈 둥근 상자 여섯
+        # 개가 나왔다 — 4,479 크레딧을 쓰고. 화풍 지시가 주제를 덮은 것이다:
+        # 「simple blocks」와 「suggest structure rather than drawing a real
+        # labelled diagram」이 있었고, 주제가 말하는 것을 알아볼 수 있게
+        # 그리라는 말은 어디에도 없었다.
+        assert "recognisable objects" in suffix, template_id
+        assert "rather than an empty rectangle" in suffix, template_id
+        # 그리지 말라고 억누르던 문구가 돌아오지 않게.
+        assert "suggest structure rather than" not in suffix, template_id
+        assert "simple blocks" not in suffix, template_id
+        # 고를 것이 있어야 시작점이다: 주제와, 모양과, 결.
+        assert len(template.arguments) == 3, template_id
+        assert template.arguments[0].name == "subject", template_id
+        # 주제를 뺀 나머지는 고르는 값이라 보기가 있어야 한다.
+        for argument in template.arguments[1:]:
+            assert len(argument.options) >= 3, f"{template_id}.{argument.name}"
+
+
+def test_a_research_figure_prompt_carries_both_halves() -> None:
+    """사람이 쓴 문장과 서식이 붙이는 화풍이 함께 모델에 간다.
+
+    The person types the subject; the template says how a paper draws it. If
+    only one half reached the model the figure would be either a description
+    with no style or a style with nothing in it.
+    """
+    from app.services import design_templates, imagegen
+
+    template = design_templates.get("image-method")
+    assert template is not None
+    composed = imagegen.compose_prompt(
+        "제안 모델의 학습 파이프라인 구조를 보여 줘",
+        aspect="16:9",
+        style="미니멀",
+        template=template.prompt_suffix,
+    )
+    assert "제안 모델의 학습 파이프라인" in composed
+    assert "academic paper method figure" in composed
+    # 사람이 쓴 말이 먼저다.
+    assert composed.index("제안 모델") < composed.index("academic paper method figure")

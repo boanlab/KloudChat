@@ -1,7 +1,7 @@
 kind = "image"
 name = "개념도"
 description = "구조를 암시하는 그림. 이름표는 붙이지 않고 자리만 남깁니다"
-category = "문서"
+category = "연구"
 fills = ["무엇의 구조인지", "구조의 형태", "그리는 결"]
 example_prompt = "{subject}의 구조를 한 장으로 보여 주는 그림. {shape} 형태로, {texture} 느낌으로 그려 줘."
 layouts = ["cover"]
@@ -9,14 +9,14 @@ layouts = ["cover"]
 # about what a picture model cannot do: it renders lettering badly, and a
 # diagram it draws by itself has labels that say nothing. So the prompt asks
 # for the shape of a structure and leaves the naming to the slide it lands on.
-prompt_suffix = "abstract schematic composition, simple blocks and layers joined by plain connectors, suggest structure rather than drawing a real labelled diagram, at most six elements, generous whitespace between them, even flat lighting, no text, no lettering, no numbers, no logos, no faces"
+prompt_suffix = "conceptual schematic figure, draw the things the subject actually names as recognisable objects — devices, sensors, servers, racks, documents, containers, people — each one a distinct silhouette rather than an empty rectangle, because a figure with no lettering has only its shapes to say anything; group related objects inside a pale tinted zone, and let size and colour weight say which part matters, pale desaturated fills with one accent colour at most, rounded outlines for ideas and squared outlines for material, at most six objects, thin uniform strokes, flat even lighting, no drop shadows, clear separation between objects so none of them touch, no text, no lettering, no numbers, no logos, no faces"
 
 # English half of the catalogue. The UI picks a side by language;
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
 name_en = "Concept diagram"
 description_en = "An image that suggests structure, with the labels left for you to add"
-category_en = "Documents"
+category_en = "Research"
 fills_en = ["What the structure is", "Shape of the structure", "Rendering"]
 example_prompt_en = "An image showing how {subject} is structured, {shape}, drawn in {texture}."
 
