@@ -328,6 +328,12 @@ _FRAME_RULE = (
     "공식과 일반 원리는 써도 된다."
 )
 
+#: Opens a document written without a single web source, when one was looked for.
+_UNVERIFIED_NOTE = (
+    "_이 문서는 웹 검색에서 쓸 만한 자료를 얻지 못해 기억을 바탕으로 썼습니다. "
+    "수치·연구명·서지는 확인이 필요합니다._"
+)
+
 #: A request that weighs options — the only kind the cost-table advice fits.
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
 
@@ -1104,7 +1110,16 @@ async def write(
         frame = not may_ask and (
             _results_without_data(request, list(untrusted_context or []))
             or grounding.subject_missing(text, request, "\n".join(untrusted_context or []))
-            or (web_search and findings.searched and web_selected == 0 and _from_the_web(request))
+        )
+        # 검색이 빈손인 동향·문헌 문서를 그래도 쓰라고 했다. Not a frame — a
+        # frame of a literature survey is nothing — but written from memory,
+        # and the plan carries that so the document opens by saying so.
+        unverified = (
+            not may_ask
+            and web_search
+            and findings.searched
+            and web_selected == 0
+            and _from_the_web(request)
         )
         title, headings = _parse_outline(text)
         if len(headings) < _MIN_SECTIONS:
@@ -1148,6 +1163,8 @@ async def write(
         }
         if frame:
             plan["frame"] = True
+        if unverified:
+            plan["unverified"] = True
         if image_model:
             drawn = await figures.propose(
                 request=request,
@@ -1172,6 +1189,7 @@ async def write(
     title = str(approved_plan.get("title") or "")
     headings = [str(h).strip() for h in (approved_plan.get("sections") or []) if str(h).strip()]
     frame = bool(approved_plan.get("frame"))
+    unverified = bool(approved_plan.get("unverified"))
     if not headings:
         yield {"type": "error", "message": "승인된 개요가 비어 있습니다."}
         yield {"type": "usage", **usage}
@@ -1364,6 +1382,11 @@ async def write(
         clean = hangul.tidy_spacing(clean)
         if not grounded:
             clean = _without_invented_money(clean)
+        if unverified and index == 0:
+            # 첫 절 머리에 밝힌다. The EMPTY_RULE asks the writer to say it;
+            # a PEFT survey written from memory said nothing and quoted
+            # 0.002% as though it had read it somewhere.
+            clean = _UNVERIFIED_NOTE + "\n\n" + clean
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
         # The picture, if this section is one of the ones somebody paid for.
