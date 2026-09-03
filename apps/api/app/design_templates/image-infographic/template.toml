@@ -1,0 +1,56 @@
+kind = "image"
+name = "단계 인포그래픽"
+description = "과정을 단계로 나눠 화살표로 잇는 그림. 단계마다 이름이 붙어 나옵니다"
+category = "도식"
+fills = ["과정 설명", "단계 수", "강조할 단계", "이름표 언어"]
+example_prompt = "{description}\n\n단계 수: {steps}\n강조할 단계: {highlight}\n이름표 언어: {language}"
+layouts = ["cover"]
+
+# 도식 경로 — 단계 이름이 전부인 그림이고, 그림 모델은 그 이름을 쓰지 못한다.
+figure = "flow"
+prompt_suffix = ""
+
+name_en = "Step infographic"
+description_en = "A process as named steps joined by arrows"
+category_en = "Diagrams"
+fills_en = ["Process description", "Number of steps", "Step to highlight", "Label language"]
+example_prompt_en = "{description}\n\nSteps: {steps}\nHighlight: {highlight}\nLabel language: {language}"
+
+[defaults]
+aspect = "16:9"
+style = "미니멀"
+
+[[arguments]]
+name = "description"
+label = "과정 설명"
+label_en = "Process description"
+long = true
+default = "온라인 쇼핑몰에서 상품을 검색하고, 상세를 보고, 장바구니에 담고, 결제하고, 주문을 확인하기까지."
+default_en = "Searching a product in an online shop, viewing details, adding to cart, paying, and confirming the order."
+
+[[arguments]]
+name = "steps"
+label = "단계 수"
+label_en = "Number of steps"
+default = "5"
+default_en = "5"
+options = ["3", "4", "5", "6"]
+options_en = ["3", "4", "5", "6"]
+
+[[arguments]]
+name = "highlight"
+label = "강조할 단계"
+label_en = "Step to highlight"
+default = "없음"
+default_en = "none"
+options = ["없음", "첫 단계", "마지막 단계", "가운데 단계"]
+options_en = ["none", "the first step", "the last step", "the middle step"]
+
+[[arguments]]
+name = "language"
+label = "이름표 언어"
+label_en = "Label language"
+default = "한국어"
+default_en = "Korean"
+options = ["한국어", "영어"]
+options_en = ["Korean", "English"]

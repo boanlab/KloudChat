@@ -191,10 +191,10 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
               <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
               <p className="mt-0.5 text-sm text-muted">
                 {active === 'chat'
-                  ? t('원문 읽기, 장애 원인 좁히기, 사실 확인… 일을 고르면 그 일에 필요한 것만 묻고 요청을 대신 씁니다.')
+                  ? t('개념 배우기, 논문 읽기, 문제 원인 분석… 일을 고르면 그 일에 필요한 것만 묻고 요청을 대신 씁니다.')
                   : active === 'image'
                     ? t('개념도, 처리 흐름도, 표지 그림… 그림의 쓰임을 고르면 빈칸 몇 개로 요청이 완성됩니다.')
-                    : t('문헌 동향 조사, 의사결정 보고서, 논문 세미나 발표… 일을 고르면 필요한 것만 묻고 결과물 모양까지 정해 줍니다.')}
+                    : t('과제 보고서, 논문 서론, 임원 보고… 일을 고르면 필요한 것만 묻고 결과물 모양까지 정해 줍니다.')}
               </p>
             </div>
             <DesignGallery key={active} kind={active} />

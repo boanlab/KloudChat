@@ -1,0 +1,51 @@
+kind = "image"
+name = "장면 삽화"
+description = "보고서·교육 자료에 넣는 장면 그림. 글자 없이, 요청한 구도로"
+category = "문서"
+fills = ["장면", "스타일", "구도", "주의할 것"]
+example_prompt = "{scene}. {style} 스타일로, {composition}. {avoid}. 이미지 안에 글자는 넣지 마."
+layouts = ["cover"]
+prompt_suffix = "editorial illustration, coherent single scene, natural light, no text, no lettering, no logos, no watermarks"
+
+name_en = "Scene illustration"
+description_en = "A scene for a report or training deck, in the requested style, no lettering"
+category_en = "Documents"
+fills_en = ["Scene", "Style", "Composition", "Avoid"]
+example_prompt_en = "{scene}. {style} style, {composition}. {avoid}. No text inside the image."
+
+[defaults]
+aspect = "16:9"
+style = "일러스트"
+
+[[arguments]]
+name = "scene"
+label = "장면"
+label_en = "Scene"
+long = true
+default = "강의실에서 학생들이 노트북과 AI 도구로 함께 공부하는 모습"
+default_en = "students in a lecture room studying together with laptops and AI tools"
+
+[[arguments]]
+name = "style"
+label = "스타일"
+label_en = "Style"
+default = "사실적인 편집 일러스트"
+default_en = "realistic editorial illustration"
+options = ["사실적인 편집 일러스트", "평면 벡터", "부드러운 수채화", "등각 투영 일러스트"]
+options_en = ["realistic editorial illustration", "flat vector", "soft watercolour", "isometric illustration"]
+
+[[arguments]]
+name = "composition"
+label = "구도"
+label_en = "Composition"
+default = "가로형, 눈높이"
+default_en = "landscape, eye level"
+options = ["가로형, 눈높이", "가로형, 위에서 내려다본", "인물 가까이"]
+options_en = ["landscape, eye level", "landscape, seen from above", "close on the people"]
+
+[[arguments]]
+name = "avoid"
+label = "주의할 것"
+label_en = "Avoid"
+default = "지나치게 공포스럽거나 과장된 표현은 피해 줘"
+default_en = "avoid anything frightening or exaggerated"

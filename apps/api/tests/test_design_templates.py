@@ -1088,9 +1088,13 @@ def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
         for template in design_templates.all_templates()
         if template.kind == "image" and template.category == "연구"
     }
-    assert set(family) == {"image-diagram", "image-method", "image-pipeline", "image-teaser"}
+    assert {"image-diagram", "image-method", "image-pipeline", "image-teaser"} <= set(family)
 
     figures = {"image-diagram": "concept", "image-pipeline": "flow", "image-method": "method"}
+    # 도식 chip 의 둘도 같은 길을 간다 — 단계 인포그래픽과 시스템 아키텍처.
+    drawn = {t.id: t for t in design_templates.all_templates() if t.kind == "image"}
+    assert drawn["image-infographic"].figure == "flow"
+    assert drawn["image-architecture"].figure == "method"
     for template_id, figure in figures.items():
         template = family[template_id]
         assert template.figure == figure, template_id

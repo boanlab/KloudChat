@@ -1,0 +1,50 @@
+kind = "image"
+name = "포스터 배경"
+description = "학회 포스터나 발표 표지의 바탕. 본문을 넣을 넓은 빈 영역을 남깁니다"
+category = "연구"
+fills = ["분야", "무늬", "색", "빈 영역"]
+example_prompt = "{field} 포스터의 배경. {pattern}를 옅게 깔고, {colors} 중심으로. {space}은 본문 자리로 비워 줘."
+layouts = ["cover"]
+prompt_suffix = "abstract background only, thin light grid or network pattern, large uncluttered area reserved for body text, no text, no lettering, no logos, no figures"
+
+name_en = "Poster background"
+description_en = "A ground for a conference poster or talk cover, with a wide empty area for the body"
+category_en = "Research"
+fills_en = ["Field", "Pattern", "Colours", "Empty area"]
+example_prompt_en = "A background for a {field} poster: a faint {pattern}, {colors}, with the {space} left clear for the body."
+
+[defaults]
+aspect = "9:16"
+style = "미니멀"
+
+[[arguments]]
+name = "field"
+label = "분야"
+label_en = "Field"
+default = "컴퓨터 시스템"
+default_en = "computer systems"
+
+[[arguments]]
+name = "pattern"
+label = "무늬"
+label_en = "Pattern"
+default = "얇은 파란색 그리드와 추상적인 네트워크 무늬"
+default_en = "thin blue grid and an abstract network pattern"
+
+[[arguments]]
+name = "colors"
+label = "색"
+label_en = "Colours"
+default = "흰색 바탕에 파란색"
+default_en = "white with blue"
+options = ["흰색 바탕에 파란색", "짙은 남색과 청록색", "흰색 바탕에 회색"]
+options_en = ["white with blue", "deep navy and teal", "white with grey"]
+
+[[arguments]]
+name = "space"
+label = "빈 영역"
+label_en = "Empty area"
+default = "가운데 넓게"
+default_en = "the wide centre"
+options = ["가운데 넓게", "위쪽 제목 자리", "오른쪽"]
+options_en = ["the wide centre", "the title band at the top", "the right side"]

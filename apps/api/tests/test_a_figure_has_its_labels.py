@@ -53,8 +53,8 @@ def test_every_built_in_says_how_to_fill_each_blank() -> None:
 def test_a_survey_needs_the_web_and_a_reading_needs_the_file() -> None:
     by_id = {row.id: row for row in prompt_templates.all_templates()}
     assert "web" in by_id["t_report_literature"].needs
-    assert "file" in by_id["t_translate"].needs
-    assert "인용 형식 맞추기" in by_id["t_report_literature"].skills
+    assert "file" in by_id["t_paper_read"].needs
+    assert "citation" in by_id["t_report_literature"].skills
 
 
 def test_an_edit_recomputes_the_findings() -> None:

@@ -33,7 +33,7 @@ from app.models.workspace import (
 from app.schemas.auth import Wire
 from app.services import design as design_service
 from app.services import geoip
-from app.services.prompt_templates import PromptTemplate
+from app.services.prompt_templates import PromptTemplate, skill_names
 
 #: JSONB list columns are nullable in the database, but the wire contract is a
 #: list either way — absorbed here rather than in every `of()` and consumer.
@@ -684,16 +684,12 @@ class ConnectorOut(Wire):
 
     @classmethod
     def of(cls, c: Connector, tools: list[ConnectorTool] | None = None) -> ConnectorOut:
-        out = cls.model_validate(
-            {**c.model_dump(), "auth": c.auth_type}, from_attributes=False
-        )
+        out = cls.model_validate({**c.model_dump(), "auth": c.auth_type}, from_attributes=False)
         out.kinds = list(c.kinds or [])
         out.tools = [ConnectorToolOut.of(t) for t in (tools or [])]
         # `{{USER_ID}}`-style placeholders are substituted at spawn time and
         # are not re-entered, so they are excluded.
-        out.env_keys = [
-            k for k, v in (c.env or {}).items() if not str(v).startswith("{{")
-        ]
+        out.env_keys = [k for k, v in (c.env or {}).items() if not str(v).startswith("{{")]
         return out
 
 
@@ -886,7 +882,9 @@ class PromptTemplateOut(Wire):
             examples=list(t.examples),
             examples_en=list(t.examples_en),
             needs=list(t.needs),
-            skills=list(t.skills),
+            # Names on the wire, keys in the catalogue: the composer shows and
+            # matches names, the server resolves keys.
+            skills=skill_names(t.skills),
         )
 
 

@@ -1,0 +1,41 @@
+kind = "image"
+name = "고객 페르소나"
+description = "기획에 쓸 사용자 유형 그림. 각자의 환경과 도구로 구분되고, 스타일은 하나로"
+category = "문서"
+fills = ["인물들", "각자의 환경·도구", "스타일"]
+example_prompt = "{people}를 나란히 그린 페르소나 그림. {contexts}로 구분하고, {style}로 통일해 줘."
+layouts = ["cover"]
+prompt_suffix = "three or fewer figures side by side, each in their own work setting, consistent editorial illustration style, neutral background, no text, no lettering, no logos"
+
+name_en = "Customer personas"
+description_en = "User types for planning, each in their own setting and tools, one consistent style"
+category_en = "Documents"
+fills_en = ["People", "Settings and tools", "Style"]
+example_prompt_en = "Persona artwork of {people} side by side, told apart by {contexts}, unified in {style}."
+
+[defaults]
+aspect = "16:9"
+style = "일러스트"
+
+[[arguments]]
+name = "people"
+label = "인물들"
+label_en = "People"
+default = "IT 관리자, 데이터 분석가, 일반 사무직"
+default_en = "an IT administrator, a data analyst, an office worker"
+
+[[arguments]]
+name = "contexts"
+label = "각자의 환경·도구"
+label_en = "Settings and tools"
+default = "서버실과 터미널, 차트가 뜬 모니터, 문서와 메일"
+default_en = "a server room and terminal, a monitor of charts, documents and mail"
+
+[[arguments]]
+name = "style"
+label = "스타일"
+label_en = "Style"
+default = "일관된 편집 일러스트"
+default_en = "consistent editorial illustration"
+options = ["일관된 편집 일러스트", "평면 벡터", "부드러운 3D"]
+options_en = ["consistent editorial illustration", "flat vector", "soft 3D"]
