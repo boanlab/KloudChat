@@ -331,7 +331,9 @@ _FRAME_RULE = (
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
 
 
-_MONEY = re.compile(r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s*(?:억|만|천|백)?\s*원(?!인|리|칙|자)")
+_MONEY = re.compile(
+    r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s*(?:억|만|천|백)?\s*원(?!인|리|칙|자)"
+)
 
 
 def _without_invented_money(text: str) -> str:
@@ -560,7 +562,10 @@ def _outline_style(text: str) -> str:
 _subject_missing = grounding.subject_missing
 
 
-_RESULTS = re.compile(r"결과|시험|실험|측정")
+#: Documents about the person's own work — a proposal, a design change, a
+#: plan — that carry nothing without the work: asked for, like results, only
+#: when the request gives no figure to build on.
+_RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
 #: Documents whose facts all come from outside — nothing to write without a search.
 _FROM_THE_WEB = re.compile(
     r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표|인용|참고문헌|시카고|APA|출처를"

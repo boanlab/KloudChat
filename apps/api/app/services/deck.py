@@ -1086,7 +1086,9 @@ def _offered_layouts(request: str, context: list[str]) -> list[str]:
 #: 연구계획 발표자료」 came back as 새로운 알고리즘으로 정확도를 높임 over eight
 #: slides, for a thesis nobody described; the planner's `subject` was the
 #: request's own words, so the subject check let it through.
-_OWN_WORK = re.compile(r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취")
+_OWN_WORK = re.compile(
+    r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취|캡스톤|산학|과제 제안|제안 발표"
+)
 
 _FIGURE = re.compile(
     # A year is not a measurement. `2026년 계획` matched the three-digit rule
