@@ -1,5 +1,5 @@
 import { Bot, Boxes, Info, Palette, PanelRight } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
@@ -356,6 +356,28 @@ export function SessionPage() {
     return items.sort((a, b) => +new Date(a.t) - +new Date(b.t)).map((i) => i.node)
   }, [session, jobs])
 
+  /**
+   * The outline sits under the message that proposed it. While the answer is
+   * still awaited that is the end of the transcript, above the composer where
+   * the decision is: read what it means to write, then press the button or
+   * type what to change. Once the button is pressed the transcript keeps
+   * reading in order — proposal, outline, 「이대로 생성해 주세요」, the work —
+   * so the card moves above the question that started the running turn
+   * instead of trailing the steps.
+   */
+  const proposalAt = useMemo(() => {
+    if (!session?.pending) return -1
+    if (!streaming) return timeline.length
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      const item = timeline[i]
+      if (item.type === 'message' && item.m.role === 'user') return i
+    }
+    return timeline.length
+  }, [session?.pending, streaming, timeline])
+  const proposal = session?.pending ? (
+    <ProposalCard sessionId={session.id} pending={session.pending} kind={kind} />
+  ) : null
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastLength = session?.messages.at(-1)?.content.length ?? 0
   const runningProgress = jobs.find(
@@ -442,27 +464,21 @@ export function SessionPage() {
                       the conversation around it. */}
                   {timeline.map((item, i) =>
                     item.type === 'message' ? (
-                      <ErrorBoundary key={item.m.id}>
-                        <MessageItem
-                          message={item.m}
-                          sessionId={session.id}
-                          streaming={streaming && i === timeline.length - 1}
-                        />
-                      </ErrorBoundary>
+                      <Fragment key={item.m.id}>
+                        {i === proposalAt && proposal}
+                        <ErrorBoundary>
+                          <MessageItem
+                            message={item.m}
+                            sessionId={session.id}
+                            streaming={streaming && i === timeline.length - 1}
+                          />
+                        </ErrorBoundary>
+                      </Fragment>
                     ) : (
                       <JobCard key={item.j.id} job={item.j} />
                     ),
                   )}
-                  {/* Under the transcript and above the composer, which is
-                      where the decision is: read what it means to write, then
-                      either press the button or type what to change. */}
-                  {session.pending && (
-                    <ProposalCard
-                      sessionId={session.id}
-                      pending={session.pending}
-                      kind={kind}
-                    />
-                  )}
+                  {proposalAt === timeline.length && proposal}
                 </div>
               </div>
               <Composer

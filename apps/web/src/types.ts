@@ -799,6 +799,13 @@ export interface DeckArtifact extends ArtifactBase {
   kind: 'deck'
   theme: string
   slides: Slide[]
+  /**
+   * The deck 서식 this was written under, when one was. The stage draws the
+   * slides in the face the 서식 chose (`design.visualStyle`), which can be
+   * switched like any other; the id stays so the export builds on the 서식's
+   * PowerPoint half.
+   */
+  templateId?: string
   /** The design system this deck wears, copied on when it was made. */
   design?: DesignTokens | null
   /** Review notes belong to a slide, but not to its visible canvas or PPTX. */

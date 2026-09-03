@@ -72,7 +72,6 @@ import type {
   Preferences,
   PrivacyAction,
   PrivacyRouting,
-  CodeArtifact,
   DeckArtifact,
   ReportArtifact,
   ReportSection,
@@ -91,6 +90,14 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
 /** The store is not a component and cannot use hooks, so only strings that
  *  reach the screen are translated here. */
 const tr = (text: string) => translate(currentLang(), text)
+
+/**
+ * What each question was sent with, by its bubble's id, for the length of
+ * the page. 다시 시도 sends the same turn: an approval stays an approval, a
+ * template stays a template, the files stay attached. Not persisted — after a
+ * reload the retry falls back to the sentence alone, as it always did.
+ */
+const sentWith = new Map<string, SendOptions>()
 
 type Theme = 'light' | 'dark' | 'system'
 export type SidebarMode = 'full' | 'rail' | 'hidden'
@@ -257,6 +264,66 @@ async function waitForSessionPersistence(sessionId: string): Promise<void> {
   }
 }
 
+export type SendOptions = {
+  projectId?: string | null
+  /** The composer's toggle — the user asking for the web to be consulted. */
+  webSearch?: boolean
+  /** Ids of already-uploaded files; the server reads their extracted text. */
+  attachments?: string[]
+  /** Their names, so the optimistic bubble does not show raw ids. */
+  attachmentNames?: string[]
+  /** Installed skills selected for this turn only. */
+  activatedSkillIds?: string[]
+  /**
+   * A rendering template picked in the gallery. Sent with the turn rather
+   * than saved first: the session may not exist yet when it is chosen, and
+   * the server makes it sticky from there.
+   */
+  renderTemplateId?: string
+  /**
+   * A 시작점 the turn carries. The id is what goes on the wire; the title
+   * rides along so the bubble can name it before the server's copy of the
+   * turn comes back.
+   */
+  startingTemplate?: StartingPoint
+  privacyAction?: PrivacyAction
+  privacyDecisionToken?: string
+  /**
+   * Write the outline waiting on this session rather than planning another.
+   *
+   * What 이대로 생성 sends. Everything else — an answer, a note, a plain
+   * sentence — plans again, so what finally gets written is always
+   * something somebody looked at first.
+   */
+  approve?: boolean
+  /** The figure card's answer. Absent means it was not asked. */
+  includeFigures?: boolean
+  /** The outline as edited on the proposal card, when it was. */
+  plan?: Record<string, unknown>
+  /** Answers to a stopped turn's questions, keyed by question id. */
+  answers?: Record<string, string>
+  /**
+   * The failed question to run again in place, by its message id — what
+   * 다시 시도 sends. The bubble is not repeated and whatever failed under
+   * it is replaced; a plain send appends. Chat turns only: the document
+   * surfaces have their own retry paths.
+   */
+  retryOf?: string
+  /**
+   * Run this one turn on a named model, whatever the conversation is set
+   * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
+   * the session carries is the moment somebody wants to try another one,
+   * and making them change the picker first — then change it back — is
+   * three steps for one question.
+   */
+  model?: string
+        /**
+         * Called as soon as a session id exists. Waiting for the stream to
+         * finish would lose the conversation on a refresh mid-answer.
+         */
+  onSession?: (id: string) => void
+}
+
 interface State {
   // ── auth (KloudChat's own, not LiteLLM's) — live against /api/auth ─────────
   user: User | null
@@ -389,65 +456,7 @@ interface State {
     sessionId: string | null,
     kind: SessionKind,
     text: string,
-    opts?: {
-      projectId?: string | null
-      /** The composer's toggle — the user asking for the web to be consulted. */
-      webSearch?: boolean
-      /** Ids of already-uploaded files; the server reads their extracted text. */
-      attachments?: string[]
-      /** Their names, so the optimistic bubble does not show raw ids. */
-      attachmentNames?: string[]
-      /** Installed skills selected for this turn only. */
-      activatedSkillIds?: string[]
-      /**
-       * A rendering template picked in the gallery. Sent with the turn rather
-       * than saved first: the session may not exist yet when it is chosen, and
-       * the server makes it sticky from there.
-       */
-      renderTemplateId?: string
-      /**
-       * A 시작점 the turn carries. The id is what goes on the wire; the title
-       * rides along so the bubble can name it before the server's copy of the
-       * turn comes back.
-       */
-      startingTemplate?: StartingPoint
-      privacyAction?: PrivacyAction
-      privacyDecisionToken?: string
-      /**
-       * Write the outline waiting on this session rather than planning another.
-       *
-       * What 이대로 생성 sends. Everything else — an answer, a note, a plain
-       * sentence — plans again, so what finally gets written is always
-       * something somebody looked at first.
-       */
-      approve?: boolean
-      /** The figure card's answer. Absent means it was not asked. */
-      includeFigures?: boolean
-      /** The outline as edited on the proposal card, when it was. */
-      plan?: Record<string, unknown>
-      /** Answers to a stopped turn's questions, keyed by question id. */
-      answers?: Record<string, string>
-      /**
-       * The failed question to run again in place, by its message id — what
-       * 다시 시도 sends. The bubble is not repeated and whatever failed under
-       * it is replaced; a plain send appends. Chat turns only: the document
-       * surfaces have their own retry paths.
-       */
-      retryOf?: string
-      /**
-       * Run this one turn on a named model, whatever the conversation is set
-       * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
-       * the session carries is the moment somebody wants to try another one,
-       * and making them change the picker first — then change it back — is
-       * three steps for one question.
-       */
-      model?: string
-            /**
-             * Called as soon as a session id exists. Waiting for the stream to
-             * finish would lose the conversation on a refresh mid-answer.
-             */
-      onSession?: (id: string) => void
-    },
+    opts?: SendOptions,
   ) => Promise<string>
   stopStreaming: (sessionId: string) => void
   renameSession: (id: string, title: string) => Promise<void>
@@ -1686,6 +1695,12 @@ export const useStore = create<State>((set, get) => ({
    * audio/video take the job path.
    */
   send: async (sessionId, kind, text, opts = {}) => {
+    // 다시 시도 is the same turn again, not the same sentence again. On a
+    // document surface the sentence is 「이대로 생성해 주세요」 and the turn is
+    // the approval it carried — sent bare, the server read it as a note on the
+    // outline and planned once more instead of writing what had failed.
+    const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
+    if (again) opts = { ...again, ...opts }
     const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
     await waitForSessionPersistence(id)
     // A chat can be refused before it becomes a turn. Keep the originating
@@ -1735,9 +1750,21 @@ export const useStore = create<State>((set, get) => ({
     // everything else appends. Falls back to appending if the row is not on
     // screen, so a stale id never loses a sentence.
     const retryOf =
-      kind === 'chat' && opts.retryOf && before?.messages.some((m) => m.id === opts.retryOf)
+      opts.retryOf && before?.messages.some((m) => m.id === opts.retryOf)
         ? opts.retryOf
         : undefined
+    sentWith.set(retryOf ?? userMsg.id, {
+      webSearch: opts.webSearch,
+      attachments: opts.attachments,
+      attachmentNames: opts.attachmentNames,
+      activatedSkillIds: opts.activatedSkillIds,
+      renderTemplateId: opts.renderTemplateId,
+      startingTemplate: opts.startingTemplate,
+      approve: opts.approve,
+      includeFigures: opts.includeFigures,
+      plan: opts.plan,
+      answers: opts.answers,
+    })
     const rerun = (messages: Message[]): Message[] => {
       const at = messages.findIndex((m) => m.id === retryOf)
       return [
@@ -1769,35 +1796,9 @@ export const useStore = create<State>((set, get) => ({
     }))
 
     const perform = async () => {
-      // A rendering template replaces the surface's built-in track, exactly as
-      // it does on the server — the events are `block`/`page`, not
-      // `section`/`slide`, so the runner has to match.
-      const usesTemplate = Boolean(
-        opts.renderTemplateId ??
-          get().sessions.find((session) => session.id === id)?.renderTemplateId,
-      )
-      if (usesTemplate && (kind === 'report' || kind === 'slides')) {
-        await streamPage(
-          set,
-          get,
-          id,
-          text,
-          model,
-          opts.activatedSkillIds,
-          opts.renderTemplateId,
-          opts.startingTemplate?.id,
-          {
-            approve: opts.approve,
-            answers: opts.answers,
-            webSearch: opts.webSearch,
-            includeFigures: opts.includeFigures,
-            attachments: opts.attachments,
-            plan: opts.plan,
-          },
-        )
-        return id
-      }
-
+      // A 서식 used to replace the surface's built-in track — `block`/`page`
+      // events, an `html` file at the end. It is a look now: the report and
+      // deck writers take the template id along and the artifact wears it.
       if (kind === 'report') {
         await streamReport(
           set,
@@ -1814,6 +1815,7 @@ export const useStore = create<State>((set, get) => ({
             includeFigures: opts.includeFigures,
             attachments: opts.attachments,
             plan: opts.plan,
+            renderTemplateId: opts.renderTemplateId,
           },
         )
         return id
@@ -1835,6 +1837,7 @@ export const useStore = create<State>((set, get) => ({
             includeFigures: opts.includeFigures,
             attachments: opts.attachments,
             plan: opts.plan,
+            renderTemplateId: opts.renderTemplateId,
           },
         )
         return id
@@ -3970,6 +3973,11 @@ async function streamReport(
      * an attachment has to be handed that attachment both times.
      */
     attachments?: string[]
+    /**
+     * The 서식 the turn is sent under, when the composer picked one with it.
+     * Sticky on the session server-side, so a later turn may leave it out.
+     */
+    renderTemplateId?: string
   } = {},
 ) {
   const draftId = uid('a')
@@ -4033,6 +4041,7 @@ async function streamReport(
         model,
         activatedSkillIds,
         startingTemplateId,
+        renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
         webSearch: gate.webSearch,
@@ -4167,304 +4176,6 @@ async function streamReport(
 }
 
 /**
- * A turn that writes into a rendering template.
- *
- * The draft is an `html` artifact from the first event, so the panel shows the
- * template's own shape filling in rather than a blank frame — the blocks
- * arrive one at a time and are stitched into a preview until the server sends
- * the real file.
- */
-async function streamPage(
-  set: Set,
-  get: Get,
-  sessionId: string,
-  text: string,
-  model: string,
-  activatedSkillIds?: string[],
-  renderTemplateId?: string,
-  startingTemplateId?: string,
-  /**
-   * The approval, when this run is the second half of one.
-   *
-   * `approve` is what turns a proposal into a document, and it is also what
-   * decides whether to put a draft artifact on screen at all: a planning pass
-   * writes nothing, so an empty panel opening over the deck already there
-   * would say the opposite of what is happening.
-   */
-  gate: {
-    approve?: boolean
-    answers?: Record<string, string>
-    /**
-     * Whether the writer may research before it writes. Carried here rather
-     * than as its own argument because it travels with the same turn the
-     * approval does — a second pass that writes an approved outline researches
-     * on the same terms the pass that proposed it did.
-     */
-    webSearch?: boolean
-    /** The figure card's answer, carried with the approval it belongs to. */
-    includeFigures?: boolean
-    /**
-     * The outline as the person edited it on the card, when they did. Sent
-     * with the approval rather than saved first — the edit and the decision
-     * to write are one gesture.
-     */
-    plan?: Record<string, unknown>
-    /**
-     * The files this turn was sent with. Carried like the answers are: the
-     * planning pass and the approved writing pass are two requests, and the
-     * server assembles the context fresh for each — a document written from
-     * an attachment has to be handed that attachment both times.
-     */
-    attachments?: string[]
-  } = {},
-) {
-  const draftId = uid('a')
-  const assistantId = uid('m')
-  const now = new Date().toISOString()
-
-  const draft: Artifact = {
-    id: draftId,
-    kind: 'html',
-    title: text.slice(0, 60),
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    sessionId,
-    projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
-    language: 'html',
-    content: '',
-  }
-
-  // A planning pass produces no document, so it must not open one. Before
-  // this, every request put an empty panel over whatever was already there —
-  // which is the picture somebody sees a second before their deck is replaced.
-  const willWrite = gate.approve === true
-  set((s) => ({
-    running: { ...s.running, [sessionId]: noop },
-    ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
-    sessions: s.sessions.map((c) =>
-      c.id === sessionId
-        ? {
-            ...c,
-            ...(willWrite ? { artifactId: draftId } : {}),
-            messages: [
-              ...c.messages,
-              { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
-            ],
-          }
-        : c,
-    ),
-  }))
-
-  const patchPage = (fn: (a: CodeArtifact) => CodeArtifact) =>
-    set((s) => ({
-      artifacts: s.artifacts.map((a) => (a.id === draftId && a.kind === 'html' ? fn(a) : a)),
-    }))
-
-  // What has been written so far, in order. Kept beside the artifact rather
-  // than parsed back out of its markup: the finished file is the server's, and
-  // this is only the scaffold that stands until it arrives.
-  const written = new Map<string, string>()
-  const order: string[] = []
-  // Which block the writer is on, from its step events. The scaffold used to
-  // show every unwritten heading with the same three dots, so a person
-  // watching a thirty-slide run could not tell the tenth from the thirtieth,
-  // nor a run that was working from one that had stopped — nor, on a deck
-  // 서식, that slides were being made at all: it looked like a document.
-  let writing = -1
-  const isDeck = get().sessions.find((s) => s.id === sessionId)?.kind === 'slides'
-  const redraw = () =>
-    patchPage((a) => ({
-      ...a,
-      content: draftDocument(
-        order.map((title, i) => ({
-          title,
-          html: written.get(title) ?? '',
-          state: written.get(title) ? 'done' : i === writing ? 'writing' : 'pending',
-        })),
-        isDeck,
-      ),
-    }))
-
-  const controller = new AbortController()
-  beginRun(set, sessionId, () => controller.abort())
-  let settled = false
-
-  try {
-    for await (const e of streamSession(
-      sessionId,
-      {
-        content: text,
-        model,
-        activatedSkillIds,
-        renderTemplateId,
-        startingTemplateId,
-        approve: gate.approve,
-        answers: gate.answers,
-        webSearch: gate.webSearch,
-        includeFigures: gate.includeFigures,
-        attachments: gate.attachments,
-        plan: gate.plan,
-      },
-      controller.signal,
-    )) {
-      switch (e.type) {
-        // The turn stopped on purpose: it planned, or it asked. Neither wrote
-        // anything, so the session keeps whatever document it already had and
-        // simply carries the offer until somebody answers it.
-        case 'proposal':
-          settled = true
-          setPending(set, sessionId, (p) => ({
-            stage: 'outline',
-            request: text,
-            attachments: gate.attachments ?? p?.attachments ?? [],
-            answers: p?.answers ?? {},
-            plan: e.plan,
-          }))
-          break
-        case 'needs':
-          settled = true
-          setPending(set, sessionId, (p) => ({
-            stage: 'clarify',
-            request: text,
-            attachments: gate.attachments ?? p?.attachments ?? [],
-            answers: p?.answers ?? {},
-            questions: e.questions,
-          }))
-          break
-        case 'skills_applied':
-          patchMessage(set, sessionId, assistantId, (message) => ({
-            ...message,
-            steps: upsertStep(message.steps, appliedSkillsStep(e)),
-          }))
-          break
-        case 'title':
-          patchPage((a) => ({ ...a, title: e.title }))
-          break
-        case 'block': {
-          if (!order.includes(e.block.title)) order.push(e.block.title)
-          written.set(e.block.title, e.block.html)
-          // A plain scaffold, not the template's CSS: pretending to be the
-          // finished design while the blocks are still arriving would make the
-          // real file look like a change of mind when it lands.
-          redraw()
-          break
-        }
-        case 'page':
-          patchPage((a) => ({ ...a, content: e.html }))
-          break
-        case 'step': {
-          patchMessage(set, sessionId, assistantId, (m) => ({
-            ...m,
-            steps: upsertStep(m.steps, toStep(e as unknown as Record<string, unknown>)),
-          }))
-          // `b3` running is the writer on the fourth block — see `page.write`.
-          const at = /^b(\d+)$/.exec(String(e.id ?? ''))
-          if (at && e.status === 'running' && willWrite) {
-            writing = Number(at[1])
-            redraw()
-          }
-          break
-        }
-        case 'usage':
-          settled = true
-          chargeCredits(set, get, e.credits)
-          break
-        case 'error':
-          settled = true
-          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
-          break
-        case 'artifact':
-          // The document itself, not the listing's card of it: the panel is
-          // about to open on this and its controls are the blocks.
-          await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
-          set((s) => ({
-            artifacts: s.artifacts.filter((a) => a.id !== draftId),
-            openArtifactId: e.artifactId,
-            sessions: s.sessions.map((c) =>
-              c.id === sessionId ? { ...c, artifactId: e.artifactId } : c,
-            ),
-          }))
-          break
-      }
-    }
-  } catch (err) {
-    settled = true
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
-      patchMessage(set, sessionId, assistantId, (m) => ({
-        ...m,
-        error: errorMessage(err, tr('문서를 만들지 못했습니다.')),
-      }))
-    }
-    if (isClientRefusal(err)) throw err
-  } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
-    endRun(set, sessionId)
-    void get().loadSessions()
-  }
-}
-
-const escapeHtml = (text: string) =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-/** The holding page a template turn shows while its blocks are still arriving. */
-type DraftBlock = { title: string; html: string; state: 'done' | 'writing' | 'pending' }
-
-/**
- * The holding page a template turn shows while its blocks are still arriving.
- *
- * Numbered, and in the shape of what is being made: a deck's blocks are
- * drawn as slide frames, a document's as sections. The one being written says
- * so and moves; the ones behind it say 대기. The line at the top counts — 「12
- * / 30 쓰는 중」 — because the count is the one thing a person watching a long
- * run wants and the page is the one thing they are watching.
- */
-const draftDocument = (blocks: DraftBlock[], isDeck: boolean) => {
-  const unit = isDeck ? tr('슬라이드') : tr('절')
-  const done = blocks.filter((b) => b.state === 'done').length
-  const current = blocks.findIndex((b) => b.state === 'writing')
-  const status =
-    blocks.length === 0
-      ? ''
-      : current >= 0
-        ? `${unit} ${current + 1} / ${blocks.length} · ${tr('쓰는 중…')}`
-        : done === blocks.length
-          ? `${unit} ${blocks.length} · ${tr('마무리하는 중…')}`
-          : `${unit} ${blocks.length}`
-  const body = blocks
-    .map((b, i) => {
-      const inner =
-        b.state === 'done'
-          ? b.html
-          : `<p class="${b.state}">${b.state === 'writing' ? tr('쓰는 중…') : tr('대기')}</p>`
-      return (
-        `<section class="${isDeck ? 'slide' : 'part'} ${b.state}">` +
-        `<header><span class="n">${i + 1}</span><h2>${escapeHtml(b.title)}</h2></header>` +
-        `${inner}</section>`
-      )
-    })
-    .join('\n')
-  return (
-    `<!doctype html><html lang="ko"><head><meta charset="utf-8" />` +
-    `<style>body{margin:0;padding:1.6rem 2rem;font-family:system-ui,sans-serif;` +
-    `line-height:1.6;color:#1a1a1a;background:#f4f5f7}` +
-    `.status{position:sticky;top:0;margin:-1.6rem -2rem 1.2rem;padding:.7rem 2rem;` +
-    `background:#fff;border-bottom:1px solid #e3e5e8;font-size:.9rem;color:#4b5563}` +
-    `section{margin:0 0 1rem;padding:1rem 1.2rem;background:#fff;border:1px solid #e3e5e8;border-radius:10px}` +
-    `section.slide{aspect-ratio:16/9;max-width:40rem;overflow:hidden;display:flex;flex-direction:column}` +
-    `section.writing{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}` +
-    `section.pending{opacity:.6}` +
-    `header{display:flex;align-items:baseline;gap:.6rem;margin:0 0 .4rem}` +
-    `.n{font-size:.75rem;color:#6b7280;font-variant-numeric:tabular-nums}` +
-    `h2{font-size:1.05rem;margin:0}` +
-    `p.pending{color:#9aa0a6;margin:0}` +
-    `p.writing{color:#2563eb;margin:0;animation:pulse 1.2s ease-in-out infinite}` +
-    `@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}</style>` +
-    `</head><body>${status ? `<div class="status">${status}</div>` : ''}${body}</body></html>`
-  )
-}
-
-/**
  * A slides turn. Slides fill into a local draft, which is replaced by the
  * server's copy when the turn ends.
  */
@@ -4509,6 +4220,11 @@ async function streamDeck(
      * an attachment has to be handed that attachment both times.
      */
     attachments?: string[]
+    /**
+     * The 서식 the turn is sent under, when the composer picked one with it.
+     * Sticky on the session server-side, so a later turn may leave it out.
+     */
+    renderTemplateId?: string
   } = {},
 ) {
   const draftId = uid('a')
@@ -4570,6 +4286,7 @@ async function streamDeck(
         model,
         activatedSkillIds,
         startingTemplateId,
+        renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
         webSearch: gate.webSearch,
