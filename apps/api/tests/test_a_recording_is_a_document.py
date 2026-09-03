@@ -120,7 +120,7 @@ async def test_a_local_whisper_that_cannot_answer_falls_through(local_and_remote
     async def local(*_args, **_kwargs) -> str:
         raise t.TranscribeError("받아쓰지 못했습니다.")
 
-    async def remote(data: bytes, filename: str) -> str:
+    async def remote(data: bytes, filename: str, language: str | None = None) -> str:
         return "원격이 받아썼습니다."
 
     monkeypatch.setattr(t, "_transcribe_locally", local)
@@ -230,3 +230,35 @@ async def test_with_no_address_at_all_it_says_which_setting_is_missing(monkeypat
     monkeypatch.setattr(t.settings, "stt_or_model", "openrouter/voxtral")
     with pytest.raises(t.TranscribeError, match="모델 주소"):
         await t._transcribe_via_openrouter(b"\x00" * 16, "회의.wav")
+
+
+@pytest.mark.anyio
+async def test_whisper_hears_which_language_and_is_retried_only_off_the_pair(monkeypatch):
+    """English to the 영어회화 튜터 comes back in English; a wild guess is redone in Korean.
+
+    The language used to be pinned to Korean, so an English sentence was
+    written as Korean-sounding nonsense. Now Whisper hears which one it is,
+    and only a guess outside the pair — the short-clip failure the pin was
+    for — is retried pinned to Korean.
+    """
+    from app.services import transcribe as t
+
+    calls: list[str | None] = []
+
+    async def whisper(_url, _data, _name, language):
+        calls.append(language)
+        if language == "ko":
+            return {"text": "안녕하세요", "language": "ko", "duration": 1.2}
+        if calls.count(None) == 1 and len(calls) == 1 and _name == "en.wav":
+            return {"text": "Good morning", "language": "en", "duration": 1.0}
+        return {"text": "你好", "language": "zh", "duration": 1.2}
+
+    monkeypatch.setattr(t, "_whisper", whisper)
+
+    assert await t._transcribe_locally("http://w", b"\x00", "en.wav") == "Good morning"
+    assert calls == [None]
+
+    calls.clear()
+    assert await t._transcribe_locally("http://w", b"\x00", "ko.wav") == "안녕하세요"
+    assert calls == [None, "ko"]
+    assert t._last_seconds == 1

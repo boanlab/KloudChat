@@ -790,6 +790,10 @@ const EN: Record<string, string> = {
   '녹음 끝내기': 'Stop recording',
   '누르면 녹음을 끝내고 받아씁니다': 'Press to stop and transcribe',
   '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다': 'Speak and it is typed for you; edit before sending',
+  '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다':
+    'Speak and it is typed for you; edit before sending. With the box empty, hold Space while you talk and it is sent when you let go',
+  '듣고 있습니다. 스페이스를 떼면 보냅니다': 'Listening. Release Space to send',
+  '받아쓰는 중…': 'Transcribing…',
   '마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.': 'The microphone is unavailable. Check the browser permission.',
   '{n}회 실행': '{n} runs',
   '{n}회 설치': '{n} imports',

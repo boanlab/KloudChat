@@ -601,22 +601,26 @@ export function Composer({
   const recorder = useRef<WavRecorder | null>(null)
   const canRecord =
     dictationEnabled && typeof AudioContext !== 'undefined' && Boolean(navigator.mediaDevices)
-  const stopRecording = async () => {
+  const stopRecording = async (): Promise<string> => {
     const active = recorder.current
-    if (!active) return
+    if (!active) return ''
     recorder.current = null
     setRecording(false)
     setTranscribing(true)
     try {
       const blob = await active.stop()
-      if (blob.size <= 44) return
+      // 16 kHz 16-bit mono: 32,000 bytes a second. Under a third of a second
+      // is a tap on the key, not a sentence — nothing to send to Whisper.
+      if (blob.size <= 44 + 32_000 * 0.3) return ''
       const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav')
       if (text) {
         setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
         requestAnimationFrame(() => ref.current?.focus())
       }
+      return text ?? ''
     } catch (err) {
       setChatError(errorMessage(err, t('받아쓰지 못했습니다.')))
+      return ''
     } finally {
       setTranscribing(false)
     }
@@ -630,6 +634,58 @@ export function Composer({
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
     }
   }
+  /**
+   * Push to talk, the way a muted Zoom call works: hold the space bar, speak,
+   * let go — the words are written and sent, as if Enter had been pressed.
+   *
+   * Only from an empty box: a space typed into a sentence is a space. A
+   * quick tap is dropped by the length check in `stopRecording`, so the key
+   * never sends by accident. `pushToTalk` remembers that *this* recording is
+   * a held key, so releasing it sends, while the mic button's own recording
+   * still waits for the person to read and press send.
+   */
+  const pushToTalk = useRef(false)
+  const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
+    if (e.key !== ' ' || !canRecord || busy || transcribing) return false
+    if (liveValue.current.trim()) return false
+    e.preventDefault()
+    if (e.repeat || recorder.current) return true
+    pushToTalk.current = true
+    void startRecording()
+    return true
+  }
+  const releaseToTalk = (e: { key: string; preventDefault: () => void }) => {
+    if (e.key !== ' ' || !pushToTalk.current) return false
+    e.preventDefault()
+    pushToTalk.current = false
+    void stopRecording().then((text) => {
+      if (text.trim()) submit(text)
+    })
+    return true
+  }
+  useEffect(() => {
+    if (!canRecord) return
+    // Outside any field too — after clicking on the transcript, say — but
+    // never on a control, where the space bar is a click.
+    const idle = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null
+      if (!el || el === document.body) return true
+      if (el.isContentEditable) return false
+      return !['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A', 'SUMMARY'].includes(el.tagName)
+    }
+    const down = (e: KeyboardEvent) => {
+      if (idle(e.target)) holdToTalk(e)
+    }
+    const up = (e: KeyboardEvent) => {
+      if (idle(e.target)) releaseToTalk(e)
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  })
   /**
    * On by default, and off is the deliberate choice.
    *
@@ -1066,8 +1122,8 @@ export function Composer({
     Object.values(startingValues).some((one) => one.trim()) ||
     Boolean(startingTemplate?.examplePrompt)
 
-  const submit = () => {
-    const text = withStartingValues(value.trim())
+  const submit = (spoken?: string) => {
+    const text = withStartingValues((spoken ?? value).trim())
     if (!text || busy || modelSelectionPending || unsupportedVideo) return
     clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
@@ -1554,18 +1610,24 @@ export function Composer({
             setValue(e.target.value)
           }}
           onKeyDown={(e) => {
+            if (holdToTalk(e)) return
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               submit()
             }
           }}
+          onKeyUp={releaseToTalk}
           // A screenshot on the clipboard had nowhere to go. Text pastes are
           // untouched — the handler returns unless the clipboard holds files.
           onPaste={onPasteFiles}
           placeholder={
-            // A proposal is waiting, so this box is not where a new document
-            // starts — it is where this one gets adjusted. Saying so is what
-            // stops somebody typing a question and watching a deck appear.
+            recording && pushToTalk.current
+              ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
+              : transcribing
+                ? t('받아쓰는 중…')
+                : // A proposal is waiting, so this box is not where a new document
+                  // starts — it is where this one gets adjusted. Saying so is what
+                  // stops somebody typing a question and watching a deck appear.
             pending
               ? pending.stage === 'clarify'
                 ? t('답을 적거나, 위에서 고르세요')
@@ -1629,7 +1691,7 @@ export function Composer({
               title={
                 recording
                   ? t('누르면 녹음을 끝내고 받아씁니다')
-                  : t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다')
+                  : t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')
               }
             >
               {transcribing ? (
@@ -1924,7 +1986,7 @@ export function Composer({
               />
             )}
             <button
-              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : submit}
+              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
               disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from app.core.deps import CurrentUser, DbSession
 from app.schemas.chat import Transcription
@@ -27,7 +27,12 @@ STT_MODEL = "whisper"
 
 
 @router.post("/transcriptions", response_model=Transcription)
-async def transcribe(user: CurrentUser, db: DbSession, file: UploadFile = File(...)):
+async def transcribe(
+    user: CurrentUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+    language: str | None = Form(None),
+):
     """Audio → text, for pasting into the composer. Not stored.
 
     The recording is not kept: it is a way of typing, and the transcript is
@@ -38,10 +43,13 @@ async def transcribe(user: CurrentUser, db: DbSession, file: UploadFile = File(.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="dictation_unavailable"
         )
+    # `ko`/`en` pins the language; anything else — including nothing — lets
+    # Whisper hear which of the two it is.
+    pinned = language if language in transcribe_service.SPOKEN else None
     data = await file.read()
     try:
         text, seconds = await transcribe_service.transcribe_with_duration(
-            data, file.filename or "speech.webm"
+            data, file.filename or "speech.webm", pinned
         )
     except transcribe_service.TranscribeError as exc:
         raise HTTPException(

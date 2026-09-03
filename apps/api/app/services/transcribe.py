@@ -46,13 +46,15 @@ async def available() -> bool:
     return bool((await settings_store.tools_config()).stt or settings.stt_or_model)
 
 
-async def transcribe_with_duration(data: bytes, filename: str = "speech.webm") -> tuple[str, int]:
+async def transcribe_with_duration(
+    data: bytes, filename: str = "speech.webm", language: str | None = None
+) -> tuple[str, int]:
     """`(text, seconds)` — the transcript and how much audio the shim reported.
 
     The seconds are what the usage ledger records for a model that costs no
     credits. Zero when the backend did not say.
     """
-    text = await transcribe(data, filename)
+    text = await transcribe(data, filename, language)
     return text, int(_last_seconds)
 
 
@@ -61,8 +63,14 @@ async def transcribe_with_duration(data: bytes, filename: str = "speech.webm") -
 _last_seconds = 0
 
 
-async def transcribe(data: bytes, filename: str = "speech.webm") -> str:
-    """Audio bytes → text. Raises `TranscribeError` with something readable."""
+async def transcribe(
+    data: bytes, filename: str = "speech.webm", language: str | None = None
+) -> str:
+    """Audio bytes → text. Raises `TranscribeError` with something readable.
+
+    `language` is an ISO code to pin (`ko`, `en`) or `None` to let the model
+    hear which of `SPOKEN` it is.
+    """
     if not await available():
         raise TranscribeError("음성 인식 백엔드가 설정되지 않았습니다.")
     if len(data) > MAX_BYTES:
@@ -72,10 +80,10 @@ async def transcribe(data: bytes, filename: str = "speech.webm") -> str:
 
     stt_url = (await settings_store.tools_config()).stt
     if not stt_url:
-        return await _transcribe_via_openrouter(data, filename)
+        return await _transcribe_via_openrouter(data, filename, language)
 
     try:
-        return await _transcribe_locally(stt_url, data, filename)
+        return await _transcribe_locally(stt_url, data, filename, language)
     except TranscribeError:
         # Local first, and local failing is not the end of it.
         #
@@ -92,43 +100,69 @@ async def transcribe(data: bytes, filename: str = "speech.webm") -> str:
         if not settings.stt_or_model:
             raise
         log.warning("local whisper failed; falling through to %s", settings.stt_or_model)
-        return await _transcribe_via_openrouter(data, filename)
+        return await _transcribe_via_openrouter(data, filename, language)
 
 
-async def _transcribe_locally(stt_url: str, data: bytes, filename: str) -> str:
-    """Whisper inside the cluster, through vLLM's OpenAI-shaped endpoint."""
+#: The languages people here dictate in. Whisper is left to hear which one it
+#: is; a guess outside this pair is the failure mode the old pin guarded
+#: against — a short Korean clip coming back as confident nonsense in another
+#: language — and is retried pinned to Korean.
+SPOKEN = ("ko", "en")
+
+#: What the retry is pinned to when the guess is neither.
+_HOME = "ko"
+
+
+async def _transcribe_locally(
+    stt_url: str, data: bytes, filename: str, language: str | None = None
+) -> str:
+    """Whisper inside the cluster, through vLLM's OpenAI-shaped endpoint.
+
+    `language` pins the pass; `None` lets Whisper detect it, so that an
+    English sentence spoken to the 영어회화 튜터 is written in English and a
+    Korean one in Korean, and only a guess outside `SPOKEN` is redone pinned.
+    """
+    body = await _whisper(stt_url, data, filename, language)
+    heard = str(body.get("language") or "").lower()[:2]
+    if language is None and heard and heard not in SPOKEN:
+        log.info("whisper heard %s; retrying pinned to %s", heard, _HOME)
+        body = await _whisper(stt_url, data, filename, _HOME)
+
+    global _last_seconds
+    _last_seconds = 0
+    usage = body.get("usage") or {}
+    if isinstance(usage, dict) and usage.get("type") == "duration":
+        _last_seconds = int(usage.get("seconds") or 0)
+    elif isinstance(body.get("duration"), (int, float)):
+        _last_seconds = int(round(float(body["duration"])))
+    text = str(body.get("text") or "").strip()
+    if not text:
+        raise TranscribeError("들린 말이 없습니다.")
+    return text
+
+
+async def _whisper(stt_url: str, data: bytes, filename: str, language: str | None) -> dict:
+    """One pass; `verbose_json` so the answer says which language it heard."""
     url = f"{stt_url.rstrip('/')}/v1/audio/transcriptions"
+    form: dict[str, str] = {"response_format": "verbose_json"}
+    if language:
+        form["language"] = language
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.post(
-                url,
-                files={"file": (filename, data, "application/octet-stream")},
-                # Pinned: left to guess, a short Korean clip comes back as
-                # confident nonsense in another language.
-                data={"response_format": "json", "language": "ko"},
+                url, files={"file": (filename, data, "application/octet-stream")}, data=form
             )
     except httpx.HTTPError as exc:
         log.warning("whisper unreachable: %s", exc)
         raise TranscribeError("음성 인식 서버에 연결하지 못했습니다.") from exc
-
     if response.status_code >= 400:
         log.warning("whisper %s: %s", response.status_code, response.text[:200])
         raise TranscribeError("받아쓰지 못했습니다.")
-
-    global _last_seconds
-    _last_seconds = 0
     try:
-        body = response.json() or {}
-        text = body.get("text") or ""
-        usage = body.get("usage") or {}
-        if isinstance(usage, dict) and usage.get("type") == "duration":
-            _last_seconds = int(usage.get("seconds") or 0)
+        body = response.json()
     except ValueError:
-        text = response.text or ""
-    text = text.strip()
-    if not text:
-        raise TranscribeError("들린 말이 없습니다.")
-    return text
+        return {"text": response.text or ""}
+    return body if isinstance(body, dict) else {}
 
 
 #: What the model must emit for silence. A sentinel rather than "" because an
@@ -148,7 +182,14 @@ _AUDIO_MIME = {
 }
 
 
-async def _transcribe_via_openrouter(data: bytes, filename: str) -> str:
+#: How the chat-model fallback is told what it is listening to.
+_TONGUE = {"ko": "한국어입니다.", "en": "영어입니다."}
+_EITHER = "한국어 또는 영어이며, 들린 언어 그대로 적으세요."
+
+
+async def _transcribe_via_openrouter(
+    data: bytes, filename: str, language: str | None = None
+) -> str:
     """Transcribe through LiteLLM when no local Whisper exists.
 
     OpenRouter serves neither `/v1/audio/transcriptions` nor a Whisper model, so
@@ -168,8 +209,9 @@ async def _transcribe_via_openrouter(data: bytes, filename: str) -> str:
                     {
                         "type": "text",
                         "text": (
-                            "이 오디오를 그대로 받아써 주세요. 한국어입니다. "
-                            "요약하거나 설명하지 말고, 들린 말만 텍스트로 옮기세요. "
+                            "이 오디오를 그대로 받아써 주세요. "
+                            + _TONGUE.get(language or "", _EITHER)
+                            + " 요약하거나 설명하지 말고, 들린 말만 텍스트로 옮기세요. "
                             f"들린 말이 없으면 다른 말 없이 {_NO_SPEECH} 만 출력하세요."
                         ),
                     },
