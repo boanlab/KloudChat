@@ -29,6 +29,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.services import arithmetic
+
 #: Text below this is a block that never got written, not a terse one.
 _MIN_BLOCK_CHARS = 12
 
@@ -123,9 +125,7 @@ _FILLER = re.compile(
 )
 
 #: Emoji leading a heading or a list item — the icon tell.
-_LEADING_EMOJI = re.compile(
-    r"^\s*[\U0001F300-\U0001FAFF✀-➿☀-⛿⬀-⯿]"
-)
+_LEADING_EMOJI = re.compile(r"^\s*[\U0001F300-\U0001FAFF✀-➿☀-⛿⬀-⯿]")
 
 _TAGS = re.compile(r"<[^>]+>")
 
@@ -185,9 +185,7 @@ def from_sections(sections: list[dict]) -> list[Part]:
     for section in sections:
         body = str(section.get("content") or "")
         lines = [re.sub(r"^[-*\d.>#\s]+", "", one).strip() for one in body.splitlines()]
-        parts.append(
-            Part(str(section.get("heading") or ""), [one for one in lines if one])
-        )
+        parts.append(Part(str(section.get("heading") or ""), [one for one in lines if one]))
     return parts
 
 
@@ -305,9 +303,7 @@ def check(
         text = part.text
 
         if len(re.sub(r"\s", "", text)) < _MIN_BLOCK_CHARS:
-            findings.append(
-                Finding("P0", "empty", "내용이 비어 있습니다.", where)
-            )
+            findings.append(Finding("P0", "empty", "내용이 비어 있습니다.", where))
             continue
 
         if stray := _stray_hanja(text):
@@ -328,6 +324,11 @@ def check(
                     where,
                 )
             )
+        # 문서가 적은 식은 검산한다. Certain, free, and the one check a
+        # reviewer model gets wrong: it flagged 3,540 − 2,232 = 1,308 as a
+        # mismatch. See `services/arithmetic`.
+        for wrong in arithmetic.findings(text, where=where):
+            findings.append(Finding("P0", "arithmetic", wrong["message"], where))
         if found := _PLACEHOLDER.search(text):
             findings.append(
                 Finding(

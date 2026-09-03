@@ -47,6 +47,10 @@ class ToolResult:
     detail: str | None = None
     #: Marks the step red without aborting the turn.
     failed: bool = False
+    #: Ran, but found nothing the answer can lean on — a search whose every
+    #: hit was off topic, or none at all. Counted by the loop: a turn whose
+    #: searches all came back empty says so under the answer.
+    empty: bool = False
 
 
 @dataclass(slots=True)

@@ -2295,6 +2295,8 @@ async def test_strict_local_never_exposes_network_backed_code_or_vector_tools(
                 "name": "execute_code",
                 "arguments": '{"code":"print(\\"person@example.com\\")"}',
             }
+        else:
+            acc.content.append("답")
         yield "done", acc
 
     monkeypatch.setattr(agent, "_stream_once", fake_stream_once)
@@ -2662,6 +2664,8 @@ async def test_agent_reuses_preflighted_tool_definitions_on_every_hop(monkeypatc
         acc = agent._Accumulator()
         if len(seen) == 1:
             acc.calls[0] = {"id": "call_0", "name": "lookup", "arguments": "{}"}
+        else:
+            acc.content.append("답")
         yield "done", acc
 
     monkeypatch.setattr(agent, "_stream_once", fake_stream_once)
@@ -2704,6 +2708,8 @@ async def test_sensitive_tool_result_is_masked_before_followup_and_enables_redac
                 "name": "lookup",
                 "arguments": "{}",
             }
+        else:
+            acc.content.append("답")
         yield "done", acc
 
     async def run_tool(_arguments):
@@ -2765,6 +2771,8 @@ async def test_strict_tool_detail_is_masked_for_storage_but_raw_result_stays_loc
         acc.actual_model = "provider/strict-model"
         if len(calls) == 1:
             acc.calls[0] = {"id": "call_0", "name": "lookup", "arguments": "{}"}
+        else:
+            acc.content.append("답")
         yield "done", acc
 
     async def run_tool(_arguments):

@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 
 from app.services import lint
-from app.services.hangul import read_back
+from app.services.hangul import read_back, tidy_spacing
 
 
 @pytest.mark.parametrize(
@@ -108,3 +108,19 @@ def test_the_keys_are_left_alone() -> None:
     from app.services import deck
 
     assert set(deck._json_object('{"bullets": ["가"], "notes": "나"}')) == {"bullets", "notes"}
+
+
+@pytest.mark.parametrize(
+    ("wrote", "reads"),
+    [
+        ("저녁 8 시 이후 34 석(28%)", "저녁 8시 이후 34석(28%)"),
+        ("경비원 1 인 상주, 200 석 규모", "경비원 1인 상주, 200석 규모"),
+        ("연간 120 만 원, 3 년 총비용 3,600 만 원", "연간 120만 원, 3년 총비용 3,600만 원"),
+        ("약 12 % 향상, 2 학기, 3 주차", "약 12% 향상, 2학기, 3주차"),
+        # SI 단위는 띄운 채로.
+        ("R = 1.0 kΩ, 103 nF, 2.00 Vpp", "R = 1.0 kΩ, 103 nF, 2.00 Vpp"),
+        ("3 일반인이 참석", "3 일반인이 참석"),
+    ],
+)
+def test_a_counter_is_written_against_its_number(wrote: str, reads: str) -> None:
+    assert tidy_spacing(wrote) == reads

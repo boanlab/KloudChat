@@ -98,31 +98,69 @@ def _publisher(url: str) -> str:
 _NEVER = (
     # Video and music, which match a company name or a common noun and never
     # carry the figure a report needs.
-    "youtube.com", "youtu.be", "tiktok.com", "vimeo.com", "soundcloud.com",
-    "music.bugs.co.kr", "genie.co.kr", "melon.com",
+    "youtube.com",
+    "youtu.be",
+    "tiktok.com",
+    "vimeo.com",
+    "soundcloud.com",
+    "music.bugs.co.kr",
+    "genie.co.kr",
+    "melon.com",
     # Lyrics, the specific trap this list was written for.
-    "lyrics.co.kr", "klyrics", "azlyrics.com", "genius.com",
+    "lyrics.co.kr",
+    "klyrics",
+    "azlyrics.com",
+    "genius.com",
     # Shopping and classifieds: a price on a listing is not a source for one.
-    "coupang.com", "11st.co.kr", "gmarket.co.kr", "auction.co.kr",
-    "aliexpress.com", "amazon.", "ebay.",
+    "coupang.com",
+    "11st.co.kr",
+    "gmarket.co.kr",
+    "auction.co.kr",
+    "aliexpress.com",
+    "amazon.",
+    "ebay.",
     # Social and short-form. A post may be true and cannot be cited as
     # established; a document that leans on one has not been researched.
-    "facebook.com", "instagram.com", "x.com", "twitter.com", "threads.net",
-    "pinterest.", "reddit.com",
+    "facebook.com",
+    "instagram.com",
+    "x.com",
+    "twitter.com",
+    "threads.net",
+    "pinterest.",
+    "reddit.com",
     # Content farms and scrapers that republish other pages without a date.
-    "wikiwand.com", "dbpedia.org", "coursehero.com", "scribd.com",
-    "slideshare.net", "studocu.com",
+    "wikiwand.com",
+    "dbpedia.org",
+    "coursehero.com",
+    "scribd.com",
+    "slideshare.net",
+    "studocu.com",
 )
 
 #: Hosts whose material is usually citable in a Korean work document. A boost,
 #: never a requirement: a blog post can be the only place a fact is written
 #: down, and refusing it would be its own kind of wrong.
 _PREFERRED = (
-    ".go.kr", ".or.kr", ".ac.kr", ".re.kr",   # 정부·공공·학교·연구기관
-    ".gov", ".edu", ".int",
-    "arxiv.org", "ieee.org", "acm.org", "nist.gov", "iso.org", "ietf.org",
-    "docs.", "developer.", "learn.microsoft.com", "cloud.google.com",
-    "kostat.go.kr", "law.go.kr", "kisa.or.kr",
+    ".go.kr",
+    ".or.kr",
+    ".ac.kr",
+    ".re.kr",  # 정부·공공·학교·연구기관
+    ".gov",
+    ".edu",
+    ".int",
+    "arxiv.org",
+    "ieee.org",
+    "acm.org",
+    "nist.gov",
+    "iso.org",
+    "ietf.org",
+    "docs.",
+    "developer.",
+    "learn.microsoft.com",
+    "cloud.google.com",
+    "kostat.go.kr",
+    "law.go.kr",
+    "kisa.or.kr",
 )
 
 #: Below this a hit is dropped as unrelated. One shared term out of a
@@ -148,8 +186,21 @@ def relevance(query: str, hit: dict[str, str]) -> float:
     wanted = _terms(query)
     if not wanted:
         return 1.0
-    found = _terms(f"{hit.get('title', '')} {hit.get('snippet', '')}")
-    return len(wanted & found) / len(wanted)
+    text = f"{hit.get('title', '')} {hit.get('snippet', '')}".lower()
+    return sum(1 for term in wanted if _carries(text, term)) / len(wanted)
+
+
+def _carries(text: str, term: str) -> bool:
+    """Whether the text has this word — as a substring, so 「전고체 배터리」
+    answers 「고체 배터리」 and 「기업들이」 answers 「기업」.
+
+    Token equality was the test, and it threw away every hit for a report on
+    전고체 배터리: the planner searched 「고체 배터리 주요 기업 기술 현황」, the
+    titles said 전고체 and 기업들, and two words in seven fell under the floor.
+    """
+    if term in text:
+        return True
+    return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도들" and term[:-1] in text
 
 
 def _host(url: str) -> str:
@@ -238,9 +289,7 @@ async def _plan(request: str, model: str, api_key: str) -> tuple[list[str], dict
                     "messages": [
                         {
                             "role": "user",
-                            "content": _PLAN_PROMPT.format(
-                                n=MAX_QUERIES, request=request[:2000]
-                            ),
+                            "content": _PLAN_PROMPT.format(n=MAX_QUERIES, request=request[:2000]),
                         }
                     ],
                     "max_tokens": 300,
@@ -360,9 +409,7 @@ async def run(
     bodies = dict(
         zip(
             wanted,
-            await asyncio.gather(
-                *(scrape(backends.fetch, picks[i][1]["url"]) for i in wanted)
-            ),
+            await asyncio.gather(*(scrape(backends.fetch, picks[i][1]["url"]) for i in wanted)),
             strict=True,
         )
     )

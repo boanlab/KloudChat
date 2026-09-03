@@ -45,7 +45,9 @@ log = logging.getLogger(__name__)
 
 #: Each section is its own model call, so this is the multiplier on the bill.
 _MIN_SECTIONS = 3
-_MAX_SECTIONS = 8
+#: Twelve rather than eight: a 백서 asked for with nine named parts came back
+#: with eight, the 부록 silently gone.
+_MAX_SECTIONS = 12
 
 _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
 
@@ -70,6 +72,14 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
   대안 비교 → 위험과 남는 문제 → 권고안과 다음 단계. 계산이 비교보다 앞이다 —
   표의 숫자는 그 앞 절에서 식으로 구한 값을 옮겨 적는 것이지 표에서 새로 셈하는
   것이 아니다.
+  **그 뼈대는 대안을 고르는 문서에만 쓴다.** 회의록·실험 보고서·안내문·동향 분석에
+  「비용 계산의 전제」「대안 비교」를 넣지 마라.
+- **요청이 항목을 말했으면 그 항목이 목차다.** 「결정 사항, 반론, 다음 발표자와
+  기한을 나눠」라고 했으면 절은 그 셋(과 필요한 머리말)이고, 「목적·이론·장치·절차·
+  결과·오차 분석」이라고 했으면 그 여섯이다. 요청한 항목을 빼거나 다른 이름으로
+  바꾸지 마라. 축이 둘이면 — 「안건별로 결정·반론·조건·담당을 나눠」 — **한 축만
+  절로 삼는다**(안건마다 절 하나, 그 안에서 결정·반론·조건·담당을 소제목으로).
+  안건별 절과 항목별 절을 둘 다 만들면 같은 말이 두 번 나온다.
 - 섹션은 제목만. 내용은 쓰지 마라.
 - style 은 이 문서가 어디에 쓰이는지에 맞는 인상이다. 셋 중 하나만 골라라:
   · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 문서. 선과 넓은 여백.
@@ -89,6 +99,9 @@ JSON 객체로만 답하라. "subject" 에는 이 문서가 무엇에 대한 것
      "sections": ["요약", "현황과 결정할 사안", "비용 계산의 전제", "대안 비교",
                   "위험과 남는 문제", "권고안과 다음 단계"],
      "alternatives": ["교체", "1년 연장", "클라우드 이전"]}}
+예: {{"title": "9월 학과 세미나 회의록", "style": "편집형", "subject": "학과 세미나",
+     "sections": ["회의 개요", "결정 사항", "반론과 남은 쟁점", "다음 발표자와 기한"],
+     "alternatives": []}}
 
 요청: {request}"""
 
@@ -167,6 +180,14 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
   절의 결론이 되는 숫자 둘셋은 문서 전체에 한 번만 ```kpi 블록(`값 | 이름` 한 줄씩,
   최대 4개)으로. 틀리면 뒤가 무너지는 전제 하나는 문서 전체에 한 번만 ```callout
   블록(첫 줄 제목, 다음 줄 내용)으로. 그 밖의 블록은 쓰지 마라.
+- **요청에 측정 데이터 표가 있으면 결과 절에 그 표를 다시 싣는다** — 요청의 열
+  그대로에, 그 값으로 계산한 열(이득, dB, 이론값, 오차 %)을 더해서. 표 없이 값을
+  줄글에 흩어 놓은 실험 보고서는 읽는 사람이 표를 다시 만들어야 한다. 이 표는 표
+  두 개 한도에 든다.
+- **차이를 말하려면 두 수를 계산해 나란히 적어라.** 「고주파에서 위상이 이론값보다
+  다소 크다」처럼 계산하지 않은 편차를 말하지 마라 — 이론값을 식으로 구해 측정값
+  옆에 두고, 차이가 1% 안이면 「일치한다」고 쓴다. 「3회 반복 측정」처럼 요청에 없는
+  절차도 지어내지 마라.
 - **수치는 위 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만 쓴다.** 요청에
   적힌 표기 그대로 아라비아 숫자로 — 「연 380만 원」은 「3,800만 원」도 「38백만
   원」도 「3백8십만 원」도 아니다.
@@ -184,6 +205,32 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
 - 이 규칙 문장을 본문에 옮겨 적지 마라.
 
 원래 요청: {request}"""
+
+
+_TABLE = re.compile(r"(?m)^\|.+\|\s*\n\|[\s:|-]+\|\s*\n(?:^\|.+\|\s*\n?)+")
+_RESULTS_HEADING = re.compile(r"결과|측정|데이터|분석")
+
+
+def _carry_table(request: str, headings: list[str], drafted: dict[str, str]) -> dict[str, str]:
+    """The request's data table, put into the results section if the draft left it out.
+
+    An RC-filter report was asked for with nine rows of f, Vin, Vout and phase,
+    and told — in bold — to print that table again in 결과 with the derived
+    columns. Twice it narrated the rows in prose instead. The table the person
+    typed is the one thing in the report nobody can dispute, so it goes in
+    whether or not the writer chose to.
+    """
+    found = _TABLE.search(request)
+    if not found or not drafted:
+        return drafted
+    if any(_TABLE.search(text) for text in drafted.values()):
+        return drafted
+    target = next((h for h in headings if _RESULTS_HEADING.search(h) and h in drafted), None)
+    if target is None:
+        return drafted
+    table = found.group(0).strip()
+    drafted[target] = f"측정 데이터는 다음과 같습니다.\n\n{table}\n\n{drafted[target]}"
+    return drafted
 
 
 def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
@@ -268,6 +315,22 @@ _NUMBER = re.compile(
 )
 
 
+#: Told to the writer when the person said 있는 자료로 진행 to a question the
+#: document could not be written without. What comes out is a form, and it
+#: has to look like one: a 회의록 for a 녹취 nobody attached once described a
+#: 차기 연구 주제 discussion that never happened, with a cost table under it.
+_FRAME_RULE = (
+    "**이 문서는 자료 없이 틀만 쓴다.** 요청에 없는 사실·논의·결정·이름·수치를 어떤 것도 "
+    "지어내지 마라. 절마다 그 절에 무엇을 적어야 하는지 한두 문장으로 안내하고, 채울 "
+    "자리는 「(여기에: 결정된 사항과 근거)」처럼 괄호 빈칸으로 둔다. 표는 머리글 행과 "
+    "빈 칸만. 비용 계산·대안 비교처럼 요청에 없던 절이나 표를 보태지 마라. "
+    "공식과 일반 원리는 써도 된다."
+)
+
+#: A request that weighs options — the only kind the cost-table advice fits.
+_DECISION = re.compile(r"대안|비교|결정|권고|비용|검토|타당성|선택")
+
+
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
     """The numbers the document may use, read off the request and the shelf.
 
@@ -286,12 +349,19 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
             if token not in found:
                 found.append(token)
     if not found:
-        return (
+        line = (
             "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
-            "퍼센트를 어떤 것도 쓰지 마라.** 비용 칸은 「(미정)」, 「비용 계산의 전제」 같은 "
-            "절은 값을 셈하는 대신 무엇을 확인해야 하는지(견적, 예산 한도, 대상 인원)를 "
-            "적는다. 비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+            "퍼센트·측정값·부품값·성능 향상률을 어떤 것도 쓰지 마라.** 값이 들어갈 자리는 "
+            "「(미정)」「(측정값)」으로 비워 두고, 값을 셈하거나 지어내는 대신 무엇을 어떻게 "
+            "측정·확인해야 하는지를 적는다. 공식과 일반 원리(f_c = 1/(2πRC) 같은 것)는 써도 "
+            "된다."
         )
+        if _DECISION.search(request):
+            line += (
+                " 「비용 계산의 전제」 절은 견적, 예산 한도, 대상 인원처럼 확인할 것을 적고, "
+                "비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+            )
+        return line
     return "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
 
 
@@ -471,31 +541,84 @@ def _outline_style(text: str) -> str:
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
-def _subject_missing(text: str, request: str) -> bool:
-    """Whether the planner named a subject the request never mentioned.
+#: The planner's stated subject, checked against the request — see grounding.
+_subject_missing = grounding.subject_missing
 
-    The outline rule says to ask when a request gives only the form of a
-    document — 「결재용 한 장 보고: 결정할 것, 대안 둘, 권고」 — and the
-    planner planned 「전산망 교체」 anyway, twice, with the rule in bold. So
-    the planner is asked to *state* the subject in the request's own words,
-    and that statement is checked: a subject whose words are not in the
-    request is a subject the planner made up.
+
+_RESULTS = re.compile(r"결과|시험|실험|측정")
+#: Documents whose facts all come from outside — nothing to write without a search.
+_FROM_THE_WEB = re.compile(r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표")
+
+
+def _from_the_web(request: str) -> bool:
+    return bool(_FROM_THE_WEB.search(request))
+
+
+#: Words that point at a thing the person has and did not attach.
+_MATERIAL = re.compile(
+    r"녹취|녹음|피드백|기록을|표가 있|파일|첨부|메모를|학위논문|논문 ?\d+ ?장"
+    r"|(?:표|자료)를 (?:붙|드립|줍|보냅|첨부)"
+)
+
+
+_PAGES = re.compile(r"(?<!\d)(\d{1,4})\s{0,3}(?:장|쪽|페이지|p)\s{0,3}(?:이상|분량|짜리|내외|정도)")
+
+
+def _long_form(request: str) -> bool:
+    """Whether the person asked for a document longer than one draft can hold.
+
+    「15장 이상 분량으로」 came back as four pages: a single draft is capped by
+    the model's output window, and 백서 is not a shape it can fill in one
+    breath. Past eight pages every section is written on its own, long.
     """
-    obj = re.search(r"\{.*\}", text, re.S)
-    if not obj:
+    m = _PAGES.search(request)
+    return bool(m) and int(m.group(1)) >= 8
+
+
+def _without_own_heading(body: str, heading: str) -> str:
+    """The section's text minus a repeat of its own heading on the first line.
+
+    Written on its own, a section opened with 「## 현행 교육과정 진단」 — the
+    heading it was told it was writing — and the page then showed the heading
+    twice, with an empty section between.
+    """
+    lines = body.lstrip().split("\n", 1)
+    first = re.sub(r"^#{1,6}\s*|\*+", "", lines[0]).strip()
+    if first and first == heading.strip():
+        return lines[1].lstrip() if len(lines) > 1 else ""
+    return body
+
+
+def _carries_material(request: str) -> bool:
+    """The material is in the request itself — a pasted memo, a table.
+
+    「아래 랩 미팅 메모를 회의록으로」 followed by the memo was asked what
+    research it was about, because the memo mentioned 논문 4장. A request
+    long enough to hold its own material, or with a table in it, has it.
+    """
+    return len(request) >= 300 or "|" in request
+
+
+def _results_without_data(request: str, attached: list[str]) -> bool:
+    """A report asked for on material that is not here.
+
+    「신규 소재 적용 타당성 검토 — 시험 방법, 결과, 위험, 권고」 with no
+    material, no numbers, no file came back with 「압축 강도와 피로 수명이
+    12%~15% 향상」: a result nobody measured, in a document whose whole point is
+    the measurement. 「세미나 녹취를 회의록으로」 with no 녹취 came back as a
+    decision brief about adopting a minutes system. A frame with (미정) in it
+    is honest and a made-up result is not, so a request that names its
+    material (녹취, 표, 파일) or asks for results, and carries no figure and no
+    attachment, is asked for the material first — 있는 자료로 진행 still writes
+    the frame.
+    """
+    if any(block.strip() for block in attached) or _carries_material(request):
         return False
-    try:
-        data = json.loads(obj.group(0))
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(data, dict) or "subject" not in data:
-        return False
-    subject = str(data.get("subject") or "").strip()
-    if not subject:
+    if _MATERIAL.search(request):
         return True
-    compact = re.sub(r"\s+", "", request)
-    words = [w for w in re.split(r"[\s,.·/()]+", subject) if len(w) >= 2]
-    return bool(words) and not any(w in compact for w in words)
+    if not _RESULTS.search(request):
+        return False
+    return not deck_rules.has_numbers(request, [])
 
 
 def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str]:
@@ -640,9 +763,33 @@ def _grounded_figures(text: str, grounded: bool) -> str:
     compressed cycle is a claim somebody can weigh; the same claim as `8주`
     beside a heading is a measurement, and there was no measuring.
     """
-    if grounded:
-        return text
-    return _FIGURE_FENCE.sub("", text).strip()
+    if not grounded:
+        return _FIGURE_FENCE.sub("", text).strip()
+    return re.sub(r"\n{3,}", "\n\n", _KPI_FENCE.sub(_kpi_or_nothing, text)).strip()
+
+
+_KPI_FENCE = re.compile(r"^```kpi\b.*?^```\s*$", re.S | re.M)
+_UNDETERMINED = re.compile(r"미정|확인 필요|해당 없음|N/A|TBD|\?", re.I)
+
+
+def _kpi_or_nothing(match: re.Match[str]) -> str:
+    """A kpi block whose values are placeholders, removed.
+
+    A 회의록 with every figure it needed in prose closed with 「(미정) | 산학
+    프로젝트 확보 건수」 four times over — a block whose whole purpose is to set
+    a number large, with no number in it. Any line that is not a value is the
+    whole block gone; the prose already says what is undecided.
+    """
+    body = match.group(0).strip("`").split("\n", 1)[1] if "\n" in match.group(0) else ""
+    lines = [
+        line for line in body.split("\n") if line.strip() and not line.strip().startswith("```")
+    ]
+    if any(
+        _UNDETERMINED.search(line.split("|")[0]) or not re.search(r"\d", line.split("|")[0])
+        for line in lines
+    ):
+        return ""
+    return match.group(0)
 
 
 async def write(
@@ -740,6 +887,42 @@ async def write(
     # run only, so never append into the caller's shelf in place.
     findings.sources = list(findings.sources)
     web_selected = len(findings.sources)
+    if (
+        may_ask
+        and approved_plan is None
+        and web_search
+        and findings.searched
+        and web_selected == 0
+        and _from_the_web(request)
+        and not _carries_material(request)
+        and not any(block.strip() for block in untrusted_context or [])
+    ):
+        # 검색이 빈손이면 동향·문헌 문서는 쓰지 않고 묻는다.
+        #
+        # 「최근 2년 전고체 배터리 동향, 주요 기업·스펙·양산 시점 비교표, 출처」
+        # ran four searches on a backend whose engines were all suspended, kept
+        # nothing, and wrote the report anyway: A사·B사·C사 with 500 Wh/kg and
+        # 15분 충전 in a table, no source, and the rule to say so ignored. A
+        # document whose every fact is external and whose search found none
+        # is not a document with a caveat — it is a form filled with guesses.
+        yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+        yield {
+            "type": "needs",
+            "questions": [
+                grounding.Question(
+                    id="sources",
+                    question=(
+                        "웹 검색이 쓸 만한 자료를 찾지 못했습니다(검색 엔진이 응답하지 "
+                        "않거나 무관한 결과뿐). 참고할 자료를 붙이거나 잠시 뒤 다시 시도해 "
+                        "주세요. 「있는 자료로 진행」이면 기억으로 쓰되 확인이 필요한 "
+                        "항목을 그렇게 표시합니다."
+                    ),
+                    options=[],
+                ).wire()
+            ],
+        }
+        yield {"type": "usage", **usage}
+        return
     project_selected = 0
     project_excluded = 0
     project_reference_lines: list[str] = []
@@ -828,6 +1011,7 @@ async def write(
                         hi=_MAX_SECTIONS,
                         request=request[:2000],
                     ),
+                    request=request,
                     trusted_context=trusted_context,
                     untrusted_context=document_context,
                     research_rule=research_rule,
@@ -851,7 +1035,29 @@ async def write(
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
             yield {"type": "usage", **usage}
             return
-        if may_ask and _subject_missing(text, request):
+        if may_ask and _results_without_data(request, list(untrusted_context or [])):
+            yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+            yield {
+                "type": "needs",
+                "questions": [
+                    grounding.Question(
+                        id="data",
+                        question=(
+                            "어떤 연구입니까? 제안 방법의 이름과 핵심 아이디어, 있으면 "
+                            "수식과 결과를 적어 주세요. 없으면 「있는 자료로 진행」— 내용 "
+                            "자리는 (미정)으로 비워 둔 틀을 씁니다."
+                            if re.search(r"논문", request)
+                            else "바탕이 될 자료(녹취, 표, 측정값, 파일)를 붙이거나 적어 "
+                            "주세요. 없으면 「있는 자료로 진행」— 내용 자리는 (미정)으로 "
+                            "비워 둔 틀을 씁니다."
+                        ),
+                        options=[],
+                    ).wire()
+                ],
+            }
+            yield {"type": "usage", **usage}
+            return
+        if may_ask and _subject_missing(text, request, "\n".join(untrusted_context or [])):
             # 주제가 없는 요청은 묻는다. Checked here rather than trusted to the
             # prompt: the planner planned a made-up subject with the rule in
             # front of it, and a decision brief about a decision nobody named
@@ -869,6 +1075,14 @@ async def write(
             }
             yield {"type": "usage", **usage}
             return
+        # 「있는 자료로 진행」 to a question the document needed answered. The
+        # plan carries the fact so the writing pass, a separate request, knows
+        # to write a form and not a story — see `_FRAME_RULE`.
+        frame = not may_ask and (
+            _results_without_data(request, list(untrusted_context or []))
+            or grounding.subject_missing(text, request, "\n".join(untrusted_context or []))
+            or (web_search and findings.searched and web_selected == 0 and _from_the_web(request))
+        )
         title, headings = _parse_outline(text)
         if len(headings) < _MIN_SECTIONS:
             yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
@@ -909,6 +1123,8 @@ async def write(
                 else (_outline_style(text) or "editorial")
             ),
         }
+        if frame:
+            plan["frame"] = True
         if image_model:
             drawn = await figures.propose(
                 request=request,
@@ -932,13 +1148,14 @@ async def write(
 
     title = str(approved_plan.get("title") or "")
     headings = [str(h).strip() for h in (approved_plan.get("sections") or []) if str(h).strip()]
+    frame = bool(approved_plan.get("frame"))
     if not headings:
         yield {"type": "error", "message": "승인된 개요가 비어 있습니다."}
         yield {"type": "usage", **usage}
         return
     # Emitted only when the model produced one, so the caller keeps its fallback.
     if title:
-        yield {"type": "title", "title": title[:200]}
+        yield {"type": "title", "title": hangul.tidy_spacing(title)[:200]}
 
     # One shelf for every section, and the same one the outline was chosen
     # from. Researched above — before this, the search ran here, which meant
@@ -980,8 +1197,16 @@ async def write(
     # written on its own below, the old way. The per-section pass stays for
     # rewrites, where one section is the whole job.
     drafted: dict[str, str] = {}
-    yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
+    long_form = _long_form(request)
+    if long_form:
+        # 긴 문서는 절마다 따로 쓴다 — see `_long_form`. The draft is skipped
+        # rather than attempted: it would come back short and be kept.
+        yield {"type": "step", "id": "draft", "label": "절마다 길게 쓰는 중", "status": "done"}
+    else:
+        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
     try:
+        if long_form:
+            raise ValueError("long form")
         draft_text, spent = await _complete(
             model,
             build_document_messages(
@@ -989,23 +1214,25 @@ async def write(
                 _DRAFT_PROMPT.format(
                     outline="\n".join(f"## {h}" for h in headings),
                     refs=refs,
-                    facts=_facts_line(request, sources),
+                    facts=_FRAME_RULE if frame else _facts_line(request, sources),
                     request=request[:1500],
                 ),
+                request=request,
                 trusted_context=trusted_context,
                 untrusted_context=document_context,
                 research_rule=research_rule,
             ),
             api_key,
-            max_tokens=min(9000, 1400 * len(headings)),
+            max_tokens=min(11000, 1400 * len(headings)),
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        drafted = _split_draft(draft_text, headings)
+        drafted = _carry_table(request, headings, _split_draft(draft_text, headings))
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        log.warning("report draft failed, writing section by section: %s", exc)
-        yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
+        if not long_form:
+            log.warning("report draft failed, writing section by section: %s", exc)
+            yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
     #: Approved pictures by the index of the section they belong to. Empty when
     #: the figure card was answered 그림 없이, and then nothing below mentions a
     #: figure — which is the whole point of asking before the writing.
@@ -1049,7 +1276,7 @@ async def write(
                                 section["heading"], index, len(sections), "\n".join(written)
                             )[1],
                             others=_others_line(headings, index),
-                            facts=_facts_line(request, sources or []),
+                            facts=_FRAME_RULE if frame else _facts_line(request, sources or []),
                         )
                         + (
                             # Told before the prose is written, so the section can
@@ -1065,13 +1292,21 @@ async def write(
                             )
                             if index in wanted_figures
                             else ""
+                        )
+                        + (
+                            "\n\n이 문서는 긴 분량으로 요청되었다. 이 절은 문단 다섯에서 "
+                            "여덟, 1,500자 이상으로 — 자료의 수치를 근거로 풀어 쓰되 같은 말을 "
+                            "되풀이해 채우지 마라."
+                            if long_form
+                            else ""
                         ),
+                        request=request,
                         trusted_context=trusted_context,
                         untrusted_context=document_context,
                         research_rule=research_rule,
                     ),
                     api_key,
-                    1200,
+                    2400 if long_form else 1200,
                 )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("report section %r failed: %s", section["heading"], exc)
@@ -1102,7 +1337,7 @@ async def write(
         # own doors and the report did not, so a 보고서 came out carrying 培育,
         # 劣势 and 書類 while a deck on the same subject did not. One product,
         # one answer.
-        clean, _ = hangul.read_back(body)
+        clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
         clean = hangul.tidy_spacing(clean)
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
@@ -1210,18 +1445,63 @@ async def rewrite_section(
         role=role,
         blocks=blocks,
         others=_others_line([str(x.get("heading") or "") for x in sections], position),
-        facts=_facts_line(request, sources or []),
+        # The numbers the document already carries are the numbers the rewrite
+        # may use. Read off the title alone, the list came up empty and a
+        # 권고안 that said 연간 120만 원 절감 was rewritten to 「(미정)」.
+        facts=_facts_line(
+            "\n".join([request, *[str(s.get("content") or "") for s in sections]]), sources or []
+        ),
     )
     if note.strip():
         # Last and labelled: an unlabelled sentence appended to a prompt reads
         # as part of the original request.
-        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
-    return await _complete(
+        prompt += (
+            f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}\n"
+            "이유가 형식을 말하면(번호 목록 셋, 표 하나, 세 문장) 그 형식 그대로 쓴다. "
+            "이유에 없는 표·블록을 새로 보태지 말고, 다른 절에 이미 있는 표를 다시 그리지 마라."
+        )
+    body, spent = await _complete(
         model,
-        build_document_messages(SessionKind.report, prompt),
+        build_document_messages(SessionKind.report, prompt, request=request),
         api_key,
         1200,
     )
+    # The same door the first pass goes through — see `write`. Two callers
+    # (the panel's 다시 쓰기 and a revision typed in the chat) store what this
+    # returns, and only one of them remembered to close 「2,400 만 원」 up.
+    body = hangul.tidy_spacing(hangul.read_back(body)[0])
+    target = next((s for s in sections if s.get("id") == target_id), {})
+    others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
+    return _without_borrowed_tables(body, target.get("content") or "", others, note), spent
+
+
+def _without_borrowed_tables(body: str, before: str, others: list[str], note: str) -> str:
+    """The rewrite's tables, minus any the document already has elsewhere.
+
+    Told to make 「현황」 say why the 1년 더 option was costed the way it was,
+    the writer answered with the comparison table from 「대안 비교」, header for
+    header — and the linter then filed the section for repeating itself. A
+    table that another section already draws is not this section's to draw;
+    a table the section never had, and the note never asked for, is not
+    either.
+    """
+    if not _TABLE.search(body):
+        return body
+    elsewhere = {_table_key(m.group(0)) for text in others for m in _TABLE.finditer(text)}
+    had_table = bool(_TABLE.search(before)) or bool(re.search(r"표", note))
+
+    def keep_or_drop(m: re.Match[str]) -> str:
+        if _table_key(m.group(0)) in elsewhere or not had_table:
+            return ""
+        return m.group(0)
+
+    return re.sub(r"\n{3,}", "\n\n", _TABLE.sub(keep_or_drop, body)).strip()
+
+
+def _table_key(table: str) -> str:
+    """A table's header row, spacing and alignment marks removed."""
+    head = table.strip().split("\n", 1)[0]
+    return re.sub(r"[\s:|-]+", "", head)
 
 
 def word_count(sections: list[dict]) -> int:

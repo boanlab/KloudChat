@@ -157,6 +157,8 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 - **"timeline" 은 요청에 시점이나 절차의 순서가 있을 때만.** 연혁·일정·절차. 시점이
   없는 내용을 timeline 으로 잡으면 연도를 지어내게 된다. 절차라도 명령어 순서면
   bullets 가 낫다.
+- 문의처·연락처·적용 시기·신청 방법처럼 **사실을 전하는 장은 "bullets"** 다. quote 로
+  잡으면 내선 번호 대신 표어가 남는다.
 - 확신이 없으면 "bullets" 다. 초안을 쓰는 단계에서 내용에 맞게 layout 을 바꿀 수
   있으니, 여기서 화려한 layout 을 미리 고르지 마라.
 - **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
@@ -177,10 +179,13 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 - 참고할 자료에 발표 양식·서식 문서가 있으면 그 문서의 장 순서를 그대로 따라라.
   장수도 그 양식을 따르고, 일반적인 발표 구성으로 바꾸지 마라.
 
-JSON 객체로만 답하라.
+JSON 객체로만 답하라. "subject" 에는 이 발표가 무엇에 대한 것인지를 **요청에 적힌
+말 그대로** 적어라 — 요청이 쓰임(중간발표, 학회 발표, 신청 발표)만 말하고 무엇에
+대한 것인지 말하지 않았으면 빈 문자열.
 예:
 {{"title": "전이학습의 소량 데이터 효율성",
   "subtitle": "의료 영상 연구자를 위한 30분 개요",
+  "subject": "전이학습",
   {theme_example}"slides": [{{"title": "전이학습의 소량 데이터 효율성", "layout": "title"}},
              {{"title": "왜 데이터가 부족한가", "layout": "bullets"}},
              {{"title": "사전학습과 미세조정 비교", "layout": "table"}}]}}
@@ -201,7 +206,9 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 - two-column: "bullets": [...] {count_two}개. 앞 절반이 왼쪽, 뒤 절반이 오른쪽.
 - table: "rows": [["기준", "A", "B"], ["행", "값", "값"], ...] 첫 줄이 머리글. 3~5행,
   2~4열. 칸은 짧게(15자 안쪽).
-- timeline: "timeline": [["시점 또는 단계", "일"], ...] 3~6개. 일은 한 줄.
+- timeline: "timeline": [["시점 또는 단계", "일"], ...] 3~6개. 일은 한 줄. **시점과 단계는
+  요청에 있는 것만** — 요청에 날짜가 하나뿐이면 timeline 이 아니라 bullets 다. 「매주
+  월요일 제출」「분기별 점검」처럼 요청에 없는 절차를 만들어 칸을 채우지 마라.
 - bands: "bands": [["이름", "내용"], ...] 3~4개. 이름은 낱말 하나둘, 내용은 한 줄.
 - tiles: "tiles": [["표식", "이름"], ...] 3~6개. 표식은 머리글자·번호 한두 글자. **요청에
   그런 묶음이 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.**
@@ -210,7 +217,10 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 - chart: "chart": {{"kind": "bar"|"line", "unit": "단위", "categories": [...],
   "series": [{{"name": "이름", "values": [...]}}]}}. 값은 「쓸 수 있는 수치」에 있는
   것만. 없으면 bullets 로.
-- quote: "body": "한 문장" (60자 안쪽). 남길 만한 한 문장이 없으면 bullets 로.
+- quote: "body": "한 문장" (60자 안쪽). 남길 만한 한 문장이 없으면 bullets 로. **요청에
+  있는 문장이거나 발표자가 직접 하는 한 문장 요약만.** 직원·고객·전문가의 소감이나
+  「직원들의 목소리」 같은 남의 말을 지어내지 마라 — 안내 자료에 없는 사람의 말을
+  실으면 그 자료는 거짓말을 한 것이다.
 - title, section: 내용 없이 "notes" 만.
 
 모든 장에 "notes": 발표자가 이 장에서 **실제로 말할 문장** 3~5개. 「이 장에서는 ~를
@@ -243,7 +253,28 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 
 JSON 객체로만 답하라: {{"slides": [{{"title": "...", "layout": "...", ...}}, ...]}}
 
-원래 요청: {request}"""
+원래 요청: {request}{tail}"""
+
+
+#: Told to the writer when the person said 있는 자료로 진행 to 「어떤 연구입니까?」.
+#: A form, and it has to look like one — see `report._FRAME_RULE`.
+_FRAME_RULE = (
+    "**이 발표는 자료 없이 틀만 쓴다.** 요청에 없는 연구·프로젝트·결과·수치·이름을 어떤 "
+    "것도 지어내지 마라. 장마다 그 장에 무엇을 넣어야 하는지 항목 이름과 「(여기에: 연구 "
+    "질문)」 같은 괄호 빈칸으로만 채우고, 노트는 그 장에서 무엇을 말해야 하는지 한두 "
+    "문장으로 안내한다. metrics·chart·table 은 머리글과 빈 칸만."
+)
+
+#: The same rule again at the end of the draft prompt, with the shape shown.
+#: Put once at the top, under thirty lines of layout rules, it lost to
+#: 「그 장에서 실제로 말할 사실을 적는다」 and the deck came back as eight
+#: slides of 기존 연구의 한계를 극복 about a thesis nobody described.
+_FRAME_TAIL = (
+    "\n\n" + _FRAME_RULE + '\n예: {"title": "연구 질문", "layout": "bullets", '
+    '"bullets": ["(여기에: 연구 질문 1)", "(여기에: 연구 질문 2)", '
+    '"(여기에: 왜 이 질문인가)"], "notes": "이 장에서는 연구 질문을 하나씩 읽고 '
+    '왜 지금 이 질문인지 한 문장으로 말한다."}'
+)
 
 
 def _facts_line(request: str) -> str:
@@ -268,6 +299,102 @@ def _facts_line(request: str) -> str:
     return "쓸 수 있는 수치(요청에 있는 것 전부): " + ", ".join(found[:30])
 
 
+_CLAIM = re.compile(
+    r"\d[\d,.]*\s*(?:억|만|천)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장|석)?"
+)
+
+#: Layouts that hold the same facts better, highest first. When a slide is a
+#: retelling of an earlier one, the better shape survives.
+_SHAPE_RANK = {"table": 3, "bands": 2, "two-column": 1, "bullets": 1, "metrics": 0}
+
+
+def _claims(row: dict[str, Any]) -> set[str]:
+    """The figures a slide asserts, as text — what makes two slides the same."""
+    text = json.dumps(
+        {k: v for k, v in row.items() if k not in ("notes", "layout", "title")}, ensure_ascii=False
+    )
+    # A year is context, not a claim: 「2026년 | 2027년」 as table headers must
+    # not make the table a different slide from the bands above it.
+    return {
+        re.sub(r"\s+", "", m.group(0))
+        for m in _CLAIM.finditer(text)
+        if len(m.group(0)) >= 2 and not re.fullmatch(r"\d{4}\s*년", m.group(0))
+    }
+
+
+_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}|\d[\d,.]*")
+_STOP = frozenset(
+    "있습니다 합니다 위해 통해 대한 대해 경우 이를 위한 하는 하고 있는 됩니다 그리고 또한 다만 "
+    "따라서 것을 것이 것은 수를 있어 하며 하되 이번 오늘 해당 관련 주요 현재 방안 문제 필요 "
+    "가능 진행 확보 예정".split()
+)
+
+
+def _words(row: dict[str, Any]) -> set[str]:
+    """A slide's content words, cut to two syllables so 「채택」 meets 「채택합니다」."""
+    text = json.dumps(
+        {k: v for k, v in row.items() if k not in ("notes", "layout", "title")}, ensure_ascii=False
+    )
+    return {
+        w[:2] if len(w) > 2 and re.match(r"[가-힣]", w) else w
+        for w in _WORD.findall(text)
+        if w not in _STOP
+    }
+
+
+#: Share of a slide's words an earlier slide already used before it is the
+#: same slide again. Measured on a live deck: the pairs that said the same
+#: thing twice (논의 bullets, then 방안 bands) sat at 0.56–0.67, and the pairs
+#: that did not at 0.36–0.46.
+_RETOLD_SHARE = 0.55
+_RETOLD_WORDS = 15
+
+
+def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) -> set[int]:
+    """Indices of drafted slides that only repeat figures earlier slides carry.
+
+    A 복지제도 개편 deck put the same four changes — 500만→700만, 격년→매년,
+    주 1일→2일, 100만→150만 — on a two-column, then metrics, then bands, then
+    a table: four slides, one fact set, and 「한 장에는 그 장에서만 하는 말」
+    in the prompt the whole time. A slide with three or more figures all of
+    which earlier kept slides already state is dropped; when the newcomer is a
+    table and the earlier one is not, the earlier one goes instead, because
+    the table is where those figures read best.
+    """
+    kept: list[tuple[int, set[str], set[str], str]] = []
+    dropped: set[int] = set()
+    for index, slide in enumerate(slides):
+        row = drafted.get(index)
+        if row is None or slide["layout"] in ("title", "section"):
+            continue
+        claims, words = _claims(row), _words(row)
+        layout = str(row.get("layout") or slide["layout"])
+        said = set().union(*(c for _, c, _, _ in kept)) if kept else set()
+        by_figures = len(claims) >= 3 and claims <= said
+        twins = [
+            item
+            for item in kept
+            if len(words) >= _RETOLD_WORDS and len(words & item[2]) / len(words) >= _RETOLD_SHARE
+        ]
+        if not by_figures and not twins:
+            kept.append((index, claims, words, layout))
+            continue
+        weaker = [
+            item
+            for item in kept
+            if (item in twins or (len(item[1]) >= 3 and item[1] <= claims))
+            and _SHAPE_RANK.get(item[3], 1) < _SHAPE_RANK.get(layout, 1)
+        ]
+        if weaker:
+            for item in weaker:
+                kept.remove(item)
+                dropped.add(item[0])
+            kept.append((index, claims, words, layout))
+        else:
+            dropped.add(index)
+    return dropped
+
+
 def _facts_set(request: str) -> set[str]:
     """Every digit run in the request, so a number on a slide can be checked."""
     return {re.sub(r"[^\d.]", "", m) for m in re.findall(r"\d[\d,]*(?:\.\d+)?", request)}
@@ -286,8 +413,45 @@ def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
     return True
 
 
+_QUANTITY = re.compile(
+    r"\d[\d,.]*\s*(?:만|억|천)?\s*(?:개소|개월|시간|퍼센트|명|분|초|일|주|년|월|회|건|대|개|석|층|원|%|"
+    r"km|kg|m|cm|mm|㎡|Hz|kHz|V|A|W)"
+)
+
+
+def _unrequested_quantity(text: str, request: str) -> bool:
+    """A number with a unit the request never gave — 「강의실 11개소」 for a
+    request that said 11월, 「10분 간격」 for one that said 10분 발표.
+
+    Bare digits were the check, and 11 was in the request, so 11개소 passed.
+    The unit is what makes a number a fact, so it is checked with the unit.
+    """
+    compact = re.sub(r"\s+", "", request)
+    for m in _QUANTITY.finditer(text):
+        token = re.sub(r"\s+", "", m.group(0))
+        if re.fullmatch(r"\d{4}년", token) or token in compact:
+            continue
+        # 「2,400만원」 in the text and 「2,400만 원」 in the request.
+        if token.replace(",", "") in compact.replace(",", ""):
+            continue
+        return True
+    return False
+
+
+def _moment_in_request(moment: str, request: str) -> bool:
+    """Whether a timeline's 'when' was given — a date the request has, or its words."""
+    compact = re.sub(r"\s+", "", request)
+    cell = re.sub(r"\s+", "", moment)
+    if not cell:
+        return False
+    if cell in compact:
+        return True
+    digits = re.findall(r"\d+", cell)
+    return bool(digits) and all(d in compact for d in digits)
+
+
 def _split_deck_draft(
-    text: str, slides: list[dict[str, Any]], facts: set[str]
+    text: str, slides: list[dict[str, Any]], facts: set[str], request_text: str = ""
 ) -> dict[int, dict[str, Any]]:
     """The draft's slides matched to the outline's, by position then by title.
 
@@ -337,6 +501,27 @@ def _split_deck_draft(
         ):
             row = {k: v for k, v in row.items() if k != "chart"}
             row["layout"] = "bullets"
+        # 요청에 없는 수량으로 채운 항목은 뺀다 — 둘 이상 남을 때만. 캡스톤 발표가
+        # 「강의실 11개소를 선정」「10분 간격으로 수집」을 계획으로 내놓았다; 11은
+        # 11월에서, 10은 10분 발표에서 온 숫자다.
+        if request_text and isinstance(row.get("bullets"), list):
+            sure_bullets = [
+                b for b in row["bullets"] if not _unrequested_quantity(str(b), request_text)
+            ]
+            if 2 <= len(sure_bullets) < len(row["bullets"]):
+                row = {**row, "bullets": sure_bullets}
+        # 요청에 없는 시점으로 채운 timeline 은 bullets 로 내린다. 「2027년 1월
+        # 1일 발효」 하나가 요청에 있었고, 「매주 월요일 제출」「분기별 점검」 넷이
+        # 그 뒤에 따라왔다 — 절차를 지어내 칸을 채운 것이다.
+        if isinstance(row.get("timeline"), list):
+            steps = [t for t in row["timeline"] if isinstance(t, list) and t]
+            sure = [t for t in steps if _moment_in_request(str(t[0]), request_text)]
+            if len(sure) < 2:
+                row = {k: v for k, v in row.items() if k != "timeline"}
+                row["bullets"] = [f"{t[0]} – {t[1]}" if len(t) > 1 else str(t[0]) for t in steps]
+                row["layout"] = "bullets"
+            elif len(sure) < len(steps):
+                row = {**row, "timeline": sure}
         # 초안이 layout 을 바꿨으면 따른다 — 내용에 맞지 않는 layout 을 고집한 장이
         # 빈 사각형이 되는 것보다 낫다. 표지와 간지는 그대로.
         wanted = str(row.get("layout") or "")
@@ -880,6 +1065,12 @@ def _offered_layouts(request: str, context: list[str]) -> list[str]:
 #: So: a decimal, a run of three or more digits, or a number carrying a unit
 #: that measures. A bare year is deliberately not one — a date can ground a
 #: timeline and cannot ground a chart.
+#: A deck about the person's own work — nothing to say without it. 「학위논문
+#: 연구계획 발표자료」 came back as 새로운 알고리즘으로 정확도를 높임 over eight
+#: slides, for a thesis nobody described; the planner's `subject` was the
+#: request's own words, so the subject check let it through.
+_OWN_WORK = re.compile(r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취")
+
 _FIGURE = re.compile(
     # A year is not a measurement. `2026년 계획` matched the three-digit rule
     # and let a deck about next year's plan draw a chart of nothing.
@@ -1206,6 +1397,7 @@ async def _write_slides(
     figures_plan: list[dict] | None = None,
     image_model: dict | None = None,
     density: str = "speaker",
+    frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Writes the bodies for an outline that has already been agreed to.
 
@@ -1223,7 +1415,7 @@ async def _write_slides(
         "detail": " · ".join(item["title"] for item in plan),
     }
     if title:
-        yield {"type": "title", "title": title[:200]}
+        yield {"type": "title", "title": hangul.tidy_spacing(title)[:200]}
 
     slides: list[dict[str, Any]] = [
         {
@@ -1265,11 +1457,13 @@ async def _write_slides(
                         f"{i + 1}. {s['title']}  (layout: {s['layout']})"
                         for i, s in enumerate(slides)
                     ),
-                    facts=_facts_line(request),
+                    facts=_FRAME_RULE if frame else _facts_line(request),
                     count="4~6" if density == "reading" else "3~4",
                     count_two="6~8" if density == "reading" else "4~6",
                     request=request[:1500],
+                    tail=_FRAME_TAIL if frame else "",
                 ),
+                request=request,
                 trusted_context=trusted_context,
                 untrusted_context=untrusted_context,
                 research_rule=research_rule,
@@ -1279,7 +1473,20 @@ async def _write_slides(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        drafted = _split_deck_draft(draft_text, slides, _facts_set(request))
+        # The request and what was attached to it: a number the 녹취 gave is
+        # a number the deck may use.
+        given = "\n".join([request, *(untrusted_context or [])])
+        drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
+        # 같은 사실을 다른 모양으로 되풀이한 장은 뺀다.
+        retold = _retold(slides, drafted)
+        if retold:
+            log.info("deck retold slides dropped: %s", ",".join(str(i) for i in sorted(retold)))
+            kept = [i for i in range(len(slides)) if i not in retold]
+            slides[:] = [slides[i] for i in kept]
+            drafted = {new: drafted[old] for new, old in enumerate(kept) if old in drafted}
+            wanted_figures = {
+                new: wanted_figures[old] for new, old in enumerate(kept) if old in wanted_figures
+            }
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("deck draft failed, writing slide by slide: %s", exc)
@@ -1361,6 +1568,7 @@ async def _write_slides(
                             request=request[:1500],
                         )
                         + density_rule,
+                        request=request,
                         trusted_context=trusted_context,
                         untrusted_context=untrusted_context,
                         research_rule=research_rule,
@@ -1424,7 +1632,7 @@ async def _write_slides(
         # 장별 경로에도 같은 검증. 초안이 빠뜨린 장을 이쪽이 쓰는데, 여기서
         # 지어낸 「0.8초 | 파일 파싱 속도」가 그대로 화면에 올라갔다.
         if index not in drafted:
-            facts = _facts_set(request)
+            facts = _facts_set("\n".join([request, *(untrusted_context or [])]))
             if data.get("metrics") and not _numbers_come_from(
                 [str(m[0]) for m in data["metrics"] if isinstance(m, list) and m], facts
             ):
@@ -1689,6 +1897,7 @@ async def write(
             figures_plan=figures_plan,
             image_model=image_model,
             density=str(approved_plan.get("density") or "speaker"),
+            frame=bool(approved_plan.get("frame")),
         ):
             yield event
         return
@@ -1711,6 +1920,7 @@ async def write(
                     request=request[:2000],
                 )
                 + nudge,
+                request=request,
                 trusted_context=trusted_context,
                 untrusted_context=document_context,
                 research_rule=research_rule,
@@ -1738,6 +1948,37 @@ async def write(
     if may_ask and (asked := grounding.parse_needs(text)):
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
+        yield {"type": "usage", **usage}
+        return
+    unmaterial = grounding.subject_missing(text, request, "\n".join(untrusted_context or [])) or (
+        _OWN_WORK.search(request)
+        and not has_numbers(request, [])
+        and len(request) < 300
+        and not any(block.strip() for block in (untrusted_context or []))
+    )
+    if may_ask and unmaterial:
+        # 주제가 없는 요청은 묻는다. 「캡스톤 중간발표 10분」 was planned as an
+        # AI 맞춤 학습 플랫폼 nobody is building, and 「학회 구두 발표 15분,
+        # 수치를 크게」 as seven slides of 500회 and 20% about nothing — the
+        # rule against invented 소재 was in the prompt both times. Same check
+        # as the report's, on the same field.
+        yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
+        yield {
+            "type": "needs",
+            "questions": [
+                grounding.Question(
+                    id="subject",
+                    question=(
+                        "어떤 연구입니까? 주제, 연구 질문, 방법과 지금까지의 결과를 "
+                        "적거나 파일을 붙여 주세요."
+                        if _OWN_WORK.search(request)
+                        else "무엇에 대한 발표입니까? 주제와, 보여 줄 결과·수치가 있으면 "
+                        "함께 적어 주세요."
+                    ),
+                    options=[],
+                ).wire()
+            ],
+        }
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
@@ -1870,6 +2111,9 @@ async def write(
         ]
         if drawn.figures:
             proposal["figures"] = drawn.wire()
+    if unmaterial:
+        # 있는 자료로 진행 — the writing pass writes a form. See `_FRAME_RULE`.
+        proposal["frame"] = True
     yield {"type": "proposal", "plan": proposal}
     yield {"type": "usage", **usage}
 
@@ -1919,7 +2163,7 @@ async def rewrite_slide(
         prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
-        model, build_document_messages(SessionKind.slides, prompt), api_key, 600
+        model, build_document_messages(SessionKind.slides, prompt, request=request), api_key, 600
     )
     parsed = _json_object(text)
     bullets = _clean_bullets(parsed.get("bullets"))

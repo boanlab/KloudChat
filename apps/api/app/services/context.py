@@ -11,6 +11,7 @@ note.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -71,8 +72,14 @@ _DOCUMENT_LANGUAGE = (
 # 예를 드는 이유는 작은 모델이 원칙보다 보기를 따르기 때문이다.
 _WRITING = """글 쓰는 법:
 - 답부터 씁니다. 첫 문장이 질문에 대한 답이어야 합니다. 「~에 대해
-  설명드리겠습니다」 같은 예고, 질문을 되풀이하는 제목, 끝에 본문을 다시
-  요약하는 「핵심 요약」은 쓰지 않습니다.
+  설명드리겠습니다」 같은 예고, 「답변:」 같은 머리말, 질문을 되풀이하는 제목,
+  끝에 본문을 다시 요약하는 「핵심 요약」은 쓰지 않습니다.
+- 자료가 없으면 「표를 붙여 주시면 바로 계산해 드리겠습니다」처럼 무엇이 필요한지만
+  말합니다. 어떤 메모리·파일·식별자가 있고 없는지(「check-b850bf 메모리뿐입니다」)를
+  늘어놓지 않습니다 — 그건 사람이 준 것이 아니라 시스템이 붙인 것입니다.
+- 같은 것을 여러 목록으로 나누어 되풀이하지 않습니다. 「단계 설명 → 단계별 사례
+  → 단계별 성과」처럼 한 축을 세 번 훑는 대신, 단계마다 정의·기준·사례를 한 자리에
+  묶어 한 번 씁니다.
 - 문단으로 씁니다. 「무슨 뜻인가요? / 왜 중요한가요?」 같은 문답 뼈대를
   절마다 반복하지 않습니다. 제목은 내용이 실제로 갈릴 때만, 굵은 글씨는 한
   답에 두세 번까지, 가로줄(---)은 쓰지 않습니다.
@@ -102,6 +109,10 @@ _WRITING = """글 쓰는 법:
   transfer) 이름을 알려 줍니다. 틀렸다고만 하지 않습니다.
 - 교과서 개념을 설명했으면 끝에 원전 하나를 밝힙니다 — 논문이나 교과서 이름과
   그것이 무엇을 보였는지 한 줄. 블로그는 원전이 아닙니다.
+- 주장을 판정할 때는 먼저 분모를 맞춥니다. 「청소년의 40%가 과의존」과 「과의존
+  위험군 가운데 중학생이 40.6%」는 다른 말입니다 — 전체 대비 비율인지 하위 집단
+  안의 비중인지, 같은 해·같은 조사인지 확인한 뒤에 맞다·틀리다를 말하고, 다르면
+  「수치는 있으나 뜻이 다르다」고 씁니다.
 - 정확한 용어를 씁니다. 무작위 초기화는 「잘못된 가중치」가 아니고, 과적합은
   「지나치게 맞춰지는 것」이 아니라 「학습 데이터의 우연한 특징까지 외우는
   것」입니다. 헷갈리기 쉬운 용어는 괄호에 영어를 한 번 병기합니다."""
@@ -109,7 +120,8 @@ _WRITING = """글 쓰는 법:
 _SURFACE_DEFAULTS: dict[SessionKind, str] = {
     SessionKind.chat: (
         "당신은 KloudChat의 어시스턴트입니다. 한국어로 답하되, 사용자가 다른 언어로 "
-        "물으면 그 언어로 답합니다. 모르는 것은 모른다고 말하고, 도구가 준 결과를 "
+        "물으면 **그 언어로** 답합니다 — 영어 질문에는 영어로, 아래 글쓰기 규칙은 "
+        "그대로 지키되 언어만 바꿉니다. 모르는 것은 모른다고 말하고, 도구가 준 결과를 "
         "실제로 확인하지 않은 채 확인했다고 말하지 않습니다."
     ),
     SessionKind.report: (
@@ -134,6 +146,11 @@ _TOOL_RULES = """
 - 도구가 실패하면 실패했다고 말하세요. 실행하지 않은 것을 실행했다고 하지 않습니다.
 - 웹 검색 결과를 인용할 때는 출처 URL 을 함께 밝힙니다.
 - 계산과 수식 전개는 암산하지 말고 execute_code 로 확인하세요.
+- 도구를 부르는 차례에는 말을 붙이지 마세요. 「코드를 작성했습니다. 이제 실행해
+  보겠습니다.」「검색해 보겠습니다.」 같은 중계는 화면의 단계 표시가 이미 하고
+  있고, 답에 남으면 코드 없는 「코드를 작성했습니다」만 읽는 사람에게 남습니다.
+  도구가 다 끝난 뒤 한 번에 답하세요. 코드를 만들었으면 답에 코드 자체를 싣거나
+  아티팩트로 두었다고 말하세요.
 """.strip()
 
 
@@ -153,15 +170,25 @@ _TOOL_RULES = """
 _WEB_SEARCH_NUDGE = (
     "사용자가 웹 검색을 켰습니다. 시간이 지나면 달라지는 사실은 기억이 아니라 검색 "
     "결과에서 가져와야 합니다.\n"
-    "- 먼저 무엇을 물었는지 가립니다. 교과서에 있는 개념·원리(예: 전이학습이 왜 되는지)는 "
+    "- 먼저 무엇을 물었는지 가립니다. 교과서에 있는 원리(예: 전이학습이 왜 되는지)는 "
     "검색 결과가 아니라 아는 것으로 설명하고, 참고할 만한 원전(논문·교과서·공식 문서)이 "
     "있으면 끝에 한 번만 밝힙니다. 블로그 문장을 문단마다 인용하지 않습니다.\n"
+    "- **정의가 정해져 있는 것은 반드시 검색으로 확인합니다.** 표준·제도·법령·규격·등급 "
+    "체계(예: TRL 단계 구분, 근로기준법 제60조, ISO 조항, 평가 등급표)는 단계 수와 각 "
+    "단계의 이름·기준이 문서로 정해져 있어 기억으로 쓰면 단계를 빼먹거나 만들어 냅니다. "
+    "공식 문서(기관·법령·표준 본문)를 찾아 그 정의를 옮기고, 사례는 그 정의에 맞춰 듭니다.\n"
     "- 답변에 사실 축이 여러 개면(예: 하드웨어 사양 + 그 위에서 돌아가는 소프트웨어 목록) "
     "축마다 web_search 를 따로 호출하세요. 한 번 검색하고 나머지를 기억으로 채우지 마세요.\n"
     "- 제품명·모델명·버전·수치·날짜·가격처럼 시간이 지나면 틀리는 항목은 검색으로 확인한 것만 "
     "쓰세요. 확인한 항목에는 출처 URL 을 밝히세요 — 본문 흐름을 끊지 않게 문장 끝이나 "
     "답 끝의 출처 목록으로. 공식 문서·논문·언론·기관 자료를 개인 블로그보다 먼저 씁니다.\n"
     "- 검색 결과가 기억과 다르면 검색 결과를 따르세요.\n"
+    "- 「표가 있습니다」「파일을 드립니다」처럼 자기 자료를 말했는데 첨부가 없으면, "
+    "비슷한 자료를 검색으로 찾지 말고 그 자료를 붙여 달라고 합니다 — 남의 표로 "
+    "계산한 답은 그 사람의 질문에 대한 답이 아닙니다.\n"
+    "- 논문·보고서의 서지(저자, 연도, 제목, arXiv 번호, DOI, URL)는 검색 결과에서 그대로 "
+    "옮긴 것만 씁니다. 검색 결과에 없는 논문은 「(서지 확인 필요)」로 표시하고, arXiv "
+    "번호나 링크를 기억으로 만들어 쓰지 않습니다 — 있음직한 번호는 없는 번호입니다.\n"
     "- 검색으로 확인하지 못한 항목은 단정하지 말고 확인하지 못했다고 밝히세요. "
     "빠진 것을 그럴듯하게 채우는 편보다 낫습니다."
 )
@@ -242,12 +269,22 @@ def build_messages(
 
     Truncation belongs to LiteLLM's `truncate_to_ctx` callback.
     """
+    # The language of the question, judged on the last thing the person typed.
+    # The system turn says to answer in the asker's language and the model,
+    # under a page of Korean style rules, answered an English question about
+    # false discovery rates in Korean twice. Said again, in English, last.
+    asked = next(
+        (str(m.get("content") or "") for m in reversed(history) if m.get("role") == "user"), ""
+    )
+    rules = list(extra or [])
+    if rule := language_rule(asked if isinstance(asked, str) else ""):
+        rules.append(rule.replace("write the entire output", "write the entire answer"))
     prompt = system_prompt(
         kind,
         with_tools=with_tools,
         web_search=web_search,
         web_search_available=web_search_available,
-        extra=extra,
+        extra=rules,
     )
     messages = [{"role": "system", "content": prompt}]
     references = [part for part in (untrusted_context or []) if part and part.strip()]
@@ -325,10 +362,35 @@ def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
     return merged
 
 
+_HANGUL = re.compile(r"[가-힣]")
+_LATIN = re.compile(r"[A-Za-z]")
+
+
+def language_rule(request: str) -> str:
+    """An instruction to answer in the request's language, when it is not Korean.
+
+    Every generation prompt is written in Korean and asks for 합니다체, and a
+    memo requested in English came back in Korean — 「department에서는 30석
+    규모의」 — with the English facts translated. Empty for a Korean request,
+    so the Korean prompts keep working as they are.
+    """
+    hangul = len(_HANGUL.findall(request))
+    latin = len(_LATIN.findall(request))
+    if latin < 40 or hangul * 4 > latin:
+        return ""
+    return (
+        "The request is written in English, so write the entire output in English — "
+        "headings, table headers, bullet points, speaker notes, captions, everything. "
+        "The structural rules in the prompt still apply; the Korean style rules "
+        "(합니다체, 한글 표기) do not. Do not translate the request's facts into Korean."
+    )
+
+
 def build_document_messages(
     kind: SessionKind,
     prompt: str,
     *,
+    request: str = "",
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
     #: Rule appended to the system turn about where this document's facts come
@@ -351,6 +413,8 @@ def build_document_messages(
     trusted = list(trusted_context or [])
     if research_rule:
         trusted.append(research_rule)
+    if rule := language_rule(request):
+        trusted.append(rule)
     messages = [
         {
             "role": "system",

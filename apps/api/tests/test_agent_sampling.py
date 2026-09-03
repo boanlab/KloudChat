@@ -131,6 +131,8 @@ async def test_every_hop_of_one_turn_samples_alike(monkeypatch) -> None:
         acc = agent._Accumulator()
         if len(seen) == 1:
             acc.calls[0] = {"id": "call_0", "name": "lookup", "arguments": "{}"}
+        else:
+            acc.content.append("답")
         yield "done", acc
 
     monkeypatch.setattr(agent, "_stream_once", fake_stream_once)

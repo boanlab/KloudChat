@@ -102,11 +102,14 @@ def read_back(text: str) -> tuple[str, list[str]]:
 #: only when what follows is not another Hangul syllable, or is one of the
 #: particles that attach to a counter: 3 일까지 → 3일까지, but 3 일반인 stays.
 _COUNTER_LONG = re.compile(
-    r"([0-9][0-9,.]*) (만 원|억 원|천 원|단계|시간|개월|가지|학점|과목|개소|개교)"
+    r"(?<![0-9])([0-9][0-9,.]{0,20}) "
+    r"(만 원|억 원|천 원|단계|시간|개월|가지|학점|과목|개소|개교|학기|주차|학년도|학년|분반|"
+    r"퍼센트|%)"
 )
 _COUNTER_SHORT = re.compile(
-    r"([0-9][0-9,.]*) (일|명|원|건|개|주|년|월|회|차|기|분|초|점|배|층|호|번|매|부|장|쪽|판)"
-    r"(?=[^가-힣]|$|까지|부터|간|째|씩|마다|이|은|을|의|에|로)"
+    r"(?<![0-9])([0-9][0-9,.]{0,20}) "
+    r"(일|명|원|건|개|주|년|월|회|차|기|분|초|점|배|층|호|번|매|부|장|쪽|판|시|석|인|대|위|곳|줄|자|권|편|만|억|천)"
+    r"(?=[^가-힣]|$|까지|부터|간|째|씩|마다|이|은|을|의|에|로|가|도|만|과|와|씩|째)"
 )
 #: A Latin letter or digit, a space, and the particle that belongs to the word
 #: before it: `대안 A 는`, `ResNet 은`. Same tell, same join.
