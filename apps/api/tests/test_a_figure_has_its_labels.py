@@ -469,3 +469,18 @@ def test_a_section_that_repeats_its_own_heading_loses_the_repeat() -> None:
     assert _without_own_heading("**현행 진단**\n본문.", "현행 진단") == "본문."
     assert _without_own_heading("본문부터.", "현행 진단") == "본문부터."
     assert _without_own_heading("## 다른 제목\n본문.", "현행 진단") == "## 다른 제목\n본문."
+
+
+def test_a_slide_left_with_nothing_after_its_chart_is_dropped_is_written_again() -> None:
+    from app.services.deck import _split_deck_draft
+
+    slides = [{"title": "상태 전이", "layout": "chart"}, {"title": "비용", "layout": "metrics"}]
+    draft = (
+        '{"slides":[{"title":"상태 전이","layout":"chart","chart":{"series":[{"values":[3,5]}]},'
+        '"notes":"노트"},{"title":"비용","layout":"metrics","metrics":[["75","총 소요 시간"]]}]}'
+    )
+    out = _split_deck_draft(draft, slides, {"75"}, "75분 강의")
+    # 지어낸 차트가 빠지고 남은 것이 없으면 초안에서 빠져 따로 쓴다.
+    assert 0 not in out
+    # 지표 하나짜리 metrics 는 metrics 가 아니다.
+    assert 1 not in out or out[1].get("layout") != "metrics"

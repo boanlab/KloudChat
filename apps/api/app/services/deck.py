@@ -158,7 +158,9 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   없는 내용을 timeline 으로 잡으면 연도를 지어내게 된다. 절차라도 명령어 순서면
   bullets 가 낫다.
 - 문의처·연락처·적용 시기·신청 방법처럼 **사실을 전하는 장은 "bullets"** 다. quote 로
-  잡으면 내선 번호 대신 표어가 남는다.
+  잡으면 내선 번호 대신 표어가 남는다. **퀴즈·연습 문제 장도 "bullets"** — 문제
+  자체를 항목으로 적는다. 상태 전이·구조·흐름처럼 그림으로 그릴 것은 chart 가
+  아니라 bands 나 bullets 다(chart 는 수치 계열만 그린다).
 - 확신이 없으면 "bullets" 다. 초안을 쓰는 단계에서 내용에 맞게 layout 을 바꿀 수
   있으니, 여기서 화려한 layout 을 미리 고르지 마라.
 - **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
@@ -485,9 +487,12 @@ def _split_deck_draft(
             seen_bullets.append(bullets)
         # 요청에 없는 숫자로 채운 metrics·chart 는 버린다. 그 layout 은 숫자를
         # 가장 사실처럼 보이게 하는 자리라, 지어낸 숫자가 가장 해로운 자리다.
-        if row.get("metrics") and not _numbers_come_from(
-            [str(v) for v, *_ in (m for m in row["metrics"] if isinstance(m, list) and m)], facts
+        metric_rows = [m for m in (row.get("metrics") or []) if isinstance(m, list) and m]
+        if row.get("metrics") and (
+            len(metric_rows) < 2 or not _numbers_come_from([str(v) for v, *_ in metric_rows], facts)
         ):
+            # One figure is not a metrics slide — 「75 | 강의 총 소요 시간」 was
+            # the only number in a lecture request, set large as its own slide.
             row = {k: v for k, v in row.items() if k != "metrics"}
             row["layout"] = "bullets"
         if isinstance(row.get("chart"), dict) and not _numbers_come_from(
@@ -527,6 +532,18 @@ def _split_deck_draft(
         wanted = str(row.get("layout") or "")
         if wanted and slide["layout"] not in ("title", "section") and wanted in _LAYOUTS:
             slide["layout"] = wanted
+        if slide["layout"] not in ("title", "section") and not any(
+            row.get(k)
+            for k in ("bullets", "rows", "timeline", "bands", "tiles", "metrics", "chart", "body")
+        ):
+            # 내용이 다 떨어져 나간 장은 초안에서 빼서 따로 쓴다. A 「프로세스
+            # 상태 전이」 slide drafted as a chart of invented numbers lost its
+            # chart here and reached the screen with notes and nothing else.
+            # Written again as bullets: the same layout would invent the
+            # same numbers.
+            if slide["layout"] in ("chart", "metrics"):
+                slide["layout"] = "bullets"
+            continue
         if slide["layout"] in ("title", "section") or any(
             row.get(k)
             for k in ("bullets", "rows", "timeline", "bands", "tiles", "metrics", "chart", "body")
