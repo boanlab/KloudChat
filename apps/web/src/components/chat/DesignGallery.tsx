@@ -767,7 +767,13 @@ export function DesignGalleryModal({
             내용만큼 자라므로, 마지막 쪽이 넷이 아니라 둘인 순간 상자가 줄고
             닫기 버튼이 움직인다 — 고정 창이라고 적어 둔 자리에서. 높이를
             못박고, 넘치는 쪽은 이미 그렇듯 안에서 스크롤한다. */}
-        <div className="grid h-[58vh] min-h-80 content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+        {/* 스크롤을 갖는 요소와 행 높이를 정하는 그리드는 다른 요소여야 한다.
+            둘을 하나로 합치면 auto 트랙이 고정 높이 예산 안에서 나눠 갖는
+            쪽으로 굳어, 카드 하나가 펼쳐져도 그 행이 못 자라고 다음 행과
+            겹친다 — 바닥으로 쓴 높이가 천장이 되어 버리는 것. 바깥은 창을
+            고정하고 넘치면 스크롤하며, 안쪽 그리드는 자기 콘텐츠만큼 자란다. */}
+        <div className="h-[58vh] min-h-80 overflow-y-auto pr-1">
+        <div className="grid content-start gap-3 sm:grid-cols-2">
           {shown.map((card) =>
             card.design ? (
               <DesignTemplateCard
@@ -958,7 +964,8 @@ export function DesignGalleryModal({
                 : t('조건에 맞는 시작점이 없습니다.')}
             </p>
           )}
-      </div>
+        </div>
+        </div>
 
       {/* 쪽 넘김. 한 쪽이 2×2 이므로 스크롤 없이 한눈에 들어오고, 어디쯤인지는
           숫자가 말한다 — 점만 찍어 두면 열일곱 개 가운데 어디인지 알 수 없다. */}
