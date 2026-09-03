@@ -142,9 +142,7 @@ def craft_keys(raw) -> list[str]:
 
 def craft_block(keys, kind: SessionKind) -> str:
     """The craft rules that can act on this surface, or `""`."""
-    parts = [
-        CRAFT[key]["text"] for key in craft_keys(keys) if kind in CRAFT[key]["kinds"]
-    ]
+    parts = [CRAFT[key]["text"] for key in craft_keys(keys) if kind in CRAFT[key]["kinds"]]
     return "\n".join(parts)
 
 

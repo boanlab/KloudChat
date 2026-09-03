@@ -589,6 +589,7 @@ def _privacy_sources(
         "conversation_history": [message.content for message in history],
     }
     source_kinds = {
+        "user.instructions": "user_instructions",
         "agent.instructions": "agent",
         "project.instructions": "project_instructions",
         "project.design": "project_design",

@@ -326,6 +326,7 @@ export function Sidebar() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('검색')}
             aria-label={t('대화 빠른 검색')}
+            data-session-search=""
             className="h-8 bg-transparent pl-8 text-base"
           />
         </div>

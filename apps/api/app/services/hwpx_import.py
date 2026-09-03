@@ -238,9 +238,7 @@ def _cells(table: ET.Element) -> richtext.Grid:
             # lines rather than joined with a space — the writer put the break
             # there, and only the cell can hold it.
             lines = [
-                " ".join(_text_of(para).split())
-                for para in cell.iter()
-                if _local(para.tag) == "p"
+                " ".join(_text_of(para).split()) for para in cell.iter() if _local(para.tag) == "p"
             ]
             grid[(at_row, at_col)] = richtext.Cell(
                 "\n".join(line for line in lines if line), across, down
@@ -438,9 +436,7 @@ def _html(blocks: list[Block]) -> str:
                 return f"<{tag}{span}>{body}</{tag}>"
 
             cells = "".join(_cell("th", c) for c in head)
-            body = "".join(
-                "<tr>" + "".join(_cell("td", c) for c in row) + "</tr>" for row in rest
-            )
+            body = "".join("<tr>" + "".join(_cell("td", c) for c in row) + "</tr>" for row in rest)
             out.append(f"<table><thead><tr>{cells}</tr></thead><tbody>{body}</tbody></table>")
             continue
         if block.mark in ("BULLET", "NUMBER") or _BULLET.match(block.text):
@@ -483,9 +479,7 @@ def shape(parts: list[Section]) -> dict[str, Any]:
     paragraphs: list[str] = []
     for part in parts:
         for grid in richtext.grids(part.html):
-            tables.append(
-                [[(c.text, c.colspan, c.rowspan) for c in row] for row in grid.rows]
-            )
+            tables.append([[(c.text, c.colspan, c.rowspan) for c in row] for row in grid.rows])
         for listing in _LIST.findall(part.html):
             lists.append(_ITEM.findall(listing))
         paragraphs.extend(_PARA.findall(part.html))
@@ -521,9 +515,7 @@ def differences(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
                 continue
             for c, (cell_was, cell_now) in enumerate(zip(row_was, row_now, strict=False)):
                 if cell_was[0] != cell_now[0]:
-                    out.append(
-                        f"표{index} {r + 1}행 {c + 1}열: {cell_was[0]!r} → {cell_now[0]!r}"
-                    )
+                    out.append(f"표{index} {r + 1}행 {c + 1}열: {cell_was[0]!r} → {cell_now[0]!r}")
                 elif cell_was[1:] != cell_now[1:]:
                     out.append(
                         f"표{index} {r + 1}행 {c + 1}열 병합이 "

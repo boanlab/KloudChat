@@ -81,9 +81,7 @@ class Governance(SQLModel, table=True):
     #: stronger model here buys that one call per document and leaves the
     #: per-block cost where it is. Empty keeps the surface's own model, which
     #: is what every installation starts with.
-    outline_model_id: str | None = Field(
-        default=None, sa_column=Column(String, nullable=True)
-    )
+    outline_model_id: str | None = Field(default=None, sa_column=Column(String, nullable=True))
     #: Refuse prompts whose intent falls in `blocked_categories`.
     intent_filter: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))

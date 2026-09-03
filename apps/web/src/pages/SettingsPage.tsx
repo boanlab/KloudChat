@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { AccessTab } from './settings/AccessTab'
 import { KeysTab } from './settings/KeysTab'
+import { PersonalizationTab } from './settings/PersonalizationTab'
 import { PreferencesTab } from './settings/PreferencesTab'
 import { ProfileTab } from './settings/ProfileTab'
 import { useT } from '@/lib/useT'
@@ -21,6 +22,7 @@ import { useT } from '@/lib/useT'
 const tabs = [
   { to: '/settings', label: '프로필', end: true },
   { to: '/settings/preferences', label: '환경설정', end: false },
+  { to: '/settings/personalization', label: '개인 맞춤 설정', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
   // Was 접속기록, when the tab held only the record. It now leads with the
   // live sign-ins and what to do about them.
@@ -79,6 +81,7 @@ export function SettingsPage() {
         <Routes>
           <Route index element={<ProfileTab />} />
           <Route path="preferences" element={<PreferencesTab />} />
+          <Route path="personalization" element={<PersonalizationTab />} />
           <Route path="keys" element={<KeysTab />} />
           <Route path="access" element={<AccessTab />} />
           <Route path="*" element={<Navigate to="/settings" replace />} />

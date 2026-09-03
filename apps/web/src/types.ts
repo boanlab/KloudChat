@@ -220,6 +220,10 @@ export interface Preferences {
   /** The model · token · credit line under each answer. */
   showUsage: boolean
   privacyDefaultAction: PrivacyAction | 'ask'
+  /** 개인 맞춤 설정: what every conversation knows about the person, and how
+   *  answers should be written. Empty strings when unset. */
+  aboutMe?: string
+  responseStyle?: string
 }
 
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'

@@ -61,7 +61,8 @@ class _InlineRuns(HTMLParser):
         if tag == "span" and (css := values.get("style")):
             rules = {
                 key.strip().lower(): value.strip()
-                for rule in css.split(";") if ":" in rule
+                for rule in css.split(";")
+                if ":" in rule
                 for key, value in [rule.split(":", 1)]
             }
             if re.fullmatch(r"[0-9.]+em", rules.get("font-size", "")):
@@ -92,6 +93,7 @@ def _inline_runs(html: str | None, fallback: str) -> list[tuple[str, dict]]:
     parser.feed(html)
     return parser.runs or [(fallback, {})]
 
+
 #: 16:9 in points — EMU/12700, and reportlab's default unit. Drives both
 #: exporters.
 _W, _H = 960.0, 540.0
@@ -107,6 +109,8 @@ def _picture_span(data: dict) -> float:
     return {"small": 230.0, "medium": _PICTURE_SPAN, "large": 390.0}.get(
         str((data.get("image") or {}).get("size") or "medium"), _PICTURE_SPAN
     )
+
+
 _EMU_PER_PT = 12700
 
 #: Korean is laid out with the *East Asian* font, which python-pptx does not
@@ -161,9 +165,7 @@ def _mix(
     is discovered in the room.
     """
     weight = max(0.0, min(1.0, percent / 100))
-    return RGBColor(
-        *(round(colour[i] * weight + onto[i] * (1 - weight)) for i in range(3))
-    )
+    return RGBColor(*(round(colour[i] * weight + onto[i] * (1 - weight)) for i in range(3)))
 
 
 def _block(slide, *, left: float, top: float, width: float, height: float, colour: RGBColor):
@@ -264,8 +266,12 @@ def _pptx_pairs(
             y = top + index * (height + 10)
             _block(slide, left=left, top=y, width=label, height=height, colour=accent)
             _block(
-                slide, left=left + label + 8, top=y, width=width - label - 8,
-                height=height, colour=tint,
+                slide,
+                left=left + label + 8,
+                top=y,
+                width=width - label - 8,
+                height=height,
+                colour=tint,
             )
             box = _textbox(slide, left=left, top=y + height / 2 - 12, width=label, height=24)
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
@@ -273,7 +279,10 @@ def _pptx_pairs(
             run.text = name
             paint(run, size=15, bold=True, colour=_WHITE)
             body = _textbox(
-                slide, left=left + label + 24, top=y + 10, width=width - label - 40,
+                slide,
+                left=left + label + 24,
+                top=y + 10,
+                width=width - label - 40,
                 height=height - 20,
             )
             run = body.paragraphs[0].add_run()
@@ -743,12 +752,7 @@ def to_pptx(
                 run,
                 size=max(
                     8,
-                    round(
-                        size
-                        * float(
-                            inline.get("scale") or scale.get(inline.get("size"), 1.0)
-                        )
-                    ),
+                    round(size * float(inline.get("scale") or scale.get(inline.get("size"), 1.0))),
                 ),
                 bold=bool(inline.get("bold", bold)),
                 colour=run_colour,
@@ -845,10 +849,14 @@ def to_pptx(
         # A picture takes the right half and the words keep the left. Alone, it
         # takes the middle of the slide. Either way the text is narrowed here
         # rather than overlapping it, which is what a slide would show.
-        text_width = _W - 144 - (
-            picture_span + 24
-            if picture and (bullets or rows or metrics or chart or body)
-            else 0
+        text_width = (
+            _W
+            - 144
+            - (
+                picture_span + 24
+                if picture and (bullets or rows or metrics or chart or body)
+                else 0
+            )
         )
         text_left = 72 + (picture_span + 24 if picture_left else 0)
 
@@ -865,9 +873,7 @@ def to_pptx(
                     run,
                     size=22,
                     bold=True,
-                    colour=accent
-                    if visual_style == "minimal"
-                    else _mix(_WHITE, 70, onto=accent),
+                    colour=accent if visual_style == "minimal" else _mix(_WHITE, 70, onto=accent),
                 )
             else:
                 _block(
@@ -879,7 +885,11 @@ def to_pptx(
                     colour=accent if visual_style == "minimal" else _WHITE,
                 )
             frame = _textbox(
-                slide, left=72, top=210, width=_W - 144, height=180,
+                slide,
+                left=72,
+                top=210,
+                width=_W - 144,
+                height=180,
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
             paint_rich(
@@ -906,7 +916,11 @@ def to_pptx(
             )
         elif layout == "quote":
             frame = _textbox(
-                slide, left=90, top=170, width=_W - 180, height=200,
+                slide,
+                left=90,
+                top=170,
+                width=_W - 180,
+                height=200,
                 placeholder=("title", 0),
             )
             paragraph = frame.paragraphs[0]
@@ -922,7 +936,11 @@ def to_pptx(
                 paint(run, size=13, colour=muted)
         else:
             frame = _textbox(
-                slide, left=text_left, top=64, width=text_width, height=60,
+                slide,
+                left=text_left,
+                top=64,
+                width=text_width,
+                height=60,
                 placeholder=("title", 0),
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
@@ -944,7 +962,12 @@ def to_pptx(
                 )
             elif chart:
                 _pptx_chart(
-                    slide, chart, accent=accent, muted=muted, width=text_width, faces=faces,
+                    slide,
+                    chart,
+                    accent=accent,
+                    muted=muted,
+                    width=text_width,
+                    faces=faces,
                     left=text_left,
                 )
             elif metrics:
@@ -1071,7 +1094,11 @@ def to_pptx(
                         bullet_at += 1
             elif body:
                 paragraph_frame = _textbox(
-                    slide, left=text_left, top=150, width=text_width, height=_H - 210,
+                    slide,
+                    left=text_left,
+                    top=150,
+                    width=text_width,
+                    height=_H - 210,
                     placeholder=("body", 1),
                 )
                 paint_rich(paragraph_frame.paragraphs[0], data, "body", body, size=16, colour=muted)
@@ -1082,9 +1109,7 @@ def to_pptx(
             box = (_W - 260, _H - 230) if alone else (picture_span, _H - 230)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
             if fill:
-                _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(
-                    image_bytes, box=box
-                )
+                _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(image_bytes, box=box)
                 width, height = box
             else:
                 width, height = _fit(image_bytes, box=box)
@@ -1462,10 +1487,14 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         )
         # The same split the .pptx uses, so the printout and the projected deck
         # put the same things in the same places.
-        text_width = _W - 144 - (
-            picture_span + 24
-            if picture and (bullets or rows or metrics or chart or body)
-            else 0
+        text_width = (
+            _W
+            - 144
+            - (
+                picture_span + 24
+                if picture and (bullets or rows or metrics or chart or body)
+                else 0
+            )
         )
         text_left = 72 + (picture_span + 24 if picture_left else 0)
 
@@ -1607,7 +1636,13 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 )
             elif chart:
                 _pdf_chart(
-                    pdf, chart, accent=accent, muted=muted, top=y, width=text_width, font=font,
+                    pdf,
+                    chart,
+                    accent=accent,
+                    muted=muted,
+                    top=y,
+                    width=text_width,
+                    font=font,
                     left=text_left,
                 )
             elif metrics:

@@ -168,9 +168,7 @@ def slide_text(slide: dict) -> str:
     return "\n".join(parts)
 
 
-async def check_slide(
-    *, slide: dict, model: str, api_key: str
-) -> tuple[dict, dict[str, int]]:
+async def check_slide(*, slide: dict, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
     """One slide's claims. Thin wrapper over `check_text`."""
     return await check_text(
         title=str(slide.get("title") or ""),

@@ -55,9 +55,7 @@ async def get_catalog(user: CurrentUser, db: DbSession):
     """Installable servers, with the ones this user already has marked."""
     installed = {
         c.slug
-        for c in (
-            await db.exec(select(Connector).where(Connector.owner_id == user.id))
-        ).all()
+        for c in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all()
     }
     return [
         {
@@ -90,9 +88,7 @@ async def get_catalog(user: CurrentUser, db: DbSession):
 async def list_connectors(user: CurrentUser, db: DbSession):
     rows = (
         await db.exec(
-            select(Connector)
-            .where(Connector.owner_id == user.id)
-            .order_by(col(Connector.name))
+            select(Connector).where(Connector.owner_id == user.id).order_by(col(Connector.name))
         )
     ).all()
     return [await _out(db, c) for c in rows]
@@ -238,8 +234,22 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
 
 
 _WRITE_HINTS = (
-    "create", "update", "delete", "write", "post", "send", "push", "publish",
-    "upload", "insert", "remove", "add", "set", "edit", "move", "rename",
+    "create",
+    "update",
+    "delete",
+    "write",
+    "post",
+    "send",
+    "push",
+    "publish",
+    "upload",
+    "insert",
+    "remove",
+    "add",
+    "set",
+    "edit",
+    "move",
+    "rename",
 )
 
 

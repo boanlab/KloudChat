@@ -25,6 +25,7 @@ import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGal
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
 import { handoffSurface } from '@/lib/documentRequest'
+import { isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
@@ -77,6 +78,7 @@ const SOURCE_LABEL: Record<string, string> = {
   current_input: '현재 요청',
   conversation_history: '대화 기록',
   attachments: '첨부 파일',
+  user_instructions: '개인 맞춤 설정',
   project_instructions: '프로젝트 지침',
   project_knowledge: '프로젝트 자료',
   memory: '메모리',
@@ -1639,6 +1641,7 @@ export function Composer({
                 : t(placeholders[kind])
           }
           aria-label={t('프롬프트 입력')}
+          data-composer=""
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none"
         />
 
@@ -2047,7 +2050,7 @@ export function Composer({
                   ? t('Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
                   : kind === 'slides'
                     ? t('Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
-                    : t('Enter 전송, Shift+Enter 줄바꿈')}
+                    : `${t('Enter 전송, Shift+Enter 줄바꿈')}, ${isMac() ? 'Cmd' : 'Ctrl'}+/ ${t('단축키 보기')}`}
       </p>
 
       <Modal

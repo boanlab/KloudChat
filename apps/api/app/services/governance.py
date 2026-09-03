@@ -70,12 +70,8 @@ class Finding:
 # Narrow candidates followed by format/checksum validation. False positives on
 # this path make people disable the feature, so semantic name/address detection
 # belongs in a later opt-in classifier rather than this deterministic baseline.
-_EMAIL_LOCAL = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-"
-)
-_EMAIL_DOMAIN = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
-)
+_EMAIL_LOCAL = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
+_EMAIL_DOMAIN = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
 _EMAIL_TLD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 _KR_MOBILE = re.compile(r"(?<!\d)(?:\+?82[- ]?)?0?1[016-9][- ]?\d{3,4}[- ]?\d{4}(?!\d)")
 _KR_LANDLINE = re.compile(
@@ -224,8 +220,10 @@ def _email_spans(text: str) -> Iterator[tuple[int, int]]:
             segment_start -= 1
 
         start = max(segment_start, resume)
-        while start < at and start > 0 and (
-            _is_word_character(text[start - 1]) or text[start - 1] in ".+-"
+        while (
+            start < at
+            and start > 0
+            and (_is_word_character(text[start - 1]) or text[start - 1] in ".+-")
         ):
             start += 1
 

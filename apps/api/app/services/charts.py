@@ -125,11 +125,7 @@ def _plain_frame(chart) -> None:
     space.insert(0, corners)
 
     plot = space.find(qn("c:chart"))
-    shape = parse_xml(
-        f'<c:spPr {nsdecls("c", "a")}>'
-        "<a:noFill/><a:ln><a:noFill/></a:ln>"
-        "</c:spPr>"
-    )
+    shape = parse_xml(f"<c:spPr {nsdecls('c', 'a')}><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>")
     space.insert(list(space).index(plot) + 1, shape)
 
 

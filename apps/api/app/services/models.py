@@ -486,10 +486,7 @@ async def resolve_enrichment_model() -> str:
     if not configured:
         return ""
     catalogue = await list_models()
-    if any(
-        model["id"] == configured and "chat" in model["kinds"]
-        for model in catalogue["models"]
-    ):
+    if any(model["id"] == configured and "chat" in model["kinds"] for model in catalogue["models"]):
         return configured
     if configured not in _MISSING_ENRICHMENT:
         # Once per distinct value: memory extraction runs on every turn, and a

@@ -235,9 +235,7 @@ async def read_shared(token: str, request: Request, db: DbSession):
     # The artifact the conversation produced, which is the reason to open the
     # link at all. Read through the session's own `artifact_id`, never by
     # listing: nothing else in the owner's workspace is reachable from a token.
-    artifact = (
-        await db.get(Artifact, session.artifact_id) if session.artifact_id else None
-    )
+    artifact = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if artifact is not None and artifact.user_id != session.user_id:
         artifact = None
     # What this conversation started with, which the empty screen in the app

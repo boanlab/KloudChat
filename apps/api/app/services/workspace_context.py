@@ -30,6 +30,7 @@ from app.models.workspace import (
     Template,
     Visibility,
 )
+from app.schemas.auth import Preferences
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import knowledge as knowledge_service
@@ -230,6 +231,31 @@ async def _load_project(db: AsyncSession, user: User, session: ChatSession) -> P
     if project is None or project.user_id != user.id:
         raise WorkspaceContextError("project_not_found")
     return project
+
+
+def _personal_block(user: User, kind: SessionKind) -> str:
+    """개인 맞춤 설정, as a block.
+
+    The conversation gets both halves. A document gets only the writing
+    style: what the person said about themselves is context for an answer
+    and, in a 보고서, would become the report — the same reason memories stay
+    off the document surfaces.
+    """
+    prefs = Preferences.of(user)
+    about = prefs.about_me.strip()
+    style = prefs.response_style.strip()
+    lines: list[str] = []
+    if about and kind is SessionKind.chat:
+        lines += [
+            "# 사용자에 대해",
+            "사용자가 직접 적은 내용입니다. 답을 맞출 때 참고하세요.",
+            about,
+        ]
+    if style:
+        if lines:
+            lines.append("")
+        lines += ["# 사용자가 바라는 답변 방식", style]
+    return "\n".join(lines)
 
 
 def _agent_block(agent: Agent | None) -> str:
@@ -712,6 +738,11 @@ async def assemble(
     starting_point = await _resolve_starting_template(db, user, starting_template_id)
 
     blocks: list[ContextBlock] = []
+    # First, and least specific: what the person set once for every
+    # conversation. An agent's or a project's instructions come after and win
+    # where they disagree.
+    if personal := _personal_block(user, session.kind):
+        blocks.append(ContextBlock("user.instructions", personal, True))
     if text := _agent_block(agent):
         blocks.append(ContextBlock("agent.instructions", text, True))
     if instructions:

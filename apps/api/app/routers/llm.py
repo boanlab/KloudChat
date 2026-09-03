@@ -63,7 +63,10 @@ async def proxy(path: str, request: Request) -> Response:
     try:
         upstream = await client.send(
             client.build_request(
-                request.method, url, headers=headers, content=body,
+                request.method,
+                url,
+                headers=headers,
+                content=body,
                 params=dict(request.query_params),
             ),
             stream=True,
@@ -85,9 +88,7 @@ async def proxy(path: str, request: Request) -> Response:
             await upstream.aclose()
             await client.aclose()
 
-    passthrough = {
-        k: v for k, v in upstream.headers.items() if k.lower() not in _DROP_RESPONSE
-    }
+    passthrough = {k: v for k, v in upstream.headers.items() if k.lower() not in _DROP_RESPONSE}
     return StreamingResponse(
         relay(),
         status_code=upstream.status_code,

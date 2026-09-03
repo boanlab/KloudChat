@@ -54,6 +54,10 @@ class Preferences(Wire):
     privacy_default_action: Literal[
         "ask", "route_strict_local", "mask_external", "send_raw_external"
     ] = "ask"
+    #: 개인 맞춤 설정 — what every conversation should know about the person,
+    #: and how answers should be written. Free text, the person's own words.
+    about_me: str = Field(default="", max_length=1500)
+    response_style: str = Field(default="", max_length=1500)
 
     @classmethod
     def of(cls, user: User) -> Preferences:

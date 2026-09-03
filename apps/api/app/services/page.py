@@ -217,9 +217,7 @@ def requested_blocks(request: str) -> int | None:
 #: Small models drop one often enough that the difference is a whole turn:
 #: the call is already paid for, and the plan inside it is legible to a human
 #: reading the log — so it should be legible here too.
-_SALVAGE = re.compile(
-    r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S
-)
+_SALVAGE = re.compile(r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S)
 
 
 def _salvaged(text: str) -> dict[str, Any]:
@@ -393,9 +391,7 @@ async def write(
     # configuration as though it were this document's result.
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
-        findings = await research.run(
-            request, model=outline_model or model, api_key=api_key
-        )
+        findings = await research.run(request, model=outline_model or model, api_key=api_key)
         usage["outlineInputTokens" if outline_model else "inputTokens"] += findings.usage[
             "inputTokens"
         ]
@@ -421,19 +417,25 @@ async def write(
         ordinal = len(findings.sources) + 1
         title = str(item.get("name") or "프로젝트 자료")[:200]
         url = str(item.get("sourceUrl") or "")
-        findings.sources.append({
-            "id": str(item.get("id") or f"project-{ordinal}"),
-            "ordinal": ordinal,
-            "title": title,
-            "publisher": research._publisher(url) if url else "프로젝트 파일",
-            "url": url,
-            "origin": "web" if url else "file",
-            "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
-            "quote": (
-                " · ".join(str(v) for v in (item.get("locations") or []))
-                or ("전체 내용 전달됨" if item.get("state") == "included" else "일부 내용만 전달됨")
-            ),
-        })
+        findings.sources.append(
+            {
+                "id": str(item.get("id") or f"project-{ordinal}"),
+                "ordinal": ordinal,
+                "title": title,
+                "publisher": research._publisher(url) if url else "프로젝트 파일",
+                "url": url,
+                "origin": "web" if url else "file",
+                "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
+                "quote": (
+                    " · ".join(str(v) for v in (item.get("locations") or []))
+                    or (
+                        "전체 내용 전달됨"
+                        if item.get("state") == "included"
+                        else "일부 내용만 전달됨"
+                    )
+                ),
+            }
+        )
         project_reference_lines.append(f"- [{ordinal}] {title}")
         project_selected += 1
     if findings.sources:
@@ -566,9 +568,7 @@ async def write(
             "type": "proposal",
             "plan": {
                 "title": title[:200],
-                "blocks": [
-                    {"title": item["title"], "layout": item["layout"]} for item in plan
-                ],
+                "blocks": [{"title": item["title"], "layout": item["layout"]} for item in plan],
             },
         }
         yield {"type": "usage", **usage}

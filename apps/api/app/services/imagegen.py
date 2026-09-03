@@ -179,9 +179,7 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
         raise ImageError("이미지 데이터가 손상되었습니다.") from exc
 
 
-async def generate(
-    *, base_url: str, api_key: str, model: str, prompt: str
-) -> GeneratedImage:
+async def generate(*, base_url: str, api_key: str, model: str, prompt: str) -> GeneratedImage:
     """One picture, or `ImageError`."""
     payload = {
         "model": model,
@@ -234,4 +232,3 @@ def store(user_id: str, image: GeneratedImage) -> tuple[str, str]:
 
 
 __all__ = ["GeneratedImage", "ImageError", "compose_prompt", "generate", "store"]
-
