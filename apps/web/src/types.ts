@@ -821,6 +821,10 @@ export interface ImageArtifact extends ArtifactBase {
   width?: number
   height?: number
   style: string
+  labels?: string
+  /** What the model was actually sent — the planned prompt, readable and
+   *  editable, sent again as it stands with `raw`. */
+  composedPrompt?: string
   seed: number
   model: string
   /** Object-store URL, once an image producer exists. */

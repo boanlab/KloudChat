@@ -1539,13 +1539,36 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
+    # The request as typed becomes the prompt the picture model follows: a
+    # language model places every element, names the arrows, settles the
+    # words and closes on the style line. Skipped when the person has edited
+    # that prompt themselves and sends it back as it stands.
+    planned = payload.prompt
+    if not payload.raw and payload.style != "없음":
+        planner = model_service.find(catalogue["models"], session.model or "")
+        if planner is None or "chat" not in planner.get("kinds", []):
+            chat_models = sorted(
+                (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
+                key=model_service.fallback_order,
+            )
+            planner = chat_models[0] if chat_models else None
+        if planner is not None:
+            planned, _ = await imagegen.plan(
+                payload.prompt,
+                style=payload.style,
+                labels=payload.labels,
+                figure=payload.figure,
+                model=str(planner["id"]),
+                api_key=api_key,
+            )
     composed = imagegen.compose_prompt(
-        payload.prompt,
+        planned,
         aspect=payload.aspect,
         style=payload.style,
         template=picture_template.prompt_suffix if picture_template else "",
         design=design_service.image_clause(await design_for(db, user, session)),
-        figure=payload.figure,
+        # A planned prompt already says it is one figure with no text.
+        figure=payload.figure and planned == payload.prompt,
     )
 
     made: list[Artifact] = []
@@ -1593,6 +1616,10 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
                 "width": image.width,
                 "height": image.height,
                 "style": payload.style,
+                "labels": payload.labels,
+                # What the model was actually sent, so it can be read, edited
+                # and sent again as it stands.
+                "composedPrompt": composed,
                 "seed": 0,
                 "model": model["id"],
                 "src": f"{settings.api_prefix}/files/{file_id}/content",

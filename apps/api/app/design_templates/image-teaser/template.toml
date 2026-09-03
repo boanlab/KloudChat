@@ -19,7 +19,7 @@ example_prompt_en = "A figure contrasting {subject} against the existing approac
 
 [defaults]
 aspect = "16:9"
-style = "미니멀"
+style = "자동"
 
 [[arguments]]
 name = "subject"

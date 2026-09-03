@@ -1,4 +1,5 @@
 import { Code2, Download, PencilLine, RefreshCw } from 'lucide-react'
+import { useRef } from 'react'
 import { Button, ButtonLink } from '@/components/ui'
 import { fileUrl } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
@@ -61,6 +62,9 @@ export function MediaResult({
   const { models, openArtifact } = useStore()
   const generateImages = useStore((s) => s.generateImages)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
+  //: The planned prompt as somebody is editing it, kept out of state so the
+  //: textarea does not re-render under their caret.
+  const edited = useRef('')
   const images = artifacts.filter((a): a is ImageArtifact => a.kind === 'image')
   const audios = artifacts.filter((a): a is AudioArtifact => a.kind === 'audio')
   const videos = artifacts.filter((a): a is VideoArtifact => a.kind === 'video')
@@ -205,6 +209,46 @@ export function MediaResult({
             t('{n}장').replace('{n}', String(images.length)),
             modelLabel(images[0].model),
           ])}
+          {/* What the model was actually sent. The sentence typed in is short;
+              the prompt that made the picture places every element and ends
+              on a style line — readable here, editable, and sendable again as
+              it stands. */}
+          {images[0].composedPrompt && images[0].composedPrompt !== images[0].prompt && (
+            <details className="mt-2 max-w-2xl rounded-control border border-line bg-panel px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium text-muted">{t('보낸 프롬프트 보기')}</summary>
+              <textarea
+                className="mt-2 w-full resize-y rounded-control border border-line bg-bg p-2 font-mono text-xs leading-relaxed text-fg"
+                rows={10}
+                defaultValue={images[0].composedPrompt}
+                aria-label={t('보낸 프롬프트')}
+                onChange={(e) => {
+                  edited.current = e.target.value
+                }}
+              />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {sessionId && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void generateImages(sessionId, edited.current || images[0].composedPrompt || '', {
+                        raw: true,
+                      })
+                    }
+                  >
+                    <RefreshCw size={13} />
+                    {t('이 프롬프트로 다시 만들기')}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void copyText(edited.current || images[0].composedPrompt || '')}
+                >
+                  {t('복사')}
+                </Button>
+              </div>
+            </details>
+          )}
         </div>
       )}
 

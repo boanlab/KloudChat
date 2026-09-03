@@ -15,7 +15,7 @@ example_prompt_en = "A background for a {field} poster: a faint {pattern}, {colo
 
 [defaults]
 aspect = "9:16"
-style = "미니멀"
+style = "자동"
 
 [[arguments]]
 name = "field"

@@ -18,7 +18,7 @@ example_prompt_en = "A cover ground for a document about {topic}, {feel}, with t
 
 [defaults]
 aspect = "16:9"
-style = "미니멀"
+style = "자동"
 
 [[arguments]]
 name = "topic"

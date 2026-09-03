@@ -49,7 +49,16 @@ const placeholders: Record<SessionKind, string> = {
 
 
 const ASPECTS = ['1:1', '16:9', '9:16', '4:3']
-const STYLES = ['미니멀', '사진', '일러스트', '3D 렌더', '수채화', '없음']
+/* What kind of picture, not only what it looks like. 자동 lets the planner
+   read it off the request; 없음 sends the sentence as typed. Kept in step with
+   `imagegen.STYLE_CHOICES`. */
+const STYLES = ['자동', '도식', '인포그래픽', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
+const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
+  { id: 'auto', label: '자동' },
+  { id: 'ko', label: '한국어' },
+  { id: 'en', label: '영어' },
+  { id: 'none', label: '없음' },
+]
 const VIDEO_DURATIONS = [4, 6, 8, 10]
 const AUDIO_DURATIONS = [15, 30, 60, 120]
 // Speech and music only: nothing serves sound effects, and an option that can
@@ -169,6 +178,13 @@ function ImageOptions() {
         options={STYLES}
         onChange={(v) => setImageOptions({ style: v })}
         format={t}
+      />
+      <OptionGroup
+        label={t('글자')}
+        value={imageOptions.labels}
+        options={LABELS.map((row) => row.id)}
+        onChange={(v) => setImageOptions({ labels: v })}
+        format={(v) => t(LABELS.find((row) => row.id === v)?.label ?? v)}
       />
       <OptionGroup
         label={t('장수')}

@@ -489,7 +489,12 @@ interface State {
   generateImages: (
     sessionId: string | null,
     prompt: string,
-    opts?: { projectId?: string | null; onSession?: (id: string) => void },
+    opts?: {
+      projectId?: string | null
+      onSession?: (id: string) => void
+      /** Send the prompt as it stands — an edited planned prompt. */
+      raw?: boolean
+    },
   ) => Promise<void>
   togglePinSession: (id: string) => Promise<void>
   rateMessage: (
@@ -534,7 +539,7 @@ interface State {
      */
   optionTemplate: DesignTemplateRow | null
   setOptionTemplate: (template: DesignTemplateRow | null) => void
-  imageOptions: { aspect: string; style: string; count: number }
+  imageOptions: { aspect: string; style: string; labels: 'auto' | 'ko' | 'en' | 'none'; count: number }
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** `mode` picks which artifact the av surface produces; the rest is per-mode. */
   /** Text to drop into the composer. A template fills it in; it is never sent
@@ -2080,9 +2085,11 @@ export const useStore = create<State>((set, get) => ({
         prompt,
         model: modelByKind.image || undefined,
         aspect: imageOptions.aspect,
-        style: imageOptions.style,
+        style: opts.raw ? '없음' : imageOptions.style,
+        labels: imageOptions.labels,
         count: imageOptions.count,
         templateId,
+        raw: opts.raw,
       })
       set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
       // One prompt, one answer, however many pictures came back: four of them
@@ -2220,7 +2227,7 @@ export const useStore = create<State>((set, get) => ({
 
   optionTemplate: null,
   setOptionTemplate: (optionTemplate) => set({ optionTemplate }),
-  imageOptions: { aspect: '1:1', style: '미니멀', count: 1 },
+  imageOptions: { aspect: '1:1', style: '자동', labels: 'auto', count: 1 },
   //: Every write but the template's own comes from a person turning a chip, so
   //: a write is where the 서식 stops being the author of these values.
   setImageOptions: (patch) =>

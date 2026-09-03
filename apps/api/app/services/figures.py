@@ -131,7 +131,15 @@ lighting, shallow depth of field", "description": ""}}
 #: What the picker draws with, per document look. A minimal document wants a
 #: minimal picture; the others take the 서식's own default.
 _LOOK_STYLE = {"minimal": "미니멀"}
-_LOOK_NAMES = {"editorial": "편집형", "poster": "포스터형", "minimal": "미니멀"}
+_LOOK_NAMES = {
+    "editorial": "편집형",
+    "poster": "포스터형",
+    "minimal": "미니멀",
+    "dark": "다크",
+    "split": "분할형",
+    "warm": "따뜻한",
+    "mono": "흑백",
+}
 
 
 def _catalogue_lines() -> str:

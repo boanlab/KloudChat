@@ -886,9 +886,13 @@ export const sessionsApi = {
       model?: string
       aspect: string
       style: string
+      /** How the words in the picture are handled. */
+      labels?: 'auto' | 'ko' | 'en' | 'none'
       count: number
       /** An `image` design template. Shapes the prompt; produces no file of its own. */
       templateId?: string
+      /** Send the prompt as typed, skipping the planner. */
+      raw?: boolean
       /**
        * Asked for from inside a document rather than from the image surface.
        * Tells the server the picture goes *into* a slide or a section, so it

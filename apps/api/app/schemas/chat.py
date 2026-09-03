@@ -84,6 +84,11 @@ class ImageRequest(Wire):
     #: picture going *into* a slide must not be a picture *of* a slide. See
     #: `imagegen._FIGURE_CLAUSE`.
     figure: bool = False
+    #: How the words in the picture are handled: `auto`, `ko`, `en`, `none`.
+    labels: str = Field(default="auto", max_length=8)
+    #: Send the prompt as typed. Set when somebody has edited the planned
+    #: prompt and wants exactly that — the planner would rewrite it again.
+    raw: bool = False
 
 
 class FigureSuggestRequest(Wire):

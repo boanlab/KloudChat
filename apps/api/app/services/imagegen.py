@@ -26,19 +26,146 @@ import httpx
 from PIL import Image
 
 from app.services import files as file_service
+from app.services import settings_store, thinking
 
 log = logging.getLogger(__name__)
 
 #: Per image; the surface generates them one at a time.
 _TIMEOUT = 180.0
 
+#: The style chips, and the whole sentence each one becomes.
+#:
+#: They were five art-style words — "clean minimal flat illustration" for
+#: 미니멀, and so on — appended to whatever was asked for. That made a
+#: 시스템 구조도 a flat illustration of one, and a 시장 사진 a flat
+#: illustration of one: the chip said what a picture *looks like* and never
+#: what kind of picture it is. These say both, the way a good figure prompt
+#: ends — palette, ground, line, type, and what it is for. 자동 leaves the
+#: choice to the planner, which reads it off the request.
 _STYLE_PHRASE = {
-    "미니멀": "clean minimal flat illustration, generous whitespace",
-    "사진": "photorealistic, natural lighting, shallow depth of field",
-    "일러스트": "hand-drawn illustration, expressive linework",
-    "3D 렌더": "3D render, soft studio lighting, subtle material detail",
-    "수채화": "watercolour painting, visible paper texture, soft edges",
+    "도식": (
+        "Style: clean academic vector diagram, white background, rounded boxes with thin "
+        "borders, thin labeled connectors, restrained palette of two or three hues "
+        "(navy, teal, amber), sans-serif labels, no decoration, no gradients, no icons that "
+        "are not part of the system. Suitable for a paper figure or a technical slide"
+    ),
+    "인포그래픽": (
+        "Style: clean educational infographic, white background, three or four flat hues, "
+        "simple geometric icons, clear visual hierarchy with one focal element, generous "
+        "spacing, sans-serif labels. Suitable for a lecture opening or a review article"
+    ),
+    "미니멀": (
+        "Style: minimal flat illustration, generous whitespace, one or two hues on a plain "
+        "ground, no texture, no outlines heavier than a hairline"
+    ),
+    "사진": (
+        "Style: photorealistic photograph, natural light, shallow depth of field, true "
+        "colour, no text, no watermark, no illustration"
+    ),
+    "일러스트": (
+        "Style: editorial illustration, confident hand-drawn linework, flat colour fills in "
+        "a limited palette, textured paper feel, no photorealism"
+    ),
+    "3D 렌더": (
+        "Style: clean 3D render, soft studio lighting, subtle material detail, neutral "
+        "backdrop, no text"
+    ),
+    "수채화": (
+        "Style: watercolour painting, visible paper texture, soft bleeding edges, light "
+        "washes, no hard outlines"
+    ),
 }
+
+#: What the chips are called on the wire and on screen, in order. 자동 and
+#: 없음 are not phrases: the first hands the choice to the planner, the second
+#: withholds it.
+STYLE_CHOICES = [
+    "자동",
+    "도식",
+    "인포그래픽",
+    "사진",
+    "일러스트",
+    "미니멀",
+    "3D 렌더",
+    "수채화",
+    "없음",
+]
+
+#: How the words in a picture are handled. `auto` lets the planner decide from
+#: the request and the kind of picture; a photograph gets none, a diagram gets
+#: labels in the request's language.
+LABEL_CHOICES = ("auto", "ko", "en", "none")
+
+_LABEL_RULE = {
+    "ko": "Labels are allowed and must be in Korean, exactly as given in the request; "
+    "keep them short and spelled correctly; no other text",
+    "en": "Labels are allowed and must be in English, short, spelled correctly; no other text",
+    "none": "No text anywhere: no labels, no captions, no letters, no numbers",
+}
+
+#: What the planner is taught by. Written in the shape a picture model follows
+#: best — one line of subject, the composition placed on the canvas, every
+#: element named, relations spelled out, the words settled, and a closing
+#: Style line — rather than a heap of adjectives.
+_PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬프트를 쓰는 기획자다.
+아래 요청을 그림 모델이 그대로 따를 수 있는 **영어 프롬프트 하나**로 바꿔라.
+
+프롬프트의 형식 — 이 순서로, 문단을 나눠서:
+1. 첫 문장: 무엇을 그리는지와 쓰임 (a system diagram of …, for a lecture slide).
+2. 구도: 화면 어디에 무엇이 오는지 — top-left, center, right, bottom — 요소마다 이름과
+   생김새(rounded rectangle, cylinder, circle, icon of …). 요소는 요청에 있는 것만.
+3. 관계: 화살표·연결의 방향과 그 위에 적을 말 (도식·흐름일 때). 화살표마다 이름을 붙여라.
+4. 글자: {label_rule}.
+5. 마지막 줄 "Style: …" — 팔레트(색 이름 2~4개), 배경, 선 굵기, 글꼴 계열, 무엇에 쓸
+   그림인지. {style_rule}
+
+규칙:
+- 요청에 없는 사실(숫자, 이름, 단계)을 지어내지 마라. 사용자가 적은 이름·라벨은 그대로 옮긴다.
+- 사진·장면·인물이면 구도·조명·렌즈·시간대를 적고, 화살표나 상자를 넣지 마라.
+- 슬라이드나 문서 화면 전체를 그리지 마라 — 그림 하나만.
+- 120~220 단어. 프롬프트만 출력하고 설명·머리말·따옴표·코드펜스는 붙이지 마라.
+{figure_rule}
+형식 보기 (내용이 아니라 모양을 따르라):
+---
+A multi-agent framework with four specialised agents arranged in a closed loop,
+for a workshop slide.
+
+Center-top: User Query (rounded rectangle). Four agents clockwise around a central
+message bus: Planner (splits the task), Retriever (queries a Vector Store drawn
+outside the loop on the left), Executor (calls Tools / APIs drawn outside on the
+right), Critic (checks results against the goal). Bottom: Final Response box.
+
+Labeled arrows for each message: "task" Planner -> Retriever / Executor; "context"
+Retriever -> Planner; "result" Executor -> Critic; "revision" Critic -> Planner, dashed.
+
+Labels in English, short. No other text.
+
+Style: clean academic vector, navy / teal / amber palette, rounded boxes, white
+background, sans-serif labels. Suitable for a conference slide.
+---
+A photograph of a university library reading room at golden hour, for a brochure cover.
+
+Wide shot from the entrance, long oak tables receding to tall windows on the far wall,
+warm low sun through the glass, a few students reading, no one facing the camera.
+35mm lens, eye level, soft shadows.
+
+No text anywhere.
+
+Style: photorealistic, natural light, true colour, calm and quiet mood.
+---
+
+요청: {request}"""
+
+_STYLE_RULE_AUTO = (
+    "프리셋이 없다. 요청이 무엇인지 보고 골라라 — 구조·흐름·비교면 clean academic vector "
+    "diagram, 설명 그림이면 educational infographic, 장면·인물·제품이면 photograph 나 "
+    "illustration."
+)
+
+_FIGURE_RULE = (
+    "- 이 그림은 문서나 슬라이드 **안에** 들어간다. 제목·캡션·범례·페이지 틀 없이 그림 "
+    "하나, 한 가지 주제, 작게 봐도 읽히게. 글자는 넣지 마라.\n"
+)
 
 #: What a picture bound for a slide or a document section has to be told.
 #:
@@ -126,7 +253,9 @@ def compose_prompt(
     if figure:
         parts.append(_FIGURE_CLAUSE)
     phrase = _STYLE_PHRASE.get(style)
-    if phrase:
+    # A planned prompt already ends on its own Style line; a second one
+    # would argue with it.
+    if phrase and "\nStyle:" not in prompt:
         parts.append(phrase)
     if template.strip():
         parts.append(template.strip())
@@ -135,6 +264,85 @@ def compose_prompt(
     if aspect and aspect != "1:1":
         parts.append(_shape_note(aspect))
     return ". ".join(p for p in parts if p)
+
+
+async def plan(
+    request: str,
+    *,
+    style: str,
+    labels: str,
+    figure: bool,
+    model: str,
+    api_key: str,
+) -> tuple[str, dict[str, int]]:
+    """The request, rewritten as the prompt a picture model follows.
+
+    「스타일 쪽이 오히려 생성되는 이미지를 망친다」 — a chip's five words could
+    not tell the model what to draw, only what to smear over it. This asks a
+    language model to say where everything goes, what each thing is called,
+    what the arrows mean and what the words are, then to close on the style
+    line. The person's sentence stays the stored prompt; this is what is sent.
+
+    Returns `(prompt, usage)`. Falls back to the request itself when the
+    planner fails, so a picture is still made.
+    """
+    label_rule = _LABEL_RULE.get(labels) or (
+        "Decide from the request: a diagram or infographic carries short labels in the "
+        "language the request is written in; a photograph, scene or object carries no text"
+    )
+    style_rule = (
+        f"프리셋이 있다: 이 줄을 그대로 살려서 마지막 줄로 써라 — {_STYLE_PHRASE[style]}"
+        if style in _STYLE_PHRASE
+        else _STYLE_RULE_AUTO
+    )
+    prompt = _PLANNER_PROMPT.format(
+        label_rule=label_rule,
+        style_rule=style_rule,
+        figure_rule=_FIGURE_RULE if figure else "",
+        request=request.strip()[:2000],
+    )
+    base, _ = await settings_store.litellm_config()
+    try:
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(90.0, connect=10.0),
+        ) as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 700,
+                    "temperature": 0.4,
+                    "reasoning": thinking.NO_REASONING,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        log.warning("image prompt planner failed, sending the request as typed: %s", exc)
+        return request.strip(), {"inputTokens": 0, "outputTokens": 0}
+    raw = payload.get("usage") or {}
+    text = str((payload.get("choices") or [{}])[0].get("message", {}).get("content") or "")
+    text = _unfenced(text)
+    if len(text) < 40 or "Style:" not in text:
+        log.info("image prompt planner answered oddly; sending the request as typed")
+        return request.strip(), {
+            "inputTokens": int(raw.get("prompt_tokens") or 0),
+            "outputTokens": int(raw.get("completion_tokens") or 0),
+        }
+    return text, {
+        "inputTokens": int(raw.get("prompt_tokens") or 0),
+        "outputTokens": int(raw.get("completion_tokens") or 0),
+    }
+
+
+def _unfenced(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-z]*\n?", "", text).rstrip("`").strip()
+    return text.strip().strip('"').strip()
 
 
 def _shape_note(aspect: str) -> str:
