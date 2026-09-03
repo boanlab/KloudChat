@@ -609,12 +609,18 @@ async def write(
 
     for index, block in enumerate(blocks):
         heading = str(block["title"])
+        # The same shape the slide and report tracks send, because the same
+        # timeline draws all three. This one said `done` where they say
+        # `current`, and the surface printed 「(/30)」 beside every block and
+        # could not say how many were left — the one thing a person watching
+        # a thirty-slide run wants to know.
+        progress = {"current": index + 1, "total": len(blocks)}
         yield {
             "type": "step",
             "id": f"b{index}",
             "label": heading,
             "status": "running",
-            "progress": {"done": index, "total": len(blocks)},
+            "progress": progress,
         }
         try:
             text, spent = await _complete(
@@ -649,7 +655,7 @@ async def write(
                 "id": f"b{index}",
                 "label": heading,
                 "status": "error",
-                "progress": {"done": index + 1, "total": len(blocks)},
+                "progress": progress,
             }
             continue
 
@@ -663,7 +669,7 @@ async def write(
             "id": f"b{index}",
             "label": heading,
             "status": "done",
-            "progress": {"done": index + 1, "total": len(blocks)},
+            "progress": progress,
         }
 
     html = templates.render(

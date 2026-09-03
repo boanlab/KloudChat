@@ -4266,6 +4266,25 @@ async function streamPage(
   // this is only the scaffold that stands until it arrives.
   const written = new Map<string, string>()
   const order: string[] = []
+  // Which block the writer is on, from its step events. The scaffold used to
+  // show every unwritten heading with the same three dots, so a person
+  // watching a thirty-slide run could not tell the tenth from the thirtieth,
+  // nor a run that was working from one that had stopped — nor, on a deck
+  // 서식, that slides were being made at all: it looked like a document.
+  let writing = -1
+  const isDeck = get().sessions.find((s) => s.id === sessionId)?.kind === 'slides'
+  const redraw = () =>
+    patchPage((a) => ({
+      ...a,
+      content: draftDocument(
+        order.map((title, i) => ({
+          title,
+          html: written.get(title) ?? '',
+          state: written.get(title) ? 'done' : i === writing ? 'writing' : 'pending',
+        })),
+        isDeck,
+      ),
+    }))
 
   const controller = new AbortController()
   beginRun(set, sessionId, () => controller.abort())
@@ -4328,24 +4347,25 @@ async function streamPage(
           // A plain scaffold, not the template's CSS: pretending to be the
           // finished design while the blocks are still arriving would make the
           // real file look like a change of mind when it lands.
-          const body = order
-            .map((title) => {
-              const html = written.get(title) ?? ''
-              return `<section><h2>${escapeHtml(title)}</h2>${html || '<p class="pending">…</p>'}</section>`
-            })
-            .join('\n')
-          patchPage((a) => ({ ...a, content: draftDocument(body) }))
+          redraw()
           break
         }
         case 'page':
           patchPage((a) => ({ ...a, content: e.html }))
           break
-        case 'step':
+        case 'step': {
           patchMessage(set, sessionId, assistantId, (m) => ({
             ...m,
             steps: upsertStep(m.steps, toStep(e as unknown as Record<string, unknown>)),
           }))
+          // `b3` running is the writer on the fourth block — see `page.write`.
+          const at = /^b(\d+)$/.exec(String(e.id ?? ''))
+          if (at && e.status === 'running' && willWrite) {
+            writing = Number(at[1])
+            redraw()
+          }
           break
+        }
         case 'usage':
           settled = true
           chargeCredits(set, get, e.credits)
@@ -4388,12 +4408,61 @@ const escapeHtml = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** The holding page a template turn shows while its blocks are still arriving. */
-const draftDocument = (body: string) =>
-  `<!doctype html><html lang="ko"><head><meta charset="utf-8" />` +
-  `<style>body{margin:0;padding:2rem 2.4rem;font-family:system-ui,sans-serif;` +
-  `line-height:1.6;color:#1a1a1a}section{margin:0 0 1.6rem}` +
-  `h2{font-size:1.1rem;margin:0 0 .4rem}.pending{color:#9aa0a6}</style>` +
-  `</head><body>${body}</body></html>`
+type DraftBlock = { title: string; html: string; state: 'done' | 'writing' | 'pending' }
+
+/**
+ * The holding page a template turn shows while its blocks are still arriving.
+ *
+ * Numbered, and in the shape of what is being made: a deck's blocks are
+ * drawn as slide frames, a document's as sections. The one being written says
+ * so and moves; the ones behind it say 대기. The line at the top counts — 「12
+ * / 30 쓰는 중」 — because the count is the one thing a person watching a long
+ * run wants and the page is the one thing they are watching.
+ */
+const draftDocument = (blocks: DraftBlock[], isDeck: boolean) => {
+  const unit = isDeck ? tr('슬라이드') : tr('절')
+  const done = blocks.filter((b) => b.state === 'done').length
+  const current = blocks.findIndex((b) => b.state === 'writing')
+  const status =
+    blocks.length === 0
+      ? ''
+      : current >= 0
+        ? `${unit} ${current + 1} / ${blocks.length} · ${tr('쓰는 중…')}`
+        : done === blocks.length
+          ? `${unit} ${blocks.length} · ${tr('마무리하는 중…')}`
+          : `${unit} ${blocks.length}`
+  const body = blocks
+    .map((b, i) => {
+      const inner =
+        b.state === 'done'
+          ? b.html
+          : `<p class="${b.state}">${b.state === 'writing' ? tr('쓰는 중…') : tr('대기')}</p>`
+      return (
+        `<section class="${isDeck ? 'slide' : 'part'} ${b.state}">` +
+        `<header><span class="n">${i + 1}</span><h2>${escapeHtml(b.title)}</h2></header>` +
+        `${inner}</section>`
+      )
+    })
+    .join('\n')
+  return (
+    `<!doctype html><html lang="ko"><head><meta charset="utf-8" />` +
+    `<style>body{margin:0;padding:1.6rem 2rem;font-family:system-ui,sans-serif;` +
+    `line-height:1.6;color:#1a1a1a;background:#f4f5f7}` +
+    `.status{position:sticky;top:0;margin:-1.6rem -2rem 1.2rem;padding:.7rem 2rem;` +
+    `background:#fff;border-bottom:1px solid #e3e5e8;font-size:.9rem;color:#4b5563}` +
+    `section{margin:0 0 1rem;padding:1rem 1.2rem;background:#fff;border:1px solid #e3e5e8;border-radius:10px}` +
+    `section.slide{aspect-ratio:16/9;max-width:40rem;overflow:hidden;display:flex;flex-direction:column}` +
+    `section.writing{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}` +
+    `section.pending{opacity:.6}` +
+    `header{display:flex;align-items:baseline;gap:.6rem;margin:0 0 .4rem}` +
+    `.n{font-size:.75rem;color:#6b7280;font-variant-numeric:tabular-nums}` +
+    `h2{font-size:1.05rem;margin:0}` +
+    `p.pending{color:#9aa0a6;margin:0}` +
+    `p.writing{color:#2563eb;margin:0;animation:pulse 1.2s ease-in-out infinite}` +
+    `@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}</style>` +
+    `</head><body>${status ? `<div class="status">${status}</div>` : ''}${body}</body></html>`
+  )
+}
 
 /**
  * A slides turn. Slides fill into a local draft, which is replaced by the

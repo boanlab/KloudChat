@@ -185,3 +185,32 @@ async def test_without_a_planner_the_outline_is_the_writer_s_own_cost(gateway):
     assert all(e["outlineOutputTokens"] == 0 for e in totals)
     # One per call, from the fake gateway, across both passes.
     assert sum(e["inputTokens"] for e in totals) == len(seen)
+
+
+@pytest.mark.asyncio
+async def test_a_page_counts_its_blocks_the_way_the_other_tracks_do(gateway):
+    """`progress` is `{current, total}` on every track — one timeline draws all three.
+
+    The 서식 track said `done` where the others say `current`, so the surface
+    printed 「(/30)」 beside every block and could not say how many were left.
+    """
+    seen: list[str] = []
+    plan = (
+        '{"title": "제목", "blocks": ['
+        '{"title": "제목", "layout": "cover"},'
+        '{"title": "가", "layout": "bullets"},'
+        '{"title": "나", "layout": "table"},'
+        '{"title": "다", "layout": "quote"}]}'
+    )
+    replies = [plan, *["<p>내용</p>"] * 6]
+    gateway.setattr(page.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
+
+    events = await both_passes(
+        page, request="발표", model="writer", api_key="k", template=dt.get("deck-editorial")
+    )
+
+    steps = [e for e in events if e["type"] == "step" and e["id"].startswith("b")]
+    assert steps, "블록마다 단계가 있어야 한다"
+    assert all(set(e["progress"]) == {"current", "total"} for e in steps)
+    assert [e["progress"]["current"] for e in steps if e["status"] == "running"] == [1, 2, 3, 4]
+    assert {e["progress"]["total"] for e in steps} == {4}
