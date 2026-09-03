@@ -867,16 +867,29 @@ export function DesignGalleryModal({
                 {/* 한 번에 하나만 펼친다. Two open procedures side by side push the
                     row's cards to different heights and the grid stops reading as a
                     grid; the person opened the second one to compare, and the first
-                    was already read. */}
+                    was already read.
+
+                    Controlled outright: the summary's own toggle is cancelled and
+                    the state decides, so the one that was open closes and the new
+                    one opens in the same paint — the browser opening the second
+                    first, and the first closing a frame later, jumped the grid and
+                    left the new one where it had been before the shift. The card
+                    is then kept in view, since closing the one above it moves it. */}
                 <details
                   className="mt-2 rounded-control bg-elevated px-2.5 py-2 text-xs leading-relaxed"
                   open={openPrompt === row.id}
-                  onToggle={(e) => {
-                    if (e.currentTarget.open) setOpenPrompt(row.id)
-                    else if (openPrompt === row.id) setOpenPrompt(null)
-                  }}
                 >
-                  <summary className="cursor-pointer font-medium text-muted">
+                  <summary
+                    className="cursor-pointer font-medium text-muted"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      const card = e.currentTarget.closest('details')
+                      setOpenPrompt((current) => (current === row.id ? null : row.id))
+                      requestAnimationFrame(() =>
+                        card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+                      )
+                    }}
+                  >
                     {t('실제 작업 방식 보기')}
                   </summary>
                   <p className="mt-1.5 whitespace-pre-wrap text-faint">{row.prompt}</p>
