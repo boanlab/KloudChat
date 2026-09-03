@@ -26,7 +26,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings as env_settings
 from app.core.db import SessionLocal
 from app.models.settings import SystemSetting
-from app.models.user import utcnow
+from app.models.user import User, UserRole, UserStatus, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +62,8 @@ BRAND_NAME = "brand.name"
 #: Logo filename and MIME type. The file itself lives in the file store.
 BRAND_LOGO = "brand.logo"
 BRAND_LOGO_MIME = "brand.logo_mime"
+#: Where 관리자에게 문의 goes. Empty falls back to the first administrator.
+CONTACT_EMAIL = "contact.email"
 
 # ── enabled surfaces ───────────────────────────────────────────────────
 #: CSV of the enabled surfaces. Chat is never listed: it is always on.
@@ -236,6 +238,26 @@ async def brand() -> dict[str, str]:
         # Filename in the query string, so replacing the logo changes the URL.
         "logo": f"/api/branding/logo?v={logo}" if logo else "",
     }
+
+
+async def contact_email(db: AsyncSession) -> str:
+    """The address the waiting and sign-in screens send people to.
+
+    The stored one when an administrator set it; otherwise the oldest
+    administrator account, so a fresh instance never points at example.com.
+    """
+    values = await all_values()
+    stored = (values.get(CONTACT_EMAIL) or "").strip()
+    if stored:
+        return stored
+    row = (
+        await db.exec(
+            select(User)
+            .where(User.role == UserRole.admin, User.status == UserStatus.active)
+            .order_by(User.created_at)
+        )
+    ).first()
+    return row.email if row else ""
 
 
 async def enabled_kinds() -> list[str]:

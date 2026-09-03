@@ -296,6 +296,8 @@ export interface SystemSettings {
   status: 'ok' | 'unavailable'
   /** Service name and logo URL to render. */
   brand: { name: string; logo: string }
+  /** Where 관리자에게 문의 goes; `admin` means the first administrator's own. */
+  contact: { email: string; source: 'database' | 'admin' }
   /** Enabled surfaces. Chat is always included. */
   enabledKinds: string[]
   /** Who may register: the mode, the mail domains allowed (empty = any), and
@@ -359,6 +361,8 @@ export const authConfig = {
       /** A Whisper backend is configured, so the composer may show a microphone. */
       dictationEnabled: boolean
       brand: { name: string; logo: string }
+      /** Where 관리자에게 문의 goes. Empty when nobody can be named. */
+      contactEmail: string
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
       /** Minutes of inactivity before the browser ends the session. 0 is off. */
@@ -427,6 +431,7 @@ export const adminApi = {
     smtpPassword?: string
     smtpFrom?: string
     appBaseUrl?: string
+    contactEmail?: string
     signupMode?: string
     signupDomains?: string
     signupVerifyEmail?: string

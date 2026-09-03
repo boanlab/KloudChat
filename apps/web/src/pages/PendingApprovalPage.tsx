@@ -19,6 +19,15 @@ export function PendingApprovalPage() {
   //: The mailed link has not been clicked yet. Verifying happens in a mail
   //: client and lands in another tab; the poll below is what moves this one.
   const unverified = !suspended && user?.emailVerifiedAt === null
+  //: Whom 관리자에게 문의 reaches — the address the administrator set, or the
+  //: first administrator's own. It was `admin@example.com`, literally.
+  const [contact, setContact] = useState<string>('')
+  useEffect(() => {
+    void authConfig
+      .get()
+      .then((c) => setContact(c.contactEmail ?? ''))
+      .catch(() => undefined)
+  }, [])
   const [resent, setResent] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const resend = async () => {
@@ -105,10 +114,19 @@ export function PendingApprovalPage() {
             <RefreshCw size={15} />
             {t('상태 새로고침')}
           </Button>
-          <Button onClick={() => (window.location.href = 'mailto:admin@example.com')}>
-            <Mail size={15} />
-            {t('관리자에게 문의')}
-          </Button>
+          {contact && (
+            <Button
+              title={contact}
+              onClick={() =>
+                (window.location.href = `mailto:${contact}?subject=${encodeURIComponent(
+                  `[KloudChat] ${t('가입 문의')} — ${user?.email ?? ''}`,
+                )}`)
+              }
+            >
+              <Mail size={15} />
+              {t('관리자에게 문의')}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => void logout()}>
             <LogOut size={15} />
             {t('로그아웃')}

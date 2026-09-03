@@ -23,12 +23,16 @@ export function BrandingSection({
   const t = useT()
   const refreshBrand = useStore((s) => s.refreshBrand)
   const [name, setName] = useState('')
+  const [contact, setContact] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (settings) setName(settings.brand.name)
+    if (settings) {
+      setName(settings.brand.name)
+      setContact(settings.contact.source === 'database' ? settings.contact.email : '')
+    }
   }, [settings])
 
   if (!settings) return null
@@ -66,6 +70,28 @@ export function BrandingSection({
             disabled={busy}
             title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
             onClick={() => void run(() => adminApi.updateSettings({ brandName: name.trim() }))}
+          >
+            {t('저장')}
+          </Button>
+        </div>
+      </Field>
+
+      <Field
+        label={t('문의 주소')}
+        hint={t('대기 화면의 「관리자에게 문의」가 여는 메일 주소입니다. 비우면 첫 관리자 계정의 주소를 씁니다.')}
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            type="email"
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            placeholder={settings.contact.email || 'admin@example.com'}
+            className="font-mono text-base"
+          />
+          <Button
+            disabled={busy}
+            title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
+            onClick={() => void run(() => adminApi.updateSettings({ contactEmail: contact.trim() }))}
           >
             {t('저장')}
           </Button>

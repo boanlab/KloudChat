@@ -37,6 +37,9 @@ class SystemSettingsIn(Wire):
     smtp_from: str | None = None
     app_base_url: str | None = None
 
+    #: Where 관리자에게 문의 goes. Empty falls back to the first administrator.
+    contact_email: str | None = None
+
     # ── who may sign up ────────────────────────────────────────────────
     #: `open` / `approval` / `closed`; empty falls back to `SIGNUP_MODE`.
     signup_mode: str | None = None

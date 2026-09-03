@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
-import { Suspense, lazy, useEffect } from 'react'
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom'
+import { Suspense, lazy, useEffect, useRef } from 'react'
+import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import { kindOrder } from '@/lib/kinds'
@@ -88,11 +88,28 @@ function useAllowanceRefresh() {
   }, [resetsAt, refreshMe])
 }
 
+/**
+ * Approval arrives while the waiting screen is up, and the waiting screen
+ * covers whatever URL the tab was on — the administrator's own
+ * `/admin/system/mail` from an earlier session in the same browser, say. The
+ * first thing the new account saw was 이 페이지에 접근할 수 없습니다. Leaving
+ * the pending state starts at home.
+ */
+function useHomeAfterApproval(status: string | undefined) {
+  const navigate = useNavigate()
+  const was = useRef(status)
+  useEffect(() => {
+    if (was.current === 'pending' && status === 'active') navigate('/', { replace: true })
+    was.current = status
+  }, [status, navigate])
+}
+
 function Authenticated() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
   const status = useStore((s) => s.user?.status)
   useAllowanceRefresh()
+  useHomeAfterApproval(status)
 
   if (authLoading) return <Spinner />
 

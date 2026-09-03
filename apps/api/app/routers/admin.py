@@ -109,7 +109,7 @@ def _audit(db, request: Request, admin: User, action: str, target: str, detail: 
 
 
 @router.get("/settings")
-async def get_settings(admin: AdminUser):
+async def get_settings(admin: AdminUser, db: DbSession):
     """Current proxy configuration and the provenance of each value.
 
     The master key is never returned: only whether one is set, plus its last
@@ -156,6 +156,10 @@ async def get_settings(admin: AdminUser):
         },
         "status": "ok" if await litellm_service.health(quick=True) else "unavailable",
         "brand": await settings_store.brand(),
+        "contact": {
+            "email": await settings_store.contact_email(db),
+            "source": "database" if values.get(settings_store.CONTACT_EMAIL) else "admin",
+        },
         # Who may register, from where, and whether the address is checked.
         "signup": {
             "mode": signup.mode,
@@ -238,6 +242,7 @@ async def put_settings(
         ("smtp_password", settings_store.SMTP_PASSWORD),
         ("smtp_from", settings_store.SMTP_FROM),
         ("app_base_url", settings_store.APP_BASE_URL),
+        ("contact_email", settings_store.CONTACT_EMAIL),
         ("signup_mode", settings_store.SIGNUP_MODE),
         ("signup_domains", settings_store.SIGNUP_DOMAINS),
         ("signup_verify_email", settings_store.SIGNUP_VERIFY_EMAIL),
@@ -253,7 +258,7 @@ async def put_settings(
     settings_store.invalidate()
     # Catalogue was fetched with the old credentials.
     model_service.invalidate_cache()
-    return await get_settings(admin)
+    return await get_settings(admin, db)
 
 
 @router.post("/settings/test")

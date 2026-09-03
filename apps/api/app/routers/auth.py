@@ -709,7 +709,7 @@ async def end_other_sessions(user: CurrentUser, request: Request, db: DbSession)
 
 
 @router.get("/config")
-async def auth_config():
+async def auth_config(db: DbSession):
     """What this instance is able to offer.
 
     A control that cannot work must not be drawn: no mail means no reset link,
@@ -734,6 +734,9 @@ async def auth_config():
         # Served before authentication: the sign-in screen has to render the
         # name and logo too.
         "brand": await settings_store.brand(),
+        # Where 관리자에게 문의 goes. Public, like the brand: the waiting
+        # screen and the sign-in page both need it.
+        "contactEmail": await settings_store.contact_email(db),
         "enabledKinds": await settings_store.enabled_kinds(),
         "privacy": {
             "externalDataGuard": policy.external_data_guard,
