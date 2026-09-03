@@ -2,16 +2,16 @@ kind = "image"
 name = "장면 삽화"
 description = "보고서·교육 자료에 넣는 장면 그림. 글자 없이, 요청한 구도로"
 category = "문서"
-fills = ["장면", "스타일", "구도", "주의할 것"]
-example_prompt = "{scene}. {style} 스타일로, {composition}. {avoid}. 이미지 안에 글자는 넣지 마."
+fills = ["장면", "스타일", "구도", "주의할 것", "비율"]
+example_prompt = "{scene}. {style} 스타일로, {composition}. {avoid}. 이미지 안에 글자는 넣지 마. 비율은 {aspect}."
 layouts = ["cover"]
 prompt_suffix = "editorial illustration, coherent single scene, natural light, no text, no lettering, no logos, no watermarks"
 
 name_en = "Scene illustration"
 description_en = "A scene for a report or training deck, in the requested style, no lettering"
 category_en = "Documents"
-fills_en = ["Scene", "Style", "Composition", "Avoid"]
-example_prompt_en = "{scene}. {style} style, {composition}. {avoid}. No text inside the image."
+fills_en = ["Scene", "Style", "Composition", "Avoid", "Aspect"]
+example_prompt_en = "{scene}. {style} style, {composition}. {avoid}. No text inside the image. Aspect {aspect}."
 
 [defaults]
 aspect = "16:9"
@@ -49,3 +49,12 @@ label = "주의할 것"
 label_en = "Avoid"
 default = "지나치게 공포스럽거나 과장된 표현은 피해 줘"
 default_en = "avoid anything frightening or exaggerated"
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "16:9 (슬라이드·가로형)"
+default_en = "16:9 (slides, landscape)"
+options = ["16:9 (슬라이드·가로형)", "4:3 (보고서 삽화)", "1:1 (소셜 미디어)"]
+options_en = ["16:9 (slides, landscape)", "4:3 (report illustration)", "1:1 (social media)"]

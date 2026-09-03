@@ -2,16 +2,16 @@ kind = "image"
 name = "포스터 배경"
 description = "학회 포스터나 발표 표지의 바탕. 본문을 넣을 넓은 빈 영역을 남깁니다"
 category = "연구"
-fills = ["분야", "무늬", "색", "빈 영역"]
-example_prompt = "{field} 포스터의 배경. {pattern}를 옅게 깔고, {colors} 중심으로. {space}은 본문 자리로 비워 줘."
+fills = ["분야", "무늬", "색", "빈 영역", "비율"]
+example_prompt = "{field} 포스터의 배경. {pattern}를 옅게 깔고, {colors} 중심으로. {space}은 본문 자리로 비워 줘. 비율은 {aspect}."
 layouts = ["cover"]
 prompt_suffix = "abstract background only, thin light grid or network pattern, large uncluttered area reserved for body text, no text, no lettering, no logos, no figures"
 
 name_en = "Poster background"
 description_en = "A ground for a conference poster or talk cover, with a wide empty area for the body"
 category_en = "Research"
-fills_en = ["Field", "Pattern", "Colours", "Empty area"]
-example_prompt_en = "A background for a {field} poster: a faint {pattern}, {colors}, with the {space} left clear for the body."
+fills_en = ["Field", "Pattern", "Colours", "Empty area", "Aspect"]
+example_prompt_en = "A background for a {field} poster: a faint {pattern}, {colors}, with the {space} left clear for the body. Aspect {aspect}."
 
 [defaults]
 aspect = "9:16"
@@ -48,3 +48,12 @@ default = "가운데 넓게"
 default_en = "the wide centre"
 options = ["가운데 넓게", "위쪽 제목 자리", "오른쪽"]
 options_en = ["the wide centre", "the title band at the top", "the right side"]
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "9:16 (A0 세로 포스터)"
+default_en = "9:16 (A0 portrait poster)"
+options = ["9:16 (A0 세로 포스터)", "16:9 (발표 표지 배경)", "4:3 (가로 포스터)"]
+options_en = ["9:16 (A0 portrait poster)", "16:9 (talk cover background)", "4:3 (landscape poster)"]

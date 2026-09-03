@@ -2,16 +2,16 @@ kind = "image"
 name = "고객 페르소나"
 description = "기획에 쓸 사용자 유형 그림. 각자의 환경과 도구로 구분되고, 스타일은 하나로"
 category = "문서"
-fills = ["인물들", "각자의 환경·도구", "스타일"]
-example_prompt = "{people}를 나란히 그린 페르소나 그림. {contexts}로 구분하고, {style}로 통일해 줘."
+fills = ["인물들", "각자의 환경·도구", "스타일", "비율"]
+example_prompt = "{people}를 나란히 그린 페르소나 그림. {contexts}로 구분하고, {style}로 통일해 줘. 비율은 {aspect}."
 layouts = ["cover"]
 prompt_suffix = "three or fewer figures side by side, each in their own work setting, consistent editorial illustration style, neutral background, no text, no lettering, no logos"
 
 name_en = "Customer personas"
 description_en = "User types for planning, each in their own setting and tools, one consistent style"
 category_en = "Documents"
-fills_en = ["People", "Settings and tools", "Style"]
-example_prompt_en = "Persona artwork of {people} side by side, told apart by {contexts}, unified in {style}."
+fills_en = ["People", "Settings and tools", "Style", "Aspect"]
+example_prompt_en = "Persona artwork of {people} side by side, told apart by {contexts}, unified in {style}. Aspect {aspect}."
 
 [defaults]
 aspect = "16:9"
@@ -39,3 +39,12 @@ default = "일관된 편집 일러스트"
 default_en = "consistent editorial illustration"
 options = ["일관된 편집 일러스트", "평면 벡터", "부드러운 3D"]
 options_en = ["consistent editorial illustration", "flat vector", "soft 3D"]
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "16:9 (셋 나란히)"
+default_en = "16:9 (three side by side)"
+options = ["16:9 (셋 나란히)", "4:3 (둘 나란히)", "1:1 (한 명)"]
+options_en = ["16:9 (three side by side)", "4:3 (two side by side)", "1:1 (one person)"]

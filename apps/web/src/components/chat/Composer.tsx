@@ -691,6 +691,7 @@ export function Composer({
     models,
     modelByKind,
     imageOptions,
+    setImageOptions,
     jobs,
     uploadFile,
     newSession,
@@ -1405,7 +1406,17 @@ export function Composer({
           >
             {startingTemplate.fills.map((fill, index) => {
               const blank = startingTemplate.blanks?.[index]
-              const set = (next: string) => setStartingValues((all) => ({ ...all, [index]: next }))
+              const set = (next: string) => {
+                setStartingValues((all) => ({ ...all, [index]: next }))
+                // 비율 빈칸은 비율 칩이다. A media 서식 recommends a shape per
+                // job — 16:9 for a talk cover, 9:16 for a printed poster — and
+                // the chip beside the send button is what the picture request
+                // actually reads, so the pick lands there too.
+                if (blank?.name === 'aspect') {
+                  const ratio = /^\s*(\d+:\d+)/.exec(next)?.[1]
+                  if (ratio && ASPECTS.includes(ratio)) setImageOptions({ aspect: ratio })
+                }
+              }
               return (
                 <label key={`${fill}-${index}`} className={cn('block min-w-0', blank?.long && 'sm:col-span-2')}>
                   <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
