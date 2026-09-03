@@ -489,7 +489,15 @@ export interface UsageReport {
   /** `'other'` beside the five surfaces: spend charged against no session,
    *  which is how the bars keep adding up to the total. */
   bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]
-  topUsers: { id: string; name: string; email: string; credits: number; allowance: number }[]
+  /** Every account with activity in the window, most spent first. */
+  topUsers: {
+    id: string
+    name: string
+    email: string
+    credits: number
+    requests: number
+    allowance: number
+  }[]
 }
 
 /** One line of somebody's own 접속기록. */
@@ -687,6 +695,15 @@ export const sharesApi = {
   read: (token: string) => call<SharedPayload>(`/shared/${token}`),
 }
 
+export interface StorageReport {
+  path: string
+  usedBytes: number
+  files: number
+  diskTotalBytes: number
+  diskFreeBytes: number
+  byUser: { id: string; name: string; email: string; bytes: number; files: number }[]
+}
+
 export const usageApi = {
   governance: () => call<GovernancePolicy>('/admin/governance'),
   setGovernance: (patch: Partial<GovernancePolicy>) =>
@@ -695,6 +712,8 @@ export const usageApi = {
       body: JSON.stringify(patch),
     }),
   report: (days = 7) => call<UsageReport>(`/admin/usage?days=${days}`),
+  /** Disk the uploads and generated media take, per account, and what is left. */
+  storage: () => call<StorageReport>('/admin/storage'),
   audit: (limit = 100) => call<AuditRow[]>(`/admin/audit?limit=${limit}`),
 }
 

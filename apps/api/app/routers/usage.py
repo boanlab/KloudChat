@@ -18,6 +18,7 @@ disagree, because they are the same rows. Nothing is estimated or seeded.
 from __future__ import annotations
 
 import asyncio
+import shutil
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -32,6 +33,7 @@ from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, 
 from app.schemas.admin import GovernanceIn
 from app.services import adaptive_routing, geoip, governance, settings_store
 from app.services import credits as credits_service
+from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 
@@ -108,9 +110,7 @@ _SPEND_MODEL = func.nullif(
 #: the fallback for older rows whose session is still there.
 #: `sessions.kind` is a Postgres enum and the column is text, so the join half
 #: is cast — COALESCE refuses to match the two otherwise.
-_SPEND_SURFACE = func.coalesce(
-    col(CreditLedger.surface), cast(col(ChatSession.kind), String)
-)
+_SPEND_SURFACE = func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String))
 
 
 def _events(since: datetime, user_id: str | None = None):
@@ -122,9 +122,9 @@ def _events(since: datetime, user_id: str | None = None):
     """
     turns = (
         select(
-            func.date_trunc(
-                "day", col(Message.created_at), type_=DateTime(timezone=True)
-            ).label("day"),
+            func.date_trunc("day", col(Message.created_at), type_=DateTime(timezone=True)).label(
+                "day"
+            ),
             col(Message.model).label("model"),
             # Cast for the same reason `_SPEND_SURFACE` casts: the two halves
             # of the union have to agree, and one of them is now plain text.
@@ -151,9 +151,9 @@ def _events(since: datetime, user_id: str | None = None):
             _SPEND_SURFACE.label("kind"),
             col(CreditLedger.user_id).label("user_id"),
             (-col(CreditLedger.delta)).label("credits"),
-            case(
-                (col(CreditLedger.reason).in_((*MEDIA_REASONS, *UNIT_REASONS)), 1), else_=0
-            ).label("requests"),
+            case((col(CreditLedger.reason).in_((*MEDIA_REASONS, *UNIT_REASONS)), 1), else_=0).label(
+                "requests"
+            ),
             func.coalesce(col(CreditLedger.units), 0).label("units"),
         )
         .select_from(CreditLedger)
@@ -197,15 +197,11 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
     units = func.coalesce(func.sum(events.c.units), 0)
     people = func.count(func.distinct(events.c.user_id))
 
-    spent, request_count, active_users = (
-        await db.exec(select(credits, requests, people))
-    ).one()
+    spent, request_count, active_users = (await db.exec(select(credits, requests, people))).one()
 
     daily = (
         await db.exec(
-            select(events.c.day, credits, requests)
-            .group_by(events.c.day)
-            .order_by(events.c.day)
+            select(events.c.day, credits, requests).group_by(events.c.day).order_by(events.c.day)
         )
     ).all()
 
@@ -254,12 +250,12 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
                 User.email,
                 User.monthly_credits,
                 credits.label("spent"),
+                requests.label("asked"),
             )
             .select_from(events)
             .join(User, events.c.user_id == col(User.id))
             .group_by(col(User.id), col(User.name), col(User.email), col(User.monthly_credits))
-            .order_by(credits.desc())
-            .limit(10)
+            .order_by(credits.desc(), requests.desc())
         )
     ).all()
 
@@ -273,9 +269,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).one()
 
-    surfaces = [
-        {"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface
-    ]
+    surfaces = [{"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface]
     if loose_credits or loose_requests:
         surfaces.append(
             {"kind": "other", "credits": int(loose_credits), "requests": int(loose_requests)}
@@ -307,16 +301,70 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             for m, c, n, u, x in by_model
         ],
         "bySurface": surfaces,
+        # Every account with activity in the window, most spent first. The
+        # screen used to show ten and call it 상위; an administrator asking
+        # who used what wants the whole list.
         "topUsers": [
             {
                 "id": uid,
                 "name": name,
                 "email": email,
                 "credits": int(spent_u),
+                "requests": int(asked),
                 "allowance": int(allowance),
             }
-            for uid, name, email, allowance, spent_u in top_users
+            for uid, name, email, allowance, spent_u, asked in top_users
         ],
+    }
+
+
+@router.get("/storage")
+async def storage(admin: AdminUser, db: DbSession):
+    """What the uploads and the generated media take on disk, and what is left.
+
+    Everything a person adds or makes — attachments, project knowledge,
+    pictures, clips — lands under `file_storage_dir/<user id>/`, so a walk of
+    that tree per directory is the per-person figure, and the volume it sits
+    on says how much room remains. Walked on request rather than kept in a
+    column: the directories are small and the answer is always current.
+    """
+    root = file_service.storage_root()
+    per_user: dict[str, tuple[int, int]] = {}
+    for directory in root.iterdir():
+        if not directory.is_dir():
+            continue
+        size = files = 0
+        for path in directory.rglob("*"):
+            if path.is_file():
+                files += 1
+                size += path.stat().st_size
+        per_user[directory.name] = (size, files)
+    names = {
+        row.id: row
+        for row in (
+            await db.exec(select(User).where(col(User.id).in_(list(per_user) or ["-"])))
+        ).all()
+    }
+    disk = shutil.disk_usage(root)
+    return {
+        "path": str(root),
+        "usedBytes": sum(size for size, _ in per_user.values()),
+        "files": sum(files for _, files in per_user.values()),
+        "diskTotalBytes": disk.total,
+        "diskFreeBytes": disk.free,
+        "byUser": sorted(
+            (
+                {
+                    "id": user_id,
+                    "name": names[user_id].name if user_id in names else "(삭제된 계정)",
+                    "email": names[user_id].email if user_id in names else "",
+                    "bytes": size,
+                    "files": files,
+                }
+                for user_id, (size, files) in per_user.items()
+            ),
+            key=lambda row: -row["bytes"],
+        ),
     }
 
 
@@ -342,14 +390,16 @@ async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
     for row, spend in zip(rows, spends, strict=True):
         if not isinstance(spend, dict):
             continue
-        out.append({
-            "id": row.id,
-            "name": row.name,
-            "preview": row.preview,
-            "spendUsd": round(spend["spend"], 4),
-            "credits": int(spend["spend"] * settings.credits_per_usd),
-            "budgetUsd": spend["maxBudget"],
-        })
+        out.append(
+            {
+                "id": row.id,
+                "name": row.name,
+                "preview": row.preview,
+                "spendUsd": round(spend["spend"], 4),
+                "credits": int(spend["spend"] * settings.credits_per_usd),
+                "budgetUsd": spend["maxBudget"],
+            }
+        )
     return out
 
 
@@ -373,9 +423,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
 
     daily = (
         await db.exec(
-            select(events.c.day, credits, requests)
-            .group_by(events.c.day)
-            .order_by(events.c.day)
+            select(events.c.day, credits, requests).group_by(events.c.day).order_by(events.c.day)
         )
     ).all()
 
@@ -428,9 +476,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     # others; both mean the same number here.
     cycle_used = int(cycle_used if not hasattr(cycle_used, "__len__") else cycle_used[0])
 
-    surfaces = [
-        {"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface
-    ]
+    surfaces = [{"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface]
     if loose_credits or loose_requests:
         surfaces.append(
             {"kind": "other", "credits": int(loose_credits), "requests": int(loose_requests)}
@@ -549,9 +595,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
 
 
 @router.put("/governance")
-async def put_governance(
-    payload: GovernanceIn, request: Request, admin: AdminUser, db: DbSession
-):
+async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUser, db: DbSession):
     """Writes the policy and applies the part that acts on what is already stored.
 
     Retention is the one rule that is retroactive: shortening the window has to
@@ -615,9 +659,7 @@ async def put_governance(
             economy_ids = list(patch["adaptive_economy_model_ids"] or [])
             patch["adaptive_economy_model_ids"] = economy_ids
         if "adaptive_quality_model_ids" in patch:
-            patch["adaptive_quality_model_ids"] = list(
-                patch["adaptive_quality_model_ids"] or []
-            )
+            patch["adaptive_quality_model_ids"] = list(patch["adaptive_quality_model_ids"] or [])
 
         enabled = patch.get("adaptive_routing_enabled", policy.adaptive_routing_enabled)
         classifier_id = patch.get(
@@ -629,9 +671,7 @@ async def put_governance(
         quality_ids = list(
             patch.get("adaptive_quality_model_ids", policy.adaptive_quality_model_ids) or []
         )
-        quality_on = bool(
-            patch.get("adaptive_quality_enabled", policy.adaptive_quality_enabled)
-        )
+        quality_on = bool(patch.get("adaptive_quality_enabled", policy.adaptive_quality_enabled))
         if enabled and not classifier_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -713,14 +753,13 @@ async def put_governance(
         setattr(policy, field, value)
 
     invalidated_raw_preferences = 0
-    if (
-        "pii_masking" in patch or "allow_user_raw_external" in patch
-    ) and (policy.pii_masking or not policy.allow_user_raw_external):
+    if ("pii_masking" in patch or "allow_user_raw_external" in patch) and (
+        policy.pii_masking or not policy.allow_user_raw_external
+    ):
         preference_users = (
             await db.exec(
                 select(User).where(
-                    User.preferences["privacy_default_action"].astext
-                    == "send_raw_external"
+                    User.preferences["privacy_default_action"].astext == "send_raw_external"
                 )
             )
         ).all()
