@@ -3433,6 +3433,11 @@ async def _run_turn(
         ):
             if event["type"] == "delta":
                 text_parts.append(event["text"])
+            elif event["type"] == "retract":
+                # Narration the agent took back — see `agent.run_turn`. Out of
+                # the stored answer here, off the screen by the same event.
+                joined = "".join(text_parts).replace(event["text"], "", 1)
+                text_parts[:] = [joined]
             elif event["type"] == "step":
                 # Stored without the SSE envelope key: `Step.type` in the UI is
                 # a display category, not the event name. One row per step: the
@@ -4019,6 +4024,11 @@ async def _run_comparison(
                     slot["content"] += event["text"]
                     await queue.put(
                         {"type": "variant", "model": model["id"], "text": event["text"]}
+                    )
+                elif event["type"] == "retract":
+                    slot["content"] = slot["content"].replace(event["text"], "", 1)
+                    await queue.put(
+                        {"type": "variant_retract", "model": model["id"], "text": event["text"]}
                     )
                 elif event["type"] == "usage":
                     slot["usage"] = {k: v for k, v in event.items() if k != "type"}

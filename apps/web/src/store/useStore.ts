@@ -3462,6 +3462,12 @@ async function streamTurn(
           if (live) patch((m) => ({ ...m, content: m.content + event.text }))
           else buffered += event.text
           break
+        case 'retract':
+          // 도구를 부르며 한 말이 답에서 빠진다 — the server has already
+          // dropped it from what it stores; the bubble follows.
+          if (live) patch((m) => ({ ...m, content: m.content.replace(event.text, '') }))
+          else buffered = buffered.replace(event.text, '')
+          break
         case 'skills_applied':
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
@@ -3702,6 +3708,12 @@ async function runComparison(
           ?.messages.find((m) => m.id === assistantId)
           ?.variants?.find((v) => v.model === e.model)
         patch(e.model, { content: (current?.content ?? '') + e.text })
+      } else if (e.type === 'variant_retract') {
+        const current = get()
+          .sessions.find((c) => c.id === sessionId)
+          ?.messages.find((m) => m.id === assistantId)
+          ?.variants?.find((v) => v.model === e.model)
+        patch(e.model, { content: (current?.content ?? '').replace(e.text, '') })
       } else if (e.type === 'variant_done') {
         patch(e.model, {
           routedModel: e.routedModel ?? e.model,

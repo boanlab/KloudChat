@@ -1659,6 +1659,8 @@ export const jobsApi = {
 export type StreamEvent =
   | { type: 'step'; id: string; label: string; status: Step['status']; detail?: string }
   | { type: 'delta'; text: string }
+  /** Text the agent took back — narration written before a tool ran, or an answer it then repeated. */
+  | { type: 'retract'; text: string }
   | {
       type: 'skills_applied'
       skills: { id: string; name: string; catalogKey: string | null; estimatedTokens: number }[]
@@ -1705,6 +1707,7 @@ export type StreamEvent =
   | ({ type: 'model_route' } & CostRouting)
   /** Model comparison: one column's text, then that column's final bill. */
   | { type: 'variant'; model: string; text: string; actualModel?: string }
+  | { type: 'variant_retract'; model: string; text: string }
   | {
       type: 'variant_done'
       model: string
