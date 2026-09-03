@@ -805,7 +805,6 @@ const EN: Record<string, string> = {
   '오른쪽 위 「추가」를 누르면 홈 화면에 KloudChat 아이콘이 생깁니다':
     'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
-  '이 모델은 비율을 받지 않아 1:1로 나옵니다': 'This model ignores the ratio and returns 1:1',
   '이 모델은 비율 지정을 받지 않아 정사각형으로 그립니다. 16:9 가 꼭 필요하면 Gemini 이미지 모델을 고르세요.': 'This model ignores the ratio and returns a square. For a real 16:9 pick a Gemini image model.',
   '그린 코드 보기': 'Show the code it was drawn from',
   '이 코드로 다시 그리기': 'Draw again with this code',

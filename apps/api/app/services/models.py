@@ -20,7 +20,7 @@ import time
 from typing import Any
 
 from app.core.config import settings
-from app.services import litellm
+from app.services import imagegen, litellm
 from app.services.adapters import (
     ADAPTER_MODELS,
     FREE_PROVIDERS,
@@ -306,6 +306,8 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         # Credits per second by (resolution, audio), read from the same table
         # the pass-through is billed against.
         "creditPerSecond": _video_rates(model_id) if modality == "video" else {},
+        # Which ratios a picture from it can have; the composer offers no other.
+        "aspects": imagegen.aspects_for(model_id) if modality == "image" else [],
         "creditCost": credit_cost,
         "inputCreditCost": input_credit_cost,
         "contextWindow": context,
@@ -350,6 +352,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "creditPerSecond": _video_rates(m["id"]),
             "creditPerCall": 0,
             "creditPerImage": 0,
+            "aspects": imagegen.aspects_for(m["id"]) if m["modality"] == "image" else [],
         }
         for m in ADAPTER_MODELS
     ]

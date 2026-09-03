@@ -151,3 +151,18 @@ async def test_sound_and_clips_each_have_a_default_and_neither_is_the_other(monk
     result = await model_service.list_models(force=True)
     assert result["defaultAvModelByMode"] == {"audio": "openai/gpt-audio-mini"}
     assert "av" not in result["defaultModelByKind"]
+
+
+def test_an_image_model_says_which_ratios_it_can_draw() -> None:
+    """A 16:9 chip beside a model that returns squares is a promise the picture
+    then breaks. The catalogue carries the ratios each image model can draw,
+    and the composer offers no other; a text model carries none."""
+    from app.services import imagegen
+
+    assert imagegen.aspects_for("google/gemini-2.5-flash-image") == ["16:9", "9:16", "4:3", "1:1"]
+    assert imagegen.aspects_for("openai/gpt-5-image-mini") == ["1:1"]
+
+    picture = {"model_name": "openai/gpt-5-image", "model_info": {"mode": "image_generation"}}
+    shaped = model_service._shape(picture)
+    if shaped is not None:  # shaped only when the row carries enough to list
+        assert shaped["aspects"] == ["1:1"]

@@ -4,6 +4,7 @@ import {
   errorCode,
   errorMessage,
 } from '@/lib/api'
+import { servedAspect } from '@/lib/aspects'
 import { refusalSentence, streamFailureSentence } from '@/lib/failures'
 import {
   ApiError,
@@ -2168,10 +2169,16 @@ export const useStore = create<State>((set, get) => ({
         }
         return
       }
+      const imageModel = pickedModel(get(), id, 'image')
       const rows = await sessionsApi.images(id, {
         prompt,
-        model: pickedModel(get(), id, 'image'),
-        aspect: imageOptions.aspect,
+        model: imageModel,
+        // The ratio the model can draw, not the one the chip remembers: the
+        // chip beside a squares-only model shows 1:1, and the request says so.
+        aspect: servedAspect(
+          imageOptions.aspect,
+          get().models.find((m) => m.id === imageModel),
+        ),
         style: opts.raw ? '없음' : imageOptions.style,
         labels: imageOptions.labels,
         count: imageOptions.count,

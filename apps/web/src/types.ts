@@ -75,6 +75,8 @@ export interface ModelInfo {
   /** Credits per generated picture; zero for anything that is not an image
    *  model. The ledger's own unit is per 1k output tokens. */
   creditPerImage?: number
+  /** Image only: the ratios a picture from it can have. The composer offers no other. */
+  aspects?: string[]
   /** Flat credits per call, for models billed per clip rather than per token. */
   creditPerCall?: number
   /** Which of the five surfaces may select this model. */

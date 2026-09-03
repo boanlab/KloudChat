@@ -32,7 +32,8 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { effectiveModelId, useStore } from '@/store/useStore'
-import type { PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
+import type { ModelInfo, PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
+import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
@@ -48,7 +49,6 @@ const placeholders: Record<SessionKind, string> = {
 }
 
 
-const ASPECTS = ['16:9', '9:16', '4:3', '1:1']
 /* What kind of picture, not only what it looks like. 자동 lets the planner
    read it off the request; 없음 sends the sentence as typed. Kept in step with
    `imagegen.STYLE_CHOICES`. */
@@ -161,28 +161,23 @@ function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
   )
 }
 
-function ImageOptions({ modelId }: { modelId: string }) {
+function ImageOptions({ model }: { model: ModelInfo | undefined }) {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
-  // Only Gemini's image models take the ratio as a parameter; the others
-  // return a square whatever is asked, and are now told to compose for one.
-  // Read off the model this conversation will actually draw with — the picker
-  // writes its choice there, not to the surface default.
-  const squareOnly =
-    Boolean(modelId) && !/gemini|^google\//i.test(modelId) && imageOptions.aspect !== '1:1'
+  // Only the ratios this model can actually draw. The OpenAI image models
+  // return a square whatever is asked, so beside them the chip offers 1:1 and
+  // nothing else — a 16:9 chip there was a promise the picture then broke.
+  // The stored preference is left alone: it is what the chip shows again the
+  // moment a model that can draw it is picked.
+  const offered = servedAspects(model)
   return (
     <>
       <OptionGroup
         label={t('비율')}
-        value={imageOptions.aspect}
-        options={ASPECTS}
+        value={servedAspect(imageOptions.aspect, model)}
+        options={offered}
         onChange={(v) => setImageOptions({ aspect: v })}
       />
-      {squareOnly && (
-        <span className="text-xs text-warn" title={t('이 모델은 비율 지정을 받지 않아 정사각형으로 그립니다. 16:9 가 꼭 필요하면 Gemini 이미지 모델을 고르세요.')}>
-          {t('이 모델은 비율을 받지 않아 1:1로 나옵니다')}
-        </span>
-      )}
       <OptionGroup
         label={t('스타일')}
         value={imageOptions.style}
@@ -1563,7 +1558,7 @@ export function Composer({
         {/* 생성 파라미터 바 — 이미지·오디오/동영상 전용 */}
         {isMedia && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
-            {kind === 'image' ? <ImageOptions modelId={model?.id ?? ''} /> : <AvOptions />}
+            {kind === 'image' ? <ImageOptions model={model} /> : <AvOptions />}
             <span
               className={cn(
                 'ml-auto pr-1 text-xs',

@@ -240,6 +240,22 @@ def honours_aspect(model_id: str) -> bool:
     return "gemini" in model_id.lower() or model_id.lower().startswith("google/")
 
 
+#: The ratios the composer offers, widest first, 16:9 being the default.
+OFFERED_ASPECTS: tuple[str, ...] = ("16:9", "9:16", "4:3", "1:1")
+
+
+def aspects_for(model_id: str) -> list[str]:
+    """The ratios a picture from this model can actually have.
+
+    Published with the model so the composer offers only these — a 16:9 chip
+    beside a model that returns squares is a promise the picture then breaks,
+    and no sentence of small print under it reads as well as the chip simply
+    not being there. Measured against OpenRouter: the OpenAI image models
+    return 1024² whatever `image_config` says, directly or through LiteLLM.
+    """
+    return list(OFFERED_ASPECTS) if honours_aspect(model_id) else ["1:1"]
+
+
 def compose_prompt(
     prompt: str,
     *,
