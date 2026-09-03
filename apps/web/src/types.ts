@@ -825,6 +825,9 @@ export interface ImageArtifact extends ArtifactBase {
   /** What the model was actually sent — the planned prompt, readable and
    *  editable, sent again as it stands with `raw`. */
   composedPrompt?: string
+  /** `matplotlib` when the picture was drawn from code in the sandbox; the
+   *  code is then what `composedPrompt` holds. */
+  engine?: 'matplotlib'
   seed: number
   model: string
   /** Object-store URL, once an image producer exists. */

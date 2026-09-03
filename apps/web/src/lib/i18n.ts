@@ -803,6 +803,8 @@ const EN: Record<string, string> = {
   '오른쪽 위 「추가」를 누르면 홈 화면에 KloudChat 아이콘이 생깁니다':
     'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
+  '그린 코드 보기': 'Show the code it was drawn from',
+  '이 코드로 다시 그리기': 'Draw again with this code',
   '보낸 프롬프트 보기': 'Show the prompt that was sent',
   '보낸 프롬프트': 'Prompt sent',
   '이 프롬프트로 다시 만들기': 'Generate again with this prompt',

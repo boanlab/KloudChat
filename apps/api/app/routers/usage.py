@@ -48,7 +48,7 @@ me_router = APIRouter(prefix="/me", tags=["usage"])
 #: else counts them; every other reason rides along with an assistant message
 #: that is already in the stream, and counting those twice would inflate the
 #: request figure the moment a model stopped being free.
-MEDIA_REASONS = ("image.generate", "audio.generate", "video.generate")
+MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
 
 #: Work that costs no credits and is counted by amount instead — seconds of
 #: speech Whisper transcribed, chunks the embedding model indexed. A row of

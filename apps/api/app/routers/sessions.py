@@ -82,6 +82,7 @@ from app.services import (
     adaptive_routing,
     artifact_extract,
     audiogen,
+    charts,
     design_templates,
     figures,
     governance,
@@ -1513,6 +1514,9 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     """
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
+    if payload.style == "차트":
+        # A chart is drawn from code, not painted: see `charts`.
+        return await _draw_chart(session, payload, user, db, catalogue)
     model = model_service.find(catalogue["models"], payload.model or session.model or "")
     if model is None or "image" not in model["kinds"]:
         usable = sorted(
@@ -1661,6 +1665,112 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             status_code=status.HTTP_502_BAD_GATEWAY, detail=failure or "image_failed"
         )
     return [ArtifactOut.of(a) for a in made]
+
+
+async def _draw_chart(
+    session: ChatSession, payload: ImageRequest, user: User, db: DbSession, catalogue: dict
+) -> list[ArtifactOut]:
+    """The 차트 style: matplotlib code from a language model, run in the sandbox.
+
+    Billed as the language model's tokens — the picture itself costs nothing
+    but a few seconds of the sandbox. The code is stored with the picture as
+    `composedPrompt`, so the result card can show it, take an edit, and draw
+    it again as it stands (`raw`).
+    """
+    writer = model_service.find(catalogue["models"], session.model or "")
+    if writer is None or "chat" not in writer.get("kinds", []):
+        chat_models = sorted(
+            (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
+            key=model_service.fallback_order,
+        )
+        if not chat_models:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_chat_models"
+            )
+        writer = chat_models[0]
+    if not has_headroom(user, writer):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+    try:
+        chart = await charts.draw(
+            payload.prompt,
+            aspect=payload.aspect,
+            model=str(writer["id"]),
+            api_key=api_key,
+            code=payload.prompt if payload.raw else None,
+        )
+    except charts.ChartError as exc:
+        _record_media(db, session, payload.prompt, [], model=str(writer["id"]), failed=True)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    image = imagegen.GeneratedImage(
+        data=chart.png,
+        mime="image/png",
+        input_tokens=chart.input_tokens,
+        output_tokens=chart.output_tokens,
+    )
+    image.width, image.height = imagegen._measure(chart.png)
+    file_id, key = imagegen.store(user.id, image)
+    db.add(
+        StoredFile(
+            id=file_id,
+            user_id=user.id,
+            session_id=session.id,
+            name=f"{payload.prompt[:40] or 'chart'}.png",
+            mime="image/png",
+            size=len(chart.png),
+            storage_key=key,
+            tokens=0,
+        )
+    )
+    artifact = Artifact(
+        user_id=user.id,
+        session_id=session.id,
+        project_id=session.project_id,
+        kind=ArtifactKind.image,
+        title=(payload.prompt if not payload.raw else "차트")[:200] or "차트",
+        data={
+            "kind": "image",
+            "jobId": None,
+            "prompt": payload.prompt if not payload.raw else "차트",
+            "aspect": payload.aspect,
+            "actualAspect": image.aspect,
+            "width": image.width,
+            "height": image.height,
+            "style": "차트",
+            "labels": payload.labels,
+            "engine": "matplotlib",
+            "composedPrompt": chart.code,
+            "seed": 0,
+            "model": str(writer["id"]),
+            "src": f"{settings.api_prefix}/files/{file_id}/content",
+        },
+    )
+    db.add(artifact)
+    charged = charge_for_tokens(writer, chart.input_tokens, chart.output_tokens)
+    if charged:
+        settle(
+            db,
+            user,
+            charged,
+            reason="image.chart",
+            session_id=session.id,
+            model=str(writer["id"]),
+            surface=session.kind.value,
+        )
+    _record_media(db, session, payload.prompt, [artifact], model=str(writer["id"]), credits=charged)
+    await db.commit()
+    await db.refresh(artifact)
+    return [ArtifactOut.of(artifact)]
 
 
 @router.post("/{session_id}/diagrams", response_model=DiagramOut)

@@ -1,197 +1,183 @@
-"""One chart, drawn the same way wherever it is drawn.
+"""A chart as a picture, drawn from code rather than by a picture model.
 
-A chart part is DrawingML and identical in Word and PowerPoint — same
-`c:chartSpace`, same embedded workbook — so the deck and the report can share
-not just the format but the *look*: one accent, one zero floor, one set of
-gridlines, one face for the labels.
-
-They did not share it at first, and the difference was visible immediately. The
-deck's charts were painted in the deck's accent; the report's were whatever
-Word's theme says a chart is, which is a blue-and-red pair inside a black box.
-Two surfaces of one product, disagreeing about what a chart looks like.
-
-`apply` styles a chart that already exists — the deck adds one to a slide and
-then calls this. `part` builds one from nothing, through a throwaway
-presentation, and hands back the two blobs a `.docx` needs. The second is a
-strange-looking way to make a Word chart and it is the honest one: the styling
-below is the part worth having, and writing it twice is how the two drift.
+A picture model paints a chart: the bars are roughly the right height and the
+axis numbers are whatever looked plausible. A chart is the one picture where
+"roughly" is wrong. So the 차트 style asks a language model for matplotlib
+code instead, runs it in the code sandbox, and takes the PNG it saved — the
+same road paper-banana takes for its statistical plots. The code is kept
+beside the picture, so the figure can be corrected and drawn again.
 """
 
 from __future__ import annotations
 
 import logging
+import re
+from dataclasses import dataclass
+
+import httpx
+
+from app.core.config import settings
+from app.services import settings_store, thinking
 
 log = logging.getLogger(__name__)
 
-#: (latin, East Asian) pairs. `font.name` writes `a:latin` only and both Word
-#: and PowerPoint take Hangul from `a:ea`, which is what a Korean axis label is
-#: made of — so an axis set without the second one comes back in whatever face
-#: the theme happens to carry.
-FACES = {
-    "gothic": ("Segoe UI", "맑은 고딕"),
-    "serif": ("Georgia", "바탕"),
+
+class ChartError(RuntimeError):
+    """Written for the person who asked."""
+
+
+@dataclass(slots=True)
+class Chart:
+    png: bytes
+    code: str
+    input_tokens: int
+    output_tokens: int
+
+
+#: What the writer is told. The figure size follows the aspect that was asked
+#: for; the Korean face is the one the sandbox has; the look is the restrained
+#: publication style a picture model cannot hold to.
+_PROMPT = """너는 matplotlib 로 차트를 그리는 파이썬 코드를 쓴다. 아래 요청의 차트 하나를 그리는
+완전한 파이썬 스크립트를 출력하라.
+
+규칙:
+- **요청에 있는 수치만 쓴다.** 값·계열·이름을 지어내지 마라. 요청에 그릴 수치가 없으면 코드
+  대신 한 줄로 `NO_DATA: 무엇이 필요한지` 라고만 답하라.
+- 차트 종류는 요청이 말한 것을, 없으면 데이터에 맞는 것을 고른다(추이는 선, 비교는 막대,
+  구성비는 누적 막대나 도넛, 상관은 산점도). 3D·파이의 폭발·그림자 같은 장식은 쓰지 않는다.
+- 한글 글꼴: `plt.rcParams["font.family"] = "NanumGothic"` 과
+  `plt.rcParams["axes.unicode_minus"] = False`.
+- `fig, ax = plt.subplots(figsize=({width}, {height}), dpi=200)`. 위·오른쪽 spine 은 숨긴다.
+  격자는 y 축에만 옅게. 제목은 요청이 준 것만, 축에는 단위를 적는다. 범례는 계열이 둘 이상일
+  때만. 막대 위에 값을 적으면 읽기 쉬운 경우에만 적는다.
+- 색은 절제해서: 기본 팔레트 `["#1e3a8a", "#0f766e", "#b45309", "#7c3aed", "#64748b"]` 에서
+  순서대로 쓰고, 강조할 항목이 있으면 그것만 첫 색으로, 나머지는 `"#cbd5e1"` 로.
+- 마지막에 `fig.savefig("chart.png", bbox_inches="tight", dpi=200)` 로 저장하고 `print("OK")`.
+- `plt.show()` 는 쓰지 마라. 파일을 읽거나 네트워크에 접근하지 마라. 코드만 출력하고 설명·
+  코드펜스는 붙이지 마라.
+
+요청: {request}"""
+
+_RETRY = """앞의 코드가 실행 중 오류를 냈다. 고쳐서 전체 코드를 다시 출력하라. 같은 규칙.
+
+오류:
+{error}
+
+앞의 코드:
+{code}"""
+
+#: Figure size in inches by aspect. Wide enough that labels do not crowd.
+_SIZES = {
+    "16:9": (9.6, 5.4),
+    "4:3": (8.0, 6.0),
+    "3:2": (9.0, 6.0),
+    "1:1": (6.5, 6.5),
+    "9:16": (5.4, 9.6),
+    "3:4": (6.0, 8.0),
 }
 
-#: The gridlines and the axis rules. Light enough to read a value against and
-#: not so dark that the chart reads as a table with lines missing.
-_GRID = "E5E5E5"
-_AXIS = "C8C8C8"
 
-
-def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str]) -> None:
-    """Everything about a chart except its numbers.
-
-    The value axis starts at zero and that is not a preference. A bar chart
-    with its floor cut off exaggerates every difference on it, and it is the
-    easiest way there is to mislead a reader by accident.
-    """
-    from pptx.dml.color import RGBColor
-    from pptx.enum.chart import XL_LEGEND_POSITION, XL_MARKER_STYLE
-    from pptx.util import Pt
-
-    _plain_frame(chart)
-    chart.has_title = False
-    # A legend naming one series names the only thing on the chart, which the
-    # heading above it has already done.
-    chart.has_legend = len(chart.plots[0].series) > 1
-    if chart.has_legend:
-        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-        chart.legend.include_in_layout = False
-        _text(chart.legend.font, muted, 12, faces)
-
-    value_axis = chart.value_axis
-    value_axis.minimum_scale = 0
-    value_axis.has_major_gridlines = True
-    value_axis.major_gridlines.format.line.color.rgb = RGBColor.from_string(_GRID)
-    value_axis.format.line.color.rgb = RGBColor.from_string(_GRID)
-    _text(value_axis.tick_labels.font, muted, 12, faces)
-    if unit:
-        value_axis.has_title = True
-        frame = value_axis.axis_title.text_frame
-        frame.text = unit
-        _text(frame.paragraphs[0].font, muted, 12, faces)
-        # Upright. A value-axis title is turned on its side by default, which
-        # for a Latin word is a convention and for a single Hangul syllable is
-        # a character lying on its back halfway up the chart.
-        frame._txBody.bodyPr.set("rot", "0")
-        frame._txBody.bodyPr.set("vert", "horz")
-
-    category_axis = chart.category_axis
-    category_axis.has_major_gridlines = False
-    category_axis.format.line.color.rgb = RGBColor.from_string(_AXIS)
-    _text(category_axis.tick_labels.font, muted, 12, faces)
-
-    # The document's accent, and a lighter mix of it for a second series, so
-    # the chart belongs to the page it is on rather than to a theme palette.
-    for position, series in enumerate(chart.plots[0].series):
-        colour = accent if position == 0 else mix(accent, RGBColor(0xFF, 0xFF, 0xFF), 0.55)
-        if kind == "line":
-            series.format.line.color.rgb = colour
-            series.format.line.width = Pt(2.5)
-            # The markers too, or they keep the theme's palette — which put a
-            # red square on the second series of a navy deck, and the same red
-            # square in the legend.
-            series.marker.style = XL_MARKER_STYLE.CIRCLE
-            series.marker.size = 6
-            series.marker.format.fill.solid()
-            series.marker.format.fill.fore_color.rgb = colour
-            series.marker.format.line.color.rgb = colour
-        else:
-            series.format.fill.solid()
-            series.format.fill.fore_color.rgb = colour
-            series.format.line.fill.background()
-
-
-def _plain_frame(chart) -> None:
-    """No box round the chart, and no rounded corners on the box there isn't.
-
-    Word draws a rounded grey rectangle round a chart it has been told nothing
-    about, which on a report page reads as a widget dropped into the document —
-    every other figure on that page, picture or table, has no frame at all.
-    The default is a default rather than a decision, so this makes the decision.
-
-    `c:spPr` is schema-ordered and belongs after `c:chart`; put before it, the
-    part is one Word offers to repair.
-    """
-    from pptx.oxml import parse_xml
-    from pptx.oxml.ns import nsdecls, qn
-
-    space = chart._chartSpace
-    for tag in ("c:roundedCorners", "c:spPr"):
-        for existing in space.findall(qn(tag)):
-            space.remove(existing)
-
-    corners = parse_xml(f'<c:roundedCorners {nsdecls("c")} val="0"/>')
-    space.insert(0, corners)
-
-    plot = space.find(qn("c:chart"))
-    shape = parse_xml(f"<c:spPr {nsdecls('c', 'a')}><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>")
-    space.insert(list(space).index(plot) + 1, shape)
-
-
-def part(
-    kind: str,
-    categories: list[str],
-    series: list[tuple[str, list[float]]],
+async def draw(
+    request: str,
     *,
-    unit: str,
-    accent,
-    muted,
-    faces: tuple[str, str],
-) -> tuple[bytes, bytes] | None:
-    """A styled chart part and its workbook, for a format with no chart API.
+    aspect: str,
+    model: str,
+    api_key: str,
+    code: str | None = None,
+) -> Chart:
+    """The chart for `request`, or `ChartError`.
 
-    Built by adding a chart to a presentation nobody will ever open and taking
-    the part back out. The alternative is a second styling implementation
-    written against raw XML, which is the thing this module exists to prevent.
+    `code` runs as given — somebody edited the script the last picture was
+    drawn from and wants exactly that. Otherwise the model writes it, and a
+    script that fails is handed back to the model once with its error.
     """
-    from pptx import Presentation
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.chart import XL_CHART_TYPE
-    from pptx.util import Emu
-
-    try:
-        payload = CategoryChartData()
-        payload.categories = categories
-        for name, values in series:
-            payload.add_series(name or " ", values)
-
-        presentation = Presentation()
-        slide = presentation.slides.add_slide(presentation.slide_layouts[6])
-        frame = slide.shapes.add_chart(
-            XL_CHART_TYPE.LINE_MARKERS if kind == "line" else XL_CHART_TYPE.COLUMN_CLUSTERED,
-            Emu(0),
-            Emu(0),
-            Emu(5486400),
-            Emu(3200400),
-            payload,
+    width, height = _SIZES.get(aspect, _SIZES["16:9"])
+    tokens = {"in": 0, "out": 0}
+    if code is None:
+        code = await _write(
+            _PROMPT.format(width=width, height=height, request=request.strip()[:3000]),
+            model,
+            api_key,
+            tokens,
         )
-        apply(frame.chart, kind=kind, unit=unit, accent=accent, muted=muted, faces=faces)
-        chart_part = frame.chart.part
-        return chart_part.blob, chart_part.chart_workbook.xlsx_part.blob
-    except Exception as exc:  # noqa: BLE001 — a chart is not worth a failed export
-        log.warning("could not build a chart part: %s", exc)
-        return None
+        if code.startswith("NO_DATA"):
+            need = code.split(":", 1)[1].strip() if ":" in code else ""
+            raise ChartError(
+                "차트로 그릴 수치가 요청에 없습니다."
+                + (f" 필요한 것: {need}" if need else " 값과 항목 이름을 적어 주세요.")
+            )
+    png, error = await _run(code)
+    if png is None and error:
+        log.info("chart code failed once, asking for a fix: %s", error[:200])
+        code = await _write(_RETRY.format(error=error[:1500], code=code), model, api_key, tokens)
+        png, error = await _run(code)
+    if png is None:
+        raise ChartError("차트 코드가 실행되지 않았습니다. " + (error or "")[:300])
+    return Chart(png=png, code=code, input_tokens=tokens["in"], output_tokens=tokens["out"])
 
 
-def mix(colour, toward, amount: float):
-    """One colour moved toward another — a second series, from one accent."""
-    from pptx.dml.color import RGBColor
+async def _write(prompt: str, model: str, api_key: str, tokens: dict[str, int]) -> str:
+    base, _ = await settings_store.litellm_config()
+    try:
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(120.0, connect=10.0),
+        ) as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 2000,
+                    "temperature": 0.2,
+                    "reasoning": thinking.NO_REASONING,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        raise ChartError("차트 코드를 쓰는 모델에 닿지 못했습니다.") from exc
+    usage = payload.get("usage") or {}
+    tokens["in"] += int(usage.get("prompt_tokens") or 0)
+    tokens["out"] += int(usage.get("completion_tokens") or 0)
+    text = str((payload.get("choices") or [{}])[0].get("message", {}).get("content") or "")
+    return _unfenced(text)
 
-    return RGBColor(*(round(a + (b - a) * amount) for a, b in zip(colour, toward, strict=True)))
+
+def _unfenced(text: str) -> str:
+    text = text.strip()
+    match = re.search(r"```(?:python|py)?\n(.*?)```", text, re.S)
+    return match.group(1).strip() if match else text
 
 
-def _text(font, colour, size: int, faces: tuple[str, str]) -> None:
-    """A chart label in the document's own face and colour, not the theme's."""
-    from pptx.oxml.ns import qn
-    from pptx.util import Pt
+async def _run(code: str) -> tuple[bytes | None, str]:
+    """`(png, "")` when the script saved its chart, else `(None, what went wrong)`."""
+    backends = await settings_store.tools_config()
+    if not backends.exec:
+        raise ChartError("코드 실행이 설정되지 않아 차트를 그릴 수 없습니다.")
+    root = backends.exec.rstrip("/")
+    headers = {"x-api-key": settings.code_interpreter_api_key}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+            response = await client.post(
+                f"{root}/exec", headers=headers, json={"code": code, "lang": "py"}
+            )
+            response.raise_for_status()
+            payload = response.json()
+            stderr = str(payload.get("stderr") or "").strip()
+            files = [
+                f for f in (payload.get("files") or []) if str(f.get("name") or "").endswith(".png")
+            ]
+            if not files:
+                return None, stderr or "chart.png 이 저장되지 않았습니다."
+            picked = next((f for f in files if f.get("name") == "chart.png"), files[0])
+            session_id = picked.get("session_id") or payload.get("session_id")
+            blob = await client.get(f"{root}/download/{session_id}/{picked['id']}", headers=headers)
+            blob.raise_for_status()
+            return blob.content, ""
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        return None, f"실행 서비스 오류: {exc}"
 
-    font.size = Pt(size)
-    font.color.rgb = colour
-    font.name = faces[0]
-    properties = font._rPr
-    for tag in ("a:ea", "a:cs"):
-        properties.append(properties.makeelement(qn(tag), {"typeface": faces[1]}))
 
-
-__all__ = ["FACES", "apply", "mix", "part"]
+__all__ = ["Chart", "ChartError", "draw"]

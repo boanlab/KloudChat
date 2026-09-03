@@ -215,10 +215,12 @@ export function MediaResult({
               it stands. */}
           {images[0].composedPrompt && images[0].composedPrompt !== images[0].prompt && (
             <details className="mt-2 max-w-2xl rounded-control border border-line bg-panel px-3 py-2 text-xs">
-              <summary className="cursor-pointer font-medium text-muted">{t('보낸 프롬프트 보기')}</summary>
+              <summary className="cursor-pointer font-medium text-muted">
+                {images[0].engine === 'matplotlib' ? t('그린 코드 보기') : t('보낸 프롬프트 보기')}
+              </summary>
               <textarea
                 className="mt-2 w-full resize-y rounded-control border border-line bg-bg p-2 font-mono text-xs leading-relaxed text-fg"
-                rows={10}
+                rows={images[0].engine === 'matplotlib' ? 16 : 10}
                 defaultValue={images[0].composedPrompt}
                 aria-label={t('보낸 프롬프트')}
                 onChange={(e) => {
@@ -236,7 +238,7 @@ export function MediaResult({
                     }
                   >
                     <RefreshCw size={13} />
-                    {t('이 프롬프트로 다시 만들기')}
+                    {images[0].engine === 'matplotlib' ? t('이 코드로 다시 그리기') : t('이 프롬프트로 다시 만들기')}
                   </Button>
                 )}
                 <Button
