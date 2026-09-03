@@ -6,6 +6,7 @@ facts, and the UI has to be able to say which side is down.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -28,7 +29,7 @@ from app.routers import (
     usage,
     workspace,
 )
-from app.services import bootstrap, litellm
+from app.services import bootstrap, litellm, storage
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("kchat")
@@ -43,7 +44,10 @@ async def lifespan(app: FastAPI):
         await bootstrap.seed_admin()
     except Exception as exc:  # noqa: BLE001 — a failed seed must not block startup
         log.warning("bootstrap admin not created: %s", exc)
+    # 디스크가 차면 지운 계정의 파일부터 거둔다 — see services/storage.py.
+    sweeper = asyncio.create_task(storage.watch())
     yield
+    sweeper.cancel()
 
 
 app = FastAPI(

@@ -701,6 +701,11 @@ export interface StorageReport {
   files: number
   diskTotalBytes: number
   diskFreeBytes: number
+  /** Fill (used / total) past which deleted accounts' files are swept, oldest first. 0 = off. */
+  reclaimAt: number
+  /** What a sweep would remove: files under directories whose account is gone. */
+  orphanBytes: number
+  orphanFiles: number
   byUser: { id: string; name: string; email: string; bytes: number; files: number }[]
 }
 
@@ -714,6 +719,12 @@ export const usageApi = {
   report: (days = 7) => call<UsageReport>(`/admin/usage?days=${days}`),
   /** Disk the uploads and generated media take, per account, and what is left. */
   storage: () => call<StorageReport>('/admin/storage'),
+  /** Removes every deleted account's files now, without waiting for the fill mark. */
+  reclaimStorage: () =>
+    call<{ freedBytes: number; freedFiles: number; fillBefore: number; fillAfter: number }>(
+      '/admin/storage/reclaim',
+      { method: 'POST' },
+    ),
   audit: (limit = 100) => call<AuditRow[]>(`/admin/audit?limit=${limit}`),
 }
 

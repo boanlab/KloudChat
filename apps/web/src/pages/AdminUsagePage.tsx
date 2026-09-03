@@ -73,6 +73,25 @@ export function AdminUsagePage() {
     return `${Math.round(n / 1024)} KB`
   }
   const storageOf = new Map((storage?.byUser ?? []).map((u) => [u.id, u]))
+  const [reclaiming, setReclaiming] = useState(false)
+  const [reclaimed, setReclaimed] = useState<string | null>(null)
+  const reclaim = async () => {
+    setReclaiming(true)
+    setReclaimed(null)
+    try {
+      const done = await usageApi.reclaimStorage()
+      setReclaimed(
+        t('{files}개, {size}를 지웠습니다.')
+          .replace('{files}', done.freedFiles.toLocaleString())
+          .replace('{size}', bytes(done.freedBytes)),
+      )
+      setStorage(await usageApi.storage())
+    } catch {
+      setReclaimed(t('정리하지 못했습니다.'))
+    } finally {
+      setReclaiming(false)
+    }
+  }
 
   const cr = (v: number) => `${v.toLocaleString()} cr`
   // The ledger can charge against no conversation at all, which is a surface
@@ -278,6 +297,27 @@ export function AdminUsagePage() {
                         .replace('{total}', bytes(storage.diskTotalBytes))}
                       <span className="font-mono"> · {storage.path}</span>
                     </p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-base">
+                      <span>
+                        {t('삭제된 계정의 파일')}{' '}
+                        <span className="tabular-nums">{bytes(storage.orphanBytes)}</span>
+                        <span className="text-faint">
+                          {' '}
+                          · {t('{n}개').replace('{n}', storage.orphanFiles.toLocaleString())}
+                          {storage.reclaimAt > 0 &&
+                            ` · ${t('디스크가 {pct}% 차면 오래된 것부터 자동으로 지웁니다').replace('{pct}', String(Math.round(storage.reclaimAt * 100)))}`}
+                        </span>
+                      </span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={reclaiming || storage.orphanFiles === 0}
+                        onClick={() => void reclaim()}
+                      >
+                        {reclaiming ? t('정리하는 중…') : t('지금 정리')}
+                      </Button>
+                    </div>
+                    {reclaimed && <p className="mt-1 text-xs text-success">{reclaimed}</p>}
                   </>
                 ) : (
                   <p className="text-base text-muted">{t('저장 공간 정보를 불러오지 못했습니다.')}</p>

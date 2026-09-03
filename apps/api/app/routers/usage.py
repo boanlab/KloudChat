@@ -36,6 +36,7 @@ from app.services import credits as credits_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import storage as storage_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 #: The same numbers scoped to the caller. Its own router, so a forgotten admin
@@ -346,12 +347,17 @@ async def storage(admin: AdminUser, db: DbSession):
         ).all()
     }
     disk = shutil.disk_usage(root)
+    # What a sweep would take, measured without taking it.
+    orphans = await storage_service.reclaim(db, dry_run=True)
     return {
         "path": str(root),
         "usedBytes": sum(size for size, _ in per_user.values()),
         "files": sum(files for _, files in per_user.values()),
         "diskTotalBytes": disk.total,
         "diskFreeBytes": disk.free,
+        "reclaimAt": settings.storage_reclaim_at,
+        "orphanBytes": orphans.orphan_bytes,
+        "orphanFiles": orphans.orphan_files,
         "byUser": sorted(
             (
                 {
@@ -365,6 +371,34 @@ async def storage(admin: AdminUser, db: DbSession):
             ),
             key=lambda row: -row["bytes"],
         ),
+    }
+
+
+@router.post("/storage/reclaim")
+async def reclaim_storage(admin: AdminUser, db: DbSession, request: Request):
+    """Removes the files of deleted accounts now, oldest first, all of them.
+
+    The boot-time sweep waits for the volume to pass the fill mark; the
+    button does not — an administrator pressing it has already decided the
+    space is worth more than files nobody can reach.
+    """
+    result = await storage_service.reclaim(db, threshold=1e-9)
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            action="storage.reclaim.manual",
+            target="파일 저장소",
+            detail=f"{result.freed_files}개, {result.freed_bytes:,} B",
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
+    await db.commit()
+    return {
+        "freedBytes": result.freed_bytes,
+        "freedFiles": result.freed_files,
+        "fillBefore": result.fill_before,
+        "fillAfter": result.fill_after,
     }
 
 

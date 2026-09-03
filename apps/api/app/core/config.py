@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     file_storage_dir: str = "/srv/data/files"
     # Upload ceiling, so one file cannot fill the disk.
     max_upload_mb: int = 200
+    # Disk fill (used / total) past which the files of deleted accounts are
+    # removed, oldest first, until the volume is back under it. 0 disables.
+    storage_reclaim_at: float = 0.8
     #: Characters of file text injected per turn before excerpting.
     file_context_chars: int = 24_000
 

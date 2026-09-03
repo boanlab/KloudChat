@@ -138,6 +138,7 @@ so it can be set in `.env` like the variables above.
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |
 | `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn. A fact-check that searches one claim per axis needs six or seven; past eight, a model is almost always in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. |
+| `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the usage screen's 지금 정리 button. `0` disables the sweep. Living accounts are never touched. |
 | `FILE_CONTEXT_CHARS` | `24000` | Characters of a file injected per turn before excerpting. |
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
