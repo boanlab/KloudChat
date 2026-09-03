@@ -18,7 +18,7 @@ def test_a_statistics_site_that_matches_one_word_goes_below_the_paper() -> None:
         _row("Rockstar Games Social Club", "https://socialclub.rockstargames.com/"),
     ]
     ranked = _rank(rows, "social media depression meta-analysis")
-    assert ranked[0]["url"].startswith("https://link.springer.com")
+    assert ranked[0]["title"].startswith("Social Media and Depression")
     # 나머지는 엔진의 순서 그대로.
     assert [r["title"][:6] for r in ranked[1:]] == ["Social", "Rockst"]
 
@@ -29,13 +29,13 @@ def test_a_korean_particle_does_not_hide_a_match() -> None:
         _row("청소년의 SNS 과의존이 우울에 미치는 영향", "https://www.dbpia.co.kr/x", "우울 SNS"),
     ]
     ranked = _rank(rows, "청소년의 SNS 사용과 우울의 관계")
-    assert ranked[0]["url"].startswith("https://www.dbpia")
+    assert ranked[0]["title"].startswith("청소년의 SNS")
 
 
 def test_a_one_word_query_keeps_the_engine_order() -> None:
     rows = [_row("b", "https://b"), _row("a", "https://a")]
     assert _rank(rows, "청소년") == rows
-    assert _terms("2024 \"social media\"") == ["social", "media"]
+    assert _terms('2024 "social media"') == ["social", "media"]
 
 
 def test_results_that_share_no_word_with_the_query_are_off_topic() -> None:
@@ -46,6 +46,7 @@ def test_results_that_share_no_word_with_the_query_are_off_topic() -> None:
         _row("Package Tracking Service", "https://parcelszen.com/"),
     ]
     assert _off_topic(junk, "전고체 배터리 양산 일정 전망 2025")
-    assert not _off_topic(junk + [_row("전고체 배터리 양산", "https://x")], "전고체 배터리 양산 일정")
+    relevant = junk + [_row("전고체 배터리 양산", "https://x")]
+    assert not _off_topic(relevant, "전고체 배터리 양산 일정")
     # 한 낱말짜리 질문은 판단하지 않는다.
     assert not _off_topic(junk, "전고체")

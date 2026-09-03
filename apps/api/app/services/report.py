@@ -561,7 +561,7 @@ _MATERIAL = re.compile(
 )
 
 
-_PAGES = re.compile(r"(\d+)\s*(?:장|쪽|페이지|p)\s*(?:이상|분량|짜리|내외|정도)")
+_PAGES = re.compile(r"(?<!\d)(\d{1,4})\s{0,3}(?:장|쪽|페이지|p)\s{0,3}(?:이상|분량|짜리|내외|정도)")
 
 
 def _long_form(request: str) -> bool:
