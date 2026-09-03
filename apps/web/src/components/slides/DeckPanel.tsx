@@ -170,6 +170,44 @@ const COVERS: Slide['layout'][] = ['title', 'section', 'closing']
  * (`_deck/seed.html`) says the same thing for the file that leaves.
  */
 const KOREAN_WRAP = { wordBreak: 'keep-all', overflowWrap: 'break-word' } as const
+
+export type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
+
+/**
+ * The seven faces a deck can wear.
+ *
+ * Every measurement on a slide is the same across them; what changes is the
+ * ground, the ink, how the cover is composed, which ornament marks a body
+ * slide, and whether a card is a filled block or an outlined one. `deck_export`
+ * keeps an identical table in Python — a face the panel shows and the file
+ * does not is a preview that lies.
+ */
+interface Look {
+  bg: string
+  ink: string
+  muted: string
+  faint: string
+  hair: string
+  /** How much accent goes into a tint, and onto what. */
+  tint: number
+  /** Cards, bands and metrics: a filled block or a hairline box. */
+  card: 'filled' | 'outlined'
+  radius: number
+  /** Number badges on steps and tiles. */
+  badge: 'square' | 'circle'
+  cover: 'gradient' | 'wash' | 'glow' | 'split' | 'paper' | 'brackets'
+  ornament: 'top-band' | 'left-bar' | 'corner-circle' | 'bottom-rule' | 'gutter' | 'frame' | 'bottom-band'
+}
+
+const LOOKS: Record<VisualStyle, Look> = {
+  editorial: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e6e6e6', tint: 7, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'top-band' },
+  poster: { bg: '#f7f3ed', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e2ddd4', tint: 9, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'left-bar' },
+  minimal: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#ececec', tint: 5, card: 'outlined', radius: 0, badge: 'square', cover: 'wash', ornament: 'corner-circle' },
+  dark: { bg: '#0f172a', ink: '#f1f5f9', muted: '#a3b1c6', faint: '#64748b', hair: '#273449', tint: 22, card: 'filled', radius: 6, badge: 'circle', cover: 'glow', ornament: 'bottom-rule' },
+  split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#9aa3b2', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter' },
+  warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#a8998a', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band' },
+  mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#8a8a8a', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame' },
+}
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
 const LAYOUTS: { id: Slide['layout']; label: string }[] = [
@@ -398,7 +436,7 @@ export function SlideView({
    * and the file agree — a preview that omits the logo is a preview that lies
    * about what will be handed round the room.
    */
-  brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: 'editorial' | 'poster' | 'minimal' }
+  brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: VisualStyle }
   /**
    * Whether the words on this slide can be typed over.
    *
@@ -468,8 +506,11 @@ export function SlideView({
       ? <span dangerouslySetInnerHTML={{ __html: cleanInlineHtml(html) }} />
       : text
   }
-  const visualStyle = brand?.visualStyle ?? 'editorial'
-  const accent = slide.accent ?? brand?.accent ?? 'var(--accent)'
+  const visualStyle: VisualStyle = brand?.visualStyle && brand.visualStyle in LOOKS ? brand.visualStyle : 'editorial'
+  const look = LOOKS[visualStyle]
+  // 흑백 is black and white: the theme's accent survives only as the page
+  // chip and the tab under a title, everything else is ink.
+  const accent = visualStyle === 'mono' ? look.ink : (slide.accent ?? brand?.accent ?? 'var(--accent)')
   const px = (n: number) => `${n * scale}px`
   /**
    * Type, which a person can make bigger or smaller on one slide.
@@ -490,8 +531,20 @@ export function SlideView({
    * into the .pptx and .pdf — see `_mix` there. Change a percentage here and
    * change it there, or the room sees a different deck from the panel.
    */
-  const tint = `color-mix(in srgb, ${accent} 7%, #fff)`
-  const hair = '#e6e6e6'
+  const tint = look.tint ? `color-mix(in srgb, ${accent} ${look.tint}%, ${look.bg})` : '#f2f2f2'
+  const hair = look.hair
+  /** A card, a band, a metric box: filled in the tint, or drawn as a box. */
+  const boxed = (extra?: React.CSSProperties): React.CSSProperties =>
+    look.card === 'outlined'
+      ? { background: look.bg, border: `1px solid ${hair}`, borderRadius: px(look.radius), ...extra }
+      : { background: tint, borderRadius: px(look.radius), ...extra }
+  const badge = (size: number): React.CSSProperties => ({
+    width: px(size),
+    height: px(size),
+    background: accent,
+    color: visualStyle === 'mono' ? look.bg : '#fff',
+    borderRadius: look.badge === 'circle' ? '50%' : px(look.radius / 2),
+  })
   const rows = slide.rows ?? []
   const metrics = slide.metrics ?? []
   /* The three shapes that are a left thing and a right thing. Read as one
@@ -622,50 +675,83 @@ export function SlideView({
    */
   if (COVERS.includes(slide.layout)) {
     const closing = slide.layout === 'closing'
+    /*
+     * The cover, composed per look. `gradient` is the accent falling half a
+     * step onto ink; `wash` a tenth of it fading to white; `glow` the dark
+     * ground with the accent as a large soft disc; `split` the accent as a
+     * block down the left two-fifths with the words on white beside it;
+     * `paper` the warm ground with a large accent disc bleeding off the right;
+     * `brackets` white, the title alone between two bracket marks.
+     * `deck_export` composes the same six.
+     */
+    const onAccent = look.cover === 'gradient' || look.cover === 'glow'
+    const coverInk = onAccent ? '#fff' : look.ink
+    const coverMuted = onAccent ? 'rgba(255,255,255,0.8)' : look.muted
+    const coverMark = onAccent ? 'rgba(255,255,255,0.9)' : accent
+    const background =
+      look.cover === 'gradient'
+        ? `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} ${visualStyle === 'poster' ? 48 : 62}%, #111827))`
+        : look.cover === 'wash'
+          ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 10%, #fff), #fff 70%)`
+          : look.bg
+    const inSplit = look.cover === 'split'
     return (
       <div
         ref={canvas}
         className="relative flex size-full flex-col justify-center overflow-hidden"
         style={{
-          /* A wash rather than a flat field. One accent across a whole slide is
-             a printed rectangle; the same accent falling half a step is what a
-             deck made by somebody with a template looks like — and it is mixed
-             from the accent, so it follows whatever hue is set rather than
-             pinning a second colour beside it. `deck_export` mixes the same
-             62% onto the ink. */
-          background: visualStyle === 'minimal'
-              ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 10%, #fff), #fff 70%)`
-              : `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} ${visualStyle === 'poster' ? 48 : 62}%, #111827))`,
+          background,
           padding: px(34),
+          paddingLeft: inSplit ? px(34 + 160 + 20) : px(34),
           ...KOREAN_WRAP,
         }}
       >
         {visualStyle === 'poster' && <div className="absolute rounded-full border border-white/20" style={{ width: px(150), height: px(150), right: px(-35), top: px(-45) }} />}
-        {slide.layout === 'section' && slide.number ? (
+        {look.cover === 'glow' && (
+          <div className="absolute rounded-full" style={{ width: px(260), height: px(260), right: px(-90), bottom: px(-120), background: `radial-gradient(circle at 40% 40%, color-mix(in srgb, ${accent} 70%, transparent), transparent 68%)` }} />
+        )}
+        {look.cover === 'paper' && (
+          <div className="absolute rounded-full" style={{ width: px(190), height: px(190), right: px(-60), top: px(18), background: accent, opacity: 0.9 }} />
+        )}
+        {inSplit && (
+          <>
+            <div className="absolute inset-y-0 left-0" style={{ width: px(160), background: accent }} />
+            <div className="absolute font-black tabular-nums" style={{ left: px(26), bottom: px(22), fontSize: type(34), color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>
+              {slide.layout === 'section' && slide.number ? slide.number.replace('.', '') : closing ? 'END' : '01'}
+            </div>
+          </>
+        )}
+        {look.cover === 'brackets' && (
+          <>
+            <div className="absolute" style={{ left: px(26), top: px(28), width: px(22), height: px(30), borderLeft: `${px(2.5)} solid ${look.ink}`, borderTop: `${px(2.5)} solid ${look.ink}` }} />
+            <div className="absolute" style={{ right: px(26), bottom: px(28), width: px(22), height: px(30), borderRight: `${px(2.5)} solid ${look.ink}`, borderBottom: `${px(2.5)} solid ${look.ink}` }} />
+          </>
+        )}
+        {slide.layout === 'section' && slide.number && !inSplit ? (
           /* `01.` over the title. A divider that only names the part leaves
              the reader counting backwards to place it. */
           <div
             style={{
               fontSize: type(15),
               fontWeight: 700,
-              color: visualStyle === 'minimal' ? accent : 'rgba(255,255,255,0.7)',
+              color: onAccent ? 'rgba(255,255,255,0.7)' : accent,
               marginBottom: px(6),
             }}
           >
             {slide.number}
           </div>
-        ) : (
+        ) : look.cover === 'brackets' ? null : (
           <div
             style={{
               width: px(44),
               height: px(3),
-              background: visualStyle === 'minimal' ? accent : 'rgba(255,255,255,0.9)',
+              background: coverMark,
               marginBottom: px(18),
             }}
           />
         )}
         <h3
-          style={{ fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: visualStyle === 'minimal' ? '#1a1a1a' : '#fff', maxWidth: visualStyle === 'editorial' ? '78%' : undefined }}
+          style={{ fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : visualStyle === 'mono' ? 32 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: visualStyle === 'mono' ? px(-0.5) : undefined }}
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
@@ -674,10 +760,10 @@ export function SlideView({
         {closing && slide.bullets && slide.bullets.length > 0 && (
           /* What to remember, under the title: a dash and a line each. The
              farewell goes at the foot, below, set larger. */
-          <ul style={{ marginTop: px(12), fontSize: type(12), lineHeight: 1.6, color: visualStyle === 'minimal' ? '#333' : 'rgba(255,255,255,0.92)' }}>
+          <ul style={{ marginTop: px(12), fontSize: type(12), lineHeight: 1.6, color: onAccent ? 'rgba(255,255,255,0.92)' : look.ink }}>
             {slide.bullets.slice(0, 3).map((b, i) => (
               <li key={i} className="flex gap-2">
-                <span style={{ color: visualStyle === 'minimal' ? accent : 'rgba(255,255,255,0.6)' }}>—</span>
+                <span style={{ color: onAccent ? 'rgba(255,255,255,0.6)' : accent }}>—</span>
                 <span
                   {...typed(`bullets.${i}`, (text) => ({
                     bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
@@ -692,7 +778,7 @@ export function SlideView({
         {closing && slide.body ? (
           <p
             className="absolute"
-            style={{ left: px(34), bottom: px(30), fontSize: type(15), fontWeight: 700, color: visualStyle === 'minimal' ? accent : '#fff' }}
+            style={{ left: inSplit ? px(34 + 180) : px(34), bottom: px(30), fontSize: type(15), fontWeight: 700, color: onAccent ? '#fff' : accent }}
             {...typed('body', (text) => ({ body: text }))}
           >
             {rich('body', slide.body)}
@@ -703,7 +789,7 @@ export function SlideView({
               fontSize: type(13),
               marginTop: px(12),
               lineHeight: 1.5,
-              color: visualStyle === 'minimal' ? '#666' : 'rgba(255,255,255,0.8)',
+              color: coverMuted,
             }}
             {...typed('body', (text) => ({ body: text }))}
           >
@@ -717,23 +803,34 @@ export function SlideView({
   return (
     <div
       ref={canvas}
-      className="relative flex size-full flex-col overflow-hidden text-[#1a1a1a]"
+      className="relative flex size-full flex-col overflow-hidden"
       style={{
-        background: visualStyle === 'poster' ? '#f7f3ed' : '#fff',
+        background: look.bg,
+        color: look.ink,
         paddingTop: px(24),
-        paddingLeft: px(28),
+        paddingLeft: px(look.ornament === 'gutter' ? 40 : 28),
         paddingRight: px(28),
         // Room for the footer, which is drawn against the bottom edge.
         paddingBottom: px(28),
         ...KOREAN_WRAP,
       }}
     >
-      {/* The band across the head. Where the 4px stripe down the left edge
-          used to be: a rule that stands up is read as a margin mark, and one
-          that lies across the top is read as the top of a slide. */}
-      {visualStyle === 'editorial' && <div className="absolute inset-x-0 top-0" style={{ height: px(6), background: accent }} />}
-      {visualStyle === 'poster' && <div className="absolute inset-y-0 left-0" style={{ width: px(8), background: accent }} />}
-      {visualStyle === 'minimal' && <div className="absolute rounded-full" style={{ width: px(70), height: px(70), right: px(-30), top: px(-35), background: `color-mix(in srgb, ${accent} 12%, transparent)` }} />}
+      {/* The ornament that marks a body slide, one per look. A band across the
+          head, a bar down the edge, a soft disc in the corner, a rule at the
+          foot, a gutter with the slide's number, a hairline frame, a tinted
+          band under the foot. */}
+      {look.ornament === 'top-band' && <div className="absolute inset-x-0 top-0" style={{ height: px(6), background: accent }} />}
+      {look.ornament === 'left-bar' && <div className="absolute inset-y-0 left-0" style={{ width: px(8), background: accent }} />}
+      {look.ornament === 'corner-circle' && <div className="absolute rounded-full" style={{ width: px(70), height: px(70), right: px(-30), top: px(-35), background: `color-mix(in srgb, ${accent} 12%, transparent)` }} />}
+      {look.ornament === 'bottom-rule' && <div className="absolute inset-x-0 bottom-0" style={{ height: px(4), background: `linear-gradient(90deg, ${accent}, transparent)` }} />}
+      {look.ornament === 'gutter' && (
+        <>
+          <div className="absolute inset-y-0 left-0" style={{ width: px(3), background: accent }} />
+          {index !== undefined && <span className="absolute font-black tabular-nums" style={{ left: px(12), bottom: px(30), fontSize: type(18), color: accent, lineHeight: 1 }}>{String(index + 1).padStart(2, '0')}</span>}
+        </>
+      )}
+      {look.ornament === 'frame' && <div className="pointer-events-none absolute" style={{ inset: px(10), border: `1px solid ${look.ink}` }} />}
+      {look.ornament === 'bottom-band' && <div className="absolute inset-x-0 bottom-0" style={{ height: px(22), background: tint }} />}
       {visualStyle === 'poster' && index !== undefined && <span className="absolute font-black tabular-nums" style={{ right: px(22), top: px(13), fontSize: type(28), color: `color-mix(in srgb, ${accent} 14%, transparent)` }}>{String(index + 1).padStart(2, '0')}</span>}
 
       {slide.layout === 'statement' ? (
@@ -750,7 +847,7 @@ export function SlideView({
           </p>
           {slide.body && (
             <p
-              style={{ fontSize: type(11), marginTop: px(10), color: '#555', lineHeight: 1.5, maxWidth: '74%' }}
+              style={{ fontSize: type(11), marginTop: px(10), color: look.muted, lineHeight: 1.5, maxWidth: '74%' }}
               {...typed('body', (text) => ({ body: text }))}
             >
               {rich('body', slide.body)}
@@ -763,7 +860,7 @@ export function SlideView({
             “<span {...typed('body', (text) => ({ body: text }))}>{rich('body', slide.body)}</span>”
           </p>
           <p
-            style={{ fontSize: type(12), marginTop: px(10), color: '#666' }}
+            style={{ fontSize: type(12), marginTop: px(10), color: look.muted }}
             {...typed('title', (text) => ({ title: text }))}
           >
             {rich('title', slide.title)}
@@ -825,22 +922,22 @@ export function SlideView({
                         style={{
                           width: px(stack.bandLabel),
                           background: accent,
-                          color: '#fff',
+                          color: visualStyle === 'mono' ? look.bg : '#fff',
                           fontSize: type(stack.band),
                           fontWeight: 700,
                           padding: `${px(stack.pad)} ${px(4)}`,
+                          borderRadius: px(look.radius / 2),
                         }}
                       >
                         {name}
                       </div>
                       <div
                         className="flex min-w-0 flex-1 items-center"
-                        style={{
-                          background: tint,
+                        style={boxed({
                           fontSize: type(stack.band),
                           lineHeight: 1.5,
                           padding: `${px(stack.pad)} ${px(12)}`,
-                        }}
+                        })}
                       >
                         {text}
                       </div>
@@ -858,16 +955,17 @@ export function SlideView({
                         style={{
                           maxWidth: px(62),
                           background: accent,
-                          color: '#fff',
+                          color: visualStyle === 'mono' ? look.bg : '#fff',
                           fontSize: type(26),
                           fontWeight: 700,
+                          borderRadius: look.badge === 'circle' ? '50%' : px(look.radius / 2),
                         }}
                       >
                         {mark}
                       </div>
                       <div
                         className="text-center"
-                        style={{ fontSize: type(9), marginTop: px(7), color: '#666' }}
+                        style={{ fontSize: type(9), marginTop: px(7), color: look.muted }}
                       >
                         {name}
                       </div>
@@ -887,12 +985,12 @@ export function SlideView({
                     <div key={i} className="relative flex min-w-0 flex-1 flex-col">
                       <div
                         className="grid place-items-center"
-                        style={{ width: px(22), height: px(22), background: accent, color: '#fff', fontSize: type(9), fontWeight: 700 }}
+                        style={{ ...badge(22), fontSize: type(9), fontWeight: 700 }}
                       >
                         {String(i + 1).padStart(2, '0')}
                       </div>
                       <div style={{ fontSize: type(10), fontWeight: 700, marginTop: px(7), lineHeight: 1.3 }}>{name}</div>
-                      <div style={{ fontSize: type(8), marginTop: px(3), color: '#666', lineHeight: 1.5 }}>{text}</div>
+                      <div style={{ fontSize: type(8), marginTop: px(3), color: look.muted, lineHeight: 1.5 }}>{text}</div>
                     </div>
                   ))}
                 </div>
@@ -905,7 +1003,7 @@ export function SlideView({
                     <div
                       key={i}
                       className="flex min-w-0 flex-1 flex-col overflow-hidden"
-                      style={{ background: tint, borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` }}
+                      style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` })}
                     >
                       <div style={{ fontSize: type(10.5), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
                       <div style={{ fontSize: type(8.5), marginTop: px(5), lineHeight: 1.5 }}>{text}</div>
@@ -978,7 +1076,7 @@ export function SlideView({
                       {rich('metrics.0.0', metrics[0][0])}
                     </span>
                     <span
-                      style={{ fontSize: type(11), color: '#666' }}
+                      style={{ fontSize: type(11), color: look.muted }}
                       {...typed('metrics.0.1', (text) => ({ metrics: [[working.current.metrics?.[0]?.[0] ?? '', text]] }))}
                     >
                       {rich('metrics.0.1', metrics[0][1])}
@@ -1002,11 +1100,10 @@ export function SlideView({
                     <div
                       key={i}
                       className="min-w-0 flex-1"
-                      style={{
-                        background: tint,
+                      style={boxed({
                         borderTop: `${px(2)} solid ${accent}`,
                         padding: `${px(14)} ${px(14)} ${px(16)}`,
-                      }}
+                      })}
                     >
                       <div
                         style={{
@@ -1024,7 +1121,7 @@ export function SlideView({
                         {rich(`metrics.${i}.0`, figure)}
                       </div>
                       <div
-                        style={{ fontSize: type(11), marginTop: px(5), color: '#666' }}
+                        style={{ fontSize: type(11), marginTop: px(5), color: look.muted }}
                         {...typed(`metrics.${i}.1`, (text) => ({
                           metrics: (working.current.metrics ?? []).map((m, at) =>
                             at === i ? ([m[0], text] as [string, string]) : m,
@@ -1075,7 +1172,7 @@ export function SlideView({
                               verticalAlign: 'top',
                               wordBreak: 'keep-all',
                               fontWeight: r === 0 || c === 0 ? 600 : 400,
-                              color: r === 0 ? '#fff' : '#1a1a1a',
+                              color: r === 0 ? (visualStyle === 'mono' ? look.bg : '#fff') : look.ink,
                             }}
                             {...typed(`rows.${r}.${c}`, (text) => ({
                               rows: (working.current.rows ?? []).map((row2, ri) =>
@@ -1165,7 +1262,7 @@ export function SlideView({
                 metrics.length === 0 &&
                 !chart && (
                 <p
-                  style={{ fontSize: type(11), color: '#555', marginTop: px(2), lineHeight: 1.6 }}
+                  style={{ fontSize: type(11), color: look.muted, marginTop: px(2), lineHeight: 1.6 }}
                   {...typed('body', (text) => ({ body: text }))}
                 >
                   {rich('body', slide.body)}
@@ -1193,7 +1290,7 @@ export function SlideView({
                   )}
                 />
                 {slide.image.caption && (
-                  <p style={{ fontSize: type(10), color: '#666', marginTop: px(4) }}>
+                  <p style={{ fontSize: type(10), color: look.muted, marginTop: px(4) }}>
                     {slide.image.caption}
                   </p>
                 )}
@@ -1229,7 +1326,7 @@ export function SlideView({
             )}
             <span
               className="min-w-0 truncate"
-              style={{ fontSize: type(8), letterSpacing: px(0.3), color: '#8a8a8a' }}
+              style={{ fontSize: type(8), letterSpacing: px(0.3), color: look.faint }}
             >
               {deckTitle}
             </span>
@@ -1242,7 +1339,7 @@ export function SlideView({
               style={{
                 fontSize: type(8),
                 letterSpacing: px(0.3),
-                color: '#8a8a8a',
+                color: look.faint,
                 marginLeft: px(8),
                 marginRight: px(8),
               }}

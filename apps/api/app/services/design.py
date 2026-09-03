@@ -26,6 +26,10 @@ import re
 
 from app.models.chat import SessionKind
 
+#: The faces a deck can wear. The first three a report wears too; the other
+#: four compose a cover and number a slide, which a document has no place for.
+VISUAL_STYLES = ("editorial", "poster", "minimal", "dark", "split", "warm", "mono")
+
 #: What a project with no design system already gets: `deck._ACCENT`, the
 #: exporters' ink, and the Gothic face `fonts` prefers for slides. Kept here so
 #: an explicit design system and the absent one describe the same thing.
@@ -116,7 +120,7 @@ def normalise_tokens(raw: dict | None) -> dict[str, str]:
     if font in FONTS:
         out["font"] = font
     visual_style = str((raw or {}).get("visualStyle") or "").strip()
-    if visual_style in ("editorial", "poster", "minimal"):
+    if visual_style in VISUAL_STYLES:
         out["visualStyle"] = visual_style
     # One line. A footer that wraps is a second line of body text at the foot of
     # every slide, which is what the slide's own words are for.
@@ -192,11 +196,20 @@ def visual_style_for(request: str) -> str:
         return "poster"
     if any(word in text for word in ("미니멀", "절제", "담백", "간결한 디자인", "여백", "학술적")):
         return "minimal"
+    if any(word in text for word in ("다크", "어두운 배경", "검은 배경", "네온")):
+        return "dark"
+    if any(word in text for word in ("분할", "색면 분할", "스플릿")):
+        return "split"
+    if any(word in text for word in ("따뜻한", "종이 질감", "크림색", "베이지", "아늑")):
+        return "warm"
+    if any(word in text for word in ("흑백", "모노톤", "블랙앤화이트", "black and white")):
+        return "mono"
     return "editorial"
 
 
 __all__ = [
     "CRAFT",
+    "VISUAL_STYLES",
     "DEFAULT_TOKENS",
     "FONTS",
     "MAX_BODY",

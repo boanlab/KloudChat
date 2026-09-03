@@ -17,6 +17,7 @@ import base64
 import io
 import logging
 import re
+from dataclasses import dataclass
 from html.parser import HTMLParser
 
 import PIL.Image
@@ -189,6 +190,190 @@ def _hex_floats(value: str | None) -> tuple[float, float, float]:
     return colour[0] / 255, colour[1] / 255, colour[2] / 255
 
 
+@dataclass(frozen=True)
+class Look:
+    """One of the faces a deck wears — the panel's `LOOKS`, in Python.
+
+    Every measurement is shared across them; what a look decides is the
+    ground, the neutrals, how the cover is composed, which ornament marks a
+    body slide, and whether a card is a filled block or an outlined one.
+    """
+
+    bg: str
+    ink: str
+    muted: str
+    faint: str
+    hair: str
+    #: How much accent goes into a tint, onto the ground.
+    tint: int
+    card: str  # filled | outlined
+    radius: float
+    badge: str  # square | circle
+    cover: str  # gradient | wash | glow | split | paper | brackets
+    #: top-band | left-bar | corner-circle | bottom-rule | gutter | frame | bottom-band
+    ornament: str
+    #: Whether the neutrals above replace the design system's. The three
+    #: original looks keep the tokens; the four newer ones are their own.
+    own_neutrals: bool = False
+
+
+_LOOKS: dict[str, Look] = {
+    "editorial": Look(
+        bg="#ffffff",
+        ink="#1a1a1a",
+        muted="#666666",
+        faint="#8a8a8a",
+        hair="#e6e6e6",
+        tint=7,
+        card="filled",
+        radius=0,
+        badge="square",
+        cover="gradient",
+        ornament="top-band",
+        own_neutrals=False,
+    ),
+    "poster": Look(
+        bg="#f7f3ed",
+        ink="#1a1a1a",
+        muted="#666666",
+        faint="#8a8a8a",
+        hair="#e2ddd4",
+        tint=9,
+        card="filled",
+        radius=0,
+        badge="square",
+        cover="gradient",
+        ornament="left-bar",
+        own_neutrals=False,
+    ),
+    "minimal": Look(
+        bg="#ffffff",
+        ink="#1a1a1a",
+        muted="#666666",
+        faint="#8a8a8a",
+        hair="#ececec",
+        tint=5,
+        card="outlined",
+        radius=0,
+        badge="square",
+        cover="wash",
+        ornament="corner-circle",
+        own_neutrals=False,
+    ),
+    "dark": Look(
+        bg="#0f172a",
+        ink="#f1f5f9",
+        muted="#a3b1c6",
+        faint="#64748b",
+        hair="#273449",
+        tint=22,
+        card="filled",
+        radius=6,
+        badge="circle",
+        cover="glow",
+        ornament="bottom-rule",
+        own_neutrals=True,
+    ),
+    "split": Look(
+        bg="#ffffff",
+        ink="#111827",
+        muted="#5b6472",
+        faint="#9aa3b2",
+        hair="#e5e7eb",
+        tint=6,
+        card="outlined",
+        radius=0,
+        badge="square",
+        cover="split",
+        ornament="gutter",
+        own_neutrals=True,
+    ),
+    "warm": Look(
+        bg="#f6f1e8",
+        ink="#3f3328",
+        muted="#7a6a5a",
+        faint="#a8998a",
+        hair="#e2d8c8",
+        tint=12,
+        card="filled",
+        radius=10,
+        badge="circle",
+        cover="paper",
+        ornament="bottom-band",
+        own_neutrals=True,
+    ),
+    "mono": Look(
+        bg="#ffffff",
+        ink="#111111",
+        muted="#555555",
+        faint="#8a8a8a",
+        hair="#111111",
+        tint=0,
+        card="outlined",
+        radius=0,
+        badge="square",
+        cover="brackets",
+        ornament="frame",
+        own_neutrals=True,
+    ),
+}
+
+
+def _look_of(visual_style: str) -> Look:
+    return _LOOKS.get(visual_style) or _LOOKS["editorial"]
+
+
+def _shape(slide, kind, *, left: float, top: float, width: float, height: float):
+    return slide.shapes.add_shape(
+        kind,
+        Emu(int(left * _EMU_PER_PT)),
+        Emu(int(top * _EMU_PER_PT)),
+        Emu(int(width * _EMU_PER_PT)),
+        Emu(int(height * _EMU_PER_PT)),
+    )
+
+
+def _box(
+    slide,
+    look: Look,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    fill: RGBColor,
+    line: RGBColor,
+):
+    """A card, a band, a metric box — filled or outlined as the look says,
+    with its corners rounded as the look says."""
+    kind = MSO_SHAPE.ROUNDED_RECTANGLE if look.radius else MSO_SHAPE.RECTANGLE
+    shape = _shape(slide, kind, left=left, top=top, width=width, height=height)
+    if look.radius:
+        # The adjustment is a fraction of the shorter side.
+        shape.adjustments[0] = min(0.5, (look.radius * 2.4) / max(1.0, min(width, height)))
+    shape.fill.solid()
+    if look.card == "outlined":
+        shape.fill.fore_color.rgb = _rgb(look.bg)
+        shape.line.color.rgb = line
+        shape.line.width = Emu(int(0.75 * _EMU_PER_PT))
+    else:
+        shape.fill.fore_color.rgb = fill
+        shape.line.fill.background()
+    shape.shadow.inherit = False
+    return shape
+
+
+def _badge(slide, look: Look, *, left: float, top: float, side: float, colour: RGBColor):
+    """The numbered mark on a step or a tile: a square, or a disc."""
+    kind = MSO_SHAPE.OVAL if look.badge == "circle" else MSO_SHAPE.RECTANGLE
+    shape = _shape(slide, kind, left=left, top=top, width=side, height=side)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = colour
+    shape.line.fill.background()
+    shape.shadow.inherit = False
+    return shape
+
+
 def _mix_floats(
     colour: tuple[float, float, float],
     percent: float,
@@ -247,6 +432,8 @@ def _pptx_pairs(
     width: float,
     left: float = 72.0,
     paint,
+    look: Look | None = None,
+    hair: RGBColor | None = None,
 ) -> None:
     """The three paired layouts, which are one shape drawn three ways.
 
@@ -259,19 +446,28 @@ def _pptx_pairs(
     """
     top = 150.0
     room = _H - 210
+    look = look or _LOOKS["editorial"]
+    hair = hair or RGBColor(0xE6, 0xE6, 0xE6)
     if layout == "bands":
         label = 96.0
         height = min(72.0, (room - 10 * (len(pairs) - 1)) / max(len(pairs), 1))
         for index, (name, text) in enumerate(pairs):
             y = top + index * (height + 10)
-            _block(slide, left=left, top=y, width=label, height=height, colour=accent)
-            _block(
+            _box(
+                slide, look, left=left, top=y, width=label, height=height, fill=accent, line=accent
+            )
+            if look.card == "outlined":
+                # The name's chip stays filled even when the band is a box.
+                _block(slide, left=left, top=y, width=label, height=height, colour=accent)
+            _box(
                 slide,
+                look,
                 left=left + label + 8,
                 top=y,
                 width=width - label - 8,
                 height=height,
-                colour=tint,
+                fill=tint,
+                line=hair,
             )
             box = _textbox(slide, left=left, top=y + height / 2 - 12, width=label, height=24)
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
@@ -295,7 +491,7 @@ def _pptx_pairs(
         side = min(span, 96.0)
         for index, (mark, name) in enumerate(pairs):
             item_left = left + index * (span + 16)
-            _block(slide, left=item_left, top=top + 20, width=side, height=side, colour=accent)
+            _badge(slide, look, left=item_left, top=top + 20, side=side, colour=accent)
             box = _textbox(
                 slide, left=item_left, top=top + 20 + side / 2 - 26, width=side, height=52
             )
@@ -331,7 +527,7 @@ def _pptx_pairs(
             )
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
-            _block(slide, left=item_left, top=top + 20, width=side, height=side, colour=accent)
+            _badge(slide, look, left=item_left, top=top + 20, side=side, colour=accent)
             box = _textbox(slide, left=item_left, top=top + 20 + 8, width=side, height=30)
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
@@ -355,7 +551,16 @@ def _pptx_pairs(
         height = min(220.0, room - 20)
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
-            _block(slide, left=item_left, top=top + 10, width=span, height=height, colour=tint)
+            _box(
+                slide,
+                look,
+                left=item_left,
+                top=top + 10,
+                width=span,
+                height=height,
+                fill=tint,
+                line=hair,
+            )
             _block(slide, left=item_left, top=top + 10, width=span, height=5, colour=accent)
             title = _textbox(slide, left=item_left + 14, top=top + 26, width=span - 28, height=34)
             run = title.paragraphs[0].add_run()
@@ -843,11 +1048,18 @@ def to_pptx(
         # The slide's own accent, and failing that the design system's. `deck`
         # stamps every slide it writes, so this is for the ones it did not: an
         # artifact from before design systems, and one somebody edited by hand.
+        look = _look_of(visual_style)
+        if look.own_neutrals and not dark:
+            ink, muted = _rgb(look.ink), _rgb(look.muted)
         accent = _rgb(data.get("accent") or (style or {}).get("accent"))
+        if visual_style == "mono":
+            # 흑백 is black and white: the accent survives only as marks.
+            accent = ink
         # The two derived surfaces, mixed exactly as the preview's `color-mix`
-        # does. See `_mix`.
-        tint = _mix(accent, 7)
-        hair = RGBColor(0xE6, 0xE6, 0xE6)
+        # does, onto this look's ground. See `_mix`.
+        ground = _rgb(look.bg)
+        tint = _mix(accent, look.tint, onto=ground) if look.tint else RGBColor(0xF2, 0xF2, 0xF2)
+        hair = _rgb(look.hair)
         layout = data.get("layout") or "bullets"
 
         # The band across the head, matching the preview. It replaced a 9pt
@@ -855,14 +1067,13 @@ def to_pptx(
         # mark, and one that lies across the top is read as the top of a slide.
         # A cover takes the accent whole instead and reverses out of it.
         cover = layout in _COVERS
+        #: Whether the cover's words sit on the accent (white ink) or on the
+        #: look's own ground.
+        on_accent = look.cover in ("gradient", "glow")
         if cover:
-            # A wash rather than a flat field — same reasoning as the .pdf, and
-            # the same two colours, so the two files and the preview agree.
+            # The ground, composed per look — the same six the panel draws.
             fill = slide.background.fill
-            if visual_style == "minimal":
-                fill.solid()
-                fill.fore_color.rgb = _mix(accent, 10)
-            else:
+            if look.cover == "gradient":
                 try:
                     fill.gradient()
                     fill.gradient_angle = 45.0
@@ -877,13 +1088,83 @@ def to_pptx(
                     log.warning("could not fill a cover with a gradient: %s", exc)
                     fill.solid()
                     fill.fore_color.rgb = accent
+            elif look.cover == "wash":
+                fill.solid()
+                fill.fore_color.rgb = _mix(accent, 10)
+            else:
+                fill.solid()
+                fill.fore_color.rgb = ground
+                if look.cover == "glow":
+                    # The accent as a large soft disc off the lower right.
+                    for ring, pct in ((520, 22), (400, 38), (280, 58)):
+                        disc = _shape(
+                            slide,
+                            MSO_SHAPE.OVAL,
+                            left=_W - ring * 0.55,
+                            top=_H - ring * 0.45,
+                            width=ring,
+                            height=ring,
+                        )
+                        disc.fill.solid()
+                        disc.fill.fore_color.rgb = _mix(accent, pct, onto=ground)
+                        disc.line.fill.background()
+                        disc.shadow.inherit = False
+                elif look.cover == "paper":
+                    disc = _shape(
+                        slide, MSO_SHAPE.OVAL, left=_W - 300, top=44, width=456, height=456
+                    )
+                    disc.fill.solid()
+                    disc.fill.fore_color.rgb = accent
+                    disc.line.fill.background()
+                    disc.shadow.inherit = False
+                elif look.cover == "split":
+                    _block(slide, left=0, top=0, width=384, height=_H, colour=accent)
+                elif look.cover == "brackets":
+                    ink_line = ink
+                    _block(slide, left=62, top=67, width=6, height=72, colour=ink_line)
+                    _block(slide, left=62, top=67, width=53, height=6, colour=ink_line)
+                    _block(slide, left=_W - 68, top=_H - 139, width=6, height=72, colour=ink_line)
+                    _block(slide, left=_W - 115, top=_H - 73, width=53, height=6, colour=ink_line)
         else:
-            if visual_style == "poster":
+            if look.bg.lower() != "#ffffff":
                 slide.background.fill.solid()
-                slide.background.fill.fore_color.rgb = RGBColor(0xF7, 0xF3, 0xED)
+                slide.background.fill.fore_color.rgb = ground
+            if look.ornament == "left-bar":
                 _block(slide, left=0, top=0, width=14, height=_H, colour=accent)
-            elif visual_style == "editorial":
+            elif look.ornament == "top-band":
                 _block(slide, left=0, top=0, width=_W, height=14, colour=accent)
+            elif look.ornament == "corner-circle":
+                disc = _shape(slide, MSO_SHAPE.OVAL, left=_W - 96, top=-84, width=168, height=168)
+                disc.fill.solid()
+                disc.fill.fore_color.rgb = _mix(accent, 12, onto=ground)
+                disc.line.fill.background()
+                disc.shadow.inherit = False
+            elif look.ornament == "bottom-rule":
+                _block(slide, left=0, top=_H - 10, width=_W * 0.6, height=10, colour=accent)
+                _block(
+                    slide,
+                    left=_W * 0.6,
+                    top=_H - 10,
+                    width=_W * 0.4,
+                    height=10,
+                    colour=_mix(accent, 40, onto=ground),
+                )
+            elif look.ornament == "gutter":
+                _block(slide, left=0, top=0, width=7, height=_H, colour=accent)
+                counter = _textbox(slide, left=22, top=_H - 118, width=80, height=50)
+                run = counter.paragraphs[0].add_run()
+                run.text = f"{index + 1:02d}"
+                paint(run, size=30, bold=True, colour=accent)
+            elif look.ornament == "frame":
+                frame_line = _shape(
+                    slide, MSO_SHAPE.RECTANGLE, left=24, top=24, width=_W - 48, height=_H - 48
+                )
+                frame_line.fill.background()
+                frame_line.line.color.rgb = ink
+                frame_line.line.width = Emu(int(1.0 * _EMU_PER_PT))
+                frame_line.shadow.inherit = False
+            elif look.ornament == "bottom-band":
+                _block(slide, left=0, top=_H - 53, width=_W, height=53, colour=tint)
 
         heading = str(data.get("title") or "")
         body = str(data.get("body") or "")
@@ -917,21 +1198,29 @@ def to_pptx(
         )
         text_left = 72 + (picture_span + 24 if picture_left else 0)
 
+        #: Where the cover's words start: past the accent block on a split cover.
+        cover_left = 72 + 336 if look.cover == "split" else 72
         if layout == "closing":
             # The last word, reversed out like the cover: the title, what to
             # remember under it, and the line to end on at the foot.
-            cover_ink = _INK if visual_style == "minimal" else _WHITE
-            cover_muted = _MUTED if visual_style == "minimal" else _mix(_WHITE, 80, onto=accent)
-            _block(
-                slide,
-                left=72,
-                top=120,
-                width=106,
-                height=7,
-                colour=_mix(accent, 10) if visual_style == "minimal" else _WHITE,
-            )
+            cover_ink = _WHITE if on_accent else ink
+            cover_muted = _mix(_WHITE, 80, onto=accent) if on_accent else muted
+            if look.cover == "split":
+                counter = _textbox(slide, left=60, top=_H - 130, width=200, height=80)
+                run = counter.paragraphs[0].add_run()
+                run.text = "END"
+                paint(run, size=64, bold=True, colour=_mix(_WHITE, 35, onto=accent))
+            if look.cover != "brackets":
+                _block(
+                    slide,
+                    left=cover_left,
+                    top=120,
+                    width=106,
+                    height=7,
+                    colour=_WHITE if on_accent else accent,
+                )
             frame = _textbox(
-                slide, left=72, top=140, width=_W - 144, height=70, placeholder=("title", 0)
+                slide, left=cover_left, top=140, width=_W - 144, height=70, placeholder=("title", 0)
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
             paint_rich(
@@ -958,15 +1247,26 @@ def to_pptx(
                         paragraph, data, f"bullets.{position}", text, size=18, colour=cover_ink
                     )
             if body:
-                foot = _textbox(slide, left=72, top=_H - 120, width=_W - 144, height=50)
+                foot = _textbox(slide, left=cover_left, top=_H - 120, width=_W - 144, height=50)
                 foot.paragraphs[0].alignment = PP_ALIGN.LEFT
                 paint_rich(
                     foot.paragraphs[0], data, "body", body, size=22, bold=True, colour=cover_ink
                 )
         elif cover:
-            cover_ink = _INK if visual_style == "minimal" else _WHITE
-            cover_muted = _MUTED if visual_style == "minimal" else _mix(_WHITE, 80, onto=accent)
-            if layout == "section" and (number := str(data.get("number") or "")):
+            cover_ink = _WHITE if on_accent else ink
+            cover_muted = _mix(_WHITE, 80, onto=accent) if on_accent else muted
+            if look.cover == "split":
+                # The part's number, large and pale, low in the accent block.
+                counter = _textbox(slide, left=60, top=_H - 130, width=200, height=80)
+                run = counter.paragraphs[0].add_run()
+                number_text = str(data.get("number") or "").replace(".", "") or "01"
+                run.text = "END" if layout == "closing" else number_text
+                paint(run, size=64, bold=True, colour=_mix(_WHITE, 35, onto=accent))
+            if (
+                look.cover != "split"
+                and layout == "section"
+                and (number := str(data.get("number") or ""))
+            ):
                 # `01.` over the title. A divider that only names the part
                 # leaves the reader counting backwards to place it.
                 counter = _textbox(slide, left=72, top=150, width=200, height=40)
@@ -976,22 +1276,23 @@ def to_pptx(
                     run,
                     size=22,
                     bold=True,
-                    colour=accent if visual_style == "minimal" else _mix(_WHITE, 70, onto=accent),
+                    colour=_mix(_WHITE, 70, onto=accent) if on_accent else accent,
                 )
-            else:
+            elif look.cover != "brackets":
                 _block(
                     slide,
-                    left=82,
+                    left=cover_left + 10,
                     top=186,
                     width=106,
                     height=7,
-                    colour=accent if visual_style == "minimal" else _WHITE,
+                    colour=_WHITE if on_accent else accent,
                 )
             frame = _textbox(
                 slide,
-                left=72,
+                left=cover_left,
                 top=210,
-                width=_W - 144,
+                # Short of the accent disc on a paper cover.
+                width=(_W - 72 - cover_left) - (300 if look.cover == "paper" else 0),
                 height=180,
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
@@ -1015,7 +1316,7 @@ def to_pptx(
                 "ctrTitle",
                 0,
                 "\n".join(part for part in (heading or title, body) if part),
-                _mix(accent, 10) if visual_style == "minimal" else accent,
+                accent if on_accent else ground,
             )
         elif layout == "statement":
             # One phrase set large in the middle, a short rule over it and the
@@ -1079,6 +1380,8 @@ def to_pptx(
                     width=text_width,
                     left=text_left,
                     paint=paint,
+                    look=look,
+                    hair=hair,
                 )
             elif chart:
                 _pptx_chart(
@@ -1154,7 +1457,16 @@ def to_pptx(
                     # A tinted card with a rule over it. Loose on the slide the
                     # figures were three numbers in a white field; carded, they
                     # read as one row of comparable things.
-                    _block(slide, left=left, top=170, width=span, height=124, colour=tint)
+                    _box(
+                        slide,
+                        look,
+                        left=left,
+                        top=170,
+                        width=span,
+                        height=124,
+                        fill=tint,
+                        line=hair,
+                    )
                     _block(slide, left=left, top=170, width=span, height=5, colour=accent)
                     box = _textbox(
                         slide,
@@ -1367,6 +1679,43 @@ def to_pptx(
     return buffer.getvalue()
 
 
+def _pdf_box(
+    pdf,
+    look: Look,
+    *,
+    left: float,
+    bottom: float,
+    width: float,
+    height: float,
+    fill,
+    line,
+    bg,
+) -> None:
+    """The `.pdf` twin of `_box`: filled or outlined, corners as the look says."""
+    if look.card == "outlined":
+        pdf.setFillColorRGB(*bg)
+        pdf.setStrokeColorRGB(*line)
+        pdf.setLineWidth(0.75)
+        if look.radius:
+            pdf.roundRect(left, bottom, width, height, look.radius * 1.2, stroke=1, fill=1)
+        else:
+            pdf.rect(left, bottom, width, height, stroke=1, fill=1)
+        return
+    pdf.setFillColorRGB(*fill)
+    if look.radius:
+        pdf.roundRect(left, bottom, width, height, look.radius * 1.2, stroke=0, fill=1)
+    else:
+        pdf.rect(left, bottom, width, height, stroke=0, fill=1)
+
+
+def _pdf_badge(pdf, look: Look, *, left: float, bottom: float, side: float, colour) -> None:
+    pdf.setFillColorRGB(*colour)
+    if look.badge == "circle":
+        pdf.circle(left + side / 2, bottom + side / 2, side / 2, stroke=0, fill=1)
+    else:
+        pdf.rect(left, bottom, side, side, stroke=0, fill=1)
+
+
 def _pdf_pairs(
     pdf,
     pairs: list[tuple[str, str]],
@@ -1381,6 +1730,9 @@ def _pdf_pairs(
     font: str,
     scale: float,
     left: float = 72.0,
+    look: Look | None = None,
+    hair=None,
+    bg=None,
 ) -> None:
     """The same three shapes the `.pptx` draws, at the same measurements.
 
@@ -1389,6 +1741,9 @@ def _pdf_pairs(
     See `_pptx_pairs` for what each shape is for.
     """
     room = top - 80
+    look = look or _LOOKS["editorial"]
+    hair = hair or (0.902, 0.902, 0.902)
+    bg = bg or (1.0, 1.0, 1.0)
 
     def S(n: float) -> float:
         return n * scale
@@ -1400,8 +1755,17 @@ def _pdf_pairs(
             bottom = top - height - index * (height + 10)
             pdf.setFillColorRGB(*accent)
             pdf.rect(left, bottom, label, height, stroke=0, fill=1)
-            pdf.setFillColorRGB(*tint)
-            pdf.rect(left + label + 8, bottom, width - label - 8, height, stroke=0, fill=1)
+            _pdf_box(
+                pdf,
+                look,
+                left=left + label + 8,
+                bottom=bottom,
+                width=width - label - 8,
+                height=height,
+                fill=tint,
+                line=hair,
+                bg=bg,
+            )
             pdf.setFillColorRGB(1, 1, 1)
             pdf.setFont(font, S(15))
             pdf.drawCentredString(left + label / 2, bottom + height / 2 - S(5), name)
@@ -1418,8 +1782,7 @@ def _pdf_pairs(
         side = min(span, 96.0)
         for index, (mark, name) in enumerate(pairs):
             item_left = left + index * (span + 16)
-            pdf.setFillColorRGB(*accent)
-            pdf.rect(item_left, top - side - 20, side, side, stroke=0, fill=1)
+            _pdf_badge(pdf, look, left=item_left, bottom=top - side - 20, side=side, colour=accent)
             pdf.setFillColorRGB(1, 1, 1)
             pdf.setFont(font, S(40))
             pdf.drawCentredString(item_left + side / 2, top - side / 2 - 20 - S(14), mark)
@@ -1439,8 +1802,9 @@ def _pdf_pairs(
             pdf.rect(left + side / 2, square_top - side / 2 - 1, width - span, 2, stroke=0, fill=1)
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
-            pdf.setFillColorRGB(*accent)
-            pdf.rect(item_left, square_top - side, side, side, stroke=0, fill=1)
+            _pdf_badge(
+                pdf, look, left=item_left, bottom=square_top - side, side=side, colour=accent
+            )
             pdf.setFillColorRGB(1, 1, 1)
             pdf.setFont(font, S(18))
             pdf.drawCentredString(
@@ -1462,8 +1826,17 @@ def _pdf_pairs(
         card_top = top - 10
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
-            pdf.setFillColorRGB(*tint)
-            pdf.rect(item_left, card_top - height, span, height, stroke=0, fill=1)
+            _pdf_box(
+                pdf,
+                look,
+                left=item_left,
+                bottom=card_top - height,
+                width=span,
+                height=height,
+                fill=tint,
+                line=hair,
+                bg=bg,
+            )
             pdf.setFillColorRGB(*accent)
             pdf.rect(item_left, card_top - 5, span, 5, stroke=0, fill=1)
             pdf.setFont(font, S(16))
@@ -1682,8 +2055,14 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
     pdf = canvas.Canvas(buffer, pagesize=(_W, _H))
     pdf.setTitle(title)
 
+    look = _look_of(visual_style)
+    if look.own_neutrals:
+        ink, muted = _hex_floats(look.ink), _hex_floats(look.muted)
+    ground = _hex_floats(look.bg)
     for index, data in enumerate(_written(slides)):
         accent = _hex_floats(data.get("accent") or (style or {}).get("accent"))
+        if visual_style == "mono":
+            accent = ink
         layout = data.get("layout") or "bullets"
         heading = str(data.get("title") or "")
         body = str(data.get("body") or "")
@@ -1723,18 +2102,14 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         # same reversal — what tells them apart is the number, which is the one
         # thing a reader wants from a divider: how far in are we.
         cover = layout in _COVERS
-        tint = _mix_floats(accent, 7)
-        hair = (0.902, 0.902, 0.902)
+        on_accent = look.cover in ("gradient", "glow")
+        cover_left = 72 + 336 if look.cover == "split" else 72
+        tint = _mix_floats(accent, look.tint, onto=ground) if look.tint else (0.949, 0.949, 0.949)
+        hair = _hex_floats(look.hair)
         if cover:
-            # A wash rather than a flat field. One accent across a whole slide
-            # is a printed rectangle; the same accent falling half a step is
-            # what a deck made by somebody with a template looks like — and it
-            # is derived from the accent, so it follows whatever hue is set
-            # rather than pinning a second colour beside it.
-            if visual_style == "minimal":
-                pdf.setFillColorRGB(*_mix_floats(accent, 10))
-                pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
-            else:
+            # The ground, composed per look — the same six the panel and the
+            # .pptx draw.
+            if look.cover == "gradient":
                 pdf.setFillColorRGB(*accent)
                 pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
                 pdf.saveState()
@@ -1756,15 +2131,57 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     extend=True,
                 )
                 pdf.restoreState()
+            elif look.cover == "wash":
+                pdf.setFillColorRGB(*_mix_floats(accent, 10))
+                pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
+            else:
+                pdf.setFillColorRGB(*ground)
+                pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
+                if look.cover == "glow":
+                    for ring, pct in ((520, 22), (400, 38), (280, 58)):
+                        pdf.setFillColorRGB(*_mix_floats(accent, pct, onto=ground))
+                        pdf.circle(_W - ring * 0.05, ring * 0.05, ring / 2, stroke=0, fill=1)
+                elif look.cover == "paper":
+                    pdf.setFillColorRGB(*accent)
+                    pdf.circle(_W - 72, _H - 272, 228, stroke=0, fill=1)
+                elif look.cover == "split":
+                    pdf.setFillColorRGB(*accent)
+                    pdf.rect(0, 0, 384, _H, stroke=0, fill=1)
+                elif look.cover == "brackets":
+                    pdf.setFillColorRGB(*ink)
+                    pdf.rect(62, _H - 139, 6, 72, stroke=0, fill=1)
+                    pdf.rect(62, _H - 73, 53, 6, stroke=0, fill=1)
+                    pdf.rect(_W - 68, 67, 6, 72, stroke=0, fill=1)
+                    pdf.rect(_W - 115, 67, 53, 6, stroke=0, fill=1)
         else:
-            pdf.setFillColorRGB(*(0.969, 0.953, 0.929) if visual_style == "poster" else (1, 1, 1))
+            pdf.setFillColorRGB(*ground)
             pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
-            if visual_style == "poster":
+            if look.ornament == "left-bar":
                 pdf.setFillColorRGB(*accent)
                 pdf.rect(0, 0, 14, _H, stroke=0, fill=1)
-            elif visual_style == "editorial":
+            elif look.ornament == "top-band":
                 pdf.setFillColorRGB(*accent)
                 pdf.rect(0, _H - 14, _W, 14, stroke=0, fill=1)
+            elif look.ornament == "corner-circle":
+                pdf.setFillColorRGB(*_mix_floats(accent, 12, onto=ground))
+                pdf.circle(_W - 12, _H, 84, stroke=0, fill=1)
+            elif look.ornament == "bottom-rule":
+                pdf.setFillColorRGB(*accent)
+                pdf.rect(0, 0, _W * 0.6, 10, stroke=0, fill=1)
+                pdf.setFillColorRGB(*_mix_floats(accent, 40, onto=ground))
+                pdf.rect(_W * 0.6, 0, _W * 0.4, 10, stroke=0, fill=1)
+            elif look.ornament == "gutter":
+                pdf.setFillColorRGB(*accent)
+                pdf.rect(0, 0, 7, _H, stroke=0, fill=1)
+                pdf.setFont(font, 30)
+                pdf.drawString(22, 80, f"{index + 1:02d}")
+            elif look.ornament == "frame":
+                pdf.setStrokeColorRGB(*ink)
+                pdf.setLineWidth(1.0)
+                pdf.rect(24, 24, _W - 48, _H - 48, stroke=1, fill=0)
+            elif look.ornament == "bottom-band":
+                pdf.setFillColorRGB(*tint)
+                pdf.rect(0, 0, _W, 53, stroke=0, fill=1)
 
         # This slide's own type size, applied to the sizes *and* to the line
         # advances they are paired with. Scaling only the glyphs would set 26pt
@@ -1777,69 +2194,68 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             return n * _ts
 
         if layout == "closing":
-            cover_ink = _PDF_INK if visual_style == "minimal" else (1.0, 1.0, 1.0)
-            cover_muted = (
-                _PDF_MUTED
-                if visual_style == "minimal"
-                else _mix_floats((1.0, 1.0, 1.0), 80, onto=accent)
-            )
-            pdf.setFillColorRGB(*(accent if visual_style == "minimal" else (1, 1, 1)))
-            pdf.rect(72, _H - 127, 106, 7, stroke=0, fill=1)
+            cover_ink = (1.0, 1.0, 1.0) if on_accent else ink
+            cover_muted = _mix_floats((1.0, 1.0, 1.0), 80, onto=accent) if on_accent else muted
+            if look.cover == "split":
+                pdf.setFillColorRGB(*_mix_floats((1.0, 1.0, 1.0), 35, onto=accent))
+                pdf.setFont(font, S(64))
+                pdf.drawString(60, 60, "END")
+            if look.cover != "brackets":
+                pdf.setFillColorRGB(*((1, 1, 1) if on_accent else accent))
+                pdf.rect(cover_left, _H - 127, 106, 7, stroke=0, fill=1)
             pdf.setFillColorRGB(*cover_ink)
             pdf.setFont(font, S(36))
             y = _H - 176
-            for line in _wrap(heading or "마무리", font, S(36), _W - 144)[:2]:
-                pdf.drawString(72, y, line)
+            for line in _wrap(heading or "마무리", font, S(36), _W - 72 - cover_left)[:2]:
+                pdf.drawString(cover_left, y, line)
                 y -= S(44)
             y -= 6
             for text in bullets[:3]:
                 pdf.setFillColorRGB(*cover_muted)
                 pdf.setFont(font, S(18))
-                pdf.drawString(72, y, "—")
+                pdf.drawString(cover_left, y, "—")
                 pdf.setFillColorRGB(*cover_ink)
-                for offset, line in enumerate(_wrap(text, font, S(18), _W - 200)[:2]):
-                    pdf.drawString(100, y - offset * S(24), line)
+                for offset, line in enumerate(_wrap(text, font, S(18), _W - 128 - cover_left)[:2]):
+                    pdf.drawString(cover_left + 28, y - offset * S(24), line)
                     y -= S(24)
                 y -= 10
             if body:
                 pdf.setFillColorRGB(*cover_ink)
                 pdf.setFont(font, S(22))
-                pdf.drawString(72, 92, _wrap(body, font, S(22), _W - 144)[0])
+                pdf.drawString(cover_left, 92, _wrap(body, font, S(22), _W - 72 - cover_left)[0])
         elif cover:
-            cover_ink = _PDF_INK if visual_style == "minimal" else (1.0, 1.0, 1.0)
-            if layout == "section" and (number := str(data.get("number") or "")):
+            cover_ink = (1.0, 1.0, 1.0) if on_accent else ink
+            number = str(data.get("number") or "")
+            if look.cover == "split":
+                pdf.setFillColorRGB(*_mix_floats((1.0, 1.0, 1.0), 35, onto=accent))
+                pdf.setFont(font, S(64))
+                pdf.drawString(60, 60, number.replace(".", "") or "01")
+            if look.cover != "split" and layout == "section" and number:
                 # `01.` over the title. A divider that only says the name of
                 # the part leaves the reader counting backwards to place it.
                 pdf.setFillColorRGB(
-                    *(
-                        accent
-                        if visual_style == "minimal"
-                        else _mix_floats((1.0, 1.0, 1.0), 70, onto=accent)
-                    )
+                    *(_mix_floats((1.0, 1.0, 1.0), 70, onto=accent) if on_accent else accent)
                 )
                 pdf.setFont(font, S(22))
-                pdf.drawString(72, _H / 2 + 100, number)
-            else:
-                pdf.setFillColorRGB(*(accent if visual_style == "minimal" else (1, 1, 1)))
-                pdf.rect(82, _H / 2 + 74, 106, 7, stroke=0, fill=1)
+                pdf.drawString(cover_left, _H / 2 + 100, number)
+            elif look.cover != "brackets":
+                pdf.setFillColorRGB(*((1, 1, 1) if on_accent else accent))
+                pdf.rect(cover_left + 10, _H / 2 + 74, 106, 7, stroke=0, fill=1)
             pdf.setFillColorRGB(*cover_ink)
             pdf.setFont(font, S(40))
             y = _H / 2 + 20
-            for line in _wrap(heading or title, font, S(40), _W - 144):
-                pdf.drawString(text_left, y, line)
+            title_width = (_W - 72 - cover_left) - (300 if look.cover == "paper" else 0)
+            for line in _wrap(heading or title, font, S(40), title_width):
+                pdf.drawString(cover_left, y, line)
                 y -= S(50)
             if body:
                 # 80% white over the accent, as the preview and the .pptx have.
                 pdf.setFillColorRGB(
-                    *(
-                        _PDF_MUTED
-                        if visual_style == "minimal"
-                        else _mix_floats((1.0, 1.0, 1.0), 80, onto=accent)
-                    )
+                    *(_mix_floats((1.0, 1.0, 1.0), 80, onto=accent) if on_accent else muted)
                 )
                 pdf.setFont(font, S(15))
-                for line in _wrap(body, font, S(15), _W - 144)[:2]:
-                    pdf.drawString(72, y - 6, line)
+                for line in _wrap(body, font, S(15), _W - 72 - cover_left)[:2]:
+                    pdf.drawString(cover_left, y - 6, line)
                     y -= S(22)
         elif layout == "statement":
             pdf.setFillColorRGB(*accent)
@@ -1894,6 +2310,9 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     font=font,
                     scale=ts,
                     left=text_left,
+                    look=look,
+                    hair=hair,
+                    bg=ground,
                 )
             elif chart:
                 _pdf_chart(
@@ -1927,8 +2346,17 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 for position, (figure, label) in enumerate(metrics):
                     left = text_left + position * (span + 24)
                     # A tinted card with a rule over it — see the .pptx.
-                    pdf.setFillColorRGB(*tint)
-                    pdf.rect(left, y - S(86), span, S(86) + 18, stroke=0, fill=1)
+                    _pdf_box(
+                        pdf,
+                        look,
+                        left=left,
+                        bottom=y - S(86),
+                        width=span,
+                        height=S(86) + 18,
+                        fill=tint,
+                        line=hair,
+                        bg=ground,
+                    )
                     pdf.setFillColorRGB(*accent)
                     pdf.rect(left, y + 13, span, 5, stroke=0, fill=1)
                     pdf.setFillColorRGB(*accent)

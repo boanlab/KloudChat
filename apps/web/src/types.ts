@@ -155,7 +155,7 @@ export interface PendingPlan {
   questions?: PendingQuestion[]
   plan?: {
     title?: string
-    visualStyle?: 'editorial' | 'poster' | 'minimal'
+    visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
     /** Whether the deck is meant to support a speaker or stand alone when shared. */
     density?: 'speaker' | 'reading'
     /** Slides and template blocks carry a layout; report sections are titles. */
@@ -577,7 +577,7 @@ export interface DesignTokens {
   muted: string
   font: 'gothic' | 'serif'
   /** Composition, independent from colour: the same deck can wear a different visual rhythm. */
-  visualStyle?: 'editorial' | 'poster' | 'minimal'
+  visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
   /**
    * The line at the foot of every slide and page saying whose this is, and the
    * mark beside it as a `data:` URI.

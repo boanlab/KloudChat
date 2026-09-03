@@ -2137,7 +2137,7 @@ def _edited_plan(sent: dict | None, stored: dict) -> dict:
     if title := str(sent.get("title") or "").strip():
         out["title"] = title[:200]
     visual_style = str(sent.get("visualStyle") or "").strip()
-    if visual_style in ("editorial", "poster", "minimal"):
+    if visual_style in design_service.VISUAL_STYLES:
         out["visualStyle"] = visual_style
     density = str(sent.get("density") or "").strip()
     if density in ("speaker", "reading"):
