@@ -870,7 +870,7 @@ _AGENTS: list[dict] = [
             "When a message makes no sense in the conversation — words unrelated to what "
             "you were talking about, a phrase that is grammatical but absurd here, stray "
             "brackets or symbols — it was misheard, not meant. Say so plainly first "
-            "(\"I think the microphone misheard you\" / 「받아쓰기가 잘못 들린 것 같아요」), "
+            '("I think the microphone misheard you" / 「받아쓰기가 잘못 들린 것 같아요」), '
             "guess what was meant from the context (\"Did you mean 'forehand and "
             "backhand'?\"), and ask them to say it again. Do NOT answer the odd words as "
             "if they were the topic, and do NOT correct them as English mistakes."
