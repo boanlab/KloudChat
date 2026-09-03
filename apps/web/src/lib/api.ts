@@ -337,10 +337,18 @@ export interface SystemSettings {
 
 /** The composer's microphone: a recording in, its words out. Not stored. */
 export const transcriptionsApi = {
-  transcribe: async (blob: Blob, filename = 'speech.webm') => {
+  transcribe: async (
+    blob: Blob,
+    filename = 'speech.webm',
+    hints: { language?: 'ko' | 'en'; prompt?: string } = {},
+  ) => {
     // multipart: the browser sets the boundary, so this bypasses call()'s JSON headers.
     const form = new FormData()
     form.append('file', blob, filename)
+    // What the conversation was about, and which language it is in: Whisper
+    // reads the first as a vocabulary hint and the second as a pin.
+    if (hints.language) form.append('language', hints.language)
+    if (hints.prompt) form.append('prompt', hints.prompt.slice(0, 500))
     const res = await fetch(`${BASE_URL}/transcriptions`, {
       method: 'POST',
       body: form,

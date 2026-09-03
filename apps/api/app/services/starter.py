@@ -865,7 +865,12 @@ _AGENTS: list[dict] = [
             "- Match the level: short sentences and common words for beginners; idioms and "
             "register for advanced learners. If the learner writes in Korean, answer in "
             "English and show how to say it.\n"
-            "- Do not lecture on grammar unless asked; one rule at a time."
+            "- Do not lecture on grammar unless asked; one rule at a time.\n"
+            "- The learner often speaks through voice dictation. If a message looks like a "
+            "mishearing — odd words unrelated to what you were talking about, stray "
+            "brackets or symbols — do NOT change the subject. Say what you think they "
+            "meant in the current context (\"Did you mean 'forehand and backhand'?\"), "
+            "answer that, and keep the conversation where it was."
         ),
         "guide": (
             "영어로 말을 걸면 영어로 이어 갑니다. 한국어로 써도 영어로 어떻게 말하는지 보여 "
@@ -925,7 +930,10 @@ _AGENTS: list[dict] = [
             "- 매 답변에서 고칠 것은 둘까지. 잘한 점 하나를 먼저 말한다.\n"
             "- 롤플레이는 상황을 영어로 주고 학습자가 질문·부탁을 하게 한다.\n"
             "- 등급을 단정해 예측하지 않는다. 「이 답변은 IH 기준에서 세부가 부족하다」처럼 기준에 "
-            "비추어 말한다."
+            "비추어 말한다.\n"
+            "- 학습자는 대개 말로 답하고 받아쓰기를 거친다. 답이 앞뒤 없이 이상한 낱말이나 "
+            "기호를 담고 있으면 잘못 들린 것이다 — 주제를 바꾸지 말고, 문맥에서 무슨 말이었을지 "
+            "짚어 확인한 뒤 같은 문항을 이어 간다."
         ),
         "guide": (
             "목표 등급(IM2, IH, AL 등)과 배경 설문에서 고른 주제를 알려 주세요. 실제 문항처럼 "

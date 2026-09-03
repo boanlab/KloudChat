@@ -2227,7 +2227,7 @@ export const useStore = create<State>((set, get) => ({
 
   optionTemplate: null,
   setOptionTemplate: (optionTemplate) => set({ optionTemplate }),
-  imageOptions: { aspect: '1:1', style: '자동', labels: 'auto', count: 1 },
+  imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
   //: Every write but the template's own comes from a person turning a chip, so
   //: a write is where the 서식 stops being the author of these values.
   setImageOptions: (patch) =>

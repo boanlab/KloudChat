@@ -48,11 +48,13 @@ const placeholders: Record<SessionKind, string> = {
 }
 
 
-const ASPECTS = ['1:1', '16:9', '9:16', '4:3']
+const ASPECTS = ['16:9', '9:16', '4:3', '1:1']
 /* What kind of picture, not only what it looks like. 자동 lets the planner
    read it off the request; 없음 sends the sentence as typed. Kept in step with
    `imagegen.STYLE_CHOICES`. */
 const STYLES = ['자동', '도식', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
+/** Agents whose conversation is in English, so dictation is pinned to it. */
+const ENGLISH_AGENTS = new Set(['english-tutor', 'toeic-master', 'opic-master'])
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
   { id: 'ko', label: '한국어' },
@@ -630,7 +632,20 @@ export function Composer({
       // 16 kHz 16-bit mono: 32,000 bytes a second. Under a third of a second
       // is a tap on the key, not a sentence — nothing to send to Whisper.
       if (blob.size <= 44 + 32_000 * 0.3) return ''
-      const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav')
+      // Heard in context. The last thing said back is the vocabulary the
+      // next sentence most likely uses — 「some tennis」 in a chat about
+      // tennis — and a chat with an English agent is English: without the
+      // pin, one mumbled sentence came back as 《Fold and Vacant》 and the
+      // tutor followed it out of the conversation.
+      const lastAnswer = [...(session?.messages ?? [])]
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.content?.trim())
+      const english =
+        sessionAgent?.catalogKey != null && ENGLISH_AGENTS.has(sessionAgent.catalogKey)
+      const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav', {
+        language: english ? 'en' : undefined,
+        prompt: lastAnswer?.content.replace(/\s+/g, ' ').slice(0, 300),
+      })
       if (text) {
         setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
         requestAnimationFrame(() => ref.current?.focus())

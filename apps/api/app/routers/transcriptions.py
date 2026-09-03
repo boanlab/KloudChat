@@ -32,6 +32,8 @@ async def transcribe(
     db: DbSession,
     file: UploadFile = File(...),
     language: str | None = Form(None),
+    #: What was last said in the conversation — a vocabulary hint for Whisper.
+    prompt: str = Form("", max_length=500),
 ):
     """Audio → text, for pasting into the composer. Not stored.
 
@@ -49,7 +51,7 @@ async def transcribe(
     data = await file.read()
     try:
         text, seconds = await transcribe_service.transcribe_with_duration(
-            data, file.filename or "speech.webm", pinned
+            data, file.filename or "speech.webm", pinned, prompt
         )
     except transcribe_service.TranscribeError as exc:
         raise HTTPException(

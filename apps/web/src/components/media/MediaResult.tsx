@@ -98,16 +98,19 @@ export function MediaResult({
                   'group relative overflow-hidden rounded-card border border-line bg-elevated',
                   // 도식은 자르지 않는다. A picture can lose its edges to a
                   // tidy frame; a figure that loses an edge loses a module.
-                  img.source ? 'bg-white' : (aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square'),
+                  // Nor is anything else: the frame takes the file's own
+                  // pixel ratio, so a square answer to a 16:9 request shows
+                  // whole rather than with its top and bottom cut away.
+                  img.source ? 'bg-white' : img.width && img.height ? undefined : (aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square'),
                 )}
-                style={img.source && img.width && img.height ? { aspectRatio: `${img.width} / ${img.height}` } : undefined}
+                style={img.width && img.height ? { aspectRatio: `${img.width} / ${img.height}` } : undefined}
               >
                 <img
                   src={fileUrl(img.src)}
                   alt={img.caption || img.prompt}
                   className={cn(
                     'size-full transition-transform duration-300 group-hover:scale-[1.03]',
-                    img.source ? 'object-contain p-2' : 'object-cover',
+                    img.source ? 'object-contain p-2' : 'object-contain',
                   )}
                 />
               </button>

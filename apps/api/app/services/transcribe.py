@@ -47,14 +47,14 @@ async def available() -> bool:
 
 
 async def transcribe_with_duration(
-    data: bytes, filename: str = "speech.webm", language: str | None = None
+    data: bytes, filename: str = "speech.webm", language: str | None = None, prompt: str = ""
 ) -> tuple[str, int]:
     """`(text, seconds)` — the transcript and how much audio the shim reported.
 
     The seconds are what the usage ledger records for a model that costs no
     credits. Zero when the backend did not say.
     """
-    text = await transcribe(data, filename, language)
+    text = await transcribe(data, filename, language, prompt)
     return text, int(_last_seconds)
 
 
@@ -64,12 +64,17 @@ _last_seconds = 0
 
 
 async def transcribe(
-    data: bytes, filename: str = "speech.webm", language: str | None = None
+    data: bytes,
+    filename: str = "speech.webm",
+    language: str | None = None,
+    prompt: str = "",
 ) -> str:
     """Audio bytes → text. Raises `TranscribeError` with something readable.
 
     `language` is an ISO code to pin (`ko`, `en`) or `None` to let the model
-    hear which of `SPOKEN` it is.
+    hear which of `SPOKEN` it is. `prompt` is what the conversation was about
+    — the last thing said back — which Whisper reads as a hint for vocabulary
+    and spelling: 「some tennis」 heard in a chat about tennis stays tennis.
     """
     if not await available():
         raise TranscribeError("음성 인식 백엔드가 설정되지 않았습니다.")
@@ -83,7 +88,7 @@ async def transcribe(
         return await _transcribe_via_openrouter(data, filename, language)
 
     try:
-        return await _transcribe_locally(stt_url, data, filename, language)
+        return await _transcribe_locally(stt_url, data, filename, language, prompt)
     except TranscribeError:
         # Local first, and local failing is not the end of it.
         #
@@ -114,7 +119,7 @@ _HOME = "ko"
 
 
 async def _transcribe_locally(
-    stt_url: str, data: bytes, filename: str, language: str | None = None
+    stt_url: str, data: bytes, filename: str, language: str | None = None, prompt: str = ""
 ) -> str:
     """Whisper inside the cluster, through vLLM's OpenAI-shaped endpoint.
 
@@ -122,11 +127,11 @@ async def _transcribe_locally(
     English sentence spoken to the 영어회화 튜터 is written in English and a
     Korean one in Korean, and only a guess outside `SPOKEN` is redone pinned.
     """
-    body = await _whisper(stt_url, data, filename, language)
+    body = await _whisper(stt_url, data, filename, language, prompt)
     heard = str(body.get("language") or "").lower()[:2]
     if language is None and heard and heard not in SPOKEN:
         log.info("whisper heard %s; retrying pinned to %s", heard, _HOME)
-        body = await _whisper(stt_url, data, filename, _HOME)
+        body = await _whisper(stt_url, data, filename, _HOME, prompt)
 
     global _last_seconds
     _last_seconds = 0
@@ -141,12 +146,16 @@ async def _transcribe_locally(
     return text
 
 
-async def _whisper(stt_url: str, data: bytes, filename: str, language: str | None) -> dict:
+async def _whisper(
+    stt_url: str, data: bytes, filename: str, language: str | None, prompt: str = ""
+) -> dict:
     """One pass; `verbose_json` so the answer says which language it heard."""
     url = f"{stt_url.rstrip('/')}/v1/audio/transcriptions"
     form: dict[str, str] = {"response_format": "verbose_json"}
     if language:
         form["language"] = language
+    if prompt.strip():
+        form["prompt"] = prompt.strip()[:500]
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.post(
