@@ -20,6 +20,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
 import { transcriptionsApi } from '@/lib/api'
+import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
@@ -596,48 +597,33 @@ export function Composer({
   const dictationEnabled = useStore((s) => s.dictationEnabled)
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
-  const recorder = useRef<MediaRecorder | null>(null)
+  const recorder = useRef<WavRecorder | null>(null)
   const canRecord =
-    dictationEnabled && typeof MediaRecorder !== 'undefined' && Boolean(navigator.mediaDevices)
-  const stopRecording = () => {
-    recorder.current?.stop()
+    dictationEnabled && typeof AudioContext !== 'undefined' && Boolean(navigator.mediaDevices)
+  const stopRecording = async () => {
+    const active = recorder.current
+    if (!active) return
+    recorder.current = null
+    setRecording(false)
+    setTranscribing(true)
+    try {
+      const blob = await active.stop()
+      if (blob.size <= 44) return
+      const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav')
+      if (text) {
+        setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
+        requestAnimationFrame(() => ref.current?.focus())
+      }
+    } catch (err) {
+      setChatError(errorMessage(err, t('받아쓰지 못했습니다.')))
+    } finally {
+      setTranscribing(false)
+    }
   }
   const startRecording = async () => {
     setChatError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-          ? 'audio/mp4'
-          : ''
-      const media = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
-      const chunks: BlobPart[] = []
-      media.ondataavailable = (e) => {
-        if (e.data.size) chunks.push(e.data)
-      }
-      media.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop())
-        setRecording(false)
-        recorder.current = null
-        const blob = new Blob(chunks, { type: media.mimeType || 'audio/webm' })
-        if (!blob.size) return
-        setTranscribing(true)
-        try {
-          const ext = /mp4/.test(blob.type) ? 'm4a' : 'webm'
-          const { text } = await transcriptionsApi.transcribe(blob, `speech.${ext}`)
-          if (text) {
-            setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
-            requestAnimationFrame(() => ref.current?.focus())
-          }
-        } catch (err) {
-          setChatError(errorMessage(err, t('받아쓰지 못했습니다.')))
-        } finally {
-          setTranscribing(false)
-        }
-      }
-      recorder.current = media
-      media.start()
+      recorder.current = await startWavRecording()
       setRecording(true)
     } catch {
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
@@ -1602,7 +1588,7 @@ export function Composer({
           )}
           {canRecord && (
             <button
-              onClick={() => (recording ? stopRecording() : void startRecording())}
+              onClick={() => void (recording ? stopRecording() : startRecording())}
               disabled={transcribing}
               className={cn(
                 'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
