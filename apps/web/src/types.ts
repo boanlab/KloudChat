@@ -1016,6 +1016,14 @@ export interface Agent {
   description: string
   model: string
   systemPrompt: string
+  /** How to use it — shown on the empty screen. */
+  guide: string
+  /** Conversation starters offered there as buttons. */
+  starters: string[]
+  /** `sealed`: others may take it, but the prompt stays with its author. */
+  shareMode: 'open' | 'sealed'
+  /** No prompt here to read or edit — it is read from the original at run time. */
+  sealed: boolean
   /** null inherits; [] denies all; values form a hard allowlist. */
   tools: string[] | null
   /** null inherits turn selection; [] denies all selected skills. */

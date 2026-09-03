@@ -204,7 +204,23 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
         raise WorkspaceContextError("agent_disabled")
     if agent.kinds and session.kind.value not in agent.kinds:
         raise WorkspaceContextError("agent_kind_mismatch")
+    if agent.sealed and agent.origin_id:
+        # A sealed copy holds no prompt. The original's is used as it stands
+        # today — the sharer's, still shared, never written into this row.
+        origin = await db.get(Agent, agent.origin_id)
+        if origin is not None and origin.visibility is Visibility.org:
+            agent = _with_prompt(agent, origin.system_prompt)
+        else:
+            raise WorkspaceContextError("agent_origin_gone")
     return agent
+
+
+def _with_prompt(agent: Agent, prompt: str) -> Agent:
+    """A detached look-alike carrying the original's prompt. Not the row —
+    nothing here is meant to be saved."""
+    shadow = Agent.model_validate(agent, from_attributes=True)
+    shadow.system_prompt = prompt
+    return shadow
 
 
 async def _load_design_system(

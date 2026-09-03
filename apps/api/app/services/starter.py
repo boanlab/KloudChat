@@ -557,6 +557,15 @@ _AGENTS: list[dict] = [
 - 답을 준 뒤에는 이해를 확인할 질문 하나를 남긴다. 되묻는 것이 가르치는 것이다.
 - 계산은 도구로 검산하고 식을 보인다. 코드는 실행되는 것만 싣는다.
 - 모르는 것은 모른다고 말하고, 확인할 수 없는 「기출」「교수님 스타일」을 지어내지 않는다.""",
+        "guide": (
+            "전공 개념을 묻고, 답을 듣고, 되묻는 식으로 진행합니다. 강의 자료나 교재 페이지를 "
+            "첨부하면 그 범위 안에서 설명하고, 이해했는지 확인 문제를 냅니다."
+        ),
+        "starters": [
+            "운영체제의 데드락 4가지 조건을 예를 들어 설명해 줘",
+            "첨부한 강의 슬라이드 3장 내용을 내 수준에서 정리해 줘",
+            "베이즈 정리를 쉬운 예로 설명하고 확인 문제 하나 내 줘",
+        ],
         "kinds": ["chat"],
         "skills": ["plain-explain", "quiz-writer", "calculation-unit-check"],
         "color": "#2f7fd6",
@@ -573,6 +582,15 @@ _AGENTS: list[dict] = [
 - 사실·수치는 확인한 것만 쓰고 출처를 단다. 첨부 자료가 있으면 그 밖의 것을 보태지 않는다.
 - 의견과 사실을 문장에서 구분한다. 분량은 요청을 지키고 되풀이로 채우지 않는다.
 - 학생이 스스로 고칠 수 있게, 끝에 더 다듬을 자리를 두셋 짚는다.""",
+        "guide": (
+            "과제 제목과 요구 조건(분량·형식·평가 기준)을 먼저 알려 주세요. 개요를 같이 잡고, 쓴 "
+            "글을 붙이면 구조와 근거를 점검합니다. 대신 써 주기보다 고쳐 쓰게 돕습니다."
+        ),
+        "starters": [
+            "'플랫폼 노동의 쟁점' 3,000자 에세이 개요를 잡아 줘",
+            "첨부한 초안의 논리 구조와 근거를 점검해 줘",
+            "이 요약문이 원문의 핵심을 놓친 데가 있는지 봐 줘",
+        ],
         "kinds": ["report", "chat"],
         "skills": ["citation", "source-faithful", "prose-polish"],
         "color": "#3d9a6c",
@@ -590,6 +608,15 @@ _AGENTS: list[dict] = [
 - 비교는 표로, 구조는 이름표 있는 띠로, 수치는 자료에 있는 것만 차트로.
 - 장마다 실제로 입에 붙는 발표 노트를 쓴다. 시간이 정해졌으면 장수를 거기에 맞춘다.
 - 마지막 장은 청중이 오늘 무엇을 하면 되는가다.""",
+        "guide": (
+            "발표 주제와 청중, 시간을 알려 주세요. 한 장에 메시지 하나로 구성을 잡고, 장마다 말할 "
+            "노트를 붙입니다. 자료를 첨부하면 그 내용으로 만듭니다."
+        ),
+        "starters": [
+            "10분 캡스톤 중간 발표 구성을 잡아 줘. 청중은 지도교수와 동기들",
+            "첨부한 보고서를 8장짜리 발표로 바꿔 줘",
+            "이 슬라이드 개요에서 장마다 할 말을 노트로 써 줘",
+        ],
         "kinds": ["slides"],
         "skills": ["deck-story", "speaker-notes", "comparison-table"],
         "color": "#d97b2b",
@@ -605,6 +632,15 @@ _AGENTS: list[dict] = [
 - 지적마다 근거 위치(절·그림)와 결론에 미치는 영향을 적고, 고칠 수 있는지 가른다.
 - 확인하지 못한 의심은 의심이라고 쓴다. 논문에 없는 것을 요구할 때는 왜 필요한지 설명한다.
 - 강점도 적는다. 모르는 분야면 모른다고 말하고 확인할 지점을 목록으로 남긴다.""",
+        "guide": (
+            "논문 PDF나 초록을 첨부하고 어느 학회·저널 기준인지 알려 주세요. 기여·방법·평가·관련 "
+            "연구를 리뷰어 관점으로 짚고, 반드시 고칠 것과 권고를 나눠 말합니다."
+        ),
+        "starters": [
+            "첨부한 논문을 리뷰어 관점에서 검토해 줘",
+            "이 초록의 기여가 분명한지, 과장은 없는지 봐 줘",
+            "우리 평가 설계에 리뷰어가 제기할 반론을 미리 뽑아 줘",
+        ],
         "kinds": ["chat", "report"],
         "skills": ["reviewer-lens", "source-faithful", "evidence"],
         "color": "#5b53e8",
@@ -622,6 +658,15 @@ _AGENTS: list[dict] = [
 - 「크게 개선」 대신 「4.7% 낮다(무엇 대비, 어떤 조건)」. 형용사보다 수치와 조건.
 - 용어는 한 이름으로 끝까지. 영어면 간결한 academic English, 한국어면 합니다체.
 - 고쳐 쓸 때는 바꾼 자리를 표로 남긴다.""",
+        "guide": (
+            "연구 내용(문제, 방법, 실험 결과)을 메모나 파일로 주세요. 절 단위로 학술 문체에 맞춰 "
+            "쓰고, 없는 결과나 인용은 만들지 않고 빈칸으로 남깁니다."
+        ),
+        "starters": [
+            "첨부한 실험 결과로 Evaluation 절 초안을 써 줘",
+            "이 연구의 서론을 문제 제기 → 한계 → 기여 순으로 써 줘",
+            "초록 200단어로 다듬어 줘. 기여 세 가지가 드러나게",
+        ],
         "kinds": ["report", "chat"],
         "skills": ["paper-structure", "result-restraint", "academic-english", "citation"],
         "color": "#7c4dbd",
@@ -639,6 +684,15 @@ _AGENTS: list[dict] = [
 - 결과 해석은 무엇과 견주어서인지 밝히고, 확인하지 못한 「보통 ~%」에는 (확인 필요)를 붙인다.
 - 주제를 제안할 때는 문제·왜 지금·접근·평가·위험을 함께 적고, 겹치는 기존 연구를 확인한 것만 말한다.
 - 자원(시간·장비)에 맞춘다. 못 하는 실험은 못 한다고 하고 대안을 말한다.""",
+        "guide": (
+            "연구 주제나 아이디어를 한두 문단으로 설명해 주세요. 연구 질문, 평가 방법, 예상 반론, "
+            "리뷰어 대응을 함께 설계합니다. 관련 문헌은 검색으로 확인합니다."
+        ),
+        "starters": [
+            "이 아이디어가 연구 질문으로 성립하는지 같이 따져 보자",
+            "제안한 방법을 평가할 실험 설계를 잡아 줘",
+            "리뷰어가 낼 만한 반론과 대응을 정리해 줘",
+        ],
         "kinds": ["chat", "report"],
         "skills": ["eval-design", "result-restraint", "reviewer-lens", "rebuttal-manner"],
         "color": "#1f8a8a",
@@ -655,6 +709,15 @@ _AGENTS: list[dict] = [
 - 결론은 조건부로 말한다: 「~라면 A」. 확인되지 않은 수치를 가정하지 않는다.
 - 위험은 조건·영향·가능성·완화책·조기 신호로. 지금 결정해야 막을 수 있는 것을 표시한다.
 - 환경에 없는 구성 요소를 가정하지 않는다. 일반론보다 이 회사의 상황.""",
+        "guide": (
+            "해결하려는 문제와 제약(예산, 일정, 인력, 기존 시스템)을 알려 주세요. 선택지를 "
+            "관점별로 나눠 분석하고 결정 기준표를 만듭니다."
+        ),
+        "starters": [
+            "사내 검색을 Elasticsearch 로 갈지 OpenSearch 로 갈지 비교해 줘",
+            "모놀리스를 분리해야 할지 판단 기준을 세워 줘",
+            "첨부한 아키텍처 초안의 위험 요소를 짚어 줘",
+        ],
         "kinds": ["chat", "report"],
         "skills": ["risk-lens", "decision-frame", "comparison-table", "security-lens"],
         "color": "#b8412f",
@@ -672,6 +735,16 @@ _AGENTS: list[dict] = [
 - 이슈는 무엇이 막혀 있고 누가 무엇을 결정해야 풀리는지로 쓴다.
 - 담당·기한이 없는 다음 단계는 다음 단계가 아니다.
 - 문체는 합니다체, 짧은 문장. 되풀이로 분량을 채우지 않는다.""",
+        "guide": (
+            "보고 종류(주간 보고, 기획서, 검토 보고, 제안서)와 사실 자료를 주세요. 자료에 있는 "
+            "것만 쓰고, 없는 수치는 지어내지 않고 빈칸으로 둡니다. 긴 문서는 보고서 화면으로 넘겨 "
+            "만듭니다."
+        ),
+        "starters": [
+            "이번 주 한 일 메모로 주간 보고를 써 줘",
+            "첨부한 회의 내용으로 검토 보고서 초안을 잡아 줘",
+            "신규 서비스 기획서 목차부터 잡아 보자",
+        ],
         "kinds": ["report", "chat"],
         "skills": ["decision-memo", "evidence", "source-faithful", "brief-one-page"],
         "color": "#2c6e91",
@@ -688,6 +761,15 @@ _AGENTS: list[dict] = [
 - 기술 사실은 비용·일정·위험으로 바꿔 말한다. 숫자는 전후 비교와 함께.
 - 제공된 수치와 자료의 내용만 쓴다. 자료의 어느 절에서 왔는지 남긴다.
 - 마지막은 요청 사항 — 무엇을 승인하거나 정해 달라는 것인지 한 줄.""",
+        "guide": (
+            "긴 보고서나 상황 설명을 붙여 주세요. 임원이 3분에 읽도록 사업 영향, 결정할 것, 요청 "
+            "사항으로 압축합니다. 숫자는 자료에 있는 것만 씁니다."
+        ),
+        "starters": [
+            "첨부한 20쪽 보고서를 경영진용 한 장으로 줄여 줘",
+            "이 장애 상황을 임원에게 보고할 3줄 요약으로",
+            "결정이 필요한 사항만 골라 브리핑으로 정리해 줘",
+        ],
         "kinds": ["slides", "report", "chat"],
         "skills": ["exec-language", "brief-one-page", "source-faithful"],
         "color": "#8a6d1f",
@@ -703,6 +785,15 @@ _AGENTS: list[dict] = [
 - 원인을 좁힐 때는 가능성 높고 확인이 싼 것부터, 결과에 따라 갈라지는 절차로.
 - 재발 방지는 원인과 짝지어 표로, 담당과 기한을 붙인다.
 - 사람을 탓하는 문장을 쓰지 않는다. 시스템이 그 실수를 허용한 이유를 쓴다.""",
+        "guide": (
+            "장애의 시각열(언제 무엇이 있었는지), 영향 범위, 로그나 알림 내용을 주세요. "
+            "원인·영향·재발 방지로 정리하고, 원인이 확정되지 않았으면 확인 절차를 만듭니다."
+        ),
+        "starters": [
+            "어제 장애 타임라인을 정리해 줄게. 사후 분석 문서로 만들어 줘",
+            "첨부한 로그에서 원인 후보를 좁혀 줘",
+            "재발 방지 대책이 원인과 맞물리는지 점검해 줘",
+        ],
         "kinds": ["chat", "report", "slides"],
         "skills": ["incident-timeline", "debug-procedure"],
         "color": "#c0392b",
@@ -719,6 +810,15 @@ _AGENTS: list[dict] = [
 - 결정과 논의를 가른다. 결정의 근거가 된 반론은 남긴다.
 - Action Item 은 표로: 할 일 · 담당 · 기한 · 근거가 된 결정.
 - 발언은 요약하되 뜻을 바꾸지 않고, 자료끼리 어긋나면 어긋난다고 적는다.""",
+        "guide": (
+            "회의 녹취록이나 메모를 붙여 주세요. 논의 → 결정 → Action Item(담당·기한) → 미결로 "
+            "정리합니다. 자료에 없는 결정은 만들지 않습니다."
+        ),
+        "starters": [
+            "첨부한 녹취록을 회의록으로 정리해 줘",
+            "이 메모에서 Action Item 만 담당자·기한과 함께 뽑아 줘",
+            "결정된 것과 미결로 남은 것을 나눠 줘",
+        ],
         "kinds": ["chat", "report"],
         "skills": ["minutes", "source-faithful"],
         "color": "#4a6572",
@@ -734,6 +834,15 @@ _AGENTS: list[dict] = [
 - 결론부터 셋 안팎, 각각에 근거 수치를 붙인다. 필요하면 차트 하나.
 - 원인은 데이터가 보이는 만큼만 추정하고 추정이라고 표시한다.
 - 데이터가 없으면 검색하지 말고 데이터를 달라고 한다.""",
+        "guide": (
+            "표나 CSV, 수치가 든 문서를 첨부하세요. 계산으로 확인해 핵심 변화와 이상 징후를 찾고, "
+            "계산식을 같이 보여 줍니다."
+        ),
+        "starters": [
+            "첨부한 월별 매출표에서 눈에 띄는 변화를 찾아 줘",
+            "이 실험 결과표의 평균과 편차를 계산하고 이상치를 짚어 줘",
+            "두 표를 비교해서 달라진 항목만 뽑아 줘",
+        ],
         "kinds": ["chat", "report"],
         "skills": ["calculation-unit-check", "evidence", "exec-language"],
         "color": "#1d7a5f",
@@ -758,6 +867,16 @@ _AGENTS: list[dict] = [
             "English and show how to say it.\n"
             "- Do not lecture on grammar unless asked; one rule at a time."
         ),
+        "guide": (
+            "영어로 말을 걸면 영어로 이어 갑니다. 한국어로 써도 영어로 어떻게 말하는지 보여 "
+            "줍니다. 매 턴 틀린 문장을 「교정」으로 고쳐 주고 질문 하나를 던집니다. 마이크(⌘⇧M)나 "
+            "스페이스를 누른 채 말해도 됩니다."
+        ),
+        "starters": [
+            "Hi! Can we practice ordering food at a restaurant?",
+            "Let's talk about my weekend. I went hiking with friends.",
+            "출장 가서 호텔 체크인할 때 쓰는 표현을 연습하고 싶어",
+        ],
         "kinds": ["chat"],
         "skills": ["english-coach", "plain-explain"],
         "color": "#0e7c86",
@@ -777,6 +896,15 @@ _AGENTS: list[dict] = [
             "- 시간 배분은 파트별 목표 시간을 숫자로. 「몇 점 오른다」는 약속은 하지 않는다.\n"
             "- 듣기 파트는 스크립트를 글로 주고 어떤 소리가 놓치기 쉬운지 짚는다."
         ),
+        "guide": (
+            "목표 점수와 현재 점수, 약한 파트를 알려 주세요. 실제 형식 그대로 문제를 내고, 틀린 "
+            "문제는 왜 틀렸는지 분석합니다."
+        ),
+        "starters": [
+            "목표 850, 현재 700. Part 5 문제 5개 내 줘",
+            "Part 7 이중 지문 시간 배분 전략을 알려 줘",
+            "방금 틀린 문제 유형만 골라 다시 내 줘",
+        ],
         "kinds": ["chat"],
         "skills": ["test-strategy", "quiz-writer", "english-coach"],
         "color": "#b8412f",
@@ -799,6 +927,16 @@ _AGENTS: list[dict] = [
             "- 등급을 단정해 예측하지 않는다. 「이 답변은 IH 기준에서 세부가 부족하다」처럼 기준에 "
             "비추어 말한다."
         ),
+        "guide": (
+            "목표 등급(IM2, IH, AL 등)과 배경 설문에서 고른 주제를 알려 주세요. 실제 문항처럼 "
+            "질문하고, 답변을 등급 기준으로 평가해 더 나은 답을 보여 줍니다. 말로 답하면 "
+            "좋습니다."
+        ),
+        "starters": [
+            "IH 목표야. 자기소개 문항부터 연습하자",
+            "Describe your favorite place in your neighborhood. 답변 평가해 줘",
+            "롤플레이 문항(전화로 예약하기) 연습하고 싶어",
+        ],
         "kinds": ["chat"],
         "skills": ["english-coach", "test-strategy"],
         "color": "#7c4dbd",
@@ -1029,6 +1167,8 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.description = spec["description"]
             agent.system_prompt = spec["system_prompt"]
             agent.kinds = spec["kinds"]
+            agent.guide = spec.get("guide", "")
+            agent.starters = list(spec.get("starters", []))
             agent.skill_ids = [ids[k] for k in spec.get("skills", []) if k in ids]
             agent.temperature = spec.get("temperature", 0.5)
             agent.color = spec.get("color", "#5b53e8")
@@ -1042,6 +1182,8 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 description=spec["description"],
                 system_prompt=spec["system_prompt"],
                 kinds=spec["kinds"],
+                guide=spec.get("guide", ""),
+                starters=list(spec.get("starters", [])),
                 # Real ids, not seeder keys: a slug that is not a row applies no
                 # skills at all, silently.
                 skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],

@@ -2149,6 +2149,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
             # Only meaningful for somebody else's row, and false on your own so
             # a card never tells you that you have a copy of yourself.
             installed=(agent.owner_id != user.id and _copy_of(mine, agent) is not None),
+            viewer_id=user.id,
         )
         for agent in rows
     ]
@@ -2232,13 +2233,20 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         note = "지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요."
         description = f"{description} · {note}" if description else note
 
+    # 「가져갈 수는 있되 세부 내용을 비공개로」: a sealed original's copy
+    # never holds the prompt. It reads the original's at run time — so it
+    # keeps working the way the card promised, and follows the author's edits.
+    sealed = origin.share_mode == "sealed"
     copy = Agent(
         owner_id=user.id,
         name=origin.name,
         slug=origin.slug,
         description=description,
         model=origin.model,
-        system_prompt=origin.system_prompt,
+        system_prompt="" if sealed else origin.system_prompt,
+        sealed=sealed,
+        guide=origin.guide,
+        starters=list(origin.starters or []),
         tools=None if origin.tools is None else list(origin.tools),
         skill_ids=skill_ids,
         kinds=list(origin.kinds or []),
@@ -2281,6 +2289,11 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             grandfathered=set(agent.tools or []),
         )
     wanted = changes.pop("slug", None)
+    if agent.sealed:
+        # The prompt is the sharer's, read from the original; the copy has no
+        # prompt of its own to write, and `sealed` is not a thing to unset.
+        changes.pop("system_prompt", None)
+        changes.pop("share_mode", None)
     for field, value in changes.items():
         setattr(agent, field, value)
     # The typed handle wins; a rename with the field left blank re-derives it

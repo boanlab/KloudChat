@@ -1621,6 +1621,14 @@ export interface AgentRow {
   tools: string[] | null
   skillIds: string[] | null
   kinds: string[]
+  /** How to use it, shown on the empty screen. */
+  guide: string
+  /** First messages offered as buttons there. */
+  starters: string[]
+  /** How a shared original may be taken. */
+  shareMode: 'open' | 'sealed'
+  /** The prompt is withheld: somebody else's sealed original, or a copy of one. */
+  sealed: boolean
   temperature: number
   color: string
   enabled: boolean
