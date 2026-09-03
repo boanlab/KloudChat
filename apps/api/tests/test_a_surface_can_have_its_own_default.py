@@ -87,3 +87,67 @@ def test_a_default_naming_a_model_the_install_does_not_serve_is_dropped(monkeypa
 
     assert served("local/gone", "slides") == ""
     assert (served("local/gone", "slides") or served("local/small", "chat")) == "local/small"
+
+
+@pytest.mark.asyncio
+async def test_the_picture_surface_defaults_to_a_model_that_keeps_the_ratio(monkeypatch) -> None:
+    """The cheapest image model returned a square whatever was asked and clipped
+    a 16:9 composition to fit, so the first picture anybody made came back cut
+    at both ends. The default names Gemini's Flash image model, which takes the
+    ratio as a parameter — and is dropped, not substituted, when the install
+    does not serve it, leaving the client to its cheapest-first rule."""
+    from app.services import litellm
+
+    async def proxy_down():
+        raise litellm.LiteLLMError("down")
+
+    monkeypatch.setattr(litellm, "model_info", proxy_down)
+    monkeypatch.setattr(model_service.settings, "default_chat_model", "local/small")
+    monkeypatch.setattr(
+        model_service.settings, "default_image_model", "google/gemini-2.5-flash-image"
+    )
+    rows = _catalogue("local/small")
+    picture = {**rows[0], "id": "openai/gpt-5-image-mini", "kinds": ["image"], "modality": "image"}
+    monkeypatch.setattr(model_service, "_adapter_entries", lambda: rows + [picture])
+
+    by_kind = (await model_service.list_models(force=True))["defaultModelByKind"]
+    assert "image" not in by_kind, "an image default the install does not serve is dropped"
+
+    gemini = {**picture, "id": "google/gemini-2.5-flash-image"}
+    monkeypatch.setattr(model_service, "_adapter_entries", lambda: rows + [picture, gemini])
+    by_kind = (await model_service.list_models(force=True))["defaultModelByKind"]
+    assert by_kind["image"] == "google/gemini-2.5-flash-image"
+
+
+@pytest.mark.asyncio
+async def test_sound_and_clips_each_have_a_default_and_neither_is_the_other(monkeypatch) -> None:
+    """One surface, two kinds of model. The cheapest `av` model is a speech
+    model, so 영상 kept opening on a model that makes no clips. Each modality
+    names its own default, a default of the wrong modality is dropped, and the
+    surface itself opens on the video one — the mode it opens in."""
+    from app.services import litellm
+
+    async def proxy_down():
+        raise litellm.LiteLLMError("down")
+
+    monkeypatch.setattr(litellm, "model_info", proxy_down)
+    monkeypatch.setattr(model_service.settings, "default_chat_model", "local/small")
+    monkeypatch.setattr(model_service.settings, "default_audio_model", "openai/gpt-audio-mini")
+    monkeypatch.setattr(model_service.settings, "default_video_model", "google/veo-3.1-lite")
+    rows = _catalogue("local/small")
+    speech = {**rows[0], "id": "openai/gpt-audio-mini", "kinds": ["av"], "modality": "audio"}
+    clips = {**rows[0], "id": "google/veo-3.1-lite", "kinds": ["av"], "modality": "video"}
+    monkeypatch.setattr(model_service, "_adapter_entries", lambda: rows + [speech, clips])
+
+    result = await model_service.list_models(force=True)
+    assert result["defaultAvModelByMode"] == {
+        "audio": "openai/gpt-audio-mini",
+        "video": "google/veo-3.1-lite",
+    }
+    assert result["defaultModelByKind"]["av"] == "google/veo-3.1-lite"
+
+    # A speech model named as the video default is not a video default.
+    monkeypatch.setattr(model_service.settings, "default_video_model", "openai/gpt-audio-mini")
+    result = await model_service.list_models(force=True)
+    assert result["defaultAvModelByMode"] == {"audio": "openai/gpt-audio-mini"}
+    assert "av" not in result["defaultModelByKind"]

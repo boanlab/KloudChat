@@ -447,6 +447,8 @@ const EN: Record<string, string> = {
   '목업': 'Mockups',
   '영상': 'Video',
   '오디오': 'Audio',
+  '오디오/동영상 · 오디오 모델': 'Audio/Video · audio model',
+  '오디오/동영상 · 동영상 모델': 'Audio/Video · video model',
   '오류': 'Error',
   '완료': 'Done',
   '요청': 'Requests',

@@ -182,6 +182,22 @@ class Settings(BaseSettings):
     default_report_model: str = ""
     default_slides_model: str = ""
 
+    #: The picture surface's default. Not the cheapest image model, which is
+    #: how the client chose before: the cheapest one returns a square whatever
+    #: ratio is asked, and clips a 16:9 composition to fit — so the first
+    #: picture anyone made came back cut at both ends. Gemini's Flash image
+    #: model takes the ratio as a parameter and keeps it. An install without
+    #: it falls back to the cheapest image model served.
+    default_image_model: str = "google/gemini-2.5-flash-image"
+
+    #: The 오디오/동영상 surface is one surface with two kinds of model in it,
+    #: and one remembered default cannot serve both: the cheapest `av` model
+    #: is a speech model, so 영상 kept opening on a model that makes no clips.
+    #: One default each. As above, a name this install does not serve is
+    #: dropped and the client takes the cheapest model of that modality.
+    default_audio_model: str = "openai/gpt-audio-mini"
+    default_video_model: str = "google/veo-3.1-lite"
+
     #: The instance's wall clock, as an IANA name. Used for the date given to
     #: the model and for nothing else — every timestamp in the database stays
     #: UTC. A model told "today is 2026-08-20" in UTC at 07:00 KST would be a

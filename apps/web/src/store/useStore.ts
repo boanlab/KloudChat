@@ -361,6 +361,13 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
+  /**
+   * 오디오/동영상 is one surface with two kinds of model in it, and one
+   * remembered model cannot serve both: the cheapest `av` model is a speech
+   * model, so 영상 kept opening on a model that makes no clips. One remembered
+   * model per mode; `modelByKind.av` is whichever the current mode is using.
+   */
+  avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model. The surface default is left alone. */
   setSessionModel: (sessionId: string, modelId: string) => Promise<void>
   /** Auto is stored as a session mode, never as a synthetic model id. */
@@ -768,6 +775,51 @@ function readRememberedModels(): Partial<Record<SessionKind, string>> | null {
   } catch {
     return null
   }
+}
+
+type AvMode = 'audio' | 'video'
+const AV_MODEL_STORAGE_KEY = 'kchat-av-models'
+
+/** The person's own pick per 오디오/동영상 mode, straight from storage. */
+function readRememberedAvModels(): Partial<Record<AvMode, string>> {
+  try {
+    const raw = localStorage.getItem(AV_MODEL_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<Record<AvMode, string>>) : {}
+  } catch {
+    return {}
+  }
+}
+
+const initialAvModelByMode: Record<AvMode, string> = {
+  audio: '',
+  video: '',
+  ...readRememberedAvModels(),
+}
+
+/**
+ * The model each av mode should use: the person's own pick if the catalogue
+ * still serves it, then the install's default for that modality, then the
+ * cheapest model of that modality. Picks are never overwritten here — as with
+ * `reconcileDefaults`, a gap in the catalogue is not a decision.
+ */
+function reconcileAvModels(
+  available: ModelInfo[],
+  byMode: Partial<Record<AvMode, string>> = {},
+): Record<AvMode, string> {
+  const remembered = readRememberedAvModels()
+  const next = { audio: '', video: '' }
+  for (const mode of ['audio', 'video'] as const) {
+    const usable = available
+      .filter((m) => m.kinds.includes('av') && m.modality === mode)
+      .sort((a, b) => a.creditCost - b.creditCost)
+    const kept = remembered[mode]
+    next[mode] =
+      (kept && usable.some((m) => m.id === kept) ? kept : '') ||
+      usable.find((m) => m.id === byMode[mode])?.id ||
+      usable[0]?.id ||
+      ''
+  }
+  return next
 }
 
 /** Remembered model choice per surface. Only ever holds ids picked from the
@@ -1361,10 +1413,17 @@ export const useStore = create<State>((set, get) => ({
   loadModels: async () => {
     set({ modelsLoading: true })
     try {
-      const { models: live, litellmAvailable, defaultChatModel, defaultModelByKind, autoRouting } =
-        await modelsApi.list()
+      const {
+        models: live,
+        litellmAvailable,
+        defaultChatModel,
+        defaultModelByKind,
+        defaultAvModelByMode,
+        autoRouting,
+      } = await modelsApi.list()
       set((s) => ({
         models: live,
+        avModelByMode: reconcileAvModels(live, defaultAvModelByMode),
         litellmAvailable,
         autoRouting: autoRouting ?? {
           enabled: false,
@@ -1407,13 +1466,24 @@ export const useStore = create<State>((set, get) => ({
   activeSessionId: null,
   running: {},
   modelByKind: initialModelByKind,
+  avModelByMode: initialAvModelByMode,
   setModel: (kind, id) =>
     set((s) => {
       const next = { ...s.modelByKind, [kind]: id }
       // Remembered per surface; `reconcileDefaults` drops anything the
       // catalogue has stopped serving.
       localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(next))
-      return { modelByKind: next }
+      if (kind !== 'av') return { modelByKind: next }
+      // An av pick is also the pick for its own mode, so turning 종류 back to
+      // it later finds the model chosen for it rather than the cheapest one.
+      const modality = s.models.find((m) => m.id === id)?.modality
+      if (modality !== 'audio' && modality !== 'video') return { modelByKind: next }
+      const byMode = { ...s.avModelByMode, [modality]: id }
+      localStorage.setItem(
+        AV_MODEL_STORAGE_KEY,
+        JSON.stringify({ ...readRememberedAvModels(), [modality]: id }),
+      )
+      return { modelByKind: next, avModelByMode: byMode }
     }),
   setSessionModel: async (sessionId, modelId) => {
     const previous = get().sessions.find((session) => session.id === sessionId)
@@ -2293,11 +2363,14 @@ export const useStore = create<State>((set, get) => ({
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
       const current = s.models.find((m) => m.id === s.modelByKind.av)
       if (current?.modality === wanted) return next
+      // The model remembered for this mode first — the person's own pick, or
+      // the install's default for it — and the cheapest only when neither is.
       const usable = s.models
         .filter((m) => m.kinds.includes('av') && m.modality === wanted)
         .sort((a, b) => a.creditCost - b.creditCost)
-      if (!usable.length) return next
-      return { ...next, modelByKind: { ...s.modelByKind, av: usable[0].id } }
+      const chosen = usable.find((m) => m.id === s.avModelByMode[wanted]) ?? usable[0]
+      if (!chosen) return next
+      return { ...next, modelByKind: { ...s.modelByKind, av: chosen.id } }
     }),
   cancelJob: async (id) => {
     const before = get().jobs.find((j) => j.id === id)

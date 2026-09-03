@@ -242,6 +242,8 @@ export interface ModelCatalogue {
    * feels; a document is one long run they wait for once.
    */
   defaultModelByKind?: Partial<Record<SessionKind, string>>
+  /** 오디오/동영상 is one surface with two kinds of model, so one default each. */
+  defaultAvModelByMode?: Partial<Record<'audio' | 'video', string>>
   autoRouting: {
     enabled: boolean
     available: boolean

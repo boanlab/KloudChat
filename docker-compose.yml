@@ -77,6 +77,9 @@ services:
       # every install had before these existed.
       DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-}
       DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-}
+      DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-google/gemini-2.5-flash-image}
+      DEFAULT_AUDIO_MODEL: ${KCHAT_DEFAULT_AUDIO_MODEL:-openai/gpt-audio-mini}
+      DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
       # Names conversations and extracts memories. Both are best effort, so a
       # name the gateway does not serve falls back to the session's own model
       # rather than failing the turn.
