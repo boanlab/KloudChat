@@ -371,7 +371,8 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
         "장르: 장애 보고서. 시각열은 시각·사건·조치의 표로 싣는다. 영향은 누가·얼마나·얼마 동안을 "
         "숫자로, 원인은 확인된 것과 추정을 갈라, 재발 방지는 원인과 짝지은 표(조치·담당·기한). "
         "대응 절은 시각열에 없는 것(왜 그 결정을 했는지, 임시 조치)만 적고 시각열을 되풀이하지 "
-        "않는다. 책임을 묻는 문장을 쓰지 않는다.",
+        "않는다. 자료의 날짜에 연도가 없으면 연도를 붙이지 않는다. 책임을 묻는 문장을 쓰지 "
+        "않는다.",
     ),
     (
         re.compile(r"실험|측정|시험 결과"),
@@ -384,6 +385,17 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
         "시행일·문의처를 끝에 둔다.",
     ),
 )
+
+
+_OWN_GENRES = re.compile(
+    r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|회의록|녹취|장애|사고|실험|측정"
+)
+
+
+def _own_material(request: str) -> bool:
+    """A document about the person's own week, meeting, incident or experiment,
+    with the material in the request — nothing on the web belongs in it."""
+    return bool(_OWN_GENRES.search(request)) and _carries_material(request)
 
 
 def _genre_rule(request: str) -> str:
@@ -952,6 +964,13 @@ async def write(
     # search backend would otherwise open every document with 자료 찾는 중 and
     # close it with 참고할 자료 없음 — a step that reports the deployment's
     # configuration as though it were this document's result.
+    # 제 자료로 쓰는 문서는 검색하지 않는다. A 장애 보고서 written from a
+    # timeline went out with 「결제는 상품이나 서비스에 대한 대가를 지불하는
+    # 행위를 의미하므로 [1]」 — a definition of payment, cited from the web, in
+    # a report whose every fact was on the page already. Genres that report
+    # the person's own material take no shelf when the material is there.
+    if web_search and _own_material(request):
+        web_search = False
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
         findings = await research.run(request, model=outline_model or model, api_key=api_key)
