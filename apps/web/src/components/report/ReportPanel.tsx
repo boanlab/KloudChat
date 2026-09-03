@@ -99,8 +99,9 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
       <Dropdown
         align="right"
         trigger={() => (
-          <Button variant="ghost" size="icon" aria-label={t('그림 넣기')} title={t('그림 넣기')}>
-            <ImagePlus size={15} />
+          <Button size="sm" aria-label={t('그림 넣기')} title={t('그림 넣기')}>
+            <ImagePlus size={14} />
+            {t('그림 넣기')}
           </Button>
         )}
       >

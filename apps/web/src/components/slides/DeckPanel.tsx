@@ -1611,6 +1611,25 @@ function PresentMode({
  * tuned for a 460px desktop stage overflows a 210px phone one and the preview
  * stops matching the `.pptx`.
  */
+/** The widest a 16:9 box can be inside the measured element without
+ *  overflowing its height — so a slide shrinks to fit the row it sits in
+ *  rather than taking the full width and pushing the notes off screen. */
+function useFitWidth() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      const { width: w, height: h } = entry.contentRect
+      if (w > 0 && h > 0) setWidth(Math.floor(Math.min(w, (h * 16) / 9)))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return { ref, width }
+}
+
 function useStageScale(minScale = 0.45) {
   const ref = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1.15)
@@ -1743,6 +1762,7 @@ export function DeckPanel({
 
   const panel = usePanelNarrow<HTMLDivElement>()
   const stage = useStageScale()
+  const fit = useFitWidth()
   const [selected, setSelected] = useState(0)
   const [ribbon, setRibbon] = useState<'home' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
   const [editing, setEditing] = useState(false)
@@ -3201,7 +3221,13 @@ export function DeckPanel({
             height is left rather than trailing the slide as a caption. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           {editTools}
-          <div className="flex shrink-0 items-center gap-2 p-4">
+          {/* 패널을 넓히면 슬라이드가 가로를 다 차지하며 키를 키웠고, 발표
+              노트는 화면 아래로 밀려 스크롤해야 보였다. 이제 슬라이드 줄은
+              높이의 3/4 를, 노트 띠는 1/4 을 나눠 갖고, 슬라이드는 그 줄의
+              폭과 높이 중 먼저 닿는 쪽에 맞춰 16:9 로 줄어든다 — 슬라이드와
+              노트가 한 화면에 들어온다. 편집 폼이 길어 넘칠 때만 세로로
+              흐른다. */}
+          <div className="flex min-h-[45%] flex-[3] basis-0 items-center gap-2 p-4">
               <button
                 onClick={() => go(index - 1)}
                 disabled={index === 0}
@@ -3210,9 +3236,11 @@ export function DeckPanel({
               >
                 <ChevronLeft size={16} />
               </button>
+              <div ref={fit.ref} className="flex min-h-0 min-w-0 flex-1 items-center justify-center self-stretch">
               <div
                 ref={stage.ref}
-                className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-raised"
+                style={{ width: fit.width ?? '100%' }}
+                className="aspect-video min-w-0 overflow-hidden rounded-card border border-line shadow-raised"
               >
                 {slide ? (
                   <SlideView
@@ -3245,6 +3273,7 @@ export function DeckPanel({
                   </div>
                 )}
               </div>
+              </div>
               <button
                 onClick={() => go(index + 1)}
                 disabled={index >= deck.slides.length - 1}
@@ -3256,7 +3285,7 @@ export function DeckPanel({
           </div>
 
           {slide && (
-            <div className="flex min-h-40 flex-1 flex-col border-t border-line bg-elevated/40 p-4">
+            <div className="flex min-h-40 flex-1 basis-0 flex-col border-t border-line bg-elevated/40 p-4">
               <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
                   <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
