@@ -313,11 +313,18 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
     all three. The default recipient is the administrator making the request —
     a mail server test that mails somebody else is how test mail reaches users.
     """
-    if not await settings_store.mail_enabled():
-        return {
-            "ok": False,
-            "detail": "메일 서버 주소, 보내는 주소, 서비스 주소를 모두 채워야 보낼 수 있습니다.",
-        }
+    # Sending needs the server and a sender. The service address only goes
+    # *into* mails as a link, so a missing one is reported after the send,
+    # not used to refuse it — the way it was, a filled-in relay reported
+    # 모두 채워야 with nothing said about which one.
+    config = await settings_store.smtp_config()
+    missing = [
+        label
+        for key, label in (("host", "SMTP 서버"), ("sender", "보내는 주소"))
+        if not config.get(key)
+    ]
+    if missing:
+        return {"ok": False, "detail": f"{', '.join(missing)}를 채운 뒤 저장해야 보낼 수 있습니다."}
     recipient = (payload.to or "").strip() or admin.email
     try:
         await mail_service.send(
@@ -330,6 +337,14 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
         )
     except mail_service.MailError as exc:
         return {"ok": False, "detail": str(exc)}
+    if not config.get("baseUrl"):
+        return {
+            "ok": True,
+            "detail": (
+                f"{recipient} 로 테스트 메일을 보냈습니다. 서비스 주소가 비어 있어 "
+                "재설정·확인 링크는 아직 만들 수 없습니다."
+            ),
+        }
     return {"ok": True, "detail": f"{recipient} 로 테스트 메일을 보냈습니다."}
 
 

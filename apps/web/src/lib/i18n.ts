@@ -803,6 +803,11 @@ const EN: Record<string, string> = {
   '오른쪽 위 「추가」를 누르면 홈 화면에 KloudChat 아이콘이 생깁니다':
     'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
+  '입력한 설정을 저장한 뒤 내 주소로 한 통 보냅니다': 'Saves what is typed here, then sends one message to your own address',
+  '재설정·가입 확인 메일에 담길 링크의 주소입니다. 사용자가 접속하는 주소를 넣으세요. 비어 있으면 메일은 나가도 링크를 만들 수 없습니다.':
+    'The origin for links in reset and confirmation mails — the address people use. Empty means mail goes out but no link can be built.',
+  '지금 이 화면을 연 주소를 넣습니다': 'Fills in the address this screen was opened from',
+  '현재 주소 넣기': 'Use this address',
   '승인 후 사용': 'Approval required',
   '가입하면 대기 상태가 되고, 관리자가 승인하며 월 크레딧을 정합니다.': 'New accounts wait until an administrator approves them and sets a monthly allowance.',
   '바로 사용': 'Straight in',
