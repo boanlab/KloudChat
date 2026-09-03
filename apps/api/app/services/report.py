@@ -575,7 +575,8 @@ _subject_missing = grounding.subject_missing
 _RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
 #: Documents whose facts all come from outside — nothing to write without a search.
 _FROM_THE_WEB = re.compile(
-    r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표|인용|참고문헌|시카고|APA|출처를"
+    r"동향|조사해|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|현황을 조사|비교표|인용|"
+    r"참고문헌|시카고|APA|출처를"
 )
 
 
