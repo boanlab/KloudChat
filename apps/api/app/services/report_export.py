@@ -776,6 +776,59 @@ def _page_setup(document, settings: dict | None = None) -> None:
                 _field(footer, "NUMPAGES", "1")
 
 
+#: A table of contents earns its page only in a document long enough to need
+#: one. A two-page 주간 보고 opened with 「목차를 보려면 F9 를 누르세요」 —
+#: a field placeholder, printed, on a memo somebody was about to hand in.
+_TOC_SECTIONS = 6
+_TOC_CHARS = 6_000
+
+
+def _wants_toc(sections: list[dict]) -> bool:
+    length = sum(len(str(s.get("content") or "")) for s in sections)
+    return len(sections) >= _TOC_SECTIONS and length >= _TOC_CHARS
+
+
+def _update_fields_on_open(document) -> None:
+    """Asks Word to refresh fields when the file is opened, so the 목차 fills
+    itself in instead of showing the placeholder until somebody presses F9."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    settings_element = document.settings.element
+    if settings_element.find(qn("w:updateFields")) is None:
+        flag = OxmlElement("w:updateFields")
+        flag.set(qn("w:val"), "true")
+        settings_element.append(flag)
+
+
+def _korean_fonts(document) -> None:
+    """맑은 고딕 for Hangul and Calibri for Latin, on the default styles of a
+    document built without a 서식.
+
+    python-docx's blank document names no East Asian font at all, so Word and
+    LibreOffice each pick their own — and the pick decides whether 「47분」 sets
+    as one word or as a digit in one face beside a syllable in another.
+    """
+    from docx.oxml.ns import qn
+
+    for name in ("Normal", "Body Text", "Title", "Heading 1", "Heading 2", "Heading 3"):
+        try:
+            style = document.styles[name]
+        except KeyError:
+            continue
+        style.font.name = "Calibri"
+        rpr = style.element.get_or_add_rPr()
+        fonts = rpr.find(qn("w:rFonts"))
+        if fonts is None:
+            from docx.oxml import OxmlElement
+
+            fonts = OxmlElement("w:rFonts")
+            rpr.append(fonts)
+        fonts.set(qn("w:eastAsia"), "맑은 고딕")
+        fonts.set(qn("w:ascii"), "Calibri")
+        fonts.set(qn("w:hAnsi"), "Calibri")
+
+
 def _table_of_contents(document) -> None:
     """A compact 목차 field over the headings.
 
@@ -1317,6 +1370,7 @@ def to_docx(
             document = Document(template)
         except Exception as exc:  # noqa: BLE001 — a plain export beats none
             log.warning("docx template unreadable (%s): %s", template, exc)
+    document_is_plain = document is None
     if document is None:
         document = Document()
         _page_setup(document, page_settings)
@@ -1360,7 +1414,11 @@ def to_docx(
 
     title_heading = document.add_heading(title, level=0)
     visualise_heading(title_heading, 0)
-    _table_of_contents(document)
+    if _wants_toc(sections):
+        _table_of_contents(document)
+        _update_fields_on_open(document)
+    if document_is_plain:
+        _korean_fonts(document)
 
     footnotes = _Footnotes()
     #: Charts are numbered across the document — each one is its own part, and
@@ -1906,9 +1964,12 @@ def to_pdf(title: str, sections: list[dict], *, tokens: dict[str, str] | None = 
             "h2", parent=base["Heading2"], fontName=korean, fontSize=12, leading=17,
             spaceBefore=10, spaceAfter=4,
         ),
+        # Left-aligned, not justified. Korean has no hyphenation and a line
+        # with a long Latin token — v2.14.0, 「connection pool exhausted」 —
+        # spread its few spaces into gaps a reader sees before the words.
         "body": ParagraphStyle(
             "b", parent=base["BodyText"], fontName=korean, fontSize=10.5, leading=17,
-            alignment=TA_JUSTIFY, spaceAfter=6,
+            alignment=TA_LEFT, spaceAfter=6,
         ),
         "bullet": ParagraphStyle(
             "li", parent=base["BodyText"], fontName=korean, fontSize=10.5, leading=17,

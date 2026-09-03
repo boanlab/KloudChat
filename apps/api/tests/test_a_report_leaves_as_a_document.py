@@ -154,11 +154,19 @@ def test_incomplete_web_source_has_no_empty_citation_punctuation():
     )
 
 
-def test_the_docx_carries_a_table_of_contents_field():
+def test_the_docx_carries_a_table_of_contents_field_only_when_long():
     # A field, not a written-out list: Word keeps a field in step with the
-    # document as the reader edits it.
+    # document as the reader edits it — and only in a document long enough
+    # to need one. A two-page memo printed 「목차를 보려면 F9」 at the top.
     body = _docx().read("word/document.xml").decode()
-    assert "TOC" in body
+    assert "TOC" not in body
+    long_sections = [
+        {"heading": f"{i}절", "content": "본문입니다. " * 160} for i in range(1, 8)
+    ]
+    docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("긴 문서", long_sections)))
+    assert "TOC" in docx.read("word/document.xml").decode()
+    # Word fills the field in on open rather than leaving the placeholder.
+    assert "updateFields" in docx.read("word/settings.xml").decode()
 
 
 def test_a_short_docx_does_not_leave_a_mostly_empty_cover_page():
