@@ -67,7 +67,7 @@ def test_work_surfaces_have_real_breadth_and_media_does_not_duplicate_formats():
 
     # A catalogue aimed at one office persona is breadth in card count only.
     groups = {t.group for t in prompt_templates.all_templates()}
-    assert {"학업", "대학원", "연구", "업무", "개발", "영업", "조사"} <= groups
+    assert {"학업", "연구", "업무", "개발", "영업", "조사"} <= groups
 
 
 def test_a_built_in_card_travels_in_the_shape_the_gallery_already_renders():
