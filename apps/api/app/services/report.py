@@ -128,8 +128,8 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 - 줄글이 기본이다. 한 절은 보통 문단 두셋에서 넷이고, 문단은 이어지는 문장으로
   쓴다. 「- **1번 항목**:」 같은 번호 목록으로 절을 채우지 마라.
 - **수치는 위의 「쓸 수 있는 수치」 목록에 있는 것과 그것으로 계산한 값만 쓴다.**
-  단위와 자릿수까지 그대로 — 「연 380만 원」은 「3,800만 원」도 「38백만 원」도
-  아니다. 계산한 값은 식을 함께 적어라(「62만 원 × 12개월 = 744만 원」). 목록에
+  단위와 자릿수까지 그대로 — 연 단위를 만 단위로 옮기거나 자릿수를 바꾸지 마라.
+  계산한 값은 식을 함께 적어라(「월 비용 × 12개월 = 연 비용」 꼴로). 목록에
   없는 수치 — 사용자 수, 비율, 장애 원인, 피해 규모, 다른 비용, 연도 — 는 만들지
   말고, 필요하면 「(미정)」 「(확인 필요)」 로 적어라. 장애의 원인이나 경위처럼
   요청에 없는 사정을 지어내지 마라.
@@ -189,10 +189,10 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
   옆에 두고, 차이가 1% 안이면 「일치한다」고 쓴다. 「3회 반복 측정」처럼 요청에 없는
   절차도 지어내지 마라.
 - **수치는 위 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만 쓴다.** 요청에
-  적힌 표기 그대로 아라비아 숫자로 — 「연 380만 원」은 「3,800만 원」도 「38백만
-  원」도 「3백8십만 원」도 아니다.
-  계산은 식과 결과를 함께 적고 나눗셈은 소수 첫째 자리까지 쓴다(「62만 원 ×
-  12개월 = 744만 원」, 「2,400만 원 ÷ 744만 원 ≈ 3.2년」). 목록에 없는 수치 —
+  적힌 표기 그대로 아라비아 숫자로 — 자릿수를 옮기거나(만 단위를 백만 단위로)
+  한자 숫자로 바꾸지 마라. **이 규칙 안의 보기 숫자는 이 문서의 수치가 아니다.**
+  계산은 식과 결과를 함께 적고 나눗셈은 소수 첫째 자리까지 쓴다(「월 비용 ×
+  12개월 = 연 비용」, 「초기 비용 ÷ 연 비용 ≈ 회수 기간(년)」 꼴로). 목록에 없는 수치 —
   사용자 수, 비율, 기간, 다른 비용, 잔존 가치, 연도, 영업일 — 는 만들지 말고
   「(미정)」「(확인 필요)」로 적는다. 장애 원인이나 경위처럼 요청에 없는 사정을
   지어내지 마라. 큰 수와 작은 수를 견줄 때는 두 수를 나란히 적어 방향을 확인한다.
@@ -328,7 +328,22 @@ _FRAME_RULE = (
 )
 
 #: A request that weighs options — the only kind the cost-table advice fits.
-_DECISION = re.compile(r"대안|비교|결정|권고|비용|검토|타당성|선택")
+_DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
+
+
+_MONEY = re.compile(r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s*(?:억|만|천|백)?\s*원(?!인|리|칙|자)")
+
+
+def _without_invented_money(text: str) -> str:
+    """Every sum of money replaced by (미정), in a document with no figures to draw on.
+
+    A PEFT 동향 report — no numbers in the request, none from a search that
+    came back empty — carried a cost table of 380만 원, 3,800만 원 and 1,140만
+    원: the sums out of the prompt's own example about a server, copied as
+    fact. The rule said to write nothing the material did not carry; with
+    nothing carried, a sum is an invention by construction.
+    """
+    return _MONEY.sub("(미정)", text)
 
 
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
@@ -1341,6 +1356,8 @@ async def write(
         # one answer.
         clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
         clean = hangul.tidy_spacing(clean)
+        if not grounded:
+            clean = _without_invented_money(clean)
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
         # The picture, if this section is one of the ones somebody paid for.

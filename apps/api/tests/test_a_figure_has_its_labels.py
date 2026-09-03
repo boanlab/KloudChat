@@ -484,3 +484,15 @@ def test_a_slide_left_with_nothing_after_its_chart_is_dropped_is_written_again()
     assert 0 not in out
     # 지표 하나짜리 metrics 는 metrics 가 아니다.
     assert 1 not in out or out[1].get("layout") != "metrics"
+
+
+def test_money_in_a_document_with_no_figures_becomes_undetermined() -> None:
+    from app.services.report import _without_invented_money
+
+    text = (
+        "| 저랭크 어댑터 | 380만 원 | 380만 원 × 3 = 1,140만 원 |\n"
+        "연 2,400 만 원이 든다. 2026년 계획."
+    )
+    out = _without_invented_money(text)
+    assert "380만 원" not in out and "1,140만 원" not in out and "2,400 만 원" not in out
+    assert out.count("(미정)") == 4 and "2026년" in out
