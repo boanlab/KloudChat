@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog, Modal } from '@/components/ui'
 import { copyText } from '@/lib/clipboard'
-import { COMPOSER_KEYS, SHORTCUTS, codeBlocks, isMac, shortcutFor } from '@/lib/shortcuts'
+import { COMPOSER_KEYS, SHORTCUTS, codeBlocks, isMac, shortcutFor, toggleDictation } from '@/lib/shortcuts'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -110,6 +110,10 @@ export function KeyboardShortcuts() {
         case 'personalization':
           e.preventDefault()
           navigate('/settings/personalization')
+          return
+        case 'toggle-dictation':
+          e.preventDefault()
+          toggleDictation()
           return
         case 'toggle-sidebar':
           e.preventDefault()

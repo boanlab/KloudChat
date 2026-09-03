@@ -803,6 +803,8 @@ const EN: Record<string, string> = {
   '오른쪽 위 「추가」를 누르면 홈 화면에 KloudChat 아이콘이 생깁니다':
     'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
+  '말로 쓰기 시작·끝내기': 'Start / stop dictation',
+  '누른 채 말하기 (빈 입력창에서 · 떼면 바로 보냄)': 'Hold to talk (with the box empty · release to send)',
   '새 대화 열기': 'New chat',
   '입력창에 집중': 'Focus the composer',
   '마지막 코드 블록 복사': 'Copy last code block',
@@ -812,7 +814,6 @@ const EN: Record<string, string> = {
   '단축키 표시': 'Show shortcuts',
   '보내기': 'Send',
   '줄 바꿈': 'New line',
-  '말로 쓰기 (빈 입력창에서 누른 채 말하고, 떼면 보냄)': 'Talk (hold with the box empty, release to send)',
   '키보드 단축키': 'Keyboard shortcuts',
   '입력창에서': 'In the composer',
   '복사할 답변이 없습니다': 'No answer to copy',

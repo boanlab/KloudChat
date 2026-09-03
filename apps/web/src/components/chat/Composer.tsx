@@ -25,7 +25,7 @@ import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGal
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
 import { handoffSurface } from '@/lib/documentRequest'
-import { isMac } from '@/lib/shortcuts'
+import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
@@ -665,6 +665,19 @@ export function Composer({
     })
     return true
   }
+  // ⌘⇧M from anywhere: start the microphone, or stop it and take the words
+  // into the box — the mic button, on a key. Not push-to-talk: this one waits
+  // for the person to read and press send.
+  useEffect(() => {
+    if (!canRecord) return
+    const toggle = () => {
+      if (transcribing) return
+      pushToTalk.current = false
+      void (recorder.current ? stopRecording() : startRecording())
+    }
+    window.addEventListener(DICTATION_EVENT, toggle)
+    return () => window.removeEventListener(DICTATION_EVENT, toggle)
+  })
   useEffect(() => {
     if (!canRecord) return
     // Outside any field too — after clicking on the transcript, say — but
@@ -1694,7 +1707,7 @@ export function Composer({
               title={
                 recording
                   ? t('누르면 녹음을 끝내고 받아씁니다')
-                  : t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')
+                  : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
               }
             >
               {transcribing ? (

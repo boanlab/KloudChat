@@ -13,6 +13,7 @@ export type ShortcutId =
   | 'copy-last-answer'
   | 'copy-last-code'
   | 'personalization'
+  | 'toggle-dictation'
   | 'toggle-sidebar'
   | 'delete-conversation'
   | 'search'
@@ -35,6 +36,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'copy-last-code', label: '마지막 코드 블록 복사', keys: ['mod', 'Shift', ';'], key: ';', mod: true, shift: true },
   { id: 'copy-last-answer', label: '마지막 답변 복사', keys: ['mod', 'Shift', 'C'], key: 'c', mod: true, shift: true },
   { id: 'personalization', label: '개인 맞춤 설정', keys: ['mod', 'Shift', 'I'], key: 'i', mod: true, shift: true },
+  { id: 'toggle-dictation', label: '말로 쓰기 시작·끝내기', keys: ['mod', 'Shift', 'M'], key: 'm', mod: true, shift: true },
   { id: 'toggle-sidebar', label: '사이드바 토글', keys: ['mod', 'Shift', 'S'], key: 's', mod: true, shift: true },
   { id: 'delete-conversation', label: '대화 삭제', keys: ['mod', 'Shift', '⌫'], key: 'Backspace', mod: true, shift: true },
   { id: 'search', label: '대화 검색', keys: ['mod', 'K'], key: 'k', mod: true },
@@ -48,7 +50,7 @@ export const SHORTCUTS: Shortcut[] = [
 export const COMPOSER_KEYS: { label: string; keys: string[] }[] = [
   { label: '보내기', keys: ['Enter'] },
   { label: '줄 바꿈', keys: ['Shift', 'Enter'] },
-  { label: '말로 쓰기 (빈 입력창에서 누른 채 말하고, 떼면 보냄)', keys: ['Space'] },
+  { label: '누른 채 말하기 (빈 입력창에서 · 떼면 바로 보냄)', keys: ['Space'] },
 ]
 
 export const isMac = () =>
@@ -66,6 +68,10 @@ export function shortcutFor(e: KeyboardEvent): Shortcut | null {
   }
   return null
 }
+
+/** The composer listens for this and toggles its microphone. */
+export const DICTATION_EVENT = 'kloudchat:dictation'
+export const toggleDictation = () => window.dispatchEvent(new Event(DICTATION_EVENT))
 
 /** The fenced code blocks in a markdown answer, in order. */
 export function codeBlocks(markdown: string): string[] {
