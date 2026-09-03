@@ -233,6 +233,18 @@ restart. Secrets in this table are encrypted at rest with a key derived from
   arrives. The only mail this system sends is a password reset the person asked
   for.
 
+### Signup
+
+- **Mode** — `open` / `approval` / `closed`, overriding `SIGNUP_MODE` when set.
+- **Allowed domains** — a comma-separated list of mail domains that may
+  register; empty allows any. Subdomains are not implied.
+- **Email verification** — when on, a new account is `pending` until the link
+  in the confirmation mail is clicked (24 hours, single use); then `open`
+  activates it and `approval` hands it to an administrator. Approving an
+  account counts as confirming its address. Needs SMTP: without a mail server
+  the switch is inert and signups go through unverified, and the screen says
+  so.
+
 ### Enabled surfaces
 
 Report, slides, image and audio/video can be turned on and off. Chat cannot —

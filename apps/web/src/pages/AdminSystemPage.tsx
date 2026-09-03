@@ -12,6 +12,7 @@ import { FeaturesSection } from './settings/FeaturesSection'
 import { MailSection } from './settings/MailSection'
 import { OutlineModelSection } from './settings/OutlineModelSection'
 import { ProxySection } from './settings/ProxySection'
+import { SignupSection } from './settings/SignupSection'
 import { TemplatesSection } from './settings/TemplatesSection'
 import { ToolsSection } from './settings/ToolsSection'
 
@@ -35,6 +36,7 @@ const tabs = [
   { to: '/admin/system/templates', label: '공용 템플릿', end: false },
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
+  { to: '/admin/system/signup', label: '회원 가입', end: false },
 ]
 
 /** A heading and the one line that says why the group is worth touching. */
@@ -164,6 +166,17 @@ export function AdminSystemPage() {
             }
           />
           <Route path="mail" element={<MailSection settings={settings} reload={reload} />} />
+          <Route
+            path="signup"
+            element={
+              <Group
+                title={t('회원 가입')}
+                description={t('누가, 어떤 주소로 가입할 수 있는지, 주소를 메일로 확인할지 정합니다.')}
+              >
+                <SignupSection settings={settings} onSaved={reload} />
+              </Group>
+            }
+          />
           <Route path="*" element={<Navigate to="/admin/system" replace />} />
         </Routes>
       </PageBody>

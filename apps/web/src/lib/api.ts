@@ -298,6 +298,16 @@ export interface SystemSettings {
   brand: { name: string; logo: string }
   /** Enabled surfaces. Chat is always included. */
   enabledKinds: string[]
+  /** Who may register: the mode, the mail domains allowed (empty = any), and
+   *  whether the address is confirmed by a mailed link first. */
+  signup: {
+    mode: 'open' | 'approval' | 'closed'
+    modeSource: 'database' | 'environment'
+    domains: string[]
+    verifyEmail: boolean
+    /** `verifyEmail` with a mail server behind it. */
+    verificationActive: boolean
+  }
   /** Feature integration: one gateway address fans out into six features. */
   tools: {
     /** Gateway address. Empty means each feature was configured on its own,
@@ -353,10 +363,19 @@ export const authConfig = {
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
       /** Minutes of inactivity before the browser ends the session. 0 is off. */
       idleTimeoutMinutes: number
+      /** What the signup form should say before somebody is refused. */
+      signup: { mode: 'open' | 'approval' | 'closed'; domains: string[]; emailVerification: boolean }
     }>('/auth/config'),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
     call<void>('/auth/password/reset', body({ token, newPassword })),
+  /** The mailed signup link. A session comes back when verifying was the last step. */
+  verifyEmail: (token: string) =>
+    call<{ status: 'active' | 'pending' | 'suspended'; session: AuthSession | null }>(
+      '/auth/verify-email',
+      body({ token }),
+    ),
+  resendVerification: () => call<void>('/auth/verify-email/resend', { method: 'POST' }),
 }
 
 export interface MyUsage {
@@ -408,6 +427,9 @@ export const adminApi = {
     smtpPassword?: string
     smtpFrom?: string
     appBaseUrl?: string
+    signupMode?: string
+    signupDomains?: string
+    signupVerifyEmail?: string
   }) => call<SystemSettings>('/admin/settings', { method: 'PUT', body: JSON.stringify(patch) }),
   testSettings: () =>
     call<{ ok: boolean; models?: number; detail?: string }>('/admin/settings/test', {

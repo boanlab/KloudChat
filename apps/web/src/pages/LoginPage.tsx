@@ -24,6 +24,10 @@ const ERRORS: Record<string, string> = {
   email_unavailable: '이미 사용 중인 이메일입니다.',
   account_suspended: '정지된 계정입니다. 관리자에게 문의하세요.',
   signup_closed: '지금은 회원가입을 받지 않습니다. 관리자에게 문의하세요.',
+  signup_domain_not_allowed: '이 이메일 도메인으로는 가입할 수 없습니다. 허용된 주소를 쓰세요.',
+  invalid_verify_token: '확인 링크가 올바르지 않습니다. 로그인해서 확인 메일을 다시 받으세요.',
+  verify_token_used: '이미 확인한 링크입니다. 로그인하세요.',
+  verify_token_expired: '확인 링크가 만료되었습니다. 로그인해서 확인 메일을 다시 받으세요.',
   network_error: '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.',
 }
 
@@ -32,13 +36,29 @@ const UNKNOWN_ERROR = '요청을 처리하지 못했습니다. 잠시 후 다시
 
 export function LoginPage() {
   const t = useT()
-  const { login, signup, authError, bootstrap, signedOutReason } = useStore()
+  const { login, signup, authError, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   //: A mailed link lands here with `?token=`. No router exists while signed
-  //: out, so this page reads the query itself.
+  //: out, so this page reads the query itself. `/verify` is the signup
+  //: confirmation, anything else the password reset.
   const [resetToken, setResetToken] = useState(() =>
-    new URLSearchParams(window.location.search).get('token'),
+    window.location.pathname === '/verify'
+      ? null
+      : new URLSearchParams(window.location.search).get('token'),
   )
+  //: The signup link is spent on arrival — there is nothing to type first.
+  const [verifying, setVerifying] = useState(() =>
+    window.location.pathname === '/verify'
+      ? new URLSearchParams(window.location.search).get('token')
+      : null,
+  )
+  const [verified, setVerified] = useState<'active' | 'pending' | null>(null)
+  //: What the signup form should say up front: the domains welcome here and
+  //: whether a confirmation mail is coming.
+  const [signupPolicy, setSignupPolicy] = useState<{
+    domains: string[]
+    emailVerification: boolean
+  } | null>(null)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [sent, setSent] = useState(false)
   const [resetDone, setResetDone] = useState(false)
@@ -60,6 +80,7 @@ export function LoginPage() {
       .get()
       .then((c) => {
         setResetEnabled(c.passwordResetEnabled)
+        if (c.signup) setSignupPolicy(c.signup)
         // Ordered by `kindOrder` rather than by the server's array, so the list
         // reads the same here as it does in the sidebar behind it.
         setEnabledKinds(kindOrder.filter((kind) => c.enabledKinds.includes(kind)))
@@ -74,6 +95,28 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!verifying) return
+    const token = verifying
+    void authConfig
+      .verifyEmail(token)
+      .then(({ status, session }) => {
+        // Spent by the same request, so it does not stay in the address bar.
+        window.history.replaceState(null, '', '/')
+        setVerifying(null)
+        if (session) adoptSession(session)
+        else setVerified(status === 'active' ? 'active' : 'pending')
+      })
+      .catch((err) => {
+        window.history.replaceState(null, '', '/')
+        setVerifying(null)
+        const code = err instanceof ApiError ? err.detail : ''
+        setLocalError(ERRORS[code] ?? t('주소를 확인하지 못했습니다. 로그인해서 확인 메일을 다시 받으세요.'))
+      })
+    // The token is read once; re-running on a later render would spend it twice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const submitReset = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -194,8 +237,33 @@ export function LoginPage() {
                 ? t('가입한 이메일 주소로 재설정 링크를 보냅니다.')
                 : mode === 'login'
                   ? t('등록된 계정으로 이어서 작업합니다.')
-                  : t('관리자 승인이 끝나면 크레딧이 배정되고 바로 쓸 수 있습니다.')}
+                  : signupPolicy?.emailVerification
+                    ? t('가입하면 확인 메일이 갑니다. 메일의 링크를 누르면 가입이 끝납니다.')
+                    : t('관리자 승인이 끝나면 크레딧이 배정되고 바로 쓸 수 있습니다.')}
           </p>
+
+          {verifying && (
+            <div className="mt-6 flex items-center gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
+              <Loader2 size={14} className="animate-spin" />
+              <span>{t('가입한 주소를 확인하는 중…')}</span>
+            </div>
+          )}
+          {verified && (
+            <div className="mt-6 flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
+              <CircleCheck size={14} className="mt-0.5 shrink-0" />
+              <span>
+                {verified === 'active'
+                  ? t('주소를 확인했습니다. 로그인하세요.')
+                  : t('주소를 확인했습니다. 관리자가 승인하면 쓸 수 있습니다. 로그인하면 진행 상황이 보입니다.')}
+              </span>
+            </div>
+          )}
+          {localError && !resetToken && !forgotOpen && (
+            <div className="mt-6 flex items-start gap-2 rounded-control border border-danger/25 bg-danger/5 px-3 py-2.5 text-base text-danger">
+              <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+              <span>{localError}</span>
+            </div>
+          )}
 
           {/* Why the form is here at all, when the person had been signed in.
               Without this the timeout is indistinguishable from a fault, and
@@ -335,12 +403,23 @@ export function LoginPage() {
                 />
               </Field>
             )}
-            <Field label={t('이메일')}>
+            <Field
+              label={t('이메일')}
+              hint={
+                mode === 'signup' && signupPolicy && signupPolicy.domains.length > 0
+                  ? `${t('가입 가능한 주소')}: ${signupPolicy.domains.map((d) => `@${d}`).join(', ')}`
+                  : undefined
+              }
+            >
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={
+                  mode === 'signup' && signupPolicy?.domains[0]
+                    ? `you@${signupPolicy.domains[0]}`
+                    : 'you@example.com'
+                }
                 autoComplete="username"
               />
             </Field>

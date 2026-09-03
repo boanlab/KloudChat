@@ -36,6 +36,7 @@ import {
 import type {
   AgentRow,
   ApiKeyRow,
+  AuthSession,
   ArtifactRow,
   AuditRow,
   GovernancePolicy,
@@ -278,6 +279,7 @@ interface State {
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
+  adoptSession: (session: AuthSession) => void
   logout: (reason?: 'idle') => Promise<void>
   /** Re-reads the caller's own row. The approval-waiting screen polls this. */
   refreshMe: () => Promise<void>
@@ -1065,6 +1067,17 @@ export const useStore = create<State>((set, get) => ({
       set({ authError: err instanceof ApiError ? err.detail : 'network_error' })
       throw err
     }
+  },
+
+  /**
+   * A session handed over by a mailed link — the signup verification that
+   * activates an `open`-mode account. The same landing as an `open` signup.
+   */
+  adoptSession: (session) => {
+    setAccessToken(session.accessToken)
+    set({ authenticated: true, user: session.user, authLoading: false, authError: null })
+    scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+    void get().loadModels()
   },
 
   /** New accounts land in `pending` and cannot use the app until an admin approves. */

@@ -273,6 +273,14 @@ export function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={statusTone[u.status]}>{t(statusLabel[u.status])}</Badge>
+                    {u.status === 'pending' && u.emailVerifiedAt === null && (
+                      <Badge
+                        className="ml-1"
+                        title={t('확인 메일의 링크를 아직 누르지 않았습니다. 승인하면 확인한 것으로 칩니다.')}
+                      >
+                        {t('메일 미확인')}
+                      </Badge>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <CreditBar user={u} />

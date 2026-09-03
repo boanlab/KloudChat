@@ -20,6 +20,7 @@ from app.models.user import (
     ApiKey,
     AuditEvent,
     CreditLedger,
+    EmailVerification,
     PasswordReset,
     RefreshToken,
     RevokeReason,
@@ -116,6 +117,7 @@ async def get_settings(admin: AdminUser):
     """
     values = await settings_store.all_values(force=True)
     smtp = await settings_store.smtp_config()
+    signup = await settings_store.signup_policy()
     backends = await settings_store.tools_config()
     stored_base = values.get(settings_store.LITELLM_BASE_URL, "")
     stored_key = values.get(settings_store.LITELLM_MASTER_KEY, "")
@@ -154,6 +156,15 @@ async def get_settings(admin: AdminUser):
         },
         "status": "ok" if await litellm_service.health(quick=True) else "unavailable",
         "brand": await settings_store.brand(),
+        # Who may register, from where, and whether the address is checked.
+        "signup": {
+            "mode": signup.mode,
+            "modeSource": signup.mode_source,
+            "domains": signup.domains,
+            "verifyEmail": signup.verify_email,
+            # Asked for but not happening: no mail server to send the link.
+            "verificationActive": signup.verification,
+        },
         "enabledKinds": await settings_store.enabled_kinds(),
         # Feature integration: what points where, and where each value came from.
         "tools": {
@@ -227,6 +238,9 @@ async def put_settings(
         ("smtp_password", settings_store.SMTP_PASSWORD),
         ("smtp_from", settings_store.SMTP_FROM),
         ("app_base_url", settings_store.APP_BASE_URL),
+        ("signup_mode", settings_store.SIGNUP_MODE),
+        ("signup_domains", settings_store.SIGNUP_DOMAINS),
+        ("signup_verify_email", settings_store.SIGNUP_VERIFY_EMAIL),
     ):
         value = getattr(payload, field)
         if value is not None:
@@ -342,6 +356,8 @@ async def approve(
         else (user.monthly_credits or settings.default_monthly_credits)
     )
     user.status = UserStatus.active
+    # Approving is vouching: the link the person never clicked no longer matters.
+    user.email_verified_at = user.email_verified_at or utcnow()
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
     # A look to start from, and nothing else. The agents and skills a new
@@ -576,6 +592,7 @@ async def delete_user(
         (RefreshToken, RefreshToken.user_id),
         # Outstanding reset tickets hold the account row open by foreign key.
         (PasswordReset, PasswordReset.user_id),
+        (EmailVerification, EmailVerification.user_id),
     ):
         await db.exec(delete(model).where(column == user.id))
 

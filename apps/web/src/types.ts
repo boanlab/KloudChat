@@ -44,6 +44,8 @@ export interface User {
   createdAt: string
   /** Null for an account that has never signed in. */
   lastActiveAt: string | null
+  /** Null while the mailed signup link is still out. */
+  emailVerifiedAt?: string | null
 }
 
 
