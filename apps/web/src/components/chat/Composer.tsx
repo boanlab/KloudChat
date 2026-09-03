@@ -53,8 +53,6 @@ const ASPECTS = ['16:9', '9:16', '4:3', '1:1']
    read it off the request; 없음 sends the sentence as typed. Kept in step with
    `imagegen.STYLE_CHOICES`. */
 const STYLES = ['자동', '도식', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
-/** Agents whose conversation is in English, so dictation is pinned to it. */
-const ENGLISH_AGENTS = new Set(['english-tutor', 'toeic-master', 'opic-master'])
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
   { id: 'ko', label: '한국어' },
@@ -163,14 +161,15 @@ function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
   )
 }
 
-function ImageOptions() {
+function ImageOptions({ modelId }: { modelId: string }) {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
-  const imageModel = useStore((s) => s.modelByKind.image)
   // Only Gemini's image models take the ratio as a parameter; the others
   // return a square whatever is asked, and are now told to compose for one.
+  // Read off the model this conversation will actually draw with — the picker
+  // writes its choice there, not to the surface default.
   const squareOnly =
-    Boolean(imageModel) && !/gemini|^google\//i.test(imageModel) && imageOptions.aspect !== '1:1'
+    Boolean(modelId) && !/gemini|^google\//i.test(modelId) && imageOptions.aspect !== '1:1'
   return (
     <>
       <OptionGroup
@@ -181,7 +180,7 @@ function ImageOptions() {
       />
       {squareOnly && (
         <span className="text-xs text-warn" title={t('이 모델은 비율 지정을 받지 않아 정사각형으로 그립니다. 16:9 가 꼭 필요하면 Gemini 이미지 모델을 고르세요.')}>
-          {t('이 모델은 정사각형만 그립니다')}
+          {t('이 모델은 비율을 받지 않아 1:1로 나옵니다')}
         </span>
       )}
       <OptionGroup
@@ -644,16 +643,16 @@ export function Composer({
       if (blob.size <= 44 + 32_000 * 0.3) return ''
       // Heard in context. The last thing said back is the vocabulary the
       // next sentence most likely uses — 「some tennis」 in a chat about
-      // tennis — and a chat with an English agent is English: without the
-      // pin, one mumbled sentence came back as 《Fold and Vacant》 and the
-      // tutor followed it out of the conversation.
+      // tennis; without it one mumbled sentence came back as 《Fold and
+      // Vacant》 and the tutor followed it out of the conversation. No
+      // language is pinned, even with an English tutor: a learner asks the
+      // tutor things in Korean too, and the server already hears nothing but
+      // Korean or English. What still comes out wrong, the agent is told to
+      // treat as misheard rather than as a new subject.
       const lastAnswer = [...(session?.messages ?? [])]
         .reverse()
         .find((m) => m.role === 'assistant' && m.content?.trim())
-      const english =
-        sessionAgent?.catalogKey != null && ENGLISH_AGENTS.has(sessionAgent.catalogKey)
       const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav', {
-        language: english ? 'en' : undefined,
         prompt: lastAnswer?.content.replace(/\s+/g, ' ').slice(0, 300),
       })
       if (text) {
@@ -1564,7 +1563,7 @@ export function Composer({
         {/* 생성 파라미터 바 — 이미지·오디오/동영상 전용 */}
         {isMedia && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
-            {kind === 'image' ? <ImageOptions /> : <AvOptions />}
+            {kind === 'image' ? <ImageOptions modelId={model?.id ?? ''} /> : <AvOptions />}
             <span
               className={cn(
                 'ml-auto pr-1 text-xs',

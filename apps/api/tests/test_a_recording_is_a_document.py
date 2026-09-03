@@ -245,7 +245,7 @@ async def test_whisper_hears_which_language_and_is_retried_only_off_the_pair(mon
 
     calls: list[str | None] = []
 
-    async def whisper(_url, _data, _name, language):
+    async def whisper(_url, _data, _name, language, _prompt=""):
         calls.append(language)
         if language == "ko":
             return {"text": "안녕하세요", "language": "ko", "duration": 1.2}

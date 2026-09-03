@@ -986,6 +986,23 @@ export function effectiveModelId(
   return agent?.model || modelByKind[kind]
 }
 
+/**
+ * The model a media turn is sent with.
+ *
+ * Inside a conversation the picker writes its choice to the conversation, not
+ * to the surface default — so a turn that sent `modelByKind` sent the default,
+ * and the server, told a model explicitly, believed it over the one the
+ * conversation was carrying. Somebody picked Gemini and the caption said GPT.
+ */
+function pickedModel(
+  s: Pick<State, 'sessions' | 'agents' | 'modelByKind'>,
+  sessionId: string,
+  kind: SessionKind,
+): string | undefined {
+  const session = s.sessions.find((c) => c.id === sessionId)
+  return effectiveModelId(session, kind, s.agents, s.modelByKind) || undefined
+}
+
 function reconcileCompareModels(current: string[], available: ModelInfo[]): string[] {
   const chatIds = available.filter((model) => model.kinds.includes('chat')).map((model) => model.id)
   const valid = current.filter((id, index) => chatIds.includes(id) && current.indexOf(id) === index)
@@ -1886,7 +1903,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   generateVideo: async (sessionId, prompt, opts = {}) => {
-    const { avOptions, modelByKind } = get()
+    const { avOptions } = get()
     let id = sessionId
     /**
      * Opening the session can be refused — surface switched off, or no credit.
@@ -1913,7 +1930,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       const job = await jobsApi.create(id, {
         prompt,
-        model: modelByKind.av || undefined,
+        model: pickedModel(get(), id, 'av'),
         resolution: avOptions.resolution,
         seconds: avOptions.durationSec,
         audio: avOptions.withAudio,
@@ -1936,7 +1953,7 @@ export const useStore = create<State>((set, get) => ({
             creditsEstimated: 0,
             // Carried so the card's retry action has the request to rebuild.
             prompt,
-            model: modelByKind.av || '',
+            model: pickedModel(get(), id, 'av') ?? '',
             params: {
               resolution: avOptions.resolution,
               seconds: avOptions.durationSec,
@@ -1986,7 +2003,7 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   generateAudio: async (sessionId, prompt, opts = {}) => {
-    const { avOptions, modelByKind } = get()
+    const { avOptions } = get()
     let id = sessionId
     if (!id) {
       id = await get().newSession('av', { projectId: opts.projectId ?? null })
@@ -2000,7 +2017,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       const row = await sessionsApi.audio(id, {
         prompt,
-        model: modelByKind.av || undefined,
+        model: pickedModel(get(), id, 'av'),
         // Speech or music: there is no third kind.
         audioKind: avOptions.audioKind === 'music' ? 'music' : 'narration',
         // Both were chips on screen that never left the browser: every
@@ -2083,7 +2100,7 @@ export const useStore = create<State>((set, get) => ({
       }
       const rows = await sessionsApi.images(id, {
         prompt,
-        model: modelByKind.image || undefined,
+        model: pickedModel(get(), id, 'image'),
         aspect: imageOptions.aspect,
         style: opts.raw ? '없음' : imageOptions.style,
         labels: imageOptions.labels,

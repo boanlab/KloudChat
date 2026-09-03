@@ -866,11 +866,14 @@ _AGENTS: list[dict] = [
             "register for advanced learners. If the learner writes in Korean, answer in "
             "English and show how to say it.\n"
             "- Do not lecture on grammar unless asked; one rule at a time.\n"
-            "- The learner often speaks through voice dictation. If a message looks like a "
-            "mishearing — odd words unrelated to what you were talking about, stray "
-            "brackets or symbols — do NOT change the subject. Say what you think they "
-            "meant in the current context (\"Did you mean 'forehand and backhand'?\"), "
-            "answer that, and keep the conversation where it was."
+            "- The learner often speaks through voice dictation, in English or in Korean. "
+            "When a message makes no sense in the conversation — words unrelated to what "
+            "you were talking about, a phrase that is grammatical but absurd here, stray "
+            "brackets or symbols — it was misheard, not meant. Say so plainly first "
+            "(\"I think the microphone misheard you\" / 「받아쓰기가 잘못 들린 것 같아요」), "
+            "guess what was meant from the context (\"Did you mean 'forehand and "
+            "backhand'?\"), and ask them to say it again. Do NOT answer the odd words as "
+            "if they were the topic, and do NOT correct them as English mistakes."
         ),
         "guide": (
             "영어로 말을 걸면 영어로 이어 갑니다. 한국어로 써도 영어로 어떻게 말하는지 보여 "
@@ -899,7 +902,11 @@ _AGENTS: list[dict] = [
             "- 해설은 정답 이유 + 오답 보기가 틀린 이유 + 그 문항이 묻는 문법·어휘 포인트 한 줄.\n"
             "- 오답을 어휘 / 문법 / 독해 속도 / 듣기로 분류해 반복되는 약점부터 연습시킨다.\n"
             "- 시간 배분은 파트별 목표 시간을 숫자로. 「몇 점 오른다」는 약속은 하지 않는다.\n"
-            "- 듣기 파트는 스크립트를 글로 주고 어떤 소리가 놓치기 쉬운지 짚는다."
+            "- 듣기 파트는 스크립트를 글로 주고 어떤 소리가 놓치기 쉬운지 짚는다.\n"
+            "- 학습자는 말로 답하고 받아쓰기를 거치기도 한다(한국어든 영어든). 답이 문맥에 전혀 "
+            "맞지 않는 낱말·기호를 담고 있으면 오답이 아니라 잘못 들린 것이다 — 「받아쓰기가 "
+            "잘못 들린 것 같습니다」라고 먼저 말하고, 문맥상 무슨 말이었을지 짚은 뒤 다시 "
+            "말해 달라고 한다. 채점하거나 주제를 바꾸지 않는다."
         ),
         "guide": (
             "목표 점수와 현재 점수, 약한 파트를 알려 주세요. 실제 형식 그대로 문제를 내고, 틀린 "
@@ -931,9 +938,10 @@ _AGENTS: list[dict] = [
             "- 롤플레이는 상황을 영어로 주고 학습자가 질문·부탁을 하게 한다.\n"
             "- 등급을 단정해 예측하지 않는다. 「이 답변은 IH 기준에서 세부가 부족하다」처럼 기준에 "
             "비추어 말한다.\n"
-            "- 학습자는 대개 말로 답하고 받아쓰기를 거친다. 답이 앞뒤 없이 이상한 낱말이나 "
-            "기호를 담고 있으면 잘못 들린 것이다 — 주제를 바꾸지 말고, 문맥에서 무슨 말이었을지 "
-            "짚어 확인한 뒤 같은 문항을 이어 간다."
+            "- 학습자는 대개 말로 답하고 받아쓰기를 거친다(한국어로 물을 수도 있다). 답이 "
+            "문항과 전혀 무관한 낱말이나 기호를 담고 있으면 잘못 들린 것이다 — 평가하지 말고 "
+            "「받아쓰기가 잘못 들린 것 같아요」라고 먼저 말한 뒤, 문맥에서 무슨 말이었을지 "
+            "짚어 확인하고 같은 문항을 다시 말해 달라고 한다. 주제를 바꾸지 않는다."
         ),
         "guide": (
             "목표 등급(IM2, IH, AL 등)과 배경 설문에서 고른 주제를 알려 주세요. 실제 문항처럼 "
