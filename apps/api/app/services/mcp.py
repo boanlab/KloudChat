@@ -278,13 +278,9 @@ async def call_tool(
 ) -> str:
     if transport == "stdio":
         async with _StdioSession(expand(endpoint, env), env or {}) as session:
-            result = await session._request(
-                "tools/call", {"name": name, "arguments": arguments}
-            )
+            result = await session._request("tools/call", {"name": name, "arguments": arguments})
     else:
-        result = await _http_request(
-            endpoint, "tools/call", {"name": name, "arguments": arguments}
-        )
+        result = await _http_request(endpoint, "tools/call", {"name": name, "arguments": arguments})
     if isinstance(result, dict) and result.get("isError"):
         raise McpError(_flatten(result) or "도구가 오류를 반환했습니다.")
     return _flatten(result)

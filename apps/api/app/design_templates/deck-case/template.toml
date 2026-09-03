@@ -3,13 +3,15 @@ kind = "deck"
 # 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
 # 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
 # 자동으로 붙고 skills_applied 로 화면에 공지된다.
-skills = ["deck-story", "case-analysis"]
+skills = ["deck-story", "decision-frame", "comparison-table"]
 name = "케이스 발표"
 description = "현황과 대안을 나란히 놓고 15분 안에 권고까지 가는 발표"
 category = "발표"
 fills = ["대상 기업", "발표 시간", "결론"]
 example_prompt = "케이스 발표 자료를 만들어 줘. 대안을 나란히 견주는 장을 넣고, 마지막 장에서 무엇을 권고하는지 밝혀 줘.\n\n대상 기업과 발표 시간: "
 seed_from = "_deck"
+# 무대가 이 서식으로 여는 얼굴. 종이 바탕과 둥근 상자 — 현황과 대안을 나란히 놓고 읽히는 덱.
+look = "warm"
 layouts = ["cover", "bullets", "compare", "figure", "table", "ask"]
 
 # English half of the catalogue. The UI picks a side by language;

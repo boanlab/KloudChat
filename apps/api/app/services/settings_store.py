@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -25,7 +26,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings as env_settings
 from app.core.db import SessionLocal
 from app.models.settings import SystemSetting
-from app.models.user import utcnow
+from app.models.user import User, UserRole, UserStatus, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ BRAND_NAME = "brand.name"
 #: Logo filename and MIME type. The file itself lives in the file store.
 BRAND_LOGO = "brand.logo"
 BRAND_LOGO_MIME = "brand.logo_mime"
+#: Where 관리자에게 문의 goes. Empty falls back to the first administrator.
+CONTACT_EMAIL = "contact.email"
 
 # ── enabled surfaces ───────────────────────────────────────────────────
 #: CSV of the enabled surfaces. Chat is never listed: it is always on.
@@ -85,6 +88,13 @@ SMTP_FROM = "smtp.from"
 #: Where the reset link points. Otherwise built from the request Host, which is
 #: attacker-controlled.
 APP_BASE_URL = "app.base_url"
+
+#: Who may sign up. `signup.mode` overrides `SIGNUP_MODE`; the domains are a
+#: CSV of the mail domains allowed to register (empty = any); the flag asks
+#: new accounts to click a mailed link before they count as signed up.
+SIGNUP_MODE = "signup.mode"
+SIGNUP_DOMAINS = "signup.domains"
+SIGNUP_VERIFY_EMAIL = "signup.verify_email"
 
 #: Keys holding secrets: encrypted at rest, never returned by the API — only
 #: whether one is set, and its last four characters.
@@ -230,6 +240,26 @@ async def brand() -> dict[str, str]:
     }
 
 
+async def contact_email(db: AsyncSession) -> str:
+    """The address the waiting and sign-in screens send people to.
+
+    The stored one when an administrator set it; otherwise the oldest
+    administrator account, so a fresh instance never points at example.com.
+    """
+    values = await all_values()
+    stored = (values.get(CONTACT_EMAIL) or "").strip()
+    if stored:
+        return stored
+    row = (
+        await db.exec(
+            select(User)
+            .where(User.role == UserRole.admin, User.status == UserStatus.active)
+            .order_by(User.created_at)
+        )
+    ).first()
+    return row.email if row else ""
+
+
 async def enabled_kinds() -> list[str]:
     """The enabled surfaces. Chat is always included."""
     values = await all_values()
@@ -265,14 +295,58 @@ async def mail_enabled() -> bool:
     return bool(config["host"] and config["sender"] and config["baseUrl"])
 
 
+def parse_domains(raw: str) -> list[str]:
+    """`@dankook.ac.kr, example.com` → `["dankook.ac.kr", "example.com"]`."""
+    seen: list[str] = []
+    for part in re.split(r"[,\s;]+", raw or ""):
+        domain = part.strip().lstrip("@").lower()
+        if domain and domain not in seen:
+            seen.append(domain)
+    return seen
+
+
+@dataclass(frozen=True)
+class SignupPolicy:
+    mode: str
+    #: Where the mode came from — the admin screen says whether clearing it
+    #: falls back to the environment.
+    mode_source: str
+    domains: list[str]
+    #: What the administrator asked for.
+    verify_email: bool
+    #: What actually happens: verification needs a mail server to send from.
+    verification: bool
+
+    def allows(self, email: str) -> bool:
+        if not self.domains:
+            return True
+        domain = email.rsplit("@", 1)[-1].lower() if "@" in email else ""
+        return domain in self.domains
+
+
+async def signup_policy() -> SignupPolicy:
+    """How signup behaves: mode, allowed domains, and whether mail is checked."""
+    values = await all_values()
+    stored_mode = (values.get(SIGNUP_MODE) or "").strip()
+    mode = (
+        stored_mode if stored_mode in ("open", "approval", "closed") else env_settings.signup_mode
+    )
+    wants = (values.get(SIGNUP_VERIFY_EMAIL) or "").strip().lower() in ("1", "true", "on", "yes")
+    return SignupPolicy(
+        mode=mode,
+        mode_source="database" if stored_mode else "environment",
+        domains=parse_domains(values.get(SIGNUP_DOMAINS, "")),
+        verify_email=wants,
+        verification=wants and await mail_enabled(),
+    )
+
+
 async def put(db: AsyncSession, key: str, value: str, actor_id: str) -> None:
     row = await db.get(SystemSetting, key)
     is_secret = key in SECRET_KEYS
     stored = encrypt_secret(value) if is_secret and value else value
     if row is None:
-        db.add(
-            SystemSetting(key=key, value=stored, secret=is_secret, updated_by=actor_id)
-        )
+        db.add(SystemSetting(key=key, value=stored, secret=is_secret, updated_by=actor_id))
     else:
         row.value = stored
         row.secret = is_secret

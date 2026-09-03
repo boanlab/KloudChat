@@ -62,8 +62,11 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다. 절마다
   **서로 다른 물음 하나**에 답한다 — 「비용 비교」와 「옵션 비교 분석」처럼 같은
   물음을 둘로 쪼개지 마라.
-- 판단을 구하는 문서(보고·검토·의사결정·제안)는 첫 절이 「요약」, 마지막 절이
-  「권고안과 다음 단계」다. 결론과 권고는 그 마지막 절 하나에만 있다.
+- 판단을 구하는 문서(검토·의사결정·제안·타당성)는 첫 절이 「요약」, 마지막 절이
+  「권고안과 다음 단계」다. 결론과 권고는 그 마지막 절 하나에만 있다. **현황·주간
+  보고, 회의록, 장애 보고서, 실험 보고서, 안내문은 판단을 구하는 문서가 아니다** —
+  요약·권고안 절을 붙이지 말고 그 장르의 항목이 목차다.
+{genre}
 - **대안이 여럿인 결정 문서는 대안마다 절을 만들지 마라.** 「A의 경제적 분석」
   「B의 경제적 분석」은 표 하나의 열을 절로 쪼갠 것이다. 대신 「대안 비교」 절
   하나에서 같은 기준으로 견준다. **절 제목에 특정 대안의 이름(클라우드, 교체,
@@ -119,6 +122,7 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 이 절의 역할: {role}
 {others}
 {facts}
+{genre}
 
 규칙:
 - "{heading}" 에 해당하는 내용만 써라. 보고서 전체를 이 절에 넣지 마라. 다른
@@ -128,8 +132,8 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 - 줄글이 기본이다. 한 절은 보통 문단 두셋에서 넷이고, 문단은 이어지는 문장으로
   쓴다. 「- **1번 항목**:」 같은 번호 목록으로 절을 채우지 마라.
 - **수치는 위의 「쓸 수 있는 수치」 목록에 있는 것과 그것으로 계산한 값만 쓴다.**
-  단위와 자릿수까지 그대로 — 「연 380만 원」은 「3,800만 원」도 「38백만 원」도
-  아니다. 계산한 값은 식을 함께 적어라(「62만 원 × 12개월 = 744만 원」). 목록에
+  단위와 자릿수까지 그대로 — 연 단위를 만 단위로 옮기거나 자릿수를 바꾸지 마라.
+  계산한 값은 식을 함께 적어라(「월 비용 × 12개월 = 연 비용」 꼴로). 목록에
   없는 수치 — 사용자 수, 비율, 장애 원인, 피해 규모, 다른 비용, 연도 — 는 만들지
   말고, 필요하면 「(미정)」 「(확인 필요)」 로 적어라. 장애의 원인이나 경위처럼
   요청에 없는 사정을 지어내지 마라.
@@ -155,8 +159,14 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
 {refs}
 
 {facts}
+{genre}
 
 규칙:
+- 자료에 없는 원인·이유·평가를 보태지 마라 — 「민감한 정보가 포함되어 있어」「~때문으로
+  판단됩니다」는 자료가 말하지 않았으면 쓰지 않는다. 모르는 것은 그냥 쓰지 않는다;
+  「(자료에 없음)으로 처리해야 할 부분은 …」처럼 무엇이 없는지 설명하는 문장은 문서에
+  넣지 않는다. 「기반을 마련했습니다」「긍정적인 성과」처럼 사실을 더하지 않는 문장도
+  쓰지 않는다.
 - 절마다 `## 제목` 줄로 시작한다. 목차에 없는 절을 만들지 말고, 목차의 절을
   빼지도 마라. 최상위 제목(#)은 쓰지 마라 — 제목은 표지에 따로 붙는다.
 - 첫 절이 「요약」이면: 무엇을 결정해야 하는지, 권고가 무엇인지, 근거 둘을 문단
@@ -170,7 +180,8 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
   「결론」 「요약」 「다음 단계」 같은 소제목을 만들지 마라. 「- **1번 항목**:」
   같은 번호 목록으로 절을 채우지 마라. 절 제목을 본문에 굵은 글씨로 다시 쓰지 마라.
 - 대안이 둘 이상인 문서는 비교하는 절 첫머리에 표 하나를 반드시 둔다. 열은
-  대안, 행은 기준이고, 기준에는 첫해 비용·3년 총비용(식과 함께)·장애 위험·결정
+  대안, 행은 기준이다. **기준은 요청이 말한 것** — 기법 비교면 메모리·성능·학습
+  파라미터 수처럼 그 분야의 잣대이고, 비용을 따지는 결정 문서일 때만 첫해 비용·3년 총비용(식과 함께)·장애 위험·결정
   뒤 남는 문제가 들어간다. 표 위에 이름표를 붙이지 말고 바로 표를 그린 뒤, 아래
   문단에서 표가 무엇을 말하는지 풀어 쓴다 — 열 이름을 하나씩 풀이하는 「비교표
   설명」 목록은 쓰지 마라. 표가 말하는 결론 한두 문장이면 된다. **같은 표를 다른 절에 다시 그리지
@@ -189,10 +200,10 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
   옆에 두고, 차이가 1% 안이면 「일치한다」고 쓴다. 「3회 반복 측정」처럼 요청에 없는
   절차도 지어내지 마라.
 - **수치는 위 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만 쓴다.** 요청에
-  적힌 표기 그대로 아라비아 숫자로 — 「연 380만 원」은 「3,800만 원」도 「38백만
-  원」도 「3백8십만 원」도 아니다.
-  계산은 식과 결과를 함께 적고 나눗셈은 소수 첫째 자리까지 쓴다(「62만 원 ×
-  12개월 = 744만 원」, 「2,400만 원 ÷ 744만 원 ≈ 3.2년」). 목록에 없는 수치 —
+  적힌 표기 그대로 아라비아 숫자로 — 자릿수를 옮기거나(만 단위를 백만 단위로)
+  한자 숫자로 바꾸지 마라. **이 규칙 안의 보기 숫자는 이 문서의 수치가 아니다.**
+  계산은 식과 결과를 함께 적고 나눗셈은 소수 첫째 자리까지 쓴다(「월 비용 ×
+  12개월 = 연 비용」, 「초기 비용 ÷ 연 비용 ≈ 회수 기간(년)」 꼴로). 목록에 없는 수치 —
   사용자 수, 비율, 기간, 다른 비용, 잔존 가치, 연도, 영업일 — 는 만들지 말고
   「(미정)」「(확인 필요)」로 적는다. 장애 원인이나 경위처럼 요청에 없는 사정을
   지어내지 마라. 큰 수와 작은 수를 견줄 때는 두 수를 나란히 적어 방향을 확인한다.
@@ -327,8 +338,89 @@ _FRAME_RULE = (
     "공식과 일반 원리는 써도 된다."
 )
 
+#: Opens a document written without a single web source, when one was looked for.
+_UNVERIFIED_NOTE = (
+    "_이 문서는 웹 검색에서 쓸 만한 자료를 얻지 못해 기억을 바탕으로 썼습니다. "
+    "수치·연구명·서지는 확인이 필요합니다._"
+)
+
 #: A request that weighs options — the only kind the cost-table advice fits.
-_DECISION = re.compile(r"대안|비교|결정|권고|비용|검토|타당성|선택")
+_DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
+
+#: 장르마다 모양이 있다. The decision report's skeleton — 요약 up front, 권고 at
+#: the end, two paragraphs a section — was reaching every document, and a 주간
+#: 보고 came back at 2,800 characters with a comparison table and a recommendation
+#: nobody asked for. A weekly report is a page somebody skims; minutes are a
+#: table; an incident report keeps its timeline as a table. Matched on the
+#: request, the rule goes to the outline and the draft.
+_GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척"),
+        "장르: 현황·주간 보고. 한 쪽에 읽힌다 — 절마다 짧은 문장의 항목 서넛, 문단은 둘을 넘기지 "
+        "않는다. 「요약」 절 대신 첫 절 첫 줄에 이번 주의 결론 한 문장. 권고안 절을 만들지 않는다; "
+        "결정이 필요한 것은 「이슈」에 질문 형태로 적는다. 자료에 없는 원인·해석·전망("
+        "「~때문으로 판단됩니다」「달성 가능성 높음」)을 보태지 않는다.",
+    ),
+    (
+        re.compile(r"회의록|녹취|미팅 ?메모|회의 ?메모"),
+        "장르: 회의록. 결정·조치·미결은 표로(항목·담당·기한). 발언은 요약하되 판단을 보태지 "
+        "않고, 요약·권고 절을 만들지 않는다. 자료에 없는 담당자·기한은 「미정」.",
+    ),
+    (
+        re.compile(r"장애|사고|incident|포스트모템|post-?mortem"),
+        "장르: 장애 보고서. 시각열은 시각·사건·조치의 표로 싣는다. 영향은 누가·얼마나·얼마 동안을 "
+        "숫자로, 원인은 확인된 것과 추정을 갈라, 재발 방지는 원인과 짝지은 표(조치·담당·기한). "
+        "대응 절은 시각열에 없는 것(왜 그 결정을 했는지, 임시 조치)만 적고 시각열을 되풀이하지 "
+        "않는다. 자료의 날짜에 연도가 없으면 연도를 붙이지 않는다. 책임을 묻는 문장을 쓰지 "
+        "않는다.",
+    ),
+    (
+        re.compile(r"실험|측정|시험 결과"),
+        "장르: 실험 보고서. 측정 데이터는 표로, 계산한 열을 더해서. 차이는 이론값과 나란히 계산해 "
+        "말하고, 요청에 없는 절차(반복 횟수, 장비 설정)를 지어내지 않는다.",
+    ),
+    (
+        re.compile(r"안내문|공지|가이드라인|규정|정책"),
+        "장르: 안내·정책 문서. 항목마다 원칙·허용·금지·예시를 짧게. 권고안·요약 절을 만들지 않고, "
+        "시행일·문의처를 끝에 둔다.",
+    ),
+)
+
+
+_OWN_GENRES = re.compile(
+    r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|회의록|녹취|장애|사고|실험|측정"
+)
+
+
+def _own_material(request: str) -> bool:
+    """A document about the person's own week, meeting, incident or experiment,
+    with the material in the request — nothing on the web belongs in it."""
+    return bool(_OWN_GENRES.search(request)) and _carries_material(request)
+
+
+def _genre_rule(request: str) -> str:
+    """The shape rule for the request's genre, or `""` for a document with none."""
+    for pattern, rule in _GENRES:
+        if pattern.search(request):
+            return rule
+    return ""
+
+
+_MONEY = re.compile(
+    r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s*(?:억|만|천|백)?\s*원(?!인|리|칙|자)"
+)
+
+
+def _without_invented_money(text: str) -> str:
+    """Every sum of money replaced by (미정), in a document with no figures to draw on.
+
+    A PEFT 동향 report — no numbers in the request, none from a search that
+    came back empty — carried a cost table of 380만 원, 3,800만 원 and 1,140만
+    원: the sums out of the prompt's own example about a server, copied as
+    fact. The rule said to write nothing the material did not carry; with
+    nothing carried, a sum is an invention by construction.
+    """
+    return _MONEY.sub("(미정)", text)
 
 
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
@@ -545,9 +637,15 @@ def _outline_style(text: str) -> str:
 _subject_missing = grounding.subject_missing
 
 
-_RESULTS = re.compile(r"결과|시험|실험|측정")
+#: Documents about the person's own work — a proposal, a design change, a
+#: plan — that carry nothing without the work: asked for, like results, only
+#: when the request gives no figure to build on.
+_RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
 #: Documents whose facts all come from outside — nothing to write without a search.
-_FROM_THE_WEB = re.compile(r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표")
+_FROM_THE_WEB = re.compile(
+    r"동향|조사해|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|현황을 조사|비교표|인용|"
+    r"참고문헌|시카고|APA|출처를"
+)
 
 
 def _from_the_web(request: str) -> bool:
@@ -726,6 +824,7 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
             api_key=api_key,
             model=str(image_model.get("id") or ""),
             prompt=imagegen.compose_prompt(str(figure.get("prompt") or ""), aspect="4:3", style=""),
+            aspect="4:3",
         )
     except Exception as exc:  # noqa: BLE001 — a missing figure is not a failed report
         log.warning("figure could not be drawn: %s", exc)
@@ -866,6 +965,13 @@ async def write(
     # search backend would otherwise open every document with 자료 찾는 중 and
     # close it with 참고할 자료 없음 — a step that reports the deployment's
     # configuration as though it were this document's result.
+    # 제 자료로 쓰는 문서는 검색하지 않는다. A 장애 보고서 written from a
+    # timeline went out with 「결제는 상품이나 서비스에 대한 대가를 지불하는
+    # 행위를 의미하므로 [1]」 — a definition of payment, cited from the web, in
+    # a report whose every fact was on the page already. Genres that report
+    # the person's own material take no shelf when the material is there.
+    if web_search and _own_material(request):
+        web_search = False
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
         findings = await research.run(request, model=outline_model or model, api_key=api_key)
@@ -1009,6 +1115,7 @@ async def write(
                         ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
                         lo=_MIN_SECTIONS,
                         hi=_MAX_SECTIONS,
+                        genre=_genre_rule(request),
                         request=request[:2000],
                     ),
                     request=request,
@@ -1081,7 +1188,16 @@ async def write(
         frame = not may_ask and (
             _results_without_data(request, list(untrusted_context or []))
             or grounding.subject_missing(text, request, "\n".join(untrusted_context or []))
-            or (web_search and findings.searched and web_selected == 0 and _from_the_web(request))
+        )
+        # 검색이 빈손인 동향·문헌 문서를 그래도 쓰라고 했다. Not a frame — a
+        # frame of a literature survey is nothing — but written from memory,
+        # and the plan carries that so the document opens by saying so.
+        unverified = (
+            not may_ask
+            and web_search
+            and findings.searched
+            and web_selected == 0
+            and _from_the_web(request)
         )
         title, headings = _parse_outline(text)
         if len(headings) < _MIN_SECTIONS:
@@ -1125,6 +1241,8 @@ async def write(
         }
         if frame:
             plan["frame"] = True
+        if unverified:
+            plan["unverified"] = True
         if image_model:
             drawn = await figures.propose(
                 request=request,
@@ -1149,6 +1267,7 @@ async def write(
     title = str(approved_plan.get("title") or "")
     headings = [str(h).strip() for h in (approved_plan.get("sections") or []) if str(h).strip()]
     frame = bool(approved_plan.get("frame"))
+    unverified = bool(approved_plan.get("unverified"))
     if not headings:
         yield {"type": "error", "message": "승인된 개요가 비어 있습니다."}
         yield {"type": "usage", **usage}
@@ -1215,6 +1334,7 @@ async def write(
                     outline="\n".join(f"## {h}" for h in headings),
                     refs=refs,
                     facts=_FRAME_RULE if frame else _facts_line(request, sources),
+                    genre=_genre_rule(request),
                     request=request[:1500],
                 ),
                 request=request,
@@ -1277,6 +1397,7 @@ async def write(
                             )[1],
                             others=_others_line(headings, index),
                             facts=_FRAME_RULE if frame else _facts_line(request, sources or []),
+                            genre=_genre_rule(request),
                         )
                         + (
                             # Told before the prose is written, so the section can
@@ -1339,6 +1460,13 @@ async def write(
         # one answer.
         clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
         clean = hangul.tidy_spacing(clean)
+        if not grounded:
+            clean = _without_invented_money(clean)
+        if unverified and index == 0:
+            # 첫 절 머리에 밝힌다. The EMPTY_RULE asks the writer to say it;
+            # a PEFT survey written from memory said nothing and quoted
+            # 0.002% as though it had read it somewhere.
+            clean = _UNVERIFIED_NOTE + "\n\n" + clean
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
         # The picture, if this section is one of the ones somebody paid for.
@@ -1451,6 +1579,7 @@ async def rewrite_section(
         facts=_facts_line(
             "\n".join([request, *[str(s.get("content") or "") for s in sections]]), sources or []
         ),
+        genre=_genre_rule(request),
     )
     if note.strip():
         # Last and labelled: an unlabelled sentence appended to a prompt reads

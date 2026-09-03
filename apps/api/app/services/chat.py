@@ -190,11 +190,7 @@ async def stream_completion(
             base_url=base.rstrip("/"),
             headers={
                 "Authorization": f"Bearer {api_key}",
-                **(
-                    {"x-litellm-enable-message-redaction": "true"}
-                    if redact_logging
-                    else {}
-                ),
+                **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
             },
             timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
         ) as client:
@@ -314,11 +310,7 @@ async def generate_title(
             base_url=base.rstrip("/"),
             headers={
                 "Authorization": f"Bearer {api_key}",
-                **(
-                    {"x-litellm-enable-message-redaction": "true"}
-                    if redact_logging
-                    else {}
-                ),
+                **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
             },
             timeout=settings.title_timeout_sec,
         ) as client:
@@ -329,11 +321,7 @@ async def generate_title(
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                     "max_tokens": 40,
-                    **(
-                        {"disable_fallbacks": True}
-                        if strict_local or disable_fallbacks
-                        else {}
-                    ),
+                    **({"disable_fallbacks": True} if strict_local or disable_fallbacks else {}),
                 },
             )
             response.raise_for_status()

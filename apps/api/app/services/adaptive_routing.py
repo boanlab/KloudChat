@@ -141,7 +141,12 @@ def economy_is_baseline_usable(
         and (not allowed_model_ids or model_id in allowed_model_ids)
         and "chat" in model.get("kinds", [])
         and model.get("privacyOnly") is not True
-        and model.get("dataBoundary") not in {"hybrid", "unknown", None}
+        # `hybrid` — served here, falling back outside only under load — is
+        # admitted: on this instance the cheapest models are exactly those,
+        # and the screen already offers them. Whether one may take a given
+        # turn is decided against the quality model's boundary below, the
+        # same way an external candidate is.
+        and model.get("dataBoundary") not in {"unknown", None}
     )
 
 
@@ -251,6 +256,11 @@ def economy_candidates(
         # model is already explicitly external. Unknown and hybrid ceilings
         # therefore admit self-hosted candidates only.
         if boundary == "external" and quality_boundary != "external":
+            continue
+        # A hybrid candidate may fall back outside mid-turn, so it is only
+        # ever a saving where the turn could already leave: a quality model
+        # that is itself hybrid or external.
+        if boundary == "hybrid" and quality_boundary not in ("hybrid", "external"):
             continue
         candidate_in = _non_negative_int(model.get("inputCreditCost"))
         candidate_out = _non_negative_int(model.get("creditCost"))

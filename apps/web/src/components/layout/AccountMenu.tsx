@@ -8,6 +8,7 @@ import { Code2,
   Palette,
   Plug,
   Server,
+  Keyboard,
   Settings,
   Shield,
   ShieldCheck,
@@ -17,7 +18,9 @@ import { Code2,
 import { useNavigate } from 'react-router-dom'
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { useT } from '@/lib/useT'
+import { isMac } from '@/lib/shortcuts'
 import { useStore } from '@/store/useStore'
+import { openShortcuts } from './KeyboardShortcuts'
 
 /**
  * The account menu, and the only way out of the account.
@@ -66,17 +69,22 @@ function AccountItems() {
       </MenuItem>
       <MenuSeparator />
       <MenuLabel>{t('계정')}</MenuLabel>
-      <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
-        {t('설정')}
-      </MenuItem>
-      <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/usage')}>
-        {t('사용량')}
-      </MenuItem>
       <MenuItem icon={<TerminalIcon size={14} />} onClick={() => navigate('/agent-setup')}>
         {t('AI 에이전트 연동')}
       </MenuItem>
       <MenuItem icon={<Code2 size={14} />} onClick={() => navigate('/api-setup')}>
         {t('API 연동')}
+      </MenuItem>
+      <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/usage')}>
+        {t('사용량')}
+      </MenuItem>
+      {/* 개인 맞춤 설정 is a tab inside 설정; a second entry for it here was
+          the same door twice. */}
+      <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
+        {t('설정')}
+      </MenuItem>
+      <MenuItem icon={<Keyboard size={14} />} onClick={openShortcuts} hint={`${isMac() ? '⌘' : 'Ctrl'} /`}>
+        {t('키보드 단축키')}
       </MenuItem>
       {user?.role === 'admin' && (
         <>

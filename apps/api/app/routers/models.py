@@ -20,9 +20,7 @@ router = APIRouter(tags=["models"])
 async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
     """Shape both catalogue endpoints with the same user-scoped Auto contract."""
     catalogue = (
-        await model_service.list_models(force=True)
-        if force
-        else await model_service.list_models()
+        await model_service.list_models(force=True) if force else await model_service.list_models()
     )
     allowed = set(user.allowed_models or [])
     visible = [m for m in catalogue["models"] if not allowed or m["id"] in allowed]

@@ -126,6 +126,7 @@ export function ModelPicker({
   const {
     models,
     modelByKind,
+    avModelByMode,
     agents,
     setModel,
     setSessionModel,
@@ -143,7 +144,13 @@ export function ModelPicker({
     // Inside a conversation, whatever that conversation will actually run on —
     // the surface default would name the wrong one on an old thread, and the
     // wrong one again on a thread that is deferring to its agent.
-  const currentId = effectiveModelId(session, kind, agents, modelByKind)
+  //: Outside a conversation, an av picker asked for one modality shows the
+  //: model remembered for that mode — the settings screen has one picker for
+  //: sound and one for clips, and `modelByKind.av` can only be one of them.
+  const currentId =
+    !session && kind === 'av' && (modality === 'audio' || modality === 'video')
+      ? avModelByMode[modality] || effectiveModelId(session, kind, agents, modelByKind)
+      : effectiveModelId(session, kind, agents, modelByKind)
   const active = usable.find((m) => m.id === currentId) ?? usable[0]
   const autoLane = kind === 'chat' && session?.routingMode !== 'manual'
     ? session?.routingMode

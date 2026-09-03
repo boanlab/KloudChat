@@ -2,8 +2,8 @@ kind = "image"
 name = "포스터"
 description = "한 장으로 시선을 잡는 그림. 글자는 넣지 않고 여백을 남깁니다"
 category = "홍보"
-fills = ["무엇을 알리는지", "분위기"]
-example_prompt = "{subject}을 알리는 포스터 그림. {mood} 분위기로, 위쪽은 제목 자리로 비워 줘."
+fills = ["무엇을 알리는지", "분위기", "비율"]
+example_prompt = "{subject}을 알리는 포스터 그림. {mood} 분위기로, 위쪽은 제목 자리로 비워 줘. 비율은 {aspect}."
 layouts = ["cover"]
 prompt_suffix = "poster composition, one dominant subject drawn as a recognisable object or scene taken from what the request names rather than as an abstract shape, clear space at the top for a title, printed paper texture, no text, no lettering, no logos"
 
@@ -13,8 +13,8 @@ prompt_suffix = "poster composition, one dominant subject drawn as a recognisabl
 name_en = "Poster"
 description_en = "One image that carries a room. No lettering, space left for a title"
 category_en = "Promotion"
-fills_en = ["What it announces", "Mood"]
-example_prompt_en = "Poster artwork announcing {subject}, {mood}, with the top left clear for a title."
+fills_en = ["What it announces", "Mood", "Aspect"]
+example_prompt_en = "Poster artwork announcing {subject}, {mood}, with the top left clear for a title. Aspect {aspect}."
 
 [defaults]
 aspect = "9:16"
@@ -35,3 +35,12 @@ default = "차분하고 단정한"
 default_en = "calm and orderly"
 options = ["차분하고 단정한", "밝고 활기찬", "묵직하고 고전적인"]
 options_en = ["calm and orderly", "bright and lively", "weighty and classical"]
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "9:16 (인쇄 포스터·세로)"
+default_en = "9:16 (print poster, portrait)"
+options = ["9:16 (인쇄 포스터·세로)", "1:1 (소셜 미디어)", "16:9 (화면용)"]
+options_en = ["9:16 (print poster, portrait)", "1:1 (social media)", "16:9 (for screens)"]

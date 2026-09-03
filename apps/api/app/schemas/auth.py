@@ -54,6 +54,10 @@ class Preferences(Wire):
     privacy_default_action: Literal[
         "ask", "route_strict_local", "mask_external", "send_raw_external"
     ] = "ask"
+    #: 개인 맞춤 설정 — what every conversation should know about the person,
+    #: and how answers should be written. Free text, the person's own words.
+    about_me: str = Field(default="", max_length=1500)
+    response_style: str = Field(default="", max_length=1500)
 
     @classmethod
     def of(cls, user: User) -> Preferences:
@@ -87,6 +91,10 @@ class PasswordReset(Wire):
     new_password: str = Field(min_length=10, max_length=200)
 
 
+class EmailVerify(Wire):
+    token: str = Field(min_length=16, max_length=256)
+
+
 class UserOut(Wire):
     id: str
     email: str
@@ -99,6 +107,8 @@ class UserOut(Wire):
     avatar_color: str
     created_at: datetime
     last_active_at: datetime | None
+    #: Null while a mailed verification link is still out.
+    email_verified_at: datetime | None = None
     #: Whether the account has its own LiteLLM key, and its last four
     #: characters. The key itself has no route that returns it.
     litellm_key_preview: str | None = None
@@ -135,6 +145,14 @@ class SignupResponse(Wire):
     """
 
     user: UserOut
+    session: SessionOut | None = None
+
+
+class EmailVerifyResponse(Wire):
+    """`active` with a session when verifying was the last step; `pending` when
+    an administrator still has to approve."""
+
+    status: UserStatus
     session: SessionOut | None = None
 
 
@@ -205,4 +223,3 @@ class SessionRevokeResult(Wire):
     """How many sign-ins the revoke ended."""
 
     revoked: int
-

@@ -1,6 +1,6 @@
-import { Bot, Boxes, Palette, PanelRight } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Bot, Boxes, Info, Palette, PanelRight } from 'lucide-react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer, hasUnsentDraft } from '@/components/chat/Composer'
@@ -13,7 +13,7 @@ import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
-import type { SessionKind } from '@/types'
+import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /**
@@ -136,6 +136,62 @@ function StartingFrom({
   )
 }
 
+/**
+ * How to use the agent, and a few sentences to start with.
+ *
+ * 「에이전트로 시작하면 에이전트 사용법 같은 것을 첫 화면에서 보여줄 수
+ * 없나」 — the screen had a name and one line. The guide says what to bring
+ * and what a turn does; a starter is a first message, sent as it stands.
+ */
+function AgentGuide({
+  agent,
+  sessionId,
+  kind,
+}: {
+  agent: Agent
+  sessionId: string | null
+  kind: SessionKind
+}) {
+  const t = useT()
+  const navigate = useNavigate()
+  const send = useStore((s) => s.send)
+  const streaming = useStore((s) => !!sessionId && !!s.running[sessionId])
+  if (!agent.guide && agent.starters.length === 0) return null
+  return (
+    <div className="animate-fade-up mx-auto mb-6 w-full max-w-2xl">
+      {agent.guide && (
+        <div className="flex items-start gap-3 rounded-card border border-line bg-panel px-4 py-3 text-base leading-relaxed text-muted">
+          <Info size={15} className="mt-1 shrink-0 text-faint" />
+          <p className="whitespace-pre-wrap">{agent.guide}</p>
+        </div>
+      )}
+      {agent.starters.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-2 text-center text-xs font-semibold tracking-wide text-faint uppercase">
+            {t('이렇게 시작해 보세요')}
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {agent.starters.map((line) => (
+              <button
+                key={line}
+                disabled={streaming}
+                onClick={() =>
+                  void send(sessionId, kind, line, {
+                    onSession: (id) => navigate(`/s/${id}`, { replace: true }),
+                  })
+                }
+                className="max-w-full rounded-full border border-line bg-panel px-3.5 py-1.5 text-left text-sm text-fg transition-colors hover:border-accent/40 hover:bg-accent-soft disabled:opacity-50"
+              >
+                {line}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Empty state shown before the first prompt of a fresh session. */
 function Intro({
   kind,
@@ -179,12 +235,13 @@ function Intro({
               ? t('무엇을 도와드릴까요?')
               : t(meta.tagline)}
         </p>
-        {agent && (
+        {agent && !agent.guide && (
           <p className="mt-2 text-sm text-faint">
             {t('{kind}에서 이 에이전트의 지시대로 답합니다.').replace('{kind}', t(meta.label))}
           </p>
         )}
       </div>
+      {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         {/* The cards are drawn in this project's look, which is the one the
@@ -299,6 +356,28 @@ export function SessionPage() {
     return items.sort((a, b) => +new Date(a.t) - +new Date(b.t)).map((i) => i.node)
   }, [session, jobs])
 
+  /**
+   * The outline sits under the message that proposed it. While the answer is
+   * still awaited that is the end of the transcript, above the composer where
+   * the decision is: read what it means to write, then press the button or
+   * type what to change. Once the button is pressed the transcript keeps
+   * reading in order — proposal, outline, 「이대로 생성해 주세요」, the work —
+   * so the card moves above the question that started the running turn
+   * instead of trailing the steps.
+   */
+  const proposalAt = useMemo(() => {
+    if (!session?.pending) return -1
+    if (!streaming) return timeline.length
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      const item = timeline[i]
+      if (item.type === 'message' && item.m.role === 'user') return i
+    }
+    return timeline.length
+  }, [session?.pending, streaming, timeline])
+  const proposal = session?.pending ? (
+    <ProposalCard sessionId={session.id} pending={session.pending} kind={kind} />
+  ) : null
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastLength = session?.messages.at(-1)?.content.length ?? 0
   const runningProgress = jobs.find(
@@ -385,27 +464,21 @@ export function SessionPage() {
                       the conversation around it. */}
                   {timeline.map((item, i) =>
                     item.type === 'message' ? (
-                      <ErrorBoundary key={item.m.id}>
-                        <MessageItem
-                          message={item.m}
-                          sessionId={session.id}
-                          streaming={streaming && i === timeline.length - 1}
-                        />
-                      </ErrorBoundary>
+                      <Fragment key={item.m.id}>
+                        {i === proposalAt && proposal}
+                        <ErrorBoundary>
+                          <MessageItem
+                            message={item.m}
+                            sessionId={session.id}
+                            streaming={streaming && i === timeline.length - 1}
+                          />
+                        </ErrorBoundary>
+                      </Fragment>
                     ) : (
                       <JobCard key={item.j.id} job={item.j} />
                     ),
                   )}
-                  {/* Under the transcript and above the composer, which is
-                      where the decision is: read what it means to write, then
-                      either press the button or type what to change. */}
-                  {session.pending && (
-                    <ProposalCard
-                      sessionId={session.id}
-                      pending={session.pending}
-                      kind={kind}
-                    />
-                  )}
+                  {proposalAt === timeline.length && proposal}
                 </div>
               </div>
               <Composer

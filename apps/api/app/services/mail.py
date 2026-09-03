@@ -115,4 +115,18 @@ def reset_message(*, name: str, link: str, minutes: int) -> tuple[str, str]:
     return subject, body
 
 
-__all__ = ["MailError", "reset_message", "send"]
+def verification_message(*, name: str, link: str, minutes: int) -> tuple[str, str]:
+    """Subject and body for confirming a signup address."""
+    subject = "KloudChat 가입 확인"
+    body = (
+        f"{name}님,\n\n"
+        "KloudChat 에 이 주소로 가입 요청이 들어왔습니다. 본인이 맞다면 아래 주소를 눌러 "
+        "확인해 주세요.\n\n"
+        f"{link}\n\n"
+        f"이 링크는 {minutes}분 뒤에 만료되고, 한 번만 쓸 수 있습니다.\n"
+        "가입한 적이 없다면 이 메일은 무시해도 됩니다. 확인하지 않은 요청은 그대로 지나갑니다.\n"
+    )
+    return subject, body
+
+
+__all__ = ["MailError", "reset_message", "send", "verification_message"]

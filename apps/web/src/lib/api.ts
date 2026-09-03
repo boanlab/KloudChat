@@ -242,6 +242,8 @@ export interface ModelCatalogue {
    * feels; a document is one long run they wait for once.
    */
   defaultModelByKind?: Partial<Record<SessionKind, string>>
+  /** 오디오/동영상 is one surface with two kinds of model, so one default each. */
+  defaultAvModelByMode?: Partial<Record<'audio' | 'video', string>>
   autoRouting: {
     enabled: boolean
     available: boolean
@@ -296,8 +298,20 @@ export interface SystemSettings {
   status: 'ok' | 'unavailable'
   /** Service name and logo URL to render. */
   brand: { name: string; logo: string }
+  /** Where 관리자에게 문의 goes; `admin` means the first administrator's own. */
+  contact: { email: string; source: 'database' | 'admin' }
   /** Enabled surfaces. Chat is always included. */
   enabledKinds: string[]
+  /** Who may register: the mode, the mail domains allowed (empty = any), and
+   *  whether the address is confirmed by a mailed link first. */
+  signup: {
+    mode: 'open' | 'approval' | 'closed'
+    modeSource: 'database' | 'environment'
+    domains: string[]
+    verifyEmail: boolean
+    /** `verifyEmail` with a mail server behind it. */
+    verificationActive: boolean
+  }
   /** Feature integration: one gateway address fans out into six features. */
   tools: {
     /** Gateway address. Empty means each feature was configured on its own,
@@ -323,21 +337,59 @@ export interface SystemSettings {
   unpricedModels: { id: string; provider: string }[]
 }
 
+/** The composer's microphone: a recording in, its words out. Not stored. */
+export const transcriptionsApi = {
+  transcribe: async (
+    blob: Blob,
+    filename = 'speech.webm',
+    hints: { language?: 'ko' | 'en'; prompt?: string } = {},
+  ) => {
+    // multipart: the browser sets the boundary, so this bypasses call()'s JSON headers.
+    const form = new FormData()
+    form.append('file', blob, filename)
+    // What the conversation was about, and which language it is in: Whisper
+    // reads the first as a vocabulary hint and the second as a pin.
+    if (hints.language) form.append('language', hints.language)
+    if (hints.prompt) form.append('prompt', hints.prompt.slice(0, 500))
+    const res = await fetch(`${BASE_URL}/transcriptions`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+    if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+    return (await res.json()) as { text: string; seconds: number }
+  },
+}
+
 export const authConfig = {
   /** What the sign-in page may offer. Public because the browser cannot read
    *  the admin settings, and a dead reset link is worse than none. */
   get: () =>
     call<{
       passwordResetEnabled: boolean
+      /** A Whisper backend is configured, so the composer may show a microphone. */
+      dictationEnabled: boolean
       brand: { name: string; logo: string }
+      /** Where 관리자에게 문의 goes. Empty when nobody can be named. */
+      contactEmail: string
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
       /** Minutes of inactivity before the browser ends the session. 0 is off. */
       idleTimeoutMinutes: number
+      /** What the signup form should say before somebody is refused. */
+      signup: { mode: 'open' | 'approval' | 'closed'; domains: string[]; emailVerification: boolean }
     }>('/auth/config'),
   forgotPassword: (email: string) => call<void>('/auth/password/forgot', body({ email })),
   resetPassword: (token: string, newPassword: string) =>
     call<void>('/auth/password/reset', body({ token, newPassword })),
+  /** The mailed signup link. A session comes back when verifying was the last step. */
+  verifyEmail: (token: string) =>
+    call<{ status: 'active' | 'pending' | 'suspended'; session: AuthSession | null }>(
+      '/auth/verify-email',
+      body({ token }),
+    ),
+  resendVerification: () => call<void>('/auth/verify-email/resend', { method: 'POST' }),
 }
 
 export interface MyUsage {
@@ -348,7 +400,7 @@ export interface MyUsage {
   /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
   daily: { date: string; credits: number; requests: number }[]
-  byModel: { model: string; credits: number; requests: number }[]
+  byModel: { model: string; credits: number; requests: number; units?: number; unit?: string }[]
   bySurface: { kind: string; credits: number; requests: number }[]
   /** Spend through issued keys, aggregated by the proxy — shown beside the
    *  number above rather than added to it. */
@@ -389,6 +441,10 @@ export const adminApi = {
     smtpPassword?: string
     smtpFrom?: string
     appBaseUrl?: string
+    contactEmail?: string
+    signupMode?: string
+    signupDomains?: string
+    signupVerifyEmail?: string
   }) => call<SystemSettings>('/admin/settings', { method: 'PUT', body: JSON.stringify(patch) }),
   testSettings: () =>
     call<{ ok: boolean; models?: number; detail?: string }>('/admin/settings/test', {
@@ -429,7 +485,11 @@ export const adminApi = {
   suspend: (id: string) => call<User>(`/admin/users/${id}/suspend`, { method: 'POST' }),
   reinstate: (id: string) => call<User>(`/admin/users/${id}/reinstate`, { method: 'POST' }),
   /** Removes the account and everything it owns. Not reversible — suspend is. */
-  removeUser: (id: string) => call<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+  /** `purgeFiles` takes the account's uploads and generated media with it (default on). */
+  removeUser: (id: string, purgeFiles = true) =>
+    call<void>(`/admin/users/${id}?purgeFiles=${purgeFiles ? 'true' : 'false'}`, {
+      method: 'DELETE',
+    }),
   /** Issues a fresh LiteLLM key, retiring the old one. Also the first key for
    *  an account that signed up while the proxy was unreachable. */
   rotateLitellmKey: (id: string) =>
@@ -458,11 +518,27 @@ export interface UsageReport {
     otherCredits: number
   }
   daily: { date: string; credits: number; requests: number }[]
-  byModel: { model: string; credits: number; requests: number; users: number }[]
+  byModel: {
+    model: string
+    credits: number
+    requests: number
+    users: number
+    /** Work a free model did, measured — seconds of speech, chunks embedded. */
+    units?: number
+    unit?: string
+  }[]
   /** `'other'` beside the five surfaces: spend charged against no session,
    *  which is how the bars keep adding up to the total. */
   bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]
-  topUsers: { id: string; name: string; email: string; credits: number; allowance: number }[]
+  /** Every account with activity in the window, most spent first. */
+  topUsers: {
+    id: string
+    name: string
+    email: string
+    credits: number
+    requests: number
+    allowance: number
+  }[]
 }
 
 /** One line of somebody's own 접속기록. */
@@ -660,6 +736,20 @@ export const sharesApi = {
   read: (token: string) => call<SharedPayload>(`/shared/${token}`),
 }
 
+export interface StorageReport {
+  path: string
+  usedBytes: number
+  files: number
+  diskTotalBytes: number
+  diskFreeBytes: number
+  /** Fill (used / total) past which deleted accounts' files are swept, oldest first. 0 = off. */
+  reclaimAt: number
+  /** What a sweep would remove: files under directories whose account is gone. */
+  orphanBytes: number
+  orphanFiles: number
+  byUser: { id: string; name: string; email: string; bytes: number; files: number }[]
+}
+
 export const usageApi = {
   governance: () => call<GovernancePolicy>('/admin/governance'),
   setGovernance: (patch: Partial<GovernancePolicy>) =>
@@ -668,6 +758,14 @@ export const usageApi = {
       body: JSON.stringify(patch),
     }),
   report: (days = 7) => call<UsageReport>(`/admin/usage?days=${days}`),
+  /** Disk the uploads and generated media take, per account, and what is left. */
+  storage: () => call<StorageReport>('/admin/storage'),
+  /** Removes every deleted account's files now, without waiting for the fill mark. */
+  reclaimStorage: () =>
+    call<{ freedBytes: number; freedFiles: number; fillBefore: number; fillAfter: number }>(
+      '/admin/storage/reclaim',
+      { method: 'POST' },
+    ),
   audit: (limit = 100) => call<AuditRow[]>(`/admin/audit?limit=${limit}`),
 }
 
@@ -774,9 +872,20 @@ export const sessionsApi = {
    */
   suggestFigure: (
     sessionId: string,
-    payload: { title?: string; about?: string; context?: string },
+    payload: { title?: string; about?: string; context?: string; visualStyle?: string },
   ) =>
-    call<{ caption: string; prompt: string }>(
+    call<{
+      caption: string
+      prompt: string
+      /** The image 서식 chosen for this place; empty when none fit. */
+      templateId?: string
+      /** `flow` / `method` / `concept` when the 서식 draws as mermaid. */
+      figure?: string
+      /** What to draw, for the diagram path. */
+      description?: string
+      /** The style chip the picture should be drawn with. */
+      style?: string
+    }>(
       `/sessions/${sessionId}/figure-suggestion`,
       body(payload),
     ),
@@ -787,9 +896,13 @@ export const sessionsApi = {
       model?: string
       aspect: string
       style: string
+      /** How the words in the picture are handled. */
+      labels?: 'auto' | 'ko' | 'en' | 'none'
       count: number
       /** An `image` design template. Shapes the prompt; produces no file of its own. */
       templateId?: string
+      /** Send the prompt as typed, skipping the planner. */
+      raw?: boolean
       /**
        * Asked for from inside a document rather than from the image surface.
        * Tells the server the picture goes *into* a slide or a section, so it
@@ -1522,6 +1635,14 @@ export interface AgentRow {
   tools: string[] | null
   skillIds: string[] | null
   kinds: string[]
+  /** How to use it, shown on the empty screen. */
+  guide: string
+  /** First messages offered as buttons there. */
+  starters: string[]
+  /** How a shared original may be taken. */
+  shareMode: 'open' | 'sealed'
+  /** The prompt is withheld: somebody else's sealed original, or a copy of one. */
+  sealed: boolean
   temperature: number
   color: string
   enabled: boolean
@@ -1659,6 +1780,8 @@ export const jobsApi = {
 export type StreamEvent =
   | { type: 'step'; id: string; label: string; status: Step['status']; detail?: string }
   | { type: 'delta'; text: string }
+  /** Text the agent took back — narration written before a tool ran, or an answer it then repeated. */
+  | { type: 'retract'; text: string }
   | {
       type: 'skills_applied'
       skills: { id: string; name: string; catalogKey: string | null; estimatedTokens: number }[]
@@ -1705,6 +1828,7 @@ export type StreamEvent =
   | ({ type: 'model_route' } & CostRouting)
   /** Model comparison: one column's text, then that column's final bill. */
   | { type: 'variant'; model: string; text: string; actualModel?: string }
+  | { type: 'variant_retract'; model: string; text: string }
   | {
       type: 'variant_done'
       model: string
@@ -1792,7 +1916,9 @@ export async function* streamComparison(
  * token, and a tool call is a round trip to something else — so this is not a
  * response-time budget, it is the point past which silence stops being slow
  * and starts being broken. The server emits deltas and step events throughout
- * a healthy turn, and sends no heartbeat, so silence here really is silence.
+ * a healthy turn, and a comment line every fifteen seconds while the model is
+ * still thinking (`_heartbeat`, for the proxies that close an idle response at
+ * sixty), so silence this long really is a connection that has gone.
  */
 const STALL_MS = 120_000
 

@@ -60,7 +60,8 @@ _DDL = (
         allowed_models TEXT,
         preferences TEXT,
         created_at DATETIME,
-        last_active_at DATETIME
+        last_active_at DATETIME,
+        email_verified_at DATETIME
     )
     """,
     """

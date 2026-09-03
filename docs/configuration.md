@@ -71,6 +71,9 @@ anything else.
 | `KCHAT_SIGNUP_MODE` | `SIGNUP_MODE` | `approval` | `open` (active immediately), `approval` (admin approves), `closed` (signup disabled). |
 | `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `1000000` | Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 1,000,000 ≈ $10/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.6-35b` | Falls back to the surface's cheapest model when absent from the catalogue. |
+| `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | — | Per-surface defaults for 보고서 and 발표 자료. Empty falls back to the chat default. |
+| `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `google/gemini-2.5-flash-image` | Default picture model. Gemini's image models take the aspect ratio as a parameter; the OpenAI ones return a square whatever is asked. Absent from the catalogue → cheapest image model. |
+| `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The 오디오/동영상 surface keeps one default per modality. Absent from the catalogue → cheapest model of that modality. |
 
 ### Auto cost routing
 
@@ -138,6 +141,7 @@ so it can be set in `.env` like the variables above.
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |
 | `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn. A fact-check that searches one claim per axis needs six or seven; past eight, a model is almost always in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. |
+| `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the usage screen's 지금 정리 button. `0` disables the sweep. Living accounts are never touched. |
 | `FILE_CONTEXT_CHARS` | `24000` | Characters of a file injected per turn before excerpting. |
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
@@ -231,6 +235,18 @@ restart. Secrets in this table are encrypted at rest with a key derived from
   Telling people to contact an administrator beats a reset link that never
   arrives. The only mail this system sends is a password reset the person asked
   for.
+
+### Signup
+
+- **Mode** — `open` / `approval` / `closed`, overriding `SIGNUP_MODE` when set.
+- **Allowed domains** — a comma-separated list of mail domains that may
+  register; empty allows any. Subdomains are not implied.
+- **Email verification** — when on, a new account is `pending` until the link
+  in the confirmation mail is clicked (24 hours, single use); then `open`
+  activates it and `approval` hands it to an administrator. Approving an
+  account counts as confirming its address. Needs SMTP: without a mail server
+  the switch is inert and signups go through unverified, and the screen says
+  so.
 
 ### Enabled surfaces
 

@@ -1,0 +1,59 @@
+kind = "image"
+name = "배너·썸네일"
+description = "행사 배너, 소셜 이미지, 영상 썸네일. 글자 넣을 여백을 정한 자리에 남깁니다"
+category = "홍보"
+fills = ["무엇을 알리는지", "상징 요소", "분위기", "여백 자리", "비율"]
+example_prompt = "{subject}을 알리는 이미지. {elements}를 조합하고, {mood} 분위기로. {space}은 글자 자리로 비워 줘. 비율은 {aspect}."
+layouts = ["cover"]
+prompt_suffix = "strong contrast, clear focal graphic, generous clean area reserved for a title, no text, no lettering, no logos"
+
+name_en = "Banner or thumbnail"
+description_en = "An event banner, social image or video thumbnail with room left for a title"
+category_en = "Promotion"
+fills_en = ["What it announces", "Symbols", "Mood", "Where to leave space", "Aspect"]
+example_prompt_en = "An image announcing {subject}, combining {elements}, {mood}. Leave the {space} clear for a title. Aspect {aspect}."
+
+[defaults]
+aspect = "16:9"
+style = "일러스트"
+
+[[arguments]]
+name = "subject"
+label = "무엇을"
+label_en = "Subject"
+default = "Cloud & AI Innovation Day 사내 행사"
+default_en = "an internal Cloud & AI Innovation Day"
+
+[[arguments]]
+name = "elements"
+label = "상징 요소"
+label_en = "Symbols"
+default = "클라우드, AI, 데이터, 보안"
+default_en = "cloud, AI, data, security"
+
+[[arguments]]
+name = "mood"
+label = "분위기"
+label_en = "Mood"
+default = "현대적인 기술 행사"
+default_en = "a modern tech event"
+options = ["현대적인 기술 행사", "친근하면서 전문적인", "강한 대비의 학습 영상", "밝고 신뢰감 있는 기업"]
+options_en = ["a modern tech event", "friendly yet professional", "a high-contrast study video", "a bright, trustworthy corporate look"]
+
+[[arguments]]
+name = "space"
+label = "여백 자리"
+label_en = "Where to leave space"
+default = "가운데"
+default_en = "centre"
+options = ["가운데", "오른쪽", "왼쪽", "위쪽"]
+options_en = ["centre", "right side", "left side", "top"]
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "16:9 (웹 배너·썸네일)"
+default_en = "16:9 (web banner, thumbnail)"
+options = ["16:9 (웹 배너·썸네일)", "1:1 (소셜 미디어)", "9:16 (스토리·세로 배너)"]
+options_en = ["16:9 (web banner, thumbnail)", "1:1 (social media)", "9:16 (story, portrait banner)"]

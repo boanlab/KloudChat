@@ -84,6 +84,11 @@ class ImageRequest(Wire):
     #: picture going *into* a slide must not be a picture *of* a slide. See
     #: `imagegen._FIGURE_CLAUSE`.
     figure: bool = False
+    #: How the words in the picture are handled: `auto`, `ko`, `en`, `none`.
+    labels: str = Field(default="auto", max_length=8)
+    #: Send the prompt as typed. Set when somebody has edited the planned
+    #: prompt and wants exactly that — the planner would rewrite it again.
+    raw: bool = False
 
 
 class FigureSuggestRequest(Wire):
@@ -95,11 +100,26 @@ class FigureSuggestRequest(Wire):
     about: str = Field(default="", max_length=300)
     #: What that place already says, so the picture does not repeat it.
     context: str = Field(default="", max_length=4000)
+    #: The document's look — `editorial`, `poster`, `minimal` — so the picture
+    #: comes out in the same register. Empty when the document has none.
+    visual_style: str = Field(default="", max_length=20)
 
 
 class FigureSuggestion(Wire):
     caption: str
     prompt: str
+    #: The image 서식 the suggestion chose for this place — `image-scene`,
+    #: `image-architecture`… Empty when none fits; the picker then draws a
+    #: plain picture from `prompt` as before.
+    template_id: str = ""
+    #: Set when the chosen 서식 is a figure drawn as mermaid (`flow`, `method`,
+    #: `concept`) rather than a picture: the client takes the diagram path.
+    figure: str = ""
+    #: What to draw, in Korean, for the diagram path. Empty for pictures.
+    description: str = ""
+    #: The style chip to draw with — the 서식's default, or 미니멀 for a
+    #: minimal document.
+    style: str = ""
 
 
 class DiagramRequest(Wire):
@@ -368,9 +388,9 @@ class CompareRequest(Wire):
     #: A 시작점 attached to this one comparison. See `SendMessage`.
     starting_template_id: str | None = Field(default=None, max_length=64)
     attachments: list[str] | None = None
-    privacy_action: Literal[
-        "route_strict_local", "mask_external", "send_raw_external"
-    ] | None = None
+    privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
+        None
+    )
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
 
 
@@ -456,7 +476,15 @@ class SendMessage(Wire):
     #: Folded into the request as conditions on it — never substituted for it,
     #: because the sentence they typed is the thing they asked for.
     answers: dict[str, str] | None = None
-    privacy_action: Literal[
-        "route_strict_local", "mask_external", "send_raw_external"
-    ] | None = None
+    privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
+        None
+    )
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
+
+
+class Transcription(Wire):
+    """What the microphone heard, and how long it listened."""
+
+    text: str
+    #: Seconds of audio the backend reported, or 0 when it did not say.
+    seconds: int = 0

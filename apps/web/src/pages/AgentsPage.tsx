@@ -38,6 +38,10 @@ const emptyAgent = (model: string): Agent => ({
   description: '',
   model,
   systemPrompt: '',
+  guide: '',
+  starters: [],
+  shareMode: 'open',
+  sealed: false,
   // New agents start with no tool or skill authority. The user can explicitly
   // inherit their tools, or choose names from the server's real registry.
   tools: [],
@@ -298,6 +302,12 @@ export function AgentsPage() {
                   {a.visibility === 'org' ? <Globe size={10} /> : <Lock size={10} />}
                   {a.visibility === 'org' ? t('공유됨') : t('개인')}
                 </Badge>
+                {(a.sealed || (a.shareMode === 'sealed' && a.visibility === 'org')) && (
+                  <Badge title={t('지침은 작성자만 봅니다. 가져가면 원본의 지침으로 동작합니다.')}>
+                    <Lock size={10} />
+                    {t('지침 비공개')}
+                  </Badge>
+                )}
                 {/* 모델을 고정하지 않은 에이전트가 정상이다 — 화면의 기본 모델을 따른다 */}
                 <Badge>{models.find((m) => m.id === a.model)?.label ?? t('화면 기본 모델')}</Badge>
                 <Badge>temp {a.temperature}</Badge>
@@ -569,6 +579,44 @@ export function AgentsPage() {
                   )
                 })}
               </div>
+              {/* 「가져가서 편집 가능하게 오픈할지, 가져갈 수는 있되 세부 내용을
+                  비공개로 할지」 — only once it is shared, and never on a copy
+                  that has no prompt of its own to withhold. */}
+              {draft.visibility === 'org' && !draft.sealed && (
+                <div className="mt-3 space-y-2">
+                  {(
+                    [
+                      {
+                        id: 'open',
+                        label: t('가져가서 편집할 수 있게'),
+                        note: t('복사본에 지침이 함께 가고, 가져간 사람이 마음대로 고칩니다.'),
+                      },
+                      {
+                        id: 'sealed',
+                        label: t('가져갈 수 있지만 지침은 비공개'),
+                        note: t('복사본은 내 원본의 지침으로 동작하되 지침을 보거나 고칠 수 없습니다. 내가 원본을 고치면 복사본도 따라옵니다.'),
+                      },
+                    ] as const
+                  ).map((o) => (
+                    <label
+                      key={o.id}
+                      className="flex cursor-pointer items-start gap-3 rounded-control border border-line px-3 py-2"
+                    >
+                      <input
+                        type="radio"
+                        name="share-mode"
+                        checked={draft.shareMode === o.id}
+                        onChange={() => setDraft({ ...draft, shareMode: o.id })}
+                        className="mt-1 size-4 accent-[var(--accent)]"
+                      />
+                      <span className="min-w-0">
+                        <span className="text-base">{o.label}</span>
+                        <span className="block text-sm text-muted">{o.note}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </Field>
 
             <Field label={t('사용할 화면')} hint={t('여기서 선택한 화면의 @ 버튼과 카드에만 나타납니다.')}>
@@ -600,10 +648,44 @@ export function AgentsPage() {
             </Field>
 
             <Field label={t('시스템 프롬프트')}>
+              {draft.sealed ? (
+                <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
+                  <Lock size={14} className="mt-0.5 shrink-0" />
+                  {t('작성자가 지침을 비공개로 공유한 에이전트입니다. 지침은 원본에서 읽어 오며, 여기서 보거나 고칠 수 없습니다. 이름·모델·스킬은 바꿀 수 있습니다.')}
+                </p>
+              ) : (
+                <Textarea
+                  rows={6}
+                  value={draft.systemPrompt}
+                  onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+                />
+              )}
+            </Field>
+
+            {/* What the empty screen says before the first message: how to
+                use it, and a few first sentences to press. */}
+            <Field
+              label={t('사용법')}
+              hint={t('대화를 열면 첫 화면에 보입니다. 무엇을 가져와야 하는지, 한 턴에 무슨 일이 일어나는지.')}
+            >
               <Textarea
-                rows={6}
-                value={draft.systemPrompt}
-                onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+                rows={3}
+                value={draft.guide}
+                onChange={(e) => setDraft({ ...draft, guide: e.target.value.slice(0, 2000) })}
+                placeholder={t('예: 논문 PDF 를 첨부하고 어느 학회 기준인지 알려 주세요. 리뷰어 관점에서 검토합니다.')}
+              />
+            </Field>
+            <Field
+              label={t('시작 문장')}
+              hint={t('한 줄에 하나, 여섯 개까지. 첫 화면에 버튼으로 보이고 누르면 그대로 보냅니다.')}
+            >
+              <Textarea
+                rows={4}
+                value={draft.starters.join('\n')}
+                onChange={(e) =>
+                  setDraft({ ...draft, starters: e.target.value.split('\n').slice(0, 6) })
+                }
+                placeholder={t('첨부한 논문을 리뷰어 관점에서 검토해 줘')}
               />
             </Field>
 

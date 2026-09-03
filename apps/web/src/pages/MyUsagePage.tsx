@@ -203,7 +203,10 @@ export function MyUsagePage() {
                     </span>
                     <span className="shrink-0 tabular-nums">
                       {m.credits.toLocaleString()}{' '}
-                      <span className="text-faint">· {t('{n}회').replace('{n}', String(m.requests))}</span>
+                      <span className="text-faint">
+                        · {t('{n}회').replace('{n}', String(m.requests))}
+                        {unitsLabel(m.units, m.unit, t) && ` · ${unitsLabel(m.units, m.unit, t)}`}
+                      </span>
                     </span>
                   </li>
                 ))}
@@ -235,4 +238,15 @@ export function MyUsagePage() {
       </PageBody>
     </>
   )
+}
+
+/**
+ * 공짜 모델이 한 일의 양. Whisper counts seconds, the embedding model counts
+ * chunks; a model that costs credits says nothing here — the credits already do.
+ */
+function unitsLabel(units: number | undefined, unit: string | undefined, t: (s: string) => string): string {
+  if (!units) return ''
+  if (unit === 'seconds') return t('{n}초 받아씀').replace('{n}', units.toLocaleString())
+  if (unit === 'chunks') return t('{n}청크 색인').replace('{n}', units.toLocaleString())
+  return ''
 }

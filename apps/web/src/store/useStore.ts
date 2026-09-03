@@ -4,6 +4,7 @@ import {
   errorCode,
   errorMessage,
 } from '@/lib/api'
+import { servedAspect } from '@/lib/aspects'
 import { refusalSentence, streamFailureSentence } from '@/lib/failures'
 import {
   ApiError,
@@ -36,6 +37,7 @@ import {
 import type {
   AgentRow,
   ApiKeyRow,
+  AuthSession,
   ArtifactRow,
   AuditRow,
   GovernancePolicy,
@@ -70,7 +72,6 @@ import type {
   Preferences,
   PrivacyAction,
   PrivacyRouting,
-  CodeArtifact,
   DeckArtifact,
   ReportArtifact,
   ReportSection,
@@ -89,6 +90,14 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
 /** The store is not a component and cannot use hooks, so only strings that
  *  reach the screen are translated here. */
 const tr = (text: string) => translate(currentLang(), text)
+
+/**
+ * What each question was sent with, by its bubble's id, for the length of
+ * the page. 다시 시도 sends the same turn: an approval stays an approval, a
+ * template stays a template, the files stay attached. Not persisted — after a
+ * reload the retry falls back to the sentence alone, as it always did.
+ */
+const sentWith = new Map<string, SendOptions>()
 
 type Theme = 'light' | 'dark' | 'system'
 export type SidebarMode = 'full' | 'rail' | 'hidden'
@@ -255,6 +264,66 @@ async function waitForSessionPersistence(sessionId: string): Promise<void> {
   }
 }
 
+export type SendOptions = {
+  projectId?: string | null
+  /** The composer's toggle — the user asking for the web to be consulted. */
+  webSearch?: boolean
+  /** Ids of already-uploaded files; the server reads their extracted text. */
+  attachments?: string[]
+  /** Their names, so the optimistic bubble does not show raw ids. */
+  attachmentNames?: string[]
+  /** Installed skills selected for this turn only. */
+  activatedSkillIds?: string[]
+  /**
+   * A rendering template picked in the gallery. Sent with the turn rather
+   * than saved first: the session may not exist yet when it is chosen, and
+   * the server makes it sticky from there.
+   */
+  renderTemplateId?: string
+  /**
+   * A 시작점 the turn carries. The id is what goes on the wire; the title
+   * rides along so the bubble can name it before the server's copy of the
+   * turn comes back.
+   */
+  startingTemplate?: StartingPoint
+  privacyAction?: PrivacyAction
+  privacyDecisionToken?: string
+  /**
+   * Write the outline waiting on this session rather than planning another.
+   *
+   * What 이대로 생성 sends. Everything else — an answer, a note, a plain
+   * sentence — plans again, so what finally gets written is always
+   * something somebody looked at first.
+   */
+  approve?: boolean
+  /** The figure card's answer. Absent means it was not asked. */
+  includeFigures?: boolean
+  /** The outline as edited on the proposal card, when it was. */
+  plan?: Record<string, unknown>
+  /** Answers to a stopped turn's questions, keyed by question id. */
+  answers?: Record<string, string>
+  /**
+   * The failed question to run again in place, by its message id — what
+   * 다시 시도 sends. The bubble is not repeated and whatever failed under
+   * it is replaced; a plain send appends. Chat turns only: the document
+   * surfaces have their own retry paths.
+   */
+  retryOf?: string
+  /**
+   * Run this one turn on a named model, whatever the conversation is set
+   * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
+   * the session carries is the moment somebody wants to try another one,
+   * and making them change the picker first — then change it back — is
+   * three steps for one question.
+   */
+  model?: string
+        /**
+         * Called as soon as a session id exists. Waiting for the stream to
+         * finish would lose the conversation on a refresh mid-answer.
+         */
+  onSession?: (id: string) => void
+}
+
 interface State {
   // ── auth (KloudChat's own, not LiteLLM's) — live against /api/auth ─────────
   user: User | null
@@ -273,9 +342,12 @@ interface State {
   signedOutReason: 'idle' | null
   /** Minutes of inactivity this instance allows. 0 is off. */
   idleTimeoutMinutes: number
+  /** Whether a speech-to-text backend is configured. */
+  dictationEnabled: boolean
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
+  adoptSession: (session: AuthSession) => void
   logout: (reason?: 'idle') => Promise<void>
   /** Re-reads the caller's own row. The approval-waiting screen polls this. */
   refreshMe: () => Promise<void>
@@ -357,6 +429,13 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
+  /**
+   * 오디오/동영상 is one surface with two kinds of model in it, and one
+   * remembered model cannot serve both: the cheapest `av` model is a speech
+   * model, so 영상 kept opening on a model that makes no clips. One remembered
+   * model per mode; `modelByKind.av` is whichever the current mode is using.
+   */
+  avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model. The surface default is left alone. */
   setSessionModel: (sessionId: string, modelId: string) => Promise<void>
   /** Auto is stored as a session mode, never as a synthetic model id. */
@@ -377,65 +456,7 @@ interface State {
     sessionId: string | null,
     kind: SessionKind,
     text: string,
-    opts?: {
-      projectId?: string | null
-      /** The composer's toggle — the user asking for the web to be consulted. */
-      webSearch?: boolean
-      /** Ids of already-uploaded files; the server reads their extracted text. */
-      attachments?: string[]
-      /** Their names, so the optimistic bubble does not show raw ids. */
-      attachmentNames?: string[]
-      /** Installed skills selected for this turn only. */
-      activatedSkillIds?: string[]
-      /**
-       * A rendering template picked in the gallery. Sent with the turn rather
-       * than saved first: the session may not exist yet when it is chosen, and
-       * the server makes it sticky from there.
-       */
-      renderTemplateId?: string
-      /**
-       * A 시작점 the turn carries. The id is what goes on the wire; the title
-       * rides along so the bubble can name it before the server's copy of the
-       * turn comes back.
-       */
-      startingTemplate?: StartingPoint
-      privacyAction?: PrivacyAction
-      privacyDecisionToken?: string
-      /**
-       * Write the outline waiting on this session rather than planning another.
-       *
-       * What 이대로 생성 sends. Everything else — an answer, a note, a plain
-       * sentence — plans again, so what finally gets written is always
-       * something somebody looked at first.
-       */
-      approve?: boolean
-      /** The figure card's answer. Absent means it was not asked. */
-      includeFigures?: boolean
-      /** The outline as edited on the proposal card, when it was. */
-      plan?: Record<string, unknown>
-      /** Answers to a stopped turn's questions, keyed by question id. */
-      answers?: Record<string, string>
-      /**
-       * The failed question to run again in place, by its message id — what
-       * 다시 시도 sends. The bubble is not repeated and whatever failed under
-       * it is replaced; a plain send appends. Chat turns only: the document
-       * surfaces have their own retry paths.
-       */
-      retryOf?: string
-      /**
-       * Run this one turn on a named model, whatever the conversation is set
-       * to. What 다른 모델로 다시 생성 sends: a turn that failed on the model
-       * the session carries is the moment somebody wants to try another one,
-       * and making them change the picker first — then change it back — is
-       * three steps for one question.
-       */
-      model?: string
-            /**
-             * Called as soon as a session id exists. Waiting for the stream to
-             * finish would lose the conversation on a refresh mid-answer.
-             */
-      onSession?: (id: string) => void
-    },
+    opts?: SendOptions,
   ) => Promise<string>
   stopStreaming: (sessionId: string) => void
   renameSession: (id: string, title: string) => Promise<void>
@@ -485,7 +506,12 @@ interface State {
   generateImages: (
     sessionId: string | null,
     prompt: string,
-    opts?: { projectId?: string | null; onSession?: (id: string) => void },
+    opts?: {
+      projectId?: string | null
+      onSession?: (id: string) => void
+      /** Send the prompt as it stands — an edited planned prompt. */
+      raw?: boolean
+    },
   ) => Promise<void>
   togglePinSession: (id: string) => Promise<void>
   rateMessage: (
@@ -530,7 +556,7 @@ interface State {
      */
   optionTemplate: DesignTemplateRow | null
   setOptionTemplate: (template: DesignTemplateRow | null) => void
-  imageOptions: { aspect: string; style: string; count: number }
+  imageOptions: { aspect: string; style: string; labels: 'auto' | 'ko' | 'en' | 'none'; count: number }
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** `mode` picks which artifact the av surface produces; the rest is per-mode. */
   /** Text to drop into the composer. A template fills it in; it is never sent
@@ -711,7 +737,7 @@ interface State {
   suspendUser: (id: string) => Promise<void>
   reinstateUser: (id: string) => Promise<void>
   rotateLitellmKey: (id: string) => Promise<void>
-  removeUser: (id: string) => Promise<void>
+  removeUser: (id: string, purgeFiles?: boolean) => Promise<void>
   /** Restricts an account to a set of models. Empty means the whole catalogue. */
   setUserModels: (id: string, models: string[]) => Promise<void>
   setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
@@ -759,6 +785,51 @@ function readRememberedModels(): Partial<Record<SessionKind, string>> | null {
   } catch {
     return null
   }
+}
+
+type AvMode = 'audio' | 'video'
+const AV_MODEL_STORAGE_KEY = 'kchat-av-models'
+
+/** The person's own pick per 오디오/동영상 mode, straight from storage. */
+function readRememberedAvModels(): Partial<Record<AvMode, string>> {
+  try {
+    const raw = localStorage.getItem(AV_MODEL_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<Record<AvMode, string>>) : {}
+  } catch {
+    return {}
+  }
+}
+
+const initialAvModelByMode: Record<AvMode, string> = {
+  audio: '',
+  video: '',
+  ...readRememberedAvModels(),
+}
+
+/**
+ * The model each av mode should use: the person's own pick if the catalogue
+ * still serves it, then the install's default for that modality, then the
+ * cheapest model of that modality. Picks are never overwritten here — as with
+ * `reconcileDefaults`, a gap in the catalogue is not a decision.
+ */
+function reconcileAvModels(
+  available: ModelInfo[],
+  byMode: Partial<Record<AvMode, string>> = {},
+): Record<AvMode, string> {
+  const remembered = readRememberedAvModels()
+  const next = { audio: '', video: '' }
+  for (const mode of ['audio', 'video'] as const) {
+    const usable = available
+      .filter((m) => m.kinds.includes('av') && m.modality === mode)
+      .sort((a, b) => a.creditCost - b.creditCost)
+    const kept = remembered[mode]
+    next[mode] =
+      (kept && usable.some((m) => m.id === kept) ? kept : '') ||
+      usable.find((m) => m.id === byMode[mode])?.id ||
+      usable[0]?.id ||
+      ''
+  }
+  return next
 }
 
 /** Remembered model choice per surface. Only ever holds ids picked from the
@@ -977,6 +1048,23 @@ export function effectiveModelId(
   return agent?.model || modelByKind[kind]
 }
 
+/**
+ * The model a media turn is sent with.
+ *
+ * Inside a conversation the picker writes its choice to the conversation, not
+ * to the surface default — so a turn that sent `modelByKind` sent the default,
+ * and the server, told a model explicitly, believed it over the one the
+ * conversation was carrying. Somebody picked Gemini and the caption said GPT.
+ */
+function pickedModel(
+  s: Pick<State, 'sessions' | 'agents' | 'modelByKind'>,
+  sessionId: string,
+  kind: SessionKind,
+): string | undefined {
+  const session = s.sessions.find((c) => c.id === sessionId)
+  return effectiveModelId(session, kind, s.agents, s.modelByKind) || undefined
+}
+
 function reconcileCompareModels(current: string[], available: ModelInfo[]): string[] {
   const chatIds = available.filter((model) => model.kinds.includes('chat')).map((model) => model.id)
   const valid = current.filter((id, index) => chatIds.includes(id) && current.indexOf(id) === index)
@@ -997,6 +1085,7 @@ export const useStore = create<State>((set, get) => ({
   authError: null,
   signedOutReason: null,
   idleTimeoutMinutes: 0,
+  dictationEnabled: false,
 
   /** Adopts a fresh session and arms the next silent refresh. */
   bootstrap: async () => {
@@ -1016,6 +1105,7 @@ export const useStore = create<State>((set, get) => ({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
+              dictationEnabled: Boolean(c.dictationEnabled),
             })
             // Armed here rather than at login: a reload re-enters through
             // bootstrap, and a tab left open across one is the case the policy
@@ -1061,6 +1151,17 @@ export const useStore = create<State>((set, get) => ({
       set({ authError: err instanceof ApiError ? err.detail : 'network_error' })
       throw err
     }
+  },
+
+  /**
+   * A session handed over by a mailed link — the signup verification that
+   * activates an `open`-mode account. The same landing as an `open` signup.
+   */
+  adoptSession: (session) => {
+    setAccessToken(session.accessToken)
+    set({ authenticated: true, user: session.user, authLoading: false, authError: null })
+    scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+    void get().loadModels()
   },
 
   /** New accounts land in `pending` and cannot use the app until an admin approves. */
@@ -1322,10 +1423,17 @@ export const useStore = create<State>((set, get) => ({
   loadModels: async () => {
     set({ modelsLoading: true })
     try {
-      const { models: live, litellmAvailable, defaultChatModel, defaultModelByKind, autoRouting } =
-        await modelsApi.list()
+      const {
+        models: live,
+        litellmAvailable,
+        defaultChatModel,
+        defaultModelByKind,
+        defaultAvModelByMode,
+        autoRouting,
+      } = await modelsApi.list()
       set((s) => ({
         models: live,
+        avModelByMode: reconcileAvModels(live, defaultAvModelByMode),
         litellmAvailable,
         autoRouting: autoRouting ?? {
           enabled: false,
@@ -1368,13 +1476,24 @@ export const useStore = create<State>((set, get) => ({
   activeSessionId: null,
   running: {},
   modelByKind: initialModelByKind,
+  avModelByMode: initialAvModelByMode,
   setModel: (kind, id) =>
     set((s) => {
       const next = { ...s.modelByKind, [kind]: id }
       // Remembered per surface; `reconcileDefaults` drops anything the
       // catalogue has stopped serving.
       localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(next))
-      return { modelByKind: next }
+      if (kind !== 'av') return { modelByKind: next }
+      // An av pick is also the pick for its own mode, so turning 종류 back to
+      // it later finds the model chosen for it rather than the cheapest one.
+      const modality = s.models.find((m) => m.id === id)?.modality
+      if (modality !== 'audio' && modality !== 'video') return { modelByKind: next }
+      const byMode = { ...s.avModelByMode, [modality]: id }
+      localStorage.setItem(
+        AV_MODEL_STORAGE_KEY,
+        JSON.stringify({ ...readRememberedAvModels(), [modality]: id }),
+      )
+      return { modelByKind: next, avModelByMode: byMode }
     }),
   setSessionModel: async (sessionId, modelId) => {
     const previous = get().sessions.find((session) => session.id === sessionId)
@@ -1576,6 +1695,12 @@ export const useStore = create<State>((set, get) => ({
    * audio/video take the job path.
    */
   send: async (sessionId, kind, text, opts = {}) => {
+    // 다시 시도 is the same turn again, not the same sentence again. On a
+    // document surface the sentence is 「이대로 생성해 주세요」 and the turn is
+    // the approval it carried — sent bare, the server read it as a note on the
+    // outline and planned once more instead of writing what had failed.
+    const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
+    if (again) opts = { ...again, ...opts }
     const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
     await waitForSessionPersistence(id)
     // A chat can be refused before it becomes a turn. Keep the originating
@@ -1625,9 +1750,21 @@ export const useStore = create<State>((set, get) => ({
     // everything else appends. Falls back to appending if the row is not on
     // screen, so a stale id never loses a sentence.
     const retryOf =
-      kind === 'chat' && opts.retryOf && before?.messages.some((m) => m.id === opts.retryOf)
+      opts.retryOf && before?.messages.some((m) => m.id === opts.retryOf)
         ? opts.retryOf
         : undefined
+    sentWith.set(retryOf ?? userMsg.id, {
+      webSearch: opts.webSearch,
+      attachments: opts.attachments,
+      attachmentNames: opts.attachmentNames,
+      activatedSkillIds: opts.activatedSkillIds,
+      renderTemplateId: opts.renderTemplateId,
+      startingTemplate: opts.startingTemplate,
+      approve: opts.approve,
+      includeFigures: opts.includeFigures,
+      plan: opts.plan,
+      answers: opts.answers,
+    })
     const rerun = (messages: Message[]): Message[] => {
       const at = messages.findIndex((m) => m.id === retryOf)
       return [
@@ -1659,35 +1796,9 @@ export const useStore = create<State>((set, get) => ({
     }))
 
     const perform = async () => {
-      // A rendering template replaces the surface's built-in track, exactly as
-      // it does on the server — the events are `block`/`page`, not
-      // `section`/`slide`, so the runner has to match.
-      const usesTemplate = Boolean(
-        opts.renderTemplateId ??
-          get().sessions.find((session) => session.id === id)?.renderTemplateId,
-      )
-      if (usesTemplate && (kind === 'report' || kind === 'slides')) {
-        await streamPage(
-          set,
-          get,
-          id,
-          text,
-          model,
-          opts.activatedSkillIds,
-          opts.renderTemplateId,
-          opts.startingTemplate?.id,
-          {
-            approve: opts.approve,
-            answers: opts.answers,
-            webSearch: opts.webSearch,
-            includeFigures: opts.includeFigures,
-            attachments: opts.attachments,
-            plan: opts.plan,
-          },
-        )
-        return id
-      }
-
+      // A 서식 used to replace the surface's built-in track — `block`/`page`
+      // events, an `html` file at the end. It is a look now: the report and
+      // deck writers take the template id along and the artifact wears it.
       if (kind === 'report') {
         await streamReport(
           set,
@@ -1704,6 +1815,7 @@ export const useStore = create<State>((set, get) => ({
             includeFigures: opts.includeFigures,
             attachments: opts.attachments,
             plan: opts.plan,
+            renderTemplateId: opts.renderTemplateId,
           },
         )
         return id
@@ -1725,6 +1837,7 @@ export const useStore = create<State>((set, get) => ({
             includeFigures: opts.includeFigures,
             attachments: opts.attachments,
             plan: opts.plan,
+            renderTemplateId: opts.renderTemplateId,
           },
         )
         return id
@@ -1864,7 +1977,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   generateVideo: async (sessionId, prompt, opts = {}) => {
-    const { avOptions, modelByKind } = get()
+    const { avOptions } = get()
     let id = sessionId
     /**
      * Opening the session can be refused — surface switched off, or no credit.
@@ -1891,7 +2004,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       const job = await jobsApi.create(id, {
         prompt,
-        model: modelByKind.av || undefined,
+        model: pickedModel(get(), id, 'av'),
         resolution: avOptions.resolution,
         seconds: avOptions.durationSec,
         audio: avOptions.withAudio,
@@ -1914,7 +2027,7 @@ export const useStore = create<State>((set, get) => ({
             creditsEstimated: 0,
             // Carried so the card's retry action has the request to rebuild.
             prompt,
-            model: modelByKind.av || '',
+            model: pickedModel(get(), id, 'av') ?? '',
             params: {
               resolution: avOptions.resolution,
               seconds: avOptions.durationSec,
@@ -1964,7 +2077,7 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   generateAudio: async (sessionId, prompt, opts = {}) => {
-    const { avOptions, modelByKind } = get()
+    const { avOptions } = get()
     let id = sessionId
     if (!id) {
       id = await get().newSession('av', { projectId: opts.projectId ?? null })
@@ -1978,7 +2091,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       const row = await sessionsApi.audio(id, {
         prompt,
-        model: modelByKind.av || undefined,
+        model: pickedModel(get(), id, 'av'),
         // Speech or music: there is no third kind.
         audioKind: avOptions.audioKind === 'music' ? 'music' : 'narration',
         // Both were chips on screen that never left the browser: every
@@ -2059,13 +2172,21 @@ export const useStore = create<State>((set, get) => ({
         }
         return
       }
+      const imageModel = pickedModel(get(), id, 'image')
       const rows = await sessionsApi.images(id, {
         prompt,
-        model: modelByKind.image || undefined,
-        aspect: imageOptions.aspect,
-        style: imageOptions.style,
+        model: imageModel,
+        // The ratio the model can draw, not the one the chip remembers: the
+        // chip beside a squares-only model shows 1:1, and the request says so.
+        aspect: servedAspect(
+          imageOptions.aspect,
+          get().models.find((m) => m.id === imageModel),
+        ),
+        style: opts.raw ? '없음' : imageOptions.style,
+        labels: imageOptions.labels,
         count: imageOptions.count,
         templateId,
+        raw: opts.raw,
       })
       set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
       // One prompt, one answer, however many pictures came back: four of them
@@ -2203,7 +2324,7 @@ export const useStore = create<State>((set, get) => ({
 
   optionTemplate: null,
   setOptionTemplate: (optionTemplate) => set({ optionTemplate }),
-  imageOptions: { aspect: '1:1', style: '미니멀', count: 1 },
+  imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
   //: Every write but the template's own comes from a person turning a chip, so
   //: a write is where the 서식 stops being the author of these values.
   setImageOptions: (patch) =>
@@ -2252,11 +2373,14 @@ export const useStore = create<State>((set, get) => ({
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
       const current = s.models.find((m) => m.id === s.modelByKind.av)
       if (current?.modality === wanted) return next
+      // The model remembered for this mode first — the person's own pick, or
+      // the install's default for it — and the cheapest only when neither is.
       const usable = s.models
         .filter((m) => m.kinds.includes('av') && m.modality === wanted)
         .sort((a, b) => a.creditCost - b.creditCost)
-      if (!usable.length) return next
-      return { ...next, modelByKind: { ...s.modelByKind, av: usable[0].id } }
+      const chosen = usable.find((m) => m.id === s.avModelByMode[wanted]) ?? usable[0]
+      if (!chosen) return next
+      return { ...next, modelByKind: { ...s.modelByKind, av: chosen.id } }
     }),
   cancelJob: async (id) => {
     const before = get().jobs.find((j) => j.id === id)
@@ -2717,6 +2841,9 @@ export const useStore = create<State>((set, get) => ({
       tools: a.tools,
       skillIds: a.skillIds,
       kinds: a.kinds,
+      guide: a.guide,
+      starters: a.starters.map((x) => x.trim()).filter(Boolean),
+      shareMode: a.shareMode,
       temperature: a.temperature,
       color: a.color,
       enabled: a.enabled,
@@ -2757,8 +2884,8 @@ export const useStore = create<State>((set, get) => ({
   reinstateUser: (id) => applyUserChange(set, adminApi.reinstate(id)),
   rotateLitellmKey: (id) => applyUserChange(set, adminApi.rotateLitellmKey(id)),
   setUserModels: (id, models) => applyUserChange(set, adminApi.setUserModels(id, models)),
-  removeUser: async (id) => {
-    await adminApi.removeUser(id)
+  removeUser: async (id, purgeFiles = true) => {
+    await adminApi.removeUser(id, purgeFiles)
     set((s) => ({ users: s.users.filter((u) => u.id !== id) }))
   },
   setUserCredits: (id, monthlyCredits) =>
@@ -2936,6 +3063,7 @@ function toStep(raw: Record<string, unknown>): Step {
     files: raw.files as Step['files'],
     memoriesWritten: raw.memoriesWritten as number | undefined,
     totalMemories: raw.totalMemories as number | undefined,
+    personal: raw.personal as string[] | undefined,
     estimatedTokens: raw.estimatedTokens as number | undefined,
   }
   // The server writes these lines in Korean because it also stores them on the
@@ -2957,6 +3085,12 @@ function named(names: string[], more: '외 {n}건' | '외 {n}개'): string {
 }
 
 function retold(step: Step): Partial<Step> {
+  if (step.personal) {
+    return {
+      label: tr('개인 맞춤 설정 적용'),
+      detail: step.personal.map((part) => tr(part)).join(' · '),
+    }
+  }
   if (step.memoriesWritten !== undefined) {
     return {
       label: tr('메모리 {n}건 저장').replace('{n}', String(step.memoriesWritten)),
@@ -3273,6 +3407,10 @@ function toAgent(a: AgentRow): Agent {
     tools: a.tools,
     skillIds: a.skillIds,
     kinds: a.kinds as SessionKind[],
+    guide: a.guide ?? '',
+    starters: a.starters ?? [],
+    shareMode: a.shareMode ?? 'open',
+    sealed: a.sealed ?? false,
     temperature: a.temperature,
     color: a.color,
     enabled: a.enabled,
@@ -3461,6 +3599,12 @@ async function streamTurn(
         case 'delta':
           if (live) patch((m) => ({ ...m, content: m.content + event.text }))
           else buffered += event.text
+          break
+        case 'retract':
+          // 도구를 부르며 한 말이 답에서 빠진다 — the server has already
+          // dropped it from what it stores; the bubble follows.
+          if (live) patch((m) => ({ ...m, content: m.content.replace(event.text, '') }))
+          else buffered = buffered.replace(event.text, '')
           break
         case 'skills_applied':
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
@@ -3702,6 +3846,12 @@ async function runComparison(
           ?.messages.find((m) => m.id === assistantId)
           ?.variants?.find((v) => v.model === e.model)
         patch(e.model, { content: (current?.content ?? '') + e.text })
+      } else if (e.type === 'variant_retract') {
+        const current = get()
+          .sessions.find((c) => c.id === sessionId)
+          ?.messages.find((m) => m.id === assistantId)
+          ?.variants?.find((v) => v.model === e.model)
+        patch(e.model, { content: (current?.content ?? '').replace(e.text, '') })
       } else if (e.type === 'variant_done') {
         patch(e.model, {
           routedModel: e.routedModel ?? e.model,
@@ -3823,6 +3973,11 @@ async function streamReport(
      * an attachment has to be handed that attachment both times.
      */
     attachments?: string[]
+    /**
+     * The 서식 the turn is sent under, when the composer picked one with it.
+     * Sticky on the session server-side, so a later turn may leave it out.
+     */
+    renderTemplateId?: string
   } = {},
 ) {
   const draftId = uid('a')
@@ -3886,6 +4041,7 @@ async function streamReport(
         model,
         activatedSkillIds,
         startingTemplateId,
+        renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
         webSearch: gate.webSearch,
@@ -4020,235 +4176,6 @@ async function streamReport(
 }
 
 /**
- * A turn that writes into a rendering template.
- *
- * The draft is an `html` artifact from the first event, so the panel shows the
- * template's own shape filling in rather than a blank frame — the blocks
- * arrive one at a time and are stitched into a preview until the server sends
- * the real file.
- */
-async function streamPage(
-  set: Set,
-  get: Get,
-  sessionId: string,
-  text: string,
-  model: string,
-  activatedSkillIds?: string[],
-  renderTemplateId?: string,
-  startingTemplateId?: string,
-  /**
-   * The approval, when this run is the second half of one.
-   *
-   * `approve` is what turns a proposal into a document, and it is also what
-   * decides whether to put a draft artifact on screen at all: a planning pass
-   * writes nothing, so an empty panel opening over the deck already there
-   * would say the opposite of what is happening.
-   */
-  gate: {
-    approve?: boolean
-    answers?: Record<string, string>
-    /**
-     * Whether the writer may research before it writes. Carried here rather
-     * than as its own argument because it travels with the same turn the
-     * approval does — a second pass that writes an approved outline researches
-     * on the same terms the pass that proposed it did.
-     */
-    webSearch?: boolean
-    /** The figure card's answer, carried with the approval it belongs to. */
-    includeFigures?: boolean
-    /**
-     * The outline as the person edited it on the card, when they did. Sent
-     * with the approval rather than saved first — the edit and the decision
-     * to write are one gesture.
-     */
-    plan?: Record<string, unknown>
-    /**
-     * The files this turn was sent with. Carried like the answers are: the
-     * planning pass and the approved writing pass are two requests, and the
-     * server assembles the context fresh for each — a document written from
-     * an attachment has to be handed that attachment both times.
-     */
-    attachments?: string[]
-  } = {},
-) {
-  const draftId = uid('a')
-  const assistantId = uid('m')
-  const now = new Date().toISOString()
-
-  const draft: Artifact = {
-    id: draftId,
-    kind: 'html',
-    title: text.slice(0, 60),
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    sessionId,
-    projectId: get().sessions.find((s) => s.id === sessionId)?.projectId ?? null,
-    language: 'html',
-    content: '',
-  }
-
-  // A planning pass produces no document, so it must not open one. Before
-  // this, every request put an empty panel over whatever was already there —
-  // which is the picture somebody sees a second before their deck is replaced.
-  const willWrite = gate.approve === true
-  set((s) => ({
-    running: { ...s.running, [sessionId]: noop },
-    ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
-    sessions: s.sessions.map((c) =>
-      c.id === sessionId
-        ? {
-            ...c,
-            ...(willWrite ? { artifactId: draftId } : {}),
-            messages: [
-              ...c.messages,
-              { id: assistantId, role: 'assistant' as const, content: '', createdAt: now },
-            ],
-          }
-        : c,
-    ),
-  }))
-
-  const patchPage = (fn: (a: CodeArtifact) => CodeArtifact) =>
-    set((s) => ({
-      artifacts: s.artifacts.map((a) => (a.id === draftId && a.kind === 'html' ? fn(a) : a)),
-    }))
-
-  // What has been written so far, in order. Kept beside the artifact rather
-  // than parsed back out of its markup: the finished file is the server's, and
-  // this is only the scaffold that stands until it arrives.
-  const written = new Map<string, string>()
-  const order: string[] = []
-
-  const controller = new AbortController()
-  beginRun(set, sessionId, () => controller.abort())
-  let settled = false
-
-  try {
-    for await (const e of streamSession(
-      sessionId,
-      {
-        content: text,
-        model,
-        activatedSkillIds,
-        renderTemplateId,
-        startingTemplateId,
-        approve: gate.approve,
-        answers: gate.answers,
-        webSearch: gate.webSearch,
-        includeFigures: gate.includeFigures,
-        attachments: gate.attachments,
-        plan: gate.plan,
-      },
-      controller.signal,
-    )) {
-      switch (e.type) {
-        // The turn stopped on purpose: it planned, or it asked. Neither wrote
-        // anything, so the session keeps whatever document it already had and
-        // simply carries the offer until somebody answers it.
-        case 'proposal':
-          settled = true
-          setPending(set, sessionId, (p) => ({
-            stage: 'outline',
-            request: text,
-            attachments: gate.attachments ?? p?.attachments ?? [],
-            answers: p?.answers ?? {},
-            plan: e.plan,
-          }))
-          break
-        case 'needs':
-          settled = true
-          setPending(set, sessionId, (p) => ({
-            stage: 'clarify',
-            request: text,
-            attachments: gate.attachments ?? p?.attachments ?? [],
-            answers: p?.answers ?? {},
-            questions: e.questions,
-          }))
-          break
-        case 'skills_applied':
-          patchMessage(set, sessionId, assistantId, (message) => ({
-            ...message,
-            steps: upsertStep(message.steps, appliedSkillsStep(e)),
-          }))
-          break
-        case 'title':
-          patchPage((a) => ({ ...a, title: e.title }))
-          break
-        case 'block': {
-          if (!order.includes(e.block.title)) order.push(e.block.title)
-          written.set(e.block.title, e.block.html)
-          // A plain scaffold, not the template's CSS: pretending to be the
-          // finished design while the blocks are still arriving would make the
-          // real file look like a change of mind when it lands.
-          const body = order
-            .map((title) => {
-              const html = written.get(title) ?? ''
-              return `<section><h2>${escapeHtml(title)}</h2>${html || '<p class="pending">…</p>'}</section>`
-            })
-            .join('\n')
-          patchPage((a) => ({ ...a, content: draftDocument(body) }))
-          break
-        }
-        case 'page':
-          patchPage((a) => ({ ...a, content: e.html }))
-          break
-        case 'step':
-          patchMessage(set, sessionId, assistantId, (m) => ({
-            ...m,
-            steps: upsertStep(m.steps, toStep(e as unknown as Record<string, unknown>)),
-          }))
-          break
-        case 'usage':
-          settled = true
-          chargeCredits(set, get, e.credits)
-          break
-        case 'error':
-          settled = true
-          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.message }))
-          break
-        case 'artifact':
-          // The document itself, not the listing's card of it: the panel is
-          // about to open on this and its controls are the blocks.
-          await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
-          set((s) => ({
-            artifacts: s.artifacts.filter((a) => a.id !== draftId),
-            openArtifactId: e.artifactId,
-            sessions: s.sessions.map((c) =>
-              c.id === sessionId ? { ...c, artifactId: e.artifactId } : c,
-            ),
-          }))
-          break
-      }
-    }
-  } catch (err) {
-    settled = true
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
-      patchMessage(set, sessionId, assistantId, (m) => ({
-        ...m,
-        error: errorMessage(err, tr('문서를 만들지 못했습니다.')),
-      }))
-    }
-    if (isClientRefusal(err)) throw err
-  } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
-    endRun(set, sessionId)
-    void get().loadSessions()
-  }
-}
-
-const escapeHtml = (text: string) =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-/** The holding page a template turn shows while its blocks are still arriving. */
-const draftDocument = (body: string) =>
-  `<!doctype html><html lang="ko"><head><meta charset="utf-8" />` +
-  `<style>body{margin:0;padding:2rem 2.4rem;font-family:system-ui,sans-serif;` +
-  `line-height:1.6;color:#1a1a1a}section{margin:0 0 1.6rem}` +
-  `h2{font-size:1.1rem;margin:0 0 .4rem}.pending{color:#9aa0a6}</style>` +
-  `</head><body>${body}</body></html>`
-
-/**
  * A slides turn. Slides fill into a local draft, which is replaced by the
  * server's copy when the turn ends.
  */
@@ -4293,6 +4220,11 @@ async function streamDeck(
      * an attachment has to be handed that attachment both times.
      */
     attachments?: string[]
+    /**
+     * The 서식 the turn is sent under, when the composer picked one with it.
+     * Sticky on the session server-side, so a later turn may leave it out.
+     */
+    renderTemplateId?: string
   } = {},
 ) {
   const draftId = uid('a')
@@ -4354,6 +4286,7 @@ async function streamDeck(
         model,
         activatedSkillIds,
         startingTemplateId,
+        renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
         webSearch: gate.webSearch,
@@ -4658,7 +4591,7 @@ function chargeCredits(set: Set, _get: Get, credits: number) {
  * figure comes out in the product's face and accent rather than mermaid's
  * defaults. The PNG is 2× for print; the source travels with it.
  */
-async function drawFigure(
+export async function drawFigure(
   sessionId: string,
   description: string,
   figure: string,

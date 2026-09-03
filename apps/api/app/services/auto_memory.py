@@ -150,11 +150,7 @@ async def extract(
             base_url=base.rstrip("/"),
             headers={
                 "Authorization": f"Bearer {api_key}",
-                **(
-                    {"x-litellm-enable-message-redaction": "true"}
-                    if sensitive
-                    else {}
-                ),
+                **({"x-litellm-enable-message-redaction": "true"} if sensitive else {}),
             },
             timeout=settings.title_timeout_sec,
         ) as client:
@@ -165,11 +161,7 @@ async def extract(
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0,
                     "max_tokens": 300,
-                    **(
-                        {"disable_fallbacks": True}
-                        if strict_local or disable_fallbacks
-                        else {}
-                    ),
+                    **({"disable_fallbacks": True} if strict_local or disable_fallbacks else {}),
                 },
             )
             response.raise_for_status()

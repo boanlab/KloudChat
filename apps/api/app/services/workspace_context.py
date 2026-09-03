@@ -25,9 +25,12 @@ from app.models.workspace import (
     Memory,
     Project,
     Skill,
+    SkillSource,
     StoredFile,
     Template,
+    Visibility,
 )
+from app.schemas.auth import Preferences
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import knowledge as knowledge_service
@@ -191,9 +194,7 @@ def _agent_allowed(agent: Agent, user: User) -> bool:
     return agent.owner_id == user.id or agent.visibility == AgentVisibility.org
 
 
-async def _load_agent(
-    db: AsyncSession, user: User, session: ChatSession
-) -> Agent | None:
+async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Agent | None:
     if not session.agent_id:
         return None
     agent = await db.get(Agent, session.agent_id)
@@ -203,7 +204,23 @@ async def _load_agent(
         raise WorkspaceContextError("agent_disabled")
     if agent.kinds and session.kind.value not in agent.kinds:
         raise WorkspaceContextError("agent_kind_mismatch")
+    if agent.sealed and agent.origin_id:
+        # A sealed copy holds no prompt. The original's is used as it stands
+        # today — the sharer's, still shared, never written into this row.
+        origin = await db.get(Agent, agent.origin_id)
+        if origin is not None and origin.visibility is Visibility.org:
+            agent = _with_prompt(agent, origin.system_prompt)
+        else:
+            raise WorkspaceContextError("agent_origin_gone")
     return agent
+
+
+def _with_prompt(agent: Agent, prompt: str) -> Agent:
+    """A detached look-alike carrying the original's prompt. Not the row —
+    nothing here is meant to be saved."""
+    shadow = Agent.model_validate(agent, from_attributes=True)
+    shadow.system_prompt = prompt
+    return shadow
 
 
 async def _load_design_system(
@@ -223,15 +240,38 @@ async def _load_design_system(
     return row
 
 
-async def _load_project(
-    db: AsyncSession, user: User, session: ChatSession
-) -> Project | None:
+async def _load_project(db: AsyncSession, user: User, session: ChatSession) -> Project | None:
     if not session.project_id:
         return None
     project = await db.get(Project, session.project_id)
     if project is None or project.user_id != user.id:
         raise WorkspaceContextError("project_not_found")
     return project
+
+
+def _personal_block(user: User, kind: SessionKind) -> str:
+    """개인 맞춤 설정, as a block.
+
+    The conversation gets both halves. A document gets only the writing
+    style: what the person said about themselves is context for an answer
+    and, in a 보고서, would become the report — the same reason memories stay
+    off the document surfaces.
+    """
+    prefs = Preferences.of(user)
+    about = prefs.about_me.strip()
+    style = prefs.response_style.strip()
+    lines: list[str] = []
+    if about and kind is SessionKind.chat:
+        lines += [
+            "# 사용자에 대해",
+            "사용자가 직접 적은 내용입니다. 답을 맞출 때 참고하세요.",
+            about,
+        ]
+    if style:
+        if lines:
+            lines.append("")
+        lines += ["# 사용자가 바라는 답변 방식", style]
+    return "\n".join(lines)
 
 
 def _agent_block(agent: Agent | None) -> str:
@@ -295,23 +335,23 @@ async def _project_blocks(
                     )
                 )
                 continue
-            excerpt = "\n\n".join(
-                f"[{p.index}번째 조각]\n{p.text}" for p in picked
-            )
+            excerpt = "\n\n".join(f"[{p.index}번째 조각]\n{p.text}" for p in picked)
             parts.append(f"## {stored.name}\n{excerpt}")
             pages = tuple(dict.fromkeys(re.findall(r"\[페이지\s+(\d+)\]", excerpt)))
             locations = tuple(f"{page}쪽" for page in pages) or tuple(
                 f"{p.index}번째 조각" for p in picked
             )
-            used.append(ContextFile(
-                stored.name,
-                "truncated",
-                len(excerpt),
-                len(stored.text),
-                stored.id,
-                stored.source_url,
-                locations,
-            ))
+            used.append(
+                ContextFile(
+                    stored.name,
+                    "truncated",
+                    len(excerpt),
+                    len(stored.text),
+                    stored.id,
+                    stored.source_url,
+                    locations,
+                )
+            )
         knowledge = "\n\n".join(parts) if passages else ""
     return instructions, knowledge, used
 
@@ -498,13 +538,17 @@ async def _resolve_skills(
             raise WorkspaceContextError("skill_not_installed")
         if skill.kinds and session.kind.value not in skill.kinds:
             raise WorkspaceContextError("skill_kind_mismatch")
-        if allowed is not None and skill.id not in allowed and (
-            # A store install is a copy with its own id and `origin_id` back to
-            # the shared row. An agent whose allowlist names the shared row has
-            # allowed *that procedure*, and the copy is that procedure — a new
-            # account's first natural path (browse store → install → use the
-            # shared agent) answered 422 without this.
-            not skill.origin_id or skill.origin_id not in allowed
+        if (
+            allowed is not None
+            and skill.id not in allowed
+            and (
+                # A store install is a copy with its own id and `origin_id` back to
+                # the shared row. An agent whose allowlist names the shared row has
+                # allowed *that procedure*, and the copy is that procedure — a new
+                # account's first natural path (browse store → install → use the
+                # shared agent) answered 422 without this.
+                not skill.origin_id or skill.origin_id not in allowed
+            )
         ):
             raise WorkspaceContextError("skill_not_allowed_by_agent")
         metadata = starter.runtime_metadata(skill)
@@ -552,6 +596,42 @@ async def _resolve_starting_template(
     return StartingPoint(row.id, row.title, row.prompt)
 
 
+async def _starting_skill_blocks(
+    db: AsyncSession, starting_template_id: str | None, kind: SessionKind, already: set[str]
+) -> list[ContextBlock]:
+    """The catalogue skills a built-in starting point carries, as blocks."""
+    builtin = prompt_templates.get(starting_template_id)
+    if builtin is None or not builtin.skills:
+        return []
+    rows = (
+        await db.exec(
+            select(Skill).where(
+                col(Skill.catalog_key).in_(list(builtin.skills)),
+                Skill.source == SkillSource.built_in,
+                Skill.visibility == Visibility.org,
+            )
+        )
+    ).all()
+    by_key = {row.catalog_key: row for row in rows}
+    blocks: list[ContextBlock] = []
+    for key in builtin.skills:
+        skill = by_key.get(key)
+        if skill is None or skill.name in already:
+            continue
+        if skill.kinds and kind.value not in skill.kinds:
+            continue
+        head = f"# 시작점 스킬 — {skill.name}"
+        body = skill.body.strip() or skill.description.strip()
+        blocks.append(
+            ContextBlock(
+                source=f"template-skill:{skill.catalog_key}",
+                text=f"{head}\n{body}" if body else head,
+                trusted=True,
+            )
+        )
+    return blocks
+
+
 def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None:
     """The starting point as what it is: an instruction the person gave.
 
@@ -574,9 +654,7 @@ def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None
     )
 
 
-def _file_report(
-    attachments: tuple[ContextFile, ...], knowledge: tuple[ContextFile, ...]
-) -> str:
+def _file_report(attachments: tuple[ContextFile, ...], knowledge: tuple[ContextFile, ...]) -> str:
     """What became of every file, told to the model as fact.
 
     The model used to be left to infer this from its own context, and it
@@ -676,6 +754,11 @@ async def assemble(
     starting_point = await _resolve_starting_template(db, user, starting_template_id)
 
     blocks: list[ContextBlock] = []
+    # First, and least specific: what the person set once for every
+    # conversation. An agent's or a project's instructions come after and win
+    # where they disagree.
+    if personal := _personal_block(user, session.kind):
+        blocks.append(ContextBlock("user.instructions", personal, True))
     if text := _agent_block(agent):
         blocks.append(ContextBlock("agent.instructions", text, True))
     if instructions:
@@ -691,6 +774,15 @@ async def assemble(
     # turn, so it is the more specific instruction and comes later.
     if starting_block := _starting_template_block(starting_point):
         blocks.append(starting_block)
+        # 시작점이 약속한 스킬은 시작점이 켠다 — from the shared catalogue, by
+        # key, so a person who never copied 인용 형식 맞추기 into their own
+        # list still gets what the card said. One the person already switched
+        # on themselves (by name) is not doubled.
+        blocks.extend(
+            await _starting_skill_blocks(
+                db, starting_template_id, session.kind, {skill.name for skill, _ in resolved}
+            )
+        )
     # Memories reach the conversation and stay out of the documents. On the
     # chat surface a remembered role or interest shapes an answer; on a 보고서
     # it becomes the report — a live run's 분기 업무 보고 opened with the
@@ -733,16 +825,13 @@ async def assemble(
                 looked_at[stored.id] = TurnPicture(
                     stored.name, stored.mime, pictures.encode(stored.mime, blob)
                 )
+
         def is_picture(stored) -> bool:
             return not stored.text and pictures.can_be_seen(stored.mime, stored.size)
 
         readable = [stored for stored in ordered if stored.text]
-        unreadable = [
-            stored for stored in ordered if not stored.text and not is_picture(stored)
-        ]
-        attached, used = _knowledge_block(
-            readable, header="# 이번 요청에 첨부된 파일", focus=focus
-        )
+        unreadable = [stored for stored in ordered if not stored.text and not is_picture(stored)]
+        attached, used = _knowledge_block(readable, header="# 이번 요청에 첨부된 파일", focus=focus)
         # Reported back in the order the person attached them rather than in
         # the two groups the block is built from — the list on their screen is
         # the one they will read this against. `used` follows `readable`, which
@@ -758,9 +847,7 @@ async def assemble(
             return ContextFile(stored.name, "unreadable", 0, 0)
 
         attached_files = tuple(_fate(stored) for stored in ordered)
-        turn_pictures = tuple(
-            looked_at[stored.id] for stored in ordered if stored.id in looked_at
-        )
+        turn_pictures = tuple(looked_at[stored.id] for stored in ordered if stored.id in looked_at)
         if unreadable:
             names = ", ".join(
                 f"{stored.name}({stored.error or '내용 없음'})" for stored in unreadable
@@ -804,9 +891,7 @@ async def assemble(
     )
 
 
-async def design_for(
-    db: AsyncSession, user: User, session: ChatSession
-) -> DesignSystem | None:
+async def design_for(db: AsyncSession, user: User, session: ChatSession) -> DesignSystem | None:
     """The design system behind one session, for surfaces that assemble no context.
 
     Image generation is a single upstream call with a prompt, not a turn with a

@@ -123,9 +123,7 @@ async def _poll_until_done(job_id: str) -> None:
                     base_url=base_url, master_key=master_key, provider_job_id=provider_id
                 )
             except videogen.VideoError as exc:
-                await _finish(
-                    job_id, status=JobStatus.failed, error=str(exc), finished_at=_now()
-                )
+                await _finish(job_id, status=JobStatus.failed, error=str(exc), finished_at=_now())
                 return
 
             file_id = uuid.uuid4().hex
@@ -178,9 +176,7 @@ async def _poll_until_done(job_id: str) -> None:
                 # it reports one; the pass-through's per-path price is a floor to
                 # quote from, not the figure to charge.
                 charged = (
-                    round(progress.cost_usd * _CREDITS_PER_USD)
-                    if progress.cost_usd
-                    else estimated
+                    round(progress.cost_usd * _CREDITS_PER_USD) if progress.cost_usd else estimated
                 )
                 settle(
                     db,
@@ -237,9 +233,7 @@ def _now():
 
 
 @router.post("/sessions/{session_id}/jobs", response_model=JobOut)
-async def create_job(
-    session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession
-):
+async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession):
     """Starts a video and returns immediately.
 
     The row exists before the poll loop, so a clip being paid for is never

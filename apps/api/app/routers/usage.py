@@ -18,10 +18,11 @@ disagree, because they are the same rows. Nothing is estimated or seeded.
 from __future__ import annotations
 
 import asyncio
+import shutil
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import DateTime, String, case, cast, func, literal, union_all
+from sqlalchemy import DateTime, String, case, cast, func, literal, or_, union_all
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -32,8 +33,10 @@ from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, 
 from app.schemas.admin import GovernanceIn
 from app.services import adaptive_routing, geoip, governance, settings_store
 from app.services import credits as credits_service
+from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import storage as storage_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 #: The same numbers scoped to the caller. Its own router, so a forgotten admin
@@ -45,7 +48,13 @@ me_router = APIRouter(prefix="/me", tags=["usage"])
 #: else counts them; every other reason rides along with an assistant message
 #: that is already in the stream, and counting those twice would inflate the
 #: request figure the moment a model stopped being free.
-MEDIA_REASONS = ("image.generate", "audio.generate", "video.generate")
+MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
+
+#: Work that costs no credits and is counted by amount instead — seconds of
+#: speech Whisper transcribed, chunks the embedding model indexed. A row of
+#: theirs carries `units`, and counts as a request the way a picture does:
+#: no assistant turn records it. See `credits.record_units`.
+UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search")
 
 
 #: When allowances refill. Taken from the credit service rather than computed
@@ -102,9 +111,7 @@ _SPEND_MODEL = func.nullif(
 #: the fallback for older rows whose session is still there.
 #: `sessions.kind` is a Postgres enum and the column is text, so the join half
 #: is cast — COALESCE refuses to match the two otherwise.
-_SPEND_SURFACE = func.coalesce(
-    col(CreditLedger.surface), cast(col(ChatSession.kind), String)
-)
+_SPEND_SURFACE = func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String))
 
 
 def _events(since: datetime, user_id: str | None = None):
@@ -116,9 +123,9 @@ def _events(since: datetime, user_id: str | None = None):
     """
     turns = (
         select(
-            func.date_trunc(
-                "day", col(Message.created_at), type_=DateTime(timezone=True)
-            ).label("day"),
+            func.date_trunc("day", col(Message.created_at), type_=DateTime(timezone=True)).label(
+                "day"
+            ),
             col(Message.model).label("model"),
             # Cast for the same reason `_SPEND_SURFACE` casts: the two halves
             # of the union have to agree, and one of them is now plain text.
@@ -129,6 +136,7 @@ def _events(since: datetime, user_id: str | None = None):
             # the figure into the sum would count a priced turn twice.
             literal(0).label("credits"),
             literal(1).label("requests"),
+            literal(0).label("units"),
         )
         .select_from(Message)
         .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
@@ -144,18 +152,36 @@ def _events(since: datetime, user_id: str | None = None):
             _SPEND_SURFACE.label("kind"),
             col(CreditLedger.user_id).label("user_id"),
             (-col(CreditLedger.delta)).label("credits"),
-            case((col(CreditLedger.reason).in_(MEDIA_REASONS), 1), else_=0).label("requests"),
+            case((col(CreditLedger.reason).in_((*MEDIA_REASONS, *UNIT_REASONS)), 1), else_=0).label(
+                "requests"
+            ),
+            func.coalesce(col(CreditLedger.units), 0).label("units"),
         )
         .select_from(CreditLedger)
         # Outer, because a design extraction is charged against no conversation
         # at all, and dropping it would stop the parts adding up to the total.
         .join(ChatSession, col(CreditLedger.session_id) == col(ChatSession.id), isouter=True)
-        .where(CreditLedger.delta < 0, CreditLedger.created_at >= since)
+        # A spend, or a measured amount of free work — never a refill.
+        .where(
+            or_(CreditLedger.delta < 0, col(CreditLedger.units).is_not(None)),
+            CreditLedger.created_at >= since,
+        )
     )
     if user_id is not None:
         turns = turns.where(ChatSession.user_id == user_id)
         spend = spend.where(CreditLedger.user_id == user_id)
     return union_all(turns, spend).subquery()
+
+
+#: What a model's `units` count. Whisper's row counts seconds, the index's
+#: rows count chunks; anything else measured here is tokens.
+def _unit_of(model: str | None) -> str:
+    name = (model or "").lower()
+    if "whisper" in name or "stt" in name:
+        return "seconds"
+    if "bge" in name or "embed" in name:
+        return "chunks"
+    return ""
 
 
 def _kind(kind) -> str:
@@ -169,23 +195,20 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
     events = _events(since)
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
+    units = func.coalesce(func.sum(events.c.units), 0)
     people = func.count(func.distinct(events.c.user_id))
 
-    spent, request_count, active_users = (
-        await db.exec(select(credits, requests, people))
-    ).one()
+    spent, request_count, active_users = (await db.exec(select(credits, requests, people))).one()
 
     daily = (
         await db.exec(
-            select(events.c.day, credits, requests)
-            .group_by(events.c.day)
-            .order_by(events.c.day)
+            select(events.c.day, credits, requests).group_by(events.c.day).order_by(events.c.day)
         )
     ).all()
 
     by_model = (
         await db.exec(
-            select(events.c.model, credits, requests, people)
+            select(events.c.model, credits, requests, people, units)
             .where(events.c.model.is_not(None))
             .group_by(events.c.model)
             .order_by(credits.desc(), requests.desc())
@@ -228,12 +251,12 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
                 User.email,
                 User.monthly_credits,
                 credits.label("spent"),
+                requests.label("asked"),
             )
             .select_from(events)
             .join(User, events.c.user_id == col(User.id))
             .group_by(col(User.id), col(User.name), col(User.email), col(User.monthly_credits))
-            .order_by(credits.desc())
-            .limit(10)
+            .order_by(credits.desc(), requests.desc())
         )
     ).all()
 
@@ -247,9 +270,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).one()
 
-    surfaces = [
-        {"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface
-    ]
+    surfaces = [{"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface]
     if loose_credits or loose_requests:
         surfaces.append(
             {"kind": "other", "credits": int(loose_credits), "requests": int(loose_requests)}
@@ -270,20 +291,114 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         },
         "daily": _every_day(since, days, daily),
         "byModel": [
-            {"model": m, "credits": int(c), "requests": int(n), "users": int(u)}
-            for m, c, n, u in by_model
+            {
+                "model": m,
+                "credits": int(c),
+                "requests": int(n),
+                "users": int(u),
+                "units": int(x),
+                "unit": _unit_of(m),
+            }
+            for m, c, n, u, x in by_model
         ],
         "bySurface": surfaces,
+        # Every account with activity in the window, most spent first. The
+        # screen used to show ten and call it 상위; an administrator asking
+        # who used what wants the whole list.
         "topUsers": [
             {
                 "id": uid,
                 "name": name,
                 "email": email,
                 "credits": int(spent_u),
+                "requests": int(asked),
                 "allowance": int(allowance),
             }
-            for uid, name, email, allowance, spent_u in top_users
+            for uid, name, email, allowance, spent_u, asked in top_users
         ],
+    }
+
+
+@router.get("/storage")
+async def storage(admin: AdminUser, db: DbSession):
+    """What the uploads and the generated media take on disk, and what is left.
+
+    Everything a person adds or makes — attachments, project knowledge,
+    pictures, clips — lands under `file_storage_dir/<user id>/`, so a walk of
+    that tree per directory is the per-person figure, and the volume it sits
+    on says how much room remains. Walked on request rather than kept in a
+    column: the directories are small and the answer is always current.
+    """
+    root = file_service.storage_root()
+    per_user: dict[str, tuple[int, int]] = {}
+    for directory in root.iterdir():
+        if not directory.is_dir():
+            continue
+        size = files = 0
+        for path in directory.rglob("*"):
+            if path.is_file():
+                files += 1
+                size += path.stat().st_size
+        per_user[directory.name] = (size, files)
+    names = {
+        row.id: row
+        for row in (
+            await db.exec(select(User).where(col(User.id).in_(list(per_user) or ["-"])))
+        ).all()
+    }
+    disk = shutil.disk_usage(root)
+    # What a sweep would take, measured without taking it.
+    orphans = await storage_service.reclaim(db, dry_run=True)
+    return {
+        "path": str(root),
+        "usedBytes": sum(size for size, _ in per_user.values()),
+        "files": sum(files for _, files in per_user.values()),
+        "diskTotalBytes": disk.total,
+        "diskFreeBytes": disk.free,
+        "reclaimAt": settings.storage_reclaim_at,
+        "orphanBytes": orphans.orphan_bytes,
+        "orphanFiles": orphans.orphan_files,
+        "byUser": sorted(
+            (
+                {
+                    "id": user_id,
+                    "name": names[user_id].name if user_id in names else "(삭제된 계정)",
+                    "email": names[user_id].email if user_id in names else "",
+                    "bytes": size,
+                    "files": files,
+                }
+                for user_id, (size, files) in per_user.items()
+            ),
+            key=lambda row: -row["bytes"],
+        ),
+    }
+
+
+@router.post("/storage/reclaim")
+async def reclaim_storage(admin: AdminUser, db: DbSession, request: Request):
+    """Removes the files of deleted accounts now, oldest first, all of them.
+
+    The boot-time sweep waits for the volume to pass the fill mark; the
+    button does not — an administrator pressing it has already decided the
+    space is worth more than files nobody can reach.
+    """
+    result = await storage_service.reclaim(db, threshold=1e-9)
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            action="storage.reclaim.manual",
+            target="파일 저장소",
+            detail=f"{result.freed_files}개, {result.freed_bytes:,} B",
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
+    await db.commit()
+    return {
+        "freedBytes": result.freed_bytes,
+        "freedFiles": result.freed_files,
+        "fillBefore": result.fill_before,
+        "fillAfter": result.fill_after,
     }
 
 
@@ -309,14 +424,16 @@ async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
     for row, spend in zip(rows, spends, strict=True):
         if not isinstance(spend, dict):
             continue
-        out.append({
-            "id": row.id,
-            "name": row.name,
-            "preview": row.preview,
-            "spendUsd": round(spend["spend"], 4),
-            "credits": int(spend["spend"] * settings.credits_per_usd),
-            "budgetUsd": spend["maxBudget"],
-        })
+        out.append(
+            {
+                "id": row.id,
+                "name": row.name,
+                "preview": row.preview,
+                "spendUsd": round(spend["spend"], 4),
+                "credits": int(spend["spend"] * settings.credits_per_usd),
+                "budgetUsd": spend["maxBudget"],
+            }
+        )
     return out
 
 
@@ -334,20 +451,19 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     events = _events(since, user_id=user.id)
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
+    units = func.coalesce(func.sum(events.c.units), 0)
 
     spent, request_count = (await db.exec(select(credits, requests))).one()
 
     daily = (
         await db.exec(
-            select(events.c.day, credits, requests)
-            .group_by(events.c.day)
-            .order_by(events.c.day)
+            select(events.c.day, credits, requests).group_by(events.c.day).order_by(events.c.day)
         )
     ).all()
 
     by_model = (
         await db.exec(
-            select(events.c.model, credits, requests)
+            select(events.c.model, credits, requests, units)
             .where(events.c.model.is_not(None))
             .group_by(events.c.model)
             .order_by(credits.desc(), requests.desc())
@@ -394,9 +510,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     # others; both mean the same number here.
     cycle_used = int(cycle_used if not hasattr(cycle_used, "__len__") else cycle_used[0])
 
-    surfaces = [
-        {"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface
-    ]
+    surfaces = [{"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface]
     if loose_credits or loose_requests:
         surfaces.append(
             {"kind": "other", "credits": int(loose_credits), "requests": int(loose_requests)}
@@ -426,7 +540,14 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         },
         "daily": _every_day(since, days, daily),
         "byModel": [
-            {"model": m, "credits": int(c), "requests": int(n)} for m, c, n in by_model
+            {
+                "model": m,
+                "credits": int(c),
+                "requests": int(n),
+                "units": int(x),
+                "unit": _unit_of(m),
+            }
+            for m, c, n, x in by_model
         ],
         "bySurface": surfaces,
     }
@@ -508,9 +629,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
 
 
 @router.put("/governance")
-async def put_governance(
-    payload: GovernanceIn, request: Request, admin: AdminUser, db: DbSession
-):
+async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUser, db: DbSession):
     """Writes the policy and applies the part that acts on what is already stored.
 
     Retention is the one rule that is retroactive: shortening the window has to
@@ -574,9 +693,7 @@ async def put_governance(
             economy_ids = list(patch["adaptive_economy_model_ids"] or [])
             patch["adaptive_economy_model_ids"] = economy_ids
         if "adaptive_quality_model_ids" in patch:
-            patch["adaptive_quality_model_ids"] = list(
-                patch["adaptive_quality_model_ids"] or []
-            )
+            patch["adaptive_quality_model_ids"] = list(patch["adaptive_quality_model_ids"] or [])
 
         enabled = patch.get("adaptive_routing_enabled", policy.adaptive_routing_enabled)
         classifier_id = patch.get(
@@ -588,9 +705,7 @@ async def put_governance(
         quality_ids = list(
             patch.get("adaptive_quality_model_ids", policy.adaptive_quality_model_ids) or []
         )
-        quality_on = bool(
-            patch.get("adaptive_quality_enabled", policy.adaptive_quality_enabled)
-        )
+        quality_on = bool(patch.get("adaptive_quality_enabled", policy.adaptive_quality_enabled))
         if enabled and not classifier_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -672,14 +787,13 @@ async def put_governance(
         setattr(policy, field, value)
 
     invalidated_raw_preferences = 0
-    if (
-        "pii_masking" in patch or "allow_user_raw_external" in patch
-    ) and (policy.pii_masking or not policy.allow_user_raw_external):
+    if ("pii_masking" in patch or "allow_user_raw_external" in patch) and (
+        policy.pii_masking or not policy.allow_user_raw_external
+    ):
         preference_users = (
             await db.exec(
                 select(User).where(
-                    User.preferences["privacy_default_action"].astext
-                    == "send_raw_external"
+                    User.preferences["privacy_default_action"].astext == "send_raw_external"
                 )
             )
         ).all()

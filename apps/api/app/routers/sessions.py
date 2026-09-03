@@ -82,6 +82,7 @@ from app.services import (
     adaptive_routing,
     artifact_extract,
     audiogen,
+    chart_code,
     design_templates,
     figures,
     governance,
@@ -589,6 +590,7 @@ def _privacy_sources(
         "conversation_history": [message.content for message in history],
     }
     source_kinds = {
+        "user.instructions": "user_instructions",
         "agent.instructions": "agent",
         "project.instructions": "project_instructions",
         "project.design": "project_design",
@@ -970,6 +972,27 @@ def _memory_context_step(workspace: WorkspaceContext) -> dict | None:
     }
 
 
+def _personal_context_step(workspace: WorkspaceContext) -> dict | None:
+    """One line saying 개인 맞춤 설정 shaped this turn — which half, not what
+    it says. The text is the person's own and stays in the settings screen."""
+    block = next((b for b in workspace.blocks if b.source == "user.instructions"), None)
+    if block is None:
+        return None
+    parts = []
+    if "# 사용자에 대해" in block.text:
+        parts.append("나에 대해")
+    if "# 사용자가 바라는 답변 방식" in block.text:
+        parts.append("답변 방식")
+    return {
+        "id": "context-personal",
+        "type": "thinking",
+        "label": "개인 맞춤 설정 적용",
+        "status": "done",
+        "detail": " · ".join(parts),
+        "personal": parts,
+    }
+
+
 def _context_steps(workspace: WorkspaceContext) -> list[dict]:
     """What the turn was handed but never said out loud.
 
@@ -978,6 +1001,7 @@ def _context_steps(workspace: WorkspaceContext) -> list[dict]:
     document was truncated to fit.
     """
     steps = [
+        _personal_context_step(workspace),
         _memory_context_step(workspace),
         _file_context_step("context-attachments", "첨부", workspace.attachments),
         _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),
@@ -1465,12 +1489,20 @@ async def suggest_figure(
         context=payload.context,
         model=str(model["id"]),
         api_key=api_key,
+        look=payload.visual_style,
     )
     # A suggestion that did not come back is not an error the person can act
     # on — the box simply stays theirs to fill, exactly as it was before.
     if figure is None:
         return FigureSuggestion(caption="", prompt="")
-    return FigureSuggestion(caption=figure.caption, prompt=figure.prompt)
+    return FigureSuggestion(
+        caption=figure.caption,
+        prompt=figure.prompt,
+        template_id=figure.template_id,
+        figure=figure.figure,
+        description=figure.description,
+        style=figure.style,
+    )
 
 
 @router.post("/{session_id}/images", response_model=list[ArtifactOut])
@@ -1482,6 +1514,9 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     """
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
+    if payload.style == "차트":
+        # A chart is drawn from code, not painted: see `chart_code`.
+        return await _draw_chart(session, payload, user, db, catalogue)
     model = model_service.find(catalogue["models"], payload.model or session.model or "")
     if model is None or "image" not in model["kinds"]:
         usable = sorted(
@@ -1508,13 +1543,37 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
+    # The request as typed becomes the prompt the picture model follows: a
+    # language model places every element, names the arrows, settles the
+    # words and closes on the style line. Skipped when the person has edited
+    # that prompt themselves and sends it back as it stands.
+    planned = payload.prompt
+    if not payload.raw and payload.style != "없음":
+        planner = model_service.find(catalogue["models"], session.model or "")
+        if planner is None or "chat" not in planner.get("kinds", []):
+            chat_models = sorted(
+                (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
+                key=model_service.fallback_order,
+            )
+            planner = chat_models[0] if chat_models else None
+        if planner is not None:
+            planned, _ = await imagegen.plan(
+                payload.prompt,
+                style=payload.style,
+                labels=payload.labels,
+                figure=payload.figure,
+                model=str(planner["id"]),
+                api_key=api_key,
+            )
     composed = imagegen.compose_prompt(
-        payload.prompt,
+        planned,
         aspect=payload.aspect,
         style=payload.style,
         template=picture_template.prompt_suffix if picture_template else "",
         design=design_service.image_clause(await design_for(db, user, session)),
-        figure=payload.figure,
+        # A planned prompt already says it is one figure with no text.
+        figure=payload.figure and planned == payload.prompt,
+        square_only=not imagegen.honours_aspect(str(model["id"])),
     )
 
     made: list[Artifact] = []
@@ -1523,7 +1582,11 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     for _ in range(payload.count):
         try:
             image = await imagegen.generate(
-                base_url=base_url, api_key=api_key, model=model["id"], prompt=composed
+                base_url=base_url,
+                api_key=api_key,
+                model=model["id"],
+                prompt=composed,
+                aspect=payload.aspect,
             )
         except imagegen.ImageError as exc:
             # Images produced before the failure are kept and billed — upstream
@@ -1562,6 +1625,10 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
                 "width": image.width,
                 "height": image.height,
                 "style": payload.style,
+                "labels": payload.labels,
+                # What the model was actually sent, so it can be read, edited
+                # and sent again as it stands.
+                "composedPrompt": composed,
                 "seed": 0,
                 "model": model["id"],
                 "src": f"{settings.api_prefix}/files/{file_id}/content",
@@ -1599,6 +1666,112 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             status_code=status.HTTP_502_BAD_GATEWAY, detail=failure or "image_failed"
         )
     return [ArtifactOut.of(a) for a in made]
+
+
+async def _draw_chart(
+    session: ChatSession, payload: ImageRequest, user: User, db: DbSession, catalogue: dict
+) -> list[ArtifactOut]:
+    """The 차트 style: matplotlib code from a language model, run in the sandbox.
+
+    Billed as the language model's tokens — the picture itself costs nothing
+    but a few seconds of the sandbox. The code is stored with the picture as
+    `composedPrompt`, so the result card can show it, take an edit, and draw
+    it again as it stands (`raw`).
+    """
+    writer = model_service.find(catalogue["models"], session.model or "")
+    if writer is None or "chat" not in writer.get("kinds", []):
+        chat_models = sorted(
+            (m for m in catalogue["models"] if "chat" in m.get("kinds", [])),
+            key=model_service.fallback_order,
+        )
+        if not chat_models:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_chat_models"
+            )
+        writer = chat_models[0]
+    if not has_headroom(user, writer):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    _, api_key = await litellm_service.credentials_for(user)
+    try:
+        chart = await chart_code.draw(
+            payload.prompt,
+            aspect=payload.aspect,
+            model=str(writer["id"]),
+            api_key=api_key,
+            code=payload.prompt if payload.raw else None,
+        )
+    except chart_code.ChartError as exc:
+        _record_media(db, session, payload.prompt, [], model=str(writer["id"]), failed=True)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    image = imagegen.GeneratedImage(
+        data=chart.png,
+        mime="image/png",
+        input_tokens=chart.input_tokens,
+        output_tokens=chart.output_tokens,
+    )
+    image.width, image.height = imagegen._measure(chart.png)
+    file_id, key = imagegen.store(user.id, image)
+    db.add(
+        StoredFile(
+            id=file_id,
+            user_id=user.id,
+            session_id=session.id,
+            name=f"{payload.prompt[:40] or 'chart'}.png",
+            mime="image/png",
+            size=len(chart.png),
+            storage_key=key,
+            tokens=0,
+        )
+    )
+    artifact = Artifact(
+        user_id=user.id,
+        session_id=session.id,
+        project_id=session.project_id,
+        kind=ArtifactKind.image,
+        title=(payload.prompt if not payload.raw else "차트")[:200] or "차트",
+        data={
+            "kind": "image",
+            "jobId": None,
+            "prompt": payload.prompt if not payload.raw else "차트",
+            "aspect": payload.aspect,
+            "actualAspect": image.aspect,
+            "width": image.width,
+            "height": image.height,
+            "style": "차트",
+            "labels": payload.labels,
+            "engine": "matplotlib",
+            "composedPrompt": chart.code,
+            "seed": 0,
+            "model": str(writer["id"]),
+            "src": f"{settings.api_prefix}/files/{file_id}/content",
+        },
+    )
+    db.add(artifact)
+    charged = charge_for_tokens(writer, chart.input_tokens, chart.output_tokens)
+    if charged:
+        settle(
+            db,
+            user,
+            charged,
+            reason="image.chart",
+            session_id=session.id,
+            model=str(writer["id"]),
+            surface=session.kind.value,
+        )
+    _record_media(db, session, payload.prompt, [artifact], model=str(writer["id"]), credits=charged)
+    await db.commit()
+    await db.refresh(artifact)
+    return [ArtifactOut.of(artifact)]
 
 
 @router.post("/{session_id}/diagrams", response_model=DiagramOut)
@@ -2106,7 +2279,7 @@ def _edited_plan(sent: dict | None, stored: dict) -> dict:
     if title := str(sent.get("title") or "").strip():
         out["title"] = title[:200]
     visual_style = str(sent.get("visualStyle") or "").strip()
-    if visual_style in ("editorial", "poster", "minimal"):
+    if visual_style in design_service.VISUAL_STYLES:
         out["visualStyle"] = visual_style
     density = str(sent.get("density") or "").strip()
     if density in ("speaker", "reading"):
@@ -2906,7 +3079,27 @@ async def send_message(
     )
 
     render_template = design_templates.get(session.render_template_id)
-    if render_template is not None:
+    # 보고서는 서식이 있어도 보고서 작성기가 쓴다.
+    #
+    # A document 서식 used to send the whole turn down the page track — one
+    # model call per block, the seed's layout vocabulary in each — and none
+    # of what the report writer learned reached it: the one-call draft that
+    # keeps numbers consistent, the list of allowed figures, the genre
+    # shapes, the retold-section and placeholder-kpi cleanups, the questions
+    # asked before writing. A 주간 보고 under 「한 장 요약」 came back with the
+    # same kpi strip and the same paragraph in every section. A 서식 is a
+    # look, and the page view and the exporters apply a look to markdown
+    # sections already (`templateId` on the artifact).
+    #
+    # 슬라이드도 마찬가지다. A deck 서식 sent the turn down the same block
+    # writer and came back as an `html` file in a sandboxed frame: no slide
+    # list, no stage, no face to switch, none of the deck writer's grounding
+    # — and the design on screen was the seed's own CSS, not the deck the
+    # person had seen the surface draw. The deck writer writes it; the 서식
+    # opens the deck on its `look`, feeds its genre rules to the planner and
+    # lends its PowerPoint half to the export. What is left for the block
+    # writer is a 서식 of a kind neither writer knows.
+    if render_template is not None and render_template.kind not in ("document", "deck"):
         return StreamingResponse(
             _survive_disconnect(
                 _run_page(
@@ -2985,6 +3178,7 @@ async def send_message(
                     may_ask=not proceed_as_is,
                     figures_plan=approved_figures,
                     image_model=image_model,
+                    template=render_template,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -3032,6 +3226,7 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_deck(
+                    template=render_template,
                     may_ask=not proceed_as_is,
                     figures_plan=approved_figures,
                     image_model=image_model,
@@ -3221,8 +3416,61 @@ async def _until_stopped(
 #: the only thing holding them and they are collectible mid-turn.
 _DETACHED: set[asyncio.Task] = set()
 
+#: How long a stream may go without a byte before a comment is sent to keep
+#: the connection counted as alive. Well under the sixty seconds the shortest
+#: common proxy idle timeout allows, and well over what a healthy turn needs.
+HEARTBEAT_SEC = 15.0
 
-async def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
+
+async def _heartbeat(events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Relays a stream, and says something when it has nothing to say.
+
+    침묵은 끊긴 것으로 읽힌다. A 30-slide outline on a local model produces no
+    event for a minute or more while the model thinks, and the proxy in front
+    of a deployment closes a response that has sent no byte for sixty seconds.
+    So the plan arrived at 65s into a socket nobody held any more, and the
+    screen read 「문서를 만들지 못했습니다」 over a turn the server finished and
+    stored. An SSE comment line every few seconds is a byte the proxy counts
+    and the browser's parser skips — the silence a model needs stops being the
+    silence a proxy times out.
+
+    The pending read is kept across heartbeats rather than cancelled by
+    `wait_for`, which can drop the event it was holding when the timeout and
+    the arrival coincide. Closing this generator closes the one beneath it, so
+    a reader leaving still unwinds the turn the way it did before.
+    """
+    iterator = events.__aiter__()
+    nxt = asyncio.ensure_future(anext(iterator))
+    try:
+        while True:
+            done, _ = await asyncio.wait({nxt}, timeout=HEARTBEAT_SEC)
+            if not done:
+                yield ": keep-alive\n\n"
+                continue
+            try:
+                event = nxt.result()
+            except StopAsyncIteration:
+                return
+            yield event
+            nxt = asyncio.ensure_future(anext(iterator))
+    finally:
+        if not nxt.done():
+            nxt.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await nxt
+        await iterator.aclose()
+
+
+def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """A turn's response, as every streaming route serves it.
+
+    Finishes behind a reader who left (`_detached`) and keeps the connection
+    counted as alive while the model is silent (`_heartbeat`).
+    """
+    return _heartbeat(_detached(events))
+
+
+async def _detached(events: AsyncIterator[str]) -> AsyncIterator[str]:
     """Lets a turn finish even when nobody is left reading it.
 
     The response and the work behind it are separate tasks: the turn produces
@@ -3433,6 +3681,11 @@ async def _run_turn(
         ):
             if event["type"] == "delta":
                 text_parts.append(event["text"])
+            elif event["type"] == "retract":
+                # Narration the agent took back — see `agent.run_turn`. Out of
+                # the stored answer here, off the screen by the same event.
+                joined = "".join(text_parts).replace(event["text"], "", 1)
+                text_parts[:] = [joined]
             elif event["type"] == "step":
                 # Stored without the SSE envelope key: `Step.type` in the UI is
                 # a display category, not the event name. One row per step: the
@@ -3943,21 +4196,23 @@ async def compare_models(
     )
 
     return StreamingResponse(
-        _run_comparison(
-            user_id=user.id,
-            api_key=api_key,
-            session_id=session.id,
-            models=chosen,
-            messages=messages,
-            skills_event=workspace.skills_event(),
-            # A comparison is answered from the same memories and the same
-            # attachments as a single-model turn, and spends several times the
-            # credits doing it, so it accounts for them the same way.
-            context_steps=_context_steps(workspace),
-            routing=resolved.routing,
-            mask_at_rest=policy.pii_masking or policy.external_data_guard,
-            legacy_masking=policy.pii_masking,
-            privacy_audit_id=privacy_audit_id,
+        _heartbeat(
+            _run_comparison(
+                user_id=user.id,
+                api_key=api_key,
+                session_id=session.id,
+                models=chosen,
+                messages=messages,
+                skills_event=workspace.skills_event(),
+                # A comparison is answered from the same memories and the same
+                # attachments as a single-model turn, and spends several times the
+                # credits doing it, so it accounts for them the same way.
+                context_steps=_context_steps(workspace),
+                routing=resolved.routing,
+                mask_at_rest=policy.pii_masking or policy.external_data_guard,
+                legacy_masking=policy.pii_masking,
+                privacy_audit_id=privacy_audit_id,
+            ),
         ),
         media_type="text/event-stream",
         headers={
@@ -4019,6 +4274,11 @@ async def _run_comparison(
                     slot["content"] += event["text"]
                     await queue.put(
                         {"type": "variant", "model": model["id"], "text": event["text"]}
+                    )
+                elif event["type"] == "retract":
+                    slot["content"] = slot["content"].replace(event["text"], "", 1)
+                    await queue.put(
+                        {"type": "variant_retract", "model": model["id"], "text": event["text"]}
                     )
                 elif event["type"] == "usage":
                     slot["usage"] = {k: v for k, v in event.items() if k != "type"}
@@ -4601,6 +4861,10 @@ async def _run_page(
 
 async def _run_deck(
     *,
+    #: The deck 서식 this turn was sent under, when one was. Its rules reach
+    #: the planner, its `look` becomes the deck's face, its id rides on the
+    #: artifact so the export builds on its PowerPoint half.
+    template: design_templates.DesignTemplate | None = None,
     outline_model: dict | None = None,
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
@@ -4665,6 +4929,15 @@ async def _run_deck(
         yield chat_service.sse(skills_event)
     for step in context_steps or ():
         yield chat_service.sse(_step_event(step))
+    if template is not None and template.instructions.strip():
+        # The 서식's genre rules — what a 심사 발표 puts first, what a 브리핑
+        # keeps apart — read by the planner the way project instructions
+        # are. Its typesetting rules do not travel: the stage draws the
+        # slides, and the seed's vocabulary would only describe markup the
+        # deck writer never produces.
+        trusted_context = [f"[서식: {template.name}]\n{template.instructions.strip()}"] + list(
+            trusted_context or []
+        )
     try:
         stream = deck_service.write(
             web_search=web_search,
@@ -4748,7 +5021,14 @@ async def _run_deck(
             title = (doc_title or session.title or request.strip()[:60] or "슬라이드")[:200]
             if written:
                 artifact_design = design_tokens
-                if not artifact_design:
+                if template is not None and template.look:
+                    # The 서식 was chosen for this deck; its face outranks the
+                    # project's default and the words of the request. The
+                    # project's colours and type still come along.
+                    artifact_design = design_service.normalise_tokens(
+                        {**(design_tokens or {}), "visualStyle": template.look}
+                    )
+                elif not artifact_design:
                     requested_style = str(
                         (approved_plan or {}).get("visualStyle")
                         or design_service.visual_style_for(request)
@@ -4768,6 +5048,9 @@ async def _run_deck(
                     data={
                         "kind": "deck",
                         "theme": "기본",
+                        # The 서식 the deck was written in: the export opens
+                        # its PowerPoint half, the gallery names it.
+                        **({"templateId": template.id} if template else {}),
                         # Copied onto the artifact rather than resolved at export time: a deck
                         # presented last month should not repaint itself when the project changes.
                         **({"design": artifact_design} if artifact_design else {}),
@@ -5042,6 +5325,7 @@ async def _revise_document(
 
 async def _run_report(
     *,
+    template: design_templates.DesignTemplate | None = None,
     outline_model: dict | None = None,
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
@@ -5215,7 +5499,14 @@ async def _run_report(
             title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
             if written:
                 artifact_design = design_tokens
-                if not artifact_design:
+                if template is not None and template.look:
+                    # The 서식 was chosen for this deck; its face outranks the
+                    # project's default and the words of the request. The
+                    # project's colours and type still come along.
+                    artifact_design = design_service.normalise_tokens(
+                        {**(design_tokens or {}), "visualStyle": template.look}
+                    )
+                elif not artifact_design:
                     requested_style = str(
                         (approved_plan or {}).get("visualStyle")
                         or design_service.visual_style_for(request)
@@ -5233,6 +5524,9 @@ async def _run_report(
                     title=title,
                     summary=_regeneration_summary(request),
                     data={
+                        # The 서식 the page view and the exporters dress this
+                        # in. Markdown sections underneath, as ever.
+                        **({"templateId": template.id} if template else {}),
                         "sections": [
                             {
                                 "id": s["id"],

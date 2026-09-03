@@ -74,11 +74,7 @@ def chunk(text: str) -> list[str]:
 
 def _terms(text: str) -> set[str]:
     """Whitespace tokens, lowercased, punctuation stripped."""
-    return {
-        t
-        for t in re.split(r"[^0-9A-Za-z가-힣]+", text.lower())
-        if len(t) >= _MIN_TERM
-    }
+    return {t for t in re.split(r"[^0-9A-Za-z가-힣]+", text.lower()) if len(t) >= _MIN_TERM}
 
 
 def _bigrams(text: str) -> set[str]:
@@ -105,9 +101,7 @@ def score(query: str, passage: str) -> float:
         return 0.0
     flat = _flatten(passage)
     term_hit = (
-        sum(1 for term in q_terms if _flatten(term) in flat) / len(q_terms)
-        if q_terms
-        else 0.0
+        sum(1 for term in q_terms if _flatten(term) in flat) / len(q_terms) if q_terms else 0.0
     )
     gram_hit = len(q_grams & _bigrams(passage)) / len(q_grams) if q_grams else 0.0
     # Terms weigh more: a word match beats bigrams two Korean words share.

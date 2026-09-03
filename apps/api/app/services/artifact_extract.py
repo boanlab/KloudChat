@@ -104,9 +104,7 @@ async def extract(
         return None
 
     # Regenerating an answer produces the same code again.
-    existing = (
-        await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))
-    ).all()
+    existing = (await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))).all()
     seen = {(a.data or {}).get("content") for a in existing}
 
     last: Artifact | None = None
@@ -140,9 +138,7 @@ def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:
     return (kind, title, json.dumps(data, sort_keys=True, ensure_ascii=False))
 
 
-def _mask_text_values(
-    value: Any, masker: Callable[[str], tuple[str, int]]
-) -> Any:
+def _mask_text_values(value: Any, masker: Callable[[str], tuple[str, int]]) -> Any:
     """Returns a detached copy with every persisted string masked.
 
     Artifact payloads contain more than a top-level title and body: chart
@@ -189,9 +185,7 @@ async def store_requested(
         else requests
     )
 
-    existing = (
-        await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))
-    ).all()
+    existing = (await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))).all()
     seen = {_identity(a.kind.value, a.title, a.data or {}) for a in existing}
 
     last: Artifact | None = None

@@ -230,9 +230,7 @@ async def poll(*, base_url: str, master_key: str, provider_job_id: str) -> Progr
     return _read_progress(response.json())
 
 
-async def fetch(
-    *, base_url: str, master_key: str, provider_job_id: str, index: int = 0
-) -> bytes:
+async def fetch(*, base_url: str, master_key: str, provider_job_id: str, index: int = 0) -> bytes:
     """Downloads the finished clip through the proxy.
 
     `unsigned_urls` points at OpenRouter directly and needs the upstream key,

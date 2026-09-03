@@ -39,9 +39,7 @@ def test_every_streamed_turn_is_detached(runner: str) -> None:
     assert where > 0, f"{runner} 가 이 라우트에서 호출되지 않습니다"
     before = source[:where]
     # The wrapper opens immediately above the runner it is wrapping.
-    assert before.rstrip().endswith("_survive_disconnect("), (
-        f"{runner} 가 연결이 끊기면 사라집니다"
-    )
+    assert before.rstrip().endswith("_survive_disconnect("), f"{runner} 가 연결이 끊기면 사라집니다"
 
 
 def test_the_survivor_keeps_the_work_and_drops_only_the_relay() -> None:
@@ -50,7 +48,9 @@ def test_the_survivor_keeps_the_work_and_drops_only_the_relay() -> None:
     A wrapper that merely caught the cancellation would still lose everything
     the turn had not finished — the point is that nothing is cancelled at all.
     """
-    source = inspect.getsource(sessions._survive_disconnect)
+    source = inspect.getsource(sessions._detached)
     assert "asyncio.create_task" in source
+    # And the route actually serves that shape, not a wrapper that lost it.
+    assert "_detached(" in inspect.getsource(sessions._survive_disconnect)
     # Held somewhere, or the loop is free to garbage-collect the task mid-turn.
     assert "_DETACHED" in source

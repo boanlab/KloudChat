@@ -85,6 +85,9 @@ class User(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     last_active_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
+    #: When the address was confirmed by a mailed link — or, for accounts that
+    #: were never asked, when they were made. Null means the link is still out.
+    email_verified_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     @property
     def credits_remaining(self) -> int:
@@ -185,6 +188,11 @@ class CreditLedger(SQLModel, table=True):
     #: conversation does not move its spend into 기타. Null where nothing
     #: single answers: a design extraction belongs to no surface.
     surface: str | None = Field(default=None)
+    #: How much work the row stands for, in `unit` — seconds of speech
+    #: transcribed, chunks embedded. Set on rows for models that cost no
+    #: credits, which is the only way those models reach the usage screens.
+    units: int | None = Field(default=None)
+    unit: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
@@ -231,12 +239,28 @@ class PasswordReset(SQLModel, table=True):
     expires_at: datetime = Field(sa_column=_ts_column(nullable=False))
     used_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     requested_ip: str | None = Field(default=None)
-    created_at: datetime = Field(
-        default_factory=utcnow, sa_column=_ts_column(nullable=False)
-    )
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
+
+
+class EmailVerification(SQLModel, table=True):
+    """A single-use ticket proving the person can read the address they gave.
+
+    The same shape as `PasswordReset`, and for the same reasons: the hash only,
+    rows kept after use so a second click is told apart from a bad link.
+    """
+
+    __tablename__ = "email_verifications"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    user_id: str = Field(foreign_key="users.id", index=True)
+    token_hash: str = Field(index=True, unique=True)
+    expires_at: datetime = Field(sa_column=_ts_column(nullable=False))
+    used_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
 __all__ = [
+    "EmailVerification",
     "PasswordReset",
     "ApiKey",
     "AuditEvent",

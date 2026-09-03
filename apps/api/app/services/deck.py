@@ -4,15 +4,25 @@ Two-pass, like `report`: an outline call names the slides so the panel can show
 the whole deck before any of it exists, then each slide is filled in on its own
 call carrying what the previous ones said.
 
-Seven layouts, and only seven:
+The layouts, and what each is for:
 
 * `title`      — the cover, always first
+* `agenda`     — the 목차, read back from the outline; no model call
+* `section`    — a divider naming the part that follows
 * `bullets`    — the body of the deck
 * `quote`      — one line, for a claim worth pausing on
+* `statement`  — the presenter's own conclusion, set large, at most once
 * `two-column` — a long list split in two, so the deck is not one shape
 * `table`      — values read against each other, as a real table
 * `metrics`    — two or three figures, set large, for the numbers to remember
+* `big-number` — one figure, very large, with a line saying what it means
 * `chart`      — a bar or line chart, drawn from real numbers
+* `bands`      — a name beside a band of text, down the slide
+* `tiles`      — a letter or number set large over its name
+* `timeline`   — dates beside what happened
+* `steps`      — a procedure across the slide, numbered by position
+* `cards`      — peers side by side as titled boxes
+* `closing`    — the last slide: what to remember, and a line to end on
 
 The rule is that a layout is offered only if all three renderers — the
 preview, the .pptx and the .pdf — can draw it. `table` was drawable in two of
@@ -66,23 +76,35 @@ _DEFAULT_MAX = 12
 _LAYOUTS = (
     "title",
     "section",
+    "agenda",
     "bullets",
     "quote",
+    "statement",
     "two-column",
     "table",
     "metrics",
+    "big-number",
     "chart",
     "bands",
     "tiles",
     "timeline",
+    "steps",
+    "cards",
+    "closing",
 )
+
+#: The slides that say where the deck is rather than what it says: the cover,
+#: the dividers, and the 목차. None of them is written by a model call — the
+#: cover comes from the outline, a divider is its own name, and the agenda is
+#: the outline read back.
+_STRUCTURAL = ("title", "section", "agenda")
 
 #: The layouts that carry the argument. Named rather than sliced off the front
 #: of `_LAYOUTS`: `_LAYOUTS[1:]` meant "everything but the cover" only for as
 #: long as the cover was the only layout with no content in it, and adding the
 #: section divider made the variety check demand that a deck use dividers.
 #: A divider says where you are; it is not one of the shapes an argument takes.
-_BODY_LAYOUTS = tuple(layout for layout in _LAYOUTS if layout not in ("title", "section"))
+_BODY_LAYOUTS = tuple(layout for layout in _LAYOUTS if layout not in (*_STRUCTURAL, "closing"))
 
 #: What a slide says when it did not get written.
 #:
@@ -100,15 +122,28 @@ _ACCENT = "#5b5bd6"
 #: worse, it would show the model a choice it does not have.
 _THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중에서만 골라라:
   {themes}
-- style 은 이 발표가 어떤 자리에서 읽히는지에 맞는 인상이다. 셋 중 하나만 골라라:
+- style 은 이 발표가 어떤 자리에서 읽히는지에 맞는 인상이다. 일곱 중 하나만 골라라:
   · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 자리. 선과 넓은 여백.
   · 포스터형 — 홍보·설명회·발표회처럼 눈길을 먼저 잡아야 하는 자리. 강한 색면.
   · 미니멀 — 학술 발표·심사처럼 절제가 예의인 자리. 옅은 색과 작은 제목.
-  요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라.
+  · 다크 — 기술·제품·데모처럼 화면을 어둡게 하고 보는 자리. 어두운 바탕에 빛나는 강조색.
+  · 분할형 — 사업 보고·제안·기관 발표. 왼쪽 색면과 큰 번호, 선으로 그린 상자.
+  · 따뜻한 — 교육·문화·복지·생활 주제. 크림색 종이 바탕과 둥근 상자.
+  · 흑백 — 디자인·건축·연구·전시. 검정 선과 큰 제목, 색은 쓰지 않는다.
+  요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라. 같은 주제라도
+  자리가 다르면 다른 인상이다 — 늘 편집형으로 도망가지 마라.
 """
 
 #: 이름표와 렌더러가 아는 값. 프롬프트는 한국어로 묻고, 저장은 영어로 한다.
-_STYLES = {"편집형": "editorial", "포스터형": "poster", "미니멀": "minimal"}
+_STYLES = {
+    "편집형": "editorial",
+    "포스터형": "poster",
+    "미니멀": "minimal",
+    "다크": "dark",
+    "분할형": "split",
+    "따뜻한": "warm",
+    "흑백": "mono",
+}
 
 #: Accent palette the outline picks from by name. Curated rather than free hex:
 #: each is dark enough to carry white text and to print.
@@ -145,9 +180,20 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
 - **같은 기준으로 두셋을 견주는 장은 "table" 로 잡아라.** 대안 비교, 전후 대비,
   단계별 조건처럼 값이 기준마다 갈리는 내용이다. 이런 내용을 bullets 로 늘어
   놓으면 읽는 사람이 머릿속에서 표를 다시 그려야 한다.
+- **여섯 장이 넘는 발표는 둘째 장에 "agenda"(목차) 를 넣어라.** 내용은 쓰지 마라 —
+  구성에서 채운다. 제목은 "목차" 또는 "발표 순서".
+- **마지막 장은 "closing"** — 기억할 것 두셋과 마무리 한 줄. 여섯 장이 넘는 발표에만.
 - 나머지 장은 말할 내용에 맞는 layout 을 골라라. 항목을 나열하면 "bullets",
   둘을 나란히 견주거나 항목이 6개 이상이면 "two-column", 한 문장으로 남길
-  대목이면 "quote". quote 는 전체에서 최대 2장.
+  대목이면 "quote". quote 는 전체에서 최대 2장. **발표의 결론 한 마디를 크게 세우는
+  장은 "statement"** — 남의 말이 아니라 발표자가 말하려는 것, 전체에서 최대 1장.
+- **절차·단계·과정을 차례로 놓되 날짜가 없으면 "steps"** (3~5단계, 가로로 번호가
+  매겨진다). 접수→심사→선정, 조사→설계→구현→평가 처럼. 날짜가 있으면 "timeline".
+- **같은 급의 항목 셋넷에 각각 이름과 한두 줄 설명이 붙으면 "cards"** — 분야·전략·역할·
+  선택지처럼 나란히 놓고 보는 것. bands 는 이름표가 줄 앞에 서는 세로 목록이고,
+  cards 는 상자를 옆으로 세운다. 순서가 뜻을 가지면 steps 다.
+- **요청에 수치가 하나뿐인데 그 수치가 발표의 핵심이면 "big-number"** — 숫자 하나를
+  크게, 그 뜻을 한 줄로. 두셋이면 "metrics".
 - **왼쪽에 이름표를 달고 오른쪽에 내용을 놓는 장은 "bands" 로 잡아라.** 항목마다
   이름이 붙는 내용이다 — 미션·배경·추진전략, 대상·기간·방식·수료, 학점·증명·연계
   처럼. 이런 장 제목은 대개 "~은 무엇인가", "~ 개요", "~ 체계", "혜택" 이다.
@@ -158,7 +204,9 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   없는 내용을 timeline 으로 잡으면 연도를 지어내게 된다. 절차라도 명령어 순서면
   bullets 가 낫다.
 - 문의처·연락처·적용 시기·신청 방법처럼 **사실을 전하는 장은 "bullets"** 다. quote 로
-  잡으면 내선 번호 대신 표어가 남는다.
+  잡으면 내선 번호 대신 표어가 남는다. **퀴즈·연습 문제 장도 "bullets"** — 문제
+  자체를 항목으로 적는다. 상태 전이·구조·흐름처럼 그림으로 그릴 것은 chart 가
+  아니라 bands 나 bullets 다(chart 는 수치 계열만 그린다).
 - 확신이 없으면 "bullets" 다. 초안을 쓰는 단계에서 내용에 맞게 layout 을 바꿀 수
   있으니, 여기서 화려한 layout 을 미리 고르지 마라.
 - **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
@@ -170,8 +218,10 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 �
   듣는 사람이 알아야 할 사실을 적고, 판단은 그 사람에게 맡겨라.
 - **한 장에는 그 장에서만 하는 말을 담아라.** 앞 장을 다른 낱말로 다시 쓴 장은
   한 장이 아니라 여백이다.
-- 같은 layout 을 세 장 연속으로 쓰지 마라. 표지를 뺀 나머지에서 최소 세 가지를
-  써라. 한 가지로 끌고 간 발표는 넘겨도 넘긴 것 같지 않다.
+- **같은 layout 을 세 장 연속으로 쓰지 마라. bullets 는 연속 두 장까지.** 표지·목차·
+  간지·마무리를 뺀 나머지에서 최소 네 가지를 써라. 여덟 장 중 여섯이 bullets 인
+  발표는 넘겨도 넘긴 것 같지 않다 — 이름이 붙는 내용은 bands 나 cards 로, 절차는
+  steps 로, 비교는 table 로, 결론은 statement 로 모양을 주어라.
 {theme_rule}- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
   하나의 발표가 되어야 한다.
 - 내용은 쓰지 마라. 제목과 layout 만.
@@ -210,6 +260,16 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
   요청에 있는 것만** — 요청에 날짜가 하나뿐이면 timeline 이 아니라 bullets 다. 「매주
   월요일 제출」「분기별 점검」처럼 요청에 없는 절차를 만들어 칸을 채우지 마라.
 - bands: "bands": [["이름", "내용"], ...] 3~4개. 이름은 낱말 하나둘, 내용은 한 줄.
+- steps: "steps": [["단계", "내용"], ...] 3~5개. 단계는 이름 한 마디(번호 없이), 내용은
+  한 줄. 요청에 있는 절차만.
+- cards: "cards": [["이름", "내용"], ...] 3~4개. 이름은 한 마디, 내용은 한두 문장 80자
+  안쪽. 같은 급의 항목만.
+- statement: "title": 핵심 한 마디(12자 안쪽), "body": 그것을 푸는 한 문장(60자 안쪽).
+- big-number: "metrics": [["값", "이름"]] 하나, "body": 그 숫자의 뜻 한 줄. 값은 「쓸 수
+  있는 수치」에 있는 것만.
+- closing: "bullets": 기억할 것 2~3개(각 30자 안쪽), "body": 마무리 한 줄(「질문을
+  환영합니다」). 앞 장에서 말한 것만.
+- agenda: 내용 없이 "notes" 만 — 목차는 구성에서 채운다.
 - tiles: "tiles": [["표식", "이름"], ...] 3~6개. 표식은 머리글자·번호 한두 글자. **요청에
   그런 묶음이 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.**
 - metrics: "metrics": [["값", "이름"], ...] 2~4개. **값은 「쓸 수 있는 수치」에 있는
@@ -234,10 +294,11 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 - 영어 낱말을 한국어 문장에 섞지 말고, 중국어 한자를 쓰지 마라.
 - 구성의 layout 은 제안이다. **내용이 그 모양이 아니면 바꿔라** — 이름 규칙을
   timeline 으로, 요약을 metrics 로 쓰지 마라. 기본은 bullets 이고, 두셋을 같은
-  기준으로 견주면 table, 항목마다 이름이 붙으면 bands, 시간 순서가 요청에 있을
-  때만 timeline, 남길 한 문장이 있을 때만 quote(전체 1장), 「쓸 수 있는 수치」에 값이
-  있을 때만 metrics·chart, 요청이 머리글자 묶음을 줄 때만 tiles. 제목과 순서는
-  바꾸지 마라.
+  기준으로 견주면 table, 항목마다 이름이 붙으면 bands(세로) 나 cards(가로 상자),
+  날짜 없는 절차는 steps, 시간 순서가 요청에 있을 때만 timeline, 남길 한 문장이
+  있을 때만 quote(전체 1장), 결론 한 마디는 statement, 「쓸 수 있는 수치」에 값이
+  있을 때만 metrics·chart·big-number, 요청이 머리글자 묶음을 줄 때만 tiles.
+  제목과 순서는 바꾸지 마라. 표지·목차·간지·마무리의 layout 은 바꾸지 마라.
 - 규칙·명령어를 가르치는 장이면 명령어 자체를 항목으로 쓴다: `python -m venv .venv`,
   `pip freeze > requirements.txt`, `conda env create -f environment.yml`. **확신하는
   명령어와 옵션만 쓴다.** 기억이 흐린 플래그(`--with-env`, `-s /archive`)를 만들어
@@ -365,7 +426,7 @@ def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) ->
     dropped: set[int] = set()
     for index, slide in enumerate(slides):
         row = drafted.get(index)
-        if row is None or slide["layout"] in ("title", "section"):
+        if row is None or slide["layout"] in _STRUCTURAL:
             continue
         claims, words = _claims(row), _words(row)
         layout = str(row.get("layout") or slide["layout"])
@@ -485,11 +546,16 @@ def _split_deck_draft(
             seen_bullets.append(bullets)
         # 요청에 없는 숫자로 채운 metrics·chart 는 버린다. 그 layout 은 숫자를
         # 가장 사실처럼 보이게 하는 자리라, 지어낸 숫자가 가장 해로운 자리다.
-        if row.get("metrics") and not _numbers_come_from(
-            [str(v) for v, *_ in (m for m in row["metrics"] if isinstance(m, list) and m)], facts
-        ):
+        metric_rows = [m for m in (row.get("metrics") or []) if isinstance(m, list) and m]
+        if row.get("metrics") and not _numbers_come_from([str(v) for v, *_ in metric_rows], facts):
             row = {k: v for k, v in row.items() if k != "metrics"}
             row["layout"] = "bullets"
+        elif row.get("metrics") and len(metric_rows) == 1:
+            # One figure is not a metrics slide — 「75 | 강의 총 소요 시간」 was
+            # the only number in a lecture request, set large as its own slide.
+            # A real one is a big-number slide: the figure, and one line saying
+            # what it means.
+            row = {**row, "layout": "big-number"}
         if isinstance(row.get("chart"), dict) and not _numbers_come_from(
             [
                 str(v)
@@ -525,12 +591,23 @@ def _split_deck_draft(
         # 초안이 layout 을 바꿨으면 따른다 — 내용에 맞지 않는 layout 을 고집한 장이
         # 빈 사각형이 되는 것보다 낫다. 표지와 간지는 그대로.
         wanted = str(row.get("layout") or "")
-        if wanted and slide["layout"] not in ("title", "section") and wanted in _LAYOUTS:
-            slide["layout"] = wanted
-        if slide["layout"] in ("title", "section") or any(
-            row.get(k)
-            for k in ("bullets", "rows", "timeline", "bands", "tiles", "metrics", "chart", "body")
+        if (
+            wanted
+            and slide["layout"] not in _STRUCTURAL
+            and wanted in _LAYOUTS
+            and wanted not in _STRUCTURAL
         ):
+            slide["layout"] = wanted
+        if slide["layout"] not in _STRUCTURAL and not any(row.get(k) for k in _DRAFT_CONTENT):
+            # 내용이 다 떨어져 나간 장은 초안에서 빼서 따로 쓴다. A 「프로세스
+            # 상태 전이」 slide drafted as a chart of invented numbers lost its
+            # chart here and reached the screen with notes and nothing else.
+            # Written again as bullets: the same layout would invent the
+            # same numbers.
+            if slide["layout"] in ("chart", "metrics"):
+                slide["layout"] = "bullets"
+            continue
+        if slide["layout"] in _STRUCTURAL or any(row.get(k) for k in _DRAFT_CONTENT):
             out[index] = row
     return out
 
@@ -949,6 +1026,33 @@ _PAIRED_RULES = {
     ),
 }
 
+_PAIRED_RULES.update(
+    {
+        "steps": (
+            "이 장은 절차의 단계를 차례대로 가로로 놓는 장이다. 번호는 자리가 매긴다.",
+            "- steps 는 `[단계, 내용]` 의 목록이다. **3~5개.**\n"
+            "- 단계는 그 단계의 이름 한 마디. **12자 이내** — 접수, 심사, 선정, 협약"
+            " 처럼. 번호를 붙이지 마라.\n"
+            "- 내용은 그 단계에서 무엇을 하는지 한 줄. **60자 이내.**\n"
+            "- 순서대로 놓아라. 요청에 있는 절차만 — 없는 단계를 지어 칸을 채우지 마라.",
+            '{{"steps": [["접수", "온라인으로 신청서와 계획서를 낸다"],'
+            ' ["심사", "서류와 발표로 평가한다"], ["협약", "선정 뒤 2주 안에 협약을 맺는다"]],'
+            ' "notes": "여기서는 ..."}}',
+        ),
+        "cards": (
+            "이 장은 나란한 항목을 이름 붙은 상자로 놓는 장이다.",
+            "- cards 는 `[이름, 내용]` 의 목록이다. **3~4개.**\n"
+            "- 이름은 그 상자의 제목 한 마디. **14자 이내** — 교육, 연구, 산학, 국제화 처럼.\n"
+            "- 내용은 한두 문장. **80자 이내.**\n"
+            "- 항목은 서로 같은 급이어야 한다. 순서가 뜻을 가지면 steps, 이름표가"
+            " 줄 앞에 서야 하면 bands 다.",
+            '{{"cards": [["교육", "전교생 AI 기초 과목을 필수로 연다"],'
+            ' ["연구", "학과별 AI 융합 연구 과제를 지원한다"],'
+            ' ["산학", "지역 기업과 실습 프로젝트를 잇는다"]], "notes": "여기서는 ..."}}',
+        ),
+    }
+)
+
 _PROMPTS.update(
     {
         layout: _PAIRED_PROMPT.replace("{what}", what)
@@ -958,19 +1062,108 @@ _PROMPTS.update(
     }
 )
 
+_STATEMENT_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
+이 장은 발표의 핵심 메시지 하나를 크게 세우는 장이다 — 남의 말이 아니라 발표자의 결론.
+
+전체 구성:
+{outline}
+
+앞 장에서 이미 말한 내용:
+{written}
+
+규칙:
+- title 은 크게 설 한 마디. **12자 이내** — 「전교생, AI 기초부터」 처럼.
+- body 는 그 한 마디를 푸는 한 문장. **60자 이내.** 없는 사실을 넣지 마라.
+- 겁을 주거나 재촉하는 말이 아니라, 발표가 말하려는 것.
+- notes 는 발표자가 이 장에서 말할 내용. 2~3문장.
+
+JSON 객체로만 답하라.
+예: {{"title": "전교생, AI 기초부터", "body": "학과와 상관없이 같은 출발선에서 AI 를 쓰게 한다",
+      "notes": "여기서는 ..."}}
+
+원래 요청: {request}"""
+
+_BIG_NUMBER_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
+이 장은 숫자 하나를 아주 크게 띄우고 그 뜻을 한 줄로 붙이는 장이다.
+
+전체 구성:
+{outline}
+
+앞 장에서 이미 말한 내용:
+{written}
+
+규칙:
+- metrics 는 `[값, 이름]` **하나.** 값은 짧게 — `32%`, `1.4초`, `3억 원`.
+- body 는 그 숫자가 무엇을 뜻하는지 한 문장. **60자 이내.**
+- 지어낸 수치를 쓰지 마라. **근거가 없으면 이 장을 쓰지 말고 bullets 로 답하라.**
+- notes 는 이 숫자가 어디서 온 값인지. 2~3문장.
+
+JSON 객체로만 답하라.
+예: {{"metrics": [["32%", "오탐 감소"]], "body": "새 규칙을 적용한 첫 달, 오탐 신고가 1/3 줄었다",
+      "notes": "여기서는 ..."}}
+
+원래 요청: {request}"""
+
+_CLOSING_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
+이 장은 마지막 장이다 — 기억할 것 두셋과 마무리 한 줄.
+
+전체 구성:
+{outline}
+
+앞 장에서 이미 말한 내용:
+{written}
+
+규칙:
+- bullets 는 이 발표에서 기억할 것. **2~3개**, 각 **30자 이내.** 앞 장에서 실제로 말한
+  것만 — 새 주장을 여기서 꺼내지 마라.
+- body 는 마무리 한 줄. **30자 이내** — 「질문을 환영합니다」, 「감사합니다」 처럼.
+- notes 는 발표자가 마무리하며 할 말. 2~3문장.
+
+JSON 객체로만 답하라.
+예: {{"bullets": ["2027년부터 전교생 필수", "학과별 실습으로 이어진다"],
+      "body": "질문을 환영합니다", "notes": "여기서는 ..."}}
+
+원래 요청: {request}"""
+
 _PROMPTS.update(
     {
         "quote": _QUOTE_PROMPT,
+        "statement": _STATEMENT_PROMPT,
         "table": _TABLE_PROMPT,
         "metrics": _METRICS_PROMPT,
+        "big-number": _BIG_NUMBER_PROMPT,
         "chart": _CHART_PROMPT,
+        "closing": _CLOSING_PROMPT,
     }
 )
+
+
+def _agenda_lines(slides: list[dict]) -> list[str]:
+    """What the 목차 lists: the dividers when the deck has them, otherwise the
+    body slides — never itself, the cover, or the closing. Eight at most."""
+    names = [s["title"] for s in slides if s.get("layout") == "section"]
+    if len(names) < 2:
+        names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
+    return [str(n).strip() for n in names if str(n).strip()][:8]
 
 
 #: Keys that describe the slide rather than fill it. What is left is the answer,
 #: whatever the model decided to call it.
 _NOT_CONTENT = frozenset({"notes", "layout", "title", "heading", "id", "index", "n"})
+
+#: The fields a drafted slide can carry its content in.
+_DRAFT_CONTENT = (
+    "bullets",
+    "rows",
+    "timeline",
+    "bands",
+    "tiles",
+    "steps",
+    "cards",
+    "metrics",
+    "chart",
+    "body",
+)
 
 
 def _salvaged_bullets(data: dict) -> list[str]:
@@ -1039,7 +1232,7 @@ _MAX_SERIES = 2
 
 #: Layouts whose whole content is figures. A slide of prose can be written
 #: from a topic; a slide of numbers cannot be written from anything.
-_NUMERIC_LAYOUTS = ("chart", "metrics")
+_NUMERIC_LAYOUTS = ("chart", "metrics", "big-number")
 
 
 def _offered_layouts(request: str, context: list[str]) -> list[str]:
@@ -1069,7 +1262,9 @@ def _offered_layouts(request: str, context: list[str]) -> list[str]:
 #: 연구계획 발표자료」 came back as 새로운 알고리즘으로 정확도를 높임 over eight
 #: slides, for a thesis nobody described; the planner's `subject` was the
 #: request's own words, so the subject check let it through.
-_OWN_WORK = re.compile(r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취")
+_OWN_WORK = re.compile(
+    r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취|캡스톤|산학|과제 제안|제안 발표"
+)
 
 _FIGURE = re.compile(
     # A year is not a measurement. `2026년 계획` matched the three-digit rule
@@ -1293,6 +1488,12 @@ _PAIRED = {
     "tiles": (6, 4, 24),
     #: `[[시점, 일어난 일]]` — 연혁, a date beside what happened.
     "timeline": (7, 12, 60),
+    #: `[[단계, 한 줄]]` — 절차, set across the slide as numbered steps. No
+    #: dates: the order is the content.
+    "steps": (5, 12, 60),
+    #: `[[이름, 한두 줄]]` — 분야 · 전략 · 역할, peers set side by side as
+    #: titled cards.
+    "cards": (4, 14, 80),
 }
 
 
@@ -1366,6 +1567,7 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
             prompt=imagegen.compose_prompt(
                 str(figure.get("prompt") or ""), aspect="16:9", style=""
             ),
+            aspect="16:9",
         )
     except Exception as exc:  # noqa: BLE001 — a missing figure is not a failed deck
         log.warning("slide figure could not be drawn: %s", exc)
@@ -1502,16 +1704,21 @@ async def _write_slides(
         # many are behind it.
         progress = {"current": index + 1, "total": len(slides)}
 
-        if slide["layout"] in ("title", "section"):
-            # Neither needs a model call. The cover's two lines arrive with the
+        if slide["layout"] in _STRUCTURAL:
+            # None needs a model call. The cover's two lines arrive with the
             # outline — the subtitle trimmed rather than copied verbatim, since
             # pasting the request in puts its question mark on the opening
             # slide of a presentation. A divider has only its own name, which
             # the outline already chose, and a number, which is where it falls
-            # among the dividers rather than among the slides.
+            # among the dividers rather than among the slides. The agenda is
+            # the outline read back: the dividers when there are any, else the
+            # body slides, at most eight.
             if slide["layout"] == "section":
                 divider += 1
                 slide["number"] = f"{divider:02d}."
+                slide["body"] = ""
+            elif slide["layout"] == "agenda":
+                slide["bullets"] = _agenda_lines(slides)
                 slide["body"] = ""
             else:
                 slide["body"] = subtitle[:80]
@@ -1588,7 +1795,7 @@ async def _write_slides(
             # 마커와 함께 layout 도 평문으로 되돌린다. timeline 인 채로 남으면
             # 화면과 파일이 "항목 없는 연혁" 을 그리려 들고, 검사는 빈 장으로
             # 읽는다 — 표·차트가 빈 답에서 bullets 로 내려가는 것과 같은 규칙.
-            if slide.get("layout") not in ("title", "section"):
+            if slide.get("layout") not in _STRUCTURAL:
                 slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
             yield {"type": "slide", "slide": slide, "done": True}
@@ -1655,8 +1862,10 @@ async def _write_slides(
             raw_notes = " ".join(str(n).strip() for n in raw_notes if str(n).strip())
         notes = str(raw_notes or "").strip()
 
-        if slide["layout"] == "quote":
+        if slide["layout"] in ("quote", "statement"):
             line = str(data.get("body") or "").strip().strip('"“”')
+            if slide["layout"] == "statement" and (word := str(data.get("title") or "").strip()):
+                slide["title"] = word[:24]
             if not line:
                 # No usable quote — a slide with an empty headline is a blank
                 # screen in the middle of a talk, so it becomes a bullets slide.
@@ -1670,12 +1879,19 @@ async def _write_slides(
             else:
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
-        elif slide["layout"] == "metrics":
+        elif slide["layout"] in ("metrics", "big-number"):
             if metrics := _clean_metrics(data.get("metrics")):
-                slide["metrics"] = metrics
+                slide["metrics"] = metrics[:1] if slide["layout"] == "big-number" else metrics
+                if slide["layout"] == "big-number":
+                    slide["body"] = " ".join(str(data.get("body") or "").split())[:90]
             else:
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
+        elif slide["layout"] == "closing":
+            slide["bullets"] = _clean_bullets(data.get("bullets"))[:3]
+            slide["body"] = " ".join(str(data.get("body") or "").split())[:60]
+            if not slide["bullets"] and not slide["body"]:
+                slide["body"] = "감사합니다"
         elif slide["layout"] in _PAIRED:
             if pairs := _clean_pairs(data.get(slide["layout"]), slide["layout"]):
                 slide[slide["layout"]] = pairs
@@ -1720,7 +1936,7 @@ async def _write_slides(
             # 마커와 함께 layout 도 평문으로 되돌린다. timeline 인 채로 남으면
             # 화면과 파일이 "항목 없는 연혁" 을 그리려 들고, 검사는 빈 장으로
             # 읽는다 — 표·차트가 빈 답에서 bullets 로 내려가는 것과 같은 규칙.
-            if slide.get("layout") not in ("title", "section"):
+            if slide.get("layout") not in _STRUCTURAL:
                 slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
 
@@ -2217,7 +2433,7 @@ def has_content(slide: dict) -> bool:
     the same test left 내보내기, 발표 and 텍스트 수정 disabled forever on a deck
     that was complete.
     """
-    if slide.get("layout") in ("title", "section"):
+    if slide.get("layout") in _STRUCTURAL:
         # A divider says the name of its part and nothing else — that is the
         # whole of what a divider is, so its title is its content. Read as
         # empty, `filled` dropped approved dividers from finished decks.

@@ -456,8 +456,11 @@ def test_both_surfaces_name_the_looks_the_renderers_know() -> None:
     """이름표가 어긋나면 고른 인상이 조용히 버려진다."""
     from app.services import deck, design, report
 
-    assert set(deck._STYLES.values()) == {"editorial", "poster", "minimal"}
-    assert deck._STYLES == report._STYLES
+    # A deck wears seven faces; a report the three that have no cover to
+    # compose. What the report names, the deck names the same way.
+    assert set(deck._STYLES.values()) == set(design.VISUAL_STYLES)
+    assert set(report._STYLES.values()) == {"editorial", "poster", "minimal"}
+    assert all(deck._STYLES[name] == value for name, value in report._STYLES.items())
     # `normalise_tokens` is the gate everything passes through; a value it does
     # not recognise falls back to the default and the choice is lost.
     for stored in deck._STYLES.values():

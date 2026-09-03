@@ -40,6 +40,10 @@ log = logging.getLogger(__name__)
 #: One model call per block, so this is the multiplier on the bill.
 _MIN_BLOCKS = 4
 _MAX_BLOCKS = 24
+#: A deck is allowed what the plain slide track allows. 「30장」 on a 서식 used
+#: to come back as 24 with no word said — the document ceiling applied to
+#: slides, where a lecture deck of thirty is an ordinary request.
+_MAX_SLIDES = 50
 #: Ceiling when no count was asked for, separate from the cap above.
 _DEFAULT_MAX = 10
 
@@ -204,22 +208,25 @@ def _json_object(text: str) -> dict[str, Any]:
         return {}
 
 
-def requested_blocks(request: str) -> int | None:
+def _ceiling(template: DesignTemplate | None) -> int:
+    """How many blocks one document may run to: slides get the deck's room."""
+    return _MAX_SLIDES if template is not None and template.kind == "deck" else _MAX_BLOCKS
+
+
+def requested_blocks(request: str, template: DesignTemplate | None = None) -> int | None:
     """A count stated in the request, clamped. `None` if unstated."""
     match = re.search(r"(\d{1,3})\s*(?:장|페이지|절|쪽|개)", request)
     if not match:
         return None
     asked = int(match.group(1))
-    return max(_MIN_BLOCKS, min(asked, _MAX_BLOCKS)) if asked > 0 else None
+    return max(_MIN_BLOCKS, min(asked, _ceiling(template))) if asked > 0 else None
 
 
 #: `{"title": "…", "layout": "…"}` even when a quote is missing from a key.
 #: Small models drop one often enough that the difference is a whole turn:
 #: the call is already paid for, and the plan inside it is legible to a human
 #: reading the log — so it should be legible here too.
-_SALVAGE = re.compile(
-    r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S
-)
+_SALVAGE = re.compile(r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S)
 
 
 def _salvaged(text: str) -> dict[str, Any]:
@@ -261,7 +268,7 @@ def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[
     # position gives a document with no title page and a heading twice.
     if blocks:
         blocks[0]["layout"] = template.layouts[0]
-    return title, blocks[:_MAX_BLOCKS]
+    return title, blocks[: _ceiling(template)]
 
 
 def _guide(template: DesignTemplate) -> str:
@@ -383,7 +390,7 @@ async def write(
         "outlineOutputTokens": 0,
     }
     noun, unit = _WORDS.get(template.kind, ("문서", "절"))
-    wanted = requested_blocks(request)
+    wanted = requested_blocks(request, template)
     surface = template.surface
 
     findings = research.Findings()
@@ -393,9 +400,7 @@ async def write(
     # configuration as though it were this document's result.
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
-        findings = await research.run(
-            request, model=outline_model or model, api_key=api_key
-        )
+        findings = await research.run(request, model=outline_model or model, api_key=api_key)
         usage["outlineInputTokens" if outline_model else "inputTokens"] += findings.usage[
             "inputTokens"
         ]
@@ -421,19 +426,25 @@ async def write(
         ordinal = len(findings.sources) + 1
         title = str(item.get("name") or "프로젝트 자료")[:200]
         url = str(item.get("sourceUrl") or "")
-        findings.sources.append({
-            "id": str(item.get("id") or f"project-{ordinal}"),
-            "ordinal": ordinal,
-            "title": title,
-            "publisher": research._publisher(url) if url else "프로젝트 파일",
-            "url": url,
-            "origin": "web" if url else "file",
-            "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
-            "quote": (
-                " · ".join(str(v) for v in (item.get("locations") or []))
-                or ("전체 내용 전달됨" if item.get("state") == "included" else "일부 내용만 전달됨")
-            ),
-        })
+        findings.sources.append(
+            {
+                "id": str(item.get("id") or f"project-{ordinal}"),
+                "ordinal": ordinal,
+                "title": title,
+                "publisher": research._publisher(url) if url else "프로젝트 파일",
+                "url": url,
+                "origin": "web" if url else "file",
+                "originLabel": "프로젝트 웹 자료" if url else "프로젝트 파일",
+                "quote": (
+                    " · ".join(str(v) for v in (item.get("locations") or []))
+                    or (
+                        "전체 내용 전달됨"
+                        if item.get("state") == "included"
+                        else "일부 내용만 전달됨"
+                    )
+                ),
+            }
+        )
         project_reference_lines.append(f"- [{ordinal}] {title}")
         project_selected += 1
     if findings.sources:
@@ -566,9 +577,7 @@ async def write(
             "type": "proposal",
             "plan": {
                 "title": title[:200],
-                "blocks": [
-                    {"title": item["title"], "layout": item["layout"]} for item in plan
-                ],
+                "blocks": [{"title": item["title"], "layout": item["layout"]} for item in plan],
             },
         }
         yield {"type": "usage", **usage}
@@ -600,12 +609,18 @@ async def write(
 
     for index, block in enumerate(blocks):
         heading = str(block["title"])
+        # The same shape the slide and report tracks send, because the same
+        # timeline draws all three. This one said `done` where they say
+        # `current`, and the surface printed 「(/30)」 beside every block and
+        # could not say how many were left — the one thing a person watching
+        # a thirty-slide run wants to know.
+        progress = {"current": index + 1, "total": len(blocks)}
         yield {
             "type": "step",
             "id": f"b{index}",
             "label": heading,
             "status": "running",
-            "progress": {"done": index, "total": len(blocks)},
+            "progress": progress,
         }
         try:
             text, spent = await _complete(
@@ -640,7 +655,7 @@ async def write(
                 "id": f"b{index}",
                 "label": heading,
                 "status": "error",
-                "progress": {"done": index + 1, "total": len(blocks)},
+                "progress": progress,
             }
             continue
 
@@ -654,7 +669,7 @@ async def write(
             "id": f"b{index}",
             "label": heading,
             "status": "done",
-            "progress": {"done": index + 1, "total": len(blocks)},
+            "progress": progress,
         }
 
     html = templates.render(

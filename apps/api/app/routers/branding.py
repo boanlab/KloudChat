@@ -59,8 +59,9 @@ async def get_logo():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_logo") from None
     # Changing the file changes the filename and so the URL, which is what
     # makes a long cache lifetime safe here.
-    return Response(content=data, media_type=mime,
-                    headers={"Cache-Control": "public, max-age=86400"})
+    return Response(
+        content=data, media_type=mime, headers={"Cache-Control": "public, max-age=86400"}
+    )
 
 
 @router.post("/admin/branding/logo")
@@ -92,9 +93,16 @@ async def upload_logo(
 
     await settings_store.put(db, settings_store.BRAND_LOGO, filename, admin.id)
     await settings_store.put(db, settings_store.BRAND_LOGO_MIME, mime, admin.id)
-    db.add(AuditEvent(actor_id=admin.id, action="branding.logo", target=filename,
-                      detail=f"{len(data)}B", ip=client_ip(request),
-                      user_agent=request.headers.get("User-Agent", "")[:400]))
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            action="branding.logo",
+            target=filename,
+            detail=f"{len(data)}B",
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
     await db.commit()
     settings_store.invalidate()
 
@@ -109,9 +117,15 @@ async def delete_logo(request: Request, admin: AdminUser, db: DbSession):
     filename = (await settings_store.all_values()).get(settings_store.BRAND_LOGO, "")
     await settings_store.put(db, settings_store.BRAND_LOGO, "", admin.id)
     await settings_store.put(db, settings_store.BRAND_LOGO_MIME, "", admin.id)
-    db.add(AuditEvent(actor_id=admin.id, action="branding.logo.clear", target=filename or "-",
-                      ip=client_ip(request),
-                      user_agent=request.headers.get("User-Agent", "")[:400]))
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            action="branding.logo.clear",
+            target=filename or "-",
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
     await db.commit()
     settings_store.invalidate()
     if filename:

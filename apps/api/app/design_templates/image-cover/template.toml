@@ -2,8 +2,8 @@ kind = "image"
 name = "표지 그림"
 description = "보고서 표지나 슬라이드 배경. 가운데를 비워 글자를 얹을 수 있습니다"
 category = "문서"
-fills = ["문서 주제", "느낌"]
-example_prompt = "{topic}에 관한 문서의 표지 바탕. {feel} 느낌으로, 가운데는 제목 자리로 비워 줘."
+fills = ["문서 주제", "느낌", "비율"]
+example_prompt = "{topic}에 관한 문서의 표지 바탕. {feel} 느낌으로, 가운데는 제목 자리로 비워 줘. 비율은 {aspect}."
 layouts = ["cover"]
 prompt_suffix = "abstract document-cover background, calm mid-tone contrast, uncluttered centre reserved for a title, subtle texture, no text, no lettering, no logos, no faces"
 
@@ -13,12 +13,12 @@ prompt_suffix = "abstract document-cover background, calm mid-tone contrast, unc
 name_en = "Cover image"
 description_en = "A ground for a report cover or slide background, centre left clear"
 category_en = "Documents"
-fills_en = ["Document topic", "Feel"]
-example_prompt_en = "A cover ground for a document about {topic}, {feel}, with the centre left clear for a title."
+fills_en = ["Document topic", "Feel", "Aspect"]
+example_prompt_en = "A cover ground for a document about {topic}, {feel}, with the centre left clear for a title. Aspect {aspect}."
 
 [defaults]
-aspect = "4:3"
-style = "미니멀"
+aspect = "16:9"
+style = "자동"
 
 [[arguments]]
 name = "topic"
@@ -35,3 +35,12 @@ default = "정돈된 리듬"
 default_en = "an orderly rhythm"
 options = ["정돈된 리듬", "부드러운 결", "단단한 구조"]
 options_en = ["an orderly rhythm", "a soft grain", "a firm structure"]
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "16:9 (발표 표지)"
+default_en = "16:9 (talk cover)"
+options = ["16:9 (발표 표지)", "4:3 (슬라이드 4:3)", "9:16 (문서 표지·세로)"]
+options_en = ["16:9 (talk cover)", "4:3 (4:3 slides)", "9:16 (document cover, portrait)"]

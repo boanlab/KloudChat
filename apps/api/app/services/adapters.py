@@ -14,7 +14,6 @@ Zero-priced models not served from our own GPUs are dropped from the catalogue
 rather than offered as free. See `services/models.py`.
 """
 
-
 from __future__ import annotations
 
 from typing import Any

@@ -1,4 +1,5 @@
 import { Code2, Download, PencilLine, RefreshCw } from 'lucide-react'
+import { useRef } from 'react'
 import { Button, ButtonLink } from '@/components/ui'
 import { fileUrl } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
@@ -61,6 +62,9 @@ export function MediaResult({
   const { models, openArtifact } = useStore()
   const generateImages = useStore((s) => s.generateImages)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
+  //: The planned prompt as somebody is editing it, kept out of state so the
+  //: textarea does not re-render under their caret.
+  const edited = useRef('')
   const images = artifacts.filter((a): a is ImageArtifact => a.kind === 'image')
   const audios = artifacts.filter((a): a is AudioArtifact => a.kind === 'audio')
   const videos = artifacts.filter((a): a is VideoArtifact => a.kind === 'video')
@@ -94,16 +98,19 @@ export function MediaResult({
                   'group relative overflow-hidden rounded-card border border-line bg-elevated',
                   // 도식은 자르지 않는다. A picture can lose its edges to a
                   // tidy frame; a figure that loses an edge loses a module.
-                  img.source ? 'bg-white' : (aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square'),
+                  // Nor is anything else: the frame takes the file's own
+                  // pixel ratio, so a square answer to a 16:9 request shows
+                  // whole rather than with its top and bottom cut away.
+                  img.source ? 'bg-white' : img.width && img.height ? undefined : (aspectClass[img.actualAspect || img.aspect] ?? 'aspect-square'),
                 )}
-                style={img.source && img.width && img.height ? { aspectRatio: `${img.width} / ${img.height}` } : undefined}
+                style={img.width && img.height ? { aspectRatio: `${img.width} / ${img.height}` } : undefined}
               >
                 <img
                   src={fileUrl(img.src)}
                   alt={img.caption || img.prompt}
                   className={cn(
                     'size-full transition-transform duration-300 group-hover:scale-[1.03]',
-                    img.source ? 'object-contain p-2' : 'object-cover',
+                    img.source ? 'object-contain p-2' : 'object-contain',
                   )}
                 />
               </button>
@@ -205,6 +212,48 @@ export function MediaResult({
             t('{n}장').replace('{n}', String(images.length)),
             modelLabel(images[0].model),
           ])}
+          {/* What the model was actually sent. The sentence typed in is short;
+              the prompt that made the picture places every element and ends
+              on a style line — readable here, editable, and sendable again as
+              it stands. */}
+          {images[0].composedPrompt && images[0].composedPrompt !== images[0].prompt && (
+            <details className="mt-2 max-w-2xl rounded-control border border-line bg-panel px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium text-muted">
+                {images[0].engine === 'matplotlib' ? t('그린 코드 보기') : t('보낸 프롬프트 보기')}
+              </summary>
+              <textarea
+                className="mt-2 w-full resize-y rounded-control border border-line bg-bg p-2 font-mono text-xs leading-relaxed text-fg"
+                rows={images[0].engine === 'matplotlib' ? 16 : 10}
+                defaultValue={images[0].composedPrompt}
+                aria-label={t('보낸 프롬프트')}
+                onChange={(e) => {
+                  edited.current = e.target.value
+                }}
+              />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {sessionId && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void generateImages(sessionId, edited.current || images[0].composedPrompt || '', {
+                        raw: true,
+                      })
+                    }
+                  >
+                    <RefreshCw size={13} />
+                    {images[0].engine === 'matplotlib' ? t('이 코드로 다시 그리기') : t('이 프롬프트로 다시 만들기')}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void copyText(edited.current || images[0].composedPrompt || '')}
+                >
+                  {t('복사')}
+                </Button>
+              </div>
+            </details>
+          )}
         </div>
       )}
 

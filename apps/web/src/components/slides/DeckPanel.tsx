@@ -72,7 +72,7 @@ import { copyText } from '@/lib/clipboard'
 export function hasContent(slide: Slide): boolean {
   // A divider says the name of the part and nothing else, which is all a
   // divider is for — asked to fill one it would be a table of contents.
-  if (slide.layout === 'title' || slide.layout === 'section') return true
+  if (STRUCTURAL.includes(slide.layout)) return true
   return Boolean(
     slide.bullets?.length ||
       slide.body?.trim() ||
@@ -81,7 +81,9 @@ export function hasContent(slide: Slide): boolean {
       slide.chart ||
       slide.bands?.length ||
       slide.tiles?.length ||
-      slide.timeline?.length,
+      slide.timeline?.length ||
+      slide.steps?.length ||
+      slide.cards?.length,
   )
 }
 
@@ -90,7 +92,7 @@ function overflowRisk(slide: Slide): boolean {
   const titleLoad = Math.ceil((slide.title?.length ?? 0) / 34)
   const bulletLoad = (slide.bullets ?? []).reduce((sum, row) => sum + Math.max(1, Math.ceil(row.length / 38)), 0)
   const tableLoad = (slide.rows ?? []).length * 1.35
-  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0) * 1.6
+  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0, slide.steps?.length ?? 0, slide.cards?.length ?? 0) * 1.6
   const chartLoad = (slide.chart?.categories.length ?? 0) * 0.8 + (slide.chart?.series.length ?? 0) * 0.8
   const scale = slide.textScale ?? 1
   return (titleLoad * 1.5 + bulletLoad + tableLoad + pairLoad + chartLoad) * scale > 10
@@ -148,7 +150,12 @@ function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide
  * editable text, and the save that reads that text back. They did not, and the
  * save was the one that lost.
  */
-const PAIRED = ['bands', 'tiles', 'timeline'] as const
+const PAIRED = ['bands', 'tiles', 'timeline', 'steps', 'cards'] as const
+
+/** Slides that say where the deck is: the cover, the dividers, the 목차. */
+const STRUCTURAL: Slide['layout'][] = ['title', 'section', 'agenda']
+/** Drawn reversed out of the accent, like the cover. */
+const COVERS: Slide['layout'][] = ['title', 'section', 'closing']
 
 /**
  * How Korean breaks across lines, set once on each slide root.
@@ -163,19 +170,64 @@ const PAIRED = ['bands', 'tiles', 'timeline'] as const
  * (`_deck/seed.html`) says the same thing for the file that leaves.
  */
 const KOREAN_WRAP = { wordBreak: 'keep-all', overflowWrap: 'break-word' } as const
+
+export type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
+
+/**
+ * The seven faces a deck can wear.
+ *
+ * Every measurement on a slide is the same across them; what changes is the
+ * ground, the ink, how the cover is composed, which ornament marks a body
+ * slide, and whether a card is a filled block or an outlined one. `deck_export`
+ * keeps an identical table in Python — a face the panel shows and the file
+ * does not is a preview that lies.
+ */
+interface Look {
+  bg: string
+  ink: string
+  muted: string
+  faint: string
+  hair: string
+  /** How much accent goes into a tint, and onto what. */
+  tint: number
+  /** Cards, bands and metrics: a filled block or a hairline box. */
+  card: 'filled' | 'outlined'
+  radius: number
+  /** Number badges on steps and tiles. */
+  badge: 'square' | 'circle'
+  cover: 'gradient' | 'wash' | 'glow' | 'split' | 'paper' | 'brackets'
+  ornament: 'top-band' | 'left-bar' | 'corner-circle' | 'bottom-rule' | 'gutter' | 'frame' | 'bottom-band'
+}
+
+const LOOKS: Record<VisualStyle, Look> = {
+  editorial: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e6e6e6', tint: 7, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'top-band' },
+  poster: { bg: '#f7f3ed', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e2ddd4', tint: 9, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'left-bar' },
+  minimal: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#ececec', tint: 5, card: 'outlined', radius: 0, badge: 'square', cover: 'wash', ornament: 'corner-circle' },
+  dark: { bg: '#0f172a', ink: '#f1f5f9', muted: '#a3b1c6', faint: '#64748b', hair: '#273449', tint: 22, card: 'filled', radius: 6, badge: 'circle', cover: 'glow', ornament: 'bottom-rule' },
+  split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#9aa3b2', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter' },
+  warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#a8998a', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band' },
+  mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#8a8a8a', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame' },
+}
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
 const LAYOUTS: { id: Slide['layout']; label: string }[] = [
   { id: 'title', label: '표지' },
+  { id: 'agenda', label: '목차' },
   { id: 'section', label: '구분 장' },
   { id: 'bullets', label: '글머리표' },
   { id: 'two-column', label: '두 단' },
   { id: 'quote', label: '인용문' },
+  { id: 'statement', label: '핵심 메시지' },
   { id: 'table', label: '표' },
   { id: 'metrics', label: '핵심 수치' },
+  { id: 'big-number', label: '큰 숫자' },
+  { id: 'chart', label: '차트' },
   { id: 'bands', label: '항목과 설명' },
-  { id: 'tiles', label: '카드' },
+  { id: 'cards', label: '카드' },
+  { id: 'steps', label: '단계' },
+  { id: 'tiles', label: '표식' },
   { id: 'timeline', label: '연표' },
+  { id: 'closing', label: '마무리' },
 ]
 
 /** Keep only the inline markup the toolbar can create. */
@@ -242,6 +294,8 @@ function pairFields(layout: Paired | null, pairs?: [string, string][]): Partial<
     bands: layout === 'bands' ? pairs : undefined,
     tiles: layout === 'tiles' ? pairs : undefined,
     timeline: layout === 'timeline' ? pairs : undefined,
+    steps: layout === 'steps' ? pairs : undefined,
+    cards: layout === 'cards' ? pairs : undefined,
   }
 }
 
@@ -267,8 +321,15 @@ function relayout(slide: Slide, layout: Slide['layout']): Slide {
     chart: layout === 'chart' ? slide.chart : undefined,
     ...pairFields(null),
   }
-  if (layout === 'title' || layout === 'section' || layout === 'quote') {
+  if (layout === 'title' || layout === 'section' || layout === 'quote' || layout === 'statement') {
     return { ...clean, body: lines.join(' · ') || undefined }
+  }
+  if (layout === 'big-number') {
+    const [first] = pairs.length ? pairs : lines.slice(0, 1).map((line) => ['1', line] as [string, string])
+    return { ...clean, metrics: first ? [first] : [], body: lines.slice(1).join(' · ') || undefined }
+  }
+  if (layout === 'closing') {
+    return { ...clean, bullets: lines.slice(0, 3), body: slide.body || undefined }
   }
   if (layout === 'table') {
     const rows = slide.rows ?? pairs.map(([left, right]) => [left, right])
@@ -375,7 +436,7 @@ export function SlideView({
    * and the file agree — a preview that omits the logo is a preview that lies
    * about what will be handed round the room.
    */
-  brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: 'editorial' | 'poster' | 'minimal' }
+  brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: VisualStyle }
   /**
    * Whether the words on this slide can be typed over.
    *
@@ -445,8 +506,11 @@ export function SlideView({
       ? <span dangerouslySetInnerHTML={{ __html: cleanInlineHtml(html) }} />
       : text
   }
-  const visualStyle = brand?.visualStyle ?? 'editorial'
-  const accent = slide.accent ?? brand?.accent ?? 'var(--accent)'
+  const visualStyle: VisualStyle = brand?.visualStyle && brand.visualStyle in LOOKS ? brand.visualStyle : 'editorial'
+  const look = LOOKS[visualStyle]
+  // 흑백 is black and white: the theme's accent survives only as the page
+  // chip and the tab under a title, everything else is ink.
+  const accent = visualStyle === 'mono' ? look.ink : (slide.accent ?? brand?.accent ?? 'var(--accent)')
   const px = (n: number) => `${n * scale}px`
   /**
    * Type, which a person can make bigger or smaller on one slide.
@@ -467,8 +531,20 @@ export function SlideView({
    * into the .pptx and .pdf — see `_mix` there. Change a percentage here and
    * change it there, or the room sees a different deck from the panel.
    */
-  const tint = `color-mix(in srgb, ${accent} 7%, #fff)`
-  const hair = '#e6e6e6'
+  const tint = look.tint ? `color-mix(in srgb, ${accent} ${look.tint}%, ${look.bg})` : '#f2f2f2'
+  const hair = look.hair
+  /** A card, a band, a metric box: filled in the tint, or drawn as a box. */
+  const boxed = (extra?: React.CSSProperties): React.CSSProperties =>
+    look.card === 'outlined'
+      ? { background: look.bg, border: `1px solid ${hair}`, borderRadius: px(look.radius), ...extra }
+      : { background: tint, borderRadius: px(look.radius), ...extra }
+  const badge = (size: number): React.CSSProperties => ({
+    width: px(size),
+    height: px(size),
+    background: accent,
+    color: visualStyle === 'mono' ? look.bg : '#fff',
+    borderRadius: look.badge === 'circle' ? '50%' : px(look.radius / 2),
+  })
   const rows = slide.rows ?? []
   const metrics = slide.metrics ?? []
   /* The three shapes that are a left thing and a right thing. Read as one
@@ -597,63 +673,123 @@ export function SlideView({
    * were on. The block is the only thing here that is not type, and it is what
    * makes a deck look like a deck at a glance.
    */
-  if (slide.layout === 'title' || slide.layout === 'section') {
+  if (COVERS.includes(slide.layout)) {
+    const closing = slide.layout === 'closing'
+    /*
+     * The cover, composed per look. `gradient` is the accent falling half a
+     * step onto ink; `wash` a tenth of it fading to white; `glow` the dark
+     * ground with the accent as a large soft disc; `split` the accent as a
+     * block down the left two-fifths with the words on white beside it;
+     * `paper` the warm ground with a large accent disc bleeding off the right;
+     * `brackets` white, the title alone between two bracket marks.
+     * `deck_export` composes the same six.
+     */
+    const onAccent = look.cover === 'gradient' || look.cover === 'glow'
+    const coverInk = onAccent ? '#fff' : look.ink
+    const coverMuted = onAccent ? 'rgba(255,255,255,0.8)' : look.muted
+    const coverMark = onAccent ? 'rgba(255,255,255,0.9)' : accent
+    const background =
+      look.cover === 'gradient'
+        ? `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} ${visualStyle === 'poster' ? 48 : 62}%, #111827))`
+        : look.cover === 'wash'
+          ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 10%, #fff), #fff 70%)`
+          : look.bg
+    const inSplit = look.cover === 'split'
     return (
       <div
         ref={canvas}
         className="relative flex size-full flex-col justify-center overflow-hidden"
         style={{
-          /* A wash rather than a flat field. One accent across a whole slide is
-             a printed rectangle; the same accent falling half a step is what a
-             deck made by somebody with a template looks like — and it is mixed
-             from the accent, so it follows whatever hue is set rather than
-             pinning a second colour beside it. `deck_export` mixes the same
-             62% onto the ink. */
-          background: visualStyle === 'minimal'
-              ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 10%, #fff), #fff 70%)`
-              : `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} ${visualStyle === 'poster' ? 48 : 62}%, #111827))`,
+          background,
           padding: px(34),
+          paddingLeft: inSplit ? px(34 + 160 + 20) : px(34),
           ...KOREAN_WRAP,
         }}
       >
         {visualStyle === 'poster' && <div className="absolute rounded-full border border-white/20" style={{ width: px(150), height: px(150), right: px(-35), top: px(-45) }} />}
-        {slide.layout === 'section' && slide.number ? (
+        {look.cover === 'glow' && (
+          <div className="absolute rounded-full" style={{ width: px(260), height: px(260), right: px(-90), bottom: px(-120), background: `radial-gradient(circle at 40% 40%, color-mix(in srgb, ${accent} 70%, transparent), transparent 68%)` }} />
+        )}
+        {look.cover === 'paper' && (
+          <div className="absolute rounded-full" style={{ width: px(190), height: px(190), right: px(-60), top: px(18), background: accent, opacity: 0.9 }} />
+        )}
+        {inSplit && (
+          <>
+            <div className="absolute inset-y-0 left-0" style={{ width: px(160), background: accent }} />
+            <div className="absolute font-black tabular-nums" style={{ left: px(26), bottom: px(22), fontSize: type(34), color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>
+              {slide.layout === 'section' && slide.number ? slide.number.replace('.', '') : closing ? 'END' : '01'}
+            </div>
+          </>
+        )}
+        {look.cover === 'brackets' && (
+          <>
+            <div className="absolute" style={{ left: px(26), top: px(28), width: px(22), height: px(30), borderLeft: `${px(2.5)} solid ${look.ink}`, borderTop: `${px(2.5)} solid ${look.ink}` }} />
+            <div className="absolute" style={{ right: px(26), bottom: px(28), width: px(22), height: px(30), borderRight: `${px(2.5)} solid ${look.ink}`, borderBottom: `${px(2.5)} solid ${look.ink}` }} />
+          </>
+        )}
+        {slide.layout === 'section' && slide.number && !inSplit ? (
           /* `01.` over the title. A divider that only names the part leaves
              the reader counting backwards to place it. */
           <div
             style={{
               fontSize: type(15),
               fontWeight: 700,
-              color: visualStyle === 'minimal' ? accent : 'rgba(255,255,255,0.7)',
+              color: onAccent ? 'rgba(255,255,255,0.7)' : accent,
               marginBottom: px(6),
             }}
           >
             {slide.number}
           </div>
-        ) : (
+        ) : look.cover === 'brackets' ? null : (
           <div
             style={{
               width: px(44),
               height: px(3),
-              background: visualStyle === 'minimal' ? accent : 'rgba(255,255,255,0.9)',
+              background: coverMark,
               marginBottom: px(18),
             }}
           />
         )}
         <h3
-          style={{ fontSize: type(visualStyle === 'poster' ? 30 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: visualStyle === 'minimal' ? '#1a1a1a' : '#fff', maxWidth: visualStyle === 'editorial' ? '78%' : undefined }}
+          style={{ fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : visualStyle === 'mono' ? 32 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: visualStyle === 'mono' ? px(-0.5) : undefined }}
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
-          {rich('title', slide.title)}
+          {rich('title', slide.title || (closing ? t('마무리') : ''))}
         </h3>
-        {slide.body && (
+        {closing && slide.bullets && slide.bullets.length > 0 && (
+          /* What to remember, under the title: a dash and a line each. The
+             farewell goes at the foot, below, set larger. */
+          <ul style={{ marginTop: px(12), fontSize: type(12), lineHeight: 1.6, color: onAccent ? 'rgba(255,255,255,0.92)' : look.ink }}>
+            {slide.bullets.slice(0, 3).map((b, i) => (
+              <li key={i} className="flex gap-2">
+                <span style={{ color: onAccent ? 'rgba(255,255,255,0.6)' : accent }}>—</span>
+                <span
+                  {...typed(`bullets.${i}`, (text) => ({
+                    bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
+                  }))}
+                >
+                  {rich(`bullets.${i}`, b)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {closing && slide.body ? (
+          <p
+            className="absolute"
+            style={{ left: inSplit ? px(34 + 180) : px(34), bottom: px(30), fontSize: type(15), fontWeight: 700, color: onAccent ? '#fff' : accent }}
+            {...typed('body', (text) => ({ body: text }))}
+          >
+            {rich('body', slide.body)}
+          </p>
+        ) : slide.body && (
           <p
             style={{
               fontSize: type(13),
               marginTop: px(12),
               lineHeight: 1.5,
-              color: visualStyle === 'minimal' ? '#666' : 'rgba(255,255,255,0.8)',
+              color: coverMuted,
             }}
             {...typed('body', (text) => ({ body: text }))}
           >
@@ -667,32 +803,64 @@ export function SlideView({
   return (
     <div
       ref={canvas}
-      className="relative flex size-full flex-col overflow-hidden text-[#1a1a1a]"
+      className="relative flex size-full flex-col overflow-hidden"
       style={{
-        background: visualStyle === 'poster' ? '#f7f3ed' : '#fff',
+        background: look.bg,
+        color: look.ink,
         paddingTop: px(24),
-        paddingLeft: px(28),
+        paddingLeft: px(look.ornament === 'gutter' ? 40 : 28),
         paddingRight: px(28),
         // Room for the footer, which is drawn against the bottom edge.
         paddingBottom: px(28),
         ...KOREAN_WRAP,
       }}
     >
-      {/* The band across the head. Where the 4px stripe down the left edge
-          used to be: a rule that stands up is read as a margin mark, and one
-          that lies across the top is read as the top of a slide. */}
-      {visualStyle === 'editorial' && <div className="absolute inset-x-0 top-0" style={{ height: px(6), background: accent }} />}
-      {visualStyle === 'poster' && <div className="absolute inset-y-0 left-0" style={{ width: px(8), background: accent }} />}
-      {visualStyle === 'minimal' && <div className="absolute rounded-full" style={{ width: px(70), height: px(70), right: px(-30), top: px(-35), background: `color-mix(in srgb, ${accent} 12%, transparent)` }} />}
+      {/* The ornament that marks a body slide, one per look. A band across the
+          head, a bar down the edge, a soft disc in the corner, a rule at the
+          foot, a gutter with the slide's number, a hairline frame, a tinted
+          band under the foot. */}
+      {look.ornament === 'top-band' && <div className="absolute inset-x-0 top-0" style={{ height: px(6), background: accent }} />}
+      {look.ornament === 'left-bar' && <div className="absolute inset-y-0 left-0" style={{ width: px(8), background: accent }} />}
+      {look.ornament === 'corner-circle' && <div className="absolute rounded-full" style={{ width: px(70), height: px(70), right: px(-30), top: px(-35), background: `color-mix(in srgb, ${accent} 12%, transparent)` }} />}
+      {look.ornament === 'bottom-rule' && <div className="absolute inset-x-0 bottom-0" style={{ height: px(4), background: `linear-gradient(90deg, ${accent}, transparent)` }} />}
+      {look.ornament === 'gutter' && (
+        <>
+          <div className="absolute inset-y-0 left-0" style={{ width: px(3), background: accent }} />
+          {index !== undefined && <span className="absolute font-black tabular-nums" style={{ left: px(12), bottom: px(30), fontSize: type(18), color: accent, lineHeight: 1 }}>{String(index + 1).padStart(2, '0')}</span>}
+        </>
+      )}
+      {look.ornament === 'frame' && <div className="pointer-events-none absolute" style={{ inset: px(10), border: `1px solid ${look.ink}` }} />}
+      {look.ornament === 'bottom-band' && <div className="absolute inset-x-0 bottom-0" style={{ height: px(22), background: tint }} />}
       {visualStyle === 'poster' && index !== undefined && <span className="absolute font-black tabular-nums" style={{ right: px(22), top: px(13), fontSize: type(28), color: `color-mix(in srgb, ${accent} 14%, transparent)` }}>{String(index + 1).padStart(2, '0')}</span>}
 
-      {slide.layout === 'quote' && slide.body ? (
+      {slide.layout === 'statement' ? (
+        /* One phrase set large in the middle, a short rule over it and the
+           sentence that unpacks it under — the presenter's own conclusion. */
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div style={{ width: px(26), height: px(2), background: accent, marginBottom: px(14) }} />
+          <p
+            style={{ fontSize: type(26), fontWeight: 750, lineHeight: 1.25, color: accent, maxWidth: '86%' }}
+            {...typed('title', (text) => ({ title: text }))}
+            {...selectable('title')}
+          >
+            {rich('title', slide.title)}
+          </p>
+          {slide.body && (
+            <p
+              style={{ fontSize: type(11), marginTop: px(10), color: look.muted, lineHeight: 1.5, maxWidth: '74%' }}
+              {...typed('body', (text) => ({ body: text }))}
+            >
+              {rich('body', slide.body)}
+            </p>
+          )}
+        </div>
+      ) : slide.layout === 'quote' && slide.body ? (
         <div className="flex flex-1 flex-col justify-center">
           <p style={{ fontSize: type(20), fontWeight: 600, lineHeight: 1.4, color: accent }}>
             “<span {...typed('body', (text) => ({ body: text }))}>{rich('body', slide.body)}</span>”
           </p>
           <p
-            style={{ fontSize: type(12), marginTop: px(10), color: '#666' }}
+            style={{ fontSize: type(12), marginTop: px(10), color: look.muted }}
             {...typed('title', (text) => ({ title: text }))}
           >
             {rich('title', slide.title)}
@@ -701,7 +869,7 @@ export function SlideView({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <h3
-            style={{ fontSize: type(19), fontWeight: 700, lineHeight: 1.25 }}
+            style={{ fontSize: type(18), fontWeight: 700, lineHeight: 1.25 }}
             {...typed('title', (text) => ({ title: text }))}
             {...selectable('title')}
           >
@@ -754,22 +922,22 @@ export function SlideView({
                         style={{
                           width: px(stack.bandLabel),
                           background: accent,
-                          color: '#fff',
+                          color: visualStyle === 'mono' ? look.bg : '#fff',
                           fontSize: type(stack.band),
                           fontWeight: 700,
                           padding: `${px(stack.pad)} ${px(4)}`,
+                          borderRadius: px(look.radius / 2),
                         }}
                       >
                         {name}
                       </div>
                       <div
                         className="flex min-w-0 flex-1 items-center"
-                        style={{
-                          background: tint,
+                        style={boxed({
                           fontSize: type(stack.band),
                           lineHeight: 1.5,
                           padding: `${px(stack.pad)} ${px(12)}`,
-                        }}
+                        })}
                       >
                         {text}
                       </div>
@@ -787,19 +955,58 @@ export function SlideView({
                         style={{
                           maxWidth: px(62),
                           background: accent,
-                          color: '#fff',
+                          color: visualStyle === 'mono' ? look.bg : '#fff',
                           fontSize: type(26),
                           fontWeight: 700,
+                          borderRadius: look.badge === 'circle' ? '50%' : px(look.radius / 2),
                         }}
                       >
                         {mark}
                       </div>
                       <div
                         className="text-center"
-                        style={{ fontSize: type(9), marginTop: px(7), color: '#666' }}
+                        style={{ fontSize: type(9), marginTop: px(7), color: look.muted }}
                       >
                         {name}
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pairs.length > 0 && slide.layout === 'steps' && (
+                /* Numbered by position, across the slide: a filled square with
+                   the number, the step's name under, what it does under that,
+                   and one tinted rule joining the squares left to right. */
+                <div className="relative flex" style={{ gap: px(8), marginTop: px(8) }}>
+                  {pairs.length > 1 && (
+                    <div className="absolute" style={{ left: px(11), right: `calc(${100 / pairs.length}% - ${px(11)})`, top: px(10), height: px(1), background: tint }} />
+                  )}
+                  {pairs.map(([name, text], i) => (
+                    <div key={i} className="relative flex min-w-0 flex-1 flex-col">
+                      <div
+                        className="grid place-items-center"
+                        style={{ ...badge(22), fontSize: type(9), fontWeight: 700 }}
+                      >
+                        {String(i + 1).padStart(2, '0')}
+                      </div>
+                      <div style={{ fontSize: type(10), fontWeight: 700, marginTop: px(7), lineHeight: 1.3 }}>{name}</div>
+                      <div style={{ fontSize: type(8), marginTop: px(3), color: look.muted, lineHeight: 1.5 }}>{text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pairs.length > 0 && slide.layout === 'cards' && (
+                /* Titled boxes side by side: a tinted card with an accent rule
+                   over it, the name at the top and the text under it. */
+                <div className="flex" style={{ gap: px(8), marginTop: px(4), height: px(100) }}>
+                  {pairs.map(([name, text], i) => (
+                    <div
+                      key={i}
+                      className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                      style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` })}
+                    >
+                      <div style={{ fontSize: type(10.5), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
+                      <div style={{ fontSize: type(8.5), marginTop: px(5), lineHeight: 1.5 }}>{text}</div>
                     </div>
                   ))}
                 </div>
@@ -857,7 +1064,32 @@ export function SlideView({
                 </div>
               )}
               {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
-              {metrics.length > 0 && (
+              {metrics.length > 0 && slide.layout === 'big-number' && (
+                /* One figure, very large, its name beside it, and the line
+                   that says what it means under both. */
+                <div className="flex flex-1 flex-col justify-center">
+                  <div className="flex items-baseline" style={{ gap: px(8) }}>
+                    <span
+                      style={{ fontSize: type(46), fontWeight: 750, lineHeight: 1, color: accent }}
+                      {...typed('metrics.0.0', (text) => ({ metrics: [[text, working.current.metrics?.[0]?.[1] ?? '']] }))}
+                    >
+                      {rich('metrics.0.0', metrics[0][0])}
+                    </span>
+                    <span
+                      style={{ fontSize: type(11), color: look.muted }}
+                      {...typed('metrics.0.1', (text) => ({ metrics: [[working.current.metrics?.[0]?.[0] ?? '', text]] }))}
+                    >
+                      {rich('metrics.0.1', metrics[0][1])}
+                    </span>
+                  </div>
+                  {slide.body && (
+                    <p style={{ fontSize: type(11), marginTop: px(10), lineHeight: 1.5 }} {...typed('body', (text) => ({ body: text }))}>
+                      {rich('body', slide.body)}
+                    </p>
+                  )}
+                </div>
+              )}
+              {metrics.length > 0 && slide.layout !== 'big-number' && (
                 /* One card each: the figure large, what it counts under it, and
                    a rule over the top in the accent. Set on the open slide they
                    were three numbers floating in a white field; carded, the eye
@@ -868,11 +1100,10 @@ export function SlideView({
                     <div
                       key={i}
                       className="min-w-0 flex-1"
-                      style={{
-                        background: tint,
+                      style={boxed({
                         borderTop: `${px(2)} solid ${accent}`,
                         padding: `${px(14)} ${px(14)} ${px(16)}`,
-                      }}
+                      })}
                     >
                       <div
                         style={{
@@ -890,7 +1121,7 @@ export function SlideView({
                         {rich(`metrics.${i}.0`, figure)}
                       </div>
                       <div
-                        style={{ fontSize: type(11), marginTop: px(5), color: '#666' }}
+                        style={{ fontSize: type(11), marginTop: px(5), color: look.muted }}
                         {...typed(`metrics.${i}.1`, (text) => ({
                           metrics: (working.current.metrics ?? []).map((m, at) =>
                             at === i ? ([m[0], text] as [string, string]) : m,
@@ -941,7 +1172,7 @@ export function SlideView({
                               verticalAlign: 'top',
                               wordBreak: 'keep-all',
                               fontWeight: r === 0 || c === 0 ? 600 : 400,
-                              color: r === 0 ? '#fff' : '#1a1a1a',
+                              color: r === 0 ? (visualStyle === 'mono' ? look.bg : '#fff') : look.ink,
                             }}
                             {...typed(`rows.${r}.${c}`, (text) => ({
                               rows: (working.current.rows ?? []).map((row2, ri) =>
@@ -958,15 +1189,45 @@ export function SlideView({
                 </table>
                 </div>
               )}
+              {slide.bullets && slide.layout === 'agenda' && (
+                /* The 목차: `01` in the accent beside each name, down one
+                   column, or two when there are more than four. */
+                <ol
+                  style={{
+                    fontSize: type(11),
+                    ...(slide.bullets.length > 4 ? { columnCount: 2, columnGap: px(20) } : null),
+                  }}
+                >
+                  {slide.bullets.map((b, i) => (
+                    <li
+                      key={i}
+                      className="flex items-baseline"
+                      style={{ gap: px(10), padding: `${px(5)} 0`, borderBottom: `1px solid ${hair}`, breakInside: 'avoid' }}
+                    >
+                      <span className="tabular-nums" style={{ color: accent, fontWeight: 700, fontSize: type(13) }}>
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span
+                        {...typed(`bullets.${i}`, (text) => ({
+                          bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
+                        }))}
+                      >
+                        {rich(`bullets.${i}`, b)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
               {slide.bullets &&
+                slide.layout !== 'agenda' &&
                 rows.length === 0 &&
                 metrics.length === 0 &&
                 pairs.length === 0 &&
                 !chart && (
                 <ul
                   style={{
-                    fontSize: type(13),
-                    lineHeight: 1.7,
+                    fontSize: type(11.5),
+                    lineHeight: 1.65,
                     // A long list down one edge wastes the right half of the
                     // rectangle and pushes the last item off the bottom.
                     // Splitting it is the same content, read in the shape it
@@ -1001,7 +1262,7 @@ export function SlideView({
                 metrics.length === 0 &&
                 !chart && (
                 <p
-                  style={{ fontSize: type(12), color: '#555', marginTop: px(2), lineHeight: 1.6 }}
+                  style={{ fontSize: type(11), color: look.muted, marginTop: px(2), lineHeight: 1.6 }}
                   {...typed('body', (text) => ({ body: text }))}
                 >
                   {rich('body', slide.body)}
@@ -1029,7 +1290,7 @@ export function SlideView({
                   )}
                 />
                 {slide.image.caption && (
-                  <p style={{ fontSize: type(10), color: '#666', marginTop: px(4) }}>
+                  <p style={{ fontSize: type(10), color: look.muted, marginTop: px(4) }}>
                     {slide.image.caption}
                   </p>
                 )}
@@ -1065,7 +1326,7 @@ export function SlideView({
             )}
             <span
               className="min-w-0 truncate"
-              style={{ fontSize: type(8), letterSpacing: px(0.3), color: '#8a8a8a' }}
+              style={{ fontSize: type(8), letterSpacing: px(0.3), color: look.faint }}
             >
               {deckTitle}
             </span>
@@ -1078,7 +1339,7 @@ export function SlideView({
               style={{
                 fontSize: type(8),
                 letterSpacing: px(0.3),
-                color: '#8a8a8a',
+                color: look.faint,
                 marginLeft: px(8),
                 marginRight: px(8),
               }}
@@ -1260,11 +1521,13 @@ function SlideDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: S
   const pairs = paired ? slide[paired] ?? [] : slide.metrics ?? []
   const pairLabels = paired === 'timeline'
     ? ['시점', '내용']
-    : slide.layout === 'metrics'
+    : slide.layout === 'metrics' || slide.layout === 'big-number'
       ? ['수치', '설명']
       : paired === 'tiles'
         ? ['표식', '설명']
-        : ['항목', '설명']
+        : paired === 'steps'
+          ? ['단계', '내용']
+          : ['항목', '설명']
 
   if (slide.layout === 'table') {
     const rows = slide.rows ?? []
@@ -1611,6 +1874,25 @@ function PresentMode({
  * tuned for a 460px desktop stage overflows a 210px phone one and the preview
  * stops matching the `.pptx`.
  */
+/** The widest a 16:9 box can be inside the measured element without
+ *  overflowing its height — so a slide shrinks to fit the row it sits in
+ *  rather than taking the full width and pushing the notes off screen. */
+function useFitWidth() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      const { width: w, height: h } = entry.contentRect
+      if (w > 0 && h > 0) setWidth(Math.floor(Math.min(w, (h * 16) / 9)))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return { ref, width }
+}
+
 function useStageScale(minScale = 0.45) {
   const ref = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1.15)
@@ -1743,6 +2025,7 @@ export function DeckPanel({
 
   const panel = usePanelNarrow<HTMLDivElement>()
   const stage = useStageScale()
+  const fit = useFitWidth()
   const [selected, setSelected] = useState(0)
   const [ribbon, setRibbon] = useState<'home' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
   const [editing, setEditing] = useState(false)
@@ -3201,7 +3484,13 @@ export function DeckPanel({
             height is left rather than trailing the slide as a caption. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           {editTools}
-          <div className="flex shrink-0 items-center gap-2 p-4">
+          {/* 패널을 넓히면 슬라이드가 가로를 다 차지하며 키를 키웠고, 발표
+              노트는 화면 아래로 밀려 스크롤해야 보였다. 이제 슬라이드 줄은
+              높이의 3/4 를, 노트 띠는 1/4 을 나눠 갖고, 슬라이드는 그 줄의
+              폭과 높이 중 먼저 닿는 쪽에 맞춰 16:9 로 줄어든다 — 슬라이드와
+              노트가 한 화면에 들어온다. 편집 폼이 길어 넘칠 때만 세로로
+              흐른다. */}
+          <div className="flex min-h-[45%] flex-[3] basis-0 items-center gap-2 p-4">
               <button
                 onClick={() => go(index - 1)}
                 disabled={index === 0}
@@ -3210,9 +3499,11 @@ export function DeckPanel({
               >
                 <ChevronLeft size={16} />
               </button>
+              <div ref={fit.ref} className="flex min-h-0 min-w-0 flex-1 items-center justify-center self-stretch">
               <div
                 ref={stage.ref}
-                className="aspect-video min-w-0 flex-1 overflow-hidden rounded-card border border-line shadow-raised"
+                style={{ width: fit.width ?? '100%' }}
+                className="aspect-video min-w-0 overflow-hidden rounded-card border border-line shadow-raised"
               >
                 {slide ? (
                   <SlideView
@@ -3245,6 +3536,7 @@ export function DeckPanel({
                   </div>
                 )}
               </div>
+              </div>
               <button
                 onClick={() => go(index + 1)}
                 disabled={index >= deck.slides.length - 1}
@@ -3256,7 +3548,7 @@ export function DeckPanel({
           </div>
 
           {slide && (
-            <div className="flex min-h-40 flex-1 flex-col border-t border-line bg-elevated/40 p-4">
+            <div className="flex min-h-40 flex-1 basis-0 flex-col border-t border-line bg-elevated/40 p-4">
               <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
                   <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">

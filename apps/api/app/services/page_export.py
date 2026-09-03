@@ -34,8 +34,18 @@ _TEXT_TAGS = {
     # editor's heading picker offers the two levels a body may carry, and a
     # tag admitted there and unread here is exactly the drift this file's own
     # coverage test exists to catch.
-    "h2", "h3", "h4", "p", "li", "blockquote", "th", "td",
-    "small", "dt", "dd", "figcaption",
+    "h2",
+    "h3",
+    "h4",
+    "p",
+    "li",
+    "blockquote",
+    "th",
+    "td",
+    "small",
+    "dt",
+    "dd",
+    "figcaption",
 }
 
 #: Admitted by `design_templates` and read for structure rather than for words
@@ -45,8 +55,22 @@ _TEXT_TAGS = {
 #: linear export could carry is a backtick and only `report_export` strips
 #: those, so a deck would show them on the slide.
 _CARRIED_TAGS = {
-    "ul", "ol", "table", "thead", "tbody", "tr", "figure", "img",
-    "div", "span", "section", "dl", "strong", "em", "code", "br",
+    "ul",
+    "ol",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "figure",
+    "img",
+    "div",
+    "span",
+    "section",
+    "dl",
+    "strong",
+    "em",
+    "code",
+    "br",
     # The footnote reference, whose one character *is* its meaning. Carried
     # rather than dropped so the `*` reaches the paragraph's text: the note it
     # points at is exported as its own line below, and a note with nothing
@@ -200,9 +224,7 @@ class _Reader(HTMLParser):
                 self._block["metrics" if self._pairs == "kpi" else "steps"].append(pair)
                 self._pair_buffer = []
                 return
-            if (self._pairs == "kpi" and tag == "div") or (
-                self._pairs == "steps" and tag == "ol"
-            ):
+            if (self._pairs == "kpi" and tag == "div") or (self._pairs == "steps" and tag == "ol"):
                 self._pairs = ""
                 self._pair_buffer = []
                 return

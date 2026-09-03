@@ -705,8 +705,16 @@ export function MediaPanel({
           ]
 
   // Audio has no aspect ratio — a short fixed strip is the right shape for it.
-  const frame =
-    artifact.kind === 'audio' ? 'h-28' : (aspectClass[artifact.aspect] ?? 'aspect-square')
+  // The frame is the shape of the file, not of the request: a square picture
+  // answered to a 16:9 request was drawn into a 16:9 box and cropped top and
+  // bottom — the very thing the 비율 line below was warning about.
+  const shape =
+    artifact.kind === 'image'
+      ? artifact.actualAspect || artifact.aspect
+      : artifact.kind === 'video'
+        ? artifact.aspect
+        : ''
+  const frame = artifact.kind === 'audio' ? 'h-28' : (aspectClass[shape] ?? 'aspect-square')
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -729,8 +737,24 @@ export function MediaPanel({
           className={cn('w-full bg-black', aspectClass[artifact.aspect] ?? 'aspect-video')}
         />
       ) : (
-        <div className={cn('bg-elevated', frame)}>
-          <ArtifactPreview artifact={artifact} />
+        <div
+          className={cn('bg-elevated', artifact.kind === 'image' && artifact.width && artifact.height ? undefined : frame)}
+          style={
+            artifact.kind === 'image' && artifact.width && artifact.height
+              ? { aspectRatio: `${artifact.width} / ${artifact.height}` }
+              : undefined
+          }
+        >
+          {artifact.kind === 'image' ? (
+            // Whole, never cropped: the panel is where the picture is judged.
+            <img
+              src={fileUrl(artifact.src)}
+              alt={artifact.prompt}
+              className="size-full bg-elevated object-contain"
+            />
+          ) : (
+            <ArtifactPreview artifact={artifact} />
+          )}
         </div>
       )}
       <dl className="space-y-2.5 px-4 py-4">

@@ -357,6 +357,19 @@ class Agent(SQLModel, table=True):
     #: denies skills, and values form a hard allowlist.
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: How a shared agent may be taken. `open`: the copy carries the prompt
+    #: and is the taker's to edit. `sealed`: the copy runs on the original's
+    #: prompt without ever holding it — usable, not readable.
+    share_mode: str = Field(default="open")
+    #: A copy taken from a sealed original. Its prompt is read from `origin_id`
+    #: at run time and never written here.
+    sealed: bool = Field(default=False)
+    #: How to use it — what to bring, what happens each turn. Shown on the
+    #: empty screen a conversation with this agent opens on.
+    guide: str = Field(default="")
+    #: Conversation starters: first messages the empty screen offers as
+    #: buttons, sent as they stand.
+    starters: list | None = Field(default=None, sa_column=_json(nullable=True))
     temperature: float = Field(default=0.7)
     color: str = Field(default="#5b53e8")
     enabled: bool = Field(default=True)

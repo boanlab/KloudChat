@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models.chat import SessionKind
-from app.services import pictures
+from app.services import design, pictures
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 
@@ -74,9 +74,34 @@ HTML_KINDS = ("deck", "document")
 #: whitespace-significant and the file exporters read markdown lines — a
 #: stack trace would arrive re-indented and half read back as a list.
 _ALLOWED_TAGS = {
-    "p", "h3", "h4", "ul", "ol", "li", "strong", "em", "blockquote", "code",
-    "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td",
-    "div", "span", "section", "br", "hr", "small", "dl", "dt", "dd",
+    "p",
+    "h3",
+    "h4",
+    "ul",
+    "ol",
+    "li",
+    "strong",
+    "em",
+    "blockquote",
+    "code",
+    "figure",
+    "figcaption",
+    "img",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "div",
+    "span",
+    "section",
+    "br",
+    "hr",
+    "small",
+    "dl",
+    "dt",
+    "dd",
     # The footnote reference. `<small>` carries the note itself and always
     # could; without a marker in the sentence there was no way to say *which*
     # sentence a note belonged to, which is the whole difference between a
@@ -145,9 +170,7 @@ _EDITABLE_STYLE = {
 #: write into a file that gets downloaded and opened outside the sandbox. With
 #: them gone, `url(`, `expression(` and `calc(` all fail to match and the whole
 #: declaration is dropped.
-_DECLARATION = re.compile(
-    r"^\s*([a-z-]{2,20})\s*:\s*([A-Za-z0-9 ,.%#'\"_-]{1,120})\s*$"
-)
+_DECLARATION = re.compile(r"^\s*([a-z-]{2,20})\s*:\s*([A-Za-z0-9 ,.%#'\"_-]{1,120})\s*$")
 _URL_ATTR = re.compile(r"\s(href|src)\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 #: What is inside a `<code>` is text. Every other rule below reads the
 #: fragment as markup, so left alone `<code><div></code>` becomes a real
@@ -159,6 +182,7 @@ _CODE = re.compile(r"(<code\b[^>]*>)(.*?)</code\s*>", re.S | re.I)
 #: both ways — `&lt;div&gt;` and a bare `<div>` — and both have to arrive as
 #: the four characters somebody can copy, so neither may be escaped twice.
 _BARE_AMP = re.compile(r"&(?!#?\w{1,32};)")
+
 
 @dataclass(frozen=True, slots=True)
 class Argument:
@@ -216,15 +240,22 @@ class DesignTemplate:
     #: the two-column design nothing had asked it to use went unused. A 서식's
     #: own instructions still come first and still win — this is the floor.
     markup: str
-        #: What a critique reads the finished thing against. Separate from the
-        #: instructions: a rubric folded into the brief becomes a checklist the
-        #: model writes *to* rather than one it is measured by. Shown on the
-        #: gallery card through `checks`.
+    #: What a critique reads the finished thing against. Separate from the
+    #: instructions: a rubric folded into the brief becomes a checklist the
+    #: model writes *to* rather than one it is measured by. Shown on the
+    #: gallery card through `checks`.
     checklist: str
     #: Whether this template's slides are laid on a dark ground. Carried into
     #: the `.pptx`, which is for presenting; the `.pdf` stays light because it
     #: is for paper, exactly as the seed's own print rules decide.
     dark: bool
+    #: `deck` templates only: the face the deck surface wears for this 서식 —
+    #: one of `design.VISUAL_STYLES`, the seven the slide panel and
+    #: `deck_export` draw. A deck written into a 서식 is a deck, edited on the
+    #: stage like any other; the 서식 chooses its opening look and its
+    #: PowerPoint half, and the seed's own CSS is what the gallery card and
+    #: the `.html` download show. Empty for documents.
+    look: str
     #: Blanks in `example_prompt`, written `{name}`. Media templates only:
     #: a deck's brief is a sentence somebody writes, not a form they fill.
     arguments: tuple[Argument, ...]
@@ -406,6 +437,16 @@ def _seed(folder: Path, meta: dict) -> str:
     return _HEAD_END.sub(lambda _m: block + "</head>", seed, count=1)
 
 
+def _look(meta: dict[str, Any], kind: str) -> str:
+    """The deck face a 서식 opens on: declared, else the panel's default."""
+    if kind != "deck":
+        return ""
+    look = str(meta.get("look") or "").strip()
+    if look and look not in design.VISUAL_STYLES:
+        raise ValueError(f"unknown look {look!r}; one of {', '.join(design.VISUAL_STYLES)}")
+    return look or "editorial"
+
+
 def _seed_markup(folder: Path, meta: dict[str, Any]) -> str:
     """The vocabulary of whichever seed this 서식 is drawn on.
 
@@ -434,9 +475,7 @@ def _load() -> dict[str, DesignTemplate]:
     # `_` folders hold the shared typesettings rather than a 서식. A 서식 is a
     # name, a set of rules and a file to fill in; the paper it is drawn on is
     # one of two, and neither of those is something anybody picks.
-    for folder in sorted(
-        p for p in _ROOT.iterdir() if p.is_dir() and not p.name.startswith("_")
-    ):
+    for folder in sorted(p for p in _ROOT.iterdir() if p.is_dir() and not p.name.startswith("_")):
         manifest = folder / "template.toml"
         if not manifest.is_file():
             continue
@@ -464,6 +503,7 @@ def _load() -> dict[str, DesignTemplate]:
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
             figure=str(meta.get("figure") or ""),
             dark=bool(meta.get("dark")),
+            look=_look(meta, kind),
             arguments=tuple(
                 Argument(
                     name=str(arg.get("name") or ""),
@@ -683,9 +723,7 @@ def _kept_style(match: re.Match[str]) -> str:
 _COVER_CLASS = re.compile(r'\sclass\s?=\s?(["\'])cover\1', re.I)
 
 
-def sanitise(
-    fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False
-) -> str:
+def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False) -> str:
     """One block of authored HTML, reduced to what the seed styles.
 
     `sandbox=""` already stops a script from running, so this is the second
@@ -819,7 +857,7 @@ def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
         # dropping it would leave a deck whose first slide is a body slide.
         if not body and block.get("layout") != "cover":
             continue
-        markup = (template.wrap_cover if block.get("layout") == "cover" else template.wrap_block)
+        markup = template.wrap_cover if block.get("layout") == "cover" else template.wrap_block
         markup = (
             markup.replace("{title}", escape(block.get("title") or ""))
             .replace("{layout}", block.get("layout") or "")

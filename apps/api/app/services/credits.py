@@ -171,6 +171,39 @@ def settle(
     )
 
 
+def record_units(
+    db: AsyncSession,
+    user: User,
+    *,
+    reason: str,
+    model: str,
+    units: int,
+    unit: str,
+    session_id: str | None = None,
+    surface: str | None = None,
+) -> None:
+    """A row for work that cost no credits — seconds of speech, chunks embedded.
+
+    `settle` writes nothing for a free model, and so Whisper and the embedding
+    model never appeared on the usage screens: the work happened, nobody could
+    see how much. Caller commits.
+    """
+    if units <= 0:
+        return
+    db.add(
+        CreditLedger(
+            user_id=user.id,
+            delta=0,
+            reason=reason,
+            session_id=session_id,
+            model=model,
+            surface=surface or surface_for(reason),
+            units=units,
+            unit=unit,
+        )
+    )
+
+
 def refill_if_due(db: AsyncSession, user: User, now: datetime | None = None) -> bool:
     """Resets one account's cycle if it has come due. Caller commits.
 

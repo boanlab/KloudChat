@@ -6,6 +6,7 @@ import {
   Globe,
   LayoutGrid,
   LayoutTemplate,
+  Mic,
   Paperclip,
   Plug,
   Loader2,
@@ -18,16 +19,21 @@ import {
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
+import { transcriptionsApi } from '@/lib/api'
+import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
+import { handoffSurface } from '@/lib/documentRequest'
+import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { effectiveModelId, useStore } from '@/store/useStore'
-import type { PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
+import type { ModelInfo, PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
+import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
@@ -43,8 +49,16 @@ const placeholders: Record<SessionKind, string> = {
 }
 
 
-const ASPECTS = ['1:1', '16:9', '9:16', '4:3']
-const STYLES = ['미니멀', '사진', '일러스트', '3D 렌더', '수채화', '없음']
+/* What kind of picture, not only what it looks like. 자동 lets the planner
+   read it off the request; 없음 sends the sentence as typed. Kept in step with
+   `imagegen.STYLE_CHOICES`. */
+const STYLES = ['자동', '도식', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
+const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
+  { id: 'auto', label: '자동' },
+  { id: 'ko', label: '한국어' },
+  { id: 'en', label: '영어' },
+  { id: 'none', label: '없음' },
+]
 const VIDEO_DURATIONS = [4, 6, 8, 10]
 const AUDIO_DURATIONS = [15, 30, 60, 120]
 // Speech and music only: nothing serves sound effects, and an option that can
@@ -73,6 +87,7 @@ const SOURCE_LABEL: Record<string, string> = {
   current_input: '현재 요청',
   conversation_history: '대화 기록',
   attachments: '첨부 파일',
+  user_instructions: '개인 맞춤 설정',
   project_instructions: '프로젝트 지침',
   project_knowledge: '프로젝트 자료',
   memory: '메모리',
@@ -146,15 +161,21 @@ function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
   )
 }
 
-function ImageOptions() {
+function ImageOptions({ model }: { model: ModelInfo | undefined }) {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
+  // Only the ratios this model can actually draw. The OpenAI image models
+  // return a square whatever is asked, so beside them the chip offers 1:1 and
+  // nothing else — a 16:9 chip there was a promise the picture then broke.
+  // The stored preference is left alone: it is what the chip shows again the
+  // moment a model that can draw it is picked.
+  const offered = servedAspects(model)
   return (
     <>
       <OptionGroup
         label={t('비율')}
-        value={imageOptions.aspect}
-        options={ASPECTS}
+        value={servedAspect(imageOptions.aspect, model)}
+        options={offered}
         onChange={(v) => setImageOptions({ aspect: v })}
       />
       <OptionGroup
@@ -163,6 +184,13 @@ function ImageOptions() {
         options={STYLES}
         onChange={(v) => setImageOptions({ style: v })}
         format={t}
+      />
+      <OptionGroup
+        label={t('글자')}
+        value={imageOptions.labels}
+        options={LABELS.map((row) => row.id)}
+        onChange={(v) => setImageOptions({ labels: v })}
+        format={(v) => t(LABELS.find((row) => row.id === v)?.label ?? v)}
       />
       <OptionGroup
         label={t('장수')}
@@ -585,6 +613,130 @@ export function Composer({
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   /**
+   * 말로 쓰기. The microphone records until it is pressed again, the clip
+   * goes to the deployment's own Whisper (never to the browser vendor —
+   * `webkitSpeechRecognition` streams audio to a third party), and the words
+   * land in the box where the caret was. Nothing is sent until the person
+   * reads them and presses send; the recording itself is not kept.
+   */
+  const dictationEnabled = useStore((s) => s.dictationEnabled)
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recorder = useRef<WavRecorder | null>(null)
+  const canRecord =
+    dictationEnabled && typeof AudioContext !== 'undefined' && Boolean(navigator.mediaDevices)
+  const stopRecording = async (): Promise<string> => {
+    const active = recorder.current
+    if (!active) return ''
+    recorder.current = null
+    setRecording(false)
+    setTranscribing(true)
+    try {
+      const blob = await active.stop()
+      // 16 kHz 16-bit mono: 32,000 bytes a second. Under a third of a second
+      // is a tap on the key, not a sentence — nothing to send to Whisper.
+      if (blob.size <= 44 + 32_000 * 0.3) return ''
+      // Heard in context. The last thing said back is the vocabulary the
+      // next sentence most likely uses — 「some tennis」 in a chat about
+      // tennis; without it one mumbled sentence came back as 《Fold and
+      // Vacant》 and the tutor followed it out of the conversation. No
+      // language is pinned, even with an English tutor: a learner asks the
+      // tutor things in Korean too, and the server already hears nothing but
+      // Korean or English. What still comes out wrong, the agent is told to
+      // treat as misheard rather than as a new subject.
+      const lastAnswer = [...(session?.messages ?? [])]
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.content?.trim())
+      const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav', {
+        prompt: lastAnswer?.content.replace(/\s+/g, ' ').slice(0, 300),
+      })
+      if (text) {
+        setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
+        requestAnimationFrame(() => ref.current?.focus())
+      }
+      return text ?? ''
+    } catch (err) {
+      setChatError(errorMessage(err, t('받아쓰지 못했습니다.')))
+      return ''
+    } finally {
+      setTranscribing(false)
+    }
+  }
+  const startRecording = async () => {
+    setChatError(null)
+    try {
+      recorder.current = await startWavRecording()
+      setRecording(true)
+    } catch {
+      setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
+    }
+  }
+  /**
+   * Push to talk, the way a muted Zoom call works: hold the space bar, speak,
+   * let go — the words are written and sent, as if Enter had been pressed.
+   *
+   * Only from an empty box: a space typed into a sentence is a space. A
+   * quick tap is dropped by the length check in `stopRecording`, so the key
+   * never sends by accident. `pushToTalk` remembers that *this* recording is
+   * a held key, so releasing it sends, while the mic button's own recording
+   * still waits for the person to read and press send.
+   */
+  const pushToTalk = useRef(false)
+  const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
+    if (e.key !== ' ' || !canRecord || busy || transcribing) return false
+    if (liveValue.current.trim()) return false
+    e.preventDefault()
+    if (e.repeat || recorder.current) return true
+    pushToTalk.current = true
+    void startRecording()
+    return true
+  }
+  const releaseToTalk = (e: { key: string; preventDefault: () => void }) => {
+    if (e.key !== ' ' || !pushToTalk.current) return false
+    e.preventDefault()
+    pushToTalk.current = false
+    void stopRecording().then((text) => {
+      if (text.trim()) submit(text)
+    })
+    return true
+  }
+  // ⌘⇧M from anywhere: start the microphone, or stop it and take the words
+  // into the box — the mic button, on a key. Not push-to-talk: this one waits
+  // for the person to read and press send.
+  useEffect(() => {
+    if (!canRecord) return
+    const toggle = () => {
+      if (transcribing) return
+      pushToTalk.current = false
+      void (recorder.current ? stopRecording() : startRecording())
+    }
+    window.addEventListener(DICTATION_EVENT, toggle)
+    return () => window.removeEventListener(DICTATION_EVENT, toggle)
+  })
+  useEffect(() => {
+    if (!canRecord) return
+    // Outside any field too — after clicking on the transcript, say — but
+    // never on a control, where the space bar is a click.
+    const idle = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null
+      if (!el || el === document.body) return true
+      if (el.isContentEditable) return false
+      return !['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A', 'SUMMARY'].includes(el.tagName)
+    }
+    const down = (e: KeyboardEvent) => {
+      if (idle(e.target)) holdToTalk(e)
+    }
+    const up = (e: KeyboardEvent) => {
+      if (idle(e.target)) releaseToTalk(e)
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  })
+  /**
    * On by default, and off is the deliberate choice.
    *
    * It was the other way round, and what that produced was answers written
@@ -691,6 +843,7 @@ export function Composer({
     models,
     modelByKind,
     imageOptions,
+    setImageOptions,
     jobs,
     uploadFile,
     newSession,
@@ -1019,8 +1172,8 @@ export function Composer({
     Object.values(startingValues).some((one) => one.trim()) ||
     Boolean(startingTemplate?.examplePrompt)
 
-  const submit = () => {
-    const text = withStartingValues(value.trim())
+  const submit = (spoken?: string) => {
+    const text = withStartingValues((spoken ?? value).trim())
     if (!text || busy || modelSelectionPending || unsupportedVideo) return
     clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
@@ -1067,6 +1220,35 @@ export function Composer({
       void generateImages(sessionId, text, {
         projectId,
         onSession: (id) => navigate(`/s/${id}`, { replace: true }),
+      })
+      return
+    }
+    // "협조 공문 작성해줘" typed into a chat is an order for a document, and a
+    // chat bubble is the wrong shape for one — no sections, no 서식, no file.
+    // The sentence and its attachments go to the report surface instead, as
+    // a new conversation there — and "발표 자료 만들어줘" to the slides. An
+    // agent chat or a chat 시작점 is a deliberate choice of surface and keeps
+    // the sentence.
+    const handoff = kind === 'chat' && !sessionAgent && !sentStartingTemplate ? handoffSurface(text) : null
+    if (handoff) {
+      void send(null, handoff, text, {
+        projectId,
+        webSearch: effectiveWebSearch,
+        attachments: attachmentIds,
+        attachmentNames: attachmentLabels,
+        onSession: (id) => {
+          carriedComposer = heldComposer(id)
+          navigate(`/s/${id}`, { replace: !sessionId })
+        },
+      }).catch(() => {
+        setComposerRestore({
+          sessionId,
+          value: text,
+          attachments: sentAttachments,
+          activatedSkillIds: sentSkillIds,
+          startingTemplate: sentStartingTemplate,
+          error: '',
+        })
       })
       return
     }
@@ -1376,7 +1558,7 @@ export function Composer({
         {/* 생성 파라미터 바 — 이미지·오디오/동영상 전용 */}
         {isMedia && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
-            {kind === 'image' ? <ImageOptions /> : <AvOptions />}
+            {kind === 'image' ? <ImageOptions model={model} /> : <AvOptions />}
             <span
               className={cn(
                 'ml-auto pr-1 text-xs',
@@ -1405,7 +1587,17 @@ export function Composer({
           >
             {startingTemplate.fills.map((fill, index) => {
               const blank = startingTemplate.blanks?.[index]
-              const set = (next: string) => setStartingValues((all) => ({ ...all, [index]: next }))
+              const set = (next: string) => {
+                setStartingValues((all) => ({ ...all, [index]: next }))
+                // 비율 빈칸은 비율 칩이다. A media 서식 recommends a shape per
+                // job — 16:9 for a talk cover, 9:16 for a printed poster — and
+                // the chip beside the send button is what the picture request
+                // actually reads, so the pick lands there too.
+                if (blank?.name === 'aspect') {
+                  const ratio = /^\s*(\d+:\d+)/.exec(next)?.[1]
+                  if (ratio && ASPECTS.includes(ratio)) setImageOptions({ aspect: ratio })
+                }
+              }
               return (
                 <label key={`${fill}-${index}`} className={cn('block min-w-0', blank?.long && 'sm:col-span-2')}>
                   <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
@@ -1468,18 +1660,24 @@ export function Composer({
             setValue(e.target.value)
           }}
           onKeyDown={(e) => {
+            if (holdToTalk(e)) return
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               submit()
             }
           }}
+          onKeyUp={releaseToTalk}
           // A screenshot on the clipboard had nowhere to go. Text pastes are
           // untouched — the handler returns unless the clipboard holds files.
           onPaste={onPasteFiles}
           placeholder={
-            // A proposal is waiting, so this box is not where a new document
-            // starts — it is where this one gets adjusted. Saying so is what
-            // stops somebody typing a question and watching a deck appear.
+            recording && pushToTalk.current
+              ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
+              : transcribing
+                ? t('받아쓰는 중…')
+                : // A proposal is waiting, so this box is not where a new document
+                  // starts — it is where this one gets adjusted. Saying so is what
+                  // stops somebody typing a question and watching a deck appear.
             pending
               ? pending.stage === 'clarify'
                 ? t('답을 적거나, 위에서 고르세요')
@@ -1491,6 +1689,7 @@ export function Composer({
                 : t(placeholders[kind])
           }
           aria-label={t('프롬프트 입력')}
+          data-composer=""
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none"
         />
 
@@ -1529,6 +1728,29 @@ export function Composer({
                 <Paperclip size={16} />
               </button>
             </>
+          )}
+          {canRecord && (
+            <button
+              onClick={() => void (recording ? stopRecording() : startRecording())}
+              disabled={transcribing}
+              className={cn(
+                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+                recording ? 'text-danger' : 'text-muted',
+              )}
+              aria-label={recording ? t('녹음 끝내기') : t('말로 쓰기')}
+              aria-pressed={recording}
+              title={
+                recording
+                  ? t('누르면 녹음을 끝내고 받아씁니다')
+                  : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
+              }
+            >
+              {transcribing ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
+              )}
+            </button>
           )}
 
           {/* Only once the conversation has started. A shape you can only
@@ -1815,7 +2037,7 @@ export function Composer({
               />
             )}
             <button
-              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : submit}
+              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
               disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',
@@ -1876,7 +2098,7 @@ export function Composer({
                   ? t('Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
                   : kind === 'slides'
                     ? t('Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
-                    : t('Enter 전송, Shift+Enter 줄바꿈')}
+                    : `${t('Enter 전송, Shift+Enter 줄바꿈')}, ${isMac() ? 'Cmd' : 'Ctrl'}+/ ${t('단축키 보기')}`}
       </p>
 
       <Modal

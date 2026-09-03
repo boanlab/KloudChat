@@ -15,7 +15,9 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 import re
+import shutil
 import unicodedata
 import zipfile
 import zlib
@@ -34,6 +36,24 @@ def storage_root() -> Path:
     root = Path(settings.file_storage_dir)
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def remove_user_files(user_id: str) -> int:
+    """Deletes one account's whole directory. Returns the bytes it held.
+
+    Called after the account's rows are gone, from the admin delete; the
+    storage sweep does the same, later and only under disk pressure, for
+    directories whose account was deleted with the files kept.
+    """
+    root = storage_root()
+    # The id came off a URL. Only a directory directly under the root is an
+    # account's; anything that normalises elsewhere is not ours to remove.
+    directory = os.path.normpath(os.path.join(root, user_id))
+    if os.path.dirname(directory) != os.path.normpath(root) or not os.path.isdir(directory):
+        return 0
+    freed = sum(p.stat().st_size for p in Path(directory).rglob("*") if p.is_file())
+    shutil.rmtree(directory, ignore_errors=True)
+    return freed
 
 
 def safe_name(name: str) -> str:
@@ -342,9 +362,34 @@ def _from_text(data: bytes) -> str:
 
 
 _TEXT_SUFFIXES = {
-    ".txt", ".md", ".markdown", ".json", ".yaml", ".yml", ".toml", ".ini", ".log",
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".c", ".h", ".cpp", ".go", ".rs",
-    ".rb", ".sh", ".sql", ".html", ".css", ".xml", ".tex", ".r",
+    ".txt",
+    ".md",
+    ".markdown",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".log",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".java",
+    ".c",
+    ".h",
+    ".cpp",
+    ".go",
+    ".rs",
+    ".rb",
+    ".sh",
+    ".sql",
+    ".html",
+    ".css",
+    ".xml",
+    ".tex",
+    ".r",
 }
 
 
@@ -374,9 +419,7 @@ async def text_of(name: str, mime: str, data: bytes) -> str:
         return extract_text(name, mime, data)
     if len(data) > transcribe.MAX_BYTES:
         limit = transcribe.MAX_BYTES // (1024 * 1024)
-        raise RuntimeError(
-            f"녹음이 너무 깁니다. {limit}MB 이하로 나눠 올려 주세요."
-        )
+        raise RuntimeError(f"녹음이 너무 깁니다. {limit}MB 이하로 나눠 올려 주세요.")
     return await transcribe.transcribe(data, name)
 
 

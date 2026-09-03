@@ -324,3 +324,60 @@ async def test_an_answer_whose_searches_all_came_back_empty_says_so(monkeypatch)
     text = "".join(e["text"] for e in events if e["type"] == "delta")
     assert text.startswith("Twenge (2018)")
     assert "검색으로 확인하지 못했습니다" in text
+
+
+@pytest.mark.asyncio
+async def test_narration_before_a_tool_is_taken_back(monkeypatch) -> None:
+    """도구를 부르며 한 짧은 말은 답에서 빠지고, 화면에도 retract 로 알린다."""
+    seen: list[dict] = []
+
+    class _Narrating(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response(
+                    [
+                        'data: {"choices":[{"delta":{"content":"검색해 보겠습니다."}}]}',
+                        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1",'
+                        '"function":{"name":"lookup","arguments":"{}"}}]}}]}',
+                        "data: [DONE]",
+                    ]
+                )
+            return _Response(
+                ['data: {"choices":[{"delta":{"content":"답입니다."}}]}', "data: [DONE]"]
+            )
+
+    async def client(*_args, **_kwargs):
+        return _Narrating(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def lookup(_args):
+        return ToolResult(content="찾은 것")
+
+    tool = Tool(
+        name="lookup", description="찾는다", parameters={"type": "object"}, run=lookup, label="찾기"
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "찾아 줘"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    retracted = [e["text"] for e in events if e["type"] == "retract"]
+    assert retracted == ["검색해 보겠습니다."]
+    # 모델에게는 제 말이 그대로 돌아간다 — 대화 맥락은 줄지 않는다.
+    assert seen[1]["messages"][-1]["content"] == "찾은 것"
+    assert "검색해 보겠습니다." in (seen[1]["messages"][-2].get("content") or "")
+
+
+def test_an_answer_written_twice_around_a_tool_is_recognised() -> None:
+    first = (
+        "SELECT c.course_id, COUNT(*)\nFROM courses c JOIN enrollments e ON …\n"
+        "GROUP BY c.course_id\nHAVING COUNT(*) >= 20\nORDER BY avg DESC;"
+    )
+    assert agent._repeats(first, "검증했습니다.\n\n" + first + "\n\n결과가 맞습니다.")
+    assert not agent._repeats(first, "시뮬레이션 결과 두 과목이 남았습니다.")

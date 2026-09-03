@@ -23,6 +23,8 @@ const REFUSALS: Record<string, string> = {
     '이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다. 에이전트 화면에서 다시 켜거나 다른 대화를 시작하세요.',
   agent_not_found: '이 대화의 에이전트를 더는 찾을 수 없습니다. 새 대화를 시작하세요.',
   agent_kind_mismatch: '이 에이전트는 이 화면에서 쓸 수 없습니다.',
+  agent_origin_gone:
+    '이 에이전트는 지침을 원본에서 읽는데, 원본이 지워졌거나 공개가 풀렸습니다. 작성자에게 문의하거나 다른 에이전트를 쓰세요.',
   project_not_found: '이 대화의 프로젝트를 더는 찾을 수 없습니다.',
   session_not_found: '이 대화를 더는 찾을 수 없습니다.',
   attachment_not_found: '첨부 파일을 찾을 수 없습니다. 다시 첨부하세요.',

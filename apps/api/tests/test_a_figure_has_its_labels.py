@@ -53,8 +53,8 @@ def test_every_built_in_says_how_to_fill_each_blank() -> None:
 def test_a_survey_needs_the_web_and_a_reading_needs_the_file() -> None:
     by_id = {row.id: row for row in prompt_templates.all_templates()}
     assert "web" in by_id["t_report_literature"].needs
-    assert "file" in by_id["t_translate"].needs
-    assert "인용 형식 맞추기" in by_id["t_report_literature"].skills
+    assert "file" in by_id["t_paper_read"].needs
+    assert "citation" in by_id["t_report_literature"].skills
 
 
 def test_an_edit_recomputes_the_findings() -> None:
@@ -469,3 +469,118 @@ def test_a_section_that_repeats_its_own_heading_loses_the_repeat() -> None:
     assert _without_own_heading("**현행 진단**\n본문.", "현행 진단") == "본문."
     assert _without_own_heading("본문부터.", "현행 진단") == "본문부터."
     assert _without_own_heading("## 다른 제목\n본문.", "현행 진단") == "## 다른 제목\n본문."
+
+
+def test_a_slide_left_with_nothing_after_its_chart_is_dropped_is_written_again() -> None:
+    from app.services.deck import _split_deck_draft
+
+    slides = [{"title": "상태 전이", "layout": "chart"}, {"title": "비용", "layout": "metrics"}]
+    draft = (
+        '{"slides":[{"title":"상태 전이","layout":"chart","chart":{"series":[{"values":[3,5]}]},'
+        '"notes":"노트"},{"title":"비용","layout":"metrics","metrics":[["75","총 소요 시간"]]}]}'
+    )
+    out = _split_deck_draft(draft, slides, {"75"}, "75분 강의")
+    # 지어낸 차트가 빠지고 남은 것이 없으면 초안에서 빠져 따로 쓴다.
+    assert 0 not in out
+    # 지표 하나짜리 metrics 는 metrics 가 아니다.
+    assert 1 not in out or out[1].get("layout") != "metrics"
+
+
+def test_money_in_a_document_with_no_figures_becomes_undetermined() -> None:
+    from app.services.report import _without_invented_money
+
+    text = (
+        "| 저랭크 어댑터 | 380만 원 | 380만 원 × 3 = 1,140만 원 |\n"
+        "연 2,400 만 원이 든다. 2026년 계획."
+    )
+    out = _without_invented_money(text)
+    assert "380만 원" not in out and "1,140만 원" not in out and "2,400 만 원" not in out
+    assert out.count("(미정)") == 4 and "2026년" in out
+
+
+def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:
+    from app.services.report import _results_without_data
+
+    assert _results_without_data("캡스톤 팀에 낼 한 장짜리 설계 변경 제안서를 써 주세요.", [])
+    assert not _results_without_data(
+        "설계 변경 제안서: 모터를 24V에서 48V로 바꿔 배선 손실 30% 절감, 부품비 12만 원 증가.", []
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_diagram_path(
+    monkeypatch,
+) -> None:
+    from app.services import figures
+
+    class _Response:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"choices": [{"message": {"content": self._text}}]}
+
+    class _Client:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            return _Response(self._text)
+
+    async def config():
+        return "http://mock", ""
+
+    monkeypatch.setattr(figures.settings_store, "litellm_config", config)
+    monkeypatch.setattr(
+        figures.httpx,
+        "AsyncClient",
+        lambda **_kw: _Client(
+            '{"template": "image-architecture", "caption": "수집·분석·집행", "prompt": "", '
+            '"description": "수집기가 이벤트를 분석 엔진으로 보내고 집행기가 정책을 적용한다."}'
+        ),
+    )
+    figure = await figures.suggest(
+        title="런타임 보안",
+        about="시스템 설계",
+        context="…",
+        model="m",
+        api_key="k",
+        look="minimal",
+    )
+    assert figure is not None
+    assert figure.template_id == "image-architecture" and figure.figure == "method"
+    assert figure.description.startswith("수집기가") and figure.prompt == ""
+    assert figure.style == "미니멀"
+
+    monkeypatch.setattr(
+        figures.httpx,
+        "AsyncClient",
+        lambda **_kw: _Client(
+            '{"template": "image-nope", "caption": "무균실", "prompt": "a cleanroom technician", '
+            '"description": ""}'
+        ),
+    )
+    picture = await figures.suggest(
+        title="공정", about="작업 환경", context="…", model="m", api_key="k", look="editorial"
+    )
+    # 카탈로그에 없는 서식 이름은 서식이 아니다 — 그림은 그대로 그린다.
+    assert picture is not None and picture.template_id == "" and picture.figure == ""
+    assert picture.prompt == "a cleanroom technician"
+
+
+def test_a_genre_gets_its_own_shape_and_a_decision_report_gets_none() -> None:
+    from app.services.report import _genre_rule
+
+    assert "주간 보고" in _genre_rule("사내 문서검색 시스템 구축 주간 업무보고서를 써 주세요.")
+    assert "회의록" in _genre_rule("녹취를 회의록으로 정리해 주세요.")
+    assert "장애 보고서" in _genre_rule("장애 타임라인을 바탕으로 보고서를 써 주세요.")
+    assert _genre_rule("학과 서버 교체 여부를 정하는 의사결정 보고서를 써 주세요.") == ""

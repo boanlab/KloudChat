@@ -39,18 +39,33 @@ export function PreferencesTab() {
             the credit rate and where the text goes — have to be readable here
             at least as much as they are when picking for a single turn. */}
         <div className="grid gap-3 sm:grid-cols-2">
-          {kindOrder.map((kind) => {
+          {kindOrder.flatMap((kind) => {
             const meta = kindMeta[kind]
             const Icon = meta.icon
-            return (
-              <div key={kind} className="space-y-1.5">
+            // 오디오/동영상 is one surface with two kinds of model in it, so it
+            // gets a default for each: a speech model set as its one default
+            // would open 영상 on a model that makes no clips.
+            const fields =
+              kind === 'av'
+                ? ([
+                    { modality: 'audio', label: '오디오/동영상 · 오디오 모델' },
+                    { modality: 'video', label: '오디오/동영상 · 동영상 모델' },
+                  ] as const)
+                : ([{ modality: undefined, label: meta.label }] as const)
+            return fields.map((field) => (
+              <div key={`${kind}:${field.modality ?? ''}`} className="space-y-1.5">
                 <span className="flex items-center gap-1.5 text-base font-medium">
                   <Icon size={13} style={{ color: meta.color }} />
-                  {t(meta.label)}
+                  {t(field.label)}
                 </span>
-                <ModelPicker kind={kind} variant="field" label={t(meta.label)} />
+                <ModelPicker
+                  kind={kind}
+                  modality={field.modality}
+                  variant="field"
+                  label={t(field.label)}
+                />
               </div>
-            )
+            ))
           })}
         </div>
       </section>

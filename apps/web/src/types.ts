@@ -44,6 +44,8 @@ export interface User {
   createdAt: string
   /** Null for an account that has never signed in. */
   lastActiveAt: string | null
+  /** Null while the mailed signup link is still out. */
+  emailVerifiedAt?: string | null
 }
 
 
@@ -73,6 +75,8 @@ export interface ModelInfo {
   /** Credits per generated picture; zero for anything that is not an image
    *  model. The ledger's own unit is per 1k output tokens. */
   creditPerImage?: number
+  /** Image only: the ratios a picture from it can have. The composer offers no other. */
+  aspects?: string[]
   /** Flat credits per call, for models billed per clip rather than per token. */
   creditPerCall?: number
   /** Which of the five surfaces may select this model. */
@@ -153,7 +157,7 @@ export interface PendingPlan {
   questions?: PendingQuestion[]
   plan?: {
     title?: string
-    visualStyle?: 'editorial' | 'poster' | 'minimal'
+    visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
     /** Whether the deck is meant to support a speaker or stand alone when shared. */
     density?: 'speaker' | 'reading'
     /** Slides and template blocks carry a layout; report sections are titles. */
@@ -218,6 +222,10 @@ export interface Preferences {
   /** The model · token · credit line under each answer. */
   showUsage: boolean
   privacyDefaultAction: PrivacyAction | 'ask'
+  /** 개인 맞춤 설정: what every conversation knows about the person, and how
+   *  answers should be written. Empty strings when unset. */
+  aboutMe?: string
+  responseStyle?: string
 }
 
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'
@@ -295,6 +303,8 @@ export interface Step {
   memoriesWritten?: number
   /** How many memories exist, when only the most recent were loaded. */
   totalMemories?: number
+  /** Which halves of 개인 맞춤 설정 shaped the turn: 나에 대해, 답변 방식. */
+  personal?: string[]
   estimatedTokens?: number
 }
 
@@ -569,7 +579,7 @@ export interface DesignTokens {
   muted: string
   font: 'gothic' | 'serif'
   /** Composition, independent from colour: the same deck can wear a different visual rhythm. */
-  visualStyle?: 'editorial' | 'poster' | 'minimal'
+  visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
   /**
    * The line at the foot of every slide and page saying whose this is, and the
    * mark beside it as a `data:` URI.
@@ -676,15 +686,21 @@ export interface Slide {
   layout:
     | 'title'
     | 'section'
+    | 'agenda'
     | 'bullets'
     | 'two-column'
     | 'quote'
+    | 'statement'
     | 'chart'
     | 'table'
     | 'metrics'
+    | 'big-number'
     | 'bands'
     | 'tiles'
     | 'timeline'
+    | 'steps'
+    | 'cards'
+    | 'closing'
   title: string
   /**
    * A section divider's own number — `01.`, `02.` — over its title.
@@ -723,6 +739,10 @@ export interface Slide {
   bands?: [string, string][]
   tiles?: [string, string][]
   timeline?: [string, string][]
+  /** `[단계, 한 줄]` — a procedure across the slide, numbered by position. */
+  steps?: [string, string][]
+  /** `[이름, 한두 줄]` — peers side by side as titled boxes. */
+  cards?: [string, string][]
   /**
    * A bar or line chart drawn from real numbers. Every series carries as many
    * values as there are categories — a short one is not a chart with a gap in
@@ -779,6 +799,13 @@ export interface DeckArtifact extends ArtifactBase {
   kind: 'deck'
   theme: string
   slides: Slide[]
+  /**
+   * The deck 서식 this was written under, when one was. The stage draws the
+   * slides in the face the 서식 chose (`design.visualStyle`), which can be
+   * switched like any other; the id stays so the export builds on the 서식's
+   * PowerPoint half.
+   */
+  templateId?: string
   /** The design system this deck wears, copied on when it was made. */
   design?: DesignTokens | null
   /** Review notes belong to a slide, but not to its visible canvas or PPTX. */
@@ -803,6 +830,13 @@ export interface ImageArtifact extends ArtifactBase {
   width?: number
   height?: number
   style: string
+  labels?: string
+  /** What the model was actually sent — the planned prompt, readable and
+   *  editable, sent again as it stands with `raw`. */
+  composedPrompt?: string
+  /** `matplotlib` when the picture was drawn from code in the sandbox; the
+   *  code is then what `composedPrompt` holds. */
+  engine?: 'matplotlib'
   seed: number
   model: string
   /** Object-store URL, once an image producer exists. */
@@ -1010,6 +1044,14 @@ export interface Agent {
   description: string
   model: string
   systemPrompt: string
+  /** How to use it — shown on the empty screen. */
+  guide: string
+  /** Conversation starters offered there as buttons. */
+  starters: string[]
+  /** `sealed`: others may take it, but the prompt stays with its author. */
+  shareMode: 'open' | 'sealed'
+  /** No prompt here to read or edit — it is read from the original at run time. */
+  sealed: boolean
   /** null inherits; [] denies all; values form a hard allowlist. */
   tools: string[] | null
   /** null inherits turn selection; [] denies all selected skills. */

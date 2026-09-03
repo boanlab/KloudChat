@@ -20,7 +20,7 @@ import time
 from typing import Any
 
 from app.core.config import settings
-from app.services import litellm
+from app.services import imagegen, litellm
 from app.services.adapters import (
     ADAPTER_MODELS,
     FREE_PROVIDERS,
@@ -306,6 +306,8 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         # Credits per second by (resolution, audio), read from the same table
         # the pass-through is billed against.
         "creditPerSecond": _video_rates(model_id) if modality == "video" else {},
+        # Which ratios a picture from it can have; the composer offers no other.
+        "aspects": imagegen.aspects_for(model_id) if modality == "image" else [],
         "creditCost": credit_cost,
         "inputCreditCost": input_credit_cost,
         "contextWindow": context,
@@ -350,6 +352,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "creditPerSecond": _video_rates(m["id"]),
             "creditPerCall": 0,
             "creditPerImage": 0,
+            "aspects": imagegen.aspects_for(m["id"]) if m["modality"] == "image" else [],
         }
         for m in ADAPTER_MODELS
     ]
@@ -448,22 +451,44 @@ async def list_models(force: bool = False) -> dict[str, Any]:
         return model_id if ok else ""
 
     default_chat = served(settings.default_chat_model, "chat")
+    by_kind = {
+        # The chat fallback is re-checked against *this* surface: a model
+        # allowed for chat alone must not become the report default just
+        # because nothing else was set.
+        kind: served(chosen, kind) or served(default_chat, kind)
+        for kind, chosen in (
+            ("report", settings.default_report_model),
+            ("slides", settings.default_slides_model),
+        )
+    }
+    # A picture has no chat fallback to make sense of; an image default the
+    # install does not serve is simply absent, and the client takes the
+    # cheapest image model — see `config.default_image_model`.
+    if image_default := served(settings.default_image_model, "image"):
+        by_kind["image"] = image_default
+    # 오디오/동영상 is one surface with two kinds of model in it, so its default
+    # is one per modality — and served only if the model is of that modality,
+    # or a speech model named as the video default would open 영상 on a model
+    # that makes no clips. The surface's own default is the video one, which is
+    # the mode it opens in.
+    by_mode = {
+        mode: chosen
+        for mode, chosen in (
+            ("audio", served(settings.default_audio_model, "av")),
+            ("video", served(settings.default_video_model, "av")),
+        )
+        if chosen and any(m["id"] == chosen and m["modality"] == mode for m in merged)
+    }
+    if "video" in by_mode:
+        by_kind["av"] = by_mode["video"]
     result = {
         "models": merged,
         "litellmAvailable": available,
         "defaultChatModel": default_chat,
         # Per surface, falling back to the chat default. A conversation and a
         # 보고서 are not the same job — see `config.default_report_model`.
-        "defaultModelByKind": {
-            # The chat fallback is re-checked against *this* surface: a model
-            # allowed for chat alone must not become the report default just
-            # because nothing else was set.
-            kind: served(chosen, kind) or served(default_chat, kind)
-            for kind, chosen in (
-                ("report", settings.default_report_model),
-                ("slides", settings.default_slides_model),
-            )
-        },
+        "defaultModelByKind": by_kind,
+        "defaultAvModelByMode": by_mode,
     }
     _CACHE.update(at=now, value=result)
     return result
@@ -486,10 +511,7 @@ async def resolve_enrichment_model() -> str:
     if not configured:
         return ""
     catalogue = await list_models()
-    if any(
-        model["id"] == configured and "chat" in model["kinds"]
-        for model in catalogue["models"]
-    ):
+    if any(model["id"] == configured and "chat" in model["kinds"] for model in catalogue["models"]):
         return configured
     if configured not in _MISSING_ENRICHMENT:
         # Once per distinct value: memory extraction runs on every turn, and a
@@ -519,6 +541,7 @@ async def list_models_for_egress() -> dict[str, Any]:
             "models": [],
             "defaultChatModel": "",
             "defaultModelByKind": {},
+            "defaultAvModelByMode": {},
         }
     return catalogue
 

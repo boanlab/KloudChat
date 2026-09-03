@@ -1,0 +1,48 @@
+kind = "image"
+name = "마스코트"
+description = "행사나 동아리에 쓸 친근한 캐릭터. 단순한 3D 스타일, 배경 없이"
+category = "홍보"
+fills = ["캐릭터", "들고 있는 것·자세", "색", "스타일"]
+example_prompt = "{character} 마스코트. {pose}. 색은 {colors}, {style} 스타일로, 배경은 비워 줘."
+layouts = ["cover"]
+prompt_suffix = "single friendly mascot character, centered, full body, plain white background, no text, no lettering, no logos"
+
+name_en = "Mascot"
+description_en = "A friendly character for an event or club, simple 3D style, no background"
+category_en = "Promotion"
+fills_en = ["Character", "Prop or pose", "Colours", "Style"]
+example_prompt_en = "A {character} mascot, {pose}, in {colors}, {style} style, on a plain background."
+
+[defaults]
+aspect = "1:1"
+style = "3D 렌더"
+
+[[arguments]]
+name = "character"
+label = "캐릭터"
+label_en = "Character"
+default = "작은 로봇"
+default_en = "a small robot"
+
+[[arguments]]
+name = "pose"
+label = "들고 있는 것·자세"
+label_en = "Prop or pose"
+default = "작은 노트북을 들고 손을 흔드는"
+default_en = "holding a small laptop and waving"
+
+[[arguments]]
+name = "colors"
+label = "색"
+label_en = "Colours"
+default = "밝은 파란색과 흰색"
+default_en = "bright blue and white"
+
+[[arguments]]
+name = "style"
+label = "스타일"
+label_en = "Style"
+default = "단순한 3D 캐릭터"
+default_en = "simple 3D character"
+options = ["단순한 3D 캐릭터", "평면 벡터", "손그림"]
+options_en = ["simple 3D character", "flat vector", "hand-drawn"]

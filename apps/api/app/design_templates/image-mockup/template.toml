@@ -1,0 +1,59 @@
+kind = "image"
+name = "화면 목업"
+description = "앱이나 대시보드의 화면 구성을 보여 주는 목업. 글자 자리는 비운 채 나옵니다"
+category = "목업"
+fills = ["무엇의 화면", "화면 구성", "기기", "느낌", "비율"]
+example_prompt = "{product}의 {screens} 화면 목업. {device}에 담고, {feel} 느낌으로. 글자 자리는 회색 막대로 비워 줘. 비율은 {aspect}."
+layouts = ["cover"]
+prompt_suffix = "clean UI mockup, realistic device frame, layout blocks with grey placeholder bars instead of readable text, consistent spacing, soft shadow, no real words, no lettering, no logos"
+
+name_en = "Screen mockup"
+description_en = "How an app or dashboard screen is laid out, with text areas left as placeholders"
+category_en = "Screens"
+fills_en = ["Product", "Screens", "Device", "Feel", "Aspect"]
+example_prompt_en = "A UI mockup of {product}'s {screens} screens on {device}, {feel}. Leave text as grey placeholder bars. Aspect {aspect}."
+
+[defaults]
+aspect = "16:9"
+style = "3D 렌더"
+
+[[arguments]]
+name = "product"
+label = "무엇의 화면"
+label_en = "Product"
+default = "스마트 출석관리 앱"
+default_en = "a smart attendance app"
+
+[[arguments]]
+name = "screens"
+label = "화면 구성"
+label_en = "Screens"
+default = "QR 출석, 출석 현황, 강의 목록"
+default_en = "QR check-in, attendance status, course list"
+
+[[arguments]]
+name = "device"
+label = "기기"
+label_en = "Device"
+default = "스마트폰 세 대 나란히"
+default_en = "three phones side by side"
+options = ["스마트폰 세 대 나란히", "스마트폰 한 대", "데스크톱 모니터", "태블릿"]
+options_en = ["three phones side by side", "one phone", "a desktop monitor", "a tablet"]
+
+[[arguments]]
+name = "feel"
+label = "느낌"
+label_en = "Feel"
+default = "깔끔한 대학 서비스"
+default_en = "a clean campus service"
+options = ["깔끔한 대학 서비스", "B2B SaaS 대시보드", "밝은 소비자 앱"]
+options_en = ["a clean campus service", "a B2B SaaS dashboard", "a bright consumer app"]
+
+[[arguments]]
+name = "aspect"
+label = "비율"
+label_en = "Aspect"
+default = "16:9 (데스크톱·여러 기기)"
+default_en = "16:9 (desktop, several devices)"
+options = ["16:9 (데스크톱·여러 기기)", "9:16 (스마트폰 한 대)", "4:3 (태블릿)"]
+options_en = ["16:9 (desktop, several devices)", "9:16 (one phone)", "4:3 (tablet)"]

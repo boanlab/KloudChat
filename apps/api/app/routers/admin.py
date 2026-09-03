@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func
 from sqlmodel import col, delete, select
 
@@ -20,6 +20,7 @@ from app.models.user import (
     ApiKey,
     AuditEvent,
     CreditLedger,
+    EmailVerification,
     PasswordReset,
     RefreshToken,
     RevokeReason,
@@ -50,6 +51,7 @@ from app.schemas.admin import (
     SystemSettingsIn,
 )
 from app.schemas.auth import UserOut
+from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
@@ -107,7 +109,7 @@ def _audit(db, request: Request, admin: User, action: str, target: str, detail: 
 
 
 @router.get("/settings")
-async def get_settings(admin: AdminUser):
+async def get_settings(admin: AdminUser, db: DbSession):
     """Current proxy configuration and the provenance of each value.
 
     The master key is never returned: only whether one is set, plus its last
@@ -115,6 +117,7 @@ async def get_settings(admin: AdminUser):
     """
     values = await settings_store.all_values(force=True)
     smtp = await settings_store.smtp_config()
+    signup = await settings_store.signup_policy()
     backends = await settings_store.tools_config()
     stored_base = values.get(settings_store.LITELLM_BASE_URL, "")
     stored_key = values.get(settings_store.LITELLM_MASTER_KEY, "")
@@ -125,8 +128,10 @@ async def get_settings(admin: AdminUser):
             # Provenance: why an unfilled field has a value, and that clearing
             # it falls back rather than breaks.
             "baseUrlSource": (
-                "database" if stored_base
-                else "backend" if values.get(settings_store.BACKEND_BASE_URL)
+                "database"
+                if stored_base
+                else "backend"
+                if values.get(settings_store.BACKEND_BASE_URL)
                 else "environment"
             ),
             "masterKeySet": bool(key),
@@ -151,6 +156,19 @@ async def get_settings(admin: AdminUser):
         },
         "status": "ok" if await litellm_service.health(quick=True) else "unavailable",
         "brand": await settings_store.brand(),
+        "contact": {
+            "email": await settings_store.contact_email(db),
+            "source": "database" if values.get(settings_store.CONTACT_EMAIL) else "admin",
+        },
+        # Who may register, from where, and whether the address is checked.
+        "signup": {
+            "mode": signup.mode,
+            "modeSource": signup.mode_source,
+            "domains": signup.domains,
+            "verifyEmail": signup.verify_email,
+            # Asked for but not happening: no mail server to send the link.
+            "verificationActive": signup.verification,
+        },
         "enabledKinds": await settings_store.enabled_kinds(),
         # Feature integration: what points where, and where each value came from.
         "tools": {
@@ -161,8 +179,10 @@ async def get_settings(admin: AdminUser):
                     "label": label,
                     "url": backends.get(feature),
                     "source": (
-                        "database" if values.get(setting_key)
-                        else "backend" if values.get(settings_store.BACKEND_BASE_URL)
+                        "database"
+                        if values.get(setting_key)
+                        else "backend"
+                        if values.get(settings_store.BACKEND_BASE_URL)
                         else "environment"
                     ),
                 }
@@ -222,6 +242,10 @@ async def put_settings(
         ("smtp_password", settings_store.SMTP_PASSWORD),
         ("smtp_from", settings_store.SMTP_FROM),
         ("app_base_url", settings_store.APP_BASE_URL),
+        ("contact_email", settings_store.CONTACT_EMAIL),
+        ("signup_mode", settings_store.SIGNUP_MODE),
+        ("signup_domains", settings_store.SIGNUP_DOMAINS),
+        ("signup_verify_email", settings_store.SIGNUP_VERIFY_EMAIL),
     ):
         value = getattr(payload, field)
         if value is not None:
@@ -234,7 +258,7 @@ async def put_settings(
     settings_store.invalidate()
     # Catalogue was fetched with the old credentials.
     model_service.invalidate_cache()
-    return await get_settings(admin)
+    return await get_settings(admin, db)
 
 
 @router.post("/settings/test")
@@ -294,11 +318,18 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
     all three. The default recipient is the administrator making the request —
     a mail server test that mails somebody else is how test mail reaches users.
     """
-    if not await settings_store.mail_enabled():
-        return {
-            "ok": False,
-            "detail": "메일 서버 주소, 보내는 주소, 서비스 주소를 모두 채워야 보낼 수 있습니다.",
-        }
+    # Sending needs the server and a sender. The service address only goes
+    # *into* mails as a link, so a missing one is reported after the send,
+    # not used to refuse it — the way it was, a filled-in relay reported
+    # 모두 채워야 with nothing said about which one.
+    config = await settings_store.smtp_config()
+    missing = [
+        label
+        for key, label in (("host", "SMTP 서버"), ("sender", "보내는 주소"))
+        if not config.get(key)
+    ]
+    if missing:
+        return {"ok": False, "detail": f"{', '.join(missing)}를 채운 뒤 저장해야 보낼 수 있습니다."}
     recipient = (payload.to or "").strip() or admin.email
     try:
         await mail_service.send(
@@ -311,6 +342,14 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
         )
     except mail_service.MailError as exc:
         return {"ok": False, "detail": str(exc)}
+    if not config.get("baseUrl"):
+        return {
+            "ok": True,
+            "detail": (
+                f"{recipient} 로 테스트 메일을 보냈습니다. 서비스 주소가 비어 있어 "
+                "재설정·확인 링크는 아직 만들 수 없습니다."
+            ),
+        }
     return {"ok": True, "detail": f"{recipient} 로 테스트 메일을 보냈습니다."}
 
 
@@ -337,6 +376,8 @@ async def approve(
         else (user.monthly_credits or settings.default_monthly_credits)
     )
     user.status = UserStatus.active
+    # Approving is vouching: the link the person never clicked no longer matters.
+    user.email_verified_at = user.email_verified_at or utcnow()
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
     # A look to start from, and nothing else. The agents and skills a new
@@ -475,9 +516,7 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
     await litellm_service.issue_key(user)
 
     if not user.litellm_key:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="key_issuance_failed"
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="key_issuance_failed")
     if user.status is UserStatus.suspended:
         # A rotation must not re-enable a suspended account.
         await litellm_service.set_key_blocked(user, True)
@@ -490,12 +529,24 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: str, request: Request, admin: AdminUser, db: DbSession):
+async def delete_user(
+    user_id: str,
+    request: Request,
+    admin: AdminUser,
+    db: DbSession,
+    purge_files: bool = Query(True, alias="purgeFiles"),
+):
     """Removes an account and everything it owns. Not recoverable.
 
     Suspension is the reversible answer; this is for accounts that should never
     have existed. The proxy key goes first — a row deleted while its key is
     live leaves a credential nobody tracks.
+
+    `purgeFiles` takes the account's directory on disk with it — uploads,
+    pictures, clips. On by default: the rows that named those files are gone
+    in the same transaction, and a directory nobody can reach is what the
+    storage sweep exists to clean up after. Off keeps the bytes for a
+    retention hold; the sweep reclaims them once the volume is full.
     """
     user = await _load(db, user_id)
     if user.id == admin.id:
@@ -511,9 +562,7 @@ async def delete_user(user_id: str, request: Request, admin: AdminUser, db: DbSe
         if not remaining:
             # An instance with no administrator can never approve, fund or
             # configure anything again.
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin"
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
 
     await litellm_service.revoke_key(user)
     email = user.email
@@ -563,13 +612,20 @@ async def delete_user(user_id: str, request: Request, admin: AdminUser, db: DbSe
         (RefreshToken, RefreshToken.user_id),
         # Outstanding reset tickets hold the account row open by foreign key.
         (PasswordReset, PasswordReset.user_id),
+        (EmailVerification, EmailVerification.user_id),
     ):
         await db.exec(delete(model).where(column == user.id))
 
     await db.delete(user)
     # Outlives the account: "who deleted whom" is what the trail is for.
-    _audit(db, request, admin, "user.delete", email)
+    _audit(db, request, admin, "user.delete", email if not purge_files else f"{email} (파일 포함)")
     await db.commit()
+    # After the commit, never before: a directory removed for an account whose
+    # rows then failed to delete would be files with owners and no bytes.
+    if purge_files:
+        removed = file_service.remove_user_files(user.id)
+        if removed:
+            log.info("user.delete: removed %d bytes of files for %s", removed, email)
 
 
 @router.post("/users/{user_id}/models", response_model=UserOut)

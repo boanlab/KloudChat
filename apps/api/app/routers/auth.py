@@ -34,6 +34,7 @@ from app.core.security import (
 )
 from app.models.user import (
     AuditEvent,
+    EmailVerification,
     RefreshToken,
     RevokeReason,
     User,
@@ -47,6 +48,8 @@ from app.models.user import (
 from app.schemas.auth import (
     AccessEventOut,
     ActiveSessionOut,
+    EmailVerify,
+    EmailVerifyResponse,
     LoginRequest,
     PasswordChange,
     PasswordForgot,
@@ -127,6 +130,8 @@ async def _issue_session(
 _ACCOUNT_ACTIONS = (
     "login",
     "signup",
+    "signup.verified",
+    "signup.verification_resent",
     "password.change",
     "password.reset",
     "password.reset_requested",
@@ -159,14 +164,22 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_unavailable")
 
     is_first = await user_count(db) == 0
-    if settings.signup_mode == "closed" and not is_first:
+    policy = await settings_store.signup_policy()
+    if policy.mode == "closed" and not is_first:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="signup_closed")
+    if not is_first and not policy.allows(email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="signup_domain_not_allowed"
+        )
 
     # First account bootstraps the instance: admin, active, funded. Otherwise
-    # `open` activates immediately, `approval` parks the row as pending.
+    # `open` activates immediately, `approval` parks the row as pending — and
+    # with verification on, everyone waits as pending until the mailed link
+    # is clicked; `verify_email` below then does what the mode says.
+    verify = policy.verification and not is_first
     if is_first:
         role, user_status = UserRole.admin, UserStatus.active
-    elif settings.signup_mode == "open":
+    elif policy.mode == "open" and not verify:
         role, user_status = UserRole.user, UserStatus.active
     else:
         role, user_status = UserRole.user, UserStatus.pending
@@ -177,6 +190,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         name=payload.name.strip(),
         role=role,
         status=user_status,
+        email_verified_at=None if verify else utcnow(),
     )
     db.add(user)
     try:
@@ -204,8 +218,12 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         db.add(user)
 
     await _audit(db, request, "signup", user.id, target=email, detail=f"status={user_status}")
+    if verify:
+        token = _issue_verification(db, user)
     await db.commit()
     await db.refresh(user)
+    if verify:
+        await _mail_verification(user, token)
 
     session = (
         await _issue_session(db, response, user, request=request)
@@ -213,6 +231,109 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         else None
     )
     return SignupResponse(user=UserOut.of(user), session=session)
+
+
+#: How long a mailed signup link works. Long enough for a mail that lands in
+#: the morning to be clicked after lunch.
+VERIFY_TTL_MINUTES = 24 * 60
+
+
+def _issue_verification(db: AsyncSession, user: User) -> str:
+    """Adds a ticket row and returns the token to mail. The caller commits."""
+    token = secrets.token_urlsafe(32)
+    db.add(
+        EmailVerification(
+            user_id=user.id,
+            token_hash=_hash_token(token),
+            expires_at=utcnow() + timedelta(minutes=VERIFY_TTL_MINUTES),
+        )
+    )
+    return token
+
+
+async def _mail_verification(user: User, token: str) -> None:
+    config = await settings_store.smtp_config()
+    link = f"{config['baseUrl'].rstrip('/')}/verify?token={token}"
+    subject, body = mail_service.verification_message(
+        name=user.name or user.email, link=link, minutes=VERIFY_TTL_MINUTES
+    )
+    try:
+        await mail_service.send(to=user.email, subject=subject, body=body)
+    except mail_service.MailError as exc:
+        log.warning("verification mail failed: %s", exc)
+
+
+async def _activate(db: AsyncSession, user: User) -> None:
+    """What approval does, for an account that needs none: funded, keyed, seeded."""
+    user.status = UserStatus.active
+    grant_initial_allowance(db, user, settings.default_monthly_credits)
+    await provision_user(user)
+    await starter.seed_designs(db, user.id)
+    db.add(user)
+
+
+@router.post("/verify-email", response_model=EmailVerifyResponse)
+async def verify_email(payload: EmailVerify, request: Request, response: Response, db: DbSession):
+    """The mailed link. Marks the address confirmed, then does what the signup
+    mode would have done at signup: `open` activates and signs in, `approval`
+    leaves the row for an administrator."""
+    row = (
+        await db.exec(
+            select(EmailVerification).where(
+                EmailVerification.token_hash == _hash_token(payload.token)
+            )
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="invalid_verify_token")
+    if row.used_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="verify_token_used")
+    if row.expires_at < utcnow():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="verify_token_expired")
+    user = await db.get(User, row.user_id)
+    if user is None or user.status is UserStatus.suspended:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="invalid_verify_token")
+
+    row.used_at = utcnow()
+    db.add(row)
+    user.email_verified_at = user.email_verified_at or utcnow()
+    policy = await settings_store.signup_policy()
+    if user.status is UserStatus.pending and policy.mode == "open":
+        await _activate(db, user)
+    db.add(user)
+    await _audit(db, request, "signup.verified", user.id, target=user.email)
+    await db.commit()
+    await db.refresh(user)
+
+    session = (
+        await _issue_session(db, response, user, request=request)
+        if user.status is UserStatus.active
+        else None
+    )
+    return EmailVerifyResponse(status=user.status, session=session)
+
+
+@router.post("/verify-email/resend", status_code=status.HTTP_204_NO_CONTENT)
+async def resend_verification(user: CurrentIdentity, request: Request, db: DbSession):
+    """A fresh link for the waiting screen. One a minute, and only while the
+    address is still unconfirmed and mail can go out."""
+    if user.email_verified_at is not None or user.status is not UserStatus.pending:
+        return
+    if not await settings_store.mail_enabled():
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="mail_not_configured")
+    latest = (
+        await db.exec(
+            select(EmailVerification)
+            .where(EmailVerification.user_id == user.id)
+            .order_by(col(EmailVerification.created_at).desc())
+        )
+    ).first()
+    if latest and (utcnow() - latest.created_at).total_seconds() < 60:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail="verify_resend_too_soon")
+    token = _issue_verification(db, user)
+    await _audit(db, request, "signup.verification_resent", user.id, target=user.email)
+    await db.commit()
+    await _mail_verification(user, token)
 
 
 @router.post("/login", response_model=SessionOut)
@@ -588,7 +709,7 @@ async def end_other_sessions(user: CurrentUser, request: Request, db: DbSession)
 
 
 @router.get("/config")
-async def auth_config():
+async def auth_config(db: DbSession):
     """What this instance is able to offer.
 
     A control that cannot work must not be drawn: no mail means no reset link,
@@ -599,12 +720,23 @@ async def auth_config():
     # from the database, so this short cache can at worst show a stale option
     # that the authorizing endpoint immediately rejects.
     policy = await governance_service.current()
+    signup = await settings_store.signup_policy()
     return {
         "passwordResetEnabled": await settings_store.mail_enabled(),
         "dictationEnabled": await transcribe_service.available(),
+        # So the signup form can say which addresses are welcome and whether a
+        # mail is coming, before the person finds out from a refusal.
+        "signup": {
+            "mode": signup.mode,
+            "domains": signup.domains,
+            "emailVerification": signup.verification,
+        },
         # Served before authentication: the sign-in screen has to render the
         # name and logo too.
         "brand": await settings_store.brand(),
+        # Where 관리자에게 문의 goes. Public, like the brand: the waiting
+        # screen and the sign-in page both need it.
+        "contactEmail": await settings_store.contact_email(db),
         "enabledKinds": await settings_store.enabled_kinds(),
         "privacy": {
             "externalDataGuard": policy.external_data_guard,

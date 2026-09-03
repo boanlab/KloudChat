@@ -105,7 +105,9 @@ Three requirements the proxy must satisfy:
 buffering proxy makes them appear all at once, which reads as a hang.
 
 **Allow long-lived responses.** A tool-using turn on a local model can run for
-minutes; `CHAT_TIMEOUT_SEC` defaults to 900.
+minutes; `CHAT_TIMEOUT_SEC` defaults to 900. The API writes an SSE comment
+every 15 seconds while a turn is silent, so a proxy *idle* timeout of 60
+seconds is fine — only a cap on the total response time has to be raised.
 
 **Forward the client's address.** `X-Forwarded-For` is the only way KloudChat
 learns who is connecting; without it every audit row, share visit and 접속기록

@@ -4,8 +4,9 @@ import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { Button, Input } from '@/components/ui'
 import { errorMessage, sessionsApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useDesignTemplates } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
-import { useStore } from '@/store/useStore'
+import { drawFigure, useStore } from '@/store/useStore'
 
 /**
  * Choosing a picture for a slide or a section — or making one, here.
@@ -39,6 +40,8 @@ export function PicturePicker({
   title,
   /** What this 장/절 already says, so the suggestion does not redraw it. */
   context,
+  /** The document's look, so the picture comes out in the same register. */
+  visualStyle,
 }: {
   /** Whose session the picture is charged to and stored under. */
   sessionId?: string | null
@@ -51,6 +54,7 @@ export function PicturePicker({
   about?: string
   title?: string
   context?: string
+  visualStyle?: string
 }) {
   const t = useT()
   const [prompt, setPrompt] = useState('')
@@ -63,6 +67,21 @@ export function PicturePicker({
   const canMake = imageOn && Boolean(sessionId)
   //: Whether what is in the box came from the suggestion rather than a person.
   const [suggested, setSuggested] = useState(false)
+  /**
+   * 서식은 제안이 고른다. The suggestion names an image 서식 for this place —
+   * a scene, an architecture, a flow — chosen against the document's look, so
+   * nobody has to know the catalogue to get a picture that belongs in a
+   * report. A figure 서식 draws as mermaid (labels on) rather than as a picture.
+   */
+  const [chosen, setChosen] = useState<{
+    templateId: string
+    name: string
+    figure: string
+    description: string
+    style: string
+  } | null>(null)
+  const chatModel = useStore((s) => s.modelByKind.chat)
+  const templates = useDesignTemplates()
 
   // Same session first: the picture somebody made while writing this document
   // is almost always the one they want in it.
@@ -92,11 +111,23 @@ export function PicturePicker({
     let alive = true
     setSuggesting(true)
     void sessionsApi
-      .suggestFigure(sessionId, { title, about, context })
+      .suggestFigure(sessionId, { title, about, context, visualStyle })
       .then((row) => {
-        if (!alive || !row.prompt) return
-        setPrompt(row.prompt)
+        if (!alive || !(row.prompt || row.figure)) return
+        // A figure shows its description in the box — that is what gets
+        // drawn, labels and all — and a picture shows its English prompt.
+        setPrompt((row.figure ? row.description : row.prompt) ?? '')
         setSuggested(true)
+        if (row.templateId) {
+          const named = templates.find((one) => one.id === row.templateId)
+          setChosen({
+            templateId: row.templateId,
+            name: named?.name ?? row.templateId,
+            figure: row.figure ?? '',
+            description: row.description ?? '',
+            style: row.style ?? '',
+          })
+        }
         // Only when the person has not written one. A caption they typed is
         // theirs and outranks anything proposed here.
         if (row.caption) onCaption(caption.trim() || row.caption)
@@ -119,16 +150,24 @@ export function PicturePicker({
     setMaking(true)
     setError(null)
     try {
-      const rows = await sessionsApi.images(sessionId, {
-        prompt: asked,
-        aspect,
-        style: '',
-        count: 1,
-        // Into a slide, not of one. Without this the first picture anybody made
-        // came back as a whole slide — title across the top, chart, three
-        // labelled cards — and went inside a slide that already had a title.
-        figure: true,
-      })
+      let rows: { id: string }[]
+      if (chosen?.figure && suggested) {
+        // 도식 경로: the box holds the description, and the labels in it are
+        // what the drawing carries. See `drawFigure`.
+        rows = [await drawFigure(sessionId, asked, chosen.figure, chatModel || undefined)]
+      } else {
+        rows = await sessionsApi.images(sessionId, {
+          prompt: asked,
+          aspect,
+          style: chosen?.style ?? '',
+          count: 1,
+          ...(chosen && !chosen.figure ? { templateId: chosen.templateId } : {}),
+          // Into a slide, not of one. Without this the first picture anybody made
+          // came back as a whole slide — title across the top, chart, three
+          // labelled cards — and went inside a slide that already had a title.
+          figure: true,
+        })
+      }
       await loadArtifacts()
       // Selected, not just made. Otherwise the picture appears in the grid and
       // 넣기 stays disabled until somebody notices they have to click it.
@@ -184,11 +223,16 @@ export function PicturePicker({
           </div>
           <p className="mt-1.5 flex items-center gap-1 text-xs text-faint">
             {suggested && <Sparkles size={11} className="shrink-0 text-accent" />}
-            {suggested
-              ? t(
-                  '이 장을 읽고 넣을 만한 그림을 적어 두었습니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.',
+            {suggested && chosen
+              ? t('「{name}」 서식으로 만듭니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.').replace(
+                  '{name}',
+                  chosen.name,
                 )
-              : t('문서 안에 들어갈 삽화로 만듭니다 — 글자는 넣지 않습니다. 크레딧이 듭니다.')}
+              : suggested
+                ? t(
+                    '이 장을 읽고 넣을 만한 그림을 적어 두었습니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.',
+                  )
+                : t('문서 안에 들어갈 삽화로 만듭니다 — 글자는 넣지 않습니다. 크레딧이 듭니다.')}
           </p>
           {error && <p className="mt-2 text-base text-danger">{error}</p>}
         </div>

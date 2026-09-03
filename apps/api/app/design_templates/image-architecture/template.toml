@@ -1,0 +1,54 @@
+kind = "image"
+name = "시스템 아키텍처"
+description = "구성 요소를 묶음별로 놓고 요청·응답 흐름을 화살표로 그린 그림. 이름표가 붙어 나옵니다"
+category = "도식"
+fills = ["시스템 설명", "묶음", "흐름", "이름표 언어"]
+example_prompt = "{description}\n\n묶음: {groups}\n보여 줄 흐름: {flow}\n이름표 언어: {language}"
+layouts = ["cover"]
+
+# 도식 경로 — `image-method` 와 같은 이유. 상자에 이름이 없는 아키텍처 그림은 장식이다.
+figure = "method"
+prompt_suffix = ""
+
+name_en = "System architecture"
+description_en = "Components in groups, with request and response flows drawn and labelled"
+category_en = "Diagrams"
+fills_en = ["System description", "Groups", "Flow", "Label language"]
+example_prompt_en = "{description}\n\nGroups: {groups}\nFlow to show: {flow}\nLabel language: {language}"
+
+[defaults]
+aspect = "16:9"
+style = "미니멀"
+
+[[arguments]]
+name = "description"
+label = "시스템 설명"
+label_en = "System description"
+long = true
+default = "사용자가 사내 AI 포털에 질문하면 보안 게이트웨이가 권한을 확인하고, LLM 이 사내 문서 저장소를 검색해 답을 만들어 포털로 돌려준다."
+default_en = "A user asks the internal AI portal; a security gateway checks permissions, the LLM searches the internal document store and returns an answer through the portal."
+
+[[arguments]]
+name = "groups"
+label = "묶음"
+label_en = "Groups"
+default = "사용자 / 포털과 게이트웨이 / 모델과 데이터"
+default_en = "users / portal and gateway / model and data"
+
+[[arguments]]
+name = "flow"
+label = "보여 줄 흐름"
+label_en = "Flow to show"
+default = "요청과 응답"
+default_en = "request and response"
+options = ["요청과 응답", "데이터 흐름", "배포 순서"]
+options_en = ["request and response", "data flow", "deployment order"]
+
+[[arguments]]
+name = "language"
+label = "이름표 언어"
+label_en = "Label language"
+default = "한국어"
+default_en = "Korean"
+options = ["한국어", "영어"]
+options_en = ["Korean", "English"]

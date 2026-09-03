@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator, Field
 
@@ -33,7 +33,7 @@ from app.models.workspace import (
 from app.schemas.auth import Wire
 from app.services import design as design_service
 from app.services import geoip
-from app.services.prompt_templates import PromptTemplate
+from app.services.prompt_templates import PromptTemplate, skill_names
 
 #: JSONB list columns are nullable in the database, but the wire contract is a
 #: list either way — absorbed here rather than in every `of()` and consumer.
@@ -503,6 +503,13 @@ class AgentOut(Wire):
     tools: list[str] | None = None
     skill_ids: list[str] | None = None
     kinds: JsonList = Field(default_factory=list)
+    guide: str = ""
+    starters: JsonList = Field(default_factory=list)
+    #: How this row may be taken when shared. Only the owner's business.
+    share_mode: Literal["open", "sealed"] = "open"
+    #: The prompt is not here: either this is somebody else's sealed original
+    #: seen from the store, or a copy taken from one. Runs all the same.
+    sealed: bool = False
     temperature: float
     color: str
     enabled: bool
@@ -534,6 +541,9 @@ class AgentOut(Wire):
         has_knowledge: bool = False,
         official: bool = False,
         installed: bool = False,
+        #: Who is looking. Needed to withhold a sealed original's prompt from
+        #: everybody but its owner.
+        viewer_id: str | None = None,
     ) -> AgentOut:
         out = cls.model_validate(a, from_attributes=True)
         out.owner_name = owner_name
@@ -543,6 +553,14 @@ class AgentOut(Wire):
         out.tools = None if a.tools is None else list(a.tools)
         out.skill_ids = None if a.skill_ids is None else list(a.skill_ids)
         out.kinds = list(a.kinds or [])
+        out.starters = [str(x) for x in (a.starters or []) if str(x).strip()]
+        out.share_mode = "sealed" if a.share_mode == "sealed" else "open"
+        # Somebody else's sealed original, or a sealed copy: the instructions
+        # are what the sharer withheld, so they do not leave the server.
+        withheld = a.share_mode == "sealed" and viewer_id is not None and a.owner_id != viewer_id
+        if a.sealed or withheld:
+            out.system_prompt = ""
+            out.sealed = True
         return out
 
 
@@ -564,6 +582,9 @@ class AgentIn(Wire):
     tools: list[str] | None = None
     skill_ids: list[str] | None = None
     kinds: list[str] | None = None
+    guide: str = Field(default="", max_length=2000)
+    starters: list[str] = Field(default_factory=list, max_length=6)
+    share_mode: Literal["open", "sealed"] = "open"
     temperature: float = Field(default=0.7, ge=0, le=2)
     color: str = "#5b53e8"
     enabled: bool = True
@@ -684,16 +705,12 @@ class ConnectorOut(Wire):
 
     @classmethod
     def of(cls, c: Connector, tools: list[ConnectorTool] | None = None) -> ConnectorOut:
-        out = cls.model_validate(
-            {**c.model_dump(), "auth": c.auth_type}, from_attributes=False
-        )
+        out = cls.model_validate({**c.model_dump(), "auth": c.auth_type}, from_attributes=False)
         out.kinds = list(c.kinds or [])
         out.tools = [ConnectorToolOut.of(t) for t in (tools or [])]
         # `{{USER_ID}}`-style placeholders are substituted at spawn time and
         # are not re-entered, so they are excluded.
-        out.env_keys = [
-            k for k, v in (c.env or {}).items() if not str(v).startswith("{{")
-        ]
+        out.env_keys = [k for k, v in (c.env or {}).items() if not str(v).startswith("{{")]
         return out
 
 
@@ -886,7 +903,9 @@ class PromptTemplateOut(Wire):
             examples=list(t.examples),
             examples_en=list(t.examples_en),
             needs=list(t.needs),
-            skills=list(t.skills),
+            # Names on the wire, keys in the catalogue: the composer shows and
+            # matches names, the server resolves keys.
+            skills=skill_names(t.skills),
         )
 
 

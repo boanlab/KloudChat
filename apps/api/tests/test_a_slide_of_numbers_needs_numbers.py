@@ -101,13 +101,16 @@ def test_variety_is_judged_against_what_the_request_can_reach() -> None:
     assert deck._offered_layouts("숫자 없는 주제", []) == [
         "bullets",
         "quote",
+        "statement",
         "two-column",
         "table",
-        # The three paired shapes need no figures — a name beside a sentence, a
-        # letter over a caption, a date beside what happened.
+        # The paired shapes need no figures — a name beside a sentence, a
+        # letter over a caption, a date beside what happened, a step, a card.
         "bands",
         "tiles",
         "timeline",
+        "steps",
+        "cards",
     ]
     # `_BODY_LAYOUTS`, not `_LAYOUTS[1:]`: the slice meant "everything but the
     # cover" only while the cover was the one layout with no content in it.

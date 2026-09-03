@@ -34,6 +34,22 @@ export function MailSection({
   /** Typing wins over a fetch that lands late. See `ProxySection`. */
   const dirty = useRef(false)
 
+  const save = async () => {
+    await adminApi.updateSettings({
+      smtpHost: smtp.host,
+      smtpPort: smtp.port,
+      smtpSecurity: smtp.security,
+      smtpUsername: smtp.username,
+      ...(smtp.password ? { smtpPassword: smtp.password } : {}),
+      smtpFrom: smtp.from,
+      appBaseUrl: smtp.appBaseUrl,
+    })
+    dirty.current = false
+    // The password box goes back to "leave it alone" once it is stored.
+    setSmtp((v) => ({ ...v, password: '' }))
+    await reload()
+  }
+
   useEffect(() => {
     if (!settings || dirty.current) return
     setSmtp({
@@ -65,11 +81,18 @@ export function MailSection({
         </div>
         <Button
           disabled={busy}
-          title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
+          title={busy ? t('설정을 불러오거나 저장하는 중입니다') : t('입력한 설정을 저장한 뒤 내 주소로 한 통 보냅니다')}
           onClick={async () => {
             setBusy(true)
             setMailProbe(null)
+            setError(null)
             try {
+              // The test sends with what is *stored*. Typed values that were
+              // never saved were the usual reason a filled-in form reported
+              // nothing to send with — so save first, then send.
+              if (dirty.current) {
+                await save()
+              }
               const result = await adminApi.testSmtp()
               setMailProbe({
                 ok: result.ok,
@@ -190,17 +213,32 @@ export function MailSection({
 
         <Field
           label={t('서비스 주소')}
-          hint={t('비밀번호 재설정 메일에 담길 주소입니다. 사용자가 접속하는 주소를 넣으세요.')}
+          hint={t('재설정·가입 확인 메일에 담길 링크의 주소입니다. 사용자가 접속하는 주소를 넣으세요. 비어 있으면 메일은 나가도 링크를 만들 수 없습니다.')}
         >
-          <Input
-            value={smtp.appBaseUrl}
-            onChange={(e) => {
-              setSmtp((v) => ({ ...v, appBaseUrl: e.target.value }))
-              dirty.current = true
-            }}
-            placeholder="https://kchat.example.com"
-            className="font-mono text-base"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={smtp.appBaseUrl}
+              onChange={(e) => {
+                setSmtp((v) => ({ ...v, appBaseUrl: e.target.value }))
+                dirty.current = true
+              }}
+              placeholder={window.location.origin}
+              className="font-mono text-base"
+            />
+            {smtp.appBaseUrl !== window.location.origin && (
+              <Button
+                size="sm"
+                className="shrink-0"
+                title={t('지금 이 화면을 연 주소를 넣습니다')}
+                onClick={() => {
+                  setSmtp((v) => ({ ...v, appBaseUrl: window.location.origin }))
+                  dirty.current = true
+                }}
+              >
+                {t('현재 주소 넣기')}
+              </Button>
+            )}
+          </div>
         </Field>
 
         {error && (
@@ -219,17 +257,7 @@ export function MailSection({
             setError(null)
             setMailProbe(null)
             try {
-              await adminApi.updateSettings({
-                smtpHost: smtp.host,
-                smtpPort: smtp.port,
-                smtpSecurity: smtp.security,
-                smtpUsername: smtp.username,
-                ...(smtp.password ? { smtpPassword: smtp.password } : {}),
-                smtpFrom: smtp.from,
-                appBaseUrl: smtp.appBaseUrl,
-              })
-              dirty.current = false
-              await reload()
+              await save()
             } catch (err) {
               setError(err instanceof ApiError ? err.detail : t('저장에 실패했습니다.'))
             } finally {

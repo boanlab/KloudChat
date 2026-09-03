@@ -152,10 +152,21 @@ def _style_map(value: str) -> dict[str, str]:
             continue
         name, setting = declaration.split(":", 1)
         name, setting = name.strip().lower(), setting.strip()
-        if name in {
-            "font-size", "font-family", "font-weight", "font-style",
-            "text-align", "text-decoration", "color", "background-color", "line-height",
-        } and setting:
+        if (
+            name
+            in {
+                "font-size",
+                "font-family",
+                "font-weight",
+                "font-style",
+                "text-align",
+                "text-decoration",
+                "color",
+                "background-color",
+                "line-height",
+            }
+            and setting
+        ):
             out[name] = setting
     return out
 
@@ -185,10 +196,13 @@ class _FormatReader(HTMLParser):
                 "runs": [],
                 "text": "",
             }
-            self.styles = [{
-                key: value for key, value in style.items()
-                if key not in {"text-align", "line-height"}
-            }]
+            self.styles = [
+                {
+                    key: value
+                    for key, value in style.items()
+                    if key not in {"text-align", "line-height"}
+                }
+            ]
             return
         if tag in _FORMAT_INLINE and self.block is not None:
             merged = dict(self.styles[-1])
@@ -257,9 +271,7 @@ def _grid(markup: str) -> Grid:
     for row in re.findall(r"<tr\b[^>]*>(.*?)</tr\s*>", markup, re.S | re.I):
         cells = [
             Cell(_cell_text(body), _span(open_tag, "colspan"), _span(open_tag, "rowspan"))
-            for open_tag, body in re.findall(
-                r"<t[hd]\b([^>]*)>(.*?)</t[hd]\s*>", row, re.S | re.I
-            )
+            for open_tag, body in re.findall(r"<t[hd]\b([^>]*)>(.*?)</t[hd]\s*>", row, re.S | re.I)
         ]
         grid.rows.append(cells)
     while grid.rows and not any(c.text for c in grid.rows[-1]):
@@ -314,9 +326,7 @@ def _table(markup: str) -> str:
         "| " + " | ".join(cell.replace("|", "\\|") for cell in head) + " |",
         "| " + " | ".join(["---"] * width) + " |",
     ]
-    lines.extend(
-        "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |" for row in body
-    )
+    lines.extend("| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |" for row in body)
     return "\n".join(lines)
 
 
@@ -618,6 +628,8 @@ def _diagram_fence(markup: str) -> str:
         return _picture(markup)
     source = html.unescape(found.group(1)[1:-1]).strip()
     return "```mermaid\n" + source + "\n```" if source else _picture(markup)
+
+
 _SPAN = re.compile(r"<span\b[^>]*>(.*?)</span\s*>", re.S | re.I)
 
 
@@ -727,9 +739,7 @@ def to_markdown(fragment: str) -> str:
         stop = match.end()
         if match.group(0).lower() in ("<ul", "<ol"):
             stop = _balanced(fragment, match.start())
-            rendered = _list(
-                fragment[match.start() : stop], match.group(0).lower() == "<ol"
-            )
+            rendered = _list(fragment[match.start() : stop], match.group(0).lower() == "<ol")
         elif _KPI_OPEN.match(match.group(0)):
             # Matched as an opening tag, so the whole strip has to be found
             # before its cells can be read off it.

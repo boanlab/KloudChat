@@ -208,6 +208,22 @@ async def _stream_once(
     yield "done", acc
 
 
+#: Text shorter than this, written in a hop that then called tools, is
+#: narration — 「코드를 작성했습니다. 이제 실행해 보겠습니다.」 — not an answer.
+_NARRATION_CHARS = 400
+
+
+def _repeats(earlier: str, later: str) -> bool:
+    """Whether `later` says what `earlier` said — same opening, or most of its lines."""
+    head = re.sub(r"\s+", " ", earlier.strip())[:80]
+    if head and head in re.sub(r"\s+", " ", later):
+        return True
+    lines = [ln.strip() for ln in earlier.splitlines() if len(ln.strip()) > 20]
+    if len(lines) < 3:
+        return False
+    return sum(1 for ln in lines if ln in later) * 2 > len(lines)
+
+
 #: Seconds to wait before retrying a 429, one per retry.
 _RETRY_AFTER = (5.0, 15.0)
 
@@ -339,8 +355,14 @@ async def run_turn(
     #: Searches run this turn, and how many of them found nothing.
     searches = 0
     empty_searches = 0
+    #: Text the model wrote in a hop that went on to call tools — 「검색해
+    #: 보겠습니다」, or a whole answer it then repeated after the tool came
+    #: back. Short ones are taken off the screen at once; long ones only if
+    #: the final answer says the same thing again. See `retract` below.
+    held: list[str] = []
     while True:
         acc: _Accumulator | None = None
+        hop_text: list[str] = []
         stream_kwargs: dict[str, Any] = {
             "strict_local": strict_local,
             "redact_logging": redact_next_request,
@@ -368,6 +390,7 @@ async def run_turn(
         ):
             if kind == "delta":
                 answer_text.append(value)
+                hop_text.append(value)
                 yield {"type": "delta", "text": value}
             else:
                 acc = value
@@ -383,6 +406,20 @@ async def run_turn(
                 "actualModel": acc.actual_model,
             }
 
+        if acc.calls and not closing and "".join(hop_text).strip():
+            # 도구를 부르며 한 말은 중계다.
+            #
+            # The step row already says 웹 검색 중; the sentence saying so
+            # under it is noise, and when the model wrote its whole answer
+            # before running the check it then wrote the answer again after.
+            # A short piece goes now. A long one is a possible answer, and is
+            # kept unless the final text repeats it — decided at the end.
+            spoken = "".join(hop_text)
+            if len(spoken) < _NARRATION_CHARS:
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": spoken}
+            else:
+                held.append(spoken)
         if acc.looped:
             note = (
                 "\n\n_같은 내용이 되풀이되어 여기서 멈췄습니다. "
@@ -559,7 +596,16 @@ async def run_turn(
     # tool returned is in `seen_urls`, so a URL in the answer that is not
     # there is one the model made up or remembered, and it is listed as such.
     answer = "".join(answer_text)
-    if searches and empty_searches == searches and answer.strip():
+    for spoken in held:
+        # The final answer opens the way the held text did: the model said
+        # it twice, once before the tool and once after. The first goes.
+        at = answer.find(spoken)
+        final = answer[at + len(spoken) :] if at >= 0 else ""
+        if _repeats(spoken, final):
+            answer = answer.replace(spoken, "", 1)
+            yield {"type": "retract", "text": spoken}
+    answer_text[:] = [answer]
+    if searches and empty_searches * 2 >= searches and answer.strip():
         # 검색이 전부 빈손이었으면 답 밑에 그렇다고 적는다.
         #
         # The tool told the model to say so; the model, handed a literature
@@ -567,6 +613,9 @@ async def run_turn(
         # The reader is the one who has to know that nothing here was checked.
         note = (
             "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
+            "서지·수치·최신 사항은 확인이 필요합니다._"
+            if empty_searches == searches
+            else "\n\n_웹 검색 결과가 대부분 질문과 무관해 이 답은 충분히 확인되지 않았습니다. "
             "서지·수치·최신 사항은 확인이 필요합니다._"
         )
         answer_text.append(note)
