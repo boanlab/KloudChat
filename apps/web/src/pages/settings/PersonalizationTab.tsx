@@ -59,7 +59,7 @@ export function PersonalizationTab() {
           value={aboutMe}
           onChange={(e) => setAboutMe(e.target.value.slice(0, LIMIT))}
           rows={6}
-          placeholder={t('예: 컴퓨터공학과 3학년. 웹 개발을 배우는 중이고 JavaScript 를 주로 쓴다. 영어 자료는 한국어로 풀어 주면 좋겠다.')}
+          placeholder={t('예: 직장에서 기획 업무를 맡고 있다. 전문 용어보다 쉬운 말이 좋고, 숫자는 표로 보여 주면 이해가 빠르다.')}
         />
         <p className="mt-1 text-right text-xs text-faint">{aboutMe.length}/{LIMIT}</p>
       </Field>

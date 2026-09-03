@@ -840,7 +840,7 @@ const EN: Record<string, string> = {
   '여기 적은 것은 모든 대화의 맨 앞에 들어갑니다. 에이전트나 프로젝트의 지침이 있으면 그쪽이 우선합니다.': 'What you write here goes at the front of every conversation. Agent or project instructions take precedence where they differ.',
   '나에 대해 알아 두면 좋은 것': 'What to know about me',
   '하는 일, 전공, 관심사, 자주 쓰는 도구 — 답을 맞추는 데 참고합니다. 대화에서만 쓰이고 보고서·슬라이드에는 들어가지 않습니다.': 'Your work, field, interests, the tools you use — for fitting answers to you. Used in conversations only, never in reports or slides.',
-  '예: 컴퓨터공학과 3학년. 웹 개발을 배우는 중이고 JavaScript 를 주로 쓴다. 영어 자료는 한국어로 풀어 주면 좋겠다.': 'e.g. Third-year computer science student learning web development, mostly JavaScript. Prefers English material explained in Korean.',
+  '예: 직장에서 기획 업무를 맡고 있다. 전문 용어보다 쉬운 말이 좋고, 숫자는 표로 보여 주면 이해가 빠르다.': 'e.g. I work in planning at my company. Plain words over jargon, and numbers are easier for me in a table.',
   '답변 방식': 'How to respond',
   '말투, 길이, 형식, 언어 — 대화와 문서 모두에 적용됩니다.': 'Tone, length, format, language — applies to conversations and documents alike.',
   '예: 결론부터, 짧게. 존댓말. 코드는 설명보다 예제 위주로. 확실하지 않으면 그렇다고 말할 것.': 'e.g. Conclusion first, keep it short. Examples over explanations for code. Say so when unsure.',
