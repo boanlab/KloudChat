@@ -62,8 +62,11 @@ _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 �
 - 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다. 절마다
   **서로 다른 물음 하나**에 답한다 — 「비용 비교」와 「옵션 비교 분석」처럼 같은
   물음을 둘로 쪼개지 마라.
-- 판단을 구하는 문서(보고·검토·의사결정·제안)는 첫 절이 「요약」, 마지막 절이
-  「권고안과 다음 단계」다. 결론과 권고는 그 마지막 절 하나에만 있다.
+- 판단을 구하는 문서(검토·의사결정·제안·타당성)는 첫 절이 「요약」, 마지막 절이
+  「권고안과 다음 단계」다. 결론과 권고는 그 마지막 절 하나에만 있다. **현황·주간
+  보고, 회의록, 장애 보고서, 실험 보고서, 안내문은 판단을 구하는 문서가 아니다** —
+  요약·권고안 절을 붙이지 말고 그 장르의 항목이 목차다.
+{genre}
 - **대안이 여럿인 결정 문서는 대안마다 절을 만들지 마라.** 「A의 경제적 분석」
   「B의 경제적 분석」은 표 하나의 열을 절로 쪼갠 것이다. 대신 「대안 비교」 절
   하나에서 같은 기준으로 견준다. **절 제목에 특정 대안의 이름(클라우드, 교체,
@@ -119,6 +122,7 @@ _SECTION_PROMPT = """너는 아래 보고서의 "{heading}" 섹션만 쓰고 있
 이 절의 역할: {role}
 {others}
 {facts}
+{genre}
 
 규칙:
 - "{heading}" 에 해당하는 내용만 써라. 보고서 전체를 이 절에 넣지 마라. 다른
@@ -155,8 +159,13 @@ _DRAFT_PROMPT = """아래 목차대로 보고서 전체를 한 번에 써라.
 {refs}
 
 {facts}
+{genre}
 
 규칙:
+- 자료에 없는 원인·이유·평가를 보태지 마라 — 「민감한 정보가 포함되어 있어」「~때문으로
+  판단됩니다」는 자료가 말하지 않았으면 쓰지 않는다. 해석이 필요한 자리는 「(자료에
+  없음)」으로 둔다. 「기반을 마련했습니다」「긍정적인 성과」처럼 사실을 더하지 않는
+  문장도 쓰지 않는다.
 - 절마다 `## 제목` 줄로 시작한다. 목차에 없는 절을 만들지 말고, 목차의 절을
   빼지도 마라. 최상위 제목(#)은 쓰지 마라 — 제목은 표지에 따로 붙는다.
 - 첫 절이 「요약」이면: 무엇을 결정해야 하는지, 권고가 무엇인지, 근거 둘을 문단
@@ -336,6 +345,51 @@ _UNVERIFIED_NOTE = (
 
 #: A request that weighs options — the only kind the cost-table advice fits.
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
+
+#: 장르마다 모양이 있다. The decision report's skeleton — 요약 up front, 권고 at
+#: the end, two paragraphs a section — was reaching every document, and a 주간
+#: 보고 came back at 2,800 characters with a comparison table and a recommendation
+#: nobody asked for. A weekly report is a page somebody skims; minutes are a
+#: table; an incident report keeps its timeline as a table. Matched on the
+#: request, the rule goes to the outline and the draft.
+_GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척"),
+        "장르: 현황·주간 보고. 한 쪽에 읽힌다 — 절마다 짧은 문장의 항목 서넛, 문단은 둘을 넘기지 "
+        "않는다. 「요약」 절 대신 첫 절 첫 줄에 이번 주의 결론 한 문장. 권고안 절을 만들지 않는다; "
+        "결정이 필요한 것은 「이슈」에 질문 형태로 적는다. 자료에 없는 원인·해석·전망("
+        "「~때문으로 판단됩니다」「달성 가능성 높음」)을 보태지 않는다.",
+    ),
+    (
+        re.compile(r"회의록|녹취|미팅 ?메모|회의 ?메모"),
+        "장르: 회의록. 결정·조치·미결은 표로(항목·담당·기한). 발언은 요약하되 판단을 보태지 "
+        "않고, 요약·권고 절을 만들지 않는다. 자료에 없는 담당자·기한은 「미정」.",
+    ),
+    (
+        re.compile(r"장애|사고|incident|포스트모템|post-?mortem"),
+        "장르: 장애 보고서. 시각열은 시각·사건·조치의 표로 싣는다. 영향은 누가·얼마나·얼마 동안을 "
+        "숫자로, 원인은 확인된 것과 추정을 갈라, 재발 방지는 원인과 짝지은 표(조치·담당·기한). "
+        "책임을 묻는 문장을 쓰지 않는다.",
+    ),
+    (
+        re.compile(r"실험|측정|시험 결과"),
+        "장르: 실험 보고서. 측정 데이터는 표로, 계산한 열을 더해서. 차이는 이론값과 나란히 계산해 "
+        "말하고, 요청에 없는 절차(반복 횟수, 장비 설정)를 지어내지 않는다.",
+    ),
+    (
+        re.compile(r"안내문|공지|가이드라인|규정|정책"),
+        "장르: 안내·정책 문서. 항목마다 원칙·허용·금지·예시를 짧게. 권고안·요약 절을 만들지 않고, "
+        "시행일·문의처를 끝에 둔다.",
+    ),
+)
+
+
+def _genre_rule(request: str) -> str:
+    """The shape rule for the request's genre, or `""` for a document with none."""
+    for pattern, rule in _GENRES:
+        if pattern.search(request):
+            return rule
+    return ""
 
 
 _MONEY = re.compile(
@@ -1039,6 +1093,7 @@ async def write(
                         ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
                         lo=_MIN_SECTIONS,
                         hi=_MAX_SECTIONS,
+                        genre=_genre_rule(request),
                         request=request[:2000],
                     ),
                     request=request,
@@ -1257,6 +1312,7 @@ async def write(
                     outline="\n".join(f"## {h}" for h in headings),
                     refs=refs,
                     facts=_FRAME_RULE if frame else _facts_line(request, sources),
+                    genre=_genre_rule(request),
                     request=request[:1500],
                 ),
                 request=request,
@@ -1319,6 +1375,7 @@ async def write(
                             )[1],
                             others=_others_line(headings, index),
                             facts=_FRAME_RULE if frame else _facts_line(request, sources or []),
+                            genre=_genre_rule(request),
                         )
                         + (
                             # Told before the prose is written, so the section can
@@ -1500,6 +1557,7 @@ async def rewrite_section(
         facts=_facts_line(
             "\n".join([request, *[str(s.get("content") or "") for s in sections]]), sources or []
         ),
+        genre=_genre_rule(request),
     )
     if note.strip():
         # Last and labelled: an unlabelled sentence appended to a prompt reads

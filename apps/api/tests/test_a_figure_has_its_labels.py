@@ -575,3 +575,12 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
     # 카탈로그에 없는 서식 이름은 서식이 아니다 — 그림은 그대로 그린다.
     assert picture is not None and picture.template_id == "" and picture.figure == ""
     assert picture.prompt == "a cleanroom technician"
+
+
+def test_a_genre_gets_its_own_shape_and_a_decision_report_gets_none() -> None:
+    from app.services.report import _genre_rule
+
+    assert "주간 보고" in _genre_rule("사내 문서검색 시스템 구축 주간 업무보고서를 써 주세요.")
+    assert "회의록" in _genre_rule("녹취를 회의록으로 정리해 주세요.")
+    assert "장애 보고서" in _genre_rule("장애 타임라인을 바탕으로 보고서를 써 주세요.")
+    assert _genre_rule("학과 서버 교체 여부를 정하는 의사결정 보고서를 써 주세요.") == ""
