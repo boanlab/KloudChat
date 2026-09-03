@@ -24,6 +24,7 @@ import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
+import { handoffSurface } from '@/lib/documentRequest'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useNavigate } from 'react-router-dom'
@@ -1113,6 +1114,35 @@ export function Composer({
       void generateImages(sessionId, text, {
         projectId,
         onSession: (id) => navigate(`/s/${id}`, { replace: true }),
+      })
+      return
+    }
+    // "협조 공문 작성해줘" typed into a chat is an order for a document, and a
+    // chat bubble is the wrong shape for one — no sections, no 서식, no file.
+    // The sentence and its attachments go to the report surface instead, as
+    // a new conversation there — and "발표 자료 만들어줘" to the slides. An
+    // agent chat or a chat 시작점 is a deliberate choice of surface and keeps
+    // the sentence.
+    const handoff = kind === 'chat' && !sessionAgent && !sentStartingTemplate ? handoffSurface(text) : null
+    if (handoff) {
+      void send(null, handoff, text, {
+        projectId,
+        webSearch: effectiveWebSearch,
+        attachments: attachmentIds,
+        attachmentNames: attachmentLabels,
+        onSession: (id) => {
+          carriedComposer = heldComposer(id)
+          navigate(`/s/${id}`, { replace: !sessionId })
+        },
+      }).catch(() => {
+        setComposerRestore({
+          sessionId,
+          value: text,
+          attachments: sentAttachments,
+          activatedSkillIds: sentSkillIds,
+          startingTemplate: sentStartingTemplate,
+          error: '',
+        })
       })
       return
     }
