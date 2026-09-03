@@ -8,6 +8,7 @@ from conftest import both_passes
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from test_shared_catalog import _matches
 
 from app.core.config import settings
 from app.core.db import get_session
@@ -82,15 +83,27 @@ class _SeedDb:
     it was written in.
     """
 
-    def __init__(self, rows: list[Skill], *, agents: list[Agent] | None = None):
+    def __init__(
+        self,
+        rows: list[Skill],
+        *,
+        agents: list[Agent] | None = None,
+        copies: list[Agent] | None = None,
+    ):
         self.rows = rows
         self.agents: list[Agent] = list(agents or [])
+        #: Other accounts' rows — the copies people took from the catalogue.
+        #: The seeder reaches them only through a query that names an origin.
+        self.copies: list[Agent] = list(copies or [])
 
     async def exec(self, query):
         table = _query_table(query)
         if table == "skills":
             return _Result(rows=self.rows)
         if table == "agents":
+            clause = query.whereclause
+            if clause is not None and "origin_id" in str(clause):
+                return _Result(rows=[row for row in self.copies if _matches(row, clause)])
             return _Result(rows=self.agents)
         # The row lock the seeder takes on the owning account.
         return _Result()
@@ -395,6 +408,41 @@ async def test_the_catalog_adopts_rows_seeded_before_it_existed():
     assert legacy_agent.catalog_key == "paper-reviewer"
     assert legacy_agent.visibility is Visibility.org
     assert legacy_agent.system_prompt == "내가 고친 프롬프트"
+
+
+@pytest.mark.asyncio
+async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays():
+    """A copy taken into an account is the catalogue's wording, frozen.
+
+    When the tutor learns to say 「잘못 들린 것 같아요」 instead of following a
+    misheard sentence out of the lesson, the person who took the tutor last
+    week should get that too — unless they rewrote the prompt, in which case
+    the row is theirs and the seeder keeps its hands off it.
+    """
+    spec = next(row for row in starter._AGENTS if row["key"] == "english-tutor")
+    catalogue = Agent(
+        id="agent-1",
+        owner_id="admin-1",
+        name=spec["name"],
+        slug="english-tutor",
+        system_prompt="옛 프롬프트",
+        catalog_key="english-tutor",
+    )
+    untouched = Agent(
+        id="copy-1", owner_id="user-1", name=spec["name"], slug="english-tutor",
+        system_prompt="옛 프롬프트", origin_id="agent-1",
+    )
+    edited = Agent(
+        id="copy-2", owner_id="user-2", name=spec["name"], slug="english-tutor",
+        system_prompt="내가 고친 프롬프트", origin_id="agent-1",
+    )
+    db = _SeedDb([], agents=[catalogue], copies=[untouched, edited])
+    await starter.seed_catalog(db, "admin-1")
+
+    assert catalogue.system_prompt == spec["system_prompt"]
+    assert untouched.system_prompt == spec["system_prompt"]
+    assert untouched.guide == spec["guide"]
+    assert edited.system_prompt == "내가 고친 프롬프트"
 
 
 @pytest.mark.asyncio

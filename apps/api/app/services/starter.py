@@ -1179,6 +1179,25 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             # the product versions, not a procedure the owner wrote; a rebuilt
             # catalogue that left the old prompts under the new names would be
             # the old catalogue with new labels.
+            #
+            # 손대지 않은 복사본도 따라간다. Somebody who took this agent into
+            # their account and never opened its prompt has the old wording
+            # frozen in a row of their own, and was reading yesterday's tutor
+            # while the catalogue moved on. A copy whose prompt still equals
+            # the one it was taken from is refreshed with it; one that was
+            # edited is theirs, and is left as they wrote it.
+            if agent.system_prompt != spec["system_prompt"]:
+                untouched = await db.exec(
+                    select(Agent).where(
+                        col(Agent.origin_id) == agent.id,
+                        col(Agent.system_prompt) == agent.system_prompt,
+                    )
+                )
+                for copy in untouched.all():
+                    copy.system_prompt = spec["system_prompt"]
+                    copy.guide = spec.get("guide", "")
+                    copy.starters = list(spec.get("starters", []))
+                    db.add(copy)
             agent.name = spec["name"]
             agent.description = spec["description"]
             agent.system_prompt = spec["system_prompt"]
