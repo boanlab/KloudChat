@@ -314,7 +314,7 @@ export function AdminUsagePage() {
                         disabled={reclaiming || storage.orphanFiles === 0}
                         onClick={() => void reclaim()}
                       >
-                        {reclaiming ? t('정리하는 중…') : t('지금 정리')}
+                        {reclaiming ? t('정리하는 중…') : t('고아 파일 정리')}
                       </Button>
                     </div>
                     {reclaimed && <p className="mt-1 text-xs text-success">{reclaimed}</p>}

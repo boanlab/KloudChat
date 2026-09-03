@@ -713,7 +713,7 @@ interface State {
   suspendUser: (id: string) => Promise<void>
   reinstateUser: (id: string) => Promise<void>
   rotateLitellmKey: (id: string) => Promise<void>
-  removeUser: (id: string) => Promise<void>
+  removeUser: (id: string, purgeFiles?: boolean) => Promise<void>
   /** Restricts an account to a set of models. Empty means the whole catalogue. */
   setUserModels: (id: string, models: string[]) => Promise<void>
   setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
@@ -2761,8 +2761,8 @@ export const useStore = create<State>((set, get) => ({
   reinstateUser: (id) => applyUserChange(set, adminApi.reinstate(id)),
   rotateLitellmKey: (id) => applyUserChange(set, adminApi.rotateLitellmKey(id)),
   setUserModels: (id, models) => applyUserChange(set, adminApi.setUserModels(id, models)),
-  removeUser: async (id) => {
-    await adminApi.removeUser(id)
+  removeUser: async (id, purgeFiles = true) => {
+    await adminApi.removeUser(id, purgeFiles)
     set((s) => ({ users: s.users.filter((u) => u.id !== id) }))
   },
   setUserCredits: (id, monthlyCredits) =>

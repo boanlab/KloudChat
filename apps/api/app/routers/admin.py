@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func
 from sqlmodel import col, delete, select
 
@@ -50,6 +50,7 @@ from app.schemas.admin import (
     SystemSettingsIn,
 )
 from app.schemas.auth import UserOut
+from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
@@ -125,8 +126,10 @@ async def get_settings(admin: AdminUser):
             # Provenance: why an unfilled field has a value, and that clearing
             # it falls back rather than breaks.
             "baseUrlSource": (
-                "database" if stored_base
-                else "backend" if values.get(settings_store.BACKEND_BASE_URL)
+                "database"
+                if stored_base
+                else "backend"
+                if values.get(settings_store.BACKEND_BASE_URL)
                 else "environment"
             ),
             "masterKeySet": bool(key),
@@ -161,8 +164,10 @@ async def get_settings(admin: AdminUser):
                     "label": label,
                     "url": backends.get(feature),
                     "source": (
-                        "database" if values.get(setting_key)
-                        else "backend" if values.get(settings_store.BACKEND_BASE_URL)
+                        "database"
+                        if values.get(setting_key)
+                        else "backend"
+                        if values.get(settings_store.BACKEND_BASE_URL)
                         else "environment"
                     ),
                 }
@@ -475,9 +480,7 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
     await litellm_service.issue_key(user)
 
     if not user.litellm_key:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="key_issuance_failed"
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="key_issuance_failed")
     if user.status is UserStatus.suspended:
         # A rotation must not re-enable a suspended account.
         await litellm_service.set_key_blocked(user, True)
@@ -490,12 +493,24 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: str, request: Request, admin: AdminUser, db: DbSession):
+async def delete_user(
+    user_id: str,
+    request: Request,
+    admin: AdminUser,
+    db: DbSession,
+    purge_files: bool = Query(True, alias="purgeFiles"),
+):
     """Removes an account and everything it owns. Not recoverable.
 
     Suspension is the reversible answer; this is for accounts that should never
     have existed. The proxy key goes first — a row deleted while its key is
     live leaves a credential nobody tracks.
+
+    `purgeFiles` takes the account's directory on disk with it — uploads,
+    pictures, clips. On by default: the rows that named those files are gone
+    in the same transaction, and a directory nobody can reach is what the
+    storage sweep exists to clean up after. Off keeps the bytes for a
+    retention hold; the sweep reclaims them once the volume is full.
     """
     user = await _load(db, user_id)
     if user.id == admin.id:
@@ -511,9 +526,7 @@ async def delete_user(user_id: str, request: Request, admin: AdminUser, db: DbSe
         if not remaining:
             # An instance with no administrator can never approve, fund or
             # configure anything again.
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin"
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
 
     await litellm_service.revoke_key(user)
     email = user.email
@@ -568,8 +581,14 @@ async def delete_user(user_id: str, request: Request, admin: AdminUser, db: DbSe
 
     await db.delete(user)
     # Outlives the account: "who deleted whom" is what the trail is for.
-    _audit(db, request, admin, "user.delete", email)
+    _audit(db, request, admin, "user.delete", email if not purge_files else f"{email} (파일 포함)")
     await db.commit()
+    # After the commit, never before: a directory removed for an account whose
+    # rows then failed to delete would be files with owners and no bytes.
+    if purge_files:
+        removed = file_service.remove_user_files(user_id)
+        if removed:
+            log.info("user.delete: removed %d bytes of files for %s", removed, email)
 
 
 @router.post("/users/{user_id}/models", response_model=UserOut)

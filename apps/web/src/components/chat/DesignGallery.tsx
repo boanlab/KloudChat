@@ -601,6 +601,8 @@ export function DesignGalleryModal({
    */
   const [shapeOf, setShapeOf] = useState<Record<string, string>>({})
 
+  //: Which card's procedure is unfolded — one at a time.
+  const [openPrompt, setOpenPrompt] = useState<string | null>(null)
   const pickStartingPoint = (row: Sentence) => {
     // 채운 빈칸을 한 문장으로. Only the ones that were filled — a blank line
     // 「기간·언어: 」 tells the model nothing and the reader that something
@@ -862,7 +864,18 @@ export function DesignGalleryModal({
                     {row.skills.length > 0 && <span className="inline-flex items-center gap-1"><Sparkles size={11} />{row.skills.join(' · ')}</span>}
                   </p>
                 )}
-                <details className="mt-2 rounded-control bg-elevated px-2.5 py-2 text-xs leading-relaxed">
+                {/* 한 번에 하나만 펼친다. Two open procedures side by side push the
+                    row's cards to different heights and the grid stops reading as a
+                    grid; the person opened the second one to compare, and the first
+                    was already read. */}
+                <details
+                  className="mt-2 rounded-control bg-elevated px-2.5 py-2 text-xs leading-relaxed"
+                  open={openPrompt === row.id}
+                  onToggle={(e) => {
+                    if (e.currentTarget.open) setOpenPrompt(row.id)
+                    else if (openPrompt === row.id) setOpenPrompt(null)
+                  }}
+                >
                   <summary className="cursor-pointer font-medium text-muted">
                     {t('실제 작업 방식 보기')}
                   </summary>

@@ -448,7 +448,11 @@ export const adminApi = {
   suspend: (id: string) => call<User>(`/admin/users/${id}/suspend`, { method: 'POST' }),
   reinstate: (id: string) => call<User>(`/admin/users/${id}/reinstate`, { method: 'POST' }),
   /** Removes the account and everything it owns. Not reversible — suspend is. */
-  removeUser: (id: string) => call<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+  /** `purgeFiles` takes the account's uploads and generated media with it (default on). */
+  removeUser: (id: string, purgeFiles = true) =>
+    call<void>(`/admin/users/${id}?purgeFiles=${purgeFiles ? 'true' : 'false'}`, {
+      method: 'DELETE',
+    }),
   /** Issues a fresh LiteLLM key, retiring the old one. Also the first key for
    *  an account that signed up while the proxy was unreachable. */
   rotateLitellmKey: (id: string) =>

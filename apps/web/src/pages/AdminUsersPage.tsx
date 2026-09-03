@@ -91,6 +91,7 @@ export function AdminUsersPage() {
   const [editing, setEditing] = useState<User | null>(null)
   /** Confirmed in a dialog, never on the button: this one does not come back. */
   const [deleting, setDeleting] = useState<User | null>(null)
+  const [purgeFiles, setPurgeFiles] = useState(true)
   /** Which account's model access is being edited. */
   const [restricting, setRestricting] = useState<User | null>(null)
   const [draftCredits, setDraftCredits] = useState('')
@@ -448,7 +449,7 @@ export function AdminUsersPage() {
               onClick={() => {
                 const target = deleting
                 setDeleting(null)
-                if (target) void run(target.id, () => removeUser(target.id))
+                if (target) void run(target.id, () => removeUser(target.id, purgeFiles))
               }}
             >
               {t('삭제')}
@@ -459,6 +460,20 @@ export function AdminUsersPage() {
         <p className="text-base text-muted">
           {t('잠시 막아 두려는 것이라면 정지를 쓰세요. 정지는 되돌릴 수 있고, 기록도 남습니다.')}
         </p>
+        <label className="mt-3 flex items-start gap-2 text-base">
+          <input
+            type="checkbox"
+            checked={purgeFiles}
+            onChange={(e) => setPurgeFiles(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            {t('올린 파일과 만든 그림·클립도 디스크에서 지웁니다')}
+            <span className="block text-xs text-faint">
+              {t('끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 지웁니다.')}
+            </span>
+          </span>
+        </label>
       </Modal>
 
       <Modal
