@@ -159,7 +159,10 @@ export function KeyboardShortcuts() {
         <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
           {COMPOSER_KEYS.map((s) => (
             <div key={s.label} className="flex items-center justify-between gap-4 text-base">
-              <span>{t(s.label)}</span>
+              <span className="min-w-0">
+                {t(s.label)}
+                {s.note && <span className="block text-sm text-muted">{t(s.note)}</span>}
+              </span>
               <Chord keys={s.keys} />
             </div>
           ))}

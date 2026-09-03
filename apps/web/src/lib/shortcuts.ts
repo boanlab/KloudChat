@@ -47,10 +47,10 @@ export const SHORTCUTS: Shortcut[] = [
  * What the composer itself does. Not chords the shell handles — listed so the
  * dialog tells the whole story, hold-to-talk included.
  */
-export const COMPOSER_KEYS: { label: string; keys: string[] }[] = [
+export const COMPOSER_KEYS: { label: string; note?: string; keys: string[] }[] = [
   { label: '보내기', keys: ['Enter'] },
   { label: '줄 바꿈', keys: ['Shift', 'Enter'] },
-  { label: '누른 채 말하기 (빈 입력창에서 · 떼면 바로 보냄)', keys: ['Space'] },
+  { label: '말로 쓰기', note: '빈 입력창에서 누른 채 말하고, 떼면 보냄', keys: ['Space'] },
 ]
 
 export const isMac = () =>

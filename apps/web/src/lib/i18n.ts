@@ -804,7 +804,7 @@ const EN: Record<string, string> = {
     'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
   '말로 쓰기 시작·끝내기': 'Start / stop dictation',
-  '누른 채 말하기 (빈 입력창에서 · 떼면 바로 보냄)': 'Hold to talk (with the box empty · release to send)',
+  '빈 입력창에서 누른 채 말하고, 떼면 보냄': 'Hold with the box empty, speak, release to send',
   '새 대화 열기': 'New chat',
   '입력창에 집중': 'Focus the composer',
   '마지막 코드 블록 복사': 'Copy last code block',
