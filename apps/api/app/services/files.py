@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 import re
 import shutil
 import unicodedata
@@ -44,10 +45,13 @@ def remove_user_files(user_id: str) -> int:
     storage sweep does the same, later and only under disk pressure, for
     directories whose account was deleted with the files kept.
     """
-    directory = storage_root() / user_id
-    if not directory.is_dir():
+    root = storage_root()
+    # The id came off a URL. Only a directory directly under the root is an
+    # account's; anything that normalises elsewhere is not ours to remove.
+    directory = os.path.normpath(os.path.join(root, user_id))
+    if os.path.dirname(directory) != os.path.normpath(root) or not os.path.isdir(directory):
         return 0
-    freed = sum(p.stat().st_size for p in directory.rglob("*") if p.is_file())
+    freed = sum(p.stat().st_size for p in Path(directory).rglob("*") if p.is_file())
     shutil.rmtree(directory, ignore_errors=True)
     return freed
 

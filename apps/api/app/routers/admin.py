@@ -623,7 +623,7 @@ async def delete_user(
     # After the commit, never before: a directory removed for an account whose
     # rows then failed to delete would be files with owners and no bytes.
     if purge_files:
-        removed = file_service.remove_user_files(user_id)
+        removed = file_service.remove_user_files(user.id)
         if removed:
             log.info("user.delete: removed %d bytes of files for %s", removed, email)
 
