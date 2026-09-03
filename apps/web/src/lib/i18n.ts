@@ -793,6 +793,15 @@ const EN: Record<string, string> = {
   '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다':
     'Speak and it is typed for you; edit before sending. With the box empty, hold Space while you talk and it is sent when you let go',
   '듣고 있습니다. 스페이스를 떼면 보냅니다': 'Listening. Release Space to send',
+  '앱 설치': 'Install app',
+  '홈 화면에 앱으로 설치합니다': 'Install as an app on your home screen',
+  '홈 화면에 추가하기': 'Add to Home Screen',
+  'Safari 에서는 공유 메뉴로 설치합니다.': 'In Safari, install from the Share menu.',
+  '아래 도구 막대의': 'Tap the',
+  '공유 버튼을 누릅니다': 'Share button in the toolbar below',
+  '「홈 화면에 추가」를 고릅니다': 'Choose “Add to Home Screen”',
+  '오른쪽 위 「추가」를 누르면 홈 화면에 KloudChat 아이콘이 생깁니다':
+    'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
   '마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.': 'The microphone is unavailable. Check the browser permission.',
   '{n}회 실행': '{n} runs',

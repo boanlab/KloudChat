@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
+import { InstallButton } from './InstallButton'
 import { ThemeToggle } from './ThemeToggle'
 
 export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode }) {
@@ -32,6 +33,7 @@ export function TopBar({ left, right }: { left?: ReactNode; right?: ReactNode })
           carry the compact view; the aria-label/title remains the full name. */}
       <div className="flex shrink-0 items-center gap-1.5 max-sm:gap-0.5 max-sm:[&>button]:w-8 max-sm:[&>button]:overflow-hidden max-sm:[&>button]:px-0 max-sm:[&>button]:text-[0px] max-sm:[&>span]:hidden">
         {right}
+        <InstallButton />
         {/* 아이콘만으로는 무엇으로 바뀌는지 알 수 없어 바뀔 언어를 함께 적는다 */}
         <Button
           variant="ghost"
