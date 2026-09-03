@@ -10,6 +10,8 @@ category = "발표"
 fills = ["제안하는 것", "결정하는 사람", "요청 사항"]
 example_prompt = "심사에 낼 제안 발표 자료를 만들어 줘. 현행과 제안을 나란히 놓고, 마지막 장에는 누구에게 무엇을 언제까지 승인받아야 하는지 적어 줘.\n\n제안하는 것: "
 seed_from = "_deck"
+# 무대가 이 서식으로 여는 얼굴. 흑백에 괄호 표지 — 요청 한 줄이 마지막에 서는 심사용 덱.
+look = "mono"
 layouts = ["cover", "bullets", "compare", "figure", "table", "ask"]
 
 # English half of the catalogue. The UI picks a side by language;

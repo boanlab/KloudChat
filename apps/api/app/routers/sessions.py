@@ -3089,11 +3089,17 @@ async def send_message(
     # asked before writing. A 주간 보고 under 「한 장 요약」 came back with the
     # same kpi strip and the same paragraph in every section. A 서식 is a
     # look, and the page view and the exporters apply a look to markdown
-    # sections already (`templateId` on the artifact); only the `html`
-    # surface and the deck still need the block writer.
-    if render_template is not None and not (
-        session.kind is SessionKind.report and render_template.kind == "document"
-    ):
+    # sections already (`templateId` on the artifact).
+    #
+    # 슬라이드도 마찬가지다. A deck 서식 sent the turn down the same block
+    # writer and came back as an `html` file in a sandboxed frame: no slide
+    # list, no stage, no face to switch, none of the deck writer's grounding
+    # — and the design on screen was the seed's own CSS, not the deck the
+    # person had seen the surface draw. The deck writer writes it; the 서식
+    # opens the deck on its `look`, feeds its genre rules to the planner and
+    # lends its PowerPoint half to the export. What is left for the block
+    # writer is a 서식 of a kind neither writer knows.
+    if render_template is not None and render_template.kind not in ("document", "deck"):
         return StreamingResponse(
             _survive_disconnect(
                 _run_page(
@@ -3220,6 +3226,7 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_deck(
+                    template=render_template,
                     may_ask=not proceed_as_is,
                     figures_plan=approved_figures,
                     image_model=image_model,
@@ -4854,6 +4861,10 @@ async def _run_page(
 
 async def _run_deck(
     *,
+    #: The deck 서식 this turn was sent under, when one was. Its rules reach
+    #: the planner, its `look` becomes the deck's face, its id rides on the
+    #: artifact so the export builds on its PowerPoint half.
+    template: design_templates.DesignTemplate | None = None,
     outline_model: dict | None = None,
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
@@ -4918,6 +4929,15 @@ async def _run_deck(
         yield chat_service.sse(skills_event)
     for step in context_steps or ():
         yield chat_service.sse(_step_event(step))
+    if template is not None and template.instructions.strip():
+        # The 서식's genre rules — what a 심사 발표 puts first, what a 브리핑
+        # keeps apart — read by the planner the way project instructions
+        # are. Its typesetting rules do not travel: the stage draws the
+        # slides, and the seed's vocabulary would only describe markup the
+        # deck writer never produces.
+        trusted_context = [f"[서식: {template.name}]\n{template.instructions.strip()}"] + list(
+            trusted_context or []
+        )
     try:
         stream = deck_service.write(
             web_search=web_search,
@@ -5001,7 +5021,14 @@ async def _run_deck(
             title = (doc_title or session.title or request.strip()[:60] or "슬라이드")[:200]
             if written:
                 artifact_design = design_tokens
-                if not artifact_design:
+                if template is not None and template.look:
+                    # The 서식 was chosen for this deck; its face outranks the
+                    # project's default and the words of the request. The
+                    # project's colours and type still come along.
+                    artifact_design = design_service.normalise_tokens(
+                        {**(design_tokens or {}), "visualStyle": template.look}
+                    )
+                elif not artifact_design:
                     requested_style = str(
                         (approved_plan or {}).get("visualStyle")
                         or design_service.visual_style_for(request)
@@ -5021,6 +5048,9 @@ async def _run_deck(
                     data={
                         "kind": "deck",
                         "theme": "기본",
+                        # The 서식 the deck was written in: the export opens
+                        # its PowerPoint half, the gallery names it.
+                        **({"templateId": template.id} if template else {}),
                         # Copied onto the artifact rather than resolved at export time: a deck
                         # presented last month should not repaint itself when the project changes.
                         **({"design": artifact_design} if artifact_design else {}),
@@ -5469,7 +5499,14 @@ async def _run_report(
             title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
             if written:
                 artifact_design = design_tokens
-                if not artifact_design:
+                if template is not None and template.look:
+                    # The 서식 was chosen for this deck; its face outranks the
+                    # project's default and the words of the request. The
+                    # project's colours and type still come along.
+                    artifact_design = design_service.normalise_tokens(
+                        {**(design_tokens or {}), "visualStyle": template.look}
+                    )
+                elif not artifact_design:
                     requested_style = str(
                         (approved_plan or {}).get("visualStyle")
                         or design_service.visual_style_for(request)

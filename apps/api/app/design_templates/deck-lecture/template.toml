@@ -10,6 +10,8 @@ category = "발표"
 fills = ["과목·주제", "수강생 수준", "수업 시간"]
 example_prompt = "수업에서 쓸 강의 자료를 만들어 줘. 개념을 하나 말할 때마다 예시를 하나 붙이고, 처음 나오는 용어는 쓰기 전에 뜻을 밝혀 줘.\n\n이번 시간 주제: "
 seed_from = "_deck"
+# 무대가 이 서식으로 여는 얼굴. 뒷자리에서도 읽히는 큰 글씨, 장을 여는 왼쪽 띠 — 번호 알약과 가장 가까운 얼굴.
+look = "poster"
 layouts = ["cover", "bullets", "example", "quote", "table"]
 
 # English half of the catalogue. The UI picks a side by language;

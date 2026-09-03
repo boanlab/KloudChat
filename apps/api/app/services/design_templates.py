@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models.chat import SessionKind
-from app.services import pictures
+from app.services import design, pictures
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 
@@ -249,6 +249,13 @@ class DesignTemplate:
     #: the `.pptx`, which is for presenting; the `.pdf` stays light because it
     #: is for paper, exactly as the seed's own print rules decide.
     dark: bool
+    #: `deck` templates only: the face the deck surface wears for this 서식 —
+    #: one of `design.VISUAL_STYLES`, the seven the slide panel and
+    #: `deck_export` draw. A deck written into a 서식 is a deck, edited on the
+    #: stage like any other; the 서식 chooses its opening look and its
+    #: PowerPoint half, and the seed's own CSS is what the gallery card and
+    #: the `.html` download show. Empty for documents.
+    look: str
     #: Blanks in `example_prompt`, written `{name}`. Media templates only:
     #: a deck's brief is a sentence somebody writes, not a form they fill.
     arguments: tuple[Argument, ...]
@@ -430,6 +437,16 @@ def _seed(folder: Path, meta: dict) -> str:
     return _HEAD_END.sub(lambda _m: block + "</head>", seed, count=1)
 
 
+def _look(meta: dict[str, Any], kind: str) -> str:
+    """The deck face a 서식 opens on: declared, else the panel's default."""
+    if kind != "deck":
+        return ""
+    look = str(meta.get("look") or "").strip()
+    if look and look not in design.VISUAL_STYLES:
+        raise ValueError(f"unknown look {look!r}; one of {', '.join(design.VISUAL_STYLES)}")
+    return look or "editorial"
+
+
 def _seed_markup(folder: Path, meta: dict[str, Any]) -> str:
     """The vocabulary of whichever seed this 서식 is drawn on.
 
@@ -486,6 +503,7 @@ def _load() -> dict[str, DesignTemplate]:
             prompt_suffix=str(meta.get("prompt_suffix") or ""),
             figure=str(meta.get("figure") or ""),
             dark=bool(meta.get("dark")),
+            look=_look(meta, kind),
             arguments=tuple(
                 Argument(
                     name=str(arg.get("name") or ""),

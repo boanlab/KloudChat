@@ -10,6 +10,8 @@ category = "발표"
 fills = ["대상 기업", "발표 시간", "결론"]
 example_prompt = "케이스 발표 자료를 만들어 줘. 대안을 나란히 견주는 장을 넣고, 마지막 장에서 무엇을 권고하는지 밝혀 줘.\n\n대상 기업과 발표 시간: "
 seed_from = "_deck"
+# 무대가 이 서식으로 여는 얼굴. 종이 바탕과 둥근 상자 — 현황과 대안을 나란히 놓고 읽히는 덱.
+look = "warm"
 layouts = ["cover", "bullets", "compare", "figure", "table", "ask"]
 
 # English half of the catalogue. The UI picks a side by language;

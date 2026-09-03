@@ -10,6 +10,8 @@ category = "발표"
 fills = ["주제", "청중", "장수"]
 example_prompt = "제품 소개 발표 자료를 만들어 줘. 화면이 큰 강당에서 쓰고, 한 장에 한 가지만 말했으면 좋겠어.\n\n소개할 것: "
 seed_from = "_deck"
+# 무대가 이 서식으로 여는 얼굴. 어두운 바탕에 큰 글씨.
+look = "dark"
 layouts = ["cover", "bullets", "quote", "split", "table"]
 # Presented on a dark ground; the `.pptx` follows, the `.pdf` inverts for paper
 # exactly as the seed's own print rules do. Above `[wrap]` on purpose — a key

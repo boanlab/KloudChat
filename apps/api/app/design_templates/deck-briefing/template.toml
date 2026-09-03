@@ -10,6 +10,8 @@ category = "발표"
 fills = ["주제", "듣는 사람", "결정할 것"]
 example_prompt = "사내 브리핑 자료를 만들어 줘. 정해진 것과 아직 정할 것을 갈라서 적고, 마지막에 담당과 기한을 넣어 줘.\n\n주제와 듣는 사람: "
 seed_from = "_deck"
+# 무대가 이 서식으로 여는 얼굴. 표지가 반으로 갈리고 본문에 홈이 파인다 — 정해진 것과 할 것을 가르는 덱에 맞는 얼굴.
+look = "split"
 layouts = ["cover", "bullets", "quote", "split", "table"]
 
 # English half of the catalogue. The UI picks a side by language;
