@@ -1573,6 +1573,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         design=design_service.image_clause(await design_for(db, user, session)),
         # A planned prompt already says it is one figure with no text.
         figure=payload.figure and planned == payload.prompt,
+        square_only=not imagegen.honours_aspect(str(model["id"])),
     )
 
     made: list[Artifact] = []

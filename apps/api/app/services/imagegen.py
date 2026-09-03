@@ -229,6 +229,17 @@ def _measure(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
+def honours_aspect(model_id: str) -> bool:
+    """Whether the model takes the ratio as a parameter and keeps it.
+
+    Gemini's image models do. The OpenAI ones, reached through chat
+    completions, return a square whatever is asked — and told "16:9, wider
+    than tall" they compose a wide picture and clip it into the square, which
+    is worse than a square picture: the edges of the diagram are gone.
+    """
+    return "gemini" in model_id.lower() or model_id.lower().startswith("google/")
+
+
 def compose_prompt(
     prompt: str,
     *,
@@ -237,6 +248,7 @@ def compose_prompt(
     template: str = "",
     design: str = "",
     figure: bool = False,
+    square_only: bool = False,
 ) -> str:
     """The request as the model will read it.
 
@@ -266,7 +278,15 @@ def compose_prompt(
         parts.append(template.strip())
     if design.strip():
         parts.append(design.strip())
-    if aspect and aspect != "1:1":
+    if square_only:
+        # The canvas will be square whatever is asked. Said so, the model
+        # composes for it instead of drawing a wide picture and losing its
+        # edges to the frame.
+        parts.append(
+            "The canvas is square: compose everything to fit fully inside it with a clear "
+            "margin on all sides; nothing may touch or cross the edge"
+        )
+    elif aspect and aspect != "1:1":
         parts.append(_shape_note(aspect))
     return ". ".join(p for p in parts if p)
 

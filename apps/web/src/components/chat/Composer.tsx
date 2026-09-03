@@ -166,6 +166,11 @@ function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
 function ImageOptions() {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
+  const imageModel = useStore((s) => s.modelByKind.image)
+  // Only Gemini's image models take the ratio as a parameter; the others
+  // return a square whatever is asked, and are now told to compose for one.
+  const squareOnly =
+    Boolean(imageModel) && !/gemini|^google\//i.test(imageModel) && imageOptions.aspect !== '1:1'
   return (
     <>
       <OptionGroup
@@ -174,6 +179,11 @@ function ImageOptions() {
         options={ASPECTS}
         onChange={(v) => setImageOptions({ aspect: v })}
       />
+      {squareOnly && (
+        <span className="text-xs text-warn" title={t('이 모델은 비율 지정을 받지 않아 정사각형으로 그립니다. 16:9 가 꼭 필요하면 Gemini 이미지 모델을 고르세요.')}>
+          {t('이 모델은 정사각형만 그립니다')}
+        </span>
+      )}
       <OptionGroup
         label={t('스타일')}
         value={imageOptions.style}
