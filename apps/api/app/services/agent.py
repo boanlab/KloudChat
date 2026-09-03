@@ -605,7 +605,7 @@ async def run_turn(
             answer = answer.replace(spoken, "", 1)
             yield {"type": "retract", "text": spoken}
     answer_text[:] = [answer]
-    if searches and empty_searches == searches and answer.strip():
+    if searches and empty_searches * 2 >= searches and answer.strip():
         # 검색이 전부 빈손이었으면 답 밑에 그렇다고 적는다.
         #
         # The tool told the model to say so; the model, handed a literature
@@ -613,6 +613,9 @@ async def run_turn(
         # The reader is the one who has to know that nothing here was checked.
         note = (
             "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
+            "서지·수치·최신 사항은 확인이 필요합니다._"
+            if empty_searches == searches
+            else "\n\n_웹 검색 결과가 대부분 질문과 무관해 이 답은 충분히 확인되지 않았습니다. "
             "서지·수치·최신 사항은 확인이 필요합니다._"
         )
         answer_text.append(note)

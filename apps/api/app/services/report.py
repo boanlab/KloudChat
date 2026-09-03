@@ -547,7 +547,9 @@ _subject_missing = grounding.subject_missing
 
 _RESULTS = re.compile(r"결과|시험|실험|측정")
 #: Documents whose facts all come from outside — nothing to write without a search.
-_FROM_THE_WEB = re.compile(r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표")
+_FROM_THE_WEB = re.compile(
+    r"동향|조사해|문헌|선행 ?연구|최근 \d+ ?년|현황을 조사|비교표|인용|참고문헌|시카고|APA|출처를"
+)
 
 
 def _from_the_web(request: str) -> bool:
