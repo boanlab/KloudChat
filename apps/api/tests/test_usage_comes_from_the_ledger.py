@@ -49,7 +49,8 @@ _DDL = (
         allowed_models TEXT,
         preferences TEXT,
         created_at DATETIME,
-        last_active_at DATETIME
+        last_active_at DATETIME,
+        email_verified_at DATETIME
     )
     """,
     """
@@ -79,6 +80,8 @@ _DDL = (
         job_id TEXT,
         model TEXT,
         surface TEXT,
+        units INTEGER,
+        unit TEXT,
         created_at DATETIME
     )
     """,
@@ -243,25 +246,40 @@ async def test_the_parts_add_up_to_the_total(db) -> None:
 
     await _turn(db, chat, model="vendor/quality", when=_at(1))
     await _spend(
-        db, user, credits=900, reason="chat.completion", session_id=chat,
-        model="vendor/quality", when=_at(1),
+        db,
+        user,
+        credits=900,
+        reason="chat.completion",
+        session_id=chat,
+        model="vendor/quality",
+        when=_at(1),
     )
     await _spend(
-        db, user, credits=40, reason="chat.title", session_id=chat,
-        model="local/gemma-4-26b-a4b", when=_at(1),
+        db,
+        user,
+        credits=40,
+        reason="chat.title",
+        session_id=chat,
+        model="local/gemma-4-26b-a4b",
+        when=_at(1),
     )
     await _spend(
-        db, user, credits=310, reason="deck.factcheck", session_id=deck,
-        model="vendor/cheap", when=_at(1),
+        db,
+        user,
+        credits=310,
+        reason="deck.factcheck",
+        session_id=deck,
+        model="vendor/cheap",
+        when=_at(1),
     )
 
     report = await usage_router.my_usage(user, db, days=30)
 
     total = report["totals"]["credits"]
     assert total == 1_250
-    assert sum(row["credits"] for row in report["byModel"]) + report["totals"][
-        "otherCredits"
-    ] == total
+    assert (
+        sum(row["credits"] for row in report["byModel"]) + report["totals"]["otherCredits"] == total
+    )
     assert sum(row["credits"] for row in report["bySurface"]) == total
     assert sum(row["credits"] for row in report["daily"]) == total
     # And the fact-check is billed to the model that ran it, not to the model
@@ -282,8 +300,13 @@ async def test_other_is_only_what_belongs_to_nothing(db) -> None:
     chat = await _session_row(db, user, kind="chat", model="vendor/quality")
 
     await _spend(
-        db, user, credits=500, reason="chat.completion", session_id=chat,
-        model="vendor/quality", when=_at(1),
+        db,
+        user,
+        credits=500,
+        reason="chat.completion",
+        session_id=chat,
+        model="vendor/quality",
+        when=_at(1),
     )
     await _spend(db, user, credits=700, reason="chat.compare", session_id=chat, when=_at(1))
     await _spend(db, user, credits=120, reason="design.extract", when=_at(1))
@@ -309,14 +332,18 @@ async def test_a_media_row_written_before_the_column_still_finds_its_model(db) -
     user = await _account(db)
     pictures = await _session_row(db, user, kind="image", model="google/gemini-2.5-flash-image")
 
-    await _spend(
-        db, user, credits=3_924, reason="image.generate", session_id=pictures, when=_at(1)
-    )
+    await _spend(db, user, credits=3_924, reason="image.generate", session_id=pictures, when=_at(1))
 
     report = await usage_router.my_usage(user, db, days=30)
 
     assert report["byModel"] == [
-        {"model": "google/gemini-2.5-flash-image", "credits": 3_924, "requests": 1}
+        {
+            "model": "google/gemini-2.5-flash-image",
+            "credits": 3_924,
+            "requests": 1,
+            "units": 0,
+            "unit": "",
+        }
     ]
     assert report["totals"]["otherCredits"] == 0
 
@@ -333,7 +360,7 @@ async def test_a_free_month_still_says_what_ran(db) -> None:
 
     assert report["totals"] == {"credits": 0, "requests": 3, "otherCredits": 0}
     assert report["byModel"] == [
-        {"model": "local/gemma-4-26b-a4b", "credits": 0, "requests": 3}
+        {"model": "local/gemma-4-26b-a4b", "credits": 0, "requests": 3, "units": 0, "unit": ""}
     ]
     assert [row["requests"] for row in report["daily"] if row["requests"]] == [1, 2]
 
@@ -348,14 +375,21 @@ async def test_a_priced_turn_is_counted_once(db) -> None:
     chat = await _session_row(db, user, kind="chat", model="vendor/quality")
     await _turn(db, chat, model="vendor/quality", when=_at(1))
     await _spend(
-        db, user, credits=900, reason="chat.completion", session_id=chat,
-        model="vendor/quality", when=_at(1),
+        db,
+        user,
+        credits=900,
+        reason="chat.completion",
+        session_id=chat,
+        model="vendor/quality",
+        when=_at(1),
     )
 
     report = await usage_router.my_usage(user, db, days=30)
 
     assert report["totals"]["requests"] == 1
-    assert report["byModel"] == [{"model": "vendor/quality", "credits": 900, "requests": 1}]
+    assert report["byModel"] == [
+        {"model": "vendor/quality", "credits": 900, "requests": 1, "units": 0, "unit": ""}
+    ]
 
 
 async def test_the_admin_view_tells_the_same_story(db) -> None:
@@ -363,8 +397,13 @@ async def test_the_admin_view_tells_the_same_story(db) -> None:
     user = await _account(db)
     pictures = await _session_row(db, user, kind="image", model="openai/gpt-5-image-mini")
     await _spend(
-        db, user, credits=12_612, reason="image.generate", session_id=pictures,
-        model="openai/gpt-5-image-mini", when=_at(1),
+        db,
+        user,
+        credits=12_612,
+        reason="image.generate",
+        session_id=pictures,
+        model="openai/gpt-5-image-mini",
+        when=_at(1),
     )
 
     mine = await usage_router.my_usage(user, db, days=7)
@@ -373,7 +412,14 @@ async def test_the_admin_view_tells_the_same_story(db) -> None:
     assert everyone["totals"]["credits"] == mine["totals"]["credits"] == 12_612
     assert everyone["totals"]["activeUsers"] == 1
     assert everyone["byModel"] == [
-        {"model": "openai/gpt-5-image-mini", "credits": 12_612, "requests": 1, "users": 1}
+        {
+            "model": "openai/gpt-5-image-mini",
+            "credits": 12_612,
+            "requests": 1,
+            "users": 1,
+            "units": 0,
+            "unit": "",
+        }
     ]
     assert everyone["topUsers"][0]["credits"] == 12_612
 
