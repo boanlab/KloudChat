@@ -97,8 +97,9 @@ STYLE_CHOICES = [
 LABEL_CHOICES = ("auto", "ko", "en", "none")
 
 _LABEL_RULE = {
-    "ko": "Labels are allowed and must be in Korean, exactly as given in the request; "
-    "keep them short and spelled correctly; no other text",
+    "ko": "Labels are allowed and must be the exact Korean strings from the request, written "
+    'into the prompt in quotes beside each element — e.g. Intake ("취수") — never translated '
+    "or paraphrased; no other text",
     "en": "Labels are allowed and must be in English, short, spelled correctly; no other text",
     "none": "No text anywhere: no labels, no captions, no letters, no numbers",
 }
@@ -131,15 +132,16 @@ _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬
 A process diagram of a small-town drinking-water treatment plant, for a middle-school
 science handout.
 
-Left to right across the canvas: River Intake (rounded rectangle with a wave icon) ->
-Coagulation Tank (rounded rectangle) -> Sedimentation Basin (wide low rectangle) ->
-Sand Filter (rectangle with a dotted fill) -> Chlorination (small cylinder) -> Storage
-Tower (tall cylinder, drawn larger). Below the basin, a small Sludge Out box.
+Left to right across the canvas: River Intake ("취수", rounded rectangle with a wave
+icon) -> Coagulation Tank ("응집", rounded rectangle) -> Sedimentation Basin ("침전",
+wide low rectangle) -> Sand Filter ("여과", rectangle with a dotted fill) ->
+Chlorination ("소독", small cylinder) -> Storage Tower ("배수지", tall cylinder, drawn
+larger). Below the basin, a small Sludge Out box ("슬러지 배출").
 
-Labeled arrows: "raw water" Intake -> Coagulation; "floc settles" Basin -> Sludge Out,
-dashed; "clean water" Filter -> Chlorination -> Storage.
+Labeled arrows: "원수" Intake -> Coagulation; "침전물" Basin -> Sludge Out, dashed;
+"정수" Filter -> Chlorination -> Storage.
 
-Labels in Korean, short, spelled exactly as given. No other text.
+Labels in Korean, exactly the quoted strings, short. No other text.
 
 Style: clean educational infographic, white background, blue / sand / green palette,
 simple geometric icons, sans-serif labels. Suitable for a printed handout.
@@ -290,7 +292,9 @@ async def plan(
     """
     label_rule = _LABEL_RULE.get(labels) or (
         "Decide from the request: a diagram or infographic carries short labels in the "
-        "language the request is written in; a photograph, scene or object carries no text"
+        "language the request is written in — the request's own words, quoted beside each "
+        'element, e.g. Intake ("취수"), never translated; a photograph, scene or object '
+        "carries no text"
     )
     style_rule = (
         f"프리셋이 있다: 이 줄을 그대로 살려서 마지막 줄로 써라 — {_STYLE_PHRASE[style]}"
