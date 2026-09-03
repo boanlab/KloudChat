@@ -24,6 +24,7 @@ from app.routers import (
     models,
     sessions,
     shares,
+    transcriptions,
     usage,
     workspace,
 )
@@ -75,6 +76,7 @@ app.include_router(jobs.router, prefix=settings.api_prefix)
 app.include_router(usage.router, prefix=settings.api_prefix)
 app.include_router(usage.me_router, prefix=settings.api_prefix)
 app.include_router(keys.router, prefix=settings.api_prefix)
+app.include_router(transcriptions.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
 
 

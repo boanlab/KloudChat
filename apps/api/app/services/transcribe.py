@@ -46,6 +46,21 @@ async def available() -> bool:
     return bool((await settings_store.tools_config()).stt or settings.stt_or_model)
 
 
+async def transcribe_with_duration(data: bytes, filename: str = "speech.webm") -> tuple[str, int]:
+    """`(text, seconds)` — the transcript and how much audio the shim reported.
+
+    The seconds are what the usage ledger records for a model that costs no
+    credits. Zero when the backend did not say.
+    """
+    text = await transcribe(data, filename)
+    return text, int(_last_seconds)
+
+
+#: Seconds the shim reported for the last local transcription. Whisper's
+#: `usage: {"type": "duration", "seconds": n}` is the only measure of its work.
+_last_seconds = 0
+
+
 async def transcribe(data: bytes, filename: str = "speech.webm") -> str:
     """Audio bytes → text. Raises `TranscribeError` with something readable."""
     if not await available():
@@ -100,8 +115,14 @@ async def _transcribe_locally(stt_url: str, data: bytes, filename: str) -> str:
         log.warning("whisper %s: %s", response.status_code, response.text[:200])
         raise TranscribeError("받아쓰지 못했습니다.")
 
+    global _last_seconds
+    _last_seconds = 0
     try:
-        text = (response.json() or {}).get("text") or ""
+        body = response.json() or {}
+        text = body.get("text") or ""
+        usage = body.get("usage") or {}
+        if isinstance(usage, dict) and usage.get("type") == "duration":
+            _last_seconds = int(usage.get("seconds") or 0)
     except ValueError:
         text = response.text or ""
     text = text.strip()
@@ -118,8 +139,12 @@ _NO_SPEECH = "NO_SPEECH"
 #: Anything unrecognised is declared webm rather than refused — the model sniffs
 #: the container anyway.
 _AUDIO_MIME = {
-    "wav": "audio/wav", "mp3": "audio/mpeg", "m4a": "audio/mp4",
-    "ogg": "audio/ogg", "webm": "audio/webm", "flac": "audio/flac",
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "m4a": "audio/mp4",
+    "ogg": "audio/ogg",
+    "webm": "audio/webm",
+    "flac": "audio/flac",
 }
 
 
@@ -136,20 +161,28 @@ async def _transcribe_via_openrouter(data: bytes, filename: str) -> str:
     b64 = base64.b64encode(data).decode()
     payload = {
         "model": settings.stt_or_model,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": (
-                    "이 오디오를 그대로 받아써 주세요. 한국어입니다. "
-                    "요약하거나 설명하지 말고, 들린 말만 텍스트로 옮기세요. "
-                    f"들린 말이 없으면 다른 말 없이 {_NO_SPEECH} 만 출력하세요."
-                )},
-                {"type": "input_audio", "input_audio": {
-                    "data": b64,
-                    "format": _AUDIO_MIME.get(ext, "audio/webm").split("/", 1)[1],
-                }},
-            ],
-        }],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "이 오디오를 그대로 받아써 주세요. 한국어입니다. "
+                            "요약하거나 설명하지 말고, 들린 말만 텍스트로 옮기세요. "
+                            f"들린 말이 없으면 다른 말 없이 {_NO_SPEECH} 만 출력하세요."
+                        ),
+                    },
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": b64,
+                            "format": _AUDIO_MIME.get(ext, "audio/webm").split("/", 1)[1],
+                        },
+                    },
+                ],
+            }
+        ],
         "temperature": 0,
         # Mistral rejects temperature=0 unless top_p is 1 (code 3054). Greedy
         # is what a transcript wants, so both are pinned.
@@ -187,7 +220,7 @@ async def _transcribe_via_openrouter(data: bytes, filename: str) -> str:
     # A chat model asked to transcribe silence describes it instead, and the
     # description would land in the composer as words nobody said. The sentinel
     # makes that case detectable.
-    if not text or text.strip(' ."\'') == _NO_SPEECH:
+    if not text or text.strip(" .\"'") == _NO_SPEECH:
         raise TranscribeError("들린 말이 없습니다.")
     return text
 

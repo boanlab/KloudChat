@@ -273,6 +273,8 @@ interface State {
   signedOutReason: 'idle' | null
   /** Minutes of inactivity this instance allows. 0 is off. */
   idleTimeoutMinutes: number
+  /** Whether a speech-to-text backend is configured. */
+  dictationEnabled: boolean
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
@@ -997,6 +999,7 @@ export const useStore = create<State>((set, get) => ({
   authError: null,
   signedOutReason: null,
   idleTimeoutMinutes: 0,
+  dictationEnabled: false,
 
   /** Adopts a fresh session and arms the next silent refresh. */
   bootstrap: async () => {
@@ -1016,6 +1019,7 @@ export const useStore = create<State>((set, get) => ({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
+              dictationEnabled: Boolean(c.dictationEnabled),
             })
             // Armed here rather than at login: a reload re-enters through
             // bootstrap, and a tab left open across one is the case the policy

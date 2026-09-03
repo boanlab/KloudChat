@@ -76,3 +76,22 @@ def test_a_deck_review_sees_the_table_and_the_bands() -> None:
     )
     body, _ = _reviewable(artifact)
     assert "3학점" in body and "강 교수 두 분반" in body
+
+
+def test_free_work_lands_in_the_ledger_with_its_amount() -> None:
+    from types import SimpleNamespace
+
+    from app.services import credits
+
+    added = []
+    db = SimpleNamespace(add=added.append)
+    user = SimpleNamespace(id="u1")
+    credits.record_units(
+        db, user, reason="speech.transcribe", model="whisper", units=42, unit="seconds"
+    )
+    credits.record_units(
+        db, user, reason="index.embed", model="local/bge-m3", units=0, unit="chunks"
+    )
+    assert len(added) == 1
+    row = added[0]
+    assert row.delta == 0 and row.units == 42 and row.unit == "seconds" and row.model == "whisper"

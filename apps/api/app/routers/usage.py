@@ -21,7 +21,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import DateTime, String, case, cast, func, literal, union_all
+from sqlalchemy import DateTime, String, case, cast, func, literal, or_, union_all
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -46,6 +46,12 @@ me_router = APIRouter(prefix="/me", tags=["usage"])
 #: that is already in the stream, and counting those twice would inflate the
 #: request figure the moment a model stopped being free.
 MEDIA_REASONS = ("image.generate", "audio.generate", "video.generate")
+
+#: Work that costs no credits and is counted by amount instead — seconds of
+#: speech Whisper transcribed, chunks the embedding model indexed. A row of
+#: theirs carries `units`, and counts as a request the way a picture does:
+#: no assistant turn records it. See `credits.record_units`.
+UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search")
 
 
 #: When allowances refill. Taken from the credit service rather than computed
@@ -129,6 +135,7 @@ def _events(since: datetime, user_id: str | None = None):
             # the figure into the sum would count a priced turn twice.
             literal(0).label("credits"),
             literal(1).label("requests"),
+            literal(0).label("units"),
         )
         .select_from(Message)
         .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
@@ -144,18 +151,36 @@ def _events(since: datetime, user_id: str | None = None):
             _SPEND_SURFACE.label("kind"),
             col(CreditLedger.user_id).label("user_id"),
             (-col(CreditLedger.delta)).label("credits"),
-            case((col(CreditLedger.reason).in_(MEDIA_REASONS), 1), else_=0).label("requests"),
+            case(
+                (col(CreditLedger.reason).in_((*MEDIA_REASONS, *UNIT_REASONS)), 1), else_=0
+            ).label("requests"),
+            func.coalesce(col(CreditLedger.units), 0).label("units"),
         )
         .select_from(CreditLedger)
         # Outer, because a design extraction is charged against no conversation
         # at all, and dropping it would stop the parts adding up to the total.
         .join(ChatSession, col(CreditLedger.session_id) == col(ChatSession.id), isouter=True)
-        .where(CreditLedger.delta < 0, CreditLedger.created_at >= since)
+        # A spend, or a measured amount of free work — never a refill.
+        .where(
+            or_(CreditLedger.delta < 0, col(CreditLedger.units).is_not(None)),
+            CreditLedger.created_at >= since,
+        )
     )
     if user_id is not None:
         turns = turns.where(ChatSession.user_id == user_id)
         spend = spend.where(CreditLedger.user_id == user_id)
     return union_all(turns, spend).subquery()
+
+
+#: What a model's `units` count. Whisper's row counts seconds, the index's
+#: rows count chunks; anything else measured here is tokens.
+def _unit_of(model: str | None) -> str:
+    name = (model or "").lower()
+    if "whisper" in name or "stt" in name:
+        return "seconds"
+    if "bge" in name or "embed" in name:
+        return "chunks"
+    return ""
 
 
 def _kind(kind) -> str:
@@ -169,6 +194,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
     events = _events(since)
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
+    units = func.coalesce(func.sum(events.c.units), 0)
     people = func.count(func.distinct(events.c.user_id))
 
     spent, request_count, active_users = (
@@ -185,7 +211,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
 
     by_model = (
         await db.exec(
-            select(events.c.model, credits, requests, people)
+            select(events.c.model, credits, requests, people, units)
             .where(events.c.model.is_not(None))
             .group_by(events.c.model)
             .order_by(credits.desc(), requests.desc())
@@ -270,8 +296,15 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         },
         "daily": _every_day(since, days, daily),
         "byModel": [
-            {"model": m, "credits": int(c), "requests": int(n), "users": int(u)}
-            for m, c, n, u in by_model
+            {
+                "model": m,
+                "credits": int(c),
+                "requests": int(n),
+                "users": int(u),
+                "units": int(x),
+                "unit": _unit_of(m),
+            }
+            for m, c, n, u, x in by_model
         ],
         "bySurface": surfaces,
         "topUsers": [
@@ -334,6 +367,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     events = _events(since, user_id=user.id)
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
+    units = func.coalesce(func.sum(events.c.units), 0)
 
     spent, request_count = (await db.exec(select(credits, requests))).one()
 
@@ -347,7 +381,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
 
     by_model = (
         await db.exec(
-            select(events.c.model, credits, requests)
+            select(events.c.model, credits, requests, units)
             .where(events.c.model.is_not(None))
             .group_by(events.c.model)
             .order_by(credits.desc(), requests.desc())
@@ -426,7 +460,14 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         },
         "daily": _every_day(since, days, daily),
         "byModel": [
-            {"model": m, "credits": int(c), "requests": int(n)} for m, c, n in by_model
+            {
+                "model": m,
+                "credits": int(c),
+                "requests": int(n),
+                "units": int(x),
+                "unit": _unit_of(m),
+            }
+            for m, c, n, x in by_model
         ],
         "bySurface": surfaces,
     }

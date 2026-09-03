@@ -108,7 +108,7 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
-from app.services.credits import charge_for_tokens, has_headroom, settle
+from app.services.credits import charge_for_tokens, has_headroom, record_units, settle
 from app.services.tools import builtin as builtin_tools
 from app.services.tools import registry as tool_registry
 
@@ -3151,6 +3151,17 @@ async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
     if ok:
         stored.indexed_at = utcnow()
         db.add(stored)
+        # 임베딩한 청크 수를 원장에 남긴다 — 공짜 모델이라 크레딧은 0이지만
+        # 사용량 화면이 bge 가 무슨 일을 얼마나 했는지 알아야 한다.
+        if index_client.last_chunks:
+            record_units(
+                db,
+                await db.get(User, agent.owner_id),
+                reason="index.embed",
+                model=index_client.EMBED_MODEL,
+                units=index_client.last_chunks,
+                unit="chunks",
+            )
         await db.commit()
         await db.refresh(stored)
     return ok

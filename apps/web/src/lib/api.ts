@@ -323,12 +323,31 @@ export interface SystemSettings {
   unpricedModels: { id: string; provider: string }[]
 }
 
+/** The composer's microphone: a recording in, its words out. Not stored. */
+export const transcriptionsApi = {
+  transcribe: async (blob: Blob, filename = 'speech.webm') => {
+    // multipart: the browser sets the boundary, so this bypasses call()'s JSON headers.
+    const form = new FormData()
+    form.append('file', blob, filename)
+    const res = await fetch(`${BASE_URL}/transcriptions`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+    if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+    return (await res.json()) as { text: string; seconds: number }
+  },
+}
+
 export const authConfig = {
   /** What the sign-in page may offer. Public because the browser cannot read
    *  the admin settings, and a dead reset link is worse than none. */
   get: () =>
     call<{
       passwordResetEnabled: boolean
+      /** A Whisper backend is configured, so the composer may show a microphone. */
+      dictationEnabled: boolean
       brand: { name: string; logo: string }
       enabledKinds: string[]
       privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
@@ -348,7 +367,7 @@ export interface MyUsage {
   /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
   daily: { date: string; credits: number; requests: number }[]
-  byModel: { model: string; credits: number; requests: number }[]
+  byModel: { model: string; credits: number; requests: number; units?: number; unit?: string }[]
   bySurface: { kind: string; credits: number; requests: number }[]
   /** Spend through issued keys, aggregated by the proxy — shown beside the
    *  number above rather than added to it. */
@@ -458,7 +477,15 @@ export interface UsageReport {
     otherCredits: number
   }
   daily: { date: string; credits: number; requests: number }[]
-  byModel: { model: string; credits: number; requests: number; users: number }[]
+  byModel: {
+    model: string
+    credits: number
+    requests: number
+    users: number
+    /** Work a free model did, measured — seconds of speech, chunks embedded. */
+    units?: number
+    unit?: string
+  }[]
   /** `'other'` beside the five surfaces: spend charged against no session,
    *  which is how the bars keep adding up to the total. */
   bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]

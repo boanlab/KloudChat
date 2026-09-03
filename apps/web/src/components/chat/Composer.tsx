@@ -6,6 +6,7 @@ import {
   Globe,
   LayoutGrid,
   LayoutTemplate,
+  Mic,
   Paperclip,
   Plug,
   Loader2,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision } from '@/lib/api'
+import { transcriptionsApi } from '@/lib/api'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
@@ -584,6 +586,63 @@ export function Composer({
   }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  /**
+   * 말로 쓰기. The microphone records until it is pressed again, the clip
+   * goes to the deployment's own Whisper (never to the browser vendor —
+   * `webkitSpeechRecognition` streams audio to a third party), and the words
+   * land in the box where the caret was. Nothing is sent until the person
+   * reads them and presses send; the recording itself is not kept.
+   */
+  const dictationEnabled = useStore((s) => s.dictationEnabled)
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recorder = useRef<MediaRecorder | null>(null)
+  const canRecord =
+    dictationEnabled && typeof MediaRecorder !== 'undefined' && Boolean(navigator.mediaDevices)
+  const stopRecording = () => {
+    recorder.current?.stop()
+  }
+  const startRecording = async () => {
+    setChatError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : ''
+      const media = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      const chunks: BlobPart[] = []
+      media.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data)
+      }
+      media.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop())
+        setRecording(false)
+        recorder.current = null
+        const blob = new Blob(chunks, { type: media.mimeType || 'audio/webm' })
+        if (!blob.size) return
+        setTranscribing(true)
+        try {
+          const ext = /mp4/.test(blob.type) ? 'm4a' : 'webm'
+          const { text } = await transcriptionsApi.transcribe(blob, `speech.${ext}`)
+          if (text) {
+            setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
+            requestAnimationFrame(() => ref.current?.focus())
+          }
+        } catch (err) {
+          setChatError(errorMessage(err, t('받아쓰지 못했습니다.')))
+        } finally {
+          setTranscribing(false)
+        }
+      }
+      recorder.current = media
+      media.start()
+      setRecording(true)
+    } catch {
+      setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
+    }
+  }
   /**
    * On by default, and off is the deliberate choice.
    *
@@ -1540,6 +1599,29 @@ export function Composer({
                 <Paperclip size={16} />
               </button>
             </>
+          )}
+          {canRecord && (
+            <button
+              onClick={() => (recording ? stopRecording() : void startRecording())}
+              disabled={transcribing}
+              className={cn(
+                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+                recording ? 'text-danger' : 'text-muted',
+              )}
+              aria-label={recording ? t('녹음 끝내기') : t('말로 쓰기')}
+              aria-pressed={recording}
+              title={
+                recording
+                  ? t('누르면 녹음을 끝내고 받아씁니다')
+                  : t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다')
+              }
+            >
+              {transcribing ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
+              )}
+            </button>
           )}
 
           {/* Only once the conversation has started. A shape you can only

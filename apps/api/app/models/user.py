@@ -185,6 +185,11 @@ class CreditLedger(SQLModel, table=True):
     #: conversation does not move its spend into 기타. Null where nothing
     #: single answers: a design extraction belongs to no surface.
     surface: str | None = Field(default=None)
+    #: How much work the row stands for, in `unit` — seconds of speech
+    #: transcribed, chunks embedded. Set on rows for models that cost no
+    #: credits, which is the only way those models reach the usage screens.
+    units: int | None = Field(default=None)
+    unit: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 

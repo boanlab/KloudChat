@@ -44,6 +44,17 @@ def new_collection_key() -> str:
     return secrets.token_urlsafe(24)
 
 
+#: What the model behind the index is called on the usage screens. The shim
+#: owns the real name (`EMBED_MODELS` in its environment) and does not say it
+#: back, so this is the deployment's first configured embedder.
+EMBED_MODEL = "local/bge-m3"
+
+#: Chunks the last `put_document` embedded, read by the caller that records
+#: usage. A module-level slot rather than a changed return type: three
+#: callers test the result for truth and none of them wants a number.
+last_chunks = 0
+
+
 async def available() -> bool:
     return bool((await settings_store.tools_config()).index)
 
@@ -76,7 +87,12 @@ async def put_document(
     except (httpx.HTTPError, ValueError) as exc:
         log.info("index write for %s failed: %s", name, exc)
         return False
-    log.debug("indexed %s: %s chunks", name, (body or {}).get("chunks"))
+    chunks = (body or {}).get("chunks")
+    log.debug("indexed %s: %s chunks", name, chunks)
+    # How much the embedding model did, for the usage ledger. `True` when the
+    # shim did not say — the write still happened.
+    global last_chunks
+    last_chunks = int(chunks) if isinstance(chunks, int | float) else 0
     return True
 
 

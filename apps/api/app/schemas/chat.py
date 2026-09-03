@@ -383,9 +383,9 @@ class CompareRequest(Wire):
     #: A 시작점 attached to this one comparison. See `SendMessage`.
     starting_template_id: str | None = Field(default=None, max_length=64)
     attachments: list[str] | None = None
-    privacy_action: Literal[
-        "route_strict_local", "mask_external", "send_raw_external"
-    ] | None = None
+    privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
+        None
+    )
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
 
 
@@ -471,7 +471,15 @@ class SendMessage(Wire):
     #: Folded into the request as conditions on it — never substituted for it,
     #: because the sentence they typed is the thing they asked for.
     answers: dict[str, str] | None = None
-    privacy_action: Literal[
-        "route_strict_local", "mask_external", "send_raw_external"
-    ] | None = None
+    privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
+        None
+    )
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
+
+
+class Transcription(Wire):
+    """What the microphone heard, and how long it listened."""
+
+    text: str
+    #: Seconds of audio the backend reported, or 0 when it did not say.
+    seconds: int = 0

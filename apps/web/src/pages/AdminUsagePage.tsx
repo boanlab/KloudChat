@@ -206,7 +206,17 @@ export function AdminUsagePage() {
                   ...usage.byModel.map((m) => ({
                     label: m.model,
                     value: m.credits,
-                    sub: `${t('{n}회').replace('{n}', String(m.requests))} · ${t('{n}명').replace('{n}', String(m.users))}`,
+                    sub: [
+                      t('{n}회').replace('{n}', String(m.requests)),
+                      t('{n}명').replace('{n}', String(m.users)),
+                      m.units && m.unit === 'seconds'
+                        ? t('{n}초 받아씀').replace('{n}', m.units.toLocaleString())
+                        : m.units && m.unit === 'chunks'
+                          ? t('{n}청크 색인').replace('{n}', m.units.toLocaleString())
+                          : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · '),
                   })),
                   // Named rather than dropped: a bar chart that quietly omits
                   // part of the total is how the whole total ended up here.
