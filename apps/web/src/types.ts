@@ -301,6 +301,8 @@ export interface Step {
   memoriesWritten?: number
   /** How many memories exist, when only the most recent were loaded. */
   totalMemories?: number
+  /** Which halves of 개인 맞춤 설정 shaped the turn: 나에 대해, 답변 방식. */
+  personal?: string[]
   estimatedTokens?: number
 }
 

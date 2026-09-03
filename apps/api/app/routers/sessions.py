@@ -971,6 +971,27 @@ def _memory_context_step(workspace: WorkspaceContext) -> dict | None:
     }
 
 
+def _personal_context_step(workspace: WorkspaceContext) -> dict | None:
+    """One line saying 개인 맞춤 설정 shaped this turn — which half, not what
+    it says. The text is the person's own and stays in the settings screen."""
+    block = next((b for b in workspace.blocks if b.source == "user.instructions"), None)
+    if block is None:
+        return None
+    parts = []
+    if "# 사용자에 대해" in block.text:
+        parts.append("나에 대해")
+    if "# 사용자가 바라는 답변 방식" in block.text:
+        parts.append("답변 방식")
+    return {
+        "id": "context-personal",
+        "type": "thinking",
+        "label": "개인 맞춤 설정 적용",
+        "status": "done",
+        "detail": " · ".join(parts),
+        "personal": parts,
+    }
+
+
 def _context_steps(workspace: WorkspaceContext) -> list[dict]:
     """What the turn was handed but never said out loud.
 
@@ -979,6 +1000,7 @@ def _context_steps(workspace: WorkspaceContext) -> list[dict]:
     document was truncated to fit.
     """
     steps = [
+        _personal_context_step(workspace),
         _memory_context_step(workspace),
         _file_context_step("context-attachments", "첨부", workspace.attachments),
         _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),

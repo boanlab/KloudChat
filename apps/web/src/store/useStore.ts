@@ -2956,6 +2956,7 @@ function toStep(raw: Record<string, unknown>): Step {
     files: raw.files as Step['files'],
     memoriesWritten: raw.memoriesWritten as number | undefined,
     totalMemories: raw.totalMemories as number | undefined,
+    personal: raw.personal as string[] | undefined,
     estimatedTokens: raw.estimatedTokens as number | undefined,
   }
   // The server writes these lines in Korean because it also stores them on the
@@ -2977,6 +2978,12 @@ function named(names: string[], more: '외 {n}건' | '외 {n}개'): string {
 }
 
 function retold(step: Step): Partial<Step> {
+  if (step.personal) {
+    return {
+      label: tr('개인 맞춤 설정 적용'),
+      detail: step.personal.map((part) => tr(part)).join(' · '),
+    }
+  }
   if (step.memoriesWritten !== undefined) {
     return {
       label: tr('메모리 {n}건 저장').replace('{n}', String(step.memoriesWritten)),

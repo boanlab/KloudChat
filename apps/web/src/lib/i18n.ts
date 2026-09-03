@@ -803,6 +803,8 @@ const EN: Record<string, string> = {
   '오른쪽 위 「추가」를 누르면 홈 화면에 KloudChat 아이콘이 생깁니다':
     'Tap “Add” at the top right and a KloudChat icon appears on your home screen',
   '받아쓰는 중…': 'Transcribing…',
+  '개인 맞춤 설정 적용': 'Personalization applied',
+  '나에 대해': 'About me',
   '이렇게 시작해 보세요': 'Try starting with',
   '사용법': 'How to use',
   '대화를 열면 첫 화면에 보입니다. 무엇을 가져와야 하는지, 한 턴에 무슨 일이 일어나는지.': 'Shown on the first screen of a conversation: what to bring, what a turn does.',
