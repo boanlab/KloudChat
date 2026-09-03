@@ -575,6 +575,20 @@ def _long_form(request: str) -> bool:
     return bool(m) and int(m.group(1)) >= 8
 
 
+def _without_own_heading(body: str, heading: str) -> str:
+    """The section's text minus a repeat of its own heading on the first line.
+
+    Written on its own, a section opened with 「## 현행 교육과정 진단」 — the
+    heading it was told it was writing — and the page then showed the heading
+    twice, with an empty section between.
+    """
+    lines = body.lstrip().split("\n", 1)
+    first = re.sub(r"^#{1,6}\s*|\*+", "", lines[0]).strip()
+    if first and first == heading.strip():
+        return lines[1].lstrip() if len(lines) > 1 else ""
+    return body
+
+
 def _carries_material(request: str) -> bool:
     """The material is in the request itself — a pasted memo, a table.
 
@@ -1323,7 +1337,7 @@ async def write(
         # own doors and the report did not, so a 보고서 came out carrying 培育,
         # 劣势 and 書類 while a deck on the same subject did not. One product,
         # one answer.
-        clean, _ = hangul.read_back(body)
+        clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
         clean = hangul.tidy_spacing(clean)
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 

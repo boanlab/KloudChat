@@ -460,3 +460,12 @@ def test_a_request_for_many_pages_is_long_form() -> None:
     assert _long_form("20쪽 내외 보고서")
     assert not _long_form("한 장짜리 결재 보고")
     assert not _long_form("슬라이드 5장 분량")
+
+
+def test_a_section_that_repeats_its_own_heading_loses_the_repeat() -> None:
+    from app.services.report import _without_own_heading
+
+    assert _without_own_heading("## 현행 진단\n\n본문.", "현행 진단") == "본문."
+    assert _without_own_heading("**현행 진단**\n본문.", "현행 진단") == "본문."
+    assert _without_own_heading("본문부터.", "현행 진단") == "본문부터."
+    assert _without_own_heading("## 다른 제목\n본문.", "현행 진단") == "## 다른 제목\n본문."
