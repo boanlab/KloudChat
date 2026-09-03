@@ -72,7 +72,7 @@ export function PersonalizationTab() {
           value={responseStyle}
           onChange={(e) => setResponseStyle(e.target.value.slice(0, LIMIT))}
           rows={6}
-          placeholder={t('예: 결론부터, 짧게. 존댓말. 코드는 설명보다 예제 위주로. 확실하지 않으면 그렇다고 말할 것.')}
+          placeholder={t('예: 결론을 먼저, 짧게. 존댓말로. 어려운 말은 풀어서 설명해 주고, 잘 모르는 것은 모른다고 말해 주세요.')}
         />
         <p className="mt-1 text-right text-xs text-faint">{responseStyle.length}/{LIMIT}</p>
       </Field>

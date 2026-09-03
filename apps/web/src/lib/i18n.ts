@@ -843,7 +843,7 @@ const EN: Record<string, string> = {
   '예: 직장에서 기획 업무를 맡고 있다. 전문 용어보다 쉬운 말이 좋고, 숫자는 표로 보여 주면 이해가 빠르다.': 'e.g. I work in planning at my company. Plain words over jargon, and numbers are easier for me in a table.',
   '답변 방식': 'How to respond',
   '말투, 길이, 형식, 언어 — 대화와 문서 모두에 적용됩니다.': 'Tone, length, format, language — applies to conversations and documents alike.',
-  '예: 결론부터, 짧게. 존댓말. 코드는 설명보다 예제 위주로. 확실하지 않으면 그렇다고 말할 것.': 'e.g. Conclusion first, keep it short. Examples over explanations for code. Say so when unsure.',
+  '예: 결론을 먼저, 짧게. 존댓말로. 어려운 말은 풀어서 설명해 주고, 잘 모르는 것은 모른다고 말해 주세요.': 'e.g. Conclusion first, keep it short. Explain difficult terms in plain words, and say so when you are not sure.',
   '저장했습니다. 다음 대화부터 적용됩니다.': 'Saved. Applies from the next conversation.',
   '가입 문의': 'Signup inquiry',
   '문의 주소': 'Contact address',
