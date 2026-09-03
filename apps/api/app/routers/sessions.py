@@ -82,7 +82,7 @@ from app.services import (
     adaptive_routing,
     artifact_extract,
     audiogen,
-    charts,
+    chart_code,
     design_templates,
     figures,
     governance,
@@ -1515,7 +1515,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
     if payload.style == "차트":
-        # A chart is drawn from code, not painted: see `charts`.
+        # A chart is drawn from code, not painted: see `chart_code`.
         return await _draw_chart(session, payload, user, db, catalogue)
     model = model_service.find(catalogue["models"], payload.model or session.model or "")
     if model is None or "image" not in model["kinds"]:
@@ -1698,14 +1698,14 @@ async def _draw_chart(
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
     try:
-        chart = await charts.draw(
+        chart = await chart_code.draw(
             payload.prompt,
             aspect=payload.aspect,
             model=str(writer["id"]),
             api_key=api_key,
             code=payload.prompt if payload.raw else None,
         )
-    except charts.ChartError as exc:
+    except chart_code.ChartError as exc:
         _record_media(db, session, payload.prompt, [], model=str(writer["id"]), failed=True)
         await db.commit()
         raise HTTPException(
