@@ -1916,7 +1916,9 @@ export async function* streamComparison(
  * token, and a tool call is a round trip to something else — so this is not a
  * response-time budget, it is the point past which silence stops being slow
  * and starts being broken. The server emits deltas and step events throughout
- * a healthy turn, and sends no heartbeat, so silence here really is silence.
+ * a healthy turn, and a comment line every fifteen seconds while the model is
+ * still thinking (`_heartbeat`, for the proxies that close an idle response at
+ * sixty), so silence this long really is a connection that has gone.
  */
 const STALL_MS = 120_000
 

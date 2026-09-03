@@ -141,7 +141,7 @@ def test_what_is_inside_a_code_element_arrives_as_characters():
     a sample of `<div>` became a real division and one of `<b>` real bold —
     the quotation stopped being the thing it was quoting.
     """
-    kept = dt.sanitise("<p>이렇게 <code><div class=\"x\"></code> 쓴다</p>")
+    kept = dt.sanitise('<p>이렇게 <code><div class="x"></code> 쓴다</p>')
     assert kept == '<p>이렇게 <code>&lt;div class="x"&gt;</code> 쓴다</p>'
     # A model writes a sample both ways, and neither may be escaped twice.
     assert dt.sanitise("<code>&lt;b&gt;</code>") == "<code>&lt;b&gt;</code>"
@@ -200,7 +200,15 @@ def test_a_seed_breaks_korean_lines_between_words(template):
 #: unstyled they render as browser defaults in the middle of a designed page,
 #: which is exactly what makes generated documents look generated.
 _MUST_STYLE = (
-    "h3", "table", "blockquote", "figure", "figcaption", "dl", "dd", "hr", "code",
+    "h3",
+    "table",
+    "blockquote",
+    "figure",
+    "figcaption",
+    "dl",
+    "dd",
+    "hr",
+    "code",
 )
 
 
@@ -375,7 +383,7 @@ def test_the_design_system_reaches_the_document_as_css_variables():
 
 
 def test_a_title_cannot_break_out_of_the_document():
-    html = dt.render(dt.get("doc-report"), title='</title><script>x()</script>', tokens={}, body="")
+    html = dt.render(dt.get("doc-report"), title="</title><script>x()</script>", tokens={}, body="")
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
 
@@ -456,6 +464,11 @@ def test_a_count_stated_in_the_request_is_honoured_within_bounds():
     assert page.requested_blocks("8장짜리 발표") == 8
     assert page.requested_blocks("발표 자료") is None
     assert page.requested_blocks("200장") == 24  # clamped to the runtime ceiling
+    # A deck 서식 has the plain slide track's room: 30장 is thirty, not 24.
+    deck = dt.get("deck-lecture")
+    assert page.requested_blocks("30장", deck) == 30
+    assert page.requested_blocks("200장", deck) == 50
+    assert page.requested_blocks("30쪽", dt.get("doc-report")) == 24
 
 
 # ── image templates ────────────────────────────────────────────────────
@@ -473,9 +486,7 @@ def test_an_image_template_shapes_the_prompt_after_the_chip_and_before_the_desig
     assert composed.index("poster composition") < composed.index("#7a1f3d")
     # 비율만이 아니라 방향까지 — 그림 모델이 흘려듣는 쪽이 비율이라,
     # 보고서·슬라이드에 넣을 그림이 세로로 길게 돌아오곤 했다.
-    assert composed.endswith(
-        "aspect ratio 16:9, landscape orientation, wider than it is tall"
-    )
+    assert composed.endswith("aspect ratio 16:9, landscape orientation, wider than it is tall")
 
 
 def test_without_a_template_the_image_prompt_is_unchanged():
@@ -634,9 +645,10 @@ def test_the_layout_name_the_model_was_given_is_not_printed_back():
     assert dt.sanitise("layout = quote\n<p>본문</p>", layouts=("quote",)) == "<p>본문</p>"
     # More than one line of preamble, which is what a model that restates the
     # whole brief produces.
-    assert dt.sanitise(
-        'cover\nlayout: "cover"\n<p class="lead">부제</p>', layouts=("cover",)
-    ) == '<p class="lead">부제</p>'
+    assert (
+        dt.sanitise('cover\nlayout: "cover"\n<p class="lead">부제</p>', layouts=("cover",))
+        == '<p class="lead">부제</p>'
+    )
 
 
 def test_a_word_that_happens_to_be_a_layout_name_is_left_alone():
@@ -665,9 +677,10 @@ def test_a_block_that_came_back_as_its_own_envelope_is_unwrapped():
     down: the words are there, wrapped in the schema. Left alone they print on
     the slide as `{"layout":"bullets","body":"…` behind a speaker.
     """
-    assert dt.sanitise(
-        '{"layout": "bullets", "body": "<ul><li>항목</li></ul>"}', layouts=("bullets",)
-    ) == "<ul><li>항목</li></ul>"
+    assert (
+        dt.sanitise('{"layout": "bullets", "body": "<ul><li>항목</li></ul>"}', layouts=("bullets",))
+        == "<ul><li>항목</li></ul>"
+    )
     # Order is the model's, and so is the key name — nothing ever specified
     # one, and the same model called it `body` in one run and `content` in the
     # next. What is read is the shape: metadata out, one string left.
@@ -1039,9 +1052,7 @@ def test_clearing_one_surface_leaves_the_other_alone():
         ({"chat": "doc-brief"}, 422),
     ],
 )
-def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(
-    defaults, expected
-):
+def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(defaults, expected):
     with pytest.raises(HTTPException) as raised:
         workspace_router._validated_render_templates(defaults)
     assert raised.value.status_code == expected

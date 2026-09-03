@@ -3409,8 +3409,61 @@ async def _until_stopped(
 #: the only thing holding them and they are collectible mid-turn.
 _DETACHED: set[asyncio.Task] = set()
 
+#: How long a stream may go without a byte before a comment is sent to keep
+#: the connection counted as alive. Well under the sixty seconds the shortest
+#: common proxy idle timeout allows, and well over what a healthy turn needs.
+HEARTBEAT_SEC = 15.0
 
-async def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
+
+async def _heartbeat(events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Relays a stream, and says something when it has nothing to say.
+
+    침묵은 끊긴 것으로 읽힌다. A 30-slide outline on a local model produces no
+    event for a minute or more while the model thinks, and the proxy in front
+    of a deployment closes a response that has sent no byte for sixty seconds.
+    So the plan arrived at 65s into a socket nobody held any more, and the
+    screen read 「문서를 만들지 못했습니다」 over a turn the server finished and
+    stored. An SSE comment line every few seconds is a byte the proxy counts
+    and the browser's parser skips — the silence a model needs stops being the
+    silence a proxy times out.
+
+    The pending read is kept across heartbeats rather than cancelled by
+    `wait_for`, which can drop the event it was holding when the timeout and
+    the arrival coincide. Closing this generator closes the one beneath it, so
+    a reader leaving still unwinds the turn the way it did before.
+    """
+    iterator = events.__aiter__()
+    nxt = asyncio.ensure_future(anext(iterator))
+    try:
+        while True:
+            done, _ = await asyncio.wait({nxt}, timeout=HEARTBEAT_SEC)
+            if not done:
+                yield ": keep-alive\n\n"
+                continue
+            try:
+                event = nxt.result()
+            except StopAsyncIteration:
+                return
+            yield event
+            nxt = asyncio.ensure_future(anext(iterator))
+    finally:
+        if not nxt.done():
+            nxt.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await nxt
+        await iterator.aclose()
+
+
+def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """A turn's response, as every streaming route serves it.
+
+    Finishes behind a reader who left (`_detached`) and keeps the connection
+    counted as alive while the model is silent (`_heartbeat`).
+    """
+    return _heartbeat(_detached(events))
+
+
+async def _detached(events: AsyncIterator[str]) -> AsyncIterator[str]:
     """Lets a turn finish even when nobody is left reading it.
 
     The response and the work behind it are separate tasks: the turn produces
@@ -4136,21 +4189,23 @@ async def compare_models(
     )
 
     return StreamingResponse(
-        _run_comparison(
-            user_id=user.id,
-            api_key=api_key,
-            session_id=session.id,
-            models=chosen,
-            messages=messages,
-            skills_event=workspace.skills_event(),
-            # A comparison is answered from the same memories and the same
-            # attachments as a single-model turn, and spends several times the
-            # credits doing it, so it accounts for them the same way.
-            context_steps=_context_steps(workspace),
-            routing=resolved.routing,
-            mask_at_rest=policy.pii_masking or policy.external_data_guard,
-            legacy_masking=policy.pii_masking,
-            privacy_audit_id=privacy_audit_id,
+        _heartbeat(
+            _run_comparison(
+                user_id=user.id,
+                api_key=api_key,
+                session_id=session.id,
+                models=chosen,
+                messages=messages,
+                skills_event=workspace.skills_event(),
+                # A comparison is answered from the same memories and the same
+                # attachments as a single-model turn, and spends several times the
+                # credits doing it, so it accounts for them the same way.
+                context_steps=_context_steps(workspace),
+                routing=resolved.routing,
+                mask_at_rest=policy.pii_masking or policy.external_data_guard,
+                legacy_masking=policy.pii_masking,
+                privacy_audit_id=privacy_audit_id,
+            ),
         ),
         media_type="text/event-stream",
         headers={

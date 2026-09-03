@@ -40,6 +40,10 @@ log = logging.getLogger(__name__)
 #: One model call per block, so this is the multiplier on the bill.
 _MIN_BLOCKS = 4
 _MAX_BLOCKS = 24
+#: A deck is allowed what the plain slide track allows. 「30장」 on a 서식 used
+#: to come back as 24 with no word said — the document ceiling applied to
+#: slides, where a lecture deck of thirty is an ordinary request.
+_MAX_SLIDES = 50
 #: Ceiling when no count was asked for, separate from the cap above.
 _DEFAULT_MAX = 10
 
@@ -204,13 +208,18 @@ def _json_object(text: str) -> dict[str, Any]:
         return {}
 
 
-def requested_blocks(request: str) -> int | None:
+def _ceiling(template: DesignTemplate | None) -> int:
+    """How many blocks one document may run to: slides get the deck's room."""
+    return _MAX_SLIDES if template is not None and template.kind == "deck" else _MAX_BLOCKS
+
+
+def requested_blocks(request: str, template: DesignTemplate | None = None) -> int | None:
     """A count stated in the request, clamped. `None` if unstated."""
     match = re.search(r"(\d{1,3})\s*(?:장|페이지|절|쪽|개)", request)
     if not match:
         return None
     asked = int(match.group(1))
-    return max(_MIN_BLOCKS, min(asked, _MAX_BLOCKS)) if asked > 0 else None
+    return max(_MIN_BLOCKS, min(asked, _ceiling(template))) if asked > 0 else None
 
 
 #: `{"title": "…", "layout": "…"}` even when a quote is missing from a key.
@@ -259,7 +268,7 @@ def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[
     # position gives a document with no title page and a heading twice.
     if blocks:
         blocks[0]["layout"] = template.layouts[0]
-    return title, blocks[:_MAX_BLOCKS]
+    return title, blocks[: _ceiling(template)]
 
 
 def _guide(template: DesignTemplate) -> str:
@@ -381,7 +390,7 @@ async def write(
         "outlineOutputTokens": 0,
     }
     noun, unit = _WORDS.get(template.kind, ("문서", "절"))
-    wanted = requested_blocks(request)
+    wanted = requested_blocks(request, template)
     surface = template.surface
 
     findings = research.Findings()
