@@ -1567,6 +1567,7 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
             prompt=imagegen.compose_prompt(
                 str(figure.get("prompt") or ""), aspect="16:9", style=""
             ),
+            aspect="16:9",
         )
     except Exception as exc:  # noqa: BLE001 — a missing figure is not a failed deck
         log.warning("slide figure could not be drawn: %s", exc)

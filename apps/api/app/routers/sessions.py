@@ -1577,7 +1577,11 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
     for _ in range(payload.count):
         try:
             image = await imagegen.generate(
-                base_url=base_url, api_key=api_key, model=model["id"], prompt=composed
+                base_url=base_url,
+                api_key=api_key,
+                model=model["id"],
+                prompt=composed,
+                aspect=payload.aspect,
             )
         except imagegen.ImageError as exc:
             # Images produced before the failure are kept and billed — upstream

@@ -824,6 +824,7 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
             api_key=api_key,
             model=str(image_model.get("id") or ""),
             prompt=imagegen.compose_prompt(str(figure.get("prompt") or ""), aspect="4:3", style=""),
+            aspect="4:3",
         )
     except Exception as exc:  # noqa: BLE001 — a missing figure is not a failed report
         log.warning("figure could not be drawn: %s", exc)

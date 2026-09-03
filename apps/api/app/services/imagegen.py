@@ -125,23 +125,24 @@ _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬
 - 슬라이드나 문서 화면 전체를 그리지 마라 — 그림 하나만.
 - 120~220 단어. 프롬프트만 출력하고 설명·머리말·따옴표·코드펜스는 붙이지 마라.
 {figure_rule}
-형식 보기 (내용이 아니라 모양을 따르라):
+형식 보기 — **모양만 따르고 낱말은 옮기지 마라.** 아래 보기의 요소·화살표 이름·용도는
+보기의 것이고, 네 답의 요소·이름은 전부 요청에서 가져온다:
 ---
-A multi-agent framework with four specialised agents arranged in a closed loop,
-for a workshop slide.
+A process diagram of a small-town drinking-water treatment plant, for a middle-school
+science handout.
 
-Center-top: User Query (rounded rectangle). Four agents clockwise around a central
-message bus: Planner (splits the task), Retriever (queries a Vector Store drawn
-outside the loop on the left), Executor (calls Tools / APIs drawn outside on the
-right), Critic (checks results against the goal). Bottom: Final Response box.
+Left to right across the canvas: River Intake (rounded rectangle with a wave icon) ->
+Coagulation Tank (rounded rectangle) -> Sedimentation Basin (wide low rectangle) ->
+Sand Filter (rectangle with a dotted fill) -> Chlorination (small cylinder) -> Storage
+Tower (tall cylinder, drawn larger). Below the basin, a small Sludge Out box.
 
-Labeled arrows for each message: "task" Planner -> Retriever / Executor; "context"
-Retriever -> Planner; "result" Executor -> Critic; "revision" Critic -> Planner, dashed.
+Labeled arrows: "raw water" Intake -> Coagulation; "floc settles" Basin -> Sludge Out,
+dashed; "clean water" Filter -> Chlorination -> Storage.
 
-Labels in English, short. No other text.
+Labels in Korean, short, spelled exactly as given. No other text.
 
-Style: clean academic vector, navy / teal / amber palette, rounded boxes, white
-background, sans-serif labels. Suitable for a conference slide.
+Style: clean educational infographic, white background, blue / sand / green palette,
+simple geometric icons, sans-serif labels. Suitable for a printed handout.
 ---
 A photograph of a university library reading room at golden hour, for a brochure cover.
 
@@ -245,7 +246,8 @@ def compose_prompt(
     the one a picture model tends to honour, and the project's look should
     outlast one picture's chip.
     """
-    parts = [prompt.strip()]
+    # A planned prompt ends on a full stop, and the joiner below adds one.
+    parts = [prompt.strip().rstrip(".").strip()]
     # Directly after what the person asked for, and before the style chip: it
     # says what kind of thing to make, and the chip only says what it looks
     # like. A chip that disagrees is still allowed to — "사진" of one subject is
@@ -387,13 +389,29 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
         raise ImageError("이미지 데이터가 손상되었습니다.") from exc
 
 
-async def generate(*, base_url: str, api_key: str, model: str, prompt: str) -> GeneratedImage:
-    """One picture, or `ImageError`."""
-    payload = {
+#: The ratios the Gemini image models take as a parameter. Others ignore the
+#: field, which is why it is always sent: for them the orientation note in the
+#: prompt is still the only lever, and it costs nothing to say both.
+_RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"}
+
+
+async def generate(
+    *, base_url: str, api_key: str, model: str, prompt: str, aspect: str = ""
+) -> GeneratedImage:
+    """One picture, or `ImageError`.
+
+    `aspect` is sent as a parameter as well as said in the prompt. A ratio in
+    the prompt is a line picture models drop often enough that this product
+    stores what came back beside what was asked for; Gemini honours the
+    parameter every time, and the others ignore it.
+    """
+    payload: dict = {
         "model": model,
         "modalities": ["image", "text"],
         "messages": [{"role": "user", "content": prompt}],
     }
+    if aspect in _RATIOS:
+        payload["image_config"] = {"aspect_ratio": aspect}
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.post(
