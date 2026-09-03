@@ -94,27 +94,57 @@ white background"}}]"""
 _ONE_PROMPT = """다음 자리에 넣을 그림 하나를 제안하라.
 
 문서 제목: {title}
+문서의 인상: {look}
 
 이 자리의 제목: {about}
 
 이 자리의 내용:
 {context}
 
-규칙:
-- 구조도·흐름도·관계도는 제안하지 마라. 그런 것은 본문에 mermaid 로 그린다.
-- 수치 비교는 그림이 아니라 표다.
-- 그림으로만 되는 것을 제안하라. 개념을 은유로 보여 주는 삽화, 실물의 모습,
-  분위기를 전달해야 하는 장면.
-- 이 자리에 이미 있는 말을 그림으로 옮겨 적지 마라. 글이 못 하는 것을 그린다.
-- prompt 안에 글자·숫자·표를 넣지 마라. 들어간 글자는 깨져서 나온다.
+쓸 수 있는 그림 서식 — 하나를 골라라:
+{catalogue}
 
+규칙:
+- 단계·절차·순서가 있으면 흐름도(infographic·pipeline), 구성 요소와 관계가
+  있으면 아키텍처·구조도(architecture·method), 개념의 층위와 관계면 개념도
+  (diagram), 기존과 제안의 대비면 티저(teaser), 장면·은유·실물이면 삽화
+  (scene), 화면이면 목업(mockup). 문서의 인상에 어울리는 것을 고른다.
+- 수치 비교는 그림이 아니라 표다. 표로 될 것은 제안하지 마라.
+- 이 자리에 이미 있는 말을 그림으로 옮겨 적지 마라. 글이 못 하는 것을 그린다.
+- 도식(figure 가 있는 서식)을 골랐으면 "description" 에 그릴 내용을 **한국어로
+  구체적으로** 적는다 — 구성 요소 이름, 단계 이름, 관계. 이름표가 그대로 그림에
+  들어간다. "prompt" 는 비운다.
+- 그림 서식을 골랐으면 "prompt" 에 이미지 모델에 줄 영어 지시 한 문장을 적는다.
+  글자·숫자·표를 넣지 마라 — 들어간 글자는 깨져서 나온다. "description" 은 비운다.
 - caption: 그림 아래에 붙을 한 줄 설명. 한국어. 20자 안쪽.
-- prompt: 이미지 모델에 줄 영어 지시 한 문장.
 
 JSON 객체로만 답하라.
-예: {{"caption": "무균실 작업 장면", "prompt": "photorealistic view of \
-a cleanroom technician in white coveralls handling equipment, soft even \
-lighting, shallow depth of field"}}"""
+예: {{"template": "image-scene", "caption": "무균실 작업 장면", "prompt": "photorealistic \
+view of a cleanroom technician in white coveralls handling equipment, soft even \
+lighting, shallow depth of field", "description": ""}}
+예: {{"template": "image-architecture", "caption": "수집·분석·집행 구성", "prompt": "", \
+"description": "이벤트 수집기가 커널 이벤트를 받아 분석 엔진으로 보내고, 분석 엔진이 \
+정책 엔진에 판정을 넘기며, 집행기가 컨테이너에 정책을 적용한다. 대시보드는 분석 \
+엔진에서 상태를 읽는다."}}"""
+
+
+#: What the picker draws with, per document look. A minimal document wants a
+#: minimal picture; the others take the 서식's own default.
+_LOOK_STYLE = {"minimal": "미니멀"}
+_LOOK_NAMES = {"editorial": "편집형", "poster": "포스터형", "minimal": "미니멀"}
+
+
+def _catalogue_lines() -> str:
+    """The image 서식 on offer, one per line, for the suggestion prompt."""
+    from app.services import design_templates
+
+    rows = []
+    for template in design_templates.all_templates():
+        if template.kind != "image" or template.id in ("image-cover", "image-poster-bg"):
+            continue
+        kind = f"도식({template.figure})" if template.figure else "그림"
+        rows.append(f"- {template.id}: {template.name} — {template.description} [{kind}]")
+    return "\n".join(rows)
 
 
 @dataclass(slots=True)
@@ -125,6 +155,14 @@ class Figure:
     section: int
     caption: str
     prompt: str
+    #: The image 서식 chosen for this place, when the suggestion chose one.
+    template_id: str = ""
+    #: `flow` / `method` / `concept` when that 서식 draws a mermaid figure.
+    figure: str = ""
+    #: The figure's description, for the diagram path.
+    description: str = ""
+    #: The style chip to draw a picture with.
+    style: str = ""
 
 
 @dataclass(slots=True)
@@ -235,6 +273,7 @@ async def suggest(
     context: str,
     model: str,
     api_key: str,
+    look: str = "",
 ) -> Figure | None:
     """One picture for one place. `None` on any failure, never raises.
 
@@ -260,8 +299,10 @@ async def suggest(
                             "role": "user",
                             "content": _ONE_PROMPT.format(
                                 title=title[:200],
+                                look=_LOOK_NAMES.get(look, "정해지지 않음"),
                                 about=about[:200],
                                 context=context[:2000],
+                                catalogue=_catalogue_lines(),
                             ),
                         }
                     ],
@@ -283,12 +324,31 @@ async def suggest(
     if not isinstance(parsed, dict):
         return None
     prompt = str(parsed.get("prompt") or "").strip()
-    if not prompt:
+    description = str(parsed.get("description") or "").strip()
+    template_id = str(parsed.get("template") or "").strip()
+    # 서식은 카탈로그에 있는 것만. A name the model made up draws nothing.
+    from app.services import design_templates
+
+    template = design_templates.get(template_id)
+    if template is None or template.kind != "image":
+        template, template_id = None, ""
+    figure = template.figure if template else ""
+    if figure and not description:
+        # A figure with nothing to draw: fall back to a picture of it.
+        figure = ""
+    if not figure and not prompt:
         return None
+    style = _LOOK_STYLE.get(look) or (
+        str((template.defaults or {}).get("style") or "") if template else ""
+    )
     return Figure(
         section=0,
         caption=str(parsed.get("caption") or "").strip()[:120],
         prompt=prompt[:600],
+        template_id=template_id,
+        figure=figure,
+        description=description[:3000],
+        style=style,
     )
 
 

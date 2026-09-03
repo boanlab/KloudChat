@@ -774,9 +774,20 @@ export const sessionsApi = {
    */
   suggestFigure: (
     sessionId: string,
-    payload: { title?: string; about?: string; context?: string },
+    payload: { title?: string; about?: string; context?: string; visualStyle?: string },
   ) =>
-    call<{ caption: string; prompt: string }>(
+    call<{
+      caption: string
+      prompt: string
+      /** The image 서식 chosen for this place; empty when none fit. */
+      templateId?: string
+      /** `flow` / `method` / `concept` when the 서식 draws as mermaid. */
+      figure?: string
+      /** What to draw, for the diagram path. */
+      description?: string
+      /** The style chip the picture should be drawn with. */
+      style?: string
+    }>(
       `/sessions/${sessionId}/figure-suggestion`,
       body(payload),
     ),

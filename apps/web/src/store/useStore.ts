@@ -4670,7 +4670,7 @@ function chargeCredits(set: Set, _get: Get, credits: number) {
  * figure comes out in the product's face and accent rather than mermaid's
  * defaults. The PNG is 2× for print; the source travels with it.
  */
-async function drawFigure(
+export async function drawFigure(
   sessionId: string,
   description: string,
   figure: string,

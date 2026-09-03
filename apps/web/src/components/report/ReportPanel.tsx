@@ -148,6 +148,7 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
           about={chosen?.heading}
           title={report.title}
           context={chosen?.content}
+          visualStyle={report.design?.visualStyle}
         />
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>

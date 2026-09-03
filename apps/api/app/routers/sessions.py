@@ -1465,12 +1465,20 @@ async def suggest_figure(
         context=payload.context,
         model=str(model["id"]),
         api_key=api_key,
+        look=payload.visual_style,
     )
     # A suggestion that did not come back is not an error the person can act
     # on — the box simply stays theirs to fill, exactly as it was before.
     if figure is None:
         return FigureSuggestion(caption="", prompt="")
-    return FigureSuggestion(caption=figure.caption, prompt=figure.prompt)
+    return FigureSuggestion(
+        caption=figure.caption,
+        prompt=figure.prompt,
+        template_id=figure.template_id,
+        figure=figure.figure,
+        description=figure.description,
+        style=figure.style,
+    )
 
 
 @router.post("/{session_id}/images", response_model=list[ArtifactOut])

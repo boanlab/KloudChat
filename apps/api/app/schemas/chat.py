@@ -95,11 +95,26 @@ class FigureSuggestRequest(Wire):
     about: str = Field(default="", max_length=300)
     #: What that place already says, so the picture does not repeat it.
     context: str = Field(default="", max_length=4000)
+    #: The document's look — `editorial`, `poster`, `minimal` — so the picture
+    #: comes out in the same register. Empty when the document has none.
+    visual_style: str = Field(default="", max_length=20)
 
 
 class FigureSuggestion(Wire):
     caption: str
     prompt: str
+    #: The image 서식 the suggestion chose for this place — `image-scene`,
+    #: `image-architecture`… Empty when none fits; the picker then draws a
+    #: plain picture from `prompt` as before.
+    template_id: str = ""
+    #: Set when the chosen 서식 is a figure drawn as mermaid (`flow`, `method`,
+    #: `concept`) rather than a picture: the client takes the diagram path.
+    figure: str = ""
+    #: What to draw, in Korean, for the diagram path. Empty for pictures.
+    description: str = ""
+    #: The style chip to draw with — the 서식's default, or 미니멀 for a
+    #: minimal document.
+    style: str = ""
 
 
 class DiagramRequest(Wire):

@@ -505,3 +505,73 @@ def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:
     assert not _results_without_data(
         "설계 변경 제안서: 모터를 24V에서 48V로 바꿔 배선 손실 30% 절감, 부품비 12만 원 증가.", []
     )
+
+
+@pytest.mark.asyncio
+async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_diagram_path(
+    monkeypatch,
+) -> None:
+    from app.services import figures
+
+    class _Response:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"choices": [{"message": {"content": self._text}}]}
+
+    class _Client:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            return _Response(self._text)
+
+    async def config():
+        return "http://mock", ""
+
+    monkeypatch.setattr(figures.settings_store, "litellm_config", config)
+    monkeypatch.setattr(
+        figures.httpx,
+        "AsyncClient",
+        lambda **_kw: _Client(
+            '{"template": "image-architecture", "caption": "수집·분석·집행", "prompt": "", '
+            '"description": "수집기가 이벤트를 분석 엔진으로 보내고 집행기가 정책을 적용한다."}'
+        ),
+    )
+    figure = await figures.suggest(
+        title="런타임 보안",
+        about="시스템 설계",
+        context="…",
+        model="m",
+        api_key="k",
+        look="minimal",
+    )
+    assert figure is not None
+    assert figure.template_id == "image-architecture" and figure.figure == "method"
+    assert figure.description.startswith("수집기가") and figure.prompt == ""
+    assert figure.style == "미니멀"
+
+    monkeypatch.setattr(
+        figures.httpx,
+        "AsyncClient",
+        lambda **_kw: _Client(
+            '{"template": "image-nope", "caption": "무균실", "prompt": "a cleanroom technician", '
+            '"description": ""}'
+        ),
+    )
+    picture = await figures.suggest(
+        title="공정", about="작업 환경", context="…", model="m", api_key="k", look="editorial"
+    )
+    # 카탈로그에 없는 서식 이름은 서식이 아니다 — 그림은 그대로 그린다.
+    assert picture is not None and picture.template_id == "" and picture.figure == ""
+    assert picture.prompt == "a cleanroom technician"
