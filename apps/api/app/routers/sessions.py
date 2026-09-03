@@ -2914,7 +2914,21 @@ async def send_message(
     )
 
     render_template = design_templates.get(session.render_template_id)
-    if render_template is not None:
+    # 보고서는 서식이 있어도 보고서 작성기가 쓴다.
+    #
+    # A document 서식 used to send the whole turn down the page track — one
+    # model call per block, the seed's layout vocabulary in each — and none
+    # of what the report writer learned reached it: the one-call draft that
+    # keeps numbers consistent, the list of allowed figures, the genre
+    # shapes, the retold-section and placeholder-kpi cleanups, the questions
+    # asked before writing. A 주간 보고 under 「한 장 요약」 came back with the
+    # same kpi strip and the same paragraph in every section. A 서식 is a
+    # look, and the page view and the exporters apply a look to markdown
+    # sections already (`templateId` on the artifact); only the `html`
+    # surface and the deck still need the block writer.
+    if render_template is not None and not (
+        session.kind is SessionKind.report and render_template.kind == "document"
+    ):
         return StreamingResponse(
             _survive_disconnect(
                 _run_page(
@@ -2993,6 +3007,7 @@ async def send_message(
                     may_ask=not proceed_as_is,
                     figures_plan=approved_figures,
                     image_model=image_model,
+                    template=render_template,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -5060,6 +5075,7 @@ async def _revise_document(
 
 async def _run_report(
     *,
+    template: design_templates.DesignTemplate | None = None,
     outline_model: dict | None = None,
     #: The outline somebody approved, when this run is the second half of one.
     #: `None` means plan and offer; anything else means write exactly this.
@@ -5251,6 +5267,9 @@ async def _run_report(
                     title=title,
                     summary=_regeneration_summary(request),
                     data={
+                        # The 서식 the page view and the exporters dress this
+                        # in. Markdown sections underneath, as ever.
+                        **({"templateId": template.id} if template else {}),
                         "sections": [
                             {
                                 "id": s["id"],
