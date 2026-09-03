@@ -1,9 +1,25 @@
 import { ArrowDown, ArrowUp, Gauge, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Card, Field, Select, Switch } from '@/components/ui'
-import { errorMessage } from '@/lib/api'
+import { errorCode, errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+
+/** What the server says when it refuses a routing policy, in the person's words. */
+const ROUTING_REFUSALS: Record<string, string> = {
+  adaptive_classifier_required: '난이도 분류 모델을 골라 주세요.',
+  adaptive_classifier_must_be_zero_cost_strict_local:
+    '난이도 분류 모델은 무료 strict-local 모델이어야 합니다.',
+  adaptive_economy_models_required: '절약 모델을 하나 이상 골라 주세요.',
+  adaptive_economy_models_max_three: '절약 모델은 세 개까지입니다.',
+  adaptive_economy_models_must_be_distinct: '절약 모델이 겹칩니다.',
+  adaptive_economy_models_invalid:
+    '절약 모델로 쓸 수 없는 모델이 있습니다. 데이터 경계를 알 수 없거나 개인정보 전용인 모델은 절약 목록에 넣을 수 없습니다.',
+  adaptive_quality_models_required: '상향 모델을 하나 이상 골라 주세요.',
+  adaptive_quality_models_max_three: '상향 모델은 세 개까지입니다.',
+  adaptive_quality_models_must_be_distinct: '상향 모델이 겹칩니다.',
+  adaptive_quality_models_invalid: '상향 모델 목록에 카탈로그에 없는 모델이 있습니다.',
+}
 
 export function AutoRoutingSection() {
   const t = useT()
@@ -450,7 +466,15 @@ export function AutoRoutingSection() {
               await loadModels()
               setSaved(true)
             } catch (saveError) {
-              setError(errorMessage(saveError, t('라우팅 설정을 저장하지 못했습니다.')))
+              // The server refuses with a code; the person needs the reason,
+              // not the fact of refusal — 「저장하지 못했습니다」 with the
+              // list still on screen says nothing about which row to fix.
+              const reason = ROUTING_REFUSALS[errorCode(saveError)]
+              setError(
+                reason
+                  ? t(reason)
+                  : errorMessage(saveError, t('라우팅 설정을 저장하지 못했습니다.')),
+              )
             } finally {
               setBusy(false)
             }

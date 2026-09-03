@@ -313,7 +313,9 @@ def test_economy_candidates_fail_closed_and_keep_admin_order() -> None:
         requires_tools=True,
     )
 
-    assert [model["id"] for model in candidates] == ["second", "first", "strict"]
+    # hybrid rides along: the quality model is external, so a candidate that
+    # may fall back outside sends nothing further than the turn already could.
+    assert [model["id"] for model in candidates] == ["second", "hybrid", "first", "strict"]
 
 
 def test_missing_prices_are_not_treated_as_free() -> None:
@@ -349,9 +351,9 @@ def test_missing_prices_are_not_treated_as_free() -> None:
     ("quality_boundary", "expected"),
     [
         ("self_hosted", ["self"]),
-        ("hybrid", ["self"]),
+        ("hybrid", ["self", "hybrid"]),
         ("unknown", ["self"]),
-        ("external", ["self", "external"]),
+        ("external", ["self", "external", "hybrid"]),
     ],
 )
 def test_economy_boundary_never_worsens_quality(
@@ -360,10 +362,11 @@ def test_economy_boundary_never_worsens_quality(
     quality = _model("quality", boundary=quality_boundary, input_cost=10, output_cost=10)
     self_hosted = _model("self", boundary="self_hosted", input_cost=1, output_cost=1)
     external = _model("external", boundary="external", input_cost=1, output_cost=1)
+    hybrid = _model("hybrid", boundary="hybrid", input_cost=1, output_cost=1)
 
     candidates = adaptive_routing.economy_candidates(
-        [quality, self_hosted, external],
-        ["self", "external"],
+        [quality, self_hosted, external, hybrid],
+        ["self", "external", "hybrid"],
         quality_model=quality,
         allowed_model_ids=set(),
         context_tokens=100,
