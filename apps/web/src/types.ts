@@ -684,15 +684,21 @@ export interface Slide {
   layout:
     | 'title'
     | 'section'
+    | 'agenda'
     | 'bullets'
     | 'two-column'
     | 'quote'
+    | 'statement'
     | 'chart'
     | 'table'
     | 'metrics'
+    | 'big-number'
     | 'bands'
     | 'tiles'
     | 'timeline'
+    | 'steps'
+    | 'cards'
+    | 'closing'
   title: string
   /**
    * A section divider's own number — `01.`, `02.` — over its title.
@@ -731,6 +737,10 @@ export interface Slide {
   bands?: [string, string][]
   tiles?: [string, string][]
   timeline?: [string, string][]
+  /** `[단계, 한 줄]` — a procedure across the slide, numbered by position. */
+  steps?: [string, string][]
+  /** `[이름, 한두 줄]` — peers side by side as titled boxes. */
+  cards?: [string, string][]
   /**
    * A bar or line chart drawn from real numbers. Every series carries as many
    * values as there are categories — a short one is not a chart with a gap in

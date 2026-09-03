@@ -72,7 +72,7 @@ import { copyText } from '@/lib/clipboard'
 export function hasContent(slide: Slide): boolean {
   // A divider says the name of the part and nothing else, which is all a
   // divider is for — asked to fill one it would be a table of contents.
-  if (slide.layout === 'title' || slide.layout === 'section') return true
+  if (STRUCTURAL.includes(slide.layout)) return true
   return Boolean(
     slide.bullets?.length ||
       slide.body?.trim() ||
@@ -81,7 +81,9 @@ export function hasContent(slide: Slide): boolean {
       slide.chart ||
       slide.bands?.length ||
       slide.tiles?.length ||
-      slide.timeline?.length,
+      slide.timeline?.length ||
+      slide.steps?.length ||
+      slide.cards?.length,
   )
 }
 
@@ -90,7 +92,7 @@ function overflowRisk(slide: Slide): boolean {
   const titleLoad = Math.ceil((slide.title?.length ?? 0) / 34)
   const bulletLoad = (slide.bullets ?? []).reduce((sum, row) => sum + Math.max(1, Math.ceil(row.length / 38)), 0)
   const tableLoad = (slide.rows ?? []).length * 1.35
-  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0) * 1.6
+  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0, slide.steps?.length ?? 0, slide.cards?.length ?? 0) * 1.6
   const chartLoad = (slide.chart?.categories.length ?? 0) * 0.8 + (slide.chart?.series.length ?? 0) * 0.8
   const scale = slide.textScale ?? 1
   return (titleLoad * 1.5 + bulletLoad + tableLoad + pairLoad + chartLoad) * scale > 10
@@ -148,7 +150,12 @@ function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide
  * editable text, and the save that reads that text back. They did not, and the
  * save was the one that lost.
  */
-const PAIRED = ['bands', 'tiles', 'timeline'] as const
+const PAIRED = ['bands', 'tiles', 'timeline', 'steps', 'cards'] as const
+
+/** Slides that say where the deck is: the cover, the dividers, the 목차. */
+const STRUCTURAL: Slide['layout'][] = ['title', 'section', 'agenda']
+/** Drawn reversed out of the accent, like the cover. */
+const COVERS: Slide['layout'][] = ['title', 'section', 'closing']
 
 /**
  * How Korean breaks across lines, set once on each slide root.
@@ -167,15 +174,22 @@ type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
 const LAYOUTS: { id: Slide['layout']; label: string }[] = [
   { id: 'title', label: '표지' },
+  { id: 'agenda', label: '목차' },
   { id: 'section', label: '구분 장' },
   { id: 'bullets', label: '글머리표' },
   { id: 'two-column', label: '두 단' },
   { id: 'quote', label: '인용문' },
+  { id: 'statement', label: '핵심 메시지' },
   { id: 'table', label: '표' },
   { id: 'metrics', label: '핵심 수치' },
+  { id: 'big-number', label: '큰 숫자' },
+  { id: 'chart', label: '차트' },
   { id: 'bands', label: '항목과 설명' },
-  { id: 'tiles', label: '카드' },
+  { id: 'cards', label: '카드' },
+  { id: 'steps', label: '단계' },
+  { id: 'tiles', label: '표식' },
   { id: 'timeline', label: '연표' },
+  { id: 'closing', label: '마무리' },
 ]
 
 /** Keep only the inline markup the toolbar can create. */
@@ -242,6 +256,8 @@ function pairFields(layout: Paired | null, pairs?: [string, string][]): Partial<
     bands: layout === 'bands' ? pairs : undefined,
     tiles: layout === 'tiles' ? pairs : undefined,
     timeline: layout === 'timeline' ? pairs : undefined,
+    steps: layout === 'steps' ? pairs : undefined,
+    cards: layout === 'cards' ? pairs : undefined,
   }
 }
 
@@ -267,8 +283,15 @@ function relayout(slide: Slide, layout: Slide['layout']): Slide {
     chart: layout === 'chart' ? slide.chart : undefined,
     ...pairFields(null),
   }
-  if (layout === 'title' || layout === 'section' || layout === 'quote') {
+  if (layout === 'title' || layout === 'section' || layout === 'quote' || layout === 'statement') {
     return { ...clean, body: lines.join(' · ') || undefined }
+  }
+  if (layout === 'big-number') {
+    const [first] = pairs.length ? pairs : lines.slice(0, 1).map((line) => ['1', line] as [string, string])
+    return { ...clean, metrics: first ? [first] : [], body: lines.slice(1).join(' · ') || undefined }
+  }
+  if (layout === 'closing') {
+    return { ...clean, bullets: lines.slice(0, 3), body: slide.body || undefined }
   }
   if (layout === 'table') {
     const rows = slide.rows ?? pairs.map(([left, right]) => [left, right])
@@ -597,7 +620,8 @@ export function SlideView({
    * were on. The block is the only thing here that is not type, and it is what
    * makes a deck look like a deck at a glance.
    */
-  if (slide.layout === 'title' || slide.layout === 'section') {
+  if (COVERS.includes(slide.layout)) {
+    const closing = slide.layout === 'closing'
     return (
       <div
         ref={canvas}
@@ -641,13 +665,39 @@ export function SlideView({
           />
         )}
         <h3
-          style={{ fontSize: type(visualStyle === 'poster' ? 30 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: visualStyle === 'minimal' ? '#1a1a1a' : '#fff', maxWidth: visualStyle === 'editorial' ? '78%' : undefined }}
+          style={{ fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: visualStyle === 'minimal' ? '#1a1a1a' : '#fff', maxWidth: visualStyle === 'editorial' ? '78%' : undefined }}
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
-          {rich('title', slide.title)}
+          {rich('title', slide.title || (closing ? t('마무리') : ''))}
         </h3>
-        {slide.body && (
+        {closing && slide.bullets && slide.bullets.length > 0 && (
+          /* What to remember, under the title: a dash and a line each. The
+             farewell goes at the foot, below, set larger. */
+          <ul style={{ marginTop: px(12), fontSize: type(12), lineHeight: 1.6, color: visualStyle === 'minimal' ? '#333' : 'rgba(255,255,255,0.92)' }}>
+            {slide.bullets.slice(0, 3).map((b, i) => (
+              <li key={i} className="flex gap-2">
+                <span style={{ color: visualStyle === 'minimal' ? accent : 'rgba(255,255,255,0.6)' }}>—</span>
+                <span
+                  {...typed(`bullets.${i}`, (text) => ({
+                    bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
+                  }))}
+                >
+                  {rich(`bullets.${i}`, b)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {closing && slide.body ? (
+          <p
+            className="absolute"
+            style={{ left: px(34), bottom: px(30), fontSize: type(15), fontWeight: 700, color: visualStyle === 'minimal' ? accent : '#fff' }}
+            {...typed('body', (text) => ({ body: text }))}
+          >
+            {rich('body', slide.body)}
+          </p>
+        ) : slide.body && (
           <p
             style={{
               fontSize: type(13),
@@ -686,7 +736,28 @@ export function SlideView({
       {visualStyle === 'minimal' && <div className="absolute rounded-full" style={{ width: px(70), height: px(70), right: px(-30), top: px(-35), background: `color-mix(in srgb, ${accent} 12%, transparent)` }} />}
       {visualStyle === 'poster' && index !== undefined && <span className="absolute font-black tabular-nums" style={{ right: px(22), top: px(13), fontSize: type(28), color: `color-mix(in srgb, ${accent} 14%, transparent)` }}>{String(index + 1).padStart(2, '0')}</span>}
 
-      {slide.layout === 'quote' && slide.body ? (
+      {slide.layout === 'statement' ? (
+        /* One phrase set large in the middle, a short rule over it and the
+           sentence that unpacks it under — the presenter's own conclusion. */
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div style={{ width: px(26), height: px(2), background: accent, marginBottom: px(14) }} />
+          <p
+            style={{ fontSize: type(26), fontWeight: 750, lineHeight: 1.25, color: accent, maxWidth: '86%' }}
+            {...typed('title', (text) => ({ title: text }))}
+            {...selectable('title')}
+          >
+            {rich('title', slide.title)}
+          </p>
+          {slide.body && (
+            <p
+              style={{ fontSize: type(11), marginTop: px(10), color: '#555', lineHeight: 1.5, maxWidth: '74%' }}
+              {...typed('body', (text) => ({ body: text }))}
+            >
+              {rich('body', slide.body)}
+            </p>
+          )}
+        </div>
+      ) : slide.layout === 'quote' && slide.body ? (
         <div className="flex flex-1 flex-col justify-center">
           <p style={{ fontSize: type(20), fontWeight: 600, lineHeight: 1.4, color: accent }}>
             “<span {...typed('body', (text) => ({ body: text }))}>{rich('body', slide.body)}</span>”
@@ -701,7 +772,7 @@ export function SlideView({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <h3
-            style={{ fontSize: type(19), fontWeight: 700, lineHeight: 1.25 }}
+            style={{ fontSize: type(18), fontWeight: 700, lineHeight: 1.25 }}
             {...typed('title', (text) => ({ title: text }))}
             {...selectable('title')}
           >
@@ -804,6 +875,44 @@ export function SlideView({
                   ))}
                 </div>
               )}
+              {pairs.length > 0 && slide.layout === 'steps' && (
+                /* Numbered by position, across the slide: a filled square with
+                   the number, the step's name under, what it does under that,
+                   and one tinted rule joining the squares left to right. */
+                <div className="relative flex" style={{ gap: px(8), marginTop: px(8) }}>
+                  {pairs.length > 1 && (
+                    <div className="absolute" style={{ left: px(11), right: `calc(${100 / pairs.length}% - ${px(11)})`, top: px(10), height: px(1), background: tint }} />
+                  )}
+                  {pairs.map(([name, text], i) => (
+                    <div key={i} className="relative flex min-w-0 flex-1 flex-col">
+                      <div
+                        className="grid place-items-center"
+                        style={{ width: px(22), height: px(22), background: accent, color: '#fff', fontSize: type(9), fontWeight: 700 }}
+                      >
+                        {String(i + 1).padStart(2, '0')}
+                      </div>
+                      <div style={{ fontSize: type(10), fontWeight: 700, marginTop: px(7), lineHeight: 1.3 }}>{name}</div>
+                      <div style={{ fontSize: type(8), marginTop: px(3), color: '#666', lineHeight: 1.5 }}>{text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pairs.length > 0 && slide.layout === 'cards' && (
+                /* Titled boxes side by side: a tinted card with an accent rule
+                   over it, the name at the top and the text under it. */
+                <div className="flex" style={{ gap: px(8), marginTop: px(4), height: px(100) }}>
+                  {pairs.map(([name, text], i) => (
+                    <div
+                      key={i}
+                      className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                      style={{ background: tint, borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` }}
+                    >
+                      <div style={{ fontSize: type(10.5), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
+                      <div style={{ fontSize: type(8.5), marginTop: px(5), lineHeight: 1.5 }}>{text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {pairs.length > 0 && slide.layout === 'timeline' && (
                 /* Hung off one rule: the date to its left, what happened to its
                    right. Order is the point, so nothing here reflows it. */
@@ -857,7 +966,32 @@ export function SlideView({
                 </div>
               )}
               {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
-              {metrics.length > 0 && (
+              {metrics.length > 0 && slide.layout === 'big-number' && (
+                /* One figure, very large, its name beside it, and the line
+                   that says what it means under both. */
+                <div className="flex flex-1 flex-col justify-center">
+                  <div className="flex items-baseline" style={{ gap: px(8) }}>
+                    <span
+                      style={{ fontSize: type(46), fontWeight: 750, lineHeight: 1, color: accent }}
+                      {...typed('metrics.0.0', (text) => ({ metrics: [[text, working.current.metrics?.[0]?.[1] ?? '']] }))}
+                    >
+                      {rich('metrics.0.0', metrics[0][0])}
+                    </span>
+                    <span
+                      style={{ fontSize: type(11), color: '#666' }}
+                      {...typed('metrics.0.1', (text) => ({ metrics: [[working.current.metrics?.[0]?.[0] ?? '', text]] }))}
+                    >
+                      {rich('metrics.0.1', metrics[0][1])}
+                    </span>
+                  </div>
+                  {slide.body && (
+                    <p style={{ fontSize: type(11), marginTop: px(10), lineHeight: 1.5 }} {...typed('body', (text) => ({ body: text }))}>
+                      {rich('body', slide.body)}
+                    </p>
+                  )}
+                </div>
+              )}
+              {metrics.length > 0 && slide.layout !== 'big-number' && (
                 /* One card each: the figure large, what it counts under it, and
                    a rule over the top in the accent. Set on the open slide they
                    were three numbers floating in a white field; carded, the eye
@@ -958,15 +1092,45 @@ export function SlideView({
                 </table>
                 </div>
               )}
+              {slide.bullets && slide.layout === 'agenda' && (
+                /* The 목차: `01` in the accent beside each name, down one
+                   column, or two when there are more than four. */
+                <ol
+                  style={{
+                    fontSize: type(11),
+                    ...(slide.bullets.length > 4 ? { columnCount: 2, columnGap: px(20) } : null),
+                  }}
+                >
+                  {slide.bullets.map((b, i) => (
+                    <li
+                      key={i}
+                      className="flex items-baseline"
+                      style={{ gap: px(10), padding: `${px(5)} 0`, borderBottom: `1px solid ${hair}`, breakInside: 'avoid' }}
+                    >
+                      <span className="tabular-nums" style={{ color: accent, fontWeight: 700, fontSize: type(13) }}>
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span
+                        {...typed(`bullets.${i}`, (text) => ({
+                          bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
+                        }))}
+                      >
+                        {rich(`bullets.${i}`, b)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
               {slide.bullets &&
+                slide.layout !== 'agenda' &&
                 rows.length === 0 &&
                 metrics.length === 0 &&
                 pairs.length === 0 &&
                 !chart && (
                 <ul
                   style={{
-                    fontSize: type(13),
-                    lineHeight: 1.7,
+                    fontSize: type(11.5),
+                    lineHeight: 1.65,
                     // A long list down one edge wastes the right half of the
                     // rectangle and pushes the last item off the bottom.
                     // Splitting it is the same content, read in the shape it
@@ -1001,7 +1165,7 @@ export function SlideView({
                 metrics.length === 0 &&
                 !chart && (
                 <p
-                  style={{ fontSize: type(12), color: '#555', marginTop: px(2), lineHeight: 1.6 }}
+                  style={{ fontSize: type(11), color: '#555', marginTop: px(2), lineHeight: 1.6 }}
                   {...typed('body', (text) => ({ body: text }))}
                 >
                   {rich('body', slide.body)}
@@ -1260,11 +1424,13 @@ function SlideDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: S
   const pairs = paired ? slide[paired] ?? [] : slide.metrics ?? []
   const pairLabels = paired === 'timeline'
     ? ['시점', '내용']
-    : slide.layout === 'metrics'
+    : slide.layout === 'metrics' || slide.layout === 'big-number'
       ? ['수치', '설명']
       : paired === 'tiles'
         ? ['표식', '설명']
-        : ['항목', '설명']
+        : paired === 'steps'
+          ? ['단계', '내용']
+          : ['항목', '설명']
 
   if (slide.layout === 'table') {
     const rows = slide.rows ?? []
