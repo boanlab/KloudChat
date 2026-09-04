@@ -11,8 +11,8 @@
 ## Setup
 
 ```bash
-git clone https://github.com/boanlab/KloudChat.git
-cd KloudChat
+git clone https://github.com/boanlab/KloudChat-dev.git
+cd KloudChat-dev
 
 cp .env.example .env
 sed -i "s/^KCHAT_JWT_SECRET=.*/KCHAT_JWT_SECRET=$(openssl rand -hex 32)/" .env
