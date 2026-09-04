@@ -91,6 +91,11 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
     bullets?: string[]
     rows?: string[][]
     metrics?: [string, string][]
+    bands?: [string, string][]
+    tiles?: [string, string][]
+    timeline?: [string, string][]
+    steps?: [string, string][]
+    cards?: [string, string][]
     chart?: unknown
   }[]
   expect(slides.length).toBeGreaterThanOrEqual(5)
@@ -111,9 +116,10 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   // source it is written from actually carries figures.
   for (const slide of slides) {
     expect([
-      'title', 'section', 'bullets', 'quote', 'two-column', 'table', 'metrics', 'chart',
+      'title', 'section', 'agenda', 'bullets', 'quote', 'statement', 'two-column', 'table',
+      'metrics', 'big-number', 'chart',
       // 이 가지에서 더해진 세 쌍 모양 — 이름표 줄·표식·연혁.
-      'bands', 'tiles', 'timeline',
+      'bands', 'tiles', 'timeline', 'steps', 'cards', 'closing',
     ]).toContain(
       slide.layout,
     )
@@ -132,7 +138,9 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
       // "비어 있다" 로 읽혔다.
       (slide.bands?.length ?? 0) +
       (slide.tiles?.length ?? 0) +
-      (slide.timeline?.length ?? 0)
+      (slide.timeline?.length ?? 0) +
+      (slide.steps?.length ?? 0) +
+      (slide.cards?.length ?? 0)
     expect(said, `${slide.layout} 장이 비어 있다: ${slide.title}`).toBeGreaterThan(0)
   }
 

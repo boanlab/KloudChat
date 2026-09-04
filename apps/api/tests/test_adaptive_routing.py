@@ -17,6 +17,12 @@ from app.services import adaptive_routing
 from app.services.context import build_messages
 
 
+def test_regulated_or_legal_actor_questions_are_never_classified_as_low_by_policy() -> None:
+    prompt = adaptive_routing._SYSTEM_PROMPT
+    assert "Questions about law, tax, accounting, regulation" in prompt
+    assert "which actor authorises or issues an official record are always high" in prompt
+
+
 def _model(
     model_id: str,
     *,

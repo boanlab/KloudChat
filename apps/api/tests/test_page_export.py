@@ -154,7 +154,7 @@ def test_a_document_becomes_sections_the_report_exporters_understand():
     sections = page_export.to_sections(_doc_html())
 
     assert [s["heading"] for s in sections] == ["서버 교체 검토", "배경"]
-    assert sections[0]["content"] == "2분기 기술 검토"
+    assert sections[0]["content"] == "2분기 기술 검토\n\n<!-- pagebreak -->"
     # Markdown, because that is what `report_export._markdown_to_lines` reads.
     assert "- 장애 3회" in sections[1]["content"]
 

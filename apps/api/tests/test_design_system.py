@@ -237,6 +237,12 @@ def _pptx_xml(blob: bytes) -> str:
         )
 
 
+def _pptx_parts(blob: bytes) -> dict[str, bytes]:
+    """Compare package contents, not the ZIP member timestamps."""
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        return {name: archive.read(name) for name in archive.namelist()}
+
+
 #: reportlab stamps a creation date and a document id into every file, so two
 #: runs of the same export differ in those bytes and nowhere else. Stripped so
 #: the comparison is about what was drawn.
@@ -249,7 +255,9 @@ def _drawn(blob: bytes) -> bytes:
 
 def test_a_deck_without_a_design_system_exports_exactly_what_it_did_before():
     """The regression this whole change had to avoid."""
-    assert deck_export.to_pptx("제목", _SLIDES) == deck_export.to_pptx("제목", _SLIDES, tokens=None)
+    assert _pptx_parts(deck_export.to_pptx("제목", _SLIDES)) == _pptx_parts(
+        deck_export.to_pptx("제목", _SLIDES, tokens=None)
+    )
     assert _drawn(deck_export.to_pdf("제목", _SLIDES)) == _drawn(
         deck_export.to_pdf("제목", _SLIDES, tokens=None)
     )

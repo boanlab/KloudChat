@@ -205,11 +205,13 @@
   }
 
   /* ── cover ─────────────────────────────────────────────────────── */
-  /* The one inverted slide: the rule goes above the title and the block sits
-     in the bottom third, so the deck opens on the move it then repeats. */
+  /* The one inverted slide. Keep its title on the same measured top rhythm as
+     the exported page. Chromium fragments flex pages differently while
+     printing, so bottom alignment made the browser preview and PDF disagree
+     by almost a full slide even though they shared this file. */
   .slide.cover {
     background: var(--band);
-    justify-content: flex-end;
+    justify-content: flex-start;
     /* The local scale the lead is 0.84em of. */
     font-size: clamp(1.25rem, 2vw, 1.5rem);
   }
@@ -325,11 +327,9 @@
       padding: var(--pad-y) var(--gut) 7%;
     }
     .slide:last-child { page-break-after: auto; break-after: auto; }
-    /* The cover keeps its band now that the page is a slide rather than a
-       sheet: it is the one page of the deck a projector shows before anybody
-       is listening, and on paper it is a tint at the top, not a grey wash over
-       a whole A4. */
-    .slide.cover { justify-content: flex-end; }
+    /* Do not give the cover a print-only alignment. Screen and export are the
+       same composition; only pagination changes here. */
+    .slide.cover { justify-content: flex-start; }
     figure img { max-height: 300pt; }
   }
 

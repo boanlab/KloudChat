@@ -312,6 +312,13 @@ export function AdminUsagePage() {
                         variant="secondary"
                         size="sm"
                         disabled={reclaiming || storage.orphanFiles === 0}
+                        title={
+                          reclaiming
+                            ? t('정리가 끝날 때까지 기다려 주세요')
+                            : storage.orphanFiles === 0
+                              ? t('정리할 고아 파일이 없습니다')
+                              : undefined
+                        }
                         onClick={() => void reclaim()}
                       >
                         {reclaiming ? t('정리하는 중…') : t('고아 파일 정리')}

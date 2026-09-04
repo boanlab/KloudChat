@@ -106,7 +106,7 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
-from app.services.context import build_messages, with_pictures
+from app.services.context import build_messages, requests_web_search, with_pictures
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.registry import build_tools
@@ -2638,13 +2638,19 @@ async def send_message(
             )
         )
     )
+    # The person's sentence can request research as clearly as the separate
+    # toggle does. Resolve that before building tools; doing it near message
+    # assembly was too late and produced a prompt saying search was requested
+    # beside a tool list from which search had already been omitted.
+    explicit_web_search = requests_web_search(content)
+    effective_web_search = payload.web_search or explicit_web_search
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         if not requested_is_strict:
             candidate_tools = sorted(
                 await build_tools(
                     db,
                     user,
-                    web_search=payload.web_search,
+                    web_search=effective_web_search,
                     allowed=agent_tools,
                     knowledge=shelf,
                     knowledge_collection=shelf_key,
@@ -2885,7 +2891,7 @@ async def send_message(
         session.kind,
         wire_history,
         with_tools=bool(tools),
-        web_search=payload.web_search,
+        web_search=effective_web_search,
         # The toggle travels even when no search tool survives an agent allowlist
         # or a strict-local route — otherwise the answer reads like a searched one.
         web_search_available=any(t.name == "web_search" for t in tools),
@@ -2898,7 +2904,7 @@ async def send_message(
     if auto_turn and not auto_preflight_findings:
         unsupported = bool(
             payload.attachments
-            or payload.web_search
+            or effective_web_search
             or payload.activated_skill_ids
             or payload.starting_template_id
             or session.agent_id
@@ -3137,7 +3143,7 @@ async def send_message(
                     ],
                     # A strict-local route is given no network anywhere else, and
                     # a document is not the place to make the one exception.
-                    web_search=payload.web_search and not strict_local,
+                    web_search=effective_web_search and not strict_local,
                 )
             ),
             media_type="text/event-stream",
@@ -3211,7 +3217,7 @@ async def send_message(
                     ],
                     # A strict-local route is given no network anywhere else, and
                     # a document is not the place to make the one exception.
-                    web_search=payload.web_search and not strict_local,
+                    web_search=effective_web_search and not strict_local,
                 )
             ),
             media_type="text/event-stream",
@@ -3252,7 +3258,7 @@ async def send_message(
                     outline_model=outline_model,
                     # A strict-local route is given no network anywhere else, and
                     # a document is not the place to make the one exception.
-                    web_search=payload.web_search and not strict_local,
+                    web_search=effective_web_search and not strict_local,
                 )
             ),
             media_type="text/event-stream",
@@ -3312,7 +3318,7 @@ async def send_message(
                 # first hop is forced; after it the loop is free again.
                 force_tool=(
                     "web_search"
-                    if payload.web_search and any(t.name == "web_search" for t in tools)
+                    if effective_web_search and any(t.name == "web_search" for t in tools)
                     else None
                 ),
             )

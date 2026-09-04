@@ -212,6 +212,12 @@ async def _stream_once(
 #: narration — 「코드를 작성했습니다. 이제 실행해 보겠습니다.」 — not an answer.
 _NARRATION_CHARS = 400
 
+# A search call already fans out into several fetched pages. Three calls give
+# the model enough independent result sets for a fact-check; beyond that the
+# measured behaviour was six near-identical searches and no answer after four
+# minutes. Other tools retain the normal hop budget.
+MAX_WEB_SEARCHES = 3
+
 
 def _repeats(earlier: str, later: str) -> bool:
     """Whether `later` says what `earlier` said — same opening, or most of its lines."""
@@ -256,6 +262,17 @@ def _looks_like_a_source(url: str) -> bool:
 
     parsed = urlparse(url)
     return bool(parsed.netloc) and parsed.path not in ("", "/")
+
+
+def _source_label(url: str) -> str:
+    """A compact, informative label for a URL preserved from a tool result."""
+    from urllib.parse import unquote, urlparse
+
+    parsed = urlparse(url)
+    host = parsed.netloc.removeprefix("www.")
+    leaf = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]).replace("-", " ")
+    leaf = re.sub(r"\s+", " ", leaf).strip()
+    return f"{host} · {leaf[:48]}" if leaf and leaf.lower() not in {"index.html", "index"} else host
 
 
 async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
@@ -587,6 +604,19 @@ async def run_turn(
                 searches += 1
                 empty_searches += int(result.empty)
 
+        if searches >= MAX_WEB_SEARCHES:
+            conversation.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "웹 검색은 충분히 했습니다. 도구를 더 쓰지 말고 지금까지 "
+                        "확인한 자료로 답하세요. 확인하지 못한 항목은 그렇게 밝히고, "
+                        "실제 검색 결과에 있던 URL만 출처로 쓰세요."
+                    ),
+                }
+            )
+            closing = True
+
     # 검색에 없던 링크는 그렇다고 말한다.
     #
     # A literature survey came back with eleven arXiv links, six of which
@@ -620,14 +650,24 @@ async def run_turn(
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}
+    verified_in_answer = {u for u in _urls_in(answer) if u in seen_urls}
+    source_urls = sorted(u for u in seen_urls if _looks_like_a_source(u))
+    if searches and source_urls and not verified_in_answer:
+        # Models occasionally use the evidence correctly but omit its links.
+        # Keep provenance deterministic: append only URLs that a tool actually
+        # returned, never a title or address reconstructed from model memory.
+        appendix = "\n\n### 확인한 출처\n" + "\n".join(
+            f"- [{_source_label(url)}]({url})" for url in source_urls[:5]
+        )
+        answer_text.append(appendix)
+        yield {"type": "delta", "text": appendix}
     unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
     if unverified and seen_urls:
-        yield {
-            "type": "delta",
-            "text": (
-                "\n\n_다음 링크는 이 답을 쓰며 검색·열람한 결과에 없던 것입니다. 기억으로 적은 "
-                "것이니 열어 보고 확인하세요: " + ", ".join(dict.fromkeys(unverified)) + "_"
-            ),
-        }
+        note = (
+            "\n\n_다음 링크는 이 답을 쓰며 검색·열람한 결과에 없던 것입니다. 기억으로 적은 "
+            "것이니 열어 보고 확인하세요: " + ", ".join(dict.fromkeys(unverified)) + "_"
+        )
+        answer_text.append(note)
+        yield {"type": "delta", "text": note}
 
     yield {"type": "usage", **usage}

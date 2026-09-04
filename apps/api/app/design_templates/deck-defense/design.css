@@ -39,6 +39,18 @@ blockquote { font-size: clamp(1.25rem, 2vw, 1.6rem); line-height: 1.45; }
 .slide.ask li strong { color: var(--accent); }
 .slide.ask li { font-size: clamp(1.05rem, 1.5vw, 1.2rem); }
 
+.slide.cover { overflow: hidden; }
+.slide.cover::after {
+  content: "";
+  position: absolute;
+  width: 18rem;
+  height: 18rem;
+  right: -8rem;
+  top: -8rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 @media print {
   .slide.ask { border: 1pt solid var(--accent); padding: 8mm; }
 }
