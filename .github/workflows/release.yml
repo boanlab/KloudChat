@@ -164,15 +164,7 @@ jobs:
           cache-from: type=gha,scope=release-${{ matrix.name }}
           cache-to: type=gha,scope=release-${{ matrix.name }},mode=max
 
-      # Docker Hub shows the README from the registry, not from git. The
-      # public README lives in boanlab/KloudChat; this repository is private.
-      - name: Fetch the public README
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/checkout@v7
-        with:
-          repository: boanlab/KloudChat
-          path: public
-
+      # Docker Hub shows the README from the registry, not from git.
       - name: Sync Docker Hub description
         if: startsWith(github.ref, 'refs/tags/v')
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
@@ -181,4 +173,4 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           short-description: 'KloudChat ${{ matrix.name }} — open-source generative AI workspace'
-          readme-filepath: public/README.md
+          readme-filepath: README.md
