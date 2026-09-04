@@ -1,14 +1,9 @@
-"""도구 호출 한도에 닿아도 답은 나온다.
-
-A model that is still calling tools has written no prose yet, so stopping at
-the cap used to leave the person with one line — 「도구 호출이 5회를 넘어
-중단했습니다」 — and none of what five searches had found. The last hop now
-runs without tools and is told to answer from what it has.
-"""
+"""도구 한도 이후 최종 답변 생성 계약."""
 
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
 
 import pytest
 
@@ -251,7 +246,15 @@ def test_official_sources_sort_before_secondary_sources():
         "https://www.msit.go.kr/bbs/view.do?id=42",
         "https://university.ac.kr/research/7",
     ]
-    assert sorted(urls, key=agent._source_priority)[0].startswith("https://www.msit.go.kr")
+    first = sorted(urls, key=agent._source_priority)[0]
+    assert urlparse(first).hostname == "www.msit.go.kr"
+
+
+def test_official_source_rank_requires_a_domain_boundary():
+    malicious = "https://www.msit.go.kr.attacker.example/report"
+    ordinary = "https://source.example/report"
+    assert agent._source_priority(malicious) == (2, malicious)
+    assert agent._source_priority(ordinary) == (2, ordinary)
 
 
 @pytest.mark.asyncio
