@@ -3,7 +3,12 @@
 # The browser only ever talks to the kchat API. Neither the LiteLLM URL nor the
 # master key reaches this image — every model call is made server-side by the
 # API process.
-FROM node:22-alpine AS build
+# The bundle is the same bytes on every architecture, so the build stage runs
+# on the machine doing the building. Under QEMU the arm64 half of a
+# multi-platform build never finishes — rolldown, the native bundler behind
+# Vite, hangs at "rendering chunks" until the runner's six-hour limit kills
+# the job. Only the nginx stage below is really built per platform.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 
 # Dependency layer kept separate from source: a source-only rebuild skips the
