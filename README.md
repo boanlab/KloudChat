@@ -6,13 +6,13 @@
 
 Chat · Reports · Slides · Images · Audio &amp; Video
 
-[![CI](https://github.com/boanlab/KloudChat/actions/workflows/ci.yml/badge.svg)](https://github.com/boanlab/KloudChat/actions/workflows/ci.yml)
-[![Release](https://github.com/boanlab/KloudChat/actions/workflows/release.yml/badge.svg)](https://github.com/boanlab/KloudChat/actions/workflows/release.yml)
+[![CI](https://github.com/boanlab/KloudChat-dev/actions/workflows/ci.yml/badge.svg)](https://github.com/boanlab/KloudChat-dev/actions/workflows/ci.yml)
+[![Release](https://github.com/boanlab/KloudChat-dev/actions/workflows/release.yml/badge.svg)](https://github.com/boanlab/KloudChat-dev/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776ab.svg)](apps/api/pyproject.toml)
 [![React 19](https://img.shields.io/badge/react-19-61dafb.svg)](apps/web/package.json)
 
-[Quick start](#quick-start) · [Architecture](docs/architecture.md) · [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md) · [Contributing](CONTRIBUTING.md)
+[Deploy](https://github.com/boanlab/KloudChat) · [Quick start](#quick-start) · [Architecture](docs/architecture.md) · [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -115,11 +115,14 @@ tools fail, and they fail honestly with "not connected".
 
 ## Quick start
 
+This is the source tree. To run KloudChat from the published images, use
+[`boanlab/KloudChat`](https://github.com/boanlab/KloudChat) instead; it carries the install guide.
+
 Requirements: Docker with Compose v2, and about 2 GB of free disk for images.
 
 ```bash
-git clone https://github.com/boanlab/KloudChat.git
-cd KloudChat
+git clone https://github.com/boanlab/KloudChat-dev.git
+cd KloudChat-dev
 
 cp .env.example .env
 sed -i "s/^KCHAT_JWT_SECRET=.*/KCHAT_JWT_SECRET=$(openssl rand -hex 32)/" .env

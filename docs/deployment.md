@@ -54,9 +54,12 @@ explicit "not connected".
 
 ## Install
 
+From the published images, [`boanlab/KloudChat`](https://github.com/boanlab/KloudChat) is the shorter path.
+From this checkout:
+
 ```bash
-git clone https://github.com/boanlab/KloudChat.git
-cd KloudChat
+git clone https://github.com/boanlab/KloudChat-dev.git
+cd KloudChat-dev
 
 cp .env.example .env
 ```
