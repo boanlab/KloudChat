@@ -76,12 +76,7 @@ class _SkillDb:
 
 
 class _SeedDb:
-    """Answers the catalogue seeder by table rather than by call order.
-
-    It used to count calls and hand back whatever the third one wanted, which
-    passed for exactly as long as the seeder asked its questions in the order
-    it was written in.
-    """
+    """Answers the catalogue seeder by table rather than by call order."""
 
     def __init__(
         self,
@@ -92,8 +87,7 @@ class _SeedDb:
     ):
         self.rows = rows
         self.agents: list[Agent] = list(agents or [])
-        #: Other accounts' rows — the copies people took from the catalogue.
-        #: The seeder reaches them only through a query that names an origin.
+        #: Other accounts' copies; reached only through a query naming an origin.
         self.copies: list[Agent] = list(copies or [])
 
     async def exec(self, query):
@@ -105,7 +99,7 @@ class _SeedDb:
             if clause is not None and "origin_id" in str(clause):
                 return _Result(rows=[row for row in self.copies if _matches(row, clause)])
             return _Result(rows=self.agents)
-        # The row lock the seeder takes on the owning account.
+        # The seeder's row lock on the owning account.
         return _Result()
 
     def add(self, row):
@@ -145,8 +139,7 @@ class _RefreshDb:
     async def exec(self, query):
         table = _query_table(query)
         if table == "refresh_tokens":
-            # The query carries the digest as a bound parameter. Matching its
-            # compiled params keeps this fake honest across successive rotates.
+            # The digest is a bound parameter of the query.
             digest = next(iter(query.compile().params.values()))
             return _Result(rows=[row for row in self.tokens if row.token_hash == digest])
         if table == "agents":
@@ -379,8 +372,7 @@ async def test_the_catalog_is_published_and_its_agents_point_at_its_skills():
     assert all(row.visibility is Visibility.org for row in db.rows)
     assert all(agent.visibility is Visibility.org for agent in db.agents)
     assert all(agent.catalog_key for agent in db.agents)
-    # Ids of rows that exist, not seeder slugs: an allow-list naming nothing
-    # applies no skill at all, and says nothing while it does.
+    # Allow-lists name row ids, not seeder slugs.
     ids = {row.id for row in db.rows}
     referenced = {skill_id for agent in db.agents for skill_id in (agent.skill_ids or [])}
     assert referenced and referenced <= ids
@@ -388,12 +380,7 @@ async def test_the_catalog_is_published_and_its_agents_point_at_its_skills():
 
 @pytest.mark.asyncio
 async def test_the_catalog_adopts_rows_seeded_before_it_existed():
-    """An instance that already ran the old per-account seeder.
-
-    The administrator's own copies *are* the catalogue. Creating a second set
-    beside them would leave the store listing two of everything, one of them
-    the one the admin has been editing.
-    """
+    """Existing admin copies become the catalogue instead of being duplicated."""
     legacy_agent = Agent(
         id="agent-1",
         owner_id="admin-1",
@@ -412,13 +399,7 @@ async def test_the_catalog_adopts_rows_seeded_before_it_existed():
 
 @pytest.mark.asyncio
 async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays():
-    """A copy taken into an account is the catalogue's wording, frozen.
-
-    When the tutor learns to say 「잘못 들린 것 같아요」 instead of following a
-    misheard sentence out of the lesson, the person who took the tutor last
-    week should get that too — unless they rewrote the prompt, in which case
-    the row is theirs and the seeder keeps its hands off it.
-    """
+    """An unedited copy follows catalogue rewording; an edited one is left alone."""
     spec = next(row for row in starter._AGENTS if row["key"] == "english-tutor")
     catalogue = Agent(
         id="agent-1",
@@ -447,13 +428,7 @@ async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays()
 
 @pytest.mark.asyncio
 async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
-    """The administrator's existing copies already carry catalogue keys.
-
-    An older sync wrote them, for backfill rather than for sharing. Reading a
-    key as "already set up" left every skill private while the agents beside
-    them published — a store with half a catalogue in it, which is the one
-    outcome this whole change exists to avoid.
-    """
+    """Admin copies that already carry catalogue keys are still published."""
     existing = _skill(
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
@@ -469,11 +444,7 @@ async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
 
 @pytest.mark.asyncio
 async def test_an_entry_retired_after_setup_stays_retired():
-    """Switching a published entry back to 개인 is how one is withdrawn.
-
-    The next sign-in must not undo it, or the only way to withdraw an entry
-    would be to delete a row the catalogue puts straight back.
-    """
+    """An entry switched back to 개인 is not republished on the next sign-in."""
     db = _SeedDb([])
     await starter.seed_catalog(db, "admin-1")
     retired = next(row for row in db.rows if row.catalog_key == "citation")
@@ -486,12 +457,7 @@ async def test_an_entry_retired_after_setup_stays_retired():
 
 @pytest.mark.asyncio
 async def test_catalog_sync_costs_an_ordinary_account_nothing():
-    """It runs on every sign-in and every rotation, for one account in the workspace.
-
-    A fake that raises on any query is the assertion: an ordinary user must not
-    reach the database here at all, let alone be handed a copy of the
-    catalogue the way every account used to be.
-    """
+    """Catalogue sync never queries the database for an ordinary account."""
 
     class _Forbidden:
         async def exec(self, query):
@@ -504,7 +470,7 @@ async def test_catalog_sync_costs_an_ordinary_account_nothing():
 
 @pytest.mark.asyncio
 async def test_catalog_sync_skips_an_admin_who_does_not_hold_the_catalog():
-    """A second administrator appointed later does not get a second catalogue."""
+    """A second administrator does not get a second catalogue."""
     elder = User(id="admin-1", email="a@x", password_hash="x", name="A", role=UserRole.admin)
 
     class _OneAdmin:
@@ -635,19 +601,12 @@ def test_wire_contract_rejects_more_than_three_skills():
 
 
 def test_a_new_agent_inherits_rather_than_denies():
-    """Omitted means inherit, the same as explicit null.
-
-    It used to mean least privilege — `[]` — and the screen never sends the
-    fields, so every agent made in the UI was born with skills and tools
-    hard-denied: activating a skill on it answered 422, and no tool was ever
-    offered. Least privilege is still one explicit `[]` away for the caller
-    that wants it; a default nobody chose is not a privilege decision.
-    """
+    """Omitted `tools`/`skill_ids` mean inherit, the same as explicit null."""
     agent = AgentIn(name="New agent")
     skill = SkillIn(name="New skill")
     assert agent.tools is None
     assert agent.skill_ids is None
-    # Explicit lockdown still works exactly as before.
+    # Explicit `[]` is still a lockdown.
     locked = AgentIn(name="Locked", tools=[], skill_ids=[])
     assert locked.tools == []
     assert locked.skill_ids == []
@@ -773,9 +732,7 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
         return await auth_router.refresh(request, Response(), db)
 
     assert (await rotate("first")).access_token == "access"
-    # Rotation used to carry a catalogue sync for every account, which is how a
-    # sign-in came to write eight skill rows. The catalogue is one account's
-    # now: this one keeps the copies it holds, untouched and unclaimed.
+    # Rotation syncs no catalogue for an ordinary account.
     assert len(db.skills) == 1
     assert edited.body == "내가 고친 절차"
     assert edited.catalog_key is None
@@ -917,8 +874,7 @@ async def test_document_routes_propagate_separate_context_after_prewrite_validat
     async for _chunk in response.body_iterator:
         pass
 
-    # Workspace ownership, surface, selected-skill and required-tool checks run
-    # before the user Message or credit transaction becomes durable.
+    # Ownership, surface, skill and tool checks run before anything is persisted.
     assert validation_state == [(0, 0, set())]
     assert sum(isinstance(row, Message) for row in db.added) == 1
     assert db.commits == 1
@@ -1078,8 +1034,7 @@ def _assert_document_payload_boundaries(
 
 @pytest.mark.asyncio
 async def test_report_upstream_payloads_keep_workspace_context_role_separated(monkeypatch):
-    # 개요 한 번, 초안 한 번. The draft writes every section in one call, so
-    # nothing is left for the per-section pass — two upstream posts.
+    # 개요 한 번, 초안 한 번: two upstream posts.
     responses = [
         '{"title":"검증 보고서","sections":["요약","분석","결론"]}',
         "## 요약\n요약 본문\n\n## 분석\n분석 본문\n\n## 결론\n결론 본문",
@@ -1125,7 +1080,7 @@ async def test_deck_upstream_payloads_keep_workspace_context_role_separated(monk
             '"slides":[{"title":"검증 발표","layout":"title"},'
             '{"title":"핵심 분석","layout":"bullets"}]}'
         ),
-        # The draft: the whole deck in one answer, so no per-slide call follows.
+        # The whole deck in one answer; no per-slide call follows.
         '{"slides":[{"title":"검증 발표","layout":"title","notes":""},'
         '{"title":"핵심 분석","layout":"bullets","bullets":["역할 분리","참고 데이터 격리"],'
         '"notes":"경계를 설명한다."}]}',
@@ -1204,10 +1159,7 @@ def test_send_and_compare_http_contract_rejects_four_skills_before_route(
 
 
 def test_an_installed_copy_passes_the_agents_allowlist():
-    """A store install is a copy with its own id and `origin_id` back to the
-    shared row. An agent whose allowlist names the shared row has allowed that
-    procedure, and the copy is that procedure — a new account's first natural
-    path (browse store → install → use the shared agent) answered 422."""
+    """A store-installed copy passes an allowlist naming its `origin_id`."""
     import inspect
 
     from app.services import workspace_context

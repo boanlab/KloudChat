@@ -1,12 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * The history screen exists for two jobs the sidebar cannot do: clearing a run
- * of test conversations, and emptying the account before handing over the
- * screen. Both are irreversible, so both are tested against what the server
- * actually holds afterwards rather than against what the list looks like.
- */
+/** 대화 기록: selected and whole-account deletion, checked against the server. */
 test('여러 대화를 골라 한 번에 지운다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -36,16 +31,14 @@ test('여러 대화를 골라 한 번에 지운다', async ({ page }) => {
   }, titles)
 
   await page.goto('/history')
-  // Filter first: a "select everything visible" must not reach past what is
-  // on screen.
+  // Filter first: 전체 선택 covers only what is on screen.
   await page.getByLabel('대화 검색').fill(`기록삭제 A ${stamp}`)
   await page.getByRole('button', { name: '보이는 항목 전체 선택' }).click()
   await page.getByRole('button', { name: /선택 1개 삭제/ }).click()
-  // Same question 모든 대화 삭제 has always asked; the picked set is just as final.
   await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page.getByText(/1개의 대화를 삭제했습니다/)).toBeVisible({ timeout: 20_000 })
 
-  // A survived, B did not — checked against the server, not the rendered list.
+  // Checked against the server.
   const left = await page.evaluate(async (names) => {
     const login = await fetch('/api/auth/login', {
       method: 'POST',
@@ -66,9 +59,7 @@ test('여러 대화를 골라 한 번에 지운다', async ({ page }) => {
 
 test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', async ({ page }) => {
   test.setTimeout(180_000)
-  // A throwaway account of its own. Run against the shared one this would empty
-  // the conversations every other spec reaches for — a test that passes by
-  // breaking its neighbours.
+  // A throwaway account: the shared one must not be emptied.
   const owner = {
     email: `e2e-history-${Date.now().toString(36)}@example.com`,
     password: 'history-playwright-pass',
@@ -100,7 +91,6 @@ test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', a
     })
   }, owner)
 
-  // Sign in as the throwaway account in the browser.
   await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST' }))
   await page.goto('/')
   await page.getByLabel('이메일').fill(owner.email)
@@ -109,12 +99,9 @@ test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', a
     page.waitForResponse((r) => r.url().includes('/api/auth/login') && r.request().method() === 'POST'),
     page.locator('form').getByRole('button', { name: '로그인' }).click(),
   ])
-  // Signed in and inside the app shell. Read off the sidebar toggle rather
-  // than a sidebar link: the sidebar itself is a drawer below 1024px, and what
-  // is being checked here is the login, not the navigation.
   await expect(page.getByRole('button', { name: '사이드바 토글' })).toBeVisible({ timeout: 20_000 })
 
-  // Two conversations and one artifact, so "what survives" has something to say.
+  // Two conversations and one artifact.
   await page.evaluate(async () => {
     for (let i = 0; i < 2; i++) {
       await fetch('/api/sessions', {
@@ -147,11 +134,9 @@ test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', a
   expect(seeded).toBeGreaterThan(0)
 
   await page.goto('/history')
-  // Scoped to the dialog: the page itself also warns that deleting is
-  // permanent, and an unscoped match resolves to both.
+  // Scoped to the dialog: the page also warns that deleting is permanent.
   const dialog = page.getByRole('dialog')
   await page.getByRole('button', { name: '모든 대화 삭제' }).click()
-  // Nothing happens until the dialog is answered.
   await expect(dialog.getByText(/되돌릴 수 없습니다/)).toBeVisible()
   await dialog.getByRole('button', { name: '취소' }).click()
   await expect(dialog).toHaveCount(0)
@@ -176,6 +161,6 @@ test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', a
     }
   }, owner)
   expect(after.sessions).toBe(0)
-  // The work outlives the conversation around it.
+  // Artifacts survive.
   expect(after.artifacts).toBe(1)
 })

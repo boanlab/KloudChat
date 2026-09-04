@@ -1,19 +1,10 @@
-"""The path external tools take to this instance's models.
-
-LiteLLM lives on the private network and this API is the only thing a browser
-can reach, so an OpenAI- or Anthropic-compatible client — a coding agent, say —
-has to come through here.
+"""Reverse proxy from external OpenAI/Anthropic-compatible clients to LiteLLM.
 
     OPENAI_BASE_URL=https://<this-server>/llm/v1
     ANTHROPIC_BASE_URL=https://<this-server>/llm
 
-**Authentication is by key, not by session.** The incoming Authorization header
-is forwarded upstream unchanged and LiteLLM decides whether it is valid, because
-that key *is* a LiteLLM virtual key. Spend, budget and the model allow-list all
-follow it, so this path cannot grant more than the user already has.
-
-The master key never travels this way. With no credential to forward, upstream
-answers 401.
+Authentication is by key, not session: the Authorization header is forwarded
+unchanged and LiteLLM validates it. The master key is never attached.
 """
 
 from __future__ import annotations
@@ -35,7 +26,7 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 _DROP_REQUEST = {"host", "content-length", "connection", "accept-encoding"}
 _DROP_RESPONSE = {"content-length", "content-encoding", "transfer-encoding", "connection"}
 
-#: A coding agent's turn is long. Same value as the chat timeout.
+#: Same as the chat timeout: a coding agent's turn is long.
 _TIMEOUT = httpx.Timeout(settings.chat_timeout_sec, connect=10.0)
 
 
@@ -80,8 +71,6 @@ async def proxy(path: str, request: Request) -> Response:
 
     async def relay():
         try:
-            # Relayed chunk by chunk. Collecting first would make streaming
-            # not streaming.
             async for chunk in upstream.aiter_raw():
                 yield chunk
         finally:

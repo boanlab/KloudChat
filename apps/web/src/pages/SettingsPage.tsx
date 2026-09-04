@@ -12,20 +12,11 @@ import { PreferencesTab } from './settings/PreferencesTab'
 import { ProfileTab } from './settings/ProfileTab'
 import { useT } from '@/lib/useT'
 
-/**
- * Settings as routes rather than one long page.
- *
- * A single scroll held account details, model defaults, behaviour toggles, and
- * proxy credentials — four audiences in one column, and nothing linkable. Each
- * tab is a URL now, so "Settings → System" is something you can send someone.
- */
 const tabs = [
   { to: '/settings', label: '프로필', end: true },
   { to: '/settings/preferences', label: '환경설정', end: false },
   { to: '/settings/personalization', label: '개인 맞춤 설정', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
-  // Was 접속기록, when the tab held only the record. It now leads with the
-  // live sign-ins and what to do about them.
   { to: '/settings/access', label: '보안', end: false },
 ]
 
@@ -33,9 +24,6 @@ export function SettingsPage() {
   const t = useT()
   const { logout } = useStore()
   const navigate = useNavigate()
-  // Every tab here is about the person looking at it, so there is nothing to
-  // filter any more — System moved to the admin screens, where it belongs.
-  const visible = tabs
 
   return (
     <>
@@ -58,7 +46,7 @@ export function SettingsPage() {
         />
 
         <div role="tablist" className="mb-5 flex gap-1 border-b border-line">
-          {visible.map((tab) => (
+          {tabs.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}

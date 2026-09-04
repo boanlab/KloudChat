@@ -16,19 +16,6 @@ import { SignupSection } from './settings/SignupSection'
 import { TemplatesSection } from './settings/TemplatesSection'
 import { ToolsSection } from './settings/ToolsSection'
 
-/**
- * Instance configuration — routed, the way 설정 is.
- *
- * Its own screen rather than a tab inside Settings: everything there is about
- * the person looking at it, and this is about the deployment. But one column
- * held eight unrelated jobs, so "the branding is under System, keep scrolling"
- * was the only way to send somebody here. Each job is a URL now, and the tab
- * you are on is also the save button you are looking for.
- *
- * Grouped by what an operator came to do rather than by what talks to what:
- * the proxy, which model answers, which surfaces exist, the forms and the look
- * the organisation puts in front of people, and the relay.
- */
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
   { to: '/admin/system/routing', label: '라우팅', end: false },
@@ -39,7 +26,7 @@ const tabs = [
   { to: '/admin/system/signup', label: '회원 가입', end: false },
 ]
 
-/** A heading and the one line that says why the group is worth touching. */
+/** Titled section with a one-line description. */
 function Group({
   title,
   description,
@@ -60,8 +47,7 @@ function Group({
 
 export function AdminSystemPage() {
   const t = useT()
-  // Fetched here rather than in each tab: four of the six read the same
-  // document, and a save on one of them changes what the others show.
+  // Shared by several tabs; a save in one refreshes the others.
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const reload = useCallback(async () => {
     const data = await adminApi.settings().catch(() => null)
@@ -81,9 +67,7 @@ export function AdminSystemPage() {
           description={t('이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.')}
         />
 
-        {/* Its own scroll container: six Korean labels are wider than a phone,
-            and a tab strip that pushes the page sideways is worse than one you
-            swipe. */}
+        {/* Scrolls horizontally: the labels overflow a phone width. */}
         <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
           {tabs.map((tab) => (
             <NavLink
@@ -117,9 +101,6 @@ export function AdminSystemPage() {
                 >
                   <AutoRoutingSection />
                 </Group>
-                {/* Beside it because both are questions about which model runs
-                    which call — one for chat turns, one for the call that plans
-                    a document. */}
                 <OutlineModelSection />
               </div>
             }

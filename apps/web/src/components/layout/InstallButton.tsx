@@ -4,13 +4,13 @@ import { Button, Modal } from '@/components/ui'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useT } from '@/lib/useT'
 
-/** Chrome's deferred install prompt — not in lib.dom yet. */
+/** Chrome's deferred install prompt; not in lib.dom. */
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-/** The prompt arrives once, early, and often before this component mounts. */
+// The event fires once, early, usually before this component mounts.
 let deferred: BeforeInstallPromptEvent | null = null
 const listeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -30,14 +30,7 @@ const isApple = () =>
   // iPadOS reports itself as a Mac; the touch points give it away.
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
-/**
- * 앱 설치. On a phone or tablet, left of the language toggle.
- *
- * Where the browser offers an install prompt (Chrome, Edge, Samsung) the
- * button shows it. Safari has no prompt — installing is 공유 → 홈 화면에
- * 추가 — so there the button says how. Hidden once the app is running as one,
- * and on a desktop, where the address bar already carries the offer.
- */
+/** PWA install button for touch devices; Safari has no prompt, so it shows instructions. */
 export function InstallButton() {
   const t = useT()
   const touch = useMediaQuery('(hover: none) and (pointer: coarse)')

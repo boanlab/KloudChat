@@ -1,10 +1,4 @@
-"""「가져갈 수는 있되 세부 내용을 비공개로」.
-
-A shared agent may be taken two ways. `open`: the copy carries the prompt and
-is the taker's to edit. `sealed`: the copy runs on the original's prompt
-without ever holding it — the store shows the card, the copy answers the way
-the card promised, and the instructions never leave their author.
-"""
+"""A `sealed` copy runs on the original's prompt without ever holding it; `open` carries it."""
 
 from __future__ import annotations
 

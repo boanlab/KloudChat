@@ -1,8 +1,4 @@
-/**
- * Settings tabs and the admin system screen — which is now tabs too.
- *
- * Run with: npx playwright test e2e/settings.spec.ts --project=desktop
- */
+/** Settings tabs and the admin system tabs. */
 
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
@@ -25,14 +21,12 @@ test('설정이 탭으로 나뉘고 각 탭이 URL을 가진다', async ({ page 
   await page.getByRole('tab', { name: 'API 키' }).click()
   await expect(page).toHaveURL(/\/settings\/keys$/)
 
-  // Deep-linkable: a reload lands on the same tab.
+  // Deep-linkable.
   await page.reload()
   await expect(page).toHaveURL(/\/settings\/keys$/)
   await expect(page.getByRole('tab', { name: 'API 키' })).toBeVisible({ timeout: 20_000 })
 
-  // Instance configuration is not here any more. Every tab on this screen is
-  // about the person looking at it; the proxy and the mail relay are about the
-  // deployment, and they moved to the admin screens (see nav-usage.spec.ts).
+  // Instance configuration lives on the admin screens.
   await expect(page.getByRole('tab', { name: '시스템' })).toHaveCount(0)
 })
 
@@ -44,15 +38,12 @@ test('기본 모델도 단가와 데이터 경계를 보고 고른다', async ({
 
   await chat.click()
   const menu = page.getByRole('menu')
-  // The composer's menu, so what governance asks about — the credit rate and
-  // where the text goes — is on screen for the default too.
+  // The composer's menu: credit rate and data boundary are shown.
   await expect(menu.getByText(/크레딧|1k당/).first()).toBeVisible()
-  // Auto is a property of one conversation. There is none here, so it is not
-  // offered rather than offered and inert.
+  // Auto belongs to a conversation; none here.
   await expect(menu.getByText('Auto · 비용 절약')).toHaveCount(0)
 
-  // 메뉴에는 모델 행이 아닌 버튼(검색 지우기 등)도 있다 — 공급자 표기
-  // '·' 를 가진 행만이 클릭하면 기본값이 바뀌는 행이다.
+  // Only rows with the '·' vendor separator are model rows.
   const others = menu
     .locator('button')
     .filter({ hasText: '·' })
@@ -61,7 +52,7 @@ test('기본 모델도 단가와 데이터 경계를 보고 고른다', async ({
   await others.first().click()
   await expect(chat).not.toHaveAttribute('aria-label', before)
 
-  // Same store action as the old select, so the choice still survives a reload.
+  // Survives a reload.
   const after = (await chat.getAttribute('aria-label')) ?? ''
   await page.reload()
   await expect(page.getByRole('button', { name: /^챗: / })).toHaveAttribute('aria-label', after, {
@@ -88,7 +79,7 @@ test('관리자 시스템이 탭으로 나뉘고 각 탭이 URL을 가진다', a
   await page.getByRole('tab', { name: '라우팅' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/routing$/)
   await expect(page.getByRole('heading', { name: '모델 자동 라우팅' })).toBeVisible()
-  // The point of the split: the proxy is no longer part of this scroll.
+  // The proxy is not on this tab.
   await expect(page.getByLabel(/LiteLLM 주소/)).toHaveCount(0)
 
   await page.getByRole('tab', { name: '기능' }).click()
@@ -106,19 +97,17 @@ test('관리자 시스템이 탭으로 나뉘고 각 탭이 URL을 가진다', a
 
   await page.getByRole('tab', { name: '메일' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/mail$/)
-  // One tab, one save unit: this is the only 저장 button on it.
+  // One tab, one save unit.
   await expect(page.getByRole('button', { name: '메일 설정 저장' })).toBeVisible()
 
-  // Deep-linkable: a reload lands on the same tab, so the URL is something you
-  // can send to whoever has to fill the relay in.
+  // Deep-linkable.
   await page.reload()
   await expect(page).toHaveURL(/\/admin\/system\/mail$/)
   await expect(page.getByRole('button', { name: '메일 설정 저장' })).toBeVisible({
     timeout: 20_000,
   })
 
-  // A path no tab claims falls back to the first one rather than to an empty
-  // page.
+  // An unclaimed path falls back to the first tab.
   await page.goto('/admin/system/nowhere')
   await expect(page).toHaveURL(/\/admin\/system$/)
   await expect(page.getByLabel(/LiteLLM 주소/)).toBeVisible({ timeout: 20_000 })
@@ -126,14 +115,12 @@ test('관리자 시스템이 탭으로 나뉘고 각 탭이 URL을 가진다', a
 
 test('시스템 화면이 연결 상태를 보여 주고 마스터 키는 노출하지 않는다', async ({ page }) => {
   await page.goto('/admin/system')
-  // The settled state, not the loading one: /LiteLLM 에 연결/ also matches the
-  // "checking connection status" string, which would pass before any data
-  // lands.
+  // The settled state: /LiteLLM 에 연결/ alone also matches the checking string.
   await expect(page.getByText(/LiteLLM 에 연결(되어 있습니다|되지 않았습니다)/)).toBeVisible({
     timeout: 20_000,
   })
 
-  // The key field starts empty even though a key is configured.
+  // The key field starts empty even with a key configured.
   await expect(page.getByLabel(/마스터 키/)).toHaveValue('')
 
   await page.getByRole('button', { name: '연결 테스트', exact: true }).click()
@@ -148,8 +135,7 @@ test('모델 목록을 새로고침하면 몇 종을 받아 왔는지 알려 준
     timeout: 20_000,
   })
 
-  // The point of the button is that it goes to the server rather than reusing
-  // what the screen already has, so watch for the request as well as the text.
+  // Watch for the request as well as the text.
   const [refreshed] = await Promise.all([
     page.waitForResponse(
       (r) => r.url().includes('/api/models/refresh') && r.request().method() === 'POST',
@@ -165,16 +151,13 @@ test('모델 목록을 새로고침하면 몇 종을 받아 왔는지 알려 준
 
 test('잘못된 주소를 저장하면 연결이 끊기고, 되돌리면 복구된다', async ({ page }) => {
   await page.goto('/admin/system')
-  // Wait for the form to hold the real value before typing over it. Filling
-  // while the fetch is still in flight raced the state update and left the two
-  // addresses concatenated in the box.
+  // Wait for the form to hold the real value before typing over it.
   await expect(page.getByLabel(/LiteLLM 주소/)).not.toHaveValue('', { timeout: 20_000 })
 
   try {
     await page.getByLabel(/LiteLLM 주소/).fill('http://nowhere.invalid:9999')
     await expect(page.getByLabel(/LiteLLM 주소/)).toHaveValue('http://nowhere.invalid:9999')
-    // Anchored on the field rather than on the page: the tab it belongs to is
-    // the save unit, and this says so out loud.
+    // The tab's own 저장.
     await page
       .locator('label', { hasText: 'LiteLLM 주소' })
       .locator('xpath=ancestor::*[.//button][1]')
@@ -183,12 +166,7 @@ test('잘못된 주소를 저장하면 연결이 끊기고, 되돌리면 복구�
       .click()
     await expect(page.getByText('LiteLLM 에 연결되지 않았습니다')).toBeVisible({ timeout: 30_000 })
   } finally {
-    // This test writes *instance-wide* configuration. Leaving a bad proxy behind
-    // does not fail one test, it fails every test after it — and the running
-    // instance with it. The revert runs even when the assertion does not.
-    //
-    // Through the UI rather than the API: the access token lives in page memory,
-    // so `page.request` would go out unauthenticated.
+    // Instance-wide configuration: always revert. Through the UI, since `page.request` has no token.
     await page
       .getByRole('button', { name: '환경변수로 되돌리기' })
       .click({ timeout: 15_000 })

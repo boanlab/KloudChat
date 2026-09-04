@@ -1,20 +1,9 @@
 """Writing an HTML artifact, block by block.
 
-The third document track, beside `report` (markdown sections) and `deck` (JSON
-slides). Same two-pass shape as both, and for the same reason: an outline call
-names the blocks so the panel can show the whole thing before any of it
-exists, then each block is written on its own call carrying what the earlier
-ones said.
-
-What is different is who owns the layout. The model never sees the seed and
-never writes a `<style>`, a `class` or a `<section>`: it writes the *inside* of
-one block, and `design_templates.assemble` puts that inside the structure the
-seed styles. A model that ignores the vocabulary produces a plain paragraph in
-the right place rather than a broken page.
-
-The whole file is one artifact. There is no headless browser in this image, so
-the way it becomes a PDF is the reader's own print dialogue — every seed
-carries the `@media print` rules that make that work.
+Two-pass like the `report` and `deck` tracks: an outline call names the
+blocks, then each block is written on its own call. The model writes only the
+inside of a block; `design_templates.assemble` places it in the seed's
+structure, so an off-vocabulary answer degrades to a plain paragraph.
 """
 
 from __future__ import annotations
@@ -40,11 +29,9 @@ log = logging.getLogger(__name__)
 #: One model call per block, so this is the multiplier on the bill.
 _MIN_BLOCKS = 4
 _MAX_BLOCKS = 24
-#: A deck is allowed what the plain slide track allows. 「30장」 on a 서식 used
-#: to come back as 24 with no word said — the document ceiling applied to
-#: slides, where a lecture deck of thirty is an ordinary request.
+#: Deck templates get the slide track's ceiling.
 _MAX_SLIDES = 50
-#: Ceiling when no count was asked for, separate from the cap above.
+#: Ceiling when no count was asked for.
 _DEFAULT_MAX = 10
 
 #: Waits between retries of a rate-limited call, in seconds.
@@ -95,8 +82,7 @@ HTML 조각만 답하라. 설명, 코드 울타리, `<html>`·`<body>`·`<style>
 
 원래 요청: {request}"""
 
-#: What each surface calls its parts, so the prompts read like the thing being
-#: made rather than like a schema.
+#: What each surface calls its parts, so the prompts read naturally.
 _WORDS = {
     "deck": ("발표 자료", "장"),
     "document": ("문서", "절"),
@@ -110,11 +96,7 @@ def _text(payload: dict[str, Any]) -> str:
 async def _complete(
     model: str, messages: list[dict[str, str]], api_key: str, max_tokens: int
 ) -> tuple[str, dict[str, int]]:
-    """One non-streaming call. Same contract and retry as `deck._complete`.
-
-    A page is one call per block in a row, so it meets a shared rate limit for
-    the same reason a deck does.
-    """
+    """One non-streaming call with 429 retry. Same contract as `deck._complete`."""
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -128,10 +110,8 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # See `thinking.NO_REASONING`: a reasoning model asked for
-                    # one block of markup spends the whole ceiling thinking and
-                    # answers with nothing. Dropped by the proxy for providers
-                    # that do not know it.
+                    # See `thinking.NO_REASONING`; dropped by the proxy for
+                    # providers that do not know it.
                     "reasoning": thinking.NO_REASONING,
                 },
             )
@@ -143,9 +123,7 @@ async def _complete(
         payload = response.json()
 
     # A reasoning model can spend the whole ceiling thinking and return an
-    # empty answer with `finish_reason: "length"`. See `services/thinking.py` —
-    # this is the one place that can tell that apart from a model with nothing
-    # to say, because it is the only place holding the raw payload.
+    # empty answer; see `services/thinking.py`.
     if bigger := thinking.starved(payload, max_tokens):
         log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
         async with httpx.AsyncClient(
@@ -163,9 +141,7 @@ async def _complete(
                 },
             )
             if again.status_code >= 400:
-                # A gateway that does not know `reasoning` refuses the whole
-                # call. The ceiling alone still helps every model that does not
-                # scale its thinking to it.
+                # One retry of the re-ask.
                 again = await client.post(
                     "/v1/chat/completions",
                     json={
@@ -179,8 +155,7 @@ async def _complete(
             retried = again.json()
             spent = retried.get("usage") or {}
             first = payload.get("usage") or {}
-            # Both calls are charged, so both are counted. A budget that hid
-            # the first attempt would under-report what the turn cost.
+            # Both calls are charged, so both are counted.
             payload = retried
             payload["usage"] = {
                 "prompt_tokens": int(first.get("prompt_tokens") or 0)
@@ -223,9 +198,6 @@ def requested_blocks(request: str, template: DesignTemplate | None = None) -> in
 
 
 #: `{"title": "…", "layout": "…"}` even when a quote is missing from a key.
-#: Small models drop one often enough that the difference is a whole turn:
-#: the call is already paid for, and the plan inside it is legible to a human
-#: reading the log — so it should be legible here too.
 _SALVAGE = re.compile(r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S)
 
 
@@ -242,11 +214,7 @@ def _salvaged(text: str) -> dict[str, Any]:
 
 
 def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[str, str]]]:
-    """`(title, blocks)`, with unknown layouts coerced to the first body one.
-
-    Coerced rather than dropped: losing the block loses what it was going to
-    say, while losing the layout only loses how it would have looked.
-    """
+    """`(title, blocks)`, with unknown layouts coerced to the first body layout."""
     data = _json_object(text) or _salvaged(text)
     title = str(data.get("title") or "").strip()
     fallback = template.layouts[1] if len(template.layouts) > 1 else template.layouts[0]
@@ -264,33 +232,18 @@ def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[
                 "layout": layout if layout in template.layouts else fallback,
             }
         )
-    # The cover is the template's, not the model's: a body layout in the first
-    # position gives a document with no title page and a heading twice.
+    # The first block is always the template's cover layout.
     if blocks:
         blocks[0]["layout"] = template.layouts[0]
     return title, blocks[: _ceiling(template)]
 
 
 def _guide(template: DesignTemplate) -> str:
-    """The 서식's rules, and the form they are the rules of.
+    """The template's rules, its layout vocabulary, and its blank form when it ships one.
 
-    The instructions say what belongs where; the form shows it — the headings
-    in order, the columns of each table, the line under each heading naming
-    what goes there. A 서식 ships that file already, so describing it a second
-    time in prose would be a second copy to keep in step with the first.
-
-    Short by construction: a blank form is headings and column names, so 회의록
-    comes to 257 characters. This is not a document being stuffed into the
-    context, it is a table of contents with the blanks named.
-
-    The guidance lines inside a form are addressed to a person filling it in by
-    hand, and a model handed them without warning writes them into the document
-    as though they were the text. So the form arrives labelled — this is the
-    shape, and the lines in it are directions rather than sentences to keep.
+    The form's guidance lines are addressed to a person filling it in, so the
+    form arrives labelled as a shape rather than as text to keep.
     """
-    # The seed's vocabulary under the 서식's own rules. Under, not over: a
-    # 서식 that describes its own layouts has the more specific thing to say,
-    # and this is the floor for the eight that describe none.
     rules = template.instructions
     if template.markup:
         rules = f"{rules}\n\n{template.markup}" if rules else template.markup
@@ -308,7 +261,7 @@ def _guide(template: DesignTemplate) -> str:
 
 
 def _citation_rule(findings: research.Findings, kind: str) -> str:
-    """Numbered markers that keep the prose connected to its stored shelf."""
+    """Numbered citation markers, documents only."""
     if kind != "document" or not findings.sources:
         return ""
     available = ", ".join(f"[{source['ordinal']}]" for source in findings.sources)
@@ -321,18 +274,7 @@ def _citation_rule(findings: research.Findings, kind: str) -> str:
 
 
 def _fragment(text: str, template: DesignTemplate) -> str:
-    """One block's markup, unfenced and reduced to the seed's vocabulary.
-
-    The template comes along for its layout names: a model that answers with
-    the layout it was handed before it writes anything would otherwise have
-    that word printed on the slide.
-
-    Stray ideographs are read back into Hangul on the way through — see
-    `services/hangul.py`. This is the door the model's own markup comes in by,
-    and it is the last place the text is still only the model's, so a `傳統的인
-    방화벽` never becomes something a person has to notice and press a button
-    about.
-    """
+    """One block's markup: unfenced, stray ideographs read back into Hangul, sanitised."""
     clean, _ = hangul.read_back(text.strip())
     return templates.sanitise(_FENCE.sub(r"\1", hangul.tidy_spacing(clean)), template.layouts)
 
@@ -346,43 +288,23 @@ async def write(
     tokens: dict[str, str] | None = None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
-    #: The model that plans, when an administrator has named one. The outline
-    #: is one call and decides the shape of every call after it, so it is the
-    #: one place where a stronger model changes the result out of proportion
-    #: to what it costs. Empty means the same model writes and plans.
+    #: The model that plans; empty means the writer plans too.
     outline_model: str = "",
-    #: The shape somebody has already seen and approved.
-    #:
-    #: Absent, this plans and stops: it emits `proposal` — or `needs`, when the
-    #: material cannot carry the request — and writes nothing. Present, it
-    #: skips planning and writes exactly what was approved, because planning
-    #: again would produce a different document from the one agreed to.
+    #: A plan somebody approved. Absent, this plans and stops with `proposal`
+    #: (or `needs`); present, it writes exactly what was approved.
     approved_plan: dict[str, Any] | None = None,
-    #: Whether this pass may stop to ask.
-    #:
-    #: False on the pass that follows "있는 자료로 진행" — the button whose whole
-    #: promise is that it will not be asked again. Without it the answer folds
-    #: back into a request identical to the one that raised the question, the
-    #: planner asks it again, and the button loops for as long as somebody
-    #: keeps pressing it. Only this one pass is silenced; a later request that
-    #: genuinely cannot be grounded is still allowed to say so.
+    #: Whether this pass may stop to ask. False on the pass after "있는 자료로 진행".
     may_ask: bool = True,
-    #: Whether to research this document before writing it. Same pass reports
-    #: and decks run: queries planned off the request, top pages read in full,
-    #: ahead of the outline so the shape is chosen from what is true.
+    #: Whether to research the request before the outline.
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `block`, a final `page` and one `usage` event.
 
-    The caller owns persistence, billing and the artifact — this only writes.
-    A block that fails is left empty and the rest continues, which for a page
-    means a gap rather than nothing.
+    The caller owns persistence, billing and the artifact. A block that fails
+    is left empty and the rest continues.
     """
-    # Planning is counted apart from writing, because it can run on another
-    # model — and a call billed at the wrong model's price is a ledger that
-    # says the wrong thing about where the money went. Empty when the same
-    # model does both, which is the shape every caller already handles.
+    # Planning is counted apart from writing because it can run on another model.
     usage = {
         "inputTokens": 0,
         "outputTokens": 0,
@@ -394,10 +316,8 @@ async def write(
     surface = template.surface
 
     findings = research.Findings()
-    # Checked before the step is drawn, not inside `run`. A deployment with no
-    # search backend would otherwise open every document with 자료 찾는 중 and
-    # close it with 참고할 자료 없음 — a step that reports the deployment's
-    # configuration as though it were this document's result.
+    # Availability is checked before the step is drawn, so a deployment with no
+    # search backend does not report "no sources" on every document.
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
         findings = await research.run(request, model=outline_model or model, api_key=api_key)
@@ -462,10 +382,8 @@ async def write(
             "projectExcluded": project_excluded,
         },
     }
-    # Three states, and the writer is told which one it is in. A toggle
-    # somebody switched off is a choice and needs no disclaimer; a search that
-    # could not run and a search that found nothing are both worth saying, and
-    # they do not mean the same thing to a reader.
+    # Search switched off needs no disclaimer; a search that could not run and
+    # one that found nothing are told apart.
     research_rule = ""
     if web_search and not findings.searched:
         research_rule = research.UNRESEARCHED_RULE
@@ -517,8 +435,7 @@ async def write(
             return
 
         plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-        # A question instead of a plan — see `grounding.ASK_RULE`. Only when the
-        # request names material the sources do not carry.
+        # A question instead of a plan — see `grounding.ASK_RULE`.
         if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
@@ -526,11 +443,8 @@ async def write(
             return
         title, plan = _parse_outline(text, template)
 
-        # A flat plan is the one thing a small model gets wrong that costs nothing
-        # to notice and one call to fix: the seed styles five layouts, and a deck
-        # that uses one of them is the seed's fault only in the sense that nobody
-        # asked for the others. Asked once more, naming exactly what is missing —
-        # and the second answer is kept only if it is actually less flat.
+        # A flat plan is re-asked once, naming the missing layouts; the second
+        # answer is kept only if it is less flat.
         missing = plan_rules.flat_layouts(plan, template.layouts[1:]) if plan else []
         if missing:
             log.info("page outline flat for %s, unused: %s", template.id, ",".join(missing))
@@ -550,9 +464,7 @@ async def write(
                 else:
                     log.info("page outline still flat for %s, keeping the first", template.id)
         if not plan:
-            # The failure with no exception behind it: the call succeeded and the
-            # turn ends with no artifact. What the model actually said is the only
-            # way to tell a refusal from a malformed answer.
+            # The raw answer is logged: it is the only way to tell a refusal from malformed JSON.
             log.warning("page outline unparseable for %s: %s", template.id, text[:300])
             yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
             yield {
@@ -569,10 +481,7 @@ async def write(
             "status": "done",
             "detail": " · ".join(item["title"] for item in plan),
         }
-        # Planned, and that is where this stops. The shape is offered rather
-        # than written into: the caller stores it, shows it, and calls back
-        # with it approved. Nothing is written here, which is what keeps the
-        # document already on screen safe from a run nobody confirmed.
+        # Planning stops here; the caller stores the proposal and calls back with it approved.
         yield {
             "type": "proposal",
             "plan": {
@@ -609,11 +518,7 @@ async def write(
 
     for index, block in enumerate(blocks):
         heading = str(block["title"])
-        # The same shape the slide and report tracks send, because the same
-        # timeline draws all three. This one said `done` where they say
-        # `current`, and the surface printed 「(/30)」 beside every block and
-        # could not say how many were left — the one thing a person watching
-        # a thirty-slide run wants to know.
+        # Same progress shape as the slide and report tracks.
         progress = {"current": index + 1, "total": len(blocks)}
         yield {
             "type": "step",
@@ -692,12 +597,7 @@ async def rewrite_block(
     api_key: str,
     note: str = "",
 ) -> tuple[str, dict[str, int]]:
-    """Rewrites one block's markup, with the rest of the document as context.
-
-    Same prompt the first pass used, so a rewritten block is written under the
-    rules its neighbours were — and everything but the target is passed as
-    written, so it does not repeat what the block before it already said.
-    """
+    """Rewrites one block's markup under the first pass's prompt, with the rest as context."""
     target = blocks[index]
     noun, unit = _WORDS.get(template.kind, ("문서", "절"))
     outline = "\n".join(f"{i + 1}. {b.get('title') or ''}" for i, b in enumerate(blocks))
@@ -717,8 +617,7 @@ async def rewrite_block(
         request=request[:1200],
     )
     if note.strip():
-        # Last and labelled: an unlabelled sentence appended to a prompt reads
-        # as part of the original request.
+        # Last and labelled, so it does not read as part of the original request.
         prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
@@ -731,7 +630,7 @@ async def rewrite_block(
 
 
 def filled(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The blocks that actually say something — what billing and the message count."""
+    """The blocks that say something; what billing and the message count."""
     return [b for b in blocks if (b.get("html") or "").strip()]
 
 

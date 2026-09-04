@@ -33,8 +33,6 @@ function AccountItems() {
 
   return (
     <>
-      {/* 한 번 설정하고 나면 컴포저에서 쓰이는 것들. 사이드바의 세로는
-          대화 목록이 써야 하므로 여기에 둡니다. */}
       <MenuLabel>{t('워크스페이스')}</MenuLabel>
       <MenuItem icon={<Bot size={14} />} onClick={() => navigate('/agents')}>
         {t('에이전트')}
@@ -51,8 +49,6 @@ function AccountItems() {
       <MenuItem icon={<Palette size={14} />} onClick={() => navigate('/designs')}>
         {t('디자인')}
       </MenuItem>
-      {/* 목록은 사이드바가 전부 보여줍니다. 이 화면이 남은 이유는 좁은 세로
-          칼럼에서 할 수 없는 것 — 여러 건을 골라 한 번에 지우는 일입니다. */}
       <MenuItem icon={<History size={14} />} onClick={() => navigate('/history')}>
         {t('대화 기록')}
       </MenuItem>
@@ -67,8 +63,6 @@ function AccountItems() {
       <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/usage')}>
         {t('사용량')}
       </MenuItem>
-      {/* 개인 맞춤 설정 is a tab inside 설정; a second entry for it here was
-          the same door twice. */}
       <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
         {t('설정')}
       </MenuItem>
@@ -92,7 +86,6 @@ function AccountItems() {
           <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
             {t('보안 · 감사')}
           </MenuItem>
-          {/* Instance configuration. */}
           <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
             {t('시스템')}
           </MenuItem>
@@ -106,7 +99,7 @@ function AccountItems() {
   )
 }
 
-/** The sidebar footer row: avatar, name, address, and the approval queue. */
+/** Sidebar footer: avatar, name, email, pending-approval count. */
 export function AccountMenu() {
   const t = useT()
   const user = useStore((s) => s.user)
@@ -132,9 +125,6 @@ export function AccountMenu() {
             <span className="block truncate text-base font-medium">{user?.name}</span>
             <span className="block truncate text-xs text-faint">{user?.email}</span>
           </span>
-          {/* The queue, on the button that opens the menu holding it. Without
-              this the only signal was inside the menu nobody had a reason to
-              open. */}
           {user?.role === 'admin' && pendingUsers > 0 && (
             <span
               aria-label={t('승인 대기 {n}건').replace('{n}', String(pendingUsers))}
@@ -152,11 +142,7 @@ export function AccountMenu() {
   )
 }
 
-/**
- * The top bar's compact form: the avatar alone. Same menu, always on screen —
- * this is the copy that guarantees 로그아웃 exists no matter what the sidebar
- * is doing.
- */
+/** Top-bar form: avatar only, same menu. */
 export function AccountMenuCompact() {
   const t = useT()
   const user = useStore((s) => s.user)

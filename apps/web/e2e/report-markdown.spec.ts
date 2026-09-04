@@ -1,10 +1,4 @@
-/**
- * Round-trip tests for the report ⇄ Markdown mapping.
- *
- * No browser: saving the document editor overwrites the artifact, so this is the
- * half that has to be right before anything else matters. Playwright is used
- * only because it is the transpiler this workspace already has.
- */
+/** Round-trip tests for the report ⇄ Markdown mapping. No browser. */
 
 import { expect, test } from '@playwright/test'
 import { fromMarkdown, toMarkdown } from '../src/lib/reportMarkdown'
@@ -31,7 +25,6 @@ test('문서를 되읽으면 제목·섹션·본문이 그대로다', () => {
 
 test('본문 안의 ## 는 섹션 경계가 아니라 소제목으로 남는다', () => {
   const md = toMarkdown(REPORT)
-  // Two section headings in the document, not three.
   expect(md.match(/^## /gm)?.length).toBe(2)
   const back = fromMarkdown(md, REPORT.sections)
   expect(back.sections).toHaveLength(2)

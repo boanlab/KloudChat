@@ -1,15 +1,4 @@
-"""HTML 표면에서 쓴 문서도 같은 블록을 내보내는가.
-
-The document surface writes two ways. One produces Markdown, and its strips,
-procedures and charts have been reaching the exporters since they were built.
-The other produces HTML through a 서식 — and `page_export` read that markup with
-a vocabulary that predates all three.
-
-The failure was silent and total: a strip of figures is a `<div>` holding
-`<strong>` and `<span>`, and none of those is a text tag, so the numbers were
-collected by nothing. The `.docx` came out with the sentence before the strip,
-the sentence after it, and no strip.
-"""
+"""Strips, procedures, charts and tables from the HTML surface export as the Markdown fences."""
 
 from __future__ import annotations
 
@@ -43,8 +32,7 @@ def test_the_reader_finds_all_three() -> None:
 
 
 def test_they_come_out_as_the_fences_the_exporters_read() -> None:
-    """A document written on the HTML surface exports as one written on the
-    Markdown surface. Two paths, one file."""
+    """An HTML-surface document exports as the Markdown-surface one does."""
     content = page_export.to_sections(_PAGE)[0]["content"]
     kinds = [line[0] for line in report_export._markdown_to_lines(content)]
     assert "kpi" in kinds
@@ -54,11 +42,7 @@ def test_they_come_out_as_the_fences_the_exporters_read() -> None:
 
 
 def test_a_table_stays_a_table() -> None:
-    """It used to arrive as `- 기준 · 값`.
-
-    The exporters have drawn a real table from a GFM one since they learned
-    how, and a row of middots is a comparison the reader has to rebuild.
-    """
+    """An HTML table exports as a GFM table, not a bullet list."""
     content = page_export.to_sections(_PAGE)[0]["content"]
     assert "| 기준 | 값 |" in content
     assert "기준 · 값" not in content
@@ -82,16 +66,7 @@ def test_a_page_with_none_of_them_is_unchanged() -> None:
 
 
 def test_an_edited_section_keeps_every_figure_in_the_strip() -> None:
-    """The other reader of the same markup.
-
-    A section touched in the document editor is stored as `format: "html"` and
-    reaches the exporters through `richtext.to_markdown`, not through
-    `page_export`. That reader matched the strip with a lazy `</div>` — and a
-    strip is a `<div>` whose cells are `<div>`s, so it closed on the first
-    cell. One figure came out as a fence and every figure after it as loose
-    prose: `**68%**기초 도구 사용 한계`, run together without so much as a
-    space, which is what the exported .docx and .hwpx printed.
-    """
+    """`richtext.to_markdown` matches a strip's own closing `</div>`, keeping every figure."""
     from app.services import richtext
 
     strip = (
@@ -118,8 +93,7 @@ def test_an_edited_section_keeps_every_figure_in_the_strip() -> None:
 
 
 def test_two_strips_in_one_section_stay_separate() -> None:
-    """The balanced walk must stop at *this* strip's close, not run to the
-    document's last `</div>` and swallow what is between them."""
+    """The balanced walk stops at this strip's close, not the last `</div>`."""
     from app.services import richtext
 
     markdown = richtext.to_markdown(

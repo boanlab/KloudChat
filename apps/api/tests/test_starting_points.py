@@ -1,20 +1,4 @@
-"""시작점: what a starting point is allowed to do to a turn.
-
-Picking one used to type the template's whole framing into the composer, so
-the transcript attributed the product's own sentences to the person who sent
-them. A starting point is now carried by the turn the way an activated skill
-is, and three properties are what that buys — each with a test here that fails
-without the code it guards:
-
-1. The catalogue is the server's, so an id can be checked. One that names
-   nothing, or somebody else's private row, is refused before any write.
-2. The person's words stay the person's words. The template reaches the model
-   as its own block, `content` is untouched, and the block lands where the
-   contract puts it — after the skills, before the memories.
-3. The record names the template rather than quoting it. A transcript read a
-   year from now says which starting point a turn began from, and never prints
-   the machinery.
-"""
+"""Starting points (시작점): catalogue shape, access, and how one is carried by a turn."""
 
 from __future__ import annotations
 
@@ -38,13 +22,7 @@ from app.services.workspace_context import WorkspaceContextError, assemble
 
 
 def test_every_starting_point_is_a_small_workflow_not_a_label():
-    """A shipped card must carry enough procedure to improve a real result.
-
-    Names and one-line example prompts made a catalogue look populated while
-    leaving the model to invent the actual job. Three or more inputs force the card to
-    ask for context, and a substantive framing must define evidence, output,
-    and completion instead of merely restating its title.
-    """
+    """Every shipped card has a unique `t_` id, three or more fills, and a substantive prompt."""
     ids = [t.id for t in prompt_templates.all_templates()]
     assert len(ids) == len(set(ids))
     for template in prompt_templates.all_templates():
@@ -65,17 +43,16 @@ def test_work_surfaces_have_real_breadth_and_media_does_not_duplicate_formats():
     assert by_surface[SessionKind.image] == []
     assert by_surface[SessionKind.av] == []
 
-    # A catalogue aimed at one office persona is breadth in card count only.
     groups = {t.group for t in prompt_templates.all_templates()}
     assert {"학업", "연구", "업무"} == groups
 
 
 def test_a_built_in_card_travels_in_the_shape_the_gallery_already_renders():
-    """One card renders both lists, so the shared keys have to mean one thing."""
+    """A built-in card serialises in the same shape as a user template."""
     card = PromptTemplateOut.of(prompt_templates.get("t_debug"))
     assert card.kind == card.surface == SessionKind.chat.value
     assert card.builtin is True
-    # The English half is declared and unwritten; the client falls back.
+    # English fields are empty; the client falls back to Korean.
     assert card.title_en == "" and card.fills_en == []
     wire = card.model_dump(by_alias=True)
     assert wire["fills"] == list(prompt_templates.get("t_debug").fills)
@@ -132,11 +109,7 @@ async def test_somebody_elses_private_starting_point_is_refused_and_a_shared_one
 
 @pytest.mark.asyncio
 async def test_the_starting_point_is_one_block_and_sits_after_the_skills():
-    """A skill is a procedure somebody keeps; a starting point is this turn.
-
-    So the starting point is the later, more specific instruction — and it is
-    still an instruction, which is what keeps it above the memories.
-    """
+    """The template is one trusted block placed after skills and before memories."""
     skill = _skill()
     db = _Db(_session(), skills=[skill], memories=[_memory()])
     context = await assemble(
@@ -153,7 +126,6 @@ async def test_the_starting_point_is_one_block_and_sits_after_the_skills():
     assert sources.index("template:t_debug") < sources.index("memory")
 
     block = next(b for b in context.blocks if b.source == "template:t_debug")
-    # Trusted, because the person chose it: the same standing as a skill body.
     assert block.trusted
     assert block.text.startswith("# 시작점 — 오류 디버깅")
     assert prompt_templates.get("t_debug").prompt.strip() in block.text
@@ -161,12 +133,7 @@ async def test_the_starting_point_is_one_block_and_sits_after_the_skills():
 
 @pytest.mark.asyncio
 async def test_a_turn_carries_the_template_and_records_only_its_name(monkeypatch):
-    """The whole point, end to end: the model is told, the transcript is not.
-
-    What the person typed is what the message row keeps. The template's own
-    sentence goes upstream as its own block and stops there — a transcript that
-    quoted it would be back to attributing the product's words to a person.
-    """
+    """The model gets the template block; the row keeps the typed text and the template's name."""
     user = _user()
     db = _Db(_session(SessionKind.report))
     captured = _patch_document_turn(monkeypatch)
@@ -189,7 +156,6 @@ async def test_a_turn_carries_the_template_and_records_only_its_name(monkeypatch
     row = next(r for r in db.added if isinstance(r, Message) and r.role.value == "user")
     assert row.content == "어제 새벽 장애 정리해 줘"
     assert row.started_from == {"templateId": "t_debug", "title": "오류 디버깅"}
-    # Named, not quoted — nowhere on the row, not only outside `content`.
     assert "재발 방지책" not in repr(row.model_dump())
 
 
@@ -215,12 +181,7 @@ async def test_a_turn_with_no_starting_point_records_nothing(monkeypatch):
 @pytest.mark.parametrize("route", ["send", "compare"])
 @pytest.mark.asyncio
 async def test_both_turn_routes_refuse_an_unknown_id_before_any_write(monkeypatch, route: str):
-    """Refused rather than dropped: a card was picked and a chip was shown.
-
-    `/compare` matters as much as `/messages` here — it is the second door into
-    the same turn, and a starting point that fell out of it would produce
-    columns answering a request nobody made, at two or three times the price.
-    """
+    """An unknown template id is refused on both `/messages` and `/compare` before any write."""
     db = _Db(_session())
     upstream = {"calls": 0}
     _patch_route_services(monkeypatch, upstream)
@@ -269,7 +230,7 @@ class _Result:
 
 
 class _Db:
-    """Enough of the session to assemble a context and serve one turn."""
+    """In-memory db for one context and one turn."""
 
     def __init__(
         self,
@@ -392,7 +353,7 @@ def _patch_route_services(monkeypatch, upstream: dict[str, int]) -> None:
 
 
 def _patch_document_turn(monkeypatch) -> dict:
-    """A report turn with the writer replaced, so the context is what is read."""
+    """Patches the report writer and captures its kwargs."""
     captured: dict = {}
     _patch_route_services(monkeypatch, {"calls": 0})
 
@@ -405,17 +366,7 @@ def _patch_document_turn(monkeypatch) -> dict:
 
 
 def test_a_starting_point_carries_the_shape_its_job_comes_in() -> None:
-    """결과 서식을 따로 고르지 않아도 되는 이유.
-
-    결과 서식 was the other half of a two-tab dialogue: pick what you are
-    doing, then pick what it looks like. The second decision is a question
-    about typography asked of somebody who came to write an incident report —
-    which has a shape, and that shape is `doc-incident`.
-
-    Empty stays a real answer and the common one: a 동향 조사 has no house
-    style, and then the writing surface picks the colour and the impression
-    from the subject instead.
-    """
+    """A starting point's `render_template_id` names an HTML template of the same surface."""
     from app.services import design_templates, prompt_templates
 
     catalogue = {t.id: t for t in design_templates.all_templates()}
@@ -425,21 +376,19 @@ def test_a_starting_point_carries_the_shape_its_job_comes_in() -> None:
     for point in carried:
         shape = catalogue.get(point.render_template_id)
         assert shape is not None, f"{point.id}: 없는 서식 {point.render_template_id}"
-        # 표면이 맞아야 한다 — 보고서 시작점이 덱 서식을 데려오면 렌더러가
-        # 조용히 버린다.
+        # A template of the wrong surface is silently dropped by the renderer.
         assert shape.surface.value == point.kind.value, (
             f"{point.id}: {point.kind.value} 시작점에 {shape.surface.value} 서식"
         )
         assert shape.kind in design_templates.HTML_KINDS, point.id
 
-    # 챗과 이미지에는 조판할 문서가 없다.
     for point in prompt_templates.all_templates():
         if point.kind.value not in ("report", "slides"):
             assert not point.render_template_id, point.id
 
 
 def test_the_shape_reaches_the_client() -> None:
-    """카드가 무엇을 입고 나올지 미리 말해 줄 수 있어야 한다."""
+    """`renderTemplateId` reaches the client card."""
     from app.schemas.workspace import PromptTemplateOut
     from app.services import prompt_templates
 

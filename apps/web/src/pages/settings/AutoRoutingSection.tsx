@@ -5,7 +5,7 @@ import { errorCode, errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/** What the server says when it refuses a routing policy, in the person's words. */
+/** User-facing text for the server's routing-policy refusal codes. */
 const ROUTING_REFUSALS: Record<string, string> = {
   adaptive_classifier_required: '난이도 분류 모델을 골라 주세요.',
   adaptive_classifier_must_be_zero_cost_strict_local:
@@ -66,19 +66,11 @@ export function AutoRoutingSection() {
     (model) =>
       model.kinds.includes('chat') &&
       !model.privacyOnly &&
-      // hybrid 는 자체 서빙이 기본이고 폭주·장애 때만 외부로 폴백하는
-      // 경로다. 절약 레인의 요점이 비용인데, 이 인스턴스에서 가장 싼 —
-      // 공짜인 — 모델들이 바로 hybrid 로컬이라, 이 제외는 절약 목록에서
-      // 절약 후보를 지우고 있었다. 품질 레인은 이미 hybrid 를 받는다.
       model.dataBoundary !== 'unknown',
   )
-  //: Every chat model. Deliberately unfiltered by price — an upgrade list is
-  //: a finding about which models answer better here, and on this instance a
-  //: 122b failed an outline call a 35b completed. The order is the finding.
+  // Unfiltered by price: the ordering is the quality judgement.
   const qualityModels = models.filter((model) => model.kinds.includes('chat'))
-  //: Each lane is asked only about itself. Gating the upgrade list behind the
-  //: economy one made an administrator who wanted only the upgrade pick
-  //: 절약 모델 they had no use for, and told them so in the warning.
+  // Each lane validates only itself.
   const canSave =
     (!enabled || Boolean(classifierModelId && economyModelIds.length > 0)) &&
     (!qualityEnabled || Boolean(classifierModelId && qualityModelIds.length > 0))
@@ -168,9 +160,6 @@ export function AutoRoutingSection() {
           label={t('절약 모델 추가')}
           hint={t('최대 3개까지 추가할 수 있으며 위에서부터 사용 가능 여부를 확인합니다.')}
         >
-          {/* Greyed out at three, and the hint above it is read once and then
-              forgotten — so the reason is carried by the control that stopped
-              responding, where it is looked for. */}
           <Select
             value=""
             disabled={economyModelIds.length >= 3}
@@ -231,10 +220,6 @@ export function AutoRoutingSection() {
                           : t('외부 제공')}
                     </Badge>
                   )}
-                  {/* An arrow that cannot move is the row telling you it is
-                      already at the end of the list, but only if you already
-                      read the numbering that way. The tooltip says it outright,
-                      at the arrow that refused. */}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -288,14 +273,7 @@ export function AutoRoutingSection() {
         )}
       </div>
 
-      {/* The other direction, on the same switch and the same classifier. Left
-          empty the lane simply is not offered, which is what every installation
-          starts with — an upgrade path that turned itself on would spend money
-          nobody agreed to. */}
-      {/* Drawn like the lane above it, because it is the same kind of thing
-          pointed the other way: two opposite decisions about money, sharing
-          only the classifier that judges the turn. A control that looked
-          different would suggest the two answer to different rules. */}
+      {/* Quality lane: same classifier, opposite direction. */}
       <div className="space-y-4 border-t border-line pt-4">
         <div className="flex items-start gap-3">
           <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent">
@@ -454,8 +432,7 @@ export function AutoRoutingSection() {
               await saveGovernance({
                 adaptiveRoutingEnabled: enabled,
                 adaptiveQualityEnabled: qualityEnabled,
-                // The classifier is shared, so it goes with either lane being
-                // on. The lists follow their own switch.
+                // The classifier is shared by both lanes; each list follows its own switch.
                 ...(enabled || qualityEnabled
                   ? { adaptiveClassifierModelId: classifierModelId || null }
                   : {}),
@@ -466,9 +443,6 @@ export function AutoRoutingSection() {
               await loadModels()
               setSaved(true)
             } catch (saveError) {
-              // The server refuses with a code; the person needs the reason,
-              // not the fact of refusal — 「저장하지 못했습니다」 with the
-              // list still on screen says nothing about which row to fix.
               const reason = ROUTING_REFUSALS[errorCode(saveError)]
               setError(
                 reason

@@ -1,11 +1,4 @@
-"""A comparison's `done` names the row it stored.
-
-The browser gives the comparison turn an id of its own while the columns
-stream. 이 답변으로 계속 then posted to /messages/{that id}/variant, met a
-404, reloaded the session, and showed the server's default — the first
-successful column — whichever card had been clicked. `done` now carries the
-stored id, and the tab adopts it before anybody can click.
-"""
+"""A comparison turn's `done` event carries the stored message id."""
 
 from __future__ import annotations
 
@@ -88,7 +81,6 @@ async def test_done_carries_the_stored_message_id(monkeypatch) -> None:
 
     stored = next(r for r in db.added if isinstance(r, Message) and r.role is Role.assistant)
     assert done["messageId"] == stored.id
-    # The default the server keeps until somebody chooses: the first successful
-    # column, so the next turn's history has an answer in it.
+    # Default until somebody chooses: the first successful column.
     assert [v["chosen"] for v in stored.variants] == [True, False]
     assert db.commits == 1

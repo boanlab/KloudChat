@@ -56,8 +56,7 @@ async def test_orphans_go_oldest_first_and_only_past_the_mark(monkeypatch, tmp_p
     assert result.orphan_files == 2 and result.freed_files == 0
     assert (tmp_path / "gone" / "old.bin").exists()
 
-    # Past the mark: the oldest orphan goes first, and the sweep stops once
-    # the volume reads under the mark again. The living account is untouched.
+    # Past the mark: oldest orphan first, stop once under the mark; live accounts untouched.
     fills = iter([0.9, 0.7, 0.7, 0.7])
     monkeypatch.setattr(storage, "fill", lambda _root: next(fills))
     result = await storage.reclaim(db, threshold=0.8)

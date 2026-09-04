@@ -9,23 +9,8 @@ import { useT } from '@/lib/useT'
 import { drawFigure, useStore } from '@/store/useStore'
 
 /**
- * Choosing a picture for a slide or a section — or making one, here.
- *
- * Both places used to offer only the choosing half, and when there was nothing
- * to choose they offered a link to the image screen. That link is a page turn
- * in the middle of a sentence: it leaves the document, loses which slide was
- * being filled, and asks somebody to come back and find the control again. The
- * commonest reason for the picker to be empty is that nobody has made a picture
- * *for this document*, which is exactly the moment the page turn costs most.
- *
- * So the prompt lives in the picker. `POST /sessions/{id}/images` is
- * synchronous — the upstream is a completion whose answer is a PNG — so there
- * is nothing to poll and nothing to leave for. What comes back is an ordinary
- * image artifact, which is what the grid below shows and what the insert route
- * already takes: this adds a way in, not a second kind of picture.
- *
- * The image screen is still there and still the place for making several and
- * comparing them. This is for the one you need now.
+ * Picks an existing image artifact for a slide or section, or generates one
+ * in place via the synchronous `POST /sessions/{id}/images`.
  */
 export function PicturePicker({
   sessionId,
@@ -34,26 +19,26 @@ export function PicturePicker({
   onPick,
   caption,
   onCaption,
-  /** What the picture is for, so the prompt box can suggest rather than sit blank. */
   about,
-  /** The document's own name, so the suggestion belongs to this document. */
   title,
-  /** What this 장/절 already says, so the suggestion does not redraw it. */
   context,
-  /** The document's look, so the picture comes out in the same register. */
   visualStyle,
 }: {
-  /** Whose session the picture is charged to and stored under. */
+  /** Session the picture is charged to and stored under. */
   sessionId?: string | null
-  /** `16:9` for a slide, `4:3` for a figure in a document. */
+  /** `16:9` for a slide, `4:3` for a document figure. */
   aspect: string
   picked: string | null
   onPick: (id: string | null) => void
   caption: string
   onCaption: (value: string) => void
+  /** Subject the picture is for; seeds the prompt suggestion. */
   about?: string
+  /** Document title, passed to the suggestion. */
   title?: string
+  /** Surrounding text, so the suggestion does not redraw it. */
   context?: string
+  /** Document look, so the picture matches. */
   visualStyle?: string
 }) {
   const t = useT()
@@ -65,14 +50,9 @@ export function PicturePicker({
   const loadArtifacts = useStore((s) => s.loadArtifacts)
   const imageOn = useStore((s) => s.enabledKinds).includes('image')
   const canMake = imageOn && Boolean(sessionId)
-  //: Whether what is in the box came from the suggestion rather than a person.
+  // True while the box holds the untouched suggestion.
   const [suggested, setSuggested] = useState(false)
-  /**
-   * 서식은 제안이 고른다. The suggestion names an image 서식 for this place —
-   * a scene, an architecture, a flow — chosen against the document's look, so
-   * nobody has to know the catalogue to get a picture that belongs in a
-   * report. A figure 서식 draws as mermaid (labels on) rather than as a picture.
-   */
+  // Template chosen by the suggestion; a figure template draws as mermaid.
   const [chosen, setChosen] = useState<{
     templateId: string
     name: string
@@ -83,8 +63,7 @@ export function PicturePicker({
   const chatModel = useStore((s) => s.modelByKind.chat)
   const templates = useDesignTemplates()
 
-  // Same session first: the picture somebody made while writing this document
-  // is almost always the one they want in it.
+  // Same-session pictures first.
   const pictures = artifacts
     .filter((a) => a.kind === 'image')
     .sort((a, b) => {
@@ -93,19 +72,7 @@ export function PicturePicker({
     })
     .slice(0, 24)
 
-  /*
-   * The suggestion, asked for the moment the picker opens.
-   *
-   * The box used to open empty with the 장's name in the placeholder, which
-   * asks somebody who wanted a picture here to first become somebody who can
-   * describe one — and describing a picture to an image model is a skill, not
-   * a preference. Now the proposal arrives written and the decision left is
-   * the one that was always theirs: whether this is worth a credit. Editable,
-   * replaceable, and never drawn without pressing 만들기.
-   *
-   * Runs once per opening. A failed suggestion is silent: what it leaves
-   * behind is the empty box this had before, which is not an error state.
-   */
+  // Prompt suggestion, fetched once on open; a failure leaves the box empty.
   useEffect(() => {
     if (!canMake || !sessionId || prompt.trim()) return
     let alive = true
@@ -114,8 +81,7 @@ export function PicturePicker({
       .suggestFigure(sessionId, { title, about, context, visualStyle })
       .then((row) => {
         if (!alive || !(row.prompt || row.figure)) return
-        // A figure shows its description in the box — that is what gets
-        // drawn, labels and all — and a picture shows its English prompt.
+        // A figure shows its description (what gets drawn); a picture shows its prompt.
         setPrompt((row.figure ? row.description : row.prompt) ?? '')
         setSuggested(true)
         if (row.templateId) {
@@ -128,8 +94,7 @@ export function PicturePicker({
             style: row.style ?? '',
           })
         }
-        // Only when the person has not written one. A caption they typed is
-        // theirs and outranks anything proposed here.
+        // A typed caption outranks the suggested one.
         if (row.caption) onCaption(caption.trim() || row.caption)
       })
       .catch(() => undefined)
@@ -139,8 +104,7 @@ export function PicturePicker({
     return () => {
       alive = false
     }
-    // Once, on mount. Re-running on `caption` would overwrite what somebody is
-    // in the middle of typing.
+    // Once on mount; re-running on `caption` would overwrite typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -152,8 +116,7 @@ export function PicturePicker({
     try {
       let rows: { id: string }[]
       if (chosen?.figure && suggested) {
-        // 도식 경로: the box holds the description, and the labels in it are
-        // what the drawing carries. See `drawFigure`.
+        // Figure path: the box holds the description `drawFigure` renders.
         rows = [await drawFigure(sessionId, asked, chosen.figure, chatModel || undefined)]
       } else {
         rows = await sessionsApi.images(sessionId, {
@@ -162,15 +125,12 @@ export function PicturePicker({
           style: chosen?.style ?? '',
           count: 1,
           ...(chosen && !chosen.figure ? { templateId: chosen.templateId } : {}),
-          // Into a slide, not of one. Without this the first picture anybody made
-          // came back as a whole slide — title across the top, chart, three
-          // labelled cards — and went inside a slide that already had a title.
+          // An illustration for a slide, not a rendering of one.
           figure: true,
         })
       }
       await loadArtifacts()
-      // Selected, not just made. Otherwise the picture appears in the grid and
-      // 넣기 stays disabled until somebody notices they have to click it.
+      // Select the new picture so the insert button is enabled.
       if (rows[0]) onPick(rows[0].id)
       setPrompt('')
     } catch (err) {
@@ -246,9 +206,6 @@ export function PicturePicker({
         </div>
       )}
 
-      {/* Only when there is a box to point at. Where making is unavailable the
-          notice above has already said why, and a second panel telling somebody
-          to use a control that is not on the screen is worse than silence. */}
       {pictures.length === 0 ? (
         canMake && (
           <p className="rounded-control border border-dashed border-line px-4 py-6 text-center text-base text-muted">

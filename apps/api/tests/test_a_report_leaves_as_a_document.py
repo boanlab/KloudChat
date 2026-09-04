@@ -1,23 +1,4 @@
-"""What comes out of 내보내기 has to be the thing somebody submits.
-
-The page view stopped pretending to paginate — a browser has no page-breaking
-API and the measure-and-push version never converged — so the promise moved to
-the file. That makes these the load-bearing assertions: the screen says roughly
-where a page ends, and the file has to be right.
-
-Two failures this closes, both found by opening the download rather than by
-reading the code:
-
-**Tables printed as pipes.** They arrived when the document editor did: a table
-somebody types is a real `<table>`, `richtext` turns it into GFM, and every
-exporter drew `| 기준 | 값 |` as prose. A comparison table is exactly the part
-of a report a reader looks at first, and it was the part they had to rebuild by
-hand.
-
-**US Letter.** `python-docx` starts every document on Letter with one-inch
-margins. A report written to fit A4 reflowed the moment it was opened, so the
-page count in the covering mail stopped matching the file.
-"""
+"""Report export to .docx, .pdf and .hwpx: tables, page size, TOC, pictures, diagrams, forms."""
 
 from __future__ import annotations
 
@@ -76,12 +57,11 @@ def test_an_escaped_pipe_stays_inside_its_cell():
 def test_the_docx_carries_a_real_table():
     body = _docx().read("word/document.xml").decode()
     assert body.count("<w:tbl>") == 1
-    # And not the pipes as well, which is what "drew it twice" would look like.
     assert "| 기준 |" not in body
 
 
 def test_the_docx_is_a4():
-    # Twips: 210mm × 297mm. Letter would be 12240 × 15840.
+    # A4 in twips: 11906 × 16838 (Letter is 12240 × 15840).
     body = _docx().read("word/document.xml").decode()
     assert "11906" in body and "16838" in body
 
@@ -155,9 +135,6 @@ def test_incomplete_web_source_has_no_empty_citation_punctuation():
 
 
 def test_the_docx_carries_a_table_of_contents_field_only_when_long():
-    # A field, not a written-out list: Word keeps a field in step with the
-    # document as the reader edits it — and only in a document long enough
-    # to need one. A two-page memo printed 「목차를 보려면 F9」 at the top.
     body = _docx().read("word/document.xml").decode()
     assert "TOC" not in body
     long_sections = [
@@ -165,12 +142,12 @@ def test_the_docx_carries_a_table_of_contents_field_only_when_long():
     ]
     docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("긴 문서", long_sections)))
     assert "TOC" in docx.read("word/document.xml").decode()
-    # Word fills the field in on open rather than leaving the placeholder.
+    # `updateFields` makes Word fill the TOC field on open.
     assert "updateFields" in docx.read("word/settings.xml").decode()
 
 
 def test_a_short_docx_does_not_leave_a_mostly_empty_cover_page():
-    """The live TOC stays, but the report body follows it without a forced break."""
+    """No forced page break after the TOC."""
     body = _docx().read("word/document.xml").decode()
     assert 'w:type="page"' not in body
 
@@ -190,7 +167,6 @@ def test_a_designed_docx_table_uses_the_documents_accent_rule():
 def test_the_pdf_is_a_pdf_and_has_the_table_in_it():
     data = report_export.to_pdf("교체 검토", SECTIONS)
     assert data[:5] == b"%PDF-"
-    # Drawn tables make the file materially bigger than the prose alone would.
     assert len(data) > len(report_export.to_pdf("교체 검토", [SECTIONS[1]]))
 
 
@@ -244,19 +220,11 @@ def _hwpx(sections=SECTIONS) -> zipfile.ZipFile:
 
 
 def test_the_hwpx_carries_a_real_table():
-    """Laid out as `기준 · 외부 API` lines until somebody could check the file.
-
-    The caution was right: a malformed HWPX does not lose a border, it stops
-    Hancom opening the document, and there is no independent OWPML reader here
-    to check a guess against. What changed is that the file gets opened before
-    it ships.
-    """
+    """The .hwpx draws a table as `hp:tbl`, not as pipes or `·`-joined lines."""
     body = _hwpx().read("Contents/section0.xml").decode()
     assert body.count("<hp:tbl") == 1
     assert body.count("<hp:tc ") == 9  # 3 columns × 3 rows
     assert "| 기준 |" not in body
-    # And not the lines version as well, which is what a half-applied change
-    # would look like.
     assert "기준 · 외부 API" not in body
 
 
@@ -306,8 +274,7 @@ def test_hwpx_page_furniture_is_editable_and_uses_a_live_page_number():
 
 
 def test_every_border_the_cells_point_at_is_defined():
-    """A `borderFillIDRef` with no definition is one of the ways a file stops
-    opening. Cheap to check here, expensive to find in Hancom."""
+    """Every `borderFillIDRef` a cell uses is defined in the header."""
     archive = _hwpx()
     head = archive.read("Contents/header.xml").decode()
     body = archive.read("Contents/section0.xml").decode()
@@ -318,9 +285,7 @@ def test_every_border_the_cells_point_at_is_defined():
 
 
 def test_the_header_lists_its_parts_in_the_schema_order():
-    """`refList`'s children are ordered by the schema, and `borderFills` goes
-    between `fontfaces` and `charProperties`. Out of order is the same class of
-    failure as a missing id — a file that reads right and does not open."""
+    """`refList` children follow the OWPML schema order; Hancom will not open a file otherwise."""
     head = _hwpx().read("Contents/header.xml").decode()
     order = re.findall(
         r"<hh:(fontfaces|borderFills|charProperties|paraProperties|styles)", head
@@ -336,7 +301,7 @@ def test_every_part_of_the_hwpx_is_well_formed_xml():
 
 
 def test_a_table_it_cannot_render_falls_back_to_lines_rather_than_breaking():
-    """The guard that keeps a bad table from becoming an unopenable document."""
+    """A table too wide to render falls back to `·`-joined lines."""
     cells = " | ".join(str(i) for i in range(20))
     rule = " | ".join(["---"] * 20)
     wide = f"| {cells} |\n| {rule} |\n"
@@ -346,7 +311,7 @@ def test_a_table_it_cannot_render_falls_back_to_lines_rather_than_breaking():
 
 
 def test_every_format_opens():
-    """A file that will not open is the only failure the reader cannot work around."""
+    """Each exporter produces a well-formed file."""
     assert zipfile.ZipFile(io.BytesIO(report_export.to_docx("제목", SECTIONS))).testzip() is None
     assert zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("제목", SECTIONS))).testzip() is None
     assert report_export.to_pdf("제목", SECTIONS)[:5] == b"%PDF-"
@@ -364,12 +329,7 @@ _LOOSE = (
 
 
 def test_blank_lines_between_rows_are_closed():
-    """GFM wants a table's rows on consecutive lines; models do not write them.
-
-    Left alone the web view drew literal pipes, one paragraph per row — which
-    is what a reader saw while the page view and the exporters, reading the
-    same text through a different parser, disagreed with it.
-    """
+    """`tidy_tables` closes blank lines between a table's rows."""
     assert "| 특성 | 설명 |\n| :--- | :--- |\n| 확장성" in richtext.tidy_tables(_LOOSE)
 
 
@@ -380,8 +340,6 @@ def test_the_prose_around_the_table_keeps_its_blank_lines():
 
 
 def test_two_tables_do_not_merge_into_one():
-    # A blank line after the last row still ends the table, or a document with
-    # two comparisons in it comes out with one impossible table.
     kinds = [
         k
         for k, _, _, _d in report_export._markdown_to_lines(
@@ -393,7 +351,7 @@ def test_two_tables_do_not_merge_into_one():
 
 
 def test_the_exporters_read_a_loose_table_as_a_table_anyway():
-    """Belt and braces: documents written before the tidier still export right."""
+    """The exporters read a table with blank lines between rows as one table."""
     grid = next(t for k, t, _, _d in report_export._markdown_to_lines(_LOOSE) if k == "table")
     assert grid.flat()[0] == ["특성", "설명"]
     assert len(grid.rows) == 2
@@ -403,12 +361,7 @@ def test_the_exporters_read_a_loose_table_as_a_table_anyway():
 
 
 def test_every_document_template_ships_a_word_template():
-    """A 서식 that shapes the screen and not the file is half a 서식.
-
-    `to_docx` wrote the same generic document whichever one was picked: the
-    shape reached the page view and the printed HTML, and then the file — the
-    thing that is actually submitted — came out in `python-docx`'s defaults.
-    """
+    """Every document template has a `template.docx`."""
     for row in design_templates.all_templates():
         if row.kind != "document":
             continue
@@ -421,15 +374,12 @@ def test_the_export_comes_out_in_the_template_it_was_written_in():
         io.BytesIO(report_export.to_docx("제목", SECTIONS, template=chosen.docx_template))
     )
     styles = themed.read("word/styles.xml").decode()
-    # The Korean face and the template's accent, neither of which Word's
-    # defaults carry.
     assert "함초롬" in styles
     assert "2B4C7E" in styles
 
 
 def test_a_template_that_cannot_be_read_still_exports():
-    """An export that is plainer than it should be beats one that does not
-    happen. The path is passed from stored data and a folder can move."""
+    """A missing template path still exports with defaults."""
     data = report_export.to_docx("제목", SECTIONS, template="/nowhere/template.docx")
     assert zipfile.ZipFile(io.BytesIO(data)).testzip() is None
 
@@ -449,7 +399,7 @@ def test_a_templated_export_still_carries_the_table_and_the_page_size():
 
 # ── 그림 ────────────────────────────────────────────────────────────────
 
-#: A 1×1 PNG, which is enough to be decoded, measured and placed.
+#: A 1×1 PNG.
 _PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
@@ -458,16 +408,7 @@ _WITH_FIGURE = f"앞 문단.\n\n![구성도]({_SRC})\n\n뒤 문단."
 
 
 def test_a_picture_pasted_into_the_body_survives_into_markdown():
-    """Two ways a figure gets into a report, and they used to break at
-    opposite ends.
-
-    The writer put its own on `section["images"]`, which the exporters read and
-    nothing on screen did — a figure somebody paid for was in the file and
-    invisible in the panel. A person pasting one into the document editor put
-    it in the body, which the screen rendered and `richtext` dropped — so it
-    was on screen and missing from the submitted file. One channel now: the
-    body.
-    """
+    """A `<figure>` in the body becomes a Markdown image with its caption."""
     figure = f'<figure><img src="{_SRC}" alt=""><figcaption>구성도</figcaption></figure>'
     markup = f"<p>앞</p>{figure}<p>뒤</p>"
     out = richtext.to_markdown(markup)
@@ -481,8 +422,7 @@ def test_the_shared_parser_reads_it_as_a_picture_in_place():
 
 
 def test_a_remote_address_is_dropped_rather_than_fetched():
-    """An exporter must not make a network call, and a report that quietly
-    fetches whatever a body points at is a report that leaks who read it."""
+    """Exporters never fetch remote images."""
     kinds = [
         k
         for k, _, _, _d in report_export._markdown_to_lines("![x](https://example.com/a.png)")
@@ -499,11 +439,8 @@ def test_the_picture_reaches_all_three_files():
 
     hwpx = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("제목", sections)))
     body = hwpx.read("Contents/section0.xml").decode()
-    # Embedded, not announced. A picture in HWPX is four things that have to
-    # agree: the bytes, the package item that names them, the OCF manifest
-    # entry, and the `<hp:pic>` that refers to the first by id. Any one of them
-    # missing is not a missing picture but a file Hancom will not open, so all
-    # four are checked here rather than the one that is easiest to see.
+    # An HWPX picture needs the BinData bytes, the content.hpf item, the manifest
+    # entry and the `<hp:pic>` reference to agree, or Hancom will not open the file.
     parts = hwpx.namelist()
     stored = [n for n in parts if n.startswith("BinData/")]
     assert len(stored) == 1, parts
@@ -511,8 +448,6 @@ def test_the_picture_reaches_all_three_files():
     assert f'binaryItemIDRef="{name}"' in body
     assert f'href="BinData/{name}' in hwpx.read("Contents/content.hpf").decode()
     assert f'odf:full-path="{stored[0]}"' in hwpx.read("META-INF/manifest.xml").decode()
-    # And the caption survives as its own paragraph, which is what says what
-    # the picture is.
     assert "구성도" in body
     assert "[그림]" not in body
 
@@ -524,16 +459,13 @@ _WITH_DIAGRAM = f"앞 문단.\n\n```mermaid\n{_MERMAID_SRC}\n```\n\n뒤 문단."
 
 
 def test_a_mermaid_fence_is_a_diagram_and_not_prose():
-    """It rendered as a block of source everywhere — in the panel, and then in
-    the `.docx` somebody submitted."""
+    """A mermaid fence is read as a `diagram` line, not body."""
     kinds = [k for k, _, _, _d in report_export._markdown_to_lines(_WITH_DIAGRAM)]
     assert kinds == ["body", "diagram", "body"]
 
 
 def test_the_key_ignores_trailing_whitespace():
-    """The browser reads the source out of a rendered block and the server out
-    of stored Markdown. A key that moved on a trailing space would be a picture
-    stored and never found again."""
+    """`diagram_key` is stable under trailing whitespace."""
     assert report_export.diagram_key(_MERMAID_SRC) == report_export.diagram_key(
         _MERMAID_SRC + "  \n"
     )
@@ -549,13 +481,11 @@ def test_a_drawn_diagram_reaches_the_file_as_a_picture():
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_docx("제목", [section])))
     assert [n for n in archive.namelist() if n.startswith("word/media/")]
     body = archive.read("word/document.xml").decode()
-    # And the source is not printed beside it, which is what it did before.
     assert "graph TD" not in body
 
 
 def test_an_undrawn_diagram_says_so_rather_than_leaving_a_gap():
-    """Nobody has opened the document yet, so no browser has drawn it. The
-    reader is told where a diagram belongs instead of finding nothing."""
+    """An undrawn diagram leaves a placeholder line, not a gap."""
     body = (
         zipfile.ZipFile(
             io.BytesIO(report_export.to_docx("제목", [{"heading": "가", "content": _WITH_DIAGRAM}]))
@@ -579,21 +509,14 @@ def test_the_source_never_leaks_into_any_format():
 
 
 def test_an_unclosed_fence_is_prose_rather_than_a_lost_paragraph():
-    """A truncated document still has to export what it has."""
+    """An unclosed fence is exported as prose."""
     kinds = [k for k, _, _, _d in report_export._markdown_to_lines("앞\n\n```mermaid\ngraph TD\n")]
     assert "diagram" not in kinds
     assert kinds.count("body") >= 2
 
 
 def test_a_drawn_diagram_is_embedded_in_hangul_too():
-    """The chart came out of Hancom as the word 다이어그램.
-
-    Three routes put a picture in a document — the writer attaches one to a
-    section, a person pastes one into the body, a browser renders one from a
-    mermaid source — and only the first was embedded. So a report with a chart
-    in it opened in Hancom with a line of text where the chart belonged, while
-    the `.docx` beside it had the real thing.
-    """
+    """A drawn diagram is embedded in the .hwpx."""
     import base64
 
     from app.services import pictures
@@ -617,13 +540,7 @@ def test_a_drawn_diagram_is_embedded_in_hangul_too():
 
 
 def test_an_undrawn_diagram_still_says_so():
-    """The ordinary state of a document nobody has opened.
-
-    Mermaid draws in a browser and nothing on the server can, so there is no
-    picture to embed until a reader has been here. Said rather than left as a
-    gap — a hole in the page reads as a bug, and this is a fact the reader can
-    act on by opening the document.
-    """
+    """An undrawn diagram leaves a placeholder line in the .hwpx."""
     hwpx = zipfile.ZipFile(
         io.BytesIO(report_export.to_hwpx("제목", [{"heading": "구조", "content": _WITH_DIAGRAM}]))
     )
@@ -632,18 +549,7 @@ def test_an_undrawn_diagram_still_says_so():
 
 
 def test_the_blank_form_is_made_of_styles() -> None:
-    """양식은 서식(스타일)으로 만든다.
-
-    A form built out of direct formatting cannot be restyled. The reader who
-    wants their organisation's face has to walk every paragraph by hand, and
-    the one who wants the guidance gone has to find each grey line by eye —
-    and a sentence typed over a guidance line stays grey, because grey was
-    never a role, only a colour somebody set.
-
-    So every paragraph in a form names a style and sets nothing itself, and the
-    styles are the ones Word shows under 제목 · 제목 1 · 제목 2 · 본문 plus the
-    four the form declares for its own parts.
-    """
+    """Every paragraph in a blank form names a style and carries no direct formatting."""
     from docx import Document
 
     for row in design_templates.all_templates():
@@ -657,12 +563,11 @@ def test_the_blank_form_is_made_of_styles() -> None:
         for wanted in ("Body Text", "안내", "안내 목록", "표 머리", "표 본문"):
             assert wanted in named, f"{row.id}: {wanted} 스타일이 없습니다"
 
-        # Enter at the end of a guidance line lands in 본문, so the form stops
-        # being grey the moment somebody writes in it.
+        # Enter after a guidance line continues in 본문.
         assert document.styles["안내"].next_paragraph_style.name == "Body Text"
 
         def bare(paragraph) -> list[str]:
-            """Formatting set on the run rather than named by a style."""
+            """Direct run formatting not named by a style."""
             found = []
             for run in paragraph.runs:
                 if run.font.color is not None and run.font.color.rgb is not None:
@@ -688,12 +593,7 @@ def test_the_blank_form_is_made_of_styles() -> None:
 
 
 def test_the_exported_body_is_styled_too() -> None:
-    """같은 이유가 내보낸 문서에도 걸린다.
-
-    `Normal` is the base every other style inherits from, so a body written
-    into it cannot be adjusted without moving the headings and the footer with
-    it — and the 서식's own body settings then apply to nothing.
-    """
+    """`to_docx` writes body paragraphs in `_BODY`, never in `Normal`."""
     import inspect
 
     source = inspect.getsource(report_export.to_docx)
@@ -702,18 +602,7 @@ def test_the_exported_body_is_styled_too() -> None:
 
 
 def test_the_form_speaks_the_template_s_own_language() -> None:
-    """양식과 미리보기가 같은 서식을 말한다.
-
-    A 서식 describes itself in three places — the sample the gallery previews,
-    the checklist a review scores against, and the instructions the writer
-    follows — and the blank form was written in a fourth. So the card showed
-    결정할 것 · 지금 상황 · 대안 · 걸려 있는 것 and the `.docx` behind it said
-    요청 · 왜 · 대안 · 권고: the same 서식 under two names, and somebody who
-    picked one by its preview downloaded the other.
-
-    The form does not have to say everything the 서식 says. It has to say
-    nothing the 서식 does not.
-    """
+    """A blank form's headings all appear in the template's own text."""
     from docx import Document
 
     for row in design_templates.all_templates():

@@ -9,11 +9,6 @@ import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * Everything on this screen is computed from stored turns — never seeded.
- * An admin cannot plan a budget against numbers nobody spent, so an empty
- * instance shows empty.
- */
 function Bars({
   rows,
   format,
@@ -94,12 +89,10 @@ export function AdminUsagePage() {
   }
 
   const cr = (v: number) => `${v.toLocaleString()} cr`
-  // The ledger can charge against no conversation at all, which is a surface
-  // the five-kind table has no entry for.
+  // Charges outside any conversation have no kind entry.
   const surface = (kind: string) =>
     kind in kindMeta ? t(kindMeta[kind as SessionKind].label) : t('기타')
-  // Free local models cost nothing, so a credit chart for an instance that only
-  // runs them is a row of zeroes. Plot what did happen instead of nothing.
+  // Free models bill nothing, so with zero credits the chart plots requests instead.
   const byCredits = (usage?.totals.credits ?? 0) > 0
   const daily = (usage?.daily ?? []).map((d) => ({
     ...d,
@@ -175,8 +168,7 @@ export function AdminUsagePage() {
               <Stat label={t('사용 크레딧')} value={usage.totals.credits.toLocaleString()} />
               <Stat
                 label={t('배정 대비')}
-                // Against the active roster only. Counting pending and rejected
-                // rows in the denominator is what produced a ratio in the millions.
+                // Denominator is the active roster only.
                 value={
                   usage.totals.allocatedCredits > 0
                     ? `${((usage.totals.credits / usage.totals.allocatedCredits) * 100).toFixed(2)}%`
@@ -198,10 +190,7 @@ export function AdminUsagePage() {
                   </span>
                 )}
               </p>
-              {/* The bar's percentage is of the space between the two labels,
-                  so that space has to be a box with a height of its own — a
-                  percentage against an auto-height parent resolves to nothing
-                  and the chart draws blank. */}
+              {/* Fixed height: bar heights are percentages of this box. */}
               <div className="flex h-40 items-stretch gap-1.5">
                 {daily.map((d) => (
                   <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">
@@ -211,16 +200,11 @@ export function AdminUsagePage() {
                     <div className="flex w-full flex-1 items-end">
                       <div
                         className="w-full rounded-t bg-accent"
-                        // An empty day is an empty column: the server now sends
-                        // every day of the window, and a two-pixel stub would
-                        // read as a small number rather than none.
                         style={{ height: d.value > 0 ? `${Math.max(3, (d.value / maxDaily) * 100)}%` : 0 }}
                         title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
                       />
                     </div>
-                    {/* Not truncated — see `MyUsagePage`: `MM-DD` does not fit
-                        a column's width over a month and every date came out
-                        as `08-…`. */}
+                    {/* Overflows rather than truncates: `MM-DD` is wider than a column. */}
                     <span className="overflow-visible text-2xs whitespace-nowrap text-faint">
                       {d.date.slice(5)}
                     </span>
@@ -248,8 +232,6 @@ export function AdminUsagePage() {
                       .filter(Boolean)
                       .join(' · '),
                   })),
-                  // Named rather than dropped: a bar chart that quietly omits
-                  // part of the total is how the whole total ended up here.
                   ...(usage.totals.otherCredits > 0
                     ? [{ label: t('기타'), value: usage.totals.otherCredits }]
                     : []),

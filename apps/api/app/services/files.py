@@ -1,13 +1,7 @@
-"""Upload storage and text extraction.
+"""Upload storage (local disk, per-user directory) and text extraction.
 
-Blobs go to local disk under a per-user directory; extracted text goes in the
-row. `storage_key` is the indirection that would make object storage a
-one-module change.
-
-Extraction is dependency-light on purpose: every format here has a stdlib or
-small pure-Python reader. Anything needing a system binary — tesseract for
-scans — reports that it could not be read rather than adding 400 MB to the
-image.
+Every format is read with the stdlib or a small pure-Python reader; scans
+needing OCR are reported as unreadable.
 """
 
 from __future__ import annotations
@@ -28,7 +22,7 @@ from app.services import pictures, transcribe
 
 log = logging.getLogger(__name__)
 
-#: Rough tokens-per-character for mixed Korean/English. Only used for warnings.
+#: Rough characters per token for mixed Korean/English; used for warnings only.
 _CHARS_PER_TOKEN = 3.0
 
 
@@ -39,15 +33,9 @@ def storage_root() -> Path:
 
 
 def remove_user_files(user_id: str) -> int:
-    """Deletes one account's whole directory. Returns the bytes it held.
-
-    Called after the account's rows are gone, from the admin delete; the
-    storage sweep does the same, later and only under disk pressure, for
-    directories whose account was deleted with the files kept.
-    """
+    """Deletes one account's whole directory. Returns the bytes it held."""
     root = storage_root()
-    # The id came off a URL. Only a directory directly under the root is an
-    # account's; anything that normalises elsewhere is not ours to remove.
+    # `user_id` came off a URL: only a directory directly under the root qualifies.
     directory = os.path.normpath(os.path.join(root, user_id))
     if os.path.dirname(directory) != os.path.normpath(root) or not os.path.isdir(directory):
         return 0
@@ -64,10 +52,9 @@ def safe_name(name: str) -> str:
 
 
 def write_blob(user_id: str, file_id: str, name: str, data: bytes) -> str:
-    """Returns the storage key. Directory per user keeps listings small."""
+    """Writes the blob and returns its storage key (`<user_id>/<file_id>_<name>`)."""
     directory = storage_root() / user_id
     directory.mkdir(parents=True, exist_ok=True)
-    # The id prefix means two uploads of "report.pdf" never collide.
     key = f"{user_id}/{file_id}_{safe_name(name)}"
     (storage_root() / key).write_bytes(data)
     return key
@@ -101,7 +88,6 @@ def _from_pdf(data: bytes) -> str:
     try:
         reader = PdfReader(io.BytesIO(data))
     except Exception as exc:  # noqa: BLE001 — pypdf raises a dozen different types
-        # The raw message would reach the person who uploaded the file.
         log.info("pdf unreadable: %s", exc)
         raise RuntimeError("손상되었거나 PDF 형식이 아닌 파일입니다.") from None
     pages = []
@@ -109,23 +95,18 @@ def _from_pdf(data: bytes) -> str:
         try:
             body = (page.extract_text() or "").strip()
             if body:
-                # Page boundaries are evidence metadata, not decoration. They
-                # survive chunking and let a report say where in the uploaded
-                # PDF the cited passage came from.
+                # Page markers survive chunking and let citations name the page.
                 pages.append(f"[페이지 {i + 1}]\n{body}")
         except Exception as exc:  # noqa: BLE001 — one bad page must not lose the rest
             log.info("pdf page %d unreadable: %s", i, exc)
     text = "\n\n".join(pages)
     if not text.strip():
-        # Almost always a scan — more useful said than shown as an empty file.
         raise RuntimeError("텍스트를 추출하지 못했습니다. 스캔본이라면 OCR 이 필요합니다.")
     return text
 
 
 def _from_docx(data: bytes) -> str:
-    """Reads word/document.xml directly: a .docx is a zip, and paragraph text is
-    all that is wanted.
-    """
+    """Paragraph text from word/document.xml."""
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         try:
             xml = archive.read("word/document.xml").decode("utf-8", errors="replace")
@@ -192,11 +173,7 @@ def _from_xlsx(data: bytes) -> str:
 
 
 def _from_hwpx(data: bytes) -> str:
-    """`.hwpx` is OWPML — an XML zip, so the standard library is enough.
-
-    Body text is in the `<hp:t>` runs of `Contents/section*.xml`; paragraph
-    boundaries come from `<hp:p>`.
-    """
+    """OWPML: `<hp:t>` runs per `<hp:p>` in `Contents/section*.xml`."""
     import xml.etree.ElementTree as ET
 
     try:
@@ -232,12 +209,12 @@ def _from_hwpx(data: bytes) -> str:
     return "\n".join(paragraphs)
 
 
-#: HWP 5.x record header: 32 bits — tag 10, level 10, size 12. A size of 0xFFF
-#: means the real size is the following 32 bits.
+#: HWP 5.x record header: 32 bits — tag 10, level 10, size 12; size 0xFFF means
+#: the real size follows as 32 bits.
 _HWPTAG_PARA_TEXT = 67
 
-#: Control characters interleaved with body text. Extended controls — tables,
-#: images — occupy 16 bytes, and reading those as characters corrupts the text.
+#: Control characters interleaved with body text. Extended controls (tables,
+#: images) occupy 16 bytes.
 _HWP_EXTENDED_CONTROLS = frozenset({1, 2, 3, 11, 12, 14, 15, 16, 17, 18, 21, 22, 23})
 _HWP_INLINE_CONTROLS = frozenset({4, 5, 6, 7, 8, 19, 20})
 
@@ -262,11 +239,7 @@ def _hwp_records(stream: bytes):
 
 
 def _hwp_paragraph(body: bytes) -> str:
-    """Decodes one HWPTAG_PARA_TEXT record to a string.
-
-    UTF-16LE with control characters mixed in. An extended control occupies
-    eight characters; skipping fewer leaks object bytes into the text.
-    """
+    """Decodes one HWPTAG_PARA_TEXT record: UTF-16LE with control characters mixed in."""
     out: list[str] = []
     index, count = 0, len(body) // 2
     while index < count:
@@ -286,11 +259,7 @@ def _hwp_paragraph(body: bytes) -> str:
 
 
 def _from_hwp(data: bytes) -> str:
-    """`.hwp` 5.x — body text from the record tree of an OLE compound file.
-
-    `olefile` reads the container, the standard library decompresses.
-    Formatting and embedded objects are discarded.
-    """
+    """HWP 5.x body text from the OLE compound file's BodyText streams."""
     import olefile
 
     try:
@@ -394,25 +363,12 @@ _TEXT_SUFFIXES = {
 
 
 def is_speech(mime: str) -> bool:
-    """Whether this is something somebody said rather than something they wrote."""
+    """Whether the MIME type is audio or video."""
     return mime.startswith(("audio/", "video/"))
 
 
 async def text_of(name: str, mime: str, data: bytes) -> str:
-    """The file as text, transcribing it when the text is speech.
-
-    A meeting does not arrive as somebody re-speaking it into the composer. It
-    arrives as a recording — the room's file, an hour of it, made by whoever
-    was there. Refusing that and offering a microphone instead asks the one
-    person who already sat through the meeting to sit through it again.
-
-    The same backend the microphone uses. It was wired to one button and to
-    nothing else, so the capability was in the deployment and out of reach of
-    the job it exists for.
-
-    Async because transcription is a call and `extract_text` is not; the
-    callers are routes, and this is the one they should reach for.
-    """
+    """The file as text, transcribing audio/video when a backend is configured. Routes call this."""
     if not is_speech(mime):
         return extract_text(name, mime, data)
     if not await transcribe.available():
@@ -446,24 +402,21 @@ def extract_text(name: str, mime: str, data: bytes) -> str:
     if suffix in {".doc", ".ppt", ".xls"}:
         raise RuntimeError("구형 오피스 형식입니다. docx/pptx/xlsx 또는 PDF 로 변환해 주세요.")
     if mime.startswith("image/"):
-        # A picture is not a document that failed to parse — it has no text and
-        # does not need any. Whether it reaches a model is decided per turn by
-        # `workspace_context.reads_pictures`, so recording a failure here would
-        # put a warning on a file that is about to be read perfectly well.
+        # A viewable picture has no text; `workspace_context.reads_pictures`
+        # decides per turn whether it is sent.
         if pictures.can_be_seen(mime, len(data)):
             return ""
         raise RuntimeError(
             "이 그림은 읽을 수 없습니다. PNG·JPEG·GIF·WebP 로, 4MB 이하로 올려 주세요."
         )
     if is_speech(mime):
-        # Reached only when transcription is off or has failed — `text_of`
-        # takes this branch away when a backend is configured.
+        # Reached only when transcription is unavailable; see `text_of`.
         raise RuntimeError(
             "말소리를 글로 옮기는 기능이 꺼져 있어 이 파일을 읽지 못했습니다. "
             "관리자에게 요청하거나, 회의록 텍스트를 올려 주세요."
         )
 
-    # Unknown extension: try text, and let the mojibake check below decide.
+    # Unknown extension: try text, rejected if mostly unprintable.
     text = _from_text(data)
     printable = sum(1 for ch in text[:2000] if ch.isprintable() or ch.isspace())
     if printable < len(text[:2000]) * 0.8:

@@ -50,8 +50,7 @@ class SystemSettingsIn(Wire):
 
 
 class SmtpTestRequest(Wire):
-    """Where the probe message goes. Defaults to the administrator's own address —
-    testing a mail server by mailing someone else is how test mail reaches users."""
+    """Recipient of the probe message; defaults to the administrator's own address."""
 
     to: str | None = None
 
@@ -65,15 +64,13 @@ class SetCreditsRequest(Wire):
 
 
 class ApproveRequest(Wire):
-    """Approval and the credit assignment are one action — an active user with a
-    zero allowance can log in but cannot do anything, which reads as a bug.
-    """
+    """Approval and credit assignment in one action."""
 
     monthly_credits: int | None = Field(default=None, ge=0, le=100_000_000)
 
 
 class AllowedModelsRequest(Wire):
-    """Empty list = the whole catalogue, which is what every account starts with."""
+    """Empty list = the whole catalogue (the default)."""
 
     models: list[str] = Field(default_factory=list, max_length=200)
 
@@ -94,8 +91,7 @@ class GovernanceIn(Wire):
     outline_model_id: str | None = Field(default=None, max_length=200)
     intent_filter: bool | None = None
     blocked_categories: list[str] | None = None
-    #: 0 keeps everything. Anything above it clears bodies older than that.
+    #: 0 keeps everything.
     retention_days: int | None = Field(default=None, ge=0, le=3650)
-    #: 0 is off. Capped at a day: past that the refresh cookie's own lifetime
-    #: is the shorter bound and the setting stops meaning anything.
+    #: 0 is off. Capped at a day; beyond that the refresh cookie lifetime is shorter.
     idle_timeout_minutes: int | None = Field(default=None, ge=0, le=1440)

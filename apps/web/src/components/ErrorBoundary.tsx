@@ -3,18 +3,14 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from '@/components/ui'
 import { currentLang, translate } from '@/lib/i18n'
 
-/** A class component cannot use hooks, so the current language is read
- *  directly. */
+// Class components cannot use hooks, so the language is read directly.
 const tr = (text: string) => translate(currentLang(), text)
 
-/**
- * The last line of defence against a white screen: an uncaught render exception
- * unmounts the whole tree. This catches it, records it, and offers a way out.
- */
 interface State {
   error: Error | null
 }
 
+/** Catches uncaught render errors and offers retry or reload. */
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   state: State = { error: null }
 
@@ -23,8 +19,6 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Also to the console: the on-screen copy is short, and the component
-    // stack is what locates the fault.
     console.error('[KloudChat] render failed', error, info.componentStack)
   }
 
@@ -52,8 +46,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             </Button>
             <Button
               onClick={() => {
-                // A full load, not a route change: the state that threw is
-                // still in memory.
+                // Full reload: the state that threw is still in memory.
                 window.location.href = '/'
               }}
             >

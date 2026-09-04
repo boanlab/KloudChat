@@ -10,12 +10,7 @@ import type { SessionKind } from '@/types'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * KloudChat authenticates against its own user table: email and password, argon2id,
- * a JWT access token in memory with a refresh cookie. LiteLLM never sees these
- * users, only the virtual keys minted on their behalf.
- */
-/** Backend `detail` codes → what the person in front of the form needs to read. */
+/** Backend `detail` codes mapped to user-facing messages. */
 const ERRORS: Record<string, string> = {
   invalid_credentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
   invalid_reset_token: '재설정 링크가 올바르지 않습니다. 다시 요청하세요.',
@@ -31,30 +26,24 @@ const ERRORS: Record<string, string> = {
   network_error: '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.',
 }
 
-/** Anything the map above does not cover. The code goes to the console. */
 const UNKNOWN_ERROR = '요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.'
 
 export function LoginPage() {
   const t = useT()
   const { login, signup, authError, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
-  //: A mailed link lands here with `?token=`. No router exists while signed
-  //: out, so this page reads the query itself. `/verify` is the signup
-  //: confirmation, anything else the password reset.
+  // No router while signed out: `?token=` on `/verify` is signup confirmation, elsewhere a password reset.
   const [resetToken, setResetToken] = useState(() =>
     window.location.pathname === '/verify'
       ? null
       : new URLSearchParams(window.location.search).get('token'),
   )
-  //: The signup link is spent on arrival — there is nothing to type first.
   const [verifying, setVerifying] = useState(() =>
     window.location.pathname === '/verify'
       ? new URLSearchParams(window.location.search).get('token')
       : null,
   )
   const [verified, setVerified] = useState<'active' | 'pending' | null>(null)
-  //: What the signup form should say up front: the domains welcome here and
-  //: whether a confirmation mail is coming.
   const [signupPolicy, setSignupPolicy] = useState<{
     domains: string[]
     emailVerification: boolean
@@ -63,16 +52,9 @@ export function LoginPage() {
   const [sent, setSent] = useState(false)
   const [resetDone, setResetDone] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  //: Null until asked: the link is not rendered on a guess, since an instance
-  //: with no mail server has no reset to offer.
+  // Null until the public config answers; nothing is rendered on a guess.
   const [resetEnabled, setResetEnabled] = useState<boolean | null>(null)
-  //: Which surfaces this instance actually serves. Null for the same reason as
-  //: the reset link above — image and audio/video default to off, and a list
-  //: drawn from a constant promised two things the account behind the form
-  //: could not do.
   const [enabledKinds, setEnabledKinds] = useState<SessionKind[] | null>(null)
-  // This renders before authentication, when the store is empty, so the
-  // values come straight from the public configuration.
   const [brand, setBrand] = useState({ name: 'KloudChat', logo: '' })
 
   useEffect(() => {
@@ -81,8 +63,7 @@ export function LoginPage() {
       .then((c) => {
         setResetEnabled(c.passwordResetEnabled)
         if (c.signup) setSignupPolicy(c.signup)
-        // Ordered by `kindOrder` rather than by the server's array, so the list
-        // reads the same here as it does in the sidebar behind it.
+        // Ordered as in the sidebar.
         setEnabledKinds(kindOrder.filter((kind) => c.enabledKinds.includes(kind)))
         if (c.brand) {
           setBrand(c.brand)
@@ -102,7 +83,7 @@ export function LoginPage() {
     void authConfig
       .verifyEmail(token)
       .then(({ status, session }) => {
-        // Spent by the same request, so it does not stay in the address bar.
+        // Token is spent; drop it from the address bar.
         window.history.replaceState(null, '', '/')
         setVerifying(null)
         if (session) adoptSession(session)
@@ -114,7 +95,7 @@ export function LoginPage() {
         const code = err instanceof ApiError ? err.detail : ''
         setLocalError(ERRORS[code] ?? t('주소를 확인하지 못했습니다. 로그인해서 확인 메일을 다시 받으세요.'))
       })
-    // The token is read once; re-running on a later render would spend it twice.
+    // Run once: re-running would spend the token twice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -125,7 +106,6 @@ export function LoginPage() {
     setLocalError(null)
     try {
       await authConfig.resetPassword(resetToken, password)
-      // Spent by the same request, so it does not stay in the address bar.
       window.history.replaceState(null, '', window.location.pathname)
       setResetToken(null)
       setResetDone(true)
@@ -145,7 +125,7 @@ export function LoginPage() {
     try {
       await authConfig.forgotPassword(email).catch(() => null)
     } finally {
-      // Always the same outcome: this form does not disclose registration.
+      // Same outcome either way: must not disclose whether the address is registered.
       setSent(true)
       setBusy(false)
     }
@@ -159,8 +139,7 @@ export function LoginPage() {
       if (mode === 'login') await login(email, password)
       else await signup(email, password, name)
     } catch {
-      // The reason is already in `authError`; staying on the form is the
-      // recovery.
+      // Reason is in `authError`.
     } finally {
       setBusy(false)
     }
@@ -168,7 +147,6 @@ export function LoginPage() {
 
   return (
     <div className="flex h-full bg-bg text-fg">
-      {/* ── brand column ─────────────────────────────────────────── */}
       <div className="relative hidden flex-1 flex-col justify-between overflow-hidden border-r border-line bg-sidebar p-10 lg:flex">
         <div
           className="pointer-events-none absolute -top-32 -left-24 size-[420px] rounded-full opacity-25 blur-3xl"
@@ -184,15 +162,9 @@ export function LoginPage() {
             <br />
             {t('생성형 AI 워크스페이스')}
           </h1>
-          {/* No component names here. LiteLLM is real, and it is named on the
-              admin screens where an operator acts on it — but the person signing
-              in is not choosing a proxy, and telling them which one runs the
-              calls is an implementation detail wearing a marketing sentence. */}
           <p className="mt-3 text-base leading-relaxed text-muted">
             {t('자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.')}
           </p>
-          {/* Nothing until the instance has said what it serves. An empty
-              moment is honest; two rows that then disappear are not. */}
           <ul className="mt-8 space-y-3">
             {(enabledKinds ?? []).map((kind) => {
               const meta = kindMeta[kind]
@@ -218,12 +190,11 @@ export function LoginPage() {
         <p className="relative text-xs text-faint">Apache-2.0</p>
       </div>
 
-      {/* ── form column ──────────────────────────────────────────── */}
       <div className="relative flex flex-1 items-center justify-center p-6">
         <ThemeToggle className="absolute top-5 right-5" />
 
         <div className="w-full max-w-sm">
-          {/* 좁은 화면에서는 브랜드 열이 접히므로 폼 위에 한 번 더 그린다 */}
+          {/* Brand column is hidden on narrow screens. */}
           <div className="mb-7 lg:hidden">
             <Brand name={brand.name} logo={brand.logo} size="md" />
           </div>
@@ -265,10 +236,6 @@ export function LoginPage() {
             </div>
           )}
 
-          {/* Why the form is here at all, when the person had been signed in.
-              Without this the timeout is indistinguishable from a fault, and
-              somebody who stepped away for lunch reads it as "it logged me out
-              for no reason". */}
           {signedOutReason === 'idle' && !resetToken && !forgotOpen && (
             <div className="mt-5 flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
               <Clock size={14} className="mt-0.5 shrink-0" />
@@ -276,7 +243,6 @@ export function LoginPage() {
             </div>
           )}
 
-          {/* ── 링크로 들어온 재설정 ─────────────────────────────── */}
           {resetToken && (
             <form className="mt-6 space-y-4" onSubmit={submitReset}>
               <Field label={t('새 비밀번호')} hint={t('10자 이상, 숫자와 기호 포함')}>
@@ -306,14 +272,11 @@ export function LoginPage() {
             </form>
           )}
 
-          {/* ── 재설정 요청 ──────────────────────────────────────── */}
           {!resetToken && forgotOpen && (
             <div className="mt-6">
               {sent ? (
                 <>
-                  {/* Deliberately says nothing about whether that address has an
-                      account. Anything else turns this box into a way to ask
-                      whether a particular person uses this service. */}
+                  {/* Must not disclose whether the address has an account. */}
                   <div className="flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
                     <CircleCheck size={14} className="mt-0.5 shrink-0" />
                     <span>
@@ -359,10 +322,7 @@ export function LoginPage() {
             </div>
           )}
 
-          {/* Normally unreachable: the reset signs the person in, so this page
-              unmounts. It shows when the session cookie did not take — the
-              password *was* changed, and saying nothing would send them back to
-              the form wondering whether it worked. */}
+          {/* Shown only when the reset succeeded but the session cookie did not take. */}
           {resetDone && (
             <div className="mt-6 flex items-start gap-2 rounded-control border border-success/25 bg-success/5 px-3 py-2.5 text-base text-success">
               <CircleCheck size={14} className="mt-0.5 shrink-0" />
@@ -435,10 +395,7 @@ export function LoginPage() {
               />
             </Field>
 
-            {/* Offered only when mail is configured. Without a relay there is no
-                reset flow at all — the API can change a password given the
-                current one and nothing else — and a link that opens nothing is
-                the thing that reads as a broken product. */}
+            {/* Reset link only when mail is configured. */}
             {mode === 'login' &&
               (resetEnabled ? (
                 <div className="flex justify-end">
@@ -486,11 +443,6 @@ export function LoginPage() {
             </Button>
           </form>
           )}
-
-          {/* The old note here explained that the first account becomes the
-              administrator. True once per deployment, and shown to everyone
-              forever — including on the sign-in tab, where it answers a question
-              nobody asked. It belongs in the operator docs. */}
         </div>
       </div>
     </div>

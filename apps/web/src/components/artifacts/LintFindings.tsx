@@ -8,18 +8,8 @@ import type { Artifact, Critique, LintFinding } from '@/types'
 import { useT } from '@/lib/useT'
 
 /**
- * The findings of one pass, gathered under the part each one is about.
- *
- * Exported because both surfaces need it and both would otherwise get it
- * subtly wrong. Fixing findings one at a time rewrites the same section once
- * per finding, and a rewrite works on the text the *last* rewrite produced —
- * so the second one is asked to fix a problem in a passage that no longer
- * exists, and routinely undoes the first. Three findings about one paragraph
- * is one instruction naming three things, not three instructions.
- *
- * Keyed by `where`, which is what a finding says about its own location. The
- * ones that name nothing are gathered under `''` and belong to the document as
- * a whole; the caller decides what to do with those.
+ * Groups findings by `where` so each part is rewritten once with all its findings.
+ * Findings with no location land under `''`.
  */
 export function byWhere(findings: LintFinding[]): Map<string, LintFinding[]> {
   const groups = new Map<string, LintFinding[]>()
@@ -32,7 +22,7 @@ export function byWhere(findings: LintFinding[]): Map<string, LintFinding[]> {
   return groups
 }
 
-/** The instruction for one part, naming everything found in it. */
+/** One fix instruction naming every finding for a part. */
 export function fixNote(findings: LintFinding[], one: string, many: string): string {
   if (findings.length === 1) return one.replace('{message}', findings[0].message)
   return many.replace(
@@ -76,17 +66,6 @@ function Finding({ finding, onFix }: { finding: LintFinding; onFix?: () => Promi
         {finding.message}
         {failed && <span className="mt-0.5 block text-xs text-danger">{failed}</span>}
       </span>
-      {/* A list of problems with no way to act on one puts the whole job back
-          on the reader: find the passage, work out what it should say, type it.
-          The finding already knows which section and what is wrong with it, and
-          the document already rewrites a section on request — this is the wire
-          between the two.
-
-          It rewrites rather than asking the chat to. A sentence sent to the
-          conversation looks like an action and is a request: the reader still
-          has to watch for a reply and work out whether anything changed. The
-          rewrite path edits the document, keeps a snapshot, and is one press of
-          되돌리기 from undone. */}
       {onFix &&
         (done ? (
           <Check size={13} className="mt-1 shrink-0 text-success" />
@@ -110,22 +89,8 @@ function Finding({ finding, onFix }: { finding: LintFinding; onFix?: () => Promi
 }
 
 /**
- * Everything worth looking at before this document goes anywhere.
- *
- * Two sources, one list. The linter is free and certain — it ran when the
- * document was written and found what it found. The review costs a model call
- * and is an opinion, so it is asked for rather than run, and its score is a
- * reading rather than a gate: nothing here blocks anything.
- *
- * A badge and a list rather than markers threaded through the text: nothing is
- * corrected automatically, so what the reader needs is a count they can ignore
- * and a list they can act on — literally, where the surface has somewhere to
- * send a correction. 다시 검토 was the only button here for a while, which made
- * the panel a place to be told about problems twice rather than once.
- *
- * The count is the `P0` one when there are any, because "two things are wrong"
- * and "five things could read better" are different sentences and only the
- * first should look urgent.
+ * Lint findings plus the on-demand model review, as a badge and a list.
+ * The badge counts P0 findings when there are any.
  */
 export function LintFindings({
   findings,
@@ -134,24 +99,11 @@ export function LintFindings({
   onFixAll,
 }: {
   findings?: LintFinding[]
-  /** Given, the review can be asked for and shown. Omitted, this is lint only. */
+  /** Enables the model review; omitted, this shows lint only. */
   artifact?: Artifact
-  /**
-   * Hands one finding back as an instruction to fix it.
-   *
-   * Absent on surfaces with no revision path of their own, where the list is
-   * still worth reading — the button simply does not appear rather than
-   * appearing and doing nothing.
-   */
+  /** Sends one finding to the surface's revision path; omitted where there is none. */
   onFix?: (finding: LintFinding) => Promise<void>
-  /**
-   * Fixes everything in the list at once.
-   *
-   * Separate from `onFix` rather than a loop over it, because the two are not
-   * the same job: a loop rewrites one part once per finding about it, and each
-   * rewrite lands on the text the last one produced. The surface groups them
-   * and sends one instruction per part — see `byWhere`.
-   */
+  /** Fixes all findings, one instruction per part (see `byWhere`). */
   onFixAll?: (findings: LintFinding[]) => Promise<void>
 }) {
   const t = useT()
@@ -188,11 +140,7 @@ export function LintFindings({
     setError(null)
     try {
       const row = await artifactsApi.critique(artifact.id)
-      // Written onto the artifact this panel was handed, not only into the
-      // store: the artifacts screen opens its modal on a copy it took when the
-      // card was clicked, so a store refresh alone leaves the review invisible
-      // exactly where it was asked for. Same move the report panel makes after
-      // a section rewrite.
+      // Also written onto the prop: the artifacts screen renders a copy, not the store row.
       artifact.critique = (row.data as { critique?: Critique } | null)?.critique
       void loadArtifacts()
     } catch (err) {
@@ -204,11 +152,7 @@ export function LintFindings({
 
   return (
     <Dropdown
-      // Opens rightward, into the room that exists. The badge sits early in a
-      // toolbar packed against the right edge, so there is always half a panel
-      // to its right and only a couple of hundred pixels to its left — and a
-      // 320px list opening leftward hangs off the panel, where the panel's own
-      // clipping cuts 검토 받기 in half and nothing can press it.
+      // Opens rightward: leftward, the 320px list would be clipped by the panel.
       align="left"
       trigger={() => (
         <button type="button" aria-label={t('검사 결과')}>
@@ -224,11 +168,7 @@ export function LintFindings({
       )}
     >
       <div className="w-80">
-        {/* 하나씩 누르는 것과 다른 일이다. 지적이 열 줄이면 열 번을 눌러야 하고,
-            그 사이 문서는 열 번 다시 쓰인다 — 여기서는 절마다 한 번씩만 쓴다.
-
-            목록 위에 둔다. 아래에 두면 스크롤되는 목록 뒤로 밀려서, 지적이 많을
-            때, 즉 이 버튼이 가장 필요할 때 보이지 않는다. */}
+        {/* Above the list so it stays visible when the list scrolls. */}
         {onFixAll && all.length > 1 && (
           <div className="border-b border-line px-2 py-2">
             {fixedAll ? (

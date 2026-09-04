@@ -1,29 +1,7 @@
-"""A section written by hand, in the shape the exporters already read.
+"""Edited-section HTML (`format: "html"`) back to the Markdown the exporters read.
 
-A report section used to be one thing: Markdown, written by the model, rendered
-by the browser and drawn by three exporters that parse it a line at a time.
-That works for as long as the only author is the model, because Markdown can
-say everything a model has to say about a paragraph.
-
-It stops working the moment somebody edits the document. The four things a
-person reaches for first — size, face, alignment, and a colour for emphasis —
-have no Markdown at all, and a table typed into a word processor is not a run
-of `|` characters. So an edited section is stored as HTML, marked `format:
-"html"`, and this module is the bridge back: every path that consumed Markdown
-still does.
-
-Two directions, and only one of them lives here:
-
-* **HTML → Markdown**, for the exporters and for the model's own context. That
-  is this file. It is a fixed vocabulary — `design_templates._ALLOWED_TAGS` —
-  rather than a general parser, which is why 200 lines is enough.
-* **Markdown → HTML**, for opening an existing report in the editor. That is
-  the browser's, because the browser already renders exactly this Markdown to
-  exactly this DOM, and a second implementation here would be a second answer
-  to what a list looks like.
-
-Nothing here trusts its input. `design_templates.sanitise` runs first, at the
-boundary where the HTML arrives; this reads what survived.
+The vocabulary is `design_templates._ALLOWED_TAGS`; `design_templates.sanitise`
+runs first. Markdown → HTML is the browser's job.
 """
 
 from __future__ import annotations
@@ -34,16 +12,14 @@ from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
 
-#: Block tags that end a paragraph. Everything else is inline and folds into
-#: the line being built.
+#: Block tags that end a paragraph; everything else is inline.
 _BLOCK = re.compile(
     r"</?(p|div|section|h[1-6]|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|figure"
     r"|figcaption|dl|dt|dd|hr|br)\b[^>]*>",
     re.I,
 )
 _TAG = re.compile(r"<[^>]+>")
-#: `<strong>가</strong>` → `**가**`. Nested emphasis is left to the outer pass;
-#: a bold italic renders as bold, which is what the exporters do with it anyway.
+#: `<strong>가</strong>` → `**가**`. Nested emphasis keeps only the outer mark.
 _EMPHASIS = (
     (re.compile(r"<(strong|b)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"**\2**"),
     (re.compile(r"<(em|i)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"*\2*"),
@@ -53,46 +29,26 @@ _EMPHASIS = (
 
 @dataclass(slots=True)
 class Cell:
-    """One table cell, with the two things GFM cannot say about it.
-
-    A merged cell and a cell holding two lines are both ordinary in a Korean
-    계획서 — the header row that spans four columns, the 비고 that runs to a
-    second line — and Markdown has no syntax for either. Routed through GFM
-    they came out of every exporter as, respectively, one filled cell followed
-    by empty ones, and two sentences joined by a space. One real 계획서 opened
-    here has thirty merged cells in it, so this is not an edge.
-    """
+    """One table cell; `text` may hold newlines, spans are what GFM cannot say."""
 
     text: str
     colspan: int = 1
     rowspan: int = 1
 
-    @property
-    def spans(self) -> bool:
-        return self.colspan > 1 or self.rowspan > 1
-
 
 @dataclass(slots=True)
 class Grid:
-    """A table as its cells, anchors only.
+    """A table as anchor cells: each row holds only the cells that begin in it.
 
-    Row by row, each row holding the cells that *begin* in it. A cell covered
-    by the one above or to its left is not repeated — which is how docx, PDF
-    and OWPML all describe a merge, so no exporter has to undo anything.
+    Cells covered by a span are not repeated, matching how docx, PDF and OWPML
+    describe a merge.
     """
 
     rows: list[list[Cell]] = field(default_factory=list)
 
     @property
     def width(self) -> int:
-        """How many columns the table actually has.
-
-        Not the widest row of *anchors*: a `rowspan` cell occupies columns in
-        the rows below without beginning in them, so a table whose first row is
-        one tall cell and whose later rows hold the values measured narrower
-        than it was — and `flat()` then threw the value column away. Walked
-        with the same occupancy the renderers use.
-        """
+        """Column count, walked with span occupancy rather than the widest anchor row."""
         taken: set[tuple[int, int]] = set()
         width = 0
         for index, row in enumerate(self.rows):
@@ -108,18 +64,7 @@ class Grid:
         return width
 
     def flat(self, newline: str = " ") -> list[list[str]]:
-        """The grid as plain rows, merges opened out and newlines replaced.
-
-        What the exporters drew before, kept for the formats and the fallbacks
-        that cannot merge — and for the GFM table the grid travels beside,
-        which is written from this so the two always have the same shape.
-
-        Opening a merge out puts the text in the cell it started in and leaves
-        the covered ones empty, which is what the reader of a flattened table
-        sees anyway. Before this the covered cells were not there at all, and
-        every row after a `rowspan` sat one column to the left of where it
-        belonged — the 계열 column of a 22행 표 reading as 단과대학.
-        """
+        """Plain rows: text in the anchor cell, covered cells empty, newlines replaced."""
         width = self.width
         out: list[list[str]] = []
         taken: set[tuple[int, int]] = set()
@@ -172,12 +117,7 @@ def _style_map(value: str) -> dict[str, str]:
 
 
 class _FormatReader(HTMLParser):
-    """The editable HTML as block styles and inline runs.
-
-    This travels beside Markdown; it does not replace the established parser
-    for tables, figures and structured blocks. Exporters match these ordinary
-    prose blocks in order and retain the formatting Markdown cannot express.
-    """
+    """Prose blocks as block styles and inline runs: formatting Markdown cannot carry."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -280,16 +220,7 @@ def _grid(markup: str) -> Grid:
 
 
 def grids(fragment: str) -> list[Grid]:
-    """Every table in an HTML body, in the order they appear.
-
-    Travels beside the Markdown rather than inside it. The exporters read
-    Markdown and always will — it is what the model writes — so a table that
-    needs more than Markdown can say is matched to its GFM twin by position
-    and by text, and the exporter draws whichever it got. Encoding the merges
-    into the Markdown itself was the other way, and it would have put a private
-    notation in front of the model and in front of the browser, both of which
-    read this same string.
-    """
+    """Every table in an HTML body, in order; exporters match them to GFM tables by position."""
     found = re.findall(r"<table\b.*?</table\s*>", fragment, re.S | re.I)
     return [_grid(markup) for markup in found]
 
@@ -305,16 +236,7 @@ def _inline(fragment: str) -> str:
 
 
 def _table(markup: str) -> str:
-    """A table as a GFM table, or `''` when it has no rows.
-
-    GFM rather than the `- 가 · 나` line the deck exporter falls back to: the
-    report exporters read Markdown, the browser renders GFM tables already, and
-    a table flattened to a bullet is a table somebody has to rebuild by hand
-    after every export.
-    """
-    #: From the grid, so the pipes line up with the merges rather than ignoring
-    #: them, and so a cell's line breaks survive as `<br>` — GFM's own way of
-    #: saying it, and what the browser rendering this already draws.
+    """A table as a GFM table, or `''` when it has no rows. Cell line breaks become `<br>`."""
     rows = _grid(markup).flat(newline="<br>")
     rows = [row for row in rows if any(cell for cell in row)]
     if not rows:
@@ -330,31 +252,19 @@ def _table(markup: str) -> str:
     return "\n".join(lines)
 
 
-#: A list opening or closing, so nesting can be counted rather than guessed.
+#: List open/close edges; group 1 is `/` on a close, so nesting can be counted.
 _LIST_EDGE = re.compile(r"<(/?)(ul|ol)\b[^>]*>", re.I)
-#: The same, for a `<div>` that holds `<div>`s — the strip of figures.
+#: The same for `<div>`, for the KPI strip.
 _DIV_EDGE = re.compile(r"<(/?)div\b[^>]*>", re.I)
-#: An item opening, likewise.
 _ITEM_OPEN = re.compile(r"<li\b[^>]*>", re.I)
 
 
 def _items(markup: str) -> list[tuple[str, str]]:
-    """`(text, inner)` for each item of the outermost list in `markup`.
+    """`(text, nested)` for each item of the outermost list in `markup`.
 
-    Counted rather than matched. `<li>(.*?)</li>` is non-greedy, so an item
-    holding a sub-list stopped at the sub-list's own `</li>` — the outer item's
-    text and the first inner item's ran together into 바깥안쪽, a word that does
-    not exist, and everything after the sub-list fell out of the list entirely
-    and came back as a paragraph. A Korean 공문 is three levels of 글머리 from
-    top to bottom, so that was not an edge either.
+    Nesting is counted, not regex-matched. The fragment may be truncated
+    (`sanitise` does not balance tags); a list that never closes runs to the end.
     """
-    # The fragment can be truncated: `sanitise` is regex-based and does not
-    # balance tags, and a block cut off at the token limit arrives here whole.
-    # `rindex("</")` on such a fragment either raised (no close anywhere — a
-    # 500 on export and on review) or, worse, cut silently at an *earlier*
-    # close and dropped the last item with no error. The end of the outermost
-    # list is where `_LIST_EDGE` says it is, and a list that never closes runs
-    # to the end of what we have.
     opened = markup.index(">") + 1
     depth = 1
     stop = len(markup)
@@ -389,13 +299,7 @@ def _item_end(body: str, start: int, limit: int) -> int:
 
 
 def _list(markup: str, ordered: bool, depth: int = 0) -> str:
-    """A list as Markdown lines, sub-lists indented under their own item.
-
-    Two spaces per level, which is Markdown's own way of saying it and what the
-    browser rendering this already draws. The exporters read the indent back —
-    `report_export._markdown_to_lines` — so a 공문's ○ · • · - survives into the
-    `.hwpx` as three levels rather than as one.
-    """
+    """A list as Markdown lines, sub-lists indented two spaces per level."""
     lines: list[str] = []
     pad = "  " * depth
     number = 0
@@ -429,50 +333,25 @@ def _sublists(markup: str) -> list[str]:
     return out
 
 
-#: One top-level construct: a table, a list, a quote, a sub-heading, or a
-#: paragraph. Matched in this order so a list inside a table cell is consumed
-#: by the table rather than lifted out of it.
+#: One top-level construct. Order matters: structured blocks (page break, KPI
+#: strip, steps, cards, callout, diagram, chart, footnote) before the plain
+#: table, list, heading and figure they are built from. The KPI strip and the
+#: lists match their opening tag only; `_balanced` finds where they close.
 _CONSTRUCT = re.compile(
-    # Ahead of the plain list: a procedure is an `<ol>` too, and matched as one
-    # it would come back as `1. 자료 수집` — an ordinary list, with the fence
-    # and its numbering gone for good on the next save.
     r"<div\b[^>]*\bdata-page-break=(?:\"true\"|'true'|true)[^>]*>\s*</div\s*>"
-    # The opening tag only, like `<ul` below and for the same reason. A strip
-    # of figures is a `<div>` whose cells are `<div>`s, so a lazy close lands
-    # on the *first cell's* — the block was cut off after one figure, and every
-    # figure after it came back as loose prose: `**68%**기초 도구 사용 한계`,
-    # which is what the exported .docx and .hwpx then printed. `_balanced`
-    # walks the nesting; the pattern only has to find where the strip starts.
     r"|<div\b[^>]*\bclass=\"[^\"]*\bkpi\b[^\"]*\"[^>]*>"
     r"|<ol\b[^>]*\bclass=\"[^\"]*\bsteps\b[^\"]*\"[^>]*>.*?</ol\s*>"
-    # Ahead of the plain heading and the plain list, both of which live inside
-    # a card: matched as those, a grid would come back as a run of `### 제목`
-    # and loose bullets, and the grid would be gone for good on the next save.
-    # `<section>` rather than `<div>` is what makes the lazy close correct —
-    # the cards inside are `<div>`, so the first `</section>` is this one.
     r"|<section\b[^>]*\bclass=\"[^\"]*\bcards\b[^\"]*\"[^>]*>.*?</section\s*>"
     r"|<section\b[^>]*\bclass=\"[^\"]*\bcallout\b[^\"]*\"[^>]*>.*?</section\s*>"
-    # Ahead of the plain figure, which would keep the picture and drop the
-    # source — and a diagram whose source is gone cannot be changed again by
-    # anyone, here or in the browser.
     r"|<figure\b[^>]*\bclass=\"[^\"]*\bdiagram\b[^\"]*\"[^>]*>.*?</figure\s*>"
     r"|<figure\b[^>]*\bclass=\"[^\"]*\bchart\b[^\"]*\"[^>]*>.*?</figure\s*>"
-    # A footnote body. Without this it is inline text, so two notes in a row
-    # ran together into one sentence and the first — beginning `* ` — was read
-    # back as a bullet by the exporters.
     r"|<small\b[^>]*>.*?</small\s*>"
     r"|<table\b.*?</table\s*>"
-    # `.*?` stops at the *first* close, which for a list holding a list is the
-    # inner one — so the outer list was cut in half and everything after the
-    # sub-list came back as prose. `_balanced` walks past the nested closes; the
-    # pattern below only has to find where a list starts.
     r"|<ul\b"
     r"|<ol\b"
     r"|<blockquote\b.*?</blockquote\s*>"
     r"|<h[1-6]\b.*?</h[1-6]\s*>"
     r"|<figure\b.*?</figure\s*>"
-    # Tiptap writes a bare `<img>`; the seeds' own markup wraps one in a
-    # `<figure>`. Both are pictures and both have to come out.
     r"|<img\b[^>]*>"
     r"|<hr\s*/?>",
     re.S | re.I,
@@ -483,9 +362,7 @@ def _render(match: re.Match[str], notes: int = 0) -> str:
     markup = match.group(0)
     lowered = markup[:12].lower()
     if re.search(r"\bdata-page-break=(?:\"true\"|'true'|true)", markup, re.I):
-        # A private-looking token would leak into a Markdown download. This is
-        # the established Pandoc/Markdown page-break comment and stays inert
-        # in ordinary Markdown readers while exporters can preserve it.
+        # The Pandoc page-break comment: inert in Markdown readers, kept by exporters.
         return "<!-- pagebreak -->"
     if _KPI_OPEN.match(markup):
         return _pairs_fence("kpi", markup, r"<div\b[^>]*>(.*?)</div\s*>")
@@ -498,14 +375,10 @@ def _render(match: re.Match[str], notes: int = 0) -> str:
     if _DIAGRAM_OPEN.match(markup):
         return _diagram_fence(markup)
     if _CHART_OPEN.match(markup):
-        # Back as its own fence. The figure carries the numbers rather than a
-        # drawing of them, so nothing is lost and the exporters rebuild the
-        # chart from the same text the writer produced.
         found = _DIAGRAM_SOURCE.search(markup)
         source = html.unescape(found.group(1)[1:-1]).strip() if found else ""
         return "```chart\n" + source + "\n```" if source else ""
     if lowered.startswith("<small"):
-        # Numbered by the caller, which counts them for this fragment alone.
         return _note(markup, notes)
     if lowered.startswith("<table"):
         return _table(markup)
@@ -524,39 +397,21 @@ def _render(match: re.Match[str], notes: int = 0) -> str:
         return _picture(markup)
     level = int(lowered[2])
     body = _inline(markup)
-    # `##` at minimum: the section's own heading is drawn by the wrapper, so a
-    # heading inside the body is always a sub-heading. `_markdown_to_lines`
-    # reads two or more hashes and nothing else.
+    # `##` at minimum: a heading inside a section body is always a sub-heading.
     return f"{'#' * max(level, 2)} {body}" if body else ""
 
 
-#: A footnote's own mark, which the 서식 asks the writer to put at the front of
-#: the note: `*`, `**`, `***`. Stripped on the way out — the exporters number
-#: the notes themselves, and a note carrying both its old mark and its new
-#: number reads as two footnotes.
+#: A footnote's leading mark (`*`, `**`, `1.`); stripped, the exporters number notes.
 _NOTE_MARK = re.compile(r"^\s*(\*{1,4}|\d{1,3}[).]?)\s+")
 
 
 def _note(markup: str, number: int) -> str:
-    """A footnote body, as a line the exporters can tell from prose.
-
-    GFM's own footnote syntax rather than an invention. It is a real notation,
-    it survives every Markdown reader in the way this needs, and — the reason
-    it is here — a line beginning `[^1]:` is not a bullet, while a line
-    beginning `* ` is. That was the bug: the first footnote of every section
-    came out of the exporters as a list item.
-
-    The number comes from the order the notes appear in, which is the order the
-    marks in the prose appear in too. The 서식's own checklist asks for exactly
-    that correspondence — "각주 표시와 절 발치의 각주가 개수와 순서로 맞아
-    떨어지는가" — so pairing by position is not a guess about what the writer
-    meant; it is the rule the writer was given.
-    """
+    """A footnote body as a GFM footnote line `[^n]: …`, numbered by order of appearance."""
     text = _NOTE_MARK.sub("", _inline(markup))
     return f"[^{number}]: {text}" if text else ""
 
 
-#: The two structured blocks, told apart from a plain `<div>` or `<ol>`.
+#: Structured-block openers, told apart from a plain `<div>`, `<ol>`, `<section>` or `<figure>`.
 _KPI_OPEN = re.compile(r"<div\b[^>]*\bclass=\"[^\"]*\bkpi\b", re.I)
 _STEPS_OPEN = re.compile(r"<ol\b[^>]*\bclass=\"[^\"]*\bsteps\b", re.I)
 _STRONG = re.compile(r"<strong\b[^>]*>(.*?)</strong\s*>", re.S | re.I)
@@ -572,17 +427,7 @@ _DIAGRAM_SOURCE = re.compile(r"\bdata-source=(\"[^\"]*\"|'[^']*')", re.I)
 
 
 def _cards_fence(markup: str) -> str:
-    """A card grid back as its own fence.
-
-    It comes through here whenever somebody has touched the section in the
-    document editor, because an edited section is stored as HTML and the
-    exporters read Markdown. Rendered as anything else it stops being a grid:
-    the titles come back as sub-headings and the lines as one long list, and
-    the next save makes that the document.
-
-    `##` for a card and `- ` for its lines, which is what the writer was given
-    and what `report_export._cards` reads.
-    """
+    """A card grid as a `cards` fence: `##` per card, `- ` per line."""
     out: list[str] = []
     body = markup[markup.index(">") + 1 :]
     for card in _CARD.finditer(body):
@@ -594,15 +439,14 @@ def _cards_fence(markup: str) -> str:
         out.append(f"## {title}")
         seen = _CARD_TITLE.sub("", inner)
         lines = [_inline(one.group(1)) for one in _LI.finditer(seen)]
-        # A card written as prose rather than as a list. Both are what the
-        # editor stores, because a person may have typed either.
+        # A card typed as paragraphs rather than a list.
         lines = lines or [_inline(one.group(1)) for one in _P.finditer(seen)]
         out.extend(f"- {line}" for line in lines if line)
     return "```cards\n" + "\n".join(out) + "\n```" if out else ""
 
 
 def _callout_fence(markup: str) -> str:
-    """The boxed line back as its own fence — title first, then what it says."""
+    """A callout as a `callout` fence: title first, then its paragraphs."""
     body = markup[markup.index(">") + 1 :]
     found = _CARD_TITLE.search(body)
     title = _inline(found.group(1)) if found else ""
@@ -612,17 +456,7 @@ def _callout_fence(markup: str) -> str:
 
 
 def _diagram_fence(markup: str) -> str:
-    """A diagram back as its own mermaid fence.
-
-    The figure carries both the source it was drawn from and, once somebody has
-    looked at the document, the picture. Only the source comes back: the
-    exporters look the picture up for themselves under the digest of exactly
-    this text, and writing the picture into the prose as well would put it in
-    the file twice.
-
-    A figure with no source is one that arrived as a plain picture rather than
-    as a diagram, so it goes through `_picture` like any other.
-    """
+    """A diagram as a `mermaid` fence from its `data-source`; without one it is a plain picture."""
     found = _DIAGRAM_SOURCE.search(markup)
     if not found:
         return _picture(markup)
@@ -634,24 +468,9 @@ _SPAN = re.compile(r"<span\b[^>]*>(.*?)</span\s*>", re.S | re.I)
 
 
 def _pairs_fence(lang: str, markup: str, row_pattern: str) -> str:
-    """A strip of figures or a numbered procedure, back as its own fence.
-
-    These come back through here whenever somebody has touched the section in
-    the document editor, because an edited section is stored as HTML and the
-    exporters read Markdown. Rendered as anything else they are lost: a
-    procedure matched as a plain `<ol>` returns as `1. 자료 수집`, and the
-    numbering the editor was drawing is now literal text in the source — which
-    the next save makes permanent.
-
-    The inner text is stripped of markup rather than converted. Both blocks are
-    atoms in the editor: nothing inside them can be made bold or linked, so
-    there is nothing to carry, and a `|` in the text has to go because it is
-    the separator.
-    """
+    """A KPI strip or steps procedure as a `name | detail` fence; `|` in text becomes `／`."""
     rows: list[str] = []
-    # Past the opening tag before matching rows: the strip's wrapper is a
-    # `<div>` too, and the row pattern would otherwise match it first and take
-    # the whole block as one row.
+    # Skip the wrapper tag, which the row pattern would otherwise match first.
     body = markup[markup.index(">") + 1 :]
     for row in re.finditer(row_pattern, body, re.S | re.I):
         inner = row.group(1)
@@ -673,35 +492,18 @@ _CAPTION = re.compile(r"<figcaption\b[^>]*>(.*?)</figcaption\s*>", re.S | re.I)
 
 
 def _picture(markup: str) -> str:
-    """A figure as Markdown, or `''` when there is nothing to carry.
-
-    The picture used to be dropped here and only its caption kept, on the
-    reasoning that the exporters read images off the section rather than out of
-    the prose. That was true for a figure the *writer* produced and false for
-    one a *person* pasted into the document editor — those live in the body,
-    and dropping them meant a picture somebody put in their report was on the
-    screen and missing from the file they submitted.
-
-    So both go out the same way, as a Markdown image, and the exporters draw
-    them where they stand.
-    """
+    """A figure as a Markdown image, caption as alt text; caption alone without an `<img>`."""
     found = _IMG.search(markup)
     caption = _CAPTION.search(markup)
     label = _inline(caption.group(1)) if caption else ""
     if not found:
-        # A caption with no picture still tells the reader what was there.
         return label
     src = found.group(1).strip().strip("\"'")
     return f"![{label}]({src})"
 
 
 def _balanced(fragment: str, start: int, edges: re.Pattern[str] = _LIST_EDGE) -> int:
-    """Where the construct opening at `start` actually closes.
-
-    `edges` matches both halves of the tag pair, with group 1 holding the `/`
-    of a closing tag — so the same walk serves a list holding a list and a
-    `<div>` holding `<div>`s.
-    """
+    """End offset of the construct opening at `start`; `edges` group 1 is `/` on a close."""
     depth = 0
     for edge in edges.finditer(fragment, start):
         depth += -1 if edge.group(1) else 1
@@ -711,16 +513,7 @@ def _balanced(fragment: str, start: int, edges: re.Pattern[str] = _LIST_EDGE) ->
 
 
 def to_markdown(fragment: str) -> str:
-    """One section's HTML as the Markdown every consumer already reads.
-
-    Not a general converter — the vocabulary is `_ALLOWED_TAGS`, which is what
-    `sanitise` leaves standing, and anything outside it has already been
-    removed by the time this runs.
-
-    Inline `style=` is dropped rather than approximated. A size or a face has
-    no Markdown, and half-applied formatting reads worse than none — the same
-    call `_strip_inline` makes in the exporters.
-    """
+    """One section's sanitised HTML as Markdown. Inline `style=` is dropped."""
     if not fragment or "<" not in fragment:
         return (fragment or "").strip()
 
@@ -731,7 +524,7 @@ def to_markdown(fragment: str) -> str:
     notes = 0
     for match in _CONSTRUCT.finditer(fragment):
         if match.start() < cursor:
-            # Inside a list this scan has already consumed whole.
+            # Inside a construct already consumed whole.
             continue
         parts.extend(_paragraphs(fragment[cursor : match.start()]))
         if match.group(0)[:6].lower().startswith("<small"):
@@ -741,8 +534,6 @@ def to_markdown(fragment: str) -> str:
             stop = _balanced(fragment, match.start())
             rendered = _list(fragment[match.start() : stop], match.group(0).lower() == "<ol")
         elif _KPI_OPEN.match(match.group(0)):
-            # Matched as an opening tag, so the whole strip has to be found
-            # before its cells can be read off it.
             stop = _balanced(fragment, match.start(), _DIV_EDGE)
             rendered = _pairs_fence(
                 "kpi", fragment[match.start() : stop], r"<div\b[^>]*>(.*?)</div\s*>"
@@ -756,23 +547,12 @@ def to_markdown(fragment: str) -> str:
     return "\n\n".join(part for part in parts if part.strip())
 
 
-#: A footnote mark in the prose. The 서식 asks for `<sup>*</sup>`, `<sup>**</sup>`.
+#: A footnote mark in the prose: `<sup>*</sup>`, `<sup>**</sup>`.
 _SUP = re.compile(r"<sup\b[^>]*>.*?</sup\s*>", re.S | re.I)
 
 
 def _numbered_marks(fragment: str) -> str:
-    """`<sup>*</sup>` → `[^1]`, in the order they appear.
-
-    The mark the writer typed is thrown away rather than carried across. It is
-    `*`, `**`, `***` — a notation that runs out at three and that a reader of
-    the exported file has no way to match to a note, because Word will renumber
-    the notes anyway. Position is the pairing the 서식 asked for and position is
-    what survives.
-
-    Counted separately from the notes so a fragment with a mark and no note, or
-    a note and no mark, still converts — mismatched halves are a fault for the
-    checks to report, not a reason to lose the text of either.
-    """
+    """`<sup>*</sup>` → `[^1]`, numbered by order of appearance, independently of the notes."""
     counter = iter(range(1, 1000))
     return _SUP.sub(lambda _m: f"[^{next(counter)}]", fragment)
 
@@ -781,11 +561,8 @@ def _paragraphs(fragment: str) -> list[str]:
     """Whatever sits between two constructs, split on block boundaries."""
     if not fragment.strip():
         return []
-    # Block tags become the split points; everything else is inline and stays
-    # with the line it belongs to.
     chunks = _BLOCK.split(fragment)
-    # `re.split` on a pattern with groups interleaves the captures; the tag
-    # names are of no use here, so only the text between them is kept.
+    # `re.split` with a group interleaves the tag names; keep only the text between.
     text_chunks = chunks[::2] if len(chunks) > 1 else chunks
     out = [_inline(chunk) for chunk in text_chunks]
     return [line for line in out if line]
@@ -796,28 +573,13 @@ _PIPE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 
 
 def tidy_tables(text: str) -> str:
-    """Close the gaps a model leaves between table rows.
-
-    GFM wants a table's rows on consecutive lines. Models write them with a
-    blank line between each one, which is legible in the raw Markdown and is
-    not a table to any renderer — `remark-gfm` in the web view drew it as
-    literal pipes, one paragraph per row, and so did everything downstream.
-
-    Fixed here rather than only in the renderers because the stored text is
-    what the web view reads, what the exporters read, and what somebody sees if
-    they open the Markdown. One of those rendering a table while the others
-    print pipes is worse than all of them printing pipes.
-
-    Only blank lines *between* pipe rows go. A blank line after the last row
-    still ends the table, or two tables in a row would merge into one.
-    """
+    """Removes blank lines between GFM table rows; a blank line after the last row stays."""
     lines = (text or "").split("\n")
     out: list[str] = []
     for index, line in enumerate(lines):
         if line.strip():
             out.append(line)
             continue
-        # A blank line survives unless it sits between two rows of one table.
         before = next((out[i] for i in range(len(out) - 1, -1, -1) if out[i].strip()), "")
         after = next((lines[i] for i in range(index + 1, len(lines)) if lines[i].strip()), "")
         if _PIPE_ROW.match(before) and _PIPE_ROW.match(after):
@@ -827,23 +589,13 @@ def tidy_tables(text: str) -> str:
 
 
 def as_markdown(section: dict) -> str:
-    """One section's body as Markdown, whichever way it was stored.
-
-    The single place that knows about `format`. Every export path calls this
-    instead of reading `content` directly, so a report somebody edited in the
-    document editor draws the same as one the model wrote.
-    """
+    """One section's body as Markdown, whichever `format` it was stored in."""
     body = str(section.get("content") or "")
     return to_markdown(body) if section.get("format") == "html" else body
 
 
 def normalise(sections: list[dict]) -> list[dict]:
-    """Sections with every body as Markdown. For the exporters and the model.
-
-    `grids` rides along under `tables` for the sections that had real ones. The
-    model never sees that key — it reads `content` — and an exporter that does
-    not look for it draws exactly what it drew before.
-    """
+    """Sections with every body as Markdown; HTML sections also carry `tables` and `_formatting`."""
     out: list[dict] = []
     for section in sections:
         body = str(section.get("content") or "")

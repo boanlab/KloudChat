@@ -2,19 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { gotoWorkspace, signIn } from './helpers'
 
-/**
- * Round seven: what people actually paste, what they click twice, and what
- * happens when the session runs out under them.
- *
- * The first six rounds pushed on shape, keyboard, failure, disconnection and
- * weight. None of them put anything *inside* the app that it did not write
- * itself. Real workspaces fill up with pasted URLs three hundred characters
- * long, titles that are one unbroken word, and text with angle brackets in it —
- * and real people press save twice when the first press seems not to have
- * worked.
- *
- * Discovery: writes `audit/content-audit.json`, never fails the run.
- */
+/** Content sweep: hostile pasted text, double submits, expired sessions, stale replies, Back.
+ *  Writes `audit/content-audit.json`; never fails. */
 
 interface Defect {
   rule: string
@@ -38,7 +27,7 @@ const AS_USER = `async (path, init) => {
   return await r.json()
 }`
 
-/** Things somebody will paste, sooner or later. */
+/** Things somebody will paste. */
 const HOSTILE = {
   unbroken: `자료링크${'x'.repeat(240)}끝`,
   markup: '<script>window.__audit_ran = true</script><b>굵게</b> & "따옴표"',
@@ -66,9 +55,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
 
   await signIn(page)
 
-  /* ── R23: content the layout did not choose ──────────────────────────
-     A title is whatever somebody typed, and CSS has no opinion about that
-     until it overflows. */
+  // R23: content the layout did not choose.
   const made: string[] = []
   for (const [kind, title] of Object.entries(HOSTILE)) {
     const row = await post(page, {
@@ -111,9 +98,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   }
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  // Markup is text, not markup — checked through the renderer that actually
-  // draws prose, not the `<pre>` the gallery thumbnails use. Reading the
-  // thumbnail proves nothing: it is escaped by construction.
+  // Markup is text, checked through the prose renderer (thumbnails are `<pre>`, escaped by construction).
   await page.getByRole('tab', { name: /^보고서/ }).click()
   const markupCard = page
     .locator('div')
@@ -132,13 +117,12 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     if (ran) note('content-escaping', '<script>', '보고서 패널', '붙여넣은 스크립트가 실행된다')
 
     checks++
-    // `<b>` must arrive as four characters, not as an element.
+    // `<b>` arrives as four characters.
     if ((await page.getByRole('dialog').locator('b').count()) > 0) {
       note('content-html', '<b>', '보고서 패널', '붙여넣은 HTML 이 서식으로 해석된다')
     }
 
     checks++
-    // And it has to still be readable as what it is.
     if ((await page.getByRole('dialog').getByText('굵게', { exact: false }).count()) === 0) {
       note('content-visible', '굵게', '보고서 패널', '붙여넣은 내용이 화면에서 사라진다')
     }
@@ -154,13 +138,8 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     )
   }
 
-  /* ── R23b: the same content everywhere else ──────────────────────────
-     A report title lives in a wide column. The places that squeeze are the
-     240px sidebar, the two-up agent grid and the memory list, and each holds a
-     name somebody typed. */
-  // The longest unbroken name the API will take. It caps `name` at 120
-  // characters, which is a real guard — so 240 of them is not the worst case
-  // these screens can meet, and seeding it only proves the server said no.
+  // R23b: the same content in the narrow places (sidebar, agent grid, memory list).
+  // The longest unbroken name the API takes: `name` is capped at 120 characters.
   const junk = `링크${'x'.repeat(112)}끝`
   const seeded: [string, string][] = []
   for (const [resource, body] of [
@@ -181,8 +160,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     const id = (row as { id?: string } | null)?.id
     if (id) seeded.push([resource, id])
     else {
-      // Nothing was planted, so the checks below would be measuring an empty
-      // screen and reporting it as clean.
+      // Nothing planted, so this screen was not checked.
       note('seed-rejected', resource, `/${resource}`, '감사가 확인하지 못한 화면이 있다')
     }
   }
@@ -218,15 +196,13 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     )
   }
 
-  /* ── R24: the second press ───────────────────────────────────────────
-     A save that takes a moment looks like a save that did not happen. */
+  // R24: a double press must not create two rows.
   const name = `중복확인 ${Date.now().toString(36)}`
   await page.goto('/skills')
   await page.waitForTimeout(600)
   await page.getByRole('button', { name: '새 스킬' }).first().click()
   await page.getByRole('dialog').getByLabel(/이름/).first().fill(name)
   const save = page.getByRole('dialog').getByRole('button', { name: /^저장$|^만들기$/ }).last()
-  // Twice, as fast as a person who thinks the first one missed.
   await save.click()
   await save.click({ timeout: 2_000 }).catch(() => {})
   await page.waitForTimeout(2500)
@@ -242,7 +218,6 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   if (copies > 1) {
     note('double-submit', `스킬 ${copies}개`, '/skills', '한 번 만들려다 두 개가 생긴다')
   }
-  // Clean up whatever was made.
   await page.evaluate(
     async ([fn, needle]) => {
       const rows = (await eval(fn as string)('/api/skills')) as { id: string; name: string }[] | null
@@ -255,10 +230,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     [AS_USER, name] as const,
   )
 
-  /* ── R25: the session runs out ───────────────────────────────────────
-     The access token is short-lived and refreshed from a cookie. When that
-     stops working — the cookie expired, an admin revoked the account — the
-     screen has to say so rather than going quietly inert. */
+  // R25: an expired session must be said, not go quietly inert.
   await page.goto('/skills')
   await page.waitForTimeout(600)
   await page.route(/\/api\/auth\/refresh$/, (r) =>
@@ -279,16 +251,13 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   await page.unroute(/\/api\/auth\/refresh$/)
   await page.unroute(/\/api\/skills(\?|$)/)
 
-  /* ── R26: clicking through the sidebar faster than it answers ────────
-     Two screens, one store. A reply for the screen you left, arriving after
-     the reply for the screen you are on, writes the wrong list under you —
-     the bug found in round five, asked here of the other collections. */
+  // R26: a late reply for a screen already left must not overwrite the current list.
   await page.goto('/')
   await page.waitForTimeout(600)
   let firstSessions = true
   await page.route(/\/api\/sessions(\?|$)/, async (r) => {
     if (r.request().method() !== 'GET') return r.continue()
-    // The first reply is held; a later one overtakes it.
+    // The first reply is held so a later one overtakes it.
     if (firstSessions) {
       firstSessions = false
       await new Promise((done) => setTimeout(done, 2500))
@@ -302,8 +271,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   await gotoWorkspace(page, '대화 기록')
   await page.waitForTimeout(3500)
   checks++
-  // Scoped to the content region: the sidebar prints the same empty line, and
-  // whether *it* is empty is not what this check is about.
+  // Scoped to main: the sidebar prints the same empty line.
   const historyText = await page.getByRole('main').innerText()
   if (/아직 대화가 없습니다/.test(historyText)) {
     note('stale-navigation', '대화 기록', '/history',
@@ -311,8 +279,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   }
   await page.unroute(/\/api\/sessions(\?|$)/)
 
-  /* ── R27: the back button ────────────────────────────────────────────
-     People close things with Back. What it must not do is leave the app. */
+  // R27: Back must not leave the app.
   await page.goto('/artifacts')
   await page.locator('button.aspect-video').first().waitFor({ timeout: 20_000 }).catch(() => {})
   if ((await page.locator('button.aspect-video').count()) > 0) {
@@ -321,8 +288,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     await page.goBack()
     await page.waitForTimeout(900)
     checks++
-    // Either the dialog closed and we are still on the gallery, or Back was a
-    // navigation — but it must not have thrown us out of the workspace.
+    // Dialog closed, or navigated within the workspace.
     if (!/\/artifacts|\/$/.test(new URL(page.url()).pathname + '/')) {
       note('back-button', '아티팩트 미리보기', '/artifacts',
         '뒤로가기가 화면 밖으로 데려간다')

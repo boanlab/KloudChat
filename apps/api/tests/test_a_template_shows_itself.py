@@ -1,15 +1,4 @@
-"""서식이 자기 생김새를 보여 준다.
-
-Seventeen 서식 differ almost entirely in CSS, and the gallery card carried a
-name and a line — text cannot show CSS, so the gallery read as seventeen
-copies of one shape and the differentiation everyone had paid for was
-invisible exactly where choosing happens.
-
-Each 서식 now ships `sample.html`, a short body in its own vocabulary, and
-`/design-templates/{id}/preview` renders the real seed around it for the card
-to shrink. The route is unauthenticated because an iframe `src` cannot carry a
-header, and safe because everything it serves ships inside the image.
-"""
+"""`/design-templates/{id}/preview` renders each 서식's `sample.html` inside its real seed."""
 
 from __future__ import annotations
 
@@ -34,7 +23,7 @@ def _client() -> TestClient:
 def test_every_document_and_deck_template_has_a_sample(template: str) -> None:
     shape = design_templates.get(template)
     assert shape.sample.strip(), f"{template} has no sample.html"
-    # In its own vocabulary: a cover/slide wrapper, not a bare paragraph.
+    # A cover/slide wrapper, not a bare paragraph.
     assert "<h1" in shape.sample or 'class="slide' in shape.sample
 
 
@@ -43,15 +32,13 @@ def test_the_preview_is_the_seed_around_the_sample() -> None:
         page = client.get("/design-templates/doc-notice/preview")
     assert page.status_code == 200
     assert "text/html" in page.headers["content-type"]
-    # The notice's own signature, straight from its sample.
     assert "수신" in page.text
-    # And the shared seed around it, not a fragment.
+    # The shared seed around it, not a fragment.
     assert "<!doctype html>" in page.text.lower() or "<html" in page.text.lower()
 
 
 def test_previews_actually_differ() -> None:
-    """The whole point. Two 서식 rendering to the same bytes means the sample
-    or the skin is not doing its job."""
+    """Two 서식 never render the same preview bytes."""
     with _client() as client:
         pages = {
             tid: client.get(f"/design-templates/{tid}/preview").text

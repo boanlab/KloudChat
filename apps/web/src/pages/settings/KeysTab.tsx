@@ -7,17 +7,7 @@ import { useStore } from '@/store/useStore'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
-/**
- * API keys a user takes away and uses from their own code.
- *
- * Separate from the virtual key KloudChat uses on their behalf, which never leaves
- * the server. This one is shown here exactly once, at the moment it is
- * created; after that only the last four characters exist, on screen and in
- * the database alike.
- *
- * Spend, the monthly limit and the model allow-list all follow the key, so
- * issuing one grants no new permission.
- */
+/** Personal API keys; the full key is shown once at creation, only the last four characters after. */
 export function KeysTab() {
   const t = useT()
   const { apiKeys, loadApiKeys, createApiKey, revokeApiKey, user } = useStore()

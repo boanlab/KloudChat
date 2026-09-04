@@ -1,24 +1,4 @@
-"""A lit globe means the answer was looked up.
-
-`tool_choice: auto` is the right default for a tool loop and the wrong one for
-a control somebody switched on. The system turn already carried the intent —
-"사용자가 웹 검색을 켰습니다. 답변하기 전에 web_search 를 …" — and a small
-model read it as advice. It answered from training data, and the answer arrived
-under a lit globe with nothing distinguishing it from one that had been checked.
-Somebody who happened to know the subject typed 인터넷 검색해봐, and the next
-turn searched and corrected itself. That recovery only ever reaches the facts
-the reader already doubted.
-
-So the first hop is forced, and only the first: the requirement is that the
-model looks before it writes, not that it keeps looking. A turn forced at every
-hop cannot terminate — each one would owe another call.
-
-The other half is what the model is told once the call is made. The old wording
-asked for one search per turn, and one search per turn is what it got: asked
-about hardware and the software that runs on it, the model looked up the
-hardware, got it right, and wrote the software list underneath from memory. The
-rule is per-claim now, and these pin both halves.
-"""
+"""Search toggle on: the first hop forces `web_search` and the prompt asks per-claim grounding."""
 
 from __future__ import annotations
 
@@ -128,7 +108,7 @@ async def test_a_lit_toggle_forces_the_first_search(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_only_the_first_hop_is_forced(monkeypatch) -> None:
-    # Forced at every hop the turn never ends: each answer owes another call.
+    # Forced only on the first hop, or the turn never ends.
     seen = _capture(monkeypatch, [_CALLS_SEARCH, _ANSWERS])
 
     _ = [
@@ -166,9 +146,7 @@ async def test_an_unlit_toggle_leaves_the_loop_alone(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_tool_that_is_not_there_is_not_forced(monkeypatch) -> None:
-    # An agent allowlist can remove the search tool from a turn whose toggle is
-    # lit. Naming it in `tool_choice` anyway is a request the upstream rejects,
-    # which would turn a missing tool into a failed turn.
+    # A tool absent from the agent allowlist must not be named in `tool_choice`.
     seen = _capture(monkeypatch)
     other = Tool(
         name="lookup",
@@ -216,12 +194,10 @@ async def test_a_turn_with_no_tools_sends_no_tool_choice(monkeypatch) -> None:
 def test_the_rule_asks_per_claim_not_per_turn() -> None:
     prompt = context.system_prompt(SessionKind.chat, with_tools=True, web_search=True)
 
-    # The wording that produced minimal compliance: one search on the narrowest
-    # sub-question, and the rest of the answer written from memory.
+    # Not one search per turn.
     assert "최소 한 번" not in prompt
     assert "축마다" in prompt
-    # Searching is not enough on its own — the model has to prefer what it read
-    # over what it remembers, and mark what it could not check.
+    # Prefer what was read; mark what could not be checked.
     assert "검색 결과를 따르세요" in prompt
     assert "확인하지 못했다고 밝히세요" in prompt
 
@@ -232,6 +208,5 @@ def test_a_toggle_with_no_tool_behind_it_still_says_so() -> None:
     )
 
     assert "검색 도구가 없습니다" in prompt
-    # Never both: the blocked notice tells the model not to try, and the nudge
-    # tells it to search. Together they are a contradiction.
+    # The blocked notice and the search nudge never appear together.
     assert "축마다" not in prompt

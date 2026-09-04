@@ -42,7 +42,7 @@ itself reads are in the second column.
 
 | `.env` | Container | Default | Notes |
 | --- | --- | --- | --- |
-| `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives all six feature endpoints by appending paths. `/tools/index` is optional: without it, agent knowledge is searched lexically. |
+| `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives the LiteLLM address and the six tool endpoints by appending paths. `/tools/index` is optional: without it, agent knowledge is searched lexically. |
 | `LITELLM_BASE_URL` | `LITELLM_BASE_URL` | derived | Only when LiteLLM is not behind the gateway. |
 | `LITELLM_MASTER_KEY` | `LITELLM_MASTER_KEY` | — | Never leaves the API process. Not returned by any route, including admin routes. |
 | `KCHAT_PRINT_BASE_URL` | `PRINT_BASE_URL` | `http://kloudchat-print:8200` | The printer — a headless browser that turns a finished document into a PDF that looks like the screen. Compose runs one, on a network with no route out. Blank turns it off: exports still produce a PDF, drawn by the structural renderer, carrying the words without the 서식's own layout. |
@@ -128,8 +128,9 @@ Not exposed in `.env.example`; set them directly on the `api` service in
 `docker-compose.yml` when you need to. Defaults live in
 [`apps/api/app/core/config.py`](../apps/api/app/core/config.py).
 
-`ENV` is the one exception — compose already passes it through as `KCHAT_ENV`,
-so it can be set in `.env` like the variables above.
+Four of them compose already passes through from `.env`: `ENV` as
+`KCHAT_ENV`, `TITLE_MODEL` as `KCHAT_TITLE_MODEL`, `TIMEZONE` as
+`KCHAT_TIMEZONE` and `GEOIP_DATABASE` as `KCHAT_GEOIP_DATABASE`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -139,19 +140,19 @@ so it can be set in `.env` like the variables above.
 | `REFRESH_GRACE_SEC` | `15` | Window in which a just-rotated refresh token may be replayed without being treated as theft. Two tabs restoring a session at once send the same cookie; without the leeway, the loser is logged out of everything. |
 | `CHAT_TIMEOUT_SEC` | `900` | A tool-using turn on a local 122B model genuinely runs for minutes. |
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |
-| `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn. A fact-check that searches one claim per axis needs six or seven; past eight, a model is almost always in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
+| `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn; past eight a model is usually in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. |
 | `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the usage screen's 지금 정리 button. `0` disables the sweep. Living accounts are never touched. |
 | `FILE_CONTEXT_CHARS` | `24000` | Characters of a file injected per turn before excerpting. |
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
-| `TITLE_MODEL` | `local/qwen3.6-35b` | Names conversations. Empty falls back to the session's own model — correct, but wasteful on an expensive one. |
+| `TITLE_MODEL` | `local/qwen3.6-35b` | Names conversations and extracts memories. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
 | `STT_OR_MODEL` | `mistralai/voxtral-small-24b-2507` | Fallback transcription model for hosts that cannot run Whisper. **Microphone audio leaves the network.** Set to `""` to keep dictation internal-only. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
-| `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Wrong here and a model answers "올해" with the year it was trained in. |
-| `GEOIP_DATABASE` | — | Path to a MaxMind GeoLite2 City `.mmdb`. Empty disables region lookup; see [Where an address is](#where-an-address-is). |
+| `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |
+| `GEOIP_DATABASE` | — | Path to a MaxMind GeoLite2 City `.mmdb`. Empty disables region lookup; see [Where an address is](#where-an-address-is). Set through `KCHAT_GEOIP_DATABASE`. |
 | `TITLE_TIMEOUT_SEC` | `20` | Naming a conversation and extracting memories. Both are best effort, so this is short: a title that takes longer than the turn did is not worth waiting for. |
 | `LITELLM_TIMEOUT_SEC` / `LITELLM_PROBE_TIMEOUT_SEC` | `20` / `4` | The master-key client — provisioning a user, issuing a key, listing the catalogue — and the probe behind the admin connection test. **Not the model call**, which is `CHAT_TIMEOUT_SEC` above; raising this one will not help a generation that is being cut off. |
 | `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC` | `8` | Auto's classification call. On timeout the quality model answers. |
@@ -222,9 +223,9 @@ restart. Secrets in this table are encrypted at rest with a key derived from
 
 ### Integrations
 
-- **Backend gateway address** — one field. Saving it fills in the six feature
-  endpoints. Each field has its own connection test, and any one of them can be
-  overridden if you host that feature elsewhere.
+- **Backend gateway address** — one field. Saving it fills in the LiteLLM
+  address and the six tool endpoints. Each field has its own connection test,
+  and any one of them can be overridden if you host that feature elsewhere.
 - **LiteLLM master key** — entered separately. The tool endpoints need no key.
 - **SMTP** — host, port, security (`starttls` / `ssl` / `none`), username,
   password, envelope sender. Named modes rather than a boolean because the two
@@ -247,6 +248,16 @@ restart. Secrets in this table are encrypted at rest with a key derived from
   account counts as confirming its address. Needs SMTP: without a mail server
   the switch is inert and signups go through unverified, and the screen says
   so.
+
+### Model routing
+
+The Auto cost routing classifier and economy models — see
+[Auto cost routing](#auto-cost-routing) — and the outline model, which plans
+a document before the surface's own model writes it.
+
+### Shared templates
+
+Starting points published to every account by an administrator.
 
 ### Enabled surfaces
 
@@ -283,8 +294,8 @@ policies are available:
   `self_hosted` and `strictLocal`; stale or unknown model IDs are rejected.
   The visible catalogue's top-to-bottom order is the fixed routing priority.
   Administrators may optionally allow a user to choose raw external delivery
-  after detection. New policy rows enable the guard and disallow raw delivery;
-  upgraded installations retain the guard-off state until configured.
+  after detection. A new policy row enables the guard and disallows raw
+  delivery; an existing row keeps guard off until configured.
 
 Each user can choose `ask`, strict-local routing, masked external delivery or,
 when permitted, raw external delivery as the default action. The server
@@ -294,7 +305,7 @@ preference becomes ineffective as soon as the allowance is removed.
 Policy is applied **before a message write, credit charge or completion call**.
 Detected values are not returned in the decision response or stored in audit
 metadata. See the context-assembly section of `architecture.md` for the scanned
-sources, model metadata contract and this release's surface limits.
+sources, model metadata contract and surface limits.
 
 ---
 
@@ -303,8 +314,10 @@ sources, model metadata contract and this release's surface limits.
 | Screen | Contents |
 | --- | --- |
 | `/settings` | Profile, password |
-| `/settings/preferences` | Default model, interface behaviour |
+| `/settings/preferences` | Default model, interface behaviour, privacy default action |
+| `/settings/personalization` | About-me and response-style text prepended to every chat |
 | `/settings/keys` | API key issue and revocation |
+| `/settings/access` | Sign-in history and active sessions |
 
 An issued API key **is** a LiteLLM virtual key: spend and the model allow-list
 follow it. The monthly limit is attached to the account rather than to the key,

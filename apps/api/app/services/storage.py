@@ -1,15 +1,8 @@
-"""디스크가 차면 지운 계정의 파일부터 거둔다.
+"""Reclaims files of deleted accounts once the volume passes the fill mark.
 
-Everything a person uploads or makes lands under `file_storage_dir/<user id>/`.
-When the account is deleted the row goes and the directory stays — on one
-instance the largest directory on the volume belonged to nobody. This is the
-reclaim: once the volume is past the fill mark, files whose owner no longer
-exists are removed, oldest first, until it is back under. Living accounts are
-never touched here; that is a decision for an administrator, not a timer.
-
-Two callers: a loop started at boot that checks every half hour, and the
-administrator's own button on the usage screen, which also reports what could
-be reclaimed before anything is.
+Uploads live under `file_storage_dir/<user id>/`; the directory outlives the
+account row. Living accounts are never touched. Callers: the boot-time loop
+and the administrator's button on the usage screen.
 """
 
 from __future__ import annotations
@@ -73,9 +66,7 @@ async def reclaim(
 ) -> Reclaim:
     """Removes orphaned files, oldest first, until the volume is under `threshold`.
 
-    `dry_run` measures without deleting — what the screen shows beside the
-    button. Below the threshold nothing is removed even when orphans exist:
-    disk that is not scarce is not worth a deletion nobody asked for.
+    `dry_run` measures without deleting. Below the threshold nothing is removed.
     """
     root = file_service.storage_root()
     limit = settings.storage_reclaim_at if threshold is None else threshold
@@ -135,7 +126,7 @@ async def reclaim(
 
 
 async def watch() -> None:
-    """The boot-time loop. Never raises out; a failed sweep waits for the next."""
+    """Boot-time loop; a failed sweep is logged and waits for the next."""
     while True:
         try:
             if settings.storage_reclaim_at > 0:

@@ -1,25 +1,17 @@
 #!/usr/bin/env bash
-# Context assembly check (docs/architecture.md §7) — does a workspace setting
-# actually reach the answer?
-#
-# This asserts on *behaviour*, not on storage: every check makes a real model
-# call, so it is slow and needs a backend.
+# Context assembly check (docs/architecture.md §7): does a workspace setting
+# reach the answer? Every check makes a real model call — slow, needs a backend.
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/context-test.sh
 #
-# Prompts and assertions are Korean because the instance is Korean-first: the
-# behaviour under test is whether an instruction written in Korean survives
-# prompt assembly and comes back in the answer.
+# Prompts and assertions are Korean: the instruction under test is Korean.
 set -u
 
 # shellcheck source=scripts/lib/env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/env.sh"
 
 API=${API:-http://localhost:8100/api}
-# `ADMIN_*` is what smoke-test.sh and e2e-seed.sh take, and having two names for
-# one credential across four scripts is how a correct run gets read as a broken
-# app — twenty of twenty-two checks "failed" here once, on a login that never
-# happened. The old names still work.
+# ADMIN_* as in the other scripts; EMAIL / PASS still accepted.
 EMAIL=${ADMIN_EMAIL:-${EMAIL:-admin@example.com}}
 PASS=${ADMIN_PASS:-${PASS:-KloudChat-Admin-1234}}
 MODEL=${MODEL:-local/qwen3.6-27b}
@@ -29,10 +21,7 @@ TOK=$(curl -s -X POST "$API/auth/login" -H 'Content-Type: application/json' -d "
 A="Authorization: Bearer $TOK"; JSON='Content-Type: application/json'
 jq_() { python3 -c "import json,sys;d=json.load(open('$1'));print($2)"; }
 
-# Everything this script creates. Left behind, one project, agent, skill and
-# memory accumulate per run: the workspace fills with identically named copies,
-# and the memory context — capped at 40 entries — starts dropping the ones the
-# user actually wrote. So it cleans up after itself.
+# Everything this script creates, deleted on exit.
 CREATED=()
 track() { CREATED+=("$1"); }
 cleanup() {
@@ -42,7 +31,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Extract just the final answer text from an SSE stream.
+# Final answer text and finished step labels from an SSE stream.
 say() {
   curl -sN -X POST "$API/sessions/$1/messages" -H "$A" -H "$JSON" -d "$2" \
     | python3 -c "
@@ -102,12 +91,10 @@ curl -s -o "$J/bad.json" -X POST "$API/files" -H "$A" -F "file=@$J/bad.pdf"
 BID=$(jq_ "$J/bad.json" "d['id']")
 SID6=$(mksession "{\"kind\":\"chat\",\"model\":\"$MODEL\"}")
 say "$SID6" "{\"content\":\"첨부 파일 내용을 요약해줘.\",\"attachments\":[\"$BID\"]}" > "$J/r6.json"
-# Matching exact wording would break every time the model rephrases. The two
-# things worth asserting are "it did not invent contents" and "the error is in
-# the user's language".
+# Not exact wording: only "did not invent contents" and "error in Korean".
 chk "it does not invent contents" "$(jq_ "$J/r6.json" "'binary junk' not in d['text']")" "True"
 chk "it says it could not read the file" "$(jq_ "$J/r6.json" "any(w in d['text'] for w in ['없','못','실패','오류','다시'])")" "True"
-# A library exception must not surface verbatim ("Stream has ended unexpectedly").
+# A library exception must not surface verbatim.
 HANGUL=$(python3 - "$J/bad.json" <<'PYEOF'
 import json, re, sys
 print(bool(re.search(r"[가-힣]", json.load(open(sys.argv[1])).get("error") or "")))
@@ -117,9 +104,7 @@ chk "the upload error is in Korean" "$HANGUL" "True"
 
 echo "== 7. an MCP connector tool is called =="
 curl -s -o /dev/null -X POST "$API/connectors/install/time" -H "$A"
-# Install is idempotent and returns the existing row unchanged — including the
-# enabled flag a previous run may have cleared — so being enabled has to be
-# asserted separately.
+# Install returns the existing row unchanged, so enable it explicitly.
 CID=$(curl -s "$API/connectors" -H "$A" | python3 -c "
 import json,sys
 print(next((c['id'] for c in json.load(sys.stdin) if c['slug']=='time'), ''))")
@@ -129,18 +114,13 @@ say "$SID7" '{"content":"시간 도구를 써서 지금 서울의 현재 시각�
 chk "the MCP tool step is visible" "$(jq_ "$J/r7.json" "any('시간' in s for s in d['steps'])")" "True"
 
 echo "== 7b. the web search toggle actually searches =="
-# Broken wiring — not broken code — shows up only here. Forget the compose
-# overlay and SEARXNG_URL is empty, the tool drops quietly out of the list, and
-# the model just says "web search is not permitted". The UI looks fine.
+# With no search backend the tool drops out and the model says it is not permitted.
 SID7B=$(mksession "{\"kind\":\"chat\",\"model\":\"$MODEL\"}")
 say "$SID7B" '{"content":"오픈소스 LLM 서빙 엔진을 검색해서 알려줘.","webSearch":true}' > "$J/r7b.json"
 chk "the search step is visible" "$(jq_ "$J/r7b.json" "any('검색' in s for s in d['steps'])")" "True"
 chk "it does not claim it is not permitted" "$(jq_ "$J/r7b.json" "'허용' not in d['text']")" "True"
 
 echo "== 7c. code becomes an artifact =="
-# The artifacts screen, the version history and the panel were all built while
-# nothing ever created one, so it was permanently empty. Code written in chat
-# is what fills that screen.
 BEFORE_ART=$(curl -s "$API/artifacts" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')
 SID7C=$(mksession "{\"kind\":\"chat\",\"model\":\"$MODEL\"}")
 say "$SID7C" '{"content":"CSV 를 읽어 열별 평균과 표준편차를 출력하는 파이썬 스크립트를 20줄 이상으로 써줘. 함수로 나누고 예외 처리도 넣어줘."}' > "$J/r7c.json"
@@ -151,7 +131,7 @@ import json,sys
 d=json.load(sys.stdin)
 print(d[0]['kind'] if d else 'none')")" "code"
 
-# Promoting short snippets as well would bury the list in fragments.
+# Short snippets are not promoted.
 B2=$(curl -s "$API/artifacts" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')
 SID7D=$(mksession "{\"kind\":\"chat\",\"model\":\"$MODEL\"}")
 say "$SID7D" '{"content":"파이썬에서 리스트를 뒤집는 한 줄 코드만 보여줘. 설명 없이."}' > "$J/r7d.json"
@@ -159,9 +139,6 @@ A2=$(curl -s "$API/artifacts" -H "$A" | python3 -c 'import json,sys;print(len(js
 chk "a short snippet is not an artifact" "$([ "$A2" -eq "$B2" ] && echo same || echo grew)" "same"
 
 echo "== 7e. a comparison choice persists in the conversation =="
-# While the choice lived only in the browser it vanished on reload, and the
-# comparison turn's `content` was empty — so the next turn's history contained
-# an assistant that had said nothing at all.
 SID7E=$(mksession '{"kind":"chat"}')
 curl -sN -X POST "$API/sessions/$SID7E/compare" -H "$A" -H "$JSON" \
   -d '{"content":"광합성을 한 문장으로","models":["local/qwen3.6-27b","local/glm-4.7-flash"]}' > /dev/null
@@ -180,8 +157,7 @@ chk "the body becomes the chosen answer" "$(jq_ "$J/cmp2.json" "
 str(next(m['content'] == next(v['content'] for v in m['variants'] if v['chosen']) for m in d if m.get('variants')))")" "True"
 
 echo "== 7f. a report is actually written =="
-# This surface was a mock-up for a long time. Checks that outline → per-section
-# writing → artifact really runs.
+# Outline → per-section writing → artifact.
 RSID=$(mksession "{\"kind\":\"report\",\"model\":\"$MODEL\"}")
 curl -sN -X POST "$API/sessions/$RSID/messages" -H "$A" -H "$JSON" \
   -d '{"content":"전이학습이 소량 데이터에서 효과적인 이유를 다룬 짧은 기술 검토 보고서."}' > "$J/rep.txt"

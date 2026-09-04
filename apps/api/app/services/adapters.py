@@ -1,30 +1,17 @@
-"""Model facts KloudChat holds that LiteLLM does not report.
+"""Model facts LiteLLM `/model/info` does not report: adapter-only models and overrides.
 
-Two tables:
-
-* `ADAPTER_MODELS` — models LiteLLM does not proxy at all (video, most audio).
-* `MODEL_OVERRIDES` — models LiteLLM proxies but describes badly.
-
-Commercial models routed through OpenRouter come back from `/model/info` with
-no `mode`, no context window, no capability flags, and `output_cost_per_token:
-0` for image models — which at face value lists a paid model at zero credits.
-Anything whose real modality or price LiteLLM cannot state is declared here.
-
-Zero-priced models not served from our own GPUs are dropped from the catalogue
-rather than offered as free. See `services/models.py`.
+`ADAPTER_MODELS` lists models LiteLLM does not proxy (video); `MODEL_OVERRIDES`
+corrects rows it proxies but describes incompletely (no `mode`, context window,
+capability flags, or a zero price). Zero-priced remote models are dropped from
+the catalogue by `services/models.py`.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-#: Video-only registry. Images and audio go over `/v1/chat/completions`, which
-#: `/model/info` describes; video is a pass-through to `/api/v1/videos`, which it
-#: does not.
-#:
-#: Only models `videogen.submit` can call. Full prices live in `videogen._RATES`
-#: — the table the proxy bills against; `credit_cost` here is the cheapest
-#: per-second rate, for places with room for one number.
+#: Video models, called only via `videogen.submit`. Full per-second prices are
+#: in `videogen._RATES`; `credit_cost` is the cheapest per-second rate.
 ADAPTER_MODELS: list[dict[str, Any]] = [
     {
         "id": "google/veo-3.1-lite",
@@ -68,19 +55,12 @@ ADAPTER_MODELS: list[dict[str, Any]] = [
     },
 ]
 
-# Declaring a model here does not make it callable: every entry is checked
-# against `videogen.ALIASES`, which decides whether a priced path exists.
+# Every entry must also appear in `videogen.ALIASES` to be callable.
 
 
-# ── Corrections for models LiteLLM describes incorrectly ───────────────────
-#
-# Keyed on the reported `model_name`, merged over the `/model/info` row: only
-# the wrong fields need listing.
-#
-# Image `credit_cost` is per generated image, not per token (1 credit =
-# $0.00001). OpenRouter publishes no per-image price, so those stay empty rather
-# than estimated — an unpriced model drops out of the list and
-# `GET /admin/settings` reports it.
+# Keyed on the reported `model_name`, merged over the `/model/info` row.
+# Image `credit_cost` is per generated image (1 credit = $0.00001); unpriced
+# models drop out of the catalogue and `GET /admin/settings` reports them.
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
     "nano-banana": {
         "label": "Nano Banana",
@@ -100,31 +80,17 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
         "kinds": ["image"],
         "description": "OpenAI 이미지 생성. 텍스트 렌더링에 강함",
     },
-    # ── vision ─────────────────────────────────────────────────────────
-    #
-    # `/model/info` reports no capability flags for these, and the flag decides
-    # whether an attached picture is sent at all — so it is declared, the way
-    # every other fact this file exists for is.
-    #
-    # Measured against the gateway rather than assumed. `strict-local/qwen3.6-35b`
-    # transcribed two different screenshots exactly, for no credits and without
-    # the picture leaving the building. Two commercial models accepted the same
-    # request and answered with an empty message rather than an error, which is
-    # why absence of a claim here has to mean no: trying and watching produces a
-    # blank answer, not a fallback.
-    #
-    # Only contained models are listed. An image is egress the privacy guard
-    # cannot inspect — it reads text — so a picture may travel the one route
-    # that cannot leave. See `workspace_context.reads_pictures`.
+    # `supports_vision` decides whether an attached picture is sent at all; an
+    # unlisted model is treated as text-only. Only contained models are listed:
+    # the privacy guard reads text and cannot inspect an image. See
+    # `workspace_context.reads_pictures`.
     "strict-local/qwen3.6-35b": {"supports_vision": True},
 }
 
-# Providers whose zero price is real: our own hardware. A remote model
-# reporting zero means the price is unknown.
+# Providers whose zero price is real (own hardware); a remote zero means unknown.
 FREE_PROVIDERS = {"hosted_vllm", "vllm", "local", "openai_like"}
 
-# `api_base` hosts that mean our own infrastructure: docker service names have
-# no dot, and loopback and private ranges are never a commercial endpoint.
+# Loopback and private ranges; a dotless host is a docker service name.
 INTERNAL_HOST_PREFIXES = ("localhost", "127.", "10.", "192.168.", "172.", "host.docker.internal")
 
 
@@ -136,5 +102,4 @@ def is_internal_api_base(api_base: str | None) -> bool:
         return False
     if host.startswith(INTERNAL_HOST_PREFIXES):
         return True
-    # No dot at all → a container/service name on our own network.
     return "." not in host

@@ -16,9 +16,7 @@ import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
-//: A picture that is already inside the document — the only kind one may
-//: carry, and raster only, which is the rule `services/pictures.py` states on
-//: the server and the sanitiser enforces on the way in.
+// Embedded raster pictures only; the same rule as `services/pictures.py`.
 const EMBEDDED_PICTURE =
   /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i
 
@@ -51,16 +49,7 @@ function CodeBlock({ children, className }: { children: ReactNode; className?: s
   )
 }
 
-/**
- * `\\[…\\]` and `\\(…\\)` → `$$…$$` and `$…$`.
- *
- * `remark-math` understands only the dollar notation, and models frequently
- * write the LaTeX one. Which delimiter the model happened to choose decides
- * whether the maths renders or shows up as backslashes.
- *
- * Code fences are left alone: a block showing LaTeX source is exactly what
- * this rewrite would ruin.
- */
+/** Rewrites `\\[…\\]` / `\\(…\\)` to `$$…$$` / `$…$` for remark-math; code spans are left alone. */
 function normaliseMath(text: string): string {
   return text
     .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
@@ -74,13 +63,7 @@ function normaliseMath(text: string): string {
     .join('')
 }
 
-/**
- * Which document a diagram belongs to, so the picture it draws can be kept.
- *
- * Absent in the chat transcript and while a document is still streaming: there
- * the diagram is drawn and not stored, because there is nothing to store it
- * onto yet.
- */
+/** Document a diagram belongs to, so its rendered picture can be stored; absent in chat and while streaming. */
 export interface DiagramOwner {
   artifactId: string
   sectionId: string
@@ -118,25 +101,14 @@ export function MarkdownBody({
   className?: string
   owner?: DiagramOwner
 }) {
-  // The regex pass runs once per text, not once per render of a memoised row.
   const source = useMemo(() => normaliseMath(children), [children])
   return (
     <div className={cn('text-md leading-[1.7] break-words', className)}>
       <ReactMarkdown
-      // CommonMark will not close `**` when the closing marker sits between a
-      // bracket and a Korean particle — "**지식의 전이(Knowledge Transfer)**이다"
-      // renders with the asterisks showing. That is the shape every Korean
-      // answer takes, so the relaxed CJK flanking rules are not optional here.
-      remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]}
+        // remark-cjk-friendly: CommonMark will not close `**` before a Korean particle.
+        remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]}
         rehypePlugins={[rehypeKatex]}
-        // `react-markdown` blanks every address whose protocol is not `http`,
-        // `https`, `mailto` or `xmpp` — `data:` among them. Every picture in a
-        // document is a `data:` URI, because an address is a request made on
-        // the reader's behalf and embedding is the only form allowed, so the
-        // default left `<img src="">`: a figure the page view and all three
-        // exports drew came out on the reading screen as a broken picture with
-        // its caption under it. An embedded raster passes; everything else is
-        // still the library's own answer.
+        // react-markdown blanks `data:` URLs by default; embedded rasters pass.
         urlTransform={(url, key, node) =>
           key === 'src' && node.tagName === 'img' && EMBEDDED_PICTURE.test(url)
             ? url
@@ -152,9 +124,7 @@ export function MarkdownBody({
           ul: ({ children }) => (
             <ul className="my-2.5 list-disc space-y-1 pl-5 marker:text-faint">{children}</ul>
           ),
-          // `start` is forwarded: CommonMark takes the first item's number as
-          // the list start, and the exporters read the same Markdown. Dropping
-          // it would put the preview out of step with the file.
+          // `start` is forwarded to match the exporters.
           ol: ({ children, start }) => (
             <ol start={start} className="my-2.5 list-decimal space-y-1 pl-5 marker:text-faint">
               {children}
@@ -178,13 +148,7 @@ export function MarkdownBody({
             </blockquote>
           ),
           hr: () => <hr className="my-4 border-line" />,
-          // `min-w` is what makes the wrapper's `overflow-x-auto` mean
-          // anything. With `w-full` alone the table shrank to whatever column
-          // it was in — beside an open artifact panel that is about 330px —
-          // and a three-column comparison came out one glyph per line: 구 over
-          // 분, 변 over 경 over 가 over 능 over 성. Given a floor it overflows
-          // and scrolls instead, which is the behaviour the wrapper was
-          // already written for.
+          // `min-w` makes the wrapper scroll instead of squeezing columns to one glyph per line.
           table: ({ children }) => (
             <div className="my-3 overflow-x-auto rounded-card border border-line">
               <table className="w-full min-w-[30rem] border-collapse text-base">
@@ -196,12 +160,7 @@ export function MarkdownBody({
           th: ({ children }) => (
             <th className="border-b border-line px-3 py-2 text-left font-semibold break-keep">{children}</th>
           ),
-          // `last:border-0` was meant to drop the rule under the *last row*,
-          // and `:last-child` on a `<td>` is the last **column** — so every
-          // cell down the right-hand side lost its bottom border and the table
-          // read as two ruled columns beside one unruled one. Scoped to the
-          // row it was always about: the wrapper draws the outer border, so a
-          // rule under the final row would sit on top of it.
+          // The wrapper draws the outer border, so the last row has none.
           td: ({ children }) => (
             <td className="border-b border-line px-3 py-2 align-top break-keep [tr:last-child>&]:border-0">
               {children}
@@ -209,27 +168,16 @@ export function MarkdownBody({
           ),
           code: ({ className, children, ...props }) => {
             const isBlock = /language-/.test(className ?? '')
-            // A mermaid fence is a diagram, not source. Drawn rather than
-            // printed — and, where the caller says which document it belongs
-            // to, kept as a picture so the exported file has it too.
-            // A row of figures, set as a strip. Text rather than a picture,
-            // so the exporters draw it as a real table.
-            // Real numbers, drawn. The exporters read the same fence and
-            // build a chart Word can edit, so this is the same chart rather
-            // than a picture of one.
+            // Block fences the exporters also read: chart, steps, kpi, cards, callout, mermaid.
             if (/language-chart/.test(className ?? '')) {
               return <ChartBlock source={String(children).trimEnd()} owner={owner} />
             }
-            // A procedure, numbered. Text rather than a picture, for the
-            // same reason the strip is.
             if (/language-steps/.test(className ?? '')) {
               return <StepList source={String(children).trimEnd()} />
             }
             if (/language-kpi/.test(className ?? '')) {
               return <KpiStrip source={String(children).trimEnd()} />
             }
-            // A grid of labelled lists, and the one box not to skip. Text, not
-            // pictures — the exporters draw the same two fences as tables.
             if (/language-cards/.test(className ?? '')) {
               return <CardGrid source={String(children).trimEnd()} />
             }
@@ -249,12 +197,7 @@ export function MarkdownBody({
               </code>
             )
           },
-          // The same figure the page view draws, in the view that renders
-          // Markdown: the picture, and the alt text under it as its caption —
-          // which is where the writer and the embed endpoint both put it.
-          // Spans rather than `<figure>`/`<figcaption>`, because a picture on
-          // its own line is a paragraph and a `<figure>` inside a `<p>` is
-          // closed by the browser before it starts.
+          // Alt text doubles as the caption. Spans, not <figure>: a <figure> inside a <p> is closed early.
           img: ({ src, alt }) => (
             <span className="my-3 block">
               <img

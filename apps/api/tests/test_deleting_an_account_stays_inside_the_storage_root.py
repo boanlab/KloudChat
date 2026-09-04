@@ -1,9 +1,4 @@
-"""Removing an account's files never reaches outside the upload directory.
-
-The admin delete passes an id that came off the URL. A real id names one
-directory under the storage root; anything else — a path that climbs out, a
-nested path, the root itself — is left alone and reported as zero bytes.
-"""
+"""`files.remove_user_files` only removes one directory directly under the storage root."""
 
 from __future__ import annotations
 

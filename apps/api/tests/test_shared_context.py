@@ -1,16 +1,4 @@
-"""공유: what a shared conversation tells a reader about itself, and what it
-never tells them.
-
-A recipient of a link is the one reader who was in none of the rooms. They did
-not pick the agent, they cannot see the project, and the 서식 that decided the
-document's shape was chosen before the first word was asked. Until the payload
-carried those three names, a shared report explained none of it and there was
-nobody to ask — so `질문` sat over a sentence that was only half the request.
-
-The other half of the same route is what it must never send. Two of those three
-names have a body behind them — an agent's system prompt, a project's
-instructions — and both are the work itself. The token bought one conversation.
-"""
+"""A shared conversation names its agent, project and 서식, and never sends their bodies."""
 
 from __future__ import annotations
 
@@ -25,13 +13,13 @@ from app.models.workspace import Agent, Artifact, Project, Share, ShareScope
 from app.routers import shares as shares_router
 from app.services import design_templates
 
-#: A shape that ships in the image, so the name asserted below is the real one.
+#: A shape that ships in the image.
 _TEMPLATE_ID = "doc-brief"
 
 
 @pytest.mark.asyncio
 async def test_a_shared_conversation_names_what_shaped_it():
-    """The three the empty screen in the app names, in the same terms."""
+    """The payload names agent, project and 서식."""
     db = _Db(
         session=_session(),
         agent=_agent(),
@@ -51,11 +39,7 @@ async def test_a_shared_conversation_names_what_shaped_it():
 
 @pytest.mark.asyncio
 async def test_the_public_page_never_sees_a_system_prompt_or_a_projects_instructions():
-    """Names travel; bodies do not.
-
-    Asserted against the whole encoded payload rather than the one key, because
-    the leak that matters is the one that arrives somewhere nobody looked.
-    """
+    """No system prompt or project instructions anywhere in the payload."""
     db = _Db(session=_session(), agent=_agent(), project=_project(), messages=[_asked()])
 
     payload = await shares_router.read_shared("token-1", _request(), db)
@@ -68,7 +52,7 @@ async def test_the_public_page_never_sees_a_system_prompt_or_a_projects_instruct
 
 @pytest.mark.asyncio
 async def test_the_turn_carries_the_starting_point_it_began_from():
-    """`질문` over a sentence is half the request; this is the other half."""
+    """The turn carries the starting point it began from."""
     db = _Db(session=_session(), messages=[_asked()])
 
     payload = await shares_router.read_shared("token-1", _request(), db)
@@ -78,7 +62,7 @@ async def test_the_turn_carries_the_starting_point_it_began_from():
 
 @pytest.mark.asyncio
 async def test_a_conversation_that_started_with_nothing_claims_nothing():
-    """An empty panel is what the page draws from this, which is correct."""
+    """A conversation with no agent, project or 서식 reports none."""
     session = _session()
     session.agent_id = None
     session.project_id = None
@@ -92,12 +76,7 @@ async def test_a_conversation_that_started_with_nothing_claims_nothing():
 
 @pytest.mark.asyncio
 async def test_a_project_belonging_to_somebody_else_is_not_named():
-    """The same guard the artifact beside it has.
-
-    A `project_id` is a plain column rather than a foreign key with an owner
-    check on it, so a row that ends up pointing outside its owner's workspace
-    would otherwise put a stranger's project name on a public page.
-    """
+    """A `project_id` outside the owner's workspace is not named."""
     stranger = _project()
     stranger.user_id = "user-2"
     db = _Db(session=_session(), project=stranger, messages=[_asked()])
@@ -109,12 +88,7 @@ async def test_a_project_belonging_to_somebody_else_is_not_named():
 
 @pytest.mark.asyncio
 async def test_a_shape_an_upgrade_removed_degrades_to_no_format():
-    """The catalogue lives in the image, so an id can stop existing.
-
-    `sessions.render_template_id` is deliberately not a foreign key for exactly
-    this reason, and the share route has to end up where the session screen
-    does: no format, rather than no page.
-    """
+    """A `render_template_id` no longer in the catalogue degrades to no format."""
     session = _session()
     session.render_template_id = "doc-withdrawn"
     db = _Db(session=session, messages=[_asked()])
@@ -181,8 +155,7 @@ class _Db:
         if table == "messages":
             return _Result(self.messages)
         if table == "share_views":
-            # Every read here is a first visit: these tests are about what the
-            # public page discloses, and the visit log is checked by its own.
+            # Every read is a first visit; the visit log has its own tests.
             return _Result([])
         raise AssertionError(f"unexpected query: {query}")
 

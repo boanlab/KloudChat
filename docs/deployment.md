@@ -23,7 +23,7 @@ data directories:
 | `kloudchat-web` | 5173 → 80 | Static bundle, nginx proxying `/api` and `/llm` |
 | `kloudchat-api` | 8100 | All application logic; **the only process with the LiteLLM master key** |
 | `kloudchat-db` | 5433 → 5432 | Postgres 16 |
-| `kloudchat-print` | 8200 | Browser-based HTML-to-PDF rendering; internal API access only |
+| `kloudchat-print` | internal | Headless Chromium, HTML to PDF; reachable from the API only |
 
 ```
 ./data/postgres     database files
@@ -68,7 +68,7 @@ KCHAT_JWT_SECRET=$(openssl rand -hex 32)   # generate, never reuse the example
 KCHAT_COOKIE_SECURE=true                   # you are behind TLS
 KCHAT_CORS_ORIGINS=["https://kchat.example.com"]
 KCHAT_DB_PASSWORD=<something long>
-BACKEND_BASE_URL=https://backend.internal:8080
+BACKEND_BASE_URL=http://<llm-host-ip>:8080        # the KloudChat-LLM gateway
 ```
 
 Then pin the images. `docker-compose.yml` ships `:latest`, which moves with
@@ -77,6 +77,8 @@ every push to main; a deployment wants a version tag:
 ```yaml
   api:
     image: boanlab/kloudchat-api:1.0.0
+  print:
+    image: boanlab/kloudchat-print:1.0.0
   web:
     image: boanlab/kloudchat-web:1.0.0
 ```
@@ -181,12 +183,12 @@ Version tags are immutable. `:latest` is not: both a release and a later push to
 `main` write it, so it points at whichever happened most recently — after
 tagging `v1.2.3`, the next merge moves `:latest` past it.
 
-**Pin a version tag in production**, by editing the two `image:` lines in
+**Pin a version tag in production**, by editing the three `image:` lines in
 `docker-compose.yml`. `:latest` is only ever a convenience, and a pinned tag
 committed to your deployment branch is a record of what is running.
 
 Running a fork's own build means changing the `boanlab/` namespace on the same
-two lines to the Docker Hub account that published it.
+three lines to the Docker Hub account that published it.
 
 To build from a checkout instead — a patch you have not published, or an
 architecture with no published tag — overlay `docker-compose.build.yml`:
@@ -200,8 +202,8 @@ under a published version's name.
 
 Only the image whose sources changed is rebuilt: a commit touching `apps/api/`
 republishes `kloudchat-api` and leaves `kloudchat-web:latest` where it was. A tag
-build publishes both regardless, so a release always leaves a complete set of
-tags behind.
+build publishes every image regardless, so a release always leaves a complete
+set of tags behind.
 
 Publishing from a fork needs two repository secrets — `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN` (an access token with Read & Write scope). The username
@@ -226,8 +228,8 @@ Restore:
 
 ```bash
 docker compose up -d db
-gunzip -c kloudchat-2026-08-14.sql.gz | docker compose exec -T db psql -U kchat kchat
-tar xzf kloudchat-files-2026-08-14.tar.gz
+gunzip -c kloudchat-<date>.sql.gz | docker compose exec -T db psql -U kchat kchat
+tar xzf kloudchat-files-<date>.tar.gz
 docker compose up -d
 ```
 
@@ -240,7 +242,7 @@ derived from it, makes the stored master key unreadable.
 
 ```bash
 git pull                      # compose file and .env.example changes
-$EDITOR docker-compose.yml    # bump the two image tags to the new version
+$EDITOR docker-compose.yml    # bump the three image tags to the new version
 docker compose pull
 docker compose up -d
 docker compose logs -f api    # watch the migration
@@ -283,8 +285,8 @@ them for one run.
 
 ## Scaling notes
 
-The current build assumes **one API instance**. Two things stand in the way of
-running more:
+The current build assumes **one API instance**. Three things stand in the way
+of running more:
 
 - **Migrations run on container start.** With multiple replicas, two containers
   race the same migration. Move `alembic upgrade head` into a separate job
@@ -296,7 +298,7 @@ running more:
   unreliable behind a round-robin balancer. Sticky sessions or a shared signal
   is the fix.
 
-Neither is a hard barrier, but both need addressing before adding replicas.
+None is a hard barrier, but all three need addressing before adding replicas.
 
 Vertical headroom is mostly about concurrent streaming turns: each holds an
 upstream HTTP connection for as long as the answer takes. The database is not

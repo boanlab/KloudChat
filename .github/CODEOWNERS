@@ -1,9 +1,7 @@
-# Default reviewer for everything. Add per-path owners below as the project
-# grows; GitHub applies the last matching pattern, so keep the broad rule first.
+# Last matching pattern wins; the broad rule stays first.
 *                       @boanlab/maintainers
 
-# Security-sensitive surfaces: auth, credentials, and the only process that
-# holds the LiteLLM master key.
+# Auth, credentials, and the master-key client.
 /apps/api/app/core/     @boanlab/maintainers
 /apps/api/app/routers/auth.py    @boanlab/maintainers
 /apps/api/app/routers/llm.py     @boanlab/maintainers

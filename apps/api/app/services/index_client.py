@@ -1,11 +1,7 @@
 """Client for the retrieval index behind `/tools/index`.
 
-Nothing here raises: writes report success as a boolean, a failed search returns
-no passages. `search_knowledge` falls back to the lexical scorer over the same
-documents, so an index that is down costs ranking quality, not answers.
-
-The index is derived. Chunks and vectors are rebuildable from `StoredFile.text`,
-which is what makes giving up quietly safe.
+Never raises: writes return a boolean, a failed search returns no passages.
+The index is derived from `StoredFile.text` and can be rebuilt.
 """
 
 from __future__ import annotations
@@ -20,38 +16,29 @@ import httpx
 from app.core import logs
 from app.services import settings_store
 
-#: A stored file's id: 32 hex characters, as `uuid4().hex` writes it.
+#: Stored file id: 32 hex characters (`uuid4().hex`).
 _ID = re.compile(r"[0-9a-f]{32}")
 
-#: A shelf's name, as `new_collection_key` writes it: urlsafe base64 of 24
-#: bytes. Checked for the same reason the id is — it lands in a URL path.
+#: Collection key as `new_collection_key` writes it. Lands in a URL path.
 _KEY = re.compile(r"[A-Za-z0-9_-]{32}")
 
 log = logging.getLogger(__name__)
 
-#: Write embeds every chunk; read is one embedding and one query, with somebody
-#: waiting on it.
+#: Write embeds every chunk; read is one embedding and one query.
 _WRITE_TIMEOUT = httpx.Timeout(180.0, connect=8.0)
 _READ_TIMEOUT = httpx.Timeout(25.0, connect=5.0)
 
 
 def new_collection_key() -> str:
-    """Unguessable name for one agent's shelf.
-
-    The collection name is the whole authorisation at the index, so it is never
-    derived from `agent_id`, which travels in URLs and API responses.
-    """
+    """Unguessable collection name; never derived from `agent_id`, which is public."""
     return secrets.token_urlsafe(24)
 
 
-#: What the model behind the index is called on the usage screens. The shim
-#: owns the real name (`EMBED_MODELS` in its environment) and does not say it
-#: back, so this is the deployment's first configured embedder.
+#: Name recorded on usage rows for index embeddings. The shim does not report its
+#: embedder, so this is the deployment's first configured one.
 EMBED_MODEL = "local/bge-m3"
 
-#: Chunks the last `put_document` embedded, read by the caller that records
-#: usage. A module-level slot rather than a changed return type: three
-#: callers test the result for truth and none of them wants a number.
+#: Chunks the last `put_document` embedded, read by the caller that records usage.
 last_chunks = 0
 
 
@@ -89,8 +76,6 @@ async def put_document(
         return False
     chunks = (body or {}).get("chunks")
     log.debug("indexed %s: %s chunks", name, chunks)
-    # How much the embedding model did, for the usage ledger. `True` when the
-    # shim did not say — the write still happened.
     global last_chunks
     last_chunks = int(chunks) if isinstance(chunks, int | float) else 0
     return True
@@ -116,10 +101,7 @@ async def search(*, collection: str, query: str, limit: int = 4) -> list[dict[st
 
 
 async def forget_document(*, collection: str, doc_id: str) -> bool:
-    # The id goes into the path, so it has to be an id. Every caller passes a
-    # `files.id`, which is 32 hex characters — but the check is here rather
-    # than assumed, because a value that reaches a URL decides which host and
-    # which path the request lands on, and `../` is a legal filename.
+    # The id goes into the URL path, so it must be a well-formed id.
     if not _ID.fullmatch(doc_id):
         log.warning("index delete refused a malformed id: %s", logs.safe(doc_id))
         return False
@@ -139,11 +121,7 @@ async def forget_document(*, collection: str, doc_id: str) -> bool:
 
 
 async def forget_collection(*, collection: str) -> bool:
-    """Drop a whole shelf. Triggered by agent deletion.
-
-    Warned rather than logged at info: a collection outliving its agent stays
-    searchable by whoever holds the key.
-    """
+    """Drop a whole collection; a leftover stays searchable by whoever holds the key."""
     if not _KEY.fullmatch(collection):
         log.warning("index drop refused a malformed key: %s", logs.safe(collection))
         return False

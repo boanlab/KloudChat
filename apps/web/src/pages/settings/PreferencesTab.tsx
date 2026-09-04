@@ -7,12 +7,7 @@ import { useStore } from '@/store/useStore'
 import type { Preferences } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * Per-surface default model, and the behaviour switches that go with it.
- *
- * The switches live on the account, not in component state, so they follow the
- * person rather than the browser — and something acts on each one.
- */
+/** Per-surface default models and behaviour switches, stored on the account. */
 export function PreferencesTab() {
   const t = useT()
   const { user, updateProfile } = useStore()
@@ -34,17 +29,11 @@ export function PreferencesTab() {
           <h2 className="text-base font-semibold">{t('기본 모델')}</h2>
           <p className="text-sm text-muted">{t('화면별로 처음 선택되는 모델입니다.')}</p>
         </div>
-        {/* The composer's picker, not a list of names. A default is the model
-            most turns will actually run on, so the two things that decide it —
-            the credit rate and where the text goes — have to be readable here
-            at least as much as they are when picking for a single turn. */}
         <div className="grid gap-3 sm:grid-cols-2">
           {kindOrder.flatMap((kind) => {
             const meta = kindMeta[kind]
             const Icon = meta.icon
-            // 오디오/동영상 is one surface with two kinds of model in it, so it
-            // gets a default for each: a speech model set as its one default
-            // would open 영상 on a model that makes no clips.
+            // The av surface has separate audio and video defaults.
             const fields =
               kind === 'av'
                 ? ([

@@ -1,12 +1,7 @@
-"""Reads and writes the admin-editable settings.
+"""Admin-editable settings: database, then environment, then code default.
 
-Resolution order: database → environment → code default. The environment stays
-a working bootstrap, so a fresh deployment runs before anyone opens the admin
-screen.
-
-Cached in-process, since these are read on every model call, and invalidated on
-write. With more than one replica a change reaches the others within `_TTL`,
-which is why the TTL is short rather than infinite.
+Cached in-process for `_TTL` seconds and invalidated on write; other replicas
+see a change within the TTL.
 """
 
 from __future__ import annotations
@@ -34,9 +29,7 @@ LITELLM_BASE_URL = "litellm.base_url"
 LITELLM_MASTER_KEY = "litellm.master_key"
 
 # ── feature integration ─────────────────────────────────────────────────
-# One gateway exposes all six features, split by path. Per-feature addresses
-# are derived by appending paths; only a feature hosted elsewhere needs an
-# override.
+# One gateway exposes every feature by path; a per-feature URL overrides it.
 BACKEND_BASE_URL = "backend.base_url"
 TOOLS_SEARCH_URL = "tools.search_url"
 TOOLS_FETCH_URL = "tools.fetch_url"
@@ -62,36 +55,30 @@ BRAND_NAME = "brand.name"
 #: Logo filename and MIME type. The file itself lives in the file store.
 BRAND_LOGO = "brand.logo"
 BRAND_LOGO_MIME = "brand.logo_mime"
-#: Where 관리자에게 문의 goes. Empty falls back to the first administrator.
+#: Where 관리자에게 문의 goes. Empty falls back to the oldest administrator.
 CONTACT_EMAIL = "contact.email"
 
 # ── enabled surfaces ───────────────────────────────────────────────────
 #: CSV of the enabled surfaces. Chat is never listed: it is always on.
 ENABLED_KINDS = "kinds.enabled"
 
-#: Everything except chat. Only the document surfaces default to on — image and
-#: video spend credits per generation.
+#: Everything except chat. Image and video default to off.
 OPTIONAL_KINDS = ("report", "slides", "image", "av")
 DEFAULT_ENABLED_KINDS = ("report", "slides")
 
 # ── outgoing mail ──────────────────────────────────────────────────────
-# Account mail the person asked for, which today is the password reset link and
-# nothing else.
 SMTP_HOST = "smtp.host"
 SMTP_PORT = "smtp.port"
-#: "starttls" | "ssl" | "none". Named rather than a boolean: the two encrypted
-#: modes differ in port and handshake, and the wrong one is a bare timeout.
+#: "starttls" | "ssl" | "none".
 SMTP_SECURITY = "smtp.security"
 SMTP_USERNAME = "smtp.username"
 SMTP_PASSWORD = "smtp.password"
 SMTP_FROM = "smtp.from"
-#: Where the reset link points. Otherwise built from the request Host, which is
-#: attacker-controlled.
+#: Where mailed links point. Not derived from the request Host, which is attacker-controlled.
 APP_BASE_URL = "app.base_url"
 
-#: Who may sign up. `signup.mode` overrides `SIGNUP_MODE`; the domains are a
-#: CSV of the mail domains allowed to register (empty = any); the flag asks
-#: new accounts to click a mailed link before they count as signed up.
+#: Who may sign up: mode (overrides the `SIGNUP_MODE` env), CSV of allowed
+#: mail domains (empty = any), and whether a mailed link must be clicked.
 SIGNUP_MODE = "signup.mode"
 SIGNUP_DOMAINS = "signup.domains"
 SIGNUP_VERIFY_EMAIL = "signup.verify_email"
@@ -105,17 +92,13 @@ _cache: dict[str, Any] = {"at": 0.0, "values": None}
 
 
 def _fernet() -> Fernet:
-    """Key derived from `JWT_SECRET`.
-
-    Not a second secret to manage: losing the JWT secret already invalidates
-    every session, so tying the two together adds no new point of failure.
-    """
+    """Fernet key derived from `JWT_SECRET`; rotating it makes stored secrets unreadable."""
     digest = hashlib.sha256(env_settings.jwt_secret.encode()).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
 def encrypt_secret(value: str) -> str:
-    """Also used for per-user LiteLLM keys — one key-management story, not two."""
+    """Encrypts a secret at rest; also used for per-user LiteLLM keys."""
     return _fernet().encrypt(value.encode()).decode()
 
 
@@ -123,8 +106,7 @@ def decrypt_secret(value: str) -> str:
     try:
         return _fernet().decrypt(value.encode()).decode()
     except InvalidToken:
-        # Almost always a rotated JWT_SECRET. Empty degrades to "not
-        # configured", which the UI can already express; raising would not.
+        # Almost always a rotated JWT_SECRET; empty reads as "not configured".
         log.warning("stored secret could not be decrypted — JWT_SECRET may have changed")
         return ""
 
@@ -156,16 +138,13 @@ def invalidate() -> None:
 
 
 async def litellm_config() -> tuple[str, str]:
-    """`(base_url, master_key)` — explicit setting, then derived from the
-    backend address, then the environment."""
+    """`(base_url, master_key)`: explicit setting, then environment, then derived
+    from the backend address."""
     values = await all_values()
     base = (
         (values.get(LITELLM_BASE_URL) or "").strip()
-        # The environment before the derivation. The derived address is a
-        # guess off the public domain, and a guess must not outrank a value an
-        # operator wrote down — it did, and the public gateway's 60-second
-        # proxy limit then cut long document calls to 504 even with the
-        # internal address sitting configured in the env.
+        # Environment before derivation: the derived address is a guess off the
+        # public domain and must not outrank a configured internal one.
         or env_settings.litellm_base_url
         or derive_url(
             (values.get(BACKEND_BASE_URL) or "").strip() or env_settings.backend_base_url,
@@ -185,8 +164,7 @@ class ToolBackends:
     exec: str = ""
     research: str = ""
     stt: str = ""
-    #: Vector retrieval for agent knowledge. Empty is a supported deployment —
-    #: `search_knowledge` then answers from the lexical index alone.
+    #: Vector retrieval for agent knowledge; empty falls back to the lexical index.
     index: str = ""
 
     def get(self, name: str) -> str:
@@ -201,17 +179,9 @@ def derive_url(base: str, feature: str) -> str:
     return base + _TOOL_PATHS[feature]
 
 
-async def backend_base_url() -> str:
-    values = await all_values()
-    return (values.get(BACKEND_BASE_URL) or "").strip() or env_settings.backend_base_url
-
-
 async def tools_config() -> ToolBackends:
     """Per-feature addresses: explicit setting, then derived from the backend
-    address, then the environment.
-
-    The explicit setting wins, for deployments hosting one feature elsewhere.
-    """
+    address, then the environment."""
     values = await all_values()
     base = (values.get(BACKEND_BASE_URL) or "").strip() or env_settings.backend_base_url
 
@@ -241,11 +211,7 @@ async def brand() -> dict[str, str]:
 
 
 async def contact_email(db: AsyncSession) -> str:
-    """The address the waiting and sign-in screens send people to.
-
-    The stored one when an administrator set it; otherwise the oldest
-    administrator account, so a fresh instance never points at example.com.
-    """
+    """Contact address: the stored one, else the oldest active administrator's."""
     values = await all_values()
     stored = (values.get(CONTACT_EMAIL) or "").strip()
     if stored:
@@ -273,11 +239,7 @@ async def enabled_kinds() -> list[str]:
 
 
 async def smtp_config() -> dict[str, str]:
-    """The mail settings in effect, database over environment.
-
-    Plain strings; the caller decides whether enough is filled in to send. An
-    empty `host` means mail is off, and dependent features say so up front.
-    """
+    """Mail settings in effect, as plain strings. An empty `host` means mail is off."""
     values = await all_values()
     return {
         "host": values.get(SMTP_HOST, "") or env_settings.smtp_host,
@@ -308,13 +270,12 @@ def parse_domains(raw: str) -> list[str]:
 @dataclass(frozen=True)
 class SignupPolicy:
     mode: str
-    #: Where the mode came from — the admin screen says whether clearing it
-    #: falls back to the environment.
+    #: "database" | "environment".
     mode_source: str
     domains: list[str]
     #: What the administrator asked for.
     verify_email: bool
-    #: What actually happens: verification needs a mail server to send from.
+    #: What actually happens: verification needs mail to be enabled.
     verification: bool
 
     def allows(self, email: str) -> bool:
@@ -353,15 +314,12 @@ async def put(db: AsyncSession, key: str, value: str, actor_id: str) -> None:
         row.updated_at = utcnow()
         row.updated_by = actor_id
         db.add(row)
-    # This process must not keep serving the old value for another TTL after
-    # its own write. The 15s window sounds harmless until it holds a broken
-    # LiteLLM address someone just reverted — a generation starting inside it
-    # dialled nowhere.invalid and reported "문서를 만들지 못했습니다".
+    # The writing process must not serve the old value for another TTL.
     _cache["at"] = 0.0
 
 
 def preview(value: str) -> str:
-    """What a secret looks like in the UI: enough to recognise, useless to replay."""
+    """Last four characters of a secret, for display."""
     if not value:
         return ""
     return f"…{value[-4:]}" if len(value) > 4 else "…"

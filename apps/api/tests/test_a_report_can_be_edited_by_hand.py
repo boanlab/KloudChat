@@ -1,26 +1,4 @@
-"""A report somebody typed in is still a report everything else can read.
-
-A section used to be Markdown and nothing else, because the only author was the
-model. Once a person edits the document, that stops holding: size, face,
-alignment and an emphasis colour have no Markdown, and a table typed into a
-word processor is not a run of `|` characters. So an edited section is stored
-as HTML and marked `format: "html"`.
-
-Two things have to stay true after that change, and neither is obvious:
-
-**The markup is not trusted.** It arrives on a PATCH from a browser, and past
-that boundary the same string is rendered into a panel, written into a `.docx`
-and served from a share link. `sanitise` runs at the boundary, with the narrow
-allowlist a person may actually set — and nothing else. What is missing from
-that allowlist is the point of it: no layout, so a template is still a template
-after somebody has typed in it.
-
-**Every consumer still sees Markdown.** Three exporters parse it a line at a
-time, the reviewer scores prose, and the rewriter reads the neighbouring
-sections for continuity. Handed `<p style=…>`, each of those does something
-visibly wrong rather than failing — tags drawn as text in a PDF, findings spent
-on markup instead of the argument.
-"""
+"""Hand-edited sections: sanitised at the boundary, stored as HTML, read as Markdown downstream."""
 
 from __future__ import annotations
 
@@ -57,8 +35,7 @@ def test_browser_canonical_rgb_colours_are_kept_as_safe_hex():
 
 
 def test_layout_is_still_the_template_s():
-    # The whole value of a 서식 is that it decides the layout. A person setting
-    # `position` or a margin is a person quietly leaving the template behind.
+    # Layout stays the template's: no position, margin or display.
     kept = sanitise(
         '<p style="position: fixed; margin: 0 0 40px; display: grid; font-size: 12pt">가</p>',
         editable_styles=True,
@@ -69,8 +46,7 @@ def test_layout_is_still_the_template_s():
 
 
 def test_a_value_with_a_function_call_is_dropped_whole():
-    # `expression(` is legacy-IE only and `url(` fetches. Neither belongs in a
-    # file that is also downloaded and opened outside the sandbox.
+    # `expression(` and `url(` are function calls; the file is opened outside the sandbox.
     assert "expression" not in sanitise(
         '<p style="font-size: expression(alert(1))">가</p>', editable_styles=True
     )
@@ -85,8 +61,7 @@ def test_a_script_does_not_become_editable_because_a_person_typed_it():
 
 
 def test_the_model_still_gets_no_inline_style_at_all():
-    # A writer that invents its own type scale produces a document that
-    # disagrees with itself on every page. The default is unchanged.
+    # Model output gets no inline style by default.
     assert sanitise('<p style="font-size: 18pt">가</p>') == "<p>가</p>"
 
 
@@ -94,8 +69,6 @@ def test_the_model_still_gets_no_inline_style_at_all():
 
 
 def test_a_typed_table_survives_as_a_table():
-    # Flattened to a bullet, it is a table somebody rebuilds by hand after
-    # every export.
     markdown = richtext.to_markdown(
         "<table><thead><tr><th>기준</th><th>값</th></tr></thead>"
         "<tbody><tr><td>비용</td><td>3억</td></tr></tbody></table>"
@@ -109,15 +82,12 @@ def test_lists_keep_their_kind():
 
 
 def test_a_sub_heading_never_lands_as_a_title():
-    # The section's own heading is drawn by the wrapper, so a heading in the
-    # body is always below it. `_markdown_to_lines` reads two hashes or more.
+    # The wrapper draws the section heading; body headings start at `##`.
     assert richtext.to_markdown("<h1>소제목</h1>").startswith("## ")
     assert richtext.to_markdown("<h3>소제목</h3>").startswith("### ")
 
 
 def test_formatting_that_has_no_markdown_is_dropped_not_approximated():
-    # Half-applied emphasis reads worse than none — the call `_strip_inline`
-    # already makes in the exporters.
     assert richtext.to_markdown('<p style="font-size: 18pt">큰 글씨</p>') == "큰 글씨"
 
 
@@ -131,9 +101,6 @@ def test_prose_around_a_table_keeps_its_order():
 
 
 def test_a_markdown_section_is_left_exactly_alone():
-    # The overwhelming majority of sections, and every one written before the
-    # editor shipped. Round-tripping them through the converter would rewrite
-    # documents nobody edited.
     section = {"content": "- 가\n- 나", "format": "markdown"}
     assert richtext.as_markdown(section) == "- 가\n- 나"
     assert richtext.as_markdown({"content": "본문"}) == "본문"
@@ -146,11 +113,9 @@ def test_normalise_marks_what_it_converted():
     ]
     out = richtext.normalise(sections)
     assert [s["content"] for s in out] == ["본문", "그대로"]
-    # Every body is Markdown now, so every flag says so — a consumer that
-    # checks the flag rather than the caller must not see a stale "html".
+    # No stale "html" flag after conversion.
     assert {s["format"] for s in out} == {"markdown"}
-    # The originals are untouched: the exporters take a normalised copy, and
-    # the stored document is still the one the person typed.
+    # The originals are untouched.
     assert sections[0]["content"] == "<p>본문</p>"
 
 
@@ -191,7 +156,6 @@ def test_editable_run_and_paragraph_formatting_reaches_docx_and_pdf():
     assert '<hh:underline type="BOTTOM" shape="SOLID"' in header
     assert '<hh:align horizontal="CENTER"' in header
     assert '<hh:lineSpacing type="PERCENT" value="150"' in header
-    # The body must actually reference both dynamic definitions; definitions
-    # sitting unused in header.xml would only make the file look correct.
+    # The body must reference both definitions, not only declare them.
     assert 'paraPrIDRef="10"' in section
     assert 'charPrIDRef="6"' in section

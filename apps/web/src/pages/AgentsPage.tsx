@@ -42,13 +42,10 @@ const emptyAgent = (model: string): Agent => ({
   starters: [],
   shareMode: 'open',
   sealed: false,
-  // New agents start with no tool or skill authority. The user can explicitly
-  // inherit their tools, or choose names from the server's real registry.
   tools: [],
   skillIds: [],
   kinds: ['chat'],
   visibility: 'private',
-  // Filled in by the server on save; a draft has no owner yet.
   ownerId: '',
   ownerName: '',
   installs: 0,
@@ -64,11 +61,7 @@ const emptyAgent = (model: string): Agent => ({
   updatedAt: new Date().toISOString(),
 })
 
-/**
- * The server's slug rule (`_slug` in routers/workspace.py), mirrored so the
- * form can show the handle a name will get and catch a collision before the
- * round trip. The server still decides.
- */
+/** Mirrors the server's slug rule for preview and early collision checks; the server still decides. */
 function slugify(text: string): string {
   const base = text
     .trim()
@@ -102,53 +95,34 @@ export function AgentsPage() {
     void loadWorkspace()
   }, [loadWorkspace])
   const [draft, setDraft] = useState<Agent | null>(null)
-  /**
-   * The handle this draft will be stored under, and whether another of the
-   * person's agents already holds it. The server has the last word (409
-   * `slug_taken`); this says so before 저장 is pressed.
-   */
   const draftSlug = draft ? slugify(draft.slug || draft.name) : ''
   const slugTaken = !!draft && agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const [tab, setTab] = useState<'mine' | 'store'>('mine')
-  //: 삭제는 되돌릴 수 없고, 시스템 프롬프트는 누군가 써 둔 것이다.
   const [confirming, setConfirming] = useState<Agent | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  /** Agent-name validation message. */
   const [nameError, setNameError] = useState<{ draftId: string; text: string } | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
-  // Keyed to the draft it was said on, so a new draft starts clean without an
-  // effect to clear it.
+  // Keyed to the draft, so a new draft starts clean.
   const nameNotice = draft && nameError?.draftId === draft.id ? nameError.text : null
 
-  // The store is what makes one person's agent reusable by the workspace.
-  // Your own shared agents are not in it: there is nothing to import from
-  // yourself, and the button on such a card would refuse.
   const shared = agents.filter((a) => a.visibility === 'org' && a.ownerId !== user?.id)
-  // And the other half of the same line: somebody else's shared agent is not
-  // one of mine. It was listed under 내 에이전트 with its edit, delete and
-  // enable controls already withheld — a card that could only be looked at.
   const mine = agents.filter((a) => a.ownerId === user?.id)
-  // Cheapest model that can hold a conversation, the same rule the surface
-  // defaults use.
+  // Cheapest chat model, the same rule the surface defaults use.
   const defaultModel =
     [...models]
       .filter((m) => m.kinds.includes('chat'))
       .sort((a, b) => a.creditCost - b.creditCost)[0]?.id ?? ''
-  // Same reasoning as skills: newest first so a fresh agent is on the first
-  // page, then held in place so toggling one does not move it.
   const ordered = useStableOrder(agents)
   const all =
     tab === 'store'
       ? ordered.filter((a) => a.visibility === 'org' && a.ownerId !== user?.id)
       : ordered.filter((a) => a.ownerId === user?.id)
   const { visible, hidden, more } = usePaged(all, [tab, agents.length])
-  // Mine only: somebody else's shared agent is read-only.
+  // Only own agents are deletable.
   const pick = useBulkSelect(visible.filter((a) => a.ownerId === user?.id))
 
-  // Attached first, then matches; capped, with `skills.length` in the
-  // placeholder saying what is hidden. A disabled existing selection remains
-  // visible so it can be removed, but cannot be newly granted.
+  // Chosen skills first; a disabled skill stays visible while chosen so it can be removed.
   const chosen = new Set(draft?.skillIds ?? [])
   const matchedSkills = skills.filter(
     (s) =>
@@ -174,9 +148,7 @@ export function AgentsPage() {
           ? { ...current, hasKnowledge }
           : current,
       )
-      // Composer reads the saved agent from the workspace store, not this
-      // modal draft. Refresh after a shelf change so closing the modal does
-      // not leave `search_knowledge` falsely disabled.
+      // The composer reads the saved agent, not this draft.
       void loadWorkspace()
     },
     [loadWorkspace],
@@ -192,8 +164,6 @@ export function AgentsPage() {
           action={
             <Button
               variant="primary"
-              // `models` is empty until the catalogue lands, and stays empty
-              // when the proxy is unreachable.
               disabled={models.length === 0}
               title={models.length === 0 ? t('모델 목록을 불러오는 중입니다') : undefined}
               onClick={() => setDraft(emptyAgent(defaultModel))}
@@ -231,8 +201,7 @@ export function AgentsPage() {
           {visible.map((a) => (
             <Card key={a.id} className="flex flex-col p-4">
               <div className="flex items-start gap-3">
-                {/* Somebody else's shared agent is read-only, so it gets no
-                    checkbox — the delete behind it would 403. */}
+                {/* Another owner's agent is read-only. */}
                 {a.ownerId === user?.id ? (
                   <PickBox
                     checked={pick.picked.has(a.id)}
@@ -256,11 +225,6 @@ export function AgentsPage() {
                   </div>
                   <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(a.description)}</p>
                 </div>
-                {/* And for the same reason as the checkbox above: the write
-                    behind this one is a PATCH of somebody else's row, which
-                    comes back 404 and leaves the switch flicking back with
-                    nothing said. Whether their agent is on is still worth
-                    reading — it is the control that does not belong here. */}
                 {a.ownerId === user?.id ? (
                   <Switch
                     checked={a.enabled}
@@ -274,8 +238,6 @@ export function AgentsPage() {
                 )}
               </div>
 
-              {/* `mb-3` is the floor under the foot's `mt-auto`, which is 0 on a
-                  card that is already as tall as its row. */}
               <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
                 {a.kinds.map((k) => {
                   const meta = kindMeta[k]
@@ -289,8 +251,6 @@ export function AgentsPage() {
                 })}
                 {a.ownerId !== user?.id && (
                   <Badge tone={a.official ? 'accent' : 'neutral'}>
-                    {/* 관리자가 올린 기본 목록과 동료가 만든 것은 같은 무게로
-                        읽히면 안 됩니다. */}
                     {a.official ? t('공식') : a.ownerName || t('워크스페이스')}
                   </Badge>
                 )}
@@ -304,7 +264,6 @@ export function AgentsPage() {
                     {t('지침 비공개')}
                   </Badge>
                 )}
-                {/* 모델을 고정하지 않은 에이전트가 정상이다 — 화면의 기본 모델을 따른다 */}
                 <Badge>{models.find((m) => m.id === a.model)?.label ?? t('화면 기본 모델')}</Badge>
                 <Badge>temp {a.temperature}</Badge>
                 {(a.tools ?? []).map((t) => (
@@ -314,13 +273,7 @@ export function AgentsPage() {
                 {a.tools?.length === 0 && <Badge>{t('도구 없음')}</Badge>}
               </div>
 
-              {/* `mt-auto`, not `mt-3`: the grid already stretches the cards in
-                  a row to one height, but the foot floated wherever the badges
-                  above it happened to end — so an agent carrying two rows of
-                  tool badges put its 실행 button 28px below its neighbour's, and
-                  a tidy two-column grid read as a broken one. Pinned to the
-                  bottom, the buttons line up across the row whatever is above
-                  them. */}
+              {/* `mt-auto` keeps the foot aligned across a row of cards. */}
               <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
                 <span className="flex items-center gap-2 text-xs text-faint">
                   {t('{n}회 실행').replace('{n}', String(a.runs))}
@@ -333,15 +286,8 @@ export function AgentsPage() {
                   <span>{relativeTime(a.updatedAt)}</span>
                 </span>
                 <div className="flex gap-1.5">
-                  {/* Someone else's shared agent is read-only: editing or
-                      deleting it would 403, and offering buttons that cannot
-                      work is worse than not offering them. Copying is the
-                      action that makes sense — it is why the store exists. */}
                   {a.ownerId === user?.id ? (
                     <>
-                      {/* Same reasoning as skills: the card is where the other
-                          screens put it, and the edit modal is a strange place
-                          to go looking for a delete. */}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -383,8 +329,6 @@ export function AgentsPage() {
             </Card>
           ))}
         </div>
-        {/* 새 계정은 이제 빈 화면으로 시작합니다. 나머지가 어디 있는지 말하지
-            않으면 빈 화면은 "기능이 없다" 로 읽힙니다. */}
         {workspaceLoading && all.length === 0 ? (
           <LoadingState label={t('에이전트를 불러오는 중…')} />
         ) : all.length === 0 && (
@@ -461,8 +405,7 @@ export function AgentsPage() {
                   })
                   setDraft(null)
                 } catch (err) {
-                  // The form keeps what was typed. Closing it and saying
-                  // nothing is how a system prompt somebody wrote disappears.
+                  // Keep the form open so the typed prompt is not lost.
                   setSaveError(
                     errorCode(err) === 'slug_taken'
                       ? t('이미 쓰는 슬러그입니다. 다른 슬러그를 붙이세요.')
@@ -540,12 +483,6 @@ export function AgentsPage() {
               />
             </Field>
 
-            {/* 공개 범위. 모델도 목록 질의도 처음부터 org 를 다뤘고, 배지도
-                "공유됨" 을 그릴 줄 알았는데, 정작 그렇게 **바꿀 방법이**
-                없었습니다 — 워크스페이스 스토어 탭이 영원히 비어 있던 이유.
-                한동안 폼 아래쪽에 같은 선택기가 한 벌 더 있었습니다. 같은
-                값을 두 곳에서 고르게 두면 어느 쪽이 지금 값인지 읽어 낼 수
-                없으니, 무엇이 공개되는지까지 말하는 이쪽만 남깁니다. */}
             <Field
               label={t('공개 범위')}
               hint={t('공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
@@ -575,9 +512,7 @@ export function AgentsPage() {
                   )
                 })}
               </div>
-              {/* 「가져가서 편집 가능하게 오픈할지, 가져갈 수는 있되 세부 내용을
-                  비공개로 할지」 — only once it is shared, and never on a copy
-                  that has no prompt of its own to withhold. */}
+              {/* Share mode applies only to shared originals; a sealed copy has no prompt of its own. */}
               {draft.visibility === 'org' && !draft.sealed && (
                 <div className="mt-3 space-y-2">
                   {(
@@ -658,8 +593,6 @@ export function AgentsPage() {
               )}
             </Field>
 
-            {/* What the empty screen says before the first message: how to
-                use it, and a few first sentences to press. */}
             <Field
               label={t('사용법')}
               hint={t('대화를 열면 첫 화면에 보입니다. 무엇을 가져와야 하는지, 한 턴에 무슨 일이 일어나는지.')}
@@ -685,7 +618,7 @@ export function AgentsPage() {
               />
             </Field>
 
-            {/* Only for an agent that exists: the shelf hangs off its id. */}
+            {/* Knowledge is keyed by agent id, so only for a saved agent. */}
             <AgentKnowledge
               agentId={agents.some((a) => a.id === draft.id) ? draft.id : null}
               onKnowledgeChange={updateKnowledgeAvailability}
@@ -698,12 +631,7 @@ export function AgentsPage() {
                   onChange={(e) => setDraft({ ...draft, model: e.target.value })}
                   className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
-                  {/* 고정하지 않는 것도 하나의 상태다 — 카드가 '화면 기본
-                      모델' 이라고 그리는 그 상태이고, 씨앗 에이전트는 전부
-                      거기에 있다. 그런데 목록에 그 항목이 없어서, 값이 빈
-                      에이전트를 열면 브라우저가 첫 모델을 대신 골라 보여
-                      주었다. 고르지도 않은 모델이 편집기에 적혀 있는 것이고,
-                      한 번 건드리면 그대로 박힌다. */}
+                  {/* Empty value means "follow the surface default". */}
                   <option value="">{t('화면 기본 모델')}</option>
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -712,8 +640,6 @@ export function AgentsPage() {
                   ))}
                 </select>
               </Field>
-              {/* 무엇에 닿는지까지 적는다 — 이 값은 대화 턴의 표본 추출로만
-                  내려가고, 보고서·슬라이드는 각자의 생성 절차를 따른다. */}
               <Field
                 label={`Temperature — ${draft.temperature}`}
                 hint={t('낮을수록 일관되게, 높을수록 다양하게 답합니다. 대화 화면에만 적용됩니다.')}
@@ -830,12 +756,8 @@ export function AgentsPage() {
                   {t('허용 목록 지정')}
                 </button>
               </div>
-              {/* 상속 모드에는 고를 목록이 없다. 검색창만 남겨 두면 무엇도
-                  거르지 못하는 칸에 대고 타자를 치게 된다 — 목록과 함께 나온다. */}
               {draft.skillIds !== null && (
                 <>
-                  {/* 전체를 나열하면 다섯 개일 때는 괜찮아도 예순 개면 못 쓴다.
-                      선택된 것은 앞에 고정해, 검색이 이미 붙은 것을 가리지 않게 한다. */}
                   <Input
                     value={skillQuery}
                     onChange={(e) => setSkillQuery(e.target.value)}

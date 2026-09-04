@@ -1,20 +1,9 @@
 """Installable MCP servers.
 
-The `mcp/*.py` scripts are standard MCP over stdio and run unmodified. They
-declare their dependencies inline with `uv run --script` (PEP 723), so the API
-image needs `uv` on PATH and the scripts mounted at `/srv/mcp`; the reference
-servers from the MCP project are npm packages and need `npx`. See the
-Dockerfile.
-
-**Entry criteria.** A server belongs here once it has been started against a
-real credential and had its tool count checked. Every enabled tool ships its
-full schema on every turn, and model tool-choice degrades well before twenty of
-them — so the size of this list is the constraint, not the length of the
-candidate set.
-
-`required_env` is what an operator or user must supply before the server can
-start. Asked for at install time and stored on the connector row, which is
-never serialised back to the browser.
+Stdio scripts under `/srv/mcp` run via `uv run --script` (PEP 723 inline deps);
+reference servers need `npx`. Every enabled tool ships its schema on every turn,
+so the list is kept short. `required_env` values are stored on the connector row
+and never serialised back to the browser.
 """
 
 from __future__ import annotations
@@ -25,8 +14,7 @@ from app.services import settings_store
 
 _MCP_DIR = "/srv/mcp"
 
-# The reference servers import `McpError`, renamed to `MCPError` in SDK 2.x.
-# Unbounded, uvx resolves the newest SDK and every server dies on import.
+# Reference servers import `McpError`, renamed in SDK 2.x.
 _MCP_SDK = "'mcp<2'"
 
 CATALOG: list[dict[str, Any]] = [
@@ -61,8 +49,7 @@ CATALOG: list[dict[str, Any]] = [
 ]
 
 
-#: Placeholder → feature address from the admin screen. A hard-coded address
-#: would leave installed connectors pointing at the old backend.
+#: Placeholder → feature address from the admin screen.
 _URL_VARS = {
     "TOOLS_RESEARCH_URL": "research",
     "TOOLS_STT_URL": "stt",
@@ -85,12 +72,7 @@ async def resolve_urls(text: str) -> str:
 
 
 async def effective_endpoint(connector: Any) -> str:
-    """The address the connector will actually call.
-
-    Catalogue connectors re-read the catalogue rather than their stored row, so
-    a backend move carries them with it. A self-registered server keeps the
-    address the user typed.
-    """
+    """The address to call: catalogue connectors re-read the catalogue, others their stored row."""
     if getattr(connector, "official", False):
         entry = catalog_entry(connector.slug)
         if entry and entry.get("endpoint"):
@@ -108,8 +90,3 @@ async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
 
 def catalog_entry(slug: str) -> dict[str, Any] | None:
     return next((e for e in CATALOG if e["slug"] == slug), None)
-
-
-def required_env(slug: str) -> list[dict[str, Any]]:
-    entry = catalog_entry(slug)
-    return list((entry or {}).get("required_env") or [])

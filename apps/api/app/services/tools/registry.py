@@ -1,11 +1,7 @@
 """Assembles the tool list for one turn.
 
-Order of precedence when names collide: built-ins win. A connector cannot shadow
-`execute_code` by naming a tool that — the agent loop resolves by name, and a
-server that could redefine a built-in could redirect it.
-
-Connector tools are namespaced `mcp__<slug>__<tool>` for the same reason: two
-servers may both expose `search`, and the model needs to be able to mean one.
+Built-ins win name collisions (the loop resolves tools by name); connector tools
+are namespaced `mcp__<slug>__<tool>`.
 """
 
 from __future__ import annotations
@@ -56,8 +52,7 @@ def _make_runner(connector: Connector, tool_name: str, env: dict[str, str]):
             return ToolResult(content=f"오류: {exc}", failed=True)
         if not text:
             return ToolResult(content="(빈 응답)", detail="결과 없음")
-        # Cap what a server can push into the context. A runaway response would
-        # otherwise evict the conversation it was meant to help with.
+        # Caps what a server can push into the context.
         capped = text[:30_000]
         detail = f"{len(text):,}자" + (" (일부)" if len(text) > 30_000 else "")
         return ToolResult(content=capped, detail=detail)
@@ -111,8 +106,7 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
                 source=connector.slug,
             )
         )
-    # Database row order is not an API contract.  A stable definition order is
-    # required because the privacy decision token hashes the exact tool list.
+    # Stable order: the privacy decision token hashes the exact tool list.
     return sorted(out, key=lambda tool: tool.name)
 
 
@@ -129,23 +123,12 @@ async def build_tools(
 ) -> list[Tool]:
     """The turn's tool list.
 
-    `allowed` is an agent's three-state allowlist. `None` inherits everything
-    this user has, `[]` denies every tool, and a populated list is a hard
-    filter, so an agent built for one job cannot quietly reach a connector its
-    author never considered.
-
-    `knowledge` is the running agent's own documents and follows that same hard
-    allowlist under its real registry name, `search_knowledge`.
+    `allowed`: None inherits everything the user has, [] denies all, a list is a hard filter.
+    `knowledge`: the agent's documents, offered as `search_knowledge` under the same allowlist.
     """
     if strict_local:
-        # Do not even resolve connector credentials or network-tool backend
-        # settings on a privacy route.  These are the only built-ins whose
-        # current runners stay in this API process; knowledge is added below
-        # with vector retrieval forcibly disabled.
-        # `share_note` is deliberately absent, though it reaches no network.
-        # A note is injected into every later turn in its scope, and a later
-        # turn may run on an external model — so a strict-local answer could
-        # leave the building one hop after it was routed to stay inside it.
+        # Only in-process built-ins; no connectors, no vector retrieval. `share_note`
+        # is excluded because a note reaches later turns that may run on external models.
         tools = [CREATE_ARTIFACT, CREATE_CHART]
         include_connectors = False
         knowledge_collection = ""
@@ -170,16 +153,9 @@ async def build_tools(
 
 
 async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
-    """The real tool names an agent or shipped skill may reference.
-
-    Uses the same builders as execution, so the UI cannot offer historical
-    placeholder names that the turn loop will never resolve. Knowledge search
-    is listed separately because it exists only once an agent has a shelf.
-    """
+    """Tool names an agent or skill may reference, with labels and current availability."""
     available = {tool.name: tool for tool in await build_tools(db, user, web_search=True)}
     known: dict[str, tuple[str, bool]] = {
-        # The noun, not the progress label: this list is what a permission
-        # screen shows, and nothing on it is running.
         tool.name: (tool.title or tool.label or tool.name, tool.name in available)
         for tool in (
             WEB_SEARCH,
@@ -191,8 +167,7 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
         )
     }
 
-    # Registered connector names stay valid while a server is disconnected;
-    # availability is checked again at execution time.
+    # Connector names stay valid while disconnected; availability is rechecked at execution.
     connectors = (
         await db.exec(
             select(Connector).where(
@@ -217,10 +192,7 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
             name = qualified(connector.slug, row.name)
             known[name] = (_label_for(connector, row.name), name in available)
 
-    # This catalogue has user scope, while knowledge search is created for one
-    # concrete agent only when that agent has readable shelf documents. It is
-    # a valid registry name but cannot truthfully be advertised as globally
-    # available; AgentOut.has_knowledge supplies the missing runtime condition.
+    # Exists only for an agent with shelf documents (see AgentOut.has_knowledge).
     known["search_knowledge"] = ("에이전트 지식이 있을 때 검색", False)
     return [
         {"name": name, "label": label, "available": is_available}

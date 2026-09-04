@@ -4,32 +4,19 @@
 # Precedence, highest first:
 #
 #   1. whatever was already exported when the script was invoked
-#   2. ADMIN_EMAIL / ADMIN_PASS in .env
-#   3. KCHAT_ADMIN_EMAIL / KCHAT_ADMIN_PASSWORD in .env
+#   2. ADMIN_EMAIL / ADMIN_PASS in .env — the account the checks use
+#   3. KCHAT_ADMIN_EMAIL / KCHAT_ADMIN_PASSWORD in .env — the bootstrap admin
 #   4. the calling script's own default
 #
-# Layer 2 exists because the bootstrap administrator and the account these
-# checks sign in as are not always the same one. An instance whose first admin
-# arrived by signing up has no KCHAT_ADMIN_* at all, and an instance that was
-# bootstrapped may since have had that password changed. Putting ADMIN_EMAIL
-# and ADMIN_PASS in .env says "this is the account the checks use", separately
-# from "this is the account the container creates on an empty database".
+# Parsed, not sourced: .env holds non-shell values (KCHAT_CORS_ORIGINS is a
+# JSON array). Only the keys listed below are read.
 #
-# The file is parsed rather than sourced. Sourcing executes whatever is in it,
-# and .env legitimately holds values that are not shell — KCHAT_CORS_ORIGINS is
-# a JSON array. Only the keys listed below are read; nothing else in .env
-# reaches the script's environment.
-#
-# Set KCHAT_ENV_FILE to read a different file, or point it at /dev/null to skip
-# this entirely.
+# KCHAT_ENV_FILE selects another file; /dev/null skips this entirely.
 
-# Repository root, derived from this file rather than from the caller's $0, so
-# it is correct however the script was invoked.
+# Repository root from this file's location, not the caller's $0.
 KCHAT_ENV_FILE=${KCHAT_ENV_FILE:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.env"}
 
-#: Credentials only. Everything else in .env belongs to the container, not to
-#: these scripts, and importing it silently would make a failure here look like
-#: a failure in the app.
+#: Credentials only; the rest of .env belongs to the container.
 _KCHAT_ENV_KEYS="ADMIN_EMAIL ADMIN_PASS KCHAT_ADMIN_EMAIL KCHAT_ADMIN_PASSWORD LITELLM_BASE_URL LITELLM_MASTER_KEY"
 
 # Last assignment wins, matching how docker compose reads the same file.
@@ -58,8 +45,7 @@ kchat_load_env() {
     fi
   done
 
-  # .env.example ships KCHAT_ADMIN_*; the scripts take ADMIN_*. Mapped here so
-  # a stock .env works without anyone having to know both names.
+  # .env.example ships KCHAT_ADMIN_*; the scripts take ADMIN_*.
   if [ -z "${ADMIN_EMAIL:-}" ] && [ -n "${KCHAT_ADMIN_EMAIL:-}" ]; then
     export ADMIN_EMAIL="$KCHAT_ADMIN_EMAIL"
   fi

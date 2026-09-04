@@ -6,17 +6,8 @@ import { useFileDrop } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 
 /**
- * The documents one agent can search.
- *
- * Distinct from project files, which are pushed into every turn whole inside a
- * character budget — past that budget they degrade to a list of names, and the
- * model is told the material exists without being shown any of it. These are
- * searched instead: the agent calls a tool when it decides it needs background,
- * and gets the passages that match.
- *
- * Attaching needs a saved agent, because the shelf hangs off its id. Rather
- * than pretend otherwise with a queue that uploads on save — and fails halfway,
- * leaving an agent that half-knows things — a new agent is told to save first.
+ * Documents an agent searches via tool call (unlike project files, which are
+ * pushed into every turn). Attaching requires a saved agent id.
  */
 export function AgentKnowledge({
   agentId,
@@ -32,18 +23,11 @@ export function AgentKnowledge({
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const rowsRef = useRef<FileRow[]>([])
-  /**
-   * 그림 4 in the review: a file dragged onto this screen produced no reaction
-   * at all, just the browser's own cursor — and dropping it navigated away.
-   *
-   * The hook has to run above the unsaved-agent early return below, and the
-   * uploader it calls is defined under that return because it needs the id. A
-   * ref bridges the two rather than reordering a function around a hook.
-   */
+  // The drop hook must run above the unsaved-agent early return; the uploader
+  // it calls is defined below it, so a ref bridges the two.
   const addFilesRef = useRef<(files: File[]) => void>(() => {})
   const { over: dragging, handlers: dropHandlers } = useFileDrop(
     (files) => addFilesRef.current(files),
-    // No shelf to drop onto until the agent has an id.
     !!agentId,
   )
 
@@ -96,8 +80,7 @@ export function AgentKnowledge({
     }
   }
 
-  /** Several at once — a drop is rarely one file. Sequential so the list
-   *  arrives in the order they were dropped rather than in finishing order. */
+  // Sequential so rows keep drop order.
   const addFiles = async (picked: File[]) => {
     for (const file of picked) await addFile(file)
   }
@@ -121,8 +104,7 @@ export function AgentKnowledge({
     setBusy('reindex')
     setError(null)
     try {
-      // 전부 다시 보낸다. 기본값은 `indexed_at` 이 빈 것만 집어, 임베딩
-      // 모델이 바뀌어 옛 공간에 남은 벡터는 이 버튼으로 영영 못 고쳤다.
+      // Force all rows, so vectors from a previous embedding model are rebuilt too.
       await agentsApi.knowledge.reindex(agentId, true)
       replaceRows(await agentsApi.knowledge.list(agentId))
     } catch (err) {
@@ -212,10 +194,7 @@ export function AgentKnowledge({
                 ) : (
                   <FileText size={13} className="shrink-0 text-faint" />
                 )}
-                {/* The name is what opens it, so a shelved document can be
-                    read back instead of only counted. A URL row has no blob —
-                    what was stored is the text read that day — so its name
-                    points at the page it came from. */}
+                {/* A URL row has no blob; its name links to the source page. */}
                 {f.sourceUrl ? (
                   <a
                     href={f.sourceUrl}
@@ -235,9 +214,6 @@ export function AgentKnowledge({
                     {f.name}
                   </button>
                 )}
-                {/* Extraction can fail on a scanned PDF or a locked HWP. Said
-                    here, because a document the agent cannot read is one it
-                    will report as present and never be able to quote. */}
                 {f.error ? (
                   <span className="flex items-center gap-1 text-xs text-warn">
                     <TriangleAlert size={11} />
@@ -245,10 +221,7 @@ export function AgentKnowledge({
                   </span>
                 ) : (
                   <>
-                    {/* Covered by word search either way; this says whether the
-                        meaning-based half reaches it too. Without the badge an
-                        un-indexed document looks exactly like an indexed one,
-                        and the difference is half the search. */}
+                    {/* Un-indexed rows are found by word search only. */}
                     {f.indexed === false && (
                       <span
                         title={t('낱말 검색으로는 찾지만, 뜻으로 찾는 검색에는 아직 안 들어갔습니다')}
@@ -281,8 +254,6 @@ export function AgentKnowledge({
               <Paperclip size={10} />
               {t('URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.')}
             </p>
-            {/* Only when there is something to do. A button that reports "0건
-                색인" every time teaches people to stop pressing it. */}
             {rows.some((f) => f.indexed === false && !f.error) && (
               <Button size="sm" disabled={busy !== null} onClick={() => void reindex()}>
                 {busy === 'reindex' ? (

@@ -1,16 +1,5 @@
-/**
- * Password reset, end to end through a real mail server.
- *
- * Checking that the link in the mail really opens the form and really changes
- * the password means reading the mail.
- *
- * Needs an inbox on the app network:
- *
- *   docker run -d --name kchat-mailpit --network kchat_kchat -p 8025:8025 axllent/mailpit
- *
- * Without one this skips rather than fails — a missing test dependency is not
- * a defect in the product.
- */
+/** Password reset end to end through mailpit on the app network; skips without one:
+ *  docker run -d --name kchat-mailpit --network kchat_kchat -p 8025:8025 axllent/mailpit */
 
 import { expect, test } from '@playwright/test'
 import { E2E_ADMIN, signIn } from './helpers'
@@ -36,8 +25,7 @@ test('메일 설정이 켜지면 로그인 화면에서 비밀번호를 재설�
   test.setTimeout(180_000)
   test.skip(!(await mailpitUp()), 'mailpit 이 없습니다 — 메일 경로는 실제 서버로만 검증합니다.')
 
-  // Admin work through the API: this test is about the sign-in page, and driving
-  // the settings form here would fail for reasons that belong to another test.
+  // Admin setup through the API.
   await signIn(page)
   const ready = await page.evaluate(
     async ([admin, account]: any) => {
@@ -66,7 +54,7 @@ test('메일 설정이 켜지면 로그인 화면에서 비밀번호를 재설�
         }),
       })
 
-      // An account that exists and is active, or the request mails nothing.
+      // The account must exist and be active, or nothing is mailed.
       await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,17 +77,14 @@ test('메일 설정이 켜지면 로그인 화면에서 비밀번호를 재설�
 
   const since = (await (await fetch(`${MAILPIT}/api/v1/messages?limit=1`)).json()).total as number
 
-  // Signed out, the link is now on offer — it was not before mail was set up.
   await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST' }))
   await page.goto('/')
   await page.getByRole('button', { name: '비밀번호를 잊으셨나요?' }).click()
   await page.getByLabel('이메일').fill(ACCOUNT.email)
   await page.getByRole('button', { name: '재설정 링크 받기' }).click()
-  // Says nothing about whether that address is registered.
+  // Reveals nothing about whether the address is registered.
   await expect(page.getByText(/가입된 계정이 있다면/)).toBeVisible({ timeout: 20_000 })
 
-  // Poll the mailbox rather than sleep: delivery is fast but not instant, and a
-  // fixed wait is either flaky or slow.
   const readToken = async (): Promise<string | null> => {
     const inbox = await (await fetch(`${MAILPIT}/api/v1/messages?limit=20`)).json()
     if (inbox.total <= since) return null
@@ -121,12 +106,11 @@ test('메일 설정이 켜지면 로그인 화면에서 비밀번호를 재설�
   await page.getByLabel('새 비밀번호').fill(fresh)
   await page.getByRole('button', { name: '비밀번호 바꾸기' }).click()
 
-  // Signed in on the spot — the person just proved they hold the address.
+  // Signed in on the spot.
   await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 30_000 })
-  // And the token is gone from the address bar rather than sitting in history.
+  // The token leaves the address bar.
   expect(page.url()).not.toContain('token=')
 
-  // The old password no longer works; the new one does.
   const codes = await page.evaluate(
     async ([email, oldPassword, newPassword]: any) => {
       const attempt = async (password: string) =>
@@ -164,7 +148,6 @@ test('메일 설정을 지우면 재설정 링크가 사라진다', async ({ pag
 
   await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST' }))
   await page.goto('/')
-  // No offer, and no dead link — the honest instruction instead.
   await expect(page.getByRole('button', { name: '비밀번호를 잊으셨나요?' })).toHaveCount(0)
   await expect(page.getByText('비밀번호를 잊었다면 관리자에게 문의하세요.')).toBeVisible()
 })

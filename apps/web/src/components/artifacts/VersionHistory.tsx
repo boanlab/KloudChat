@@ -77,24 +77,15 @@ function compareVersion(
   }
 }
 
-/**
- * The way back from an edit, for any artifact that keeps versions.
- *
- * Every write snapshots the revision it replaces and neither `versions` nor
- * `restore` looks at the kind, so the control is shared rather than written per
- * panel: the report had one and a deck or an HTML document did not, which made
- * "수정할 때마다 버전이 쌓이고" true of the storage and false of the screen.
- */
+/** Version list, preview and restore for any artifact kind. */
 export function VersionHistory({
   artifact,
   onRestored,
   hasUnsavedChanges = false,
   currentData,
 }: {
-  /** The document on screen. Structural, so every panel can pass its own. */
   artifact: { id: string; title: string; version: number }
-  /** Panel-local state the restored document invalidates — a draft in an open
-   *  editor is about slides or paragraphs that have just changed under it. */
+  /** Called after a restore so the panel can drop local drafts. */
   onRestored?: () => void
   hasUnsavedChanges?: boolean
   currentData?: unknown
@@ -102,8 +93,6 @@ export function VersionHistory({
   const t = useT()
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const [open, setOpen] = useState(false)
-  //: Real history, fetched when the dialog opens — the version number alone
-  //: would print N identical rows.
   const [versions, setVersions] = useState<ArtifactVersionRow[] | null>(null)
   const [restoring, setRestoring] = useState<number | null>(null)
   const [pendingRestore, setPendingRestore] = useState<number | null>(null)
@@ -128,12 +117,8 @@ export function VersionHistory({
     setRestoring(version)
     setError(null)
     try {
-      // A restore is an edit like any other: the server snapshots what is on
-      // screen now, so the way back from the way back is the newest row here.
+      // A restore snapshots the current revision first, so it stays restorable.
       await artifactsApi.restore(artifact.id, version)
-      // Through the store rather than by mutating the panel's copy: the panel
-      // holds whatever the gallery listed, and every surface showing this
-      // document — cards, header, the panel itself — has to move together.
       await refreshArtifact(artifact.id)
       onRestored?.()
       setOpen(false)
@@ -163,11 +148,7 @@ export function VersionHistory({
 
   return (
     <>
-      {/* Both names, because an `aria-label` replaces the visible text rather
-          than adding to it: the button read 저장 시점 v3 and answered only to
-          버전 기록, so saying what is written on it reached nothing. The label
-          it opens with is still 버전 기록, which is what the dialog is called
-          and what the rest of this app already calls it. */}
+      {/* aria-label carries both names, since it replaces the visible text. */}
       <Button
         size="sm"
         aria-label={`${t('버전 기록')} · ${t('저장 시점')} v${artifact.version}`}
@@ -188,9 +169,7 @@ export function VersionHistory({
           {versions?.length === 0 && !error && (
             <p className="text-base text-faint">{t('아직 저장된 이전 판이 없습니다.')}</p>
           )}
-          {/* Only superseded revisions come back — the current one is the
-              document on screen, and offering to restore it would be a button
-              that does nothing. */}
+          {/* The server returns superseded revisions only. */}
           {versions?.map(({ version: v, summary, createdAt }) => (
             <div
               key={v}

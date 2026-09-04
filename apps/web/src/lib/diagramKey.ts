@@ -1,14 +1,7 @@
 /**
- * The name one diagram's source is stored under.
- *
- * Must agree with `report_export.diagram_key` exactly — the browser writes
- * under this key and the exporters look up under that one, and a mismatch is a
- * picture that is stored and never found.
- *
- * Whitespace-insensitive for the same reason it is there: the two ends
- * normalise differently, one reading text out of a rendered block and the
- * other out of stored Markdown, and a key that moved on a trailing space would
- * quietly break.
+ * Storage key for one diagram's source: first 16 hex chars of SHA-256 over the
+ * trimmed source with trailing whitespace stripped per line. Must match
+ * `report_export.diagram_key` on the server exactly.
  */
 export async function diagramKey(source: string): Promise<string> {
   const normalised = (source ?? '')

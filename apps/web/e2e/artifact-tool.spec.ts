@@ -1,14 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn, storedArtifacts } from './helpers'
 
-/**
- * Chat makes a thing when it is asked for a thing.
- *
- * The model decides whether to create an artifact. Deciding it from whether
- * the answer contains a long code fence cannot tell "build me a page" from
- * "here is an example" — and this request is one that leaves only prose under
- * that rule.
- */
+/** Asking chat for a page produces a stored html artifact via the tool. */
 test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async ({ page }) => {
   test.setTimeout(300_000)
   await signIn(page)
@@ -17,8 +10,7 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
     .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
     .first()
     .click()
-  // 도구를 부를 줄 아는 쪽을 앞세운다 — 35b 는 페이지를 만들어 달라는
-  // 말에 가끔 본문으로 답해 버리고, 그건 이 스펙이 재려는 것이 아니다.
+  // A model that calls tools reliably.
   await page.getByRole('button', { name: /qwen3\.5|qwen3\.6/i }).first().click()
 
   await page.getByLabel('프롬프트 입력').fill(
@@ -27,18 +19,11 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
-  // The step is how a reader knows the document came from a decision rather
-  // than from something the interface guessed at afterwards.
-  // 도구가 빠르면 '만드는 중' 은 접힌 요약('작업 완료 | 아티팩트 생성')으로
-  // 바뀐 뒤다 — 진행형이든 완료형이든, 결정의 흔적이 화면에 있다는 것이
-  // 이 줄의 주장이다.
+  // The tool step, live or already collapsed into the summary.
   await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
 
-  // It is a stored artifact, of the kind asked for, with a real document in
-  // it. Read through `storedArtifacts` rather than a login written out here —
-  // the account can be named from outside now, and a spec that logs in as
-  // somebody else reads an empty shelf and calls it a missing artifact.
+  // Stored, of the kind asked for, with a real document in it.
   const [stored] = await storedArtifacts(page, 'html')
   expect(stored, 'html 아티팩트가 만들어지지 않았습니다').toBeTruthy()
   expect(String(stored.data.content).toLowerCase()).toContain('<html')

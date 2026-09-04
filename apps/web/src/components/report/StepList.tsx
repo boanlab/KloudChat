@@ -1,24 +1,10 @@
 /**
- * A procedure, numbered, in order.
- *
- * The third of the three shapes a report reaches for when prose is the wrong
- * tool — after the table (values to read) and the strip of figures (one number
- * to remember). This one is a sequence, and prose hides sequence: "먼저 …, 그
- * 다음 …, 이후 …" is a paragraph a reader has to take apart before they can
- * follow it.
+ * `steps` fence: a numbered procedure, kept as text through every export.
  *
  *     ```steps
  *     자료 수집 | 공개 데이터와 내부 로그를 모은다
  *     정제 | 중복과 결측을 걸러낸다
- *     분석 | 세 가지 기준으로 견준다
  *     ```
- *
- * Deliberately not a mermaid diagram, which is the other way to draw this. A
- * diagram is right when the flow branches — a decision, a loop, two paths that
- * rejoin — and wrong when it does not, because a straight chain of boxes is a
- * picture of a list. And a picture is where the text goes to die: in the
- * `.docx` somebody submits it cannot be searched, copied, corrected or reflowed
- * to another paper size. This stays text the whole way out.
  */
 export function StepList({ source }: { source: string }) {
   const steps = parse(source, 8)
@@ -40,14 +26,7 @@ export function StepList({ source }: { source: string }) {
   )
 }
 
-/**
- * `[왼쪽, 오른쪽]` per line, split on the first `|`.
- *
- * Shared with the strip of figures above it, and kept in step with
- * `report_export._kpi_rows`, which reads the same two fences on the way into a
- * file — including the caps. A line with no separator is dropped: half of one
- * of these blocks is an item with nothing said about it.
- */
+/** `[left, right]` per line, split on the first `|`; mirrors `report_export._kpi_rows`. Lines without a separator are dropped. */
 export function parse(source: string, limit = 4): [string, string][] {
   return source
     .split('\n')

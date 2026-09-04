@@ -1,26 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signInAs } from './helpers'
 
-/**
- * 어둡게 켠 화면도 읽혀야 한다.
- *
- * The product ships a dark theme and nothing had ever looked at it. A palette
- * defined once in `index.css` is not the same as a palette that survives every
- * screen — a colour written literally in a component, a badge tone that was
- * only ever checked on white, a border that vanishes on a dark ground.
- *
- * Two things are measured, both mechanical:
- *
- * **Contrast.** WCAG AA is 4.5:1 for body text and 3:1 for large text. The
- * ratio is computed from what the browser actually paints, walking up for the
- * first opaque background — a colour on `transparent` is a colour on whatever
- * is behind it, and reading `transparent` as white is how a dark theme passes
- * a contrast check it fails on screen.
- *
- * **Nothing invisible.** Text the same colour as what it sits on is not low
- * contrast, it is missing, and it happens exactly where somebody hard-coded a
- * hex that was right in one theme.
- */
+/** WCAG AA contrast (4.5:1 body, 3:1 large) and no invisible text, in both themes, on every route.
+ *  Measured against the first opaque background behind each element. */
 
 const USER = { email: 'test@kloud.zone', password: 'KloudChat-Test-2026' }
 const ADMIN = { email: 'admin@kloud.zone', password: 'KloudChat-Admin-2026' }
@@ -84,16 +66,7 @@ async function audit(page: Page, route: string, theme: 'light' | 'dark'): Promis
         return (x + 0.05) / (y + 0.05)
       }
 
-      /**
-       * The first opaque background behind this element, or `null` when the
-       * nearest one is a gradient or a picture.
-       *
-       * A gradient has no single colour, so contrast against it is a different
-       * number at each end and this arithmetic cannot answer for it. Reading
-       * only `backgroundColor` steps straight past one, finds the white card
-       * above it, and reports white-on-white — which is how a deck thumbnail,
-       * white lettering on a blue wash, came back as nine invisible titles.
-       */
+      /** The first opaque background behind this element, or `null` when it is a gradient or picture. */
       const ground = (node: Element): [number, number, number, number] | null => {
         for (let at: Element | null = node; at; at = at.parentElement) {
           const style = getComputedStyle(at)
@@ -107,14 +80,7 @@ async function audit(page: Page, route: string, theme: 'light' | 'dark'): Promis
       const main = document.querySelector('main')
       if (!main) return found
 
-      /**
-       * 축소된 미리보기 안은 앱의 색이 아니다.
-       *
-       * A thumbnail is a document drawn at 45% on its own white paper — it does
-       * not follow the theme, because paper does not. Its greys are literal
-       * values chosen against white, and measuring them against the dark app
-       * behind the card compares two colours that never meet on screen.
-       */
+      /** Inside a scaled-down thumbnail: a document on its own paper does not follow the theme. */
       const inPreview = (node: Element) => {
         for (let at: Element | null = node; at && at !== main; at = at.parentElement) {
           const style = getComputedStyle(at)
@@ -140,7 +106,7 @@ async function audit(page: Page, route: string, theme: 'light' | 'dark'): Promis
         const style = getComputedStyle(node)
         if (style.visibility === 'hidden' || Number(style.opacity) < 0.4) continue
         const fg = parse(style.color)
-        // A colour that is itself see-through is a deliberate fade, not a bug.
+        // A see-through colour is a deliberate fade.
         if (fg[3] < 0.7) continue
         const bg = ground(node)
         if (!bg) continue

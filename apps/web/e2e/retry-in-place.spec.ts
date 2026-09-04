@@ -1,15 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * 다시 시도 runs the failed turn again where it is. It used to be a plain send:
- * the question appeared a second time with a second error under it, and both
- * copies went into the context of every later turn.
- *
- * The stream is faked so the failure and the recovery are exact and cost no
- * model call: the first request fails, the retry — which has to name the
- * question it reruns — succeeds.
- */
+/** 다시 시도 reruns the failed turn in place, naming it with `retryOf`. Stream faked. */
 test('다시 시도는 질문을 두 번 남기지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -38,7 +30,7 @@ test('다시 시도는 질문을 두 번 남기지 않는다', async ({ page }) 
   await page.getByRole('button', { name: '다시 시도' }).first().click()
 
   await expect(page.getByText('이번에는 답했습니다.')).toBeVisible({ timeout: 30_000 })
-  // One question on screen, and the retry named it rather than sending anew.
+  // One question on screen; the retry named it.
   await expect(page.getByText(prompt, { exact: true })).toHaveCount(1)
   await expect(page.getByText('모델 응답을 받지 못했습니다.')).toHaveCount(0)
   expect(bodies).toHaveLength(2)

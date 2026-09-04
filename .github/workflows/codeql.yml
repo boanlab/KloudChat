@@ -1,8 +1,6 @@
 name: CodeQL
 
-# Static analysis for the two languages that actually ship. The weekly run
-# matters as much as the per-push one: most new findings come from updated
-# queries rather than from new code.
+# Weekly as well as per push: most new findings come from updated queries.
 on:
   push:
     branches: [main]
@@ -18,8 +16,7 @@ jobs:
   analyze:
     name: CodeQL · ${{ matrix.language }}
     runs-on: ubuntu-latest
-    # A job-level block replaces the workflow-level one rather than adding to
-    # it, so `contents: read` has to be repeated here or checkout cannot clone.
+    # Job-level permissions replace the workflow-level block, so repeat `contents`.
     permissions:
       contents: read
       security-events: write
@@ -34,13 +31,10 @@ jobs:
       - uses: github/codeql-action/init@v4
         with:
           language: ${{ matrix.language }}
-          # security-extended adds the query packs that cover the paths this
-          # app actually exposes: request-forgery, path traversal on the file
-          # store, and unsafe deserialization.
+          # security-extended: request forgery, path traversal, unsafe deserialization.
           queries: security-extended
 
-      # Both languages are interpreted, so the default autobuild is a no-op
-      # here and the extraction step below is the whole analysis.
+      # Interpreted languages: no autobuild step.
       - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}

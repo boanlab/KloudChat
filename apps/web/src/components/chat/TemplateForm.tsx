@@ -15,29 +15,26 @@ export function TemplateForm({
   onCancel,
   onSaved,
 }: {
-  /** Fixed surface. Omitted when the caller offers `kinds` to pick from. */
+  /** Fixed surface; omitted when `kinds` offers a choice. */
   kind?: SessionKind
-  /** Surfaces to choose between — the admin screen writes for any of them. */
+  /** Surfaces to choose between (admin screen). */
   kinds?: readonly SessionKind[]
-  /** Offered to every account. Refused by the server for non-administrators. */
+  /** Shared with every account; the server refuses it for non-administrators. */
   shared?: boolean
-  /** The row being corrected. Absent when this is a new one. */
+  /** Row being edited; absent for a new one. */
   template?: TemplateRow
   onCancel: () => void
   onSaved: (row: TemplateRow) => void
 }) {
   const t = useT()
-  // Seeded once: the form is mounted afresh for each template, so a row that
-  // arrives later is a row the person is no longer editing.
+  // Seeded once; the form is mounted afresh per template.
   const [surface, setSurface] = useState<SessionKind>(
     template?.kind ?? kind ?? kinds?.[0] ?? 'report',
   )
   const [title, setTitle] = useState(template?.title ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
   const [fills, setFills] = useState(template?.fills.join(', ') ?? '')
-  //: One example per blank, kept beside the blank it belongs to. A card
-  //: that names a blank without showing how to fill it asks for a format
-  //: nobody has been shown — the built-ins carry these, so this can too.
+  // One example per blank, by index.
   const [examples, setExamples] = useState<string[]>(template?.examples ?? [])
   const [needsWeb, setNeedsWeb] = useState(template?.needs?.includes('web') ?? false)
   const [needsFile, setNeedsFile] = useState(template?.needs?.includes('file') ?? false)
@@ -48,9 +45,7 @@ export function TemplateForm({
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // A shared template stays shared through a correction. Its author is the
-  // administrator either way, and quietly making it private on a typo fix
-  // would take it out of everybody else's gallery.
+  // A shared template stays shared through an edit.
   const forEverybody = template?.shared ?? shared
 
   const attach = async (picked: File) => {

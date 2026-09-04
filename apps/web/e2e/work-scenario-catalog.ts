@@ -1,11 +1,4 @@
-/**
- * Work, not prompts.
- *
- * The catalogue is deliberately generated from independent decisions a real
- * user makes: who is doing the job, which job, where the evidence comes from,
- * and what must happen after the first answer.  This gives every row a useful
- * reason to exist and keeps the audit reproducible when the UI changes.
- */
+/** Work scenario catalogue: persona × job × evidence source × follow-up. */
 import { promptFor } from './work-prompts'
 
 export const workPersonas = [
@@ -58,7 +51,7 @@ export interface WorkScenario {
   evidence: (typeof evidenceKinds)[number][1]
   followUpId: (typeof followUps)[number][0]
   followUp: (typeof followUps)[number][1]
-  /** What this person types. A real request, from `work-prompts`. */
+  /** The request as typed, from `work-prompts`. */
   prompt: string
   /** What the finished work has to contain for the row to have passed. */
   expect: string[]

@@ -32,28 +32,10 @@ export function ProposalCard({
   const streaming = useStore((s) => !!s.running[sessionId])
   const [picked, setPicked] = useState<Record<string, string>>({})
 
-  /*
-   * The outline the person has made of the proposal, if they have touched it.
-   * Held at the top because the clarify and figures stages return before the
-   * outline is ever built, and a hook behind a return runs in a different
-   * order on the next render.
-   */
+  // Hooks stay above the stage-specific early returns.
+  // The person's edits to the outline, or null if untouched.
   const [edited, setEdited] = useState<{ title: string; layout?: string }[] | null>(null)
-  /*
-   * 고른 적이 없으면 계획을 따른다.
-   *
-   * These were `useState(pending.plan?.visualStyle ?? 'editorial')`, and
-   * `useState` keeps only the value of the first render. The card mounts while
-   * the turn is still streaming, so on the render that matters `pending.plan`
-   * is often not there yet — the initial value froze at `editorial`, the plan
-   * arrived a moment later saying `minimal`, and two things went wrong at
-   * once: the impression the outline had chosen for the subject was silently
-   * replaced by the default, and `dirty` went true, so a card nobody had
-   * touched offered 「고친 대로 생성」.
-   *
-   * Held as "what the person picked, or nothing yet". Nothing yet means the
-   * plan decides, however late it arrives.
-   */
+  // Null means the plan decides, however late it arrives (the card mounts while streaming).
   const [pickedStyle, setPickedStyle] = useState<string | null>(null)
   const [pickedDensity, setPickedDensity] = useState<string | null>(null)
   const visualStyle = pickedStyle ?? pending.plan?.visualStyle ?? 'editorial'
@@ -70,26 +52,11 @@ export function ProposalCard({
     },
     label: string,
   ) =>
-    // The files the request arrived with go back out with the approval. This
-    // is a second request, and the server builds its context from what this
-    // one carries — without them the approved outline is written from the
-    // sentence alone, against the document the person actually attached.
+    // The approval is a second request; the server needs the attachments again.
     void send(sessionId, kind, label, { ...opts, attachments: pending.attachments })
 
   if (pending.stage === 'figures') {
-    /*
-     * The second of two questions, and the expensive one.
-     *
-     * Asked apart from the outline on purpose. A picture costs multiples of
-     * what the prose does, and a figure changes the sentences beside it — a
-     * section told a diagram is coming writes 아래 그림과 같이. Folding both
-     * into one 이대로 생성 meant somebody approving a shape also bought
-     * pictures, and somebody who wanted the shape without them had no way to
-     * say so.
-     *
-     * Asked *before* the writing for the same reason: decline it afterwards
-     * and the prose still refers to figures that are not there.
-     */
+    // Asked before writing: prose written for figures refers to them.
     const drawn = pending.figures ?? []
     const credits = pending.figureCredits ?? 0
     return (
@@ -104,8 +71,6 @@ export function ProposalCard({
             </li>
           ))}
         </ul>
-        {/* 장수와 값을 묻는 자리에 함께 둔다. 무엇을 사는지 모르고 누르는
-            버튼은 승인이 아니다. */}
         <p className="mt-2 text-sm text-muted">
           {t('{n}장 · 약 {c} 크레딧 · {m}')
             .replace('{n}', String(drawn.length))
@@ -166,8 +131,6 @@ export function ProposalCard({
               </div>
             </div>
           ))}
-          {/* Said out loud, because a chip list reads as a closed set and this
-              one is not: the box below takes an answer nobody thought to offer. */}
           <p className="text-sm text-faint">
             {t('고를 것이 없으면 아래 입력창에 직접 적어도 됩니다.')}
           </p>
@@ -182,8 +145,6 @@ export function ProposalCard({
               {streaming ? <Loader2 size={13} className="animate-spin" /> : null}
               {t('이대로 계속')}
             </Button>
-            {/* Deliberately available. The point is not to make people answer
-                questions, it is to stop the guessing being invisible. */}
             <Button
               size="sm"
               disabled={streaming}
@@ -200,16 +161,7 @@ export function ProposalCard({
   const plan = pending.plan ?? {}
   const proposed: { title: string; layout?: string }[] =
     plan.slides ?? plan.blocks ?? (plan.sections ?? []).map((title) => ({ title }))
-  /*
-   * The outline, editable in place.
-   *
-   * It used to be a list you could only accept or argue with: changing one
-   * heading meant typing a note, waiting for the planner again, and reading a
-   * whole new outline to find out whether the rest survived. For a word. So
-   * the titles are inputs, the rows move and delete, and 이대로 생성 sends what
-   * is on screen — the layouts stay the planner's, because a layout the 서식
-   * does not style is a section with no design.
-   */
+  // Titles are editable and rows move or delete; layouts stay the planner's.
   const items = edited ?? proposed
   const change = (next: { title: string; layout?: string }[]) => setEdited(next)
   const move = (from: number, by: number) => {
@@ -219,15 +171,14 @@ export function ProposalCard({
     ;[next[from], next[to]] = [next[to], next[from]]
     change(next)
   }
-  // 사람이 고른 것만 「고침」이다 — 계획이 말한 것을 그대로 쓰는 것은 고친 것이
-  // 아니다.
+  // Dirty only when a pick differs from the plan.
   const dirty =
     (edited !== null && JSON.stringify(edited) !== JSON.stringify(proposed)) ||
     (pickedStyle !== null && pickedStyle !== (plan.visualStyle ?? 'editorial')) ||
     (Boolean(plan.slides) &&
       pickedDensity !== null &&
       pickedDensity !== (plan.density ?? 'speaker'))
-  //: Only the shape the surface actually stores. `sections` is headings.
+  // Only the shape the surface stores; `sections` is headings.
   const asPlan = () =>
     plan.sections
       ? { ...plan, visualStyle, sections: items.map((i) => i.title) }
@@ -296,8 +247,7 @@ export function ProposalCard({
               ['editorial', t('정돈된 편집'), t('선명한 구분과 안정적인 정보 배치')],
               ['poster', t('강한 인상'), t('큰 제목과 색면으로 메시지를 강조')],
               ['minimal', t('차분한 여백'), t('장식을 덜고 내용에 집중')],
-              // 덱만 입는 네 얼굴. A report has no cover to compose and no
-              // slide number to set in a gutter, so it keeps the three above.
+              // Deck-only styles.
               ...(plan.slides
                 ? ([
                     ['dark', t('다크'), t('어두운 바탕에 빛나는 강조색 — 기술·제품 발표')],
@@ -362,7 +312,6 @@ export function ProposalCard({
         {dirty && (
           <Button size="sm" variant="ghost" onClick={() => {
             setEdited(null)
-            // Back to "nothing picked", which is the plan.
             setPickedStyle(null)
             setPickedDensity(null)
           }}>

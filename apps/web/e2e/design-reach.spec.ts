@@ -1,15 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * How far a project's design system says it reaches, against how far it goes.
- *
- * `design-system.spec.ts` proves the look comes out of the deck and the export.
- * This is the other half and costs no model call: the two screens where a
- * person decides to use one at all have to name the same surfaces the server
- * folds it into — chat among them, which is the surface nobody expects and the
- * one where a design edited this afternoon changes an answer this evening.
- */
+/** The project screen and each empty conversation name the same surfaces a design system reaches (chat included). */
 test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑같이 말한다', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
@@ -32,8 +24,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
   await expect(page).toHaveURL(/\/projects\/[0-9a-f]{32}/, { timeout: 20_000 })
   const projectId = page.url().split('/projects/')[1]
 
-  // The card's own sentence, before the picker is touched: it is what somebody
-  // reads to decide, so 대화 has to be in it whether or not one is attached.
+  // The card's sentence names 대화 whether or not a design is attached.
   await expect(page.getByText(/말투는 대화·보고서·슬라이드에/)).toBeVisible({ timeout: 20_000 })
 
   const saved = page.waitForResponse(
@@ -46,8 +37,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
   await page.getByLabel('디자인', { exact: true }).selectOption({ label: name })
   await saved
 
-  // Each surface is told in its own terms, so a wording shared across all four
-  // would pass one of these and fail the next.
+  // Each surface is told in its own terms.
   const panel = page.getByText('이 대화가 가지고 시작하는 것')
   for (const [surface, says] of [
     ['챗', '이 대화의 말투를 이 디자인에 맞춥니다'],
@@ -57,10 +47,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
     await page.goto(`/projects/${projectId}`)
     await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
     const entry = page.getByRole('menuitem', { name: surface, exact: true })
-    // A surface an administrator has switched off has no entry in this menu —
-    // `image` and `av` are off unless somebody turns them on, because they
-    // spend credits per generation. Asserting what such a surface says about a
-    // design is asserting about a screen nobody in this workspace can reach.
+    // A switched-off surface (`image`, `av` by default) has no entry here.
     if ((await entry.count()) === 0 || !(await entry.isEnabled().catch(() => false))) {
       await page.keyboard.press('Escape')
       continue
@@ -74,9 +61,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
     await expect(page.getByText(says)).toBeVisible({ timeout: 20_000 })
   }
 
-  // And nothing at all where it does not reach: the renderer for a clip never
-  // sees the design, so a row here would be the same lie in the other
-  // direction.
+  // Nothing where it does not reach: the clip renderer never sees the design.
   await page.goto(`/projects/${projectId}`)
   await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
   const clips = page.getByRole('menuitem', { name: '오디오/동영상', exact: true })

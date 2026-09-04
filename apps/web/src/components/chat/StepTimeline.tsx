@@ -13,13 +13,7 @@ import { cn } from '@/lib/utils'
 import type { Step } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * Seconds since the turn began, ticking.
- *
- * The header said 작업 중 and nothing else, which is true of a turn one second
- * old and of one that has been wedged for four minutes. A number that keeps
- * moving is what tells those apart without opening anything.
- */
+/** m:ss since `since`, ticking while live. */
 function useElapsed(since: number | undefined, live: boolean) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -33,16 +27,11 @@ function useElapsed(since: number | undefined, live: boolean) {
 }
 
 const icons = { thinking: Brain, tool: Wrench, artifact: FileText }
-/** What kind of work this is, for the header once the list is showing. */
 const kindLabel = { thinking: '추론', tool: '도구 사용', artifact: '산출물' }
-/** How many other steps the folded line names before it starts counting.
- *  Every turn now opens with lines saying what it was handed — memories,
- *  attachments, project knowledge — and unbudgeted the folded line would spend
- *  itself on those and never reach the work. */
+/** Steps the collapsed header names before counting the rest. */
 const COLLAPSED_NAMES = 3
 
-/** One checklist line. Finished work is struck through: the shape of the run
- *  stays readable without every line still being worth reading. */
+/** One checklist line; finished steps are struck through. */
 function StepRow({ step, live }: { step: Step; live: boolean }) {
   const t = useT()
   const Icon = icons[step.type]
@@ -96,11 +85,7 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
   )
 }
 
-/**
- * The turn's work log: a header naming the current step and what is left, over
- * a checklist that keeps finished steps visible. Open while live, collapsed
- * once the turn settles, reopenable either way.
- */
+/** The turn's step log: open while live, collapsed once settled, toggleable either way. */
 export function StepTimeline({
   steps,
   live,
@@ -108,13 +93,12 @@ export function StepTimeline({
 }: {
   steps: Step[]
   live: boolean
-  /** Epoch milliseconds the turn started. Drives the running clock. */
+  /** Epoch ms the turn started; drives the clock. */
   startedAt?: number
 }) {
   const t = useT()
   const elapsed = useElapsed(startedAt, live)
-  //: Reader's choice, and it wins over the liveness default — a card folded
-  //: away must not spring open on the next step.
+  // The reader's toggle wins over the liveness default.
   const [manual, setManual] = useState<boolean | null>(null)
   if (steps.length === 0) return null
 
@@ -122,12 +106,8 @@ export function StepTimeline({
   const failed = steps.some((s) => s.status === 'error')
   const current = steps.find((s) => s.status === 'running')
   const expanded = manual ?? live
-  /**
-   * Steps remaining, from the running step's own denominator. The step count
-   * cannot supply it: it only ever reflects what has already arrived.
-   */
+  // Steps remaining, from the running step's own denominator.
   const left = current?.progress ? current.progress.total - current.progress.current : null
-  // Header subject: the kind of work, then the step's own name.
   const head = current ?? steps.at(-1)!
   const HeadIcon = icons[head.type]
   const rest = steps.filter((s) => s !== head)
@@ -148,13 +128,10 @@ export function StepTimeline({
         </span>
         <span className="shrink-0 text-line-strong">|</span>
         <HeadIcon size={13} className="shrink-0 text-accent" />
-        {/* Collapsed: the step name is the status line. Expanded: that line is
-            already the highlighted row below, so name the kind of work. */}
+        {/* Expanded, the step itself is highlighted below, so the header names the kind of work. */}
         <span className="min-w-0 truncate text-fg">
           {expanded ? t(kindLabel[head.type]) : t(head.label)}
         </span>
-        {/* The rest of the run, named rather than counted: "3단계" says a turn
-            did something; the names say it searched the web. */}
         {!expanded && rest.length > 0 && (
           <span className="min-w-0 truncate text-faint">
             · {rest.slice(0, COLLAPSED_NAMES).map((s) => t(s.label)).join(' · ')}

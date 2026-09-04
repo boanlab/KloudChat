@@ -2,38 +2,17 @@ import { expect, test, type Page } from '@playwright/test'
 import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn } from './helpers'
 import { personas } from './personas'
 
-/**
- * Persona coverage review.
- *
- * Every `test.step` maps to one `Need` id from `personas.ts`. A failure means
- * the persona cannot do that part of their job in the current UI — that is the
- * finding, and the fix belongs in the app, not here.
- */
+/** Persona coverage: every `test.step` is one `Need` id from `personas.ts`. */
 
 const composer = (page: Page) => page.getByLabel('프롬프트 입력')
 
-/** Needs with no backend behind them yet. The moment an entry is removed,
- *  the checks below run against it unchanged. */
-/**
- * An existence probe. It does not wait.
- *
- * Each need is either on the screen right now or it is not. Waiting the
- * default 30 seconds means a persona with several gaps spends minutes and ends
- * in "timed out" — when what is missing was the answer.
- */
+/** Existence probe: a need is on screen now or it is not. */
 const probe = expect.configure({ timeout: 5_000 })
 
-// Clicking a button that is not there waits until the test dies. This keeps
-// one gap from consuming the whole budget.
+// One missing control must not consume the whole budget.
 test.use({ actionTimeout: 5_000 })
 
-/**
- * Opens the newest artifact of a kind on its own surface.
- *
- * It deliberately does not point at a seeded demo session: when a fixture like
- * that disappears, every need behind it reads as "not implemented" while the
- * screen works perfectly well.
- */
+/** Opens the newest artifact of a kind in its own conversation. */
 async function openNewest(page: import('@playwright/test').Page, tab: string) {
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click()
@@ -41,25 +20,18 @@ async function openNewest(page: import('@playwright/test').Page, tab: string) {
   await page.waitForURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 }
 
+/** Needs recorded as open rather than as regressions, with the reason. */
 const KNOWN_OPEN: Record<string, string> = {
-  // These controls live on a finished deck. A clean account has no origin
-  // session to open, so the catalogue probe records the absent fixture without
-  // calling four controls regressions. End-to-end deck creation/export belongs
-  // to slides.spec.ts; this suite must not inherit another run's data.
+  // Controls on a finished deck; a clean account has none (slides.spec.ts covers creation).
   'biz-pptx': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
   'biz-share': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
   'sal-share': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
   'biz-notes': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
   'biz-factcheck': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
-  // The real project upload/retrieval journey owns this assertion. Keeping a
-  // second catalogue probe tied to whichever project happens to be first made
-  // the inventory red while that end-to-end journey was green.
+  // Owned by persona-journeys.
   'grad-knowledge': 'persona-journeys의 프로젝트 업로드·검색 실사용 검증으로 대체',
-  // No MCP server available to start.
   'res-agent-share': '에이전트 조직 공유 UI 미구현',
-  // Connectors absent from the catalogue. Not unimplemented — **left out
-  // because they have not been verified against real credentials**. To restore
-  // one, start it once and check how many tools it adds to a turn.
+  // Connectors left out of the catalogue until verified against real credentials.
   'hum-citation': 'Zotero 커넥터 미검증 — 카탈로그에서 제외',
   'grad-zotero': 'Zotero 커넥터 미검증 — 카탈로그에서 제외',
   'soc-citation': '문헌 커넥터 미검증 — 카탈로그에서 제외',
@@ -70,11 +42,7 @@ const KNOWN_OPEN: Record<string, string> = {
   'off-drive': 'Google Drive 커넥터 미검증 — 카탈로그에서 제외',
 }
 
-
-// Every persona signs in as the same shared account and walks the same
-// workspace, so running them in parallel means one test's open modal or
-// half-saved row shows up in another's assertions. Serial is the honest cost of
-// sharing state.
+// One shared account and workspace: parallel runs would see each other's state.
 test.describe.configure({ mode: 'serial' })
 
 test.describe('페르소나 커버리지', () => {
@@ -85,27 +53,21 @@ test.describe('페르소나 커버리지', () => {
   /* ── shared groundwork ─────────────────────────────────────────────── */
 
   test('켜져 있는 축은 모두 진입 가능', async ({ page }) => {
-    // Only the ones this workspace has on. `image` and `av` spend credits per
-    // generation and default to off, and a surface an administrator switched
-    // off is an EmptyState with no composer on it — asserting a composer there
-    // is asserting that nobody may turn them off.
+    // `image` and `av` default to off and show an EmptyState with no composer.
     const reached: string[] = []
     for (const kind of ['chat', 'report', 'slides', 'image', 'av']) {
       if (!(await surfaceOn(page, kind))) continue
       await probe(composer(page)).toBeVisible()
       reached.push(kind)
     }
-    // The three document surfaces are not optional; a workspace without them
-    // is a broken fixture rather than a choice somebody made.
+    // The three document surfaces are not optional.
     expect(reached, `진입하지 못한 축이 있다: ${reached.join(', ')}`).toEqual(
       expect.arrayContaining(['chat', 'report', 'slides']),
     )
   })
 
   test('회원가입은 관리자 승인 대기 상태로 들어간다', async ({ page }) => {
-    // A fresh address every run, deleted at the end. Reusing one inherits
-    // whatever an earlier run left it as — a rejected account sits at the bottom
-    // of the list as `suspended` and the probe never finds what it expects.
+    // A fresh address every run, deleted at the end.
     const pending = await seedPendingUser(page, `e2e-pending-${Date.now().toString(36)}@example.com`)
     try {
       await page.goto('/admin/users')
@@ -113,8 +75,7 @@ test.describe('페르소나 커버리지', () => {
       const row = page.locator('tr', { hasText: pending })
       await probe(row).toBeVisible({ timeout: 15_000 })
       await probe(page.getByRole('heading', { name: '사용자 · 크레딧' })).toBeVisible()
-      // The account's *name* is also "승인 대기" (pending approval); the badge
-      // is the status.
+      // The account's name is also "승인 대기"; the badge is the status.
       await probe(row.getByText('승인 대기').last()).toBeVisible()
       await probe(row.getByRole('button', { name: '승인', exact: true })).toBeVisible()
     } finally {
@@ -135,15 +96,10 @@ test.describe('페르소나 커버리지', () => {
   for (const persona of personas) {
     test.describe(`${persona.name} — ${persona.role}`, () => {
       test('필요 기능이 UI에 존재한다', async ({ page }, testInfo) => {
-        // Two dozen needs, each its own navigation, plus a probe's wait for every
-        // one that is not built yet.
         test.setTimeout(240_000)
         const missing: string[] = []
         const check = async (id: string, fn: () => Promise<void>) => {
-          // Each need is independent, but they share one page. A previous check
-          // that opened a modal and did not close it would make the next one
-          // fail on an intercepted click — a harness artefact reported as a
-          // missing feature. Escape costs nothing when nothing is open.
+          // Close anything a previous check left open.
           await page.keyboard.press('Escape').catch(() => {})
           try {
             await test.step(id, fn)
@@ -165,7 +121,6 @@ test.describe('페르소나 커버리지', () => {
               case 'hum-upload':
               case 'soc-csv':
                 await gotoSurface(page, 'chat')
-                // Attaching is a real file picker now, not a menu of fake names.
                 await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
                 await probe(page.locator('input[type="file"]').first()).toBeAttached()
                 break
@@ -194,17 +149,11 @@ test.describe('페르소나 커버리지', () => {
               /* governance */
               case 'off-pii':
                 await page.goto('/admin/governance')
-                // The switch alone, by role and name. A loose text match also
-                // caught the sentence explaining what the policy forbids —
-                // which is rendered or not depending on the policy's own
-                // state, so the probe passed or exploded according to what
-                // some other spec had last left switched on.
+                // By role and name: a text match also hits the policy's explanation.
                 await probe(page.getByRole('switch', { name: '개인정보 마스킹' })).toBeVisible()
                 break
               case 'off-audit':
-                // The trail lives behind its own tab now that the policy panel
-                // is back. Someone logged in to run this test, so there is at
-                // least one row.
+                // Signing in for this test guarantees at least one row.
                 await page.goto('/admin/governance')
                 await page.getByRole('tab', { name: /감사 로그/ }).click()
                 await probe(page.getByRole('columnheader', { name: '행위' })).toBeVisible()
@@ -225,9 +174,7 @@ test.describe('페르소나 커버리지', () => {
 
               /* a recording, read */
               case 'off-voice':
-                // 첨부로 본다. 회의는 누가 입력창에 대고 다시 말해서 도착하지
-                // 않는다 — 회의실 파일로 온다. 마이크는 그래서 없앴고, 이 요구를
-                // 채우는 것은 그 파일을 붙일 수 있느냐다.
+                // A recording arrives as an attached file.
                 await gotoSurface(page, 'report')
                 await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
                 break
@@ -236,9 +183,7 @@ test.describe('페르소나 커버리지', () => {
               case 'hum-template':
               case 'off-template':
               case 'sal-template':
-                // Templates belong to document surfaces. The persona's first
-                // surface is merely its most-used one (office and sales start
-                // in chat), not necessarily the surface this need names.
+                // Templates belong to document surfaces, not the persona's first surface.
                 await gotoSurface(
                   page,
                   need.id === 'hum-template' || need.id === 'off-template' ? 'report' : 'slides',
@@ -248,12 +193,8 @@ test.describe('페르소나 커버리지', () => {
 
               /* maths */
               case 'eng-math': {
-                                // Verified with a real turn, not a seeded
-                                // conversation.
                 await page.goto('/new/chat')
-                // This need is the renderer contract, not a stochastic test
-                // of whether today's model obeys “수식으로만”. Other journeys
-                // exercise the live model; pin the response shape here.
+                // The renderer contract, with the response shape pinned.
                 await page.route('**/api/sessions/*/messages', async (route) => {
                   if (route.request().method() !== 'POST') return route.continue()
                   await route.fulfill({
@@ -264,9 +205,6 @@ test.describe('페르소나 커버리지', () => {
                       `data: ${JSON.stringify({ type: 'done' })}\n\n`,
                   })
                 })
-                                // The format has to be asked for: "show it as
-                                // a formula" alone often comes back as plain
-                                // text.
                 await page
                   .getByLabel('프롬프트 입력')
                   .fill('이차방정식의 근의 공식을 $...$ 로 감싼 LaTeX 수식으로만 보여줘. 설명은 붙이지 마.')
@@ -281,8 +219,7 @@ test.describe('페르소나 커버리지', () => {
               case 'eng-code':
               case 'dev-code-artifact':
               case 'eng-code-artifact':
-                // Chat extracts substantial code into an artifact and opens the
-                // panel on it. Driven by a real turn, not a seeded transcript.
+                // A real turn.
                 await gotoSurface(page, 'chat')
                 await page
                   .getByLabel('프롬프트 입력')
@@ -298,8 +235,6 @@ test.describe('페르소나 커버리지', () => {
               case 'biz-chart':
               case 'soc-chart':
               case 'eng-chart':
-                // Asserts that a chart actually exists and opens with its
-                // underlying data — not that a seeded artifact has a title.
                 await page.goto('/artifacts')
                 await page.getByRole('tab', { name: /^차트/ }).click()
                 await page.locator('button.aspect-video').first().click()
@@ -310,28 +245,21 @@ test.describe('페르소나 커버리지', () => {
               /* report */
               case 'eng-report-toc':
                 await openNewest(page, '보고서')
-                // 목차 손잡이는 리본의 보기 칸에 있다.
                 await page.getByRole('tab', { name: '보기', exact: true }).click()
                 await probe(page.getByRole('button', { name: /^목차/ }).first()).toBeVisible()
                 break
               case 'hum-sources':
               case 'res-sources':
                 await openNewest(page, '보고서')
-                // 출처는 리본의 검토 칸에 있다.
                 await page.getByRole('tab', { name: '검토', exact: true }).click()
                 await probe(page.getByRole('button', { name: /출처/ })).toBeVisible()
                 break
               case 'grad-section-regen':
                 await openNewest(page, '보고서')
-                // 절 단위 컨트롤은 웹뷰에 있다. 서식을 입은 문서는 페이지뷰로
-                // 열리므로 — 패널이 `templateId` 를 읽고 거기서 시작한다 —
-                // 어느 문서가 가장 최근이냐에 따라 시작 화면이 갈린다.
-                // 페이지로 열렸으면 웹뷰로 — 버튼은 지금 보고 있는 것의 반대를
-                // 말한다: 페이지뷰에서는 「웹뷰」.
+                // Section controls are in the web view; a styled document opens in the page view.
                 if ((await page.locator('.page').count()) > 0) {
                   await page.getByRole('button', { name: '웹뷰' }).click()
                 }
-                // 절이 할 수 있는 일은 절의 한 손잡이(절 편집 메뉴)로 모였다.
                 await page.getByRole('button', { name: /절 편집$/ }).first().click()
                 await probe(
                   page.getByRole('menuitem', { name: /다시 쓰기|재생성/ }).first(),
@@ -342,7 +270,6 @@ test.describe('페르소나 커버리지', () => {
               case 'off-docx':
               case 'res-export-pdf':
                 await openNewest(page, '보고서')
-                // 내보내기는 리본의 파일 칸에 있다.
                 await page.getByRole('tab', { name: '파일', exact: true }).click()
                 await page.getByRole('button', { name: '내보내기', exact: true }).click()
                 await probe(page.getByText(/Word|PDF/).first()).toBeVisible()
@@ -356,7 +283,6 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-pptx':
                 await openNewest(page, '슬라이드')
-                // 내보내기는 리본의 파일 칸에 있다.
                 await page.getByRole('tab', { name: '파일', exact: true }).click()
                 await page.getByRole('button', { name: '내보내기', exact: true }).click()
                 await probe(page.getByText('PowerPoint')).toBeVisible()
@@ -372,9 +298,7 @@ test.describe('페르소나 커버리지', () => {
               case 'biz-share':
               case 'sal-share':
                 await openNewest(page, '슬라이드')
-                // Exact: `name` matches by substring, and three controls on
-                // this screen contain 공유 — the probe was failing on strict
-                // mode and recording a capability that is right there.
+                // Exact: three controls on this screen contain 공유.
                 await probe(
                   page.getByRole('button', { name: '공유', exact: true }),
                 ).toBeVisible()
@@ -427,10 +351,7 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'grad-knowledge':
                 await page.goto('/projects')
-                // Any owned project has the same knowledge surface. Depending
-                // on a demo project named 학위논문 made a clean account report
-                // the feature missing even after a real journey had created a
-                // perfectly usable project under another name.
+                // Any owned project has the same knowledge surface.
                 {
                   const response = await page.request.get('/api/projects')
                   const projects = (await response.json()) as { id: string }[]
@@ -446,29 +367,15 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'grad-version': {
                 await openNewest(page, '보고서')
-                // `.first()`, because a conversation shows several artifacts
-                // and each carries its own history — the need is that an
-                // earlier judgement is reachable, not that there is exactly
-                // one of them on screen.
-                // 버전 기록은 리본의 검토 칸에 있다.
+                // `.first()`: a conversation may show several artifacts, each with its own history.
                 await page.getByRole('tab', { name: '검토', exact: true }).click()
                 const history = page.getByRole('button', { name: '버전 기록' }).first()
                 await probe(history).toBeVisible()
                 await history.click()
-                // Asked of the dialog, not of the page. The old check searched
-                // the whole document for `v3` or 버전 and took the first hit,
-                // which the dialog satisfied only while it was rendered at the
-                // end of the report panel; the shared control opens it beside
-                // the button instead. It also never asked the question the need
-                // asks — the dialog's own title passed it.
                 const listed = page.getByRole('dialog', { name: '버전 기록' })
                 await probe(listed).toBeVisible()
                 await probe(listed.getByText(/현재 v\d+/)).toBeVisible()
-                // Either 판 to go back to, or the dialog saying plainly that
-                // there is none yet. Both prove the affordance; requiring a
-                // 되돌리기 button made the probe depend on whether this
-                // account's newest report had ever been edited, which is an
-                // accident of the data and not a fact about the product.
+                // A version to go back to, or the dialog saying there is none yet.
                 await probe(
                   listed
                     .getByRole('button', { name: /되돌리기/ })
@@ -483,7 +390,7 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'res-apikey':
               case 'dev-apikey':
-                // A tab under Settings; `/keys` redirects home.
+                // `/keys` redirects home.
                 await page.goto('/settings/keys')
                 await probe(page.getByRole('button', { name: '새 키' })).toBeVisible()
                 break
@@ -494,10 +401,7 @@ test.describe('페르소나 커버리지', () => {
 
               /* development */
               case 'dev-steps': {
-                // Tool-call steps are real: a web search turn emits them. The
-                // screen default is strict-local, which is given no web tool
-                // at all, so the model comes first — the need is that the
-                // steps appear, not that the default can search.
+                // A web search turn emits steps; the strict-local default has no web tool.
                 await gotoSurface(page, 'chat')
                 await pickToolModel(page)
                 await page.getByRole('button', { name: '웹 검색' }).first().click()
@@ -512,7 +416,6 @@ test.describe('페르소나 커버리지', () => {
                 await page.setViewportSize({ width: 820, height: 1180 })
                 await page.goto('/new/chat')
                 await probe(composer(page)).toBeVisible()
-                // The body must not scroll horizontally on a narrow viewport.
                 const overflow = await page.evaluate(
                   () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 )

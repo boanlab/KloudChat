@@ -38,8 +38,6 @@ import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 
-//: One verb ending (`~세요`) across all five surfaces. They sit next to each
-//: other, so a mix of endings is visible.
 const placeholders: Record<SessionKind, string> = {
   chat: '무엇이든 물어보세요',
   report: '보고서 주제와 넣고 싶은 절을 적으세요',
@@ -48,10 +46,7 @@ const placeholders: Record<SessionKind, string> = {
   av: '만들고 싶은 영상이나 오디오를 설명하세요',
 }
 
-
-/* What kind of picture, not only what it looks like. 자동 lets the planner
-   read it off the request; 없음 sends the sentence as typed. Kept in step with
-   `imagegen.STYLE_CHOICES`. */
+// Mirrors `imagegen.STYLE_CHOICES`.
 const STYLES = ['자동', '도식', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
@@ -61,15 +56,14 @@ const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
 ]
 const VIDEO_DURATIONS = [4, 6, 8, 10]
 const AUDIO_DURATIONS = [15, 30, 60, 120]
-// Speech and music only: nothing serves sound effects, and an option that can
-// only fail is worse than no option.
+// Nothing serves sound effects.
 const AUDIO_KINDS = ['narration', 'music'] as const
 const AUDIO_KIND_LABEL: Record<(typeof AUDIO_KINDS)[number], string> = {
   narration: '내레이션',
   music: '음악',
 }
 
-/** The six the gateway accepts. Anything else comes back as `alloy`. */
+/** Voices the gateway accepts; anything else falls back to `alloy`. */
 const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
 
 type PendingPrivacy = {
@@ -133,18 +127,11 @@ function OptionGroup<T extends string | number>({
   )
 }
 
-/**
- * Where the chips beside this came from, while they are still the 서식's.
- *
- * A media 서식 leaves no chip on the composer, only these values — and they
- * are one workspace-wide preference, so they persist. Naming the source is
- * the honest half of that; turning any chip by hand takes the name off.
- */
+/** Names the media template whose values fill the option chips; gone once a chip is changed by hand. */
 function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
   const t = useT()
   const template = useStore((s) => s.optionTemplate)
-  // The 서식 chip a row above already names an image template while its pick is
-  // waiting for a turn. Saying it twice, two inches apart, is not twice as true.
+  // Hidden while the template chip above already names it.
   const chipped = useStore((s) => s.pendingTemplate)
   if (!template || !kinds.includes(template.kind) || chipped?.id === template.id) return null
   return (
@@ -164,11 +151,7 @@ function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
 function ImageOptions({ model }: { model: ModelInfo | undefined }) {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
-  // Only the ratios this model can actually draw. The OpenAI image models
-  // return a square whatever is asked, so beside them the chip offers 1:1 and
-  // nothing else — a 16:9 chip there was a promise the picture then broke.
-  // The stored preference is left alone: it is what the chip shows again the
-  // moment a model that can draw it is picked.
+  // Only the ratios this model can draw; the stored preference is kept.
   const offered = servedAspects(model)
   return (
     <>
@@ -204,11 +187,7 @@ function ImageOptions({ model }: { model: ModelInfo | undefined }) {
   )
 }
 
-/**
- * The nearest clip this model is priced for, or null when it prices none.
- * Sound is given up first: a silent-only or sound-only model has made that
- * choice already, while 1080p → 720p is a visible loss worth asking about.
- */
+/** Nearest (resolution, sound) shape this model prices, or null; resolution outranks sound. */
 function servedVideoShape(
   rates: Record<string, number>,
   resolution: '720p' | '1080p',
@@ -226,32 +205,16 @@ function servedVideoShape(
   return { resolution: served as '720p' | '1080p', withAudio: sound === 'sound' }
 }
 
-/**
- * One surface, two modalities. `mode` comes first because it decides which of
- * the remaining chips apply — aspect ratio means nothing to a narration track.
- */
+/** Video and audio option chips; `mode` decides which apply. */
 function AvOptions() {
   const t = useT()
   const { avOptions, setAvOptions, models, modelByKind } = useStore()
   const audio = avOptions.mode === 'audio'
-  //: Whatever this surface will run on, which in 영상 is not necessarily a
-  //: model that makes clips — hence the modality check below.
   const avModel = models.find((m) => m.id === modelByKind.av)
-  //: Whether there is anything to move onto — an instance can serve this
-  //: surface with speech alone, and asking for a clip model that is not in the
-  //: catalogue would cost a 서식 its name and change nothing else.
   const hasVideoModel = models.some((m) => m.kinds.includes('av') && m.modality === 'video')
   const shapedFor = useRef<string | null>(null)
-    /**
-     * Turning 종류 to 영상 also changes the model, and the chips are left
-     * showing whatever the last clip used. A model that does not price that
-     * combination makes the composer refuse the turn, so the chips follow the
-     * model here rather than surfacing at submit. Only when the model changes
-     * underneath — a chip turned afterwards is the person's answer.
-     *
-     * The mode goes to the store first: 영상 is the mode this surface opens in,
-     * and the cheapest remembered `av` model is a speech model.
-     */
+  // When the model changes, snap the chips to a shape it prices; a chip
+  // turned afterwards stands.
   useEffect(() => {
     if (audio || !avModel) return
     if (avModel.modality !== 'video') {
@@ -289,8 +252,6 @@ function AvOptions() {
             onChange={(v) => setAvOptions({ audioKind: v })}
             format={(v) => t(AUDIO_KIND_LABEL[v])}
           />
-          {/* Music has no reader. The chip appears only where it applies,
-              the way the video chips do. */}
           {avOptions.audioKind === 'narration' && (
             <OptionGroup
               label={t('목소리')}
@@ -308,9 +269,6 @@ function AvOptions() {
             options={['16:9', '9:16', '1:1']}
             onChange={(v) => setAvOptions({ aspect: v })}
           />
-          {/* Both were sent hard-coded — 720p and silent — while the backend
-              took them and priced each combination differently. Choosing them
-              is the difference between 12,000 and 32,000 크레딧 for one clip. */}
           <OptionGroup
             label={t('해상도')}
             value={avOptions.resolution}
@@ -337,20 +295,8 @@ function AvOptions() {
   )
 }
 
-/**
- * What a composer was holding at the moment the session it belongs to came
- * into existence.
- *
- * Creating a session moves the person from the start screen to the
- * conversation, and those are two different screens — so this component is
- * unmounted and a new one is mounted in its place. A ref inside it does not
- * survive that, and neither does the staged-but-unsent work above all the
- * attachments, which would be dropped in the gap without a word. Module scope
- * is the one thing here that outlives the remount.
- *
- * Read once by the new composer and cleared, so it can never re-apply itself
- * to a later conversation.
- */
+// Composer state carried across the remount that creating a session causes.
+// Read once by the new composer and cleared.
 let carriedComposer: {
   sessionId: string
   value: string
@@ -360,23 +306,12 @@ let carriedComposer: {
   webSearch: boolean
 } | null = null
 
-/**
- * What is typed and not yet sent, by the conversation it was typed in — or by
- * the surface, on the home screen, where there is no conversation yet.
- *
- * Two opposite losses came from the sentence living in component state alone.
- * The home screen remounts the composer on a tab change, so a draft written
- * under 보고서 was gone the moment 슬라이드 was clicked. The conversation
- * screen keeps one composer mounted across `/s/A` → `/s/B`, so a draft written
- * in A turned up in B's box. Module scope outlives the remount, and the key
- * keeps each sentence with the place it was typed. In memory only: a reload
- * starts clean, the same as before.
- */
+// Unsent text keyed by session id, or `new:<kind>` on the home screen.
+// Survives remounts, not reloads.
 const drafts = new Map<string, string>()
 const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
 
-/** Whether an existing session has something typed and not yet sent — the one
- *  thing that makes an otherwise empty conversation worth keeping. */
+/** Whether a session has unsent text. */
 export function hasUnsentDraft(sessionId: string) {
   return !!drafts.get(sessionId)?.trim()
 }
@@ -393,9 +328,7 @@ export function Composer({
   autoFocus?: boolean
 }) {
   const t = useT()
-  // Dedicated media endpoints
   const isMedia = kind === 'image' || kind === 'av'
-  // Web-search-capable generation paths
   const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
   const draftKey = draftKeyFor(sessionId, kind)
   const [value, setValue] = useState(() => drafts.get(draftKey) ?? '')
@@ -404,9 +337,7 @@ export function Composer({
   const draftKeyRef = useRef(draftKey)
   useEffect(() => {
     if (draftKeyRef.current !== draftKey) {
-      // The conversation changed under a mounted composer. What was typed has
-      // already been kept under the old key, keystroke by keystroke; this
-      // one's own draft comes up in its place — usually nothing.
+      // The session changed under a mounted composer; load its own draft.
       draftKeyRef.current = draftKey
       const own = drafts.get(draftKey) ?? ''
       liveValue.current = own
@@ -420,29 +351,9 @@ export function Composer({
 
   const draft = useStore((s) => s.draft)
   const setDraft = useStore((s) => s.setDraft)
-  /**
-   * A sentence a gallery hands over. Inserted, not sent — and added to what is
-   * in the box, never written over it.
-   *
-   * Somebody three sentences into a prompt who opens the gallery to see what a
-   * shape does was asking a question, not offering to give those sentences up.
-   * On the picture and clip surfaces, which are the only ones that still fill
-   * the box at all, those sentences *are* the prompt, so what a replacement
-   * throws away is the whole of the work — silently, and with nothing to press
-   * to get it back.
-   *
-   * Appending rather than asking, because the question would arrive before its
-   * answer is knowable: a confirm names no sentence the person has read yet,
-   * and it puts a modal in front of a click that was an exploration. And
-   * rather than filling only an empty box, because a shape picked for a prompt
-   * already half written is the ordinary case, and doing nothing there is a
-   * gallery whose cards stop working the moment somebody starts typing.
-   *
-   * What is appended arrives selected, so the one keystroke that undoes an
-   * unwanted pick takes out exactly what the gallery put in and nothing that
-   * was written by hand.
-   */
-  //: A range to restore once React has actually written the text it belongs to.
+  // A gallery sentence is appended to the box, never written over it, and
+  // arrives selected so one keystroke removes it.
+  // Selection applied after React commits the value.
   const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
     if (!draft) return
@@ -453,14 +364,8 @@ export function Composer({
     setValue(next)
     setDraft('')
     ref.current?.focus()
-    // Into an empty box the caret lands at the end, as it always has: there is
-    // nothing to take back out there, and a media 서식's sentence handed over
-    // selected is a sentence the next keystroke destroys — which is the very
-    // loss this is about, only pointed the other way.
-    //
-    // Left for the layout effect below rather than set here: the textarea is
-    // controlled, so React writes this value in a later commit and that write
-    // collapses any selection made before it.
+    // Into an empty box the caret goes to the end. Applied in the layout
+    // effect: the controlled textarea's next commit collapses an earlier selection.
     pendingSelection.current = [kept ? next.length - draft.length : next.length, next.length]
   }, [draft, setDraft])
   useLayoutEffect(() => {
@@ -469,7 +374,7 @@ export function Composer({
     pendingSelection.current = null
     ref.current?.setSelectionRange(range[0], range[1])
   }, [value])
-  /** Uploaded files, not names: the turn sends ids and the server reads the text. */
+  /** Uploaded files; the turn sends their ids. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
   liveAttachments.current = attachments
@@ -478,14 +383,9 @@ export function Composer({
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
-  // A form a picked template brought with it. Taken once and cleared, so it
-  // attaches to the draft it arrived with and not to every turn after it.
+  // A form a picked template brought with it; taken once and cleared.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
-  /**
-   * The 시작점 this turn carries, held here rather than in the store for the
-   * same reason the attachments and the one-turn skills are: a refused turn
-   * has to be handed back whole, and the gallery is long gone by then.
-   */
+  // Held here, not in the store, so a refused turn can be handed back whole.
   const [startingTemplate, setStartingTemplate] = useState<StartingPoint | null>(null)
   const liveStartingTemplate = useRef(startingTemplate)
   liveStartingTemplate.current = startingTemplate
@@ -493,8 +393,6 @@ export function Composer({
   const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
-  //: Readable from a callback that outlived the render which sent the turn,
-  //: for the same reason the draft and the attachments each keep one.
   const livePendingTemplate = useRef(pendingTemplate)
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
@@ -506,10 +404,7 @@ export function Composer({
   const setComposerRestore = useStore((s) => s.setComposerRestore)
   useEffect(() => {
     if (!pendingAttachment) return
-    // A picture or a clip is made from the prompt alone, so a form that
-    // followed a template onto one of those surfaces is let go instead of
-    // being shown as a chip nothing reads — and let go rather than left in
-    // the store, where it would attach itself to the next chat turn.
+    // Media surfaces take no attachments; drop it rather than leave it for the next chat turn.
     if (isMedia) {
       setPendingAttachment(null)
       return
@@ -549,14 +444,7 @@ export function Composer({
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
 
-  /**
-   * 시작점의 빈칸에 적은 값. Keyed by the blank's index.
-   *
-   * 대화상자에서 받지 않는다. Five fields on a card in a dialogue asked for
-   * decisions before the person had started, and cards that tall overflowed
-   * the grid onto the row below. The dialogue picks the job; the questions
-   * are asked here, as the chat starts, where the answer is the request.
-   */
+  // Values typed into the starting point's blanks, keyed by blank index.
   const [startingValues, setStartingValues] = useState<Record<number, string>>({})
 
   useEffect(() => {
@@ -567,13 +455,7 @@ export function Composer({
     setStartingValues({})
     setPendingStartingTemplate(null)
     if (pendingStartingTemplate.text) setValue(pendingStartingTemplate.text)
-    // 시작점이 필요하다고 한 것은 시작점이 켠다.
-    //
-    // 문헌 동향 조사 with web search off is a survey of the model's memory,
-    // and the card said nothing about it. Now the card says, and the
-    // composer holds to it: search on, the job's skills switched on by
-    // name. The person can still turn either off — it is a default, not a
-    // lock — but it is no longer something they have to know to do.
+    // A starting point turns on what it declares it needs; both stay switchable.
     if (pendingStartingTemplate.needs?.includes('web')) setWebSearch(true)
     const wanted = pendingStartingTemplate.skills ?? []
     if (wanted.length) {
@@ -584,20 +466,13 @@ export function Composer({
       if (ids.length) setActivatedSkillIds(ids)
     }
     requestAnimationFrame(() => ref.current?.focus())
-    // usableSkills is derived from store state that does not change between a
-    // pick and this effect; listing it would re-run the effect on every store
-    // tick and re-apply the pick.
+    // usableSkills is stable between a pick and this effect; listing it would re-apply the pick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  /**
-   * 말로 쓰기. The microphone records until it is pressed again, the clip
-   * goes to the deployment's own Whisper (never to the browser vendor —
-   * `webkitSpeechRecognition` streams audio to a third party), and the words
-   * land in the box where the caret was. Nothing is sent until the person
-   * reads them and presses send; the recording itself is not kept.
-   */
+  // Dictation goes to the deployment's own Whisper, never to the browser
+  // vendor's recognizer; the recording is not kept.
   const dictationEnabled = useStore((s) => s.dictationEnabled)
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -612,17 +487,9 @@ export function Composer({
     setTranscribing(true)
     try {
       const blob = await active.stop()
-      // 16 kHz 16-bit mono: 32,000 bytes a second. Under a third of a second
-      // is a tap on the key, not a sentence — nothing to send to Whisper.
+      // 16 kHz 16-bit mono = 32,000 bytes/s; under 0.3 s is a key tap, not speech.
       if (blob.size <= 44 + 32_000 * 0.3) return ''
-      // Heard in context. The last thing said back is the vocabulary the
-      // next sentence most likely uses — 「some tennis」 in a chat about
-      // tennis; without it one mumbled sentence came back as 《Fold and
-      // Vacant》 and the tutor followed it out of the conversation. No
-      // language is pinned, even with an English tutor: a learner asks the
-      // tutor things in Korean too, and the server already hears nothing but
-      // Korean or English. What still comes out wrong, the agent is told to
-      // treat as misheard rather than as a new subject.
+      // The last answer primes Whisper's vocabulary; no language is pinned.
       const lastAnswer = [...(session?.messages ?? [])]
         .reverse()
         .find((m) => m.role === 'assistant' && m.content?.trim())
@@ -650,16 +517,8 @@ export function Composer({
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
     }
   }
-  /**
-   * Push to talk, the way a muted Zoom call works: hold the space bar, speak,
-   * let go — the words are written and sent, as if Enter had been pressed.
-   *
-   * Only from an empty box: a space typed into a sentence is a space. A
-   * quick tap is dropped by the length check in `stopRecording`, so the key
-   * never sends by accident. `pushToTalk` remembers that *this* recording is
-   * a held key, so releasing it sends, while the mic button's own recording
-   * still waits for the person to read and press send.
-   */
+  // Push to talk: hold space in an empty box, release to transcribe and send.
+  // `pushToTalk` marks a held-key recording; the mic button's recording waits for send.
   const pushToTalk = useRef(false)
   const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
     if (e.key !== ' ' || !canRecord || busy || transcribing) return false
@@ -679,9 +538,7 @@ export function Composer({
     })
     return true
   }
-  // ⌘⇧M from anywhere: start the microphone, or stop it and take the words
-  // into the box — the mic button, on a key. Not push-to-talk: this one waits
-  // for the person to read and press send.
+  // Cmd/Ctrl+Shift+M toggles the mic; unlike push-to-talk it waits for send.
   useEffect(() => {
     if (!canRecord) return
     const toggle = () => {
@@ -694,8 +551,7 @@ export function Composer({
   })
   useEffect(() => {
     if (!canRecord) return
-    // Outside any field too — after clicking on the transcript, say — but
-    // never on a control, where the space bar is a click.
+    // Also outside any field, but never on a control, where space is a click.
     const idle = (target: EventTarget | null) => {
       const el = target as HTMLElement | null
       if (!el || el === document.body) return true
@@ -715,33 +571,14 @@ export function Composer({
       window.removeEventListener('keyup', up)
     }
   })
-  /**
-   * On by default, and off is the deliberate choice.
-   *
-   * It was the other way round, and what that produced was answers written
-   * from a model's training data and presented with no sign of it — a GPU spec
-   * two generations stale, a list of "current" open-source models that had
-   * been superseded twice. The person only found out because they happened to
-   * know better and typed 인터넷 검색해봐, which works exactly once per fact
-   * they already doubted.
-   *
-   * `searchBlocked` still overrides this per turn, so a strict-local model
-   * never inherits a lit globe from the default.
-   */
+  // On by default; `searchBlocked` still overrides per turn.
   const [webSearch, setWebSearch] = useState(true)
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
-  //: Read from callbacks that outlive the render which armed them, for the
-  //: same reason the attachments and the draft each keep one.
   const liveWebSearch = useRef(webSearch)
   liveWebSearch.current = webSearch
-  /**
-   * Everything staged for a turn that has not been sent, addressed to the
-   * session that has just been created for it. Built from the live refs rather
-   * than the render's values: the callers are `onSession` callbacks, which fire
-   * after the render that armed them has gone.
-   */
+  // Built from live refs: `onSession` callbacks fire after the arming render.
   const heldComposer = (id: string) => ({
     sessionId: id,
     value: liveValue.current,
@@ -750,25 +587,14 @@ export function Composer({
     activatedSkillIds: liveActivatedSkillIds.current,
     webSearch: liveWebSearch.current,
   })
-  // Switching surfaces keeps this composer mounted, so a choice made for the
-  // last one would follow the person to the next — and an upload that walked
-  // onto the picture or clip surface would be dropped at submit, after the
-  // wait and the credits. The typed sentence stays; it is theirs to reuse
-  // anywhere.
+  // Per-turn state resets when the surface or session changes; the typed sentence stays.
   useEffect(() => {
     if (sessionId && carriedComposer?.sessionId === sessionId) {
-      // Put back rather than merely left alone, because on a remount there is
-      // nothing to leave alone — but only where it carries something. This is
-      // captured when the session comes into existence, which on a send is
-      // *after* the composer was cleared, so half of it is empty by then; a
-      // refusal arriving in the same commit has already put the real work back
-      // through the store, and assigning these over it would clear the very
-      // thing both paths exist to keep.
+      // Only non-empty fields are put back: on a send the composer was cleared
+      // before the session existed, and a refusal may already have restored
+      // the real draft through the store.
       const held = carriedComposer
       carriedComposer = null
-      // Empty on a send, which clears the box before the session exists; full
-      // on the paths that create one without sending — turning Auto on is the
-      // whole of somebody's unsent sentence surviving a change of screen.
       if (held.value) {
         liveValue.current = held.value
         setValue(held.value)
@@ -790,15 +616,10 @@ export function Composer({
     }
     liveActivatedSkillIds.current = []
     setActivatedSkillIds([])
-    // A 시작점 belongs to the surface it was picked on, and to one turn.
     liveStartingTemplate.current = null
     setStartingTemplate(null)
     liveAttachments.current = []
     setAttachments([])
-    // The same reasoning as the skills beside it, and it was the one switch
-    // left out: 웹 검색 is a decision about this conversation, and following
-    // the person into the next one spends their credits on a search nobody
-    // asked for there.
     setWebSearch(false)
   }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -838,41 +659,27 @@ export function Composer({
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
-  //: A generation waiting to be answered or approved. Only the document
-  //: surfaces ever have one; everywhere else this is null and nothing changes.
+  // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
-  /**
-   * The rendering template this turn will use: the one just picked, or the one
-   * the session is already wearing. Derived rather than mirrored into state —
-   * the server is what makes the choice sticky, and a copy of it here would be
-   * one more thing that can disagree with the document being produced.
-   */
+  // The picked template, else the one the session already wears. Derived:
+  // the server is what makes the choice sticky.
   const shownTemplate =
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
     null
-  // Sentences count too — 챗 has no 서식 at all, so asking only about shapes
-  // hid the picker on the one surface where a saved starting point is the
-  // whole of what it offers.
-  // `offersTemplates` is the same gate the gallery button uses. Without it the
-  // composer kept its own door open onto a picker 챗 no longer offers.
+  // Same gate as the gallery button.
   const hasTemplates =
     offersTemplates(kind) &&
     (designTemplates.some((row) => row.surface === kind) ||
       promptTemplates.some((row) => row.kind === kind))
-  //: Whether the empty screen — and its own copy of this button — is gone.
+  // The empty screen, with its own gallery button, is gone.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
-  /**
-   * When the search toggle cannot reach the web whatever it says. A
-   * strict-local model is handed no network tool at all — that route exists so
-   * the text does not leave — and a comparison sends neither column the flag.
-   * An answer written from memory under a lit globe is the worst outcome here,
-   * so the control follows the turn rather than the stored preference.
-   */
+  // A strict-local model gets no network tool and a comparison sends no flag;
+  // the control follows the turn, not the stored preference.
   const searchBlocked = (compareMode && kind === 'chat') || Boolean(model?.strictLocal)
   const effectiveWebSearch = webSearch && !searchBlocked
   const agentSkillAllowlist = sessionAgent?.skillIds
@@ -940,8 +747,7 @@ export function Composer({
     )
   const autoPausedForCompare =
     session?.routingMode === 'auto' && compareMode && kind === 'chat'
-  // Empty `kinds` means every surface, the same rule skills and tool
-  // allowlists use.
+  // Empty `kinds` means every surface.
   const usableAgents = agents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
   )
@@ -949,14 +755,11 @@ export function Composer({
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
   const activeConnectors = usableConnectors.filter((c) => c.enabled && c.status === 'connected')
-  // Per picture, per second by (resolution, sound), or per call — never
-  // `creditCost`, which is per 1k output tokens and reads as a fraction of the
-  // real price on these surfaces.
+  // Per picture, per second by (resolution, sound), or per call; never
+  // `creditCost`, which is per 1k output tokens.
   const videoRate =
     model?.creditPerSecond?.[`${avOptions.resolution}:${avOptions.withAudio ? 'sound' : 'silent'}`]
-  // Not every model does every shape — Sora always carries sound, so it has no
-  // silent price. The submit endpoint refuses those, so the control is disabled
-  // rather than 422-ing after Enter.
+  // The submit endpoint refuses shapes the model does not price (Sora has no silent price).
   const unsupportedVideo =
     kind === 'av' && avOptions.mode === 'video' && videoRate === undefined
   const estimate = isMedia
@@ -969,7 +772,7 @@ export function Composer({
   const jobRunning = jobs.some(
     (j) => j.sessionId === sessionId && (j.status === 'running' || j.status === 'queued'),
   )
-  // This conversation's own turn. Another session generating is its business.
+  // This session's own turn only.
   const streaming = !!sessionId && !!running[sessionId]
   const busy = isMedia ? jobRunning : streaming
 
@@ -1024,20 +827,14 @@ export function Composer({
         return
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
-      // The code, not the sentence: `errorMessage` is what goes on screen and
-      // deliberately swallows machine strings, so branching on its output
-      // depended on one leaking through.
+      // Branch on the code: `errorMessage` swallows machine strings.
       const notice =
         errorCode(error) === 'auto_quality_model_required'
           ? t('Auto에 사용할 품질 모델을 다시 선택하세요. 초안과 첨부 파일은 그대로 보관했습니다.')
           : (refusalSentence(errorCode(error), t) ??
             errorMessage(error, t('요청을 전송하지 못했습니다. 잠시 후 다시 시도하세요.')))
-      // Handed back through the store rather than through this component's own
-      // setters. A turn that created a session has already moved the person to
-      // the conversation, and the composer that sent it is unmounted by the
-      // time the refusal lands — the sentence, the uploads and the reason all
-      // went to a screen nobody was looking at. Whichever composer is on the
-      // session now is the one that has to receive them.
+      // Through the store: the composer that sent a session-creating turn is
+      // unmounted by the time a refusal lands.
       setComposerRestore({
         sessionId: attemptedSessionId,
         value: text,
@@ -1052,10 +849,8 @@ export function Composer({
 
   const dismissPrivacyDecision = () => {
     if (!pendingPrivacy || privacyRetrying) return
-    // The response can arrive after the user has already started another
-    // draft. Only the submission that still owns the cleared composer may put
-    // its text and files back; a newer edit/upload deliberately revokes that
-    // ownership in the handlers above.
+    // Only the submission that still owns the cleared composer may restore it;
+    // a newer edit or upload revokes that.
     if (activeRestoreToken.current === pendingPrivacy.restoreToken) {
       activeRestoreToken.current = null
       liveValue.current = pendingPrivacy.text
@@ -1102,25 +897,17 @@ export function Composer({
     }
   }
 
-  // Attachments are a chat/report/deck idea; the two media surfaces send a
-  // prompt and option chips and have nowhere to put a file, so they neither
-  // light up nor swallow the browser's default.
+  // Media surfaces take no attachments.
   const { over: dragging, handlers: dropHandlers } = useFileDrop(
     (files) => void addFiles(files),
     !isMedia,
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
 
-  /**
-   * 채운 빈칸을 요청 앞에 줄로 붙인다. 채운 것만 — 「기간·언어: 」 한 줄은
-   * 모델에게 아무것도 말하지 않고 읽는 사람에게는 빠뜨렸다고 말한다.
-   */
+  // Prefixes the filled blanks to the request; empty blanks are omitted.
   const withStartingValues = (typed: string) => {
     if (!startingTemplate) return typed
-    // 매체 서식은 문장 하나를 채운다. Its `{name}` blanks take what was
-    // filled in, and a blank left empty keeps its example — so the sentence
-    // the picture model reads is always whole. The person's own words go
-    // after it.
+    // A media template fills one sentence; an empty blank keeps its example.
     if (startingTemplate.examplePrompt && startingTemplate.blanks) {
       const values = Object.fromEntries(
         startingTemplate.blanks.map((blank, index) => [
@@ -1140,7 +927,7 @@ export function Composer({
     if (!lines.length) return typed
     return [startingTemplate.title, ...lines, typed].filter(Boolean).join('\n')
   }
-  // 매체 서식은 예시만으로도 온전한 문장이 되므로 빈칸이 비어도 보낼 수 있다.
+  // A media template's sentence is whole even with empty blanks.
   const startingFilled =
     Object.values(startingValues).some((one) => one.trim()) ||
     Boolean(startingTemplate?.examplePrompt)
@@ -1162,8 +949,7 @@ export function Composer({
     liveValue.current = ''
     liveAttachments.current = []
     liveActivatedSkillIds.current = []
-    // Not sticky, unlike the 서식 chip beside it: a 시작점 starts one turn and
-    // then the conversation is the person's own.
+    // A starting point is spent on one turn, unlike the template chip.
     liveStartingTemplate.current = null
     setValue('')
     setAttachments([])
@@ -1171,8 +957,7 @@ export function Composer({
     setStartingTemplate(null)
     setStartingValues({})
     if (kind === 'av' && avOptions.mode === 'video') {
-      // A ticket, not an answer: the clip takes minutes and the job row
-      // outlives this request, so the card carries it.
+      // Video is a job; the card tracks it.
       void generateVideo(sessionId, text, {
         projectId,
         onSession: (id) => navigate(`/s/${id}`, { replace: true }),
@@ -1188,20 +973,15 @@ export function Composer({
       return
     }
     if (kind === 'image') {
-      // A turn like any other, but not a streamed one: the pictures come back
-      // from one call, so `generateImages` writes both halves itself.
+      // Not streamed: `generateImages` writes both halves from one call.
       void generateImages(sessionId, text, {
         projectId,
         onSession: (id) => navigate(`/s/${id}`, { replace: true }),
       })
       return
     }
-    // "협조 공문 작성해줘" typed into a chat is an order for a document, and a
-    // chat bubble is the wrong shape for one — no sections, no 서식, no file.
-    // The sentence and its attachments go to the report surface instead, as
-    // a new conversation there — and "발표 자료 만들어줘" to the slides. An
-    // agent chat or a chat 시작점 is a deliberate choice of surface and keeps
-    // the sentence.
+    // A document request typed into chat starts a new conversation on the
+    // report or slides surface; agent chats and starting points keep it here.
     const handoff = kind === 'chat' && !sessionAgent && !sentStartingTemplate ? handoffSurface(text) : null
     if (handoff) {
       void send(null, handoff, text, {
@@ -1239,14 +1019,10 @@ export function Composer({
       ).catch(() => undefined)
       return
     }
-    // The pick is spent here, on the turn now leaving. From this point the
-    // session row the server writes is the record of the shape — the chip
-    // already prefers it — and a pick left standing would follow the person
-    // into the next conversation and outrank the shape that one was wearing.
+    // The pick is spent on this turn; the session row is the record from here.
     const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
     setPendingTemplate(null)
-    //: Which session the refusal below has to be addressed to. Reassigned by
-    //: `onSession` when the turn is the one that brings the session into being.
+    // Reassigned by `onSession` when this turn creates the session.
     let landedSessionId = sessionId
     void send(sessionId, kind, text, {
       projectId,
@@ -1254,8 +1030,7 @@ export function Composer({
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
-      // Only the writing surfaces take one; an image template is applied by
-      // `generateImages` on its own path above.
+      // Writing surfaces only; an image template is applied by `generateImages`.
       renderTemplateId:
         shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
       startingTemplate: sentStartingTemplate ?? undefined,
@@ -1267,15 +1042,8 @@ export function Composer({
       },
     })
       .catch(() => {
-        // A policy/permission refusal happens before the server stores the
-        // turn. Restore the exact draft instead of making the user reconstruct
-        // the sentence, uploads, and one-turn skill choice.
-        //
-        // Through the store, for the same reason the chat path does it: a turn
-        // that created a session has already moved the person to it, and the
-        // composer that sent this one is gone by the time the refusal lands.
-        // The guard about a newer draft is applied where it can be answered —
-        // on whichever composer is actually on screen.
+        // A refusal happens before the server stores the turn; restore the
+        // draft through the store (see `deliverChat`).
         setComposerRestore({
           sessionId: landedSessionId,
           value: text,
@@ -1284,18 +1052,14 @@ export function Composer({
           startingTemplate: sentStartingTemplate,
           error: '',
         })
-        // A refused turn never reached the server, so the session row was
-        // rolled back with it and the shape is nobody's record now. Hand the
-        // pick back with the rest of the draft, unless a newer one has been
-        // chosen while this request was in flight.
+        // The session row was rolled back with the refused turn; hand the
+        // pick back unless a newer one was chosen meanwhile.
         if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
       })
   }
 
   return (
     <div className="relative mx-auto w-full max-w-3xl px-4 pb-4" {...dropHandlers}>
-      {/* Shown only while something is actually over it. A permanent dashed
-          rectangle would be a second input competing with the real one. */}
       {dragging && (
         <div className="pointer-events-none absolute inset-x-4 inset-y-0 z-10 grid place-items-center rounded-panel border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
           <span className="flex items-center gap-2">
@@ -1304,9 +1068,6 @@ export function Composer({
           </span>
         </div>
       )}
-      {/* 한 덩어리로 읽히는 입력 상자. 첨부·옵션·모델·전송이 모두 이 테두리
-          안에 있고, 바깥에는 아무 버튼도 두지 않는다 — 프롬프트를 쓰는 동안
-          눈이 갈 곳은 여기 하나면 된다. */}
       <div className="rounded-panel border border-line bg-panel shadow-raised transition-colors focus-within:border-line-strong">
         {(project ||
           attachments.length > 0 ||
@@ -1315,11 +1076,7 @@ export function Composer({
           autoBypassPreview ||
           autoPausedForCompare ||
           startingTemplate ||
-          // The chip below reads the session's own shape as well as the pick
-          // waiting for a turn, and this row has to open on the same rule.
-          // Asking only about the pick hid the whole row after a reload —
-          // client state is gone by then, while the shape the session is
-          // wearing survives and keeps coming out in every answer.
+          // Same rule as the chip below: the session's own shape survives a reload.
           shownTemplate ||
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
@@ -1341,11 +1098,6 @@ export function Composer({
                 {compareModels
                   .map((id) => models.find((m) => m.id === id)?.label ?? id)
                   .join(' vs ')}
-                {/* The way out, on the thing that shows the state. There was a
-                    toggle for this, buried in the ⧉ menu, and every other chip
-                    in this row carries its own × — so the one mode you could
-                    not obviously leave was the one that doubles the cost of
-                    every request until you do. */}
                 <button
                   type="button"
                   onClick={toggleCompareMode}
@@ -1359,9 +1111,6 @@ export function Composer({
             )}
             {webSearch &&
               (searchBlocked ? (
-                // The toggle is the person's standing wish; this row is what
-                // the turn will actually do. They disagree here, and saying so
-                // is the whole point of the chip.
                 <Badge tone="warn">
                   <Globe size={11} />
                   {compareMode && kind === 'chat'
@@ -1388,14 +1137,13 @@ export function Composer({
                   type="button"
                   onClick={() => {
                     setPendingTemplate(null)
-                    // 서식이 가면 그 서식의 질문도 간다.
+                    // The template's questions go with it.
                     if (startingTemplate?.examplePrompt) {
                       liveStartingTemplate.current = null
                       setStartingTemplate(null)
                       setStartingValues({})
                     }
-                    // Sticky server-side once a turn has used it, so clearing
-                    // the chip has to clear the row too.
+                    // Sticky server-side once used, so clear the session row too.
                     if (session?.renderTemplateId) {
                       void setSessionTemplate(session.id, null)
                     }
@@ -1410,12 +1158,7 @@ export function Composer({
                 </button>
               </Badge>
             )}
-            {/* Beside the 서식 chip and read the same way: one names the
-                shape the answer comes out in, this one names where the asking
-                started. Neither is in the box, so neither ends up in the
-                transcript as something the person wrote. */}
-            {/* 매체 서식은 바로 위의 서식 칩이 이미 이름을 말한다 — 같은 이름의
-                칩 둘은 하나로 읽히지 않는다. */}
+            {/* Hidden for a media template, whose chip above already names it. */}
             {startingTemplate && (!startingTemplate.examplePrompt || !pendingTemplate) && (
               <Badge tone="accent">
                 <LayoutTemplate size={11} />
@@ -1434,9 +1177,6 @@ export function Composer({
                 </button>
               </Badge>
             )}
-            {/* 파일이 있어야 하는 일인데 아직 없다. Said beside the chip
-                rather than discovered after sending: 전공 원문 읽기 without
-                the 원문 answers about nothing. */}
             {startingTemplate?.needs?.includes('file') && attachments.length === 0 && (
               <button
                 type="button"
@@ -1473,8 +1213,6 @@ export function Composer({
                 key={f.id}
                 className={cn(
                   'flex items-center gap-1.5 rounded-control border px-1.5 py-0.5 text-xs',
-                  // Uploaded but unreadable: said here, so nobody asks about
-                  // contents that never existed.
                   f.error
                     ? 'border-warn/40 bg-warn/5 text-warn'
                     : 'border-line bg-elevated',
@@ -1506,17 +1244,6 @@ export function Composer({
                 {t('업로드 중')}
               </span>
             )}
-            {/*
-              The reason, in words, on the screen.
-              
-              A failed upload wore a ⚠ and kept why it failed in a `title` —
-              which is a hover, and a hover is nothing on a phone and nearly
-              nothing to somebody who has not been told there is something to
-              hover over. So a scan nobody can read and a file that is not what
-              its name says both arrived as a chip with a small orange triangle,
-              and the next thing that happened was a question about contents
-              that were never there.
-            */}
             {attachments.some((f) => f.error) && (
               <p role="status" className="w-full text-xs text-warn">
                 {attachments
@@ -1528,7 +1255,6 @@ export function Composer({
           </div>
         )}
 
-        {/* 생성 파라미터 바 — 이미지·오디오/동영상 전용 */}
         {isMedia && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
             {kind === 'image' ? <ImageOptions model={model} /> : <AvOptions />}
@@ -1541,17 +1267,14 @@ export function Composer({
               {unsupportedVideo
                 ? t('이 모델은 이 조합을 만들지 않습니다')
                 : pendingTemplate?.kind === 'image' && pendingTemplate.figure
-                  // 도식은 글 모델이 쓴다. The image price on the bar would
-                  // be the price of a picture nobody is about to make.
+                  // A figure is drawn by the text model, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')
                   : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
             </span>
           </div>
         )}
 
-        {/* 시작점의 질문. 대화상자가 아니라 여기서 받는다 — 일을 고른 뒤,
-            챗을 시작하면서. 빈칸마다 예시가 흐리게 들어 있고, 채운 만큼이
-            요청 앞에 줄로 붙는다. 아래 상자는 덧붙일 말을 위한 자리다. */}
+        {/* Starting-point blanks; filled ones are prefixed to the request. */}
         {!pending && startingTemplate && startingTemplate.fills.length > 0 && (
           <div
             role="group"
@@ -1562,10 +1285,7 @@ export function Composer({
               const blank = startingTemplate.blanks?.[index]
               const set = (next: string) => {
                 setStartingValues((all) => ({ ...all, [index]: next }))
-                // 비율 빈칸은 비율 칩이다. A media 서식 recommends a shape per
-                // job — 16:9 for a talk cover, 9:16 for a printed poster — and
-                // the chip beside the send button is what the picture request
-                // actually reads, so the pick lands there too.
+                // An aspect blank also sets the aspect chip, which is what the request reads.
                 if (blank?.name === 'aspect') {
                   const ratio = /^\s*(\d+:\d+)/.exec(next)?.[1]
                   if (ratio && ASPECTS.includes(ratio)) setImageOptions({ aspect: ratio })
@@ -1576,7 +1296,7 @@ export function Composer({
                   <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
                   {blank?.options?.length ? (
                     <select
-                      // 고르지 않았으면 서식의 기본값이 보이고, 그대로 나간다.
+                      // Unpicked, the template default shows and is sent.
                       value={startingValues[index] ?? startingTemplate.examples?.[index] ?? ''}
                       onChange={(e) => set(e.target.value)}
                       aria-label={`${startingTemplate.title} · ${fill}`}
@@ -1600,8 +1320,6 @@ export function Composer({
                       value={startingValues[index] ?? ''}
                       onChange={(e) => set(e.target.value)}
                       onKeyDown={(e) => {
-                        // Enter 는 여기서도 보낸다 — 마지막 칸을 채우고 상자로
-                        // 옮겨 갈 이유가 없다.
                         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                           e.preventDefault()
                           submit()
@@ -1625,10 +1343,7 @@ export function Composer({
           onChange={(e) => {
             activeRestoreToken.current = null
             liveValue.current = e.target.value
-            // Keep it before React gets a chance to unmount this composer.
-            // Picking a starting point navigates immediately; an effect that
-            // runs after paint can otherwise lose the final keystroke — or the
-            // whole draft when typing and clicking happen in one frame.
+            // Written synchronously: picking a starting point navigates before an effect would run.
             drafts.set(draftKey, e.target.value)
             setValue(e.target.value)
           }}
@@ -1640,43 +1355,28 @@ export function Composer({
             }
           }}
           onKeyUp={releaseToTalk}
-          // A screenshot on the clipboard had nowhere to go. Text pastes are
-          // untouched — the handler returns unless the clipboard holds files.
+          // File pastes only; text pastes are untouched.
           onPaste={onPasteFiles}
           placeholder={
             recording && pushToTalk.current
               ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
               : transcribing
                 ? t('받아쓰는 중…')
-                : // A proposal is waiting, so this box is not where a new document
-                  // starts — it is where this one gets adjusted. Saying so is what
-                  // stops somebody typing a question and watching a deck appear.
-            pending
-              ? pending.stage === 'clarify'
-                ? t('답을 적거나, 위에서 고르세요')
-                : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-              : // What this 시작점 needs, rather than what the surface generally
-                // does — the half of the template the person still has to supply.
-                startingTemplate && startingTemplate.fills.length > 0
-                ? t('덧붙일 말이 있으면 여기에 적으세요')
-                : t(placeholders[kind])
+                : pending
+                  ? pending.stage === 'clarify'
+                    ? t('답을 적거나, 위에서 고르세요')
+                    : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
+                  : startingTemplate && startingTemplate.fills.length > 0
+                    ? t('덧붙일 말이 있으면 여기에 적으세요')
+                    : t(placeholders[kind])
           }
           aria-label={t('프롬프트 입력')}
           data-composer=""
           className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none"
         />
 
-        {/* Wraps rather than squeezing. On a phone this row is wider than the
-            screen, and flex answered that by shrinking the buttons — the
-            attachment control ended up 16px across, narrower than the icon
-            inside it. */}
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
-          {/* Not on the picture and clip surfaces. `generateImages`,
-              `generateAudio` and `generateVideo` send a prompt and the option
-              chips; there is no field on those endpoints an upload could ride
-              in, and a paperclip that takes a file only to drop it at submit
-              costs the person a wait and the clip's credits before they find
-              out. */}
+          {/* Media surfaces take no attachments. */}
           {!isMedia && (
             <>
               <input
@@ -1726,10 +1426,7 @@ export function Composer({
             </button>
           )}
 
-          {/* Only once the conversation has started. A shape you can only
-              pick before the first turn is one you cannot change your mind
-              about — and until that turn the empty screen is offering the same
-              thing two inches above, which is clutter, not reassurance. */}
+          {/* Only once the conversation has started; the empty screen offers the same button. */}
           {hasTemplates && started && (
             <button
               onClick={() => setGalleryOpen(true)}
@@ -1744,19 +1441,12 @@ export function Composer({
             </button>
           )}
 
-          {/* Same rule as the attachment: a skill is a block of context the
-              chat pipeline assembles, and a picture model is never handed one.
-              Offering the list here would let somebody spend the choice on a
-              turn that cannot use it. */}
+          {/* Media models are never handed a skill. */}
           {!isMedia && usableSkills.length > 0 && (
             <Dropdown
               className="min-w-64"
               trigger={() => (
                 <button
-                  // Icon-only, so it needs an accessible name — and a title,
-                  // because the name alone says what the button is and not
-                  // what pressing it does. Every other control on this bar
-                  // carries both.
                   aria-label={t('스킬')}
                   title={t('이번 요청에만 적용할 스킬을 고릅니다')}
                   className={cn(
@@ -1780,13 +1470,7 @@ export function Composer({
                     checked={selected}
                     keepOpen
                     disabled={!!unavailable || limitReached}
-                    // The limit is one sentence for the whole menu (the label
-                    // says 최대 3개) and a tooltip on the rows it disables —
-                    // not a hint that took the row's width and cut the name
-                    // down to 수치에 ….
                     title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
-                    // The figure stays once the row is chosen — that is when it
-                    // is being spent. The mark is drawn by the row itself.
                     hint={
                       unavailable
                         ? unavailable
@@ -1912,9 +1596,6 @@ export function Composer({
                     'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
                     activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
                   )}
-                  /* With the count on the face of it and 커넥터 in the label,
-                     the accessible name has to hold both — otherwise the
-                     button says 25 and answers to something else. */
                   aria-label={
                     activeConnectors.length
                       ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
@@ -1927,10 +1608,7 @@ export function Composer({
               )}
             >
               <MenuLabel>{t('커넥터')}</MenuLabel>
-              {/* The one control in this toolbar that is not about the turn
-                  being written. Its neighbours all reset at the next message;
-                  this one writes the account, so it has to say so before it is
-                  clicked rather than after a connector goes missing elsewhere. */}
+              {/* Account-wide, unlike the per-turn controls beside it. */}
               <p className="px-2.5 pb-1.5 text-xs text-faint">
                 {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
               </p>
@@ -1969,8 +1647,7 @@ export function Composer({
                   key={a.id}
                   hint={a.model ? a.model.split('/').pop() : undefined}
                   onClick={() =>
-                    // An agent belongs to the session, not one message, so
-                    // choosing one starts a conversation.
+                    // An agent belongs to the session, so choosing one starts a conversation.
                     void newSession(kind, { agentId: a.id, projectId })
                       .then((id) => navigate(`/s/${id}`))
                       .catch((err: unknown) => setNotice(startFailure(err, t)))

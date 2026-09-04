@@ -1,27 +1,4 @@
-"""한글에서 고치고 돌아와도 문서가 그대로인가.
-
-Opening a `.hwpx` and exporting it back is not one feature, it is a loop, and
-the person who uses it uses it more than once: open the 계획서 the 팀장 sent,
-fix a number here, export, mail it, get it back, open it again. Every check
-before this one looked at a single leg of that loop. None of them could see
-what the loop does to a document over time, and what it did was rot it.
-
-Two failures came out of running it, both invisible to a reader of either leg
-alone:
-
-  1. Every trip grew another copy of the title. The exporter writes the
-     document's name at the top; the reader saw a large centred paragraph and
-     called it the first heading. Three trips, three titles.
-  2. `28.03 — a Korean date, an apostrophe standing where 20 would be — came
-     back as 28.03. Markdown had read the apostrophe as an unclosed code
-     marker and the export stripped it. The number is still a number, so
-     nothing looked wrong; it is simply a different year.
-
-So this compares the document to itself across three trips, structurally:
-headings and their levels, tables by row and column, lists by item. The
-comparison is `hwpx_import.differences`, which names what moved rather than
-asserting two blobs are equal — a diff nobody can read is a test nobody fixes.
-"""
+"""A .hwpx keeps its structure (title, headings, tables, lists) across import/export round trips."""
 
 from __future__ import annotations
 
@@ -35,7 +12,7 @@ _NS = (
     'xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"'
 )
 
-#: 9pt body, 14pt heading, and paraPr 3 centred — the shape of the real 계획서.
+#: 9pt body, 14pt heading, paraPr 3 centred.
 _HEADER = (
     '<hh:charProperties><hh:charPr id="1" height="900"/><hh:charPr id="2" height="1400"/>'
     "</hh:charProperties>"
@@ -70,8 +47,7 @@ def _archive(section: str) -> bytes:
     return buffer.getvalue()
 
 
-#: A title, two levels of heading, a table whose cells hold Korean dates, and a
-#: list. Everything a 계획서 has that a round trip can lose.
+#: Title, two heading levels, tables with Korean dates and merges, and a list.
 _DOCUMENT = _archive(
     _para("전교생 AI기초 교육 의무화", style="1", char="2", para="3")
     + _para("2-3. 이수체계 개편", style="1", char="2")
@@ -98,7 +74,7 @@ _DOCUMENT = _archive(
 
 
 def _trip(title: str, parts: list[hwpx_import.Section]) -> hwpx_import.Document:
-    """Sections out to a file and back, the way the export and the import do it."""
+    """Exports sections to .hwpx and reads them back."""
     sections = [
         {
             "id": str(index),
@@ -113,7 +89,7 @@ def _trip(title: str, parts: list[hwpx_import.Section]) -> hwpx_import.Document:
 
 
 def test_three_trips_change_nothing() -> None:
-    """Once is a feature; three times is the loop somebody actually lives in."""
+    """Three round trips leave the document shape unchanged."""
     first = hwpx_import.read(_DOCUMENT)
     before = hwpx_import.shape(first.sections)
 
@@ -125,9 +101,7 @@ def test_three_trips_change_nothing() -> None:
 
 
 def test_the_title_is_the_title_and_not_a_section() -> None:
-    """The centred line at the top is the document's name. Read as a heading it
-    became a section, and the next export wrote a title above it — so the file
-    grew one more copy of its own name per trip."""
+    """The centred top line is the title, not a section, and stays so after a trip."""
     document = hwpx_import.read(_DOCUMENT)
 
     assert document.title == "전교생 AI기초 교육 의무화"
@@ -140,8 +114,7 @@ def test_the_title_is_the_title_and_not_a_section() -> None:
 
 
 def test_a_korean_date_keeps_its_apostrophe() -> None:
-    """`28.03 is 2028년 3월. Stripped of the mark it is 28.03, which is a
-    different thing said the same way, and no error is raised anywhere."""
+    """A leading backtick in a Korean date (`28.03) survives the round trip."""
     opened = hwpx_import.read(_DOCUMENT)
     shape = hwpx_import.shape(_trip(opened.title, opened.sections).sections)
 
@@ -152,12 +125,7 @@ def test_a_korean_date_keeps_its_apostrophe() -> None:
 
 
 def test_a_merged_cell_is_still_merged_on_the_other_side() -> None:
-    """The header that spans four columns, and the 비고 that runs to two lines.
-
-    Markdown has neither, and every export used to end at GFM — so a merge came
-    back as one filled cell followed by empty ones, and a two-line cell as one
-    sentence. A real 재난 상황 보고서 opened here carries 123 merged cells.
-    """
+    """Column/row spans and in-cell line breaks survive the round trip."""
     opened = hwpx_import.read(_DOCUMENT)
     trip = _trip(opened.title, opened.sections)
 
@@ -165,29 +133,25 @@ def test_a_merged_cell_is_still_merged_on_the_other_side() -> None:
     merged = next(t for t in tables if any(c[0].startswith("1. 단과대학") for r in t for c in r))
     assert merged[0][0] == ("1. 단과대학별 AI-PD", 3, 1)
     assert merged[1][0] == ("죽전", 1, 2)
-    # The row under a vertical merge holds its own three cells, not four.
+    # The row under a vertical merge holds three cells, not four.
     assert [c[0] for c in merged[2]] == ["공과대학", "2명", "-"]
-    # And the break the writer put in the cell is still a break.
     assert merged[1][3][0] == "1학기 위촉\n2학기 재위촉"
 
 
 def test_two_tables_written_back_to_back_stay_two() -> None:
-    """A GFM table has one rule row, under its head. A second rule begins a new
-    table — without that the exporters read consecutive tables as one, and a
-    상황 보고서 built out of 107 single-row boxes came out with 64."""
+    """A second GFM rule row starts a new table; a blank line inside one does not end it."""
     pairs = report_export._markdown_to_lines(
         "| 가 | 1 |\n| --- | --- |\n\n| 나 | 2 |\n| --- | --- |"
     )
     drawn = [t.flat() for kind, t, _, _d in pairs if kind == "table"]
     assert drawn == [[["가", "1"]], [["나", "2"]]]
 
-    # A blank line *inside* one table still does not end it — models write them.
     loose = report_export._markdown_to_lines("| a | b |\n| --- | --- |\n\n| 1 | 2 |")
     assert [t.flat() for kind, t, _, _d in loose if kind == "table"] == [[["a", "b"], ["1", "2"]]]
 
 
 def test_code_is_still_stripped_of_its_markers() -> None:
-    """The narrowed rule has to still do the job it was written for."""
+    """Paired backticks are stripped; a lone leading backtick is kept."""
     assert report_export._strip_inline("실행은 `python -m pytest` 로 한다") == (
         "실행은 python -m pytest 로 한다"
     )

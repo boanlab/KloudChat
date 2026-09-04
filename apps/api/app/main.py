@@ -1,8 +1,4 @@
-"""KloudChat API entry point.
-
-The health probe reports KloudChat and LiteLLM separately: they are different
-facts, and the UI has to be able to say which side is down.
-"""
+"""KloudChat API entry point."""
 
 from __future__ import annotations
 
@@ -44,7 +40,7 @@ async def lifespan(app: FastAPI):
         await bootstrap.seed_admin()
     except Exception as exc:  # noqa: BLE001 — a failed seed must not block startup
         log.warning("bootstrap admin not created: %s", exc)
-    # 디스크가 차면 지운 계정의 파일부터 거둔다 — see services/storage.py.
+    # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
     yield
     sweeper.cancel()
@@ -68,8 +64,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(branding.router, prefix=settings.api_prefix)
-# Mounted at /llm without the API prefix, which keeps the base URL external
-# tools have to be configured with short.
+# Mounted at /llm without the API prefix: the base URL external tools point at.
 app.include_router(llm.router)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(models.router, prefix=settings.api_prefix)
@@ -86,6 +81,7 @@ app.include_router(shares.router, prefix=settings.api_prefix)
 
 @app.get(f"{settings.api_prefix}/health")
 async def health():
+    """Reports KloudChat and LiteLLM separately so the UI can say which is down."""
     return {
         "status": "ok",
         "litellm": "ok" if await litellm.health() else "unavailable",

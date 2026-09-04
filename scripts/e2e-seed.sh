@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
 # Seeds the account the Playwright suite signs in as.
 #
-# The suite needs one *active* account. On an instance that already has an
-# administrator, a new signup lands in the pending queue, and emptying the
-# database would destroy live data. So this script is non-destructive:
-#
-#   1) sign in as the real administrator
-#   2) sign the e2e account up if it does not exist
-#   3) approve it with administrator rights
-#
-# Safe to run repeatedly.
+# Non-destructive and idempotent: signs in as the administrator, signs the e2e
+# account up if missing, approves it with administrator rights, then seeds
+# representative workspace objects (Korean, as the specs assert on labels).
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/e2e-seed.sh
-#
-# The seeded workspace objects are Korean because the interface is Korean-first
-# and the coverage specs assert against rendered labels.
 set -euo pipefail
 
 # shellcheck source=scripts/lib/env.sh
@@ -37,7 +28,7 @@ if [ -z "$admin_token" ]; then
   exit 1
 fi
 
-# Signup returns 409 if the account already exists. Either way, carry on.
+# 409 when the account already exists; carry on either way.
 curl -s -o /dev/null -X POST "$API/auth/signup" -H "$JSON" \
   -d "{\"email\":\"$E2E_EMAIL\",\"password\":\"$E2E_PASS\",\"name\":\"E2E 관리자\"}" || true
 
@@ -51,22 +42,19 @@ if [ -z "$uid" ]; then
   exit 1
 fi
 
-# Approval is idempotent — an already-active account comes back unchanged.
+# Idempotent: an active account comes back unchanged.
 status=$(curl -s -X POST "$API/admin/users/$uid/approve" \
   -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"monthlyCredits":2000000}' \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
 
-# The persona suite also exercises the admin screens (the pending queue among
-# them). Anything that is not the bootstrap account defaults to role `user`, so
-# promote it explicitly.
+# The suite reaches the admin screens; a non-bootstrap account defaults to `user`.
 curl -s -o /dev/null -X POST "$API/admin/users/$uid/role" \
   -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"role":"admin"}'
 
 echo "e2e account ready: $E2E_EMAIL ($status, admin)"
 
-# auth.spec.ts signs in with its own account (e2e-admin@) and walks into the
-# app. On anything but an empty database that account is pending too, so
-# activate it here as well.
+# auth.spec.ts signs in with its own account, which is pending on a
+# non-empty database.
 for extra in e2e-admin@example.com; do
   xid=$(curl -s "$API/admin/users" -H "Authorization: Bearer $admin_token" \
     | NEEDLE="$extra" python3 -c '
@@ -75,7 +63,6 @@ print(next((u["id"] for u in json.load(sys.stdin) if u["email"] == os.environ["N
   if [ -n "$xid" ]; then
     curl -s -o /dev/null -X POST "$API/admin/users/$xid/approve" \
       -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"monthlyCredits":2000000}'
-    # That suite reaches the approval screen too, so it needs admin rights.
     curl -s -o /dev/null -X POST "$API/admin/users/$xid/role" \
       -H "Authorization: Bearer $admin_token" -H "$JSON" -d '{"role":"admin"}'
     echo "  activated $extra (admin)"
@@ -83,12 +70,8 @@ print(next((u["id"] for u in json.load(sys.stdin) if u["email"] == os.environ["N
 done
 
 # ── workspace seed ──────────────────────────────────────────────────────
-# The coverage suite needs *something* on each screen before it can assert
-# that an affordance exists. Representative data is inserted through the real
-# API rather than the database.
-#
-# Existence is checked by name. "Skip if there is at least one" would let data
-# left over from another test suppress the item this suite actually needs.
+# Each screen needs one item to assert on; inserted through the API, checked
+# by name so leftovers from other suites cannot mask a missing one.
 tok=$(curl -s -X POST "$API/auth/login" -H "$JSON" \
   -d "{\"email\":\"$E2E_EMAIL\",\"password\":\"$E2E_PASS\"}" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
@@ -113,8 +96,7 @@ seed skills 인용\ 형식\ 맞추기 '{"name":"인용 형식 맞추기","descri
 seed memory 답변\ 길이\ 선호 '{"name":"답변 길이 선호","type":"feedback","description":"짧은 답을 선호","body":"사용자는 서론 없이 결론부터 짧게 답하는 것을 선호한다.","pinned":true}'
 seed agents 논문\ 리뷰어 '{"name":"논문 리뷰어","description":"초록과 방법론을 검토한다","model":"local/qwen3.6-27b","systemPrompt":"당신은 논문 리뷰어입니다. 주장과 근거의 연결을 먼저 봅니다.","kinds":["chat","report"]}'
 
-# Connectors are idempotent by slug rather than by name — the server rejects a
-# duplicate install.
+# Idempotent by slug; the server rejects a duplicate install.
 curl -s -o /dev/null -X POST "$API/connectors/install/time" -H "$A"
 
 echo "workspace seed complete"

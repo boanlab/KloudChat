@@ -1,20 +1,12 @@
 import { useEffect, useState } from 'react'
 import { currentLang, translate } from '@/lib/i18n'
 
-/** How many rows a workspace list renders before asking. */
-export const PAGE_SIZE = 40
+const PAGE_SIZE = 40
 
-/**
- * Caps how much is rendered, not the list itself.
- *
- * Filters and counts still see everything; only the rows that are off-screen
- * are not built yet.
- */
+/** Caps how many `items` are rendered; `deps` changing resets the page. */
 export function usePaged<T>(items: T[], deps: unknown[] = []) {
   const [shown, setShown] = useState(PAGE_SIZE)
 
-  // A new filter starts a new list, and carrying the old offset into it would
-  // show a hundred rows of something the user just narrowed down.
   useEffect(() => {
     setShown(PAGE_SIZE)
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -7,11 +7,11 @@ import { COMPOSER_KEYS, SHORTCUTS, codeBlocks, isMac, shortcutFor, toggleDictati
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/** Opens the dialog from anywhere — the account menu, say. */
+/** Window event that opens the dialog from anywhere. */
 const OPEN_EVENT = 'kloudchat:shortcuts'
 export const openShortcuts = () => window.dispatchEvent(new Event(OPEN_EVENT))
 
-/** One key as a cap. `mod` is drawn as the platform's own. */
+/** One key cap. */
 function Key({ children }: { children: ReactNode }) {
   return (
     <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-control border border-line bg-elevated px-1.5 font-sans text-xs text-muted shadow-[0_1px_0_var(--line)]">
@@ -31,13 +31,7 @@ function Chord({ keys }: { keys: string[] }) {
   )
 }
 
-/**
- * The shortcuts, and the dialog that lists them.
- *
- * Mounted once in the shell. A chord typed into a text field still counts —
- * every one carries a modifier or Shift+Esc, none of which a field wants —
- * except when a dialog is already up, where Esc and the rest belong to it.
- */
+/** Global shortcut handler and the dialog listing them; mounted once in the shell. */
 export function KeyboardShortcuts() {
   const t = useT()
   const navigate = useNavigate()
@@ -62,8 +56,7 @@ export function KeyboardShortcuts() {
     const onKey = (e: KeyboardEvent) => {
       const chord = shortcutFor(e)
       if (!chord) return
-      // A dialog that is up owns the keyboard; the shortcut dialog itself
-      // still answers its own chord so it toggles.
+      // An open dialog owns the keyboard, except this dialog's own toggle chord.
       const dialogUp = document.querySelector('[role="dialog"]') !== null
       if (dialogUp && !(chord.id === 'show-shortcuts' && open)) return
       const state = useStore.getState()

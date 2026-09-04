@@ -1,18 +1,9 @@
 import { errorCode, errorMessage, type StreamEvent } from '@/lib/api'
 
 /**
- * Why a request was refused or a turn failed, in a sentence somebody can act on.
- *
- * The API answers refusals with machine codes — `agent_disabled`,
- * `insufficient_credits`, `blocked_category:x` — and a failing stream with an
- * `error` event that carries `code` and the upstream's `reason`.
- * `errorMessage` deliberately blanks machine codes so a reader never sees
- * `upstream_502` on its own; this is the other half, the vocabulary that turns
- * each code into what to do next. A code with no entry is still shown, in
- * brackets, because "요청을 처리하지 못했습니다" with nothing after it was the
- * complaint.
- *
- * Korean source strings, passed through the caller's `t`.
+ * Actionable sentences for API refusal codes (`agent_disabled`,
+ * `blocked_category:x`, …) and stream `error` events. Unknown codes are still
+ * shown in brackets. Korean source strings, passed through the caller's `t`.
  */
 type T = (text: string) => string
 
@@ -57,11 +48,7 @@ export function refusalSentence(code: string, t: T): string | undefined {
   return t('요청이 거부되었습니다 ({code}).').replace('{code}', code)
 }
 
-/**
- * A stream that ended in an `error` event. The server's `message` is the
- * sentence it always sent; `code` picks a better one when it can, and the
- * upstream's own `reason` is quoted after it so an operator has the detail.
- */
+/** Sentence for a stream that ended in an `error` event; the upstream `reason` is quoted after it. */
 export function streamFailureSentence(
   event: Extract<StreamEvent, { type: 'error' }>,
   t: T,

@@ -1,19 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn, surfaceOn } from './helpers'
 
-/**
- * What the gallery is allowed to do to a sentence somebody is in the middle of.
- *
- * Opening the gallery is a question — "what does this shape do?" — and until
- * now the answer arrived by wiping the box. On the picture and clip surfaces
- * that is the whole of the work: the example sentence is the prompt there, so
- * the thing it wrote over was the prompt too, silently and with nothing to
- * press to get it back.
- *
- * Nothing here makes a picture. The request is stubbed for the same reason
- * `design-chip.spec.ts` stubs it — a picture costs real credits and none of
- * this is about the picture.
- */
+/** Picking a 서식 or switching surface never overwrites a draft. Image requests stubbed. */
 test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -27,9 +15,7 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   await page.getByRole('button', { name: '작업 시작하기' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
-  // Searched rather than scrolled to. The picture surface carries six 서식
-  // since the research figures joined it, so 포스터 is on the second page and
-  // a locator that only looks at what is drawn finds nothing.
+  // Searched: the gallery pages.
   await dialog.getByPlaceholder(/검색/).fill('포스터')
   const search = dialog.getByLabel(/서식 검색|시작점 검색/)
   if (await search.count()) await search.fill('포스터')
@@ -37,24 +23,12 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   await expect(poster).toBeVisible({ timeout: 20_000 })
   await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
 
-  // Both sentences, in the order they were written: theirs first, because it
-  // is the one they were still working on.
-  // `startsWith` rather than a regex built from the string: escaping one
-  // metacharacter and not the rest is the kind of half-measure that passes
-  // until somebody puts a `(` in a fixture.
-  // 쓰던 글은 그대로 남는다. 서식의 문장은 상자에 들어오지 않는다 — 그 서식이
-  // 묻는 것(주제, 분위기)이 상자 위에 질문으로 열리고, 보낼 때 문장이 된다.
+  // The draft stays; the 서식's questions open above the box.
   await expect(composer).toHaveValue(mine)
   await expect(page.getByRole('group', { name: '포스터 시작점 질문' })).toBeVisible()
 })
 
-/**
- * The other surfaces, where nothing is written into the box at all.
- *
- * A 시작점 on a document surface rides with the turn and leaves the composer
- * empty — appending must not have quietly given it a sentence to type, which
- * is the failure the fix above could most easily introduce.
- */
+/** A draft belongs to the surface it was typed on; a document surface's box starts empty. */
 test('표면을 옮겨도 챗 초안은 그대로 있고, 문서 입력창은 비어 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -64,17 +38,11 @@ test('표면을 옮겨도 챗 초안은 그대로 있고, 문서 입력창은 �
   const mine = '3월 정기 점검 결과를 정리해 줘.'
   await composer.fill(mine)
 
-  // The home rail this used to press is gone — 서식 moved inside 작업 시작하기,
-  // and the gallery shows only the surface it is open on. The way somebody
-  // moves between surfaces now is the chip row, and the promise is the same
-  // one: an unfinished sentence belongs to the surface it was typed on.
-  // The chip switches the surface in place — one start screen, many surfaces —
-  // so the check is on the composer rather than on the address.
+  // The chip switches the surface in place, so the check is on the composer, not the address.
   await page.getByRole('button', { name: '보고서', exact: true }).first().click()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
 
-  // And back. A draft belongs to the surface it was typed on; moving away and
-  // returning must not have spent it.
+  // And back.
   await page.getByRole('button', { name: '챗', exact: true }).first().click()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue(mine)
 })

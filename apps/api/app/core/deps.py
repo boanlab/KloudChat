@@ -31,12 +31,9 @@ def _bearer(request: Request) -> str | None:
 async def current_identity(request: Request, db: DbSession) -> User:
     """Resolves the access token to a live user row, blocking only suspension.
 
-    The DB lookup is what makes suspension immediate: the JWT stays
-    signature-valid for its remaining minutes, so status is re-checked rather
-    than trusted from the claims.
-
-    Pending accounts pass on purpose — the waiting screen needs an identity to
-    poll with. `current_user` is the gate that keeps them out of everything else.
+    Status comes from the row, not the claims, so suspension is immediate.
+    Pending accounts pass: the waiting screen polls with them; `current_user`
+    gates everything else.
     """
     token = _bearer(request)
     if not token:
@@ -51,10 +48,7 @@ async def current_identity(request: Request, db: DbSession) -> User:
     if user.status is UserStatus.suspended:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account_suspended")
 
-    # A cycle that came due while nobody was looking is refilled here, on this
-    # account's first request of the new month. The row is already being
-    # written and committed for `last_active_at`, so the healthy path costs
-    # nothing extra and the once-a-month path costs one insert.
+    # A due credit cycle is refilled on the account's first request after it.
     refill_if_due(db, user)
 
     user.last_active_at = utcnow()
@@ -69,13 +63,9 @@ CurrentIdentity = Annotated[User, Depends(current_identity)]
 async def current_viewer(request: Request, db: DbSession) -> User:
     """Like `current_user`, but also accepts the access token as `?t=`.
 
-    For the one route that serves raw bytes into an element: `<img>`, `<audio>`
-    and `<video>` cannot carry an Authorization header, and the token lives in
-    memory rather than a cookie.
-
-    Confined to that route. The token is the ordinary 15-minute access token,
-    but it lands in the proxy's access log, which a header would not — the cost
-    of being usable as a `src`, and why this is not the default dependency.
+    Only for the route serving raw bytes into `<img>`/`<audio>`/`<video>`, which
+    cannot send a header. A query token lands in the proxy access log, so this
+    is not the default dependency.
     """
     token = _bearer(request) or request.query_params.get("t")
     if not token:
@@ -121,9 +111,7 @@ async def user_count(db: AsyncSession) -> int:
 
 
 def client_ip(request: Request) -> str:
-    """First hop of `X-Forwarded-For` only. KloudChat sits behind a reverse proxy,
-    and audit rows want the real client.
-    """
+    """First hop of `X-Forwarded-For`; KloudChat sits behind a reverse proxy."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()

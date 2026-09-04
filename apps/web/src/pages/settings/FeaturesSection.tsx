@@ -5,14 +5,7 @@ import { adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import type { SessionKind } from '@/types'
 
-/**
- * Which surfaces stay open.
- *
- * Chat cannot be turned off — without conversation there is nothing this
- * instance can do. A disabled surface disappears from the lists *and* the
- * server refuses work of that kind.
- */
-
+/** Surfaces that can be switched off; chat cannot. */
 const OPTIONAL: SessionKind[] = ['report', 'slides', 'image', 'av']
 
 const NOTE: Partial<Record<SessionKind, string>> = {

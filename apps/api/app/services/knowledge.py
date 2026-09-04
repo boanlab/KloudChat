@@ -1,21 +1,8 @@
-"""Lexical retrieval over an agent's own documents.
+"""Lexical retrieval over an agent's own documents, used by the `search_knowledge` tool.
 
-Chunk, score against the question, return the few that matter. Reached through
-the `search_knowledge` tool, so retrieval happens when the model asks for it
-rather than on every turn. Distinct from project knowledge, which is injected
-whole inside a character budget.
-
-Scoring is term containment plus character bigrams. The bigrams carry Korean,
-where whitespace tokens include particles ("보안을"/"보안이"/"보안은" are three
-tokens and one word).
-
-The limit: this matches *words*, so 접근 통제 stays hidden from "access
-control". Meaning is `index_client`'s job — a vector index in the model stack —
-and `merge()` combines the two rankings.
-
-This half is the floor and runs with no backend. The index is across a network
-boundary and may be down or absent; an agent reporting an empty shelf while its
-documents sit readable in the database would be wrong about itself.
+Scoring is term containment plus character bigrams (bigrams carry Korean, where
+whitespace tokens include particles). Runs with no backend; `merge()` combines
+this ranking with the vector index's.
 """
 
 from __future__ import annotations
@@ -23,13 +10,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-#: Characters per chunk. Long enough that a passage answers something on its
-#: own, short enough that several fit in a tool result.
+#: Characters per chunk.
 _CHUNK = 900
-#: How much each chunk repeats of the previous one, so a sentence split across
-#: the boundary is still whole somewhere.
+#: Characters each chunk repeats of the previous one.
 _OVERLAP = 150
-#: Terms shorter than this match everything and rank nothing.
+#: Terms shorter than this match everything.
 _MIN_TERM = 2
 
 
@@ -38,7 +23,7 @@ class Passage:
     """One retrieved chunk, with enough to cite it."""
 
     document: str
-    #: 1-based, so "3번째 조각" means something to a person reading the trace.
+    #: 1-based.
     index: int
     text: str
     score: float
@@ -46,10 +31,7 @@ class Passage:
 
 
 def chunk(text: str) -> list[str]:
-    """Overlapping windows ending at a paragraph or sentence break where near.
-
-    Hard cut when a document has neither — extracted tables, HWP text.
-    """
+    """Overlapping windows, cut at a paragraph or sentence break where one is near."""
     body = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
     if not body:
         return []
@@ -60,7 +42,7 @@ def chunk(text: str) -> list[str]:
         if end < len(body):
             window = body[start:end]
             cut = max(window.rfind("\n\n"), window.rfind(". "), window.rfind("다.\n"))
-            # Back half only: a break at character 20 yields a heading alone.
+            # Back half only, so a heading alone never becomes a chunk.
             if cut > _CHUNK // 2:
                 end = start + cut
         piece = body[start:end].strip()
@@ -78,23 +60,20 @@ def _terms(text: str) -> set[str]:
 
 
 def _bigrams(text: str) -> set[str]:
-    """Character bigrams over letters only — particle-insensitive Korean match."""
+    """Character bigrams over letters only."""
     letters = re.sub(r"[^0-9a-z가-힣]+", "", text.lower())
     return {letters[i : i + 2] for i in range(len(letters) - 1)}
 
 
 def _flatten(text: str) -> str:
-    """Letters and digits only, lowercased — the surface a term is sought in."""
+    """Letters and digits only, lowercased."""
     return re.sub(r"[^0-9a-z가-힣]+", "", text.lower())
 
 
 def score(query: str, passage: str) -> float:
-    """0–1. Term containment and bigram overlap, measured against the query.
+    """0–1: term containment and bigram overlap, measured against the query.
 
-    Against the query, not symmetrically: length is not evidence either way.
-
-    Containment, not token equality. Korean glues grammar onto words — "교체한다"
-    holds no token "교체" — so equality scores a matching passage at zero.
+    Containment rather than token equality, because Korean particles attach to words.
     """
     q_terms, q_grams = _terms(query), _bigrams(query)
     if not q_terms and not q_grams:
@@ -104,11 +83,10 @@ def score(query: str, passage: str) -> float:
         sum(1 for term in q_terms if _flatten(term) in flat) / len(q_terms) if q_terms else 0.0
     )
     gram_hit = len(q_grams & _bigrams(passage)) / len(q_grams) if q_grams else 0.0
-    # Terms weigh more: a word match beats bigrams two Korean words share.
     return round(0.65 * term_hit + 0.35 * gram_hit, 4)
 
 
-#: Floor. Below it a passage shares almost nothing with the question.
+#: Minimum score for a passage to be returned.
 _FLOOR = 0.12
 
 
@@ -118,10 +96,7 @@ def search(
     *,
     limit: int = 4,
 ) -> list[Passage]:
-    """Best passages across `(name, text, source_url)` documents.
-
-    Two per document at most, so one long file cannot crowd out a short one.
-    """
+    """Best passages across `(name, text, source_url)` documents, at most two per document."""
     scored: list[Passage] = []
     for name, text, url in documents:
         pieces = chunk(text)
@@ -144,9 +119,7 @@ def search(
     return scored[:limit]
 
 
-#: Shelf size below which the whole thing is returned unranked. Ranking a small
-#: corpus is where a lexical scorer misses: vocabulary mismatch reads as silence
-#: about a document the person can see in the list.
+#: Total characters below which every document is returned whole, unranked.
 _WHOLE_SHELF = 12_000
 
 
@@ -156,11 +129,7 @@ def gather(
     *,
     limit: int = 4,
 ) -> tuple[list[Passage], bool]:
-    """`(passages, ranked)` — whole shelf if small, best parts if not.
-
-    `ranked` lets the caller distinguish "read all 3 documents" from "found 4
-    passages"; only the second can have missed something.
-    """
+    """`(passages, ranked)`: whole shelf if small, best passages otherwise."""
     total = sum(len(text) for _, text, _ in documents)
     if total <= _WHOLE_SHELF:
         return [
@@ -172,7 +141,7 @@ def gather(
 
 
 def render(passages: list[Passage]) -> str:
-    """Tool output, cited by document so the model can attribute."""
+    """Tool output, cited by document."""
     if not passages:
         return ""
     return "\n\n".join(
@@ -183,19 +152,12 @@ def render(passages: list[Passage]) -> str:
     )
 
 
-#: Vector share of the merged score. Weighted towards meaning, but not far
-#: enough to bury a literal match — exact article numbers and figures come back
-#: from the lexical side alone.
+#: Vector share of the merged score.
 _VECTOR_WEIGHT = 0.6
 
 
 def merge(vector: list[dict], lexical: list[Passage], *, limit: int = 4) -> list[Passage]:
-    """One ranked list from both retrievers.
-
-    Matched on `(document, index)`: a chunk both sides found scores the sum.
-    The two scales are uncalibrated against each other, so the ranking is the
-    output and the absolute number is not.
-    """
+    """One ranked list from both retrievers, matched on `(document, index)`."""
     merged: dict[tuple[str, int], Passage] = {}
     for row in vector:
         key = (str(row.get("document") or ""), int(row.get("index") or 0))

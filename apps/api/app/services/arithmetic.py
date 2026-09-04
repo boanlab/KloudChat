@@ -1,10 +1,5 @@
-"""The document's own sums, checked.
-
-A reviewer model reading a decision report flagged 「3,540만 원과 2,232만 원의
-차액이 1,308만 원이라는 계산이 일치하지 않는다」 as a P1 — and 3,540 − 2,232
-is 1,308. A model is the wrong tool for that check and this is the right one:
-every equation the writer spelled out (`62만 원 × 36개월 = 2,232만 원`) is
-parsed and recomputed, and only the ones that do not hold are reported.
+"""Recomputes spelled-out equations (`62만 원 × 36개월 = 2,232만 원`) and reports
+the ones that do not hold.
 """
 
 from __future__ import annotations
@@ -40,12 +35,10 @@ def _compute(a: float, op: str, b: float) -> float | None:
 
 
 def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
-    """Every spelled-out equation in `text` that does not hold, as findings.
+    """Findings for every equation in `text` that does not hold within 1%.
 
-    Tolerance is one percent, because 「2,400만 원 ÷ 744만 원 ≈ 3.2년」 is
-    correct at one decimal and 3.2258 is not what anybody writes. A quantity on
-    the right in a different scale from the left — 「62만 원 × 36 = 2,232만
-    원」 — is compared in absolute terms, so scale words are read, not matched.
+    Scale words (만, 억) are applied before comparing, so both sides are
+    compared in absolute terms.
     """
     out: list[dict[str, str]] = []
     for m in _EQUATION.finditer(text):
@@ -55,9 +48,8 @@ def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
         got = _compute(a, m.group(3), b)
         if got is None:
             continue
-        # A left side with no scale word beside a right side with one is the
-        # writer dropping 만 from the operands (「2,400 + 1,140 = 3,540만 원」):
-        # read the operands in the answer's scale before judging.
+        # Unscaled operands beside a scaled answer (「2,400 + 1,140 = 3,540만 원」):
+        # read the operands in the answer's scale.
         if m.group(8) and not m.group(2) and not m.group(5):
             got = got * _SCALE[m.group(8)]
         if abs(got - c) > max(abs(c), 1.0) * 0.01:

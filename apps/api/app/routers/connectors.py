@@ -1,8 +1,4 @@
-"""MCP connectors: install from a catalogue, sync tools, toggle per tool.
-
-Installing makes a server's tools reachable from chat. Syncing asks the server
-what it exposes rather than trusting a hardcoded list.
-"""
+"""MCP connectors: install from a catalogue, sync tools from the server, toggle per tool."""
 
 from __future__ import annotations
 
@@ -68,8 +64,7 @@ async def get_catalog(user: CurrentUser, db: DbSession):
             "kinds": entry.get("kinds", ["chat"]),
             "official": True,
             "installed": entry["slug"] in installed,
-            # What must be supplied before the server can start. Labels and
-            # hints travel with it, so the dialog needs no per-server code.
+            # Credentials the install dialog must collect, with their labels.
             "requiredEnv": [
                 {
                     "key": field["key"],
@@ -112,7 +107,6 @@ async def install(
         if not supplied.get(field["key"], "").strip()
     ]
     if missing:
-        # Without the credential the server would fail on every call.
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"missing_env:{','.join(missing)}",
@@ -134,8 +128,7 @@ async def install(
         category=entry["category"],
         transport=Transport(entry["transport"]),
         endpoint=entry["endpoint"],
-        # Catalogue defaults first: a supplied credential wins over a
-        # placeholder of the same name.
+        # A supplied credential wins over a catalogue placeholder of the same name.
         env={**(entry.get("env") or {}), **supplied},
         auth_type=entry.get("auth", "none"),
         kinds=entry.get("kinds", ["chat"]),
@@ -144,8 +137,7 @@ async def install(
     db.add(connector)
     await db.commit()
     await db.refresh(connector)
-    # Best-effort: an unreachable server is still installed, with the error on
-    # the row.
+    # Best-effort: an unreachable server is still installed, with the error on the row.
     await _sync(db, user, connector)
     return await _out(db, connector)
 
@@ -173,11 +165,9 @@ async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
 
 
 async def _sync(db: DbSession, user: User, connector: Connector) -> None:
-    """Asks the server for its tools and reconciles the stored list.
+    """Reconciles stored tools with what the server exposes.
 
-    Disappeared tools are removed, new ones added with their read/write default.
-    Existing `enabled` flags survive: a sync must not re-grant a revoked
-    permission.
+    Existing `enabled` flags survive: a sync must not re-grant a revoked permission.
     """
     env = mcp.substitute(
         await catalog.resolve_env(connector.env), user_id=user.id, user_email=user.email
@@ -201,7 +191,6 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
         if not name:
             continue
         seen.add(name)
-        # Pessimistic heuristic: a name suggesting mutation counts as a write.
         read_only = not _looks_like_write(name)
         row = existing.get(name)
         if row is None:
@@ -212,7 +201,7 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
                     description=spec.get("description") or "",
                     parameters=spec.get("inputSchema") or {"type": "object", "properties": {}},
                     read_only=read_only,
-                    # Write tools start off. Enabling one is an explicit act.
+                    # Write tools start off.
                     enabled=read_only,
                 )
             )
@@ -270,9 +259,7 @@ async def sync(connector_id: str, user: CurrentUser, db: DbSession):
 async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
     patch_fields = payload.model_dump(exclude_unset=True)
-    # Merged, not replaced: a rotation touches one field, and a whole-map write
-    # would drop the catalogue defaults beside it — which
-    # are what tell the server where to look.
+    # Merged, not replaced, so a one-field rotation keeps the catalogue defaults.
     if (env := patch_fields.pop("env", None)) is not None:
         connector.env = {**(connector.env or {}), **env}
     for field, value in patch_fields.items():
@@ -306,7 +293,7 @@ async def toggle_tool(
 
 @router.post("/delete")
 async def uninstall_many(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Several at once. Credentials go with the rows they belong to."""
+    """Bulk uninstall."""
     if not payload.ids:
         return {"deleted": 0}
     rows = (

@@ -1,37 +1,14 @@
-"""`.hwpx` 를 편집할 수 있는 문서로 읽어들이기.
+"""Reads `.hwpx` into an editable document: title, headings, and HTML bodies with tables.
 
-`files._from_hwpx` reads the same archive and answers a different question. It
-produces the flat text a model is given as reference material, where losing the
-headings and turning a table into tab-separated lines costs nothing: the model
-reads prose either way.
+`files._from_hwpx` reads the same archive as flat text for a model. OWPML is
+a zip of XML: `Contents/section*.xml` holds `<hp:p>` paragraphs,
+`Contents/header.xml` the styles they reference by id. Namespaces vary by
+producer, so everything matches on local names.
 
-This one has to keep the shape, because what it produces is handed to a person
-to edit. A 계획서 that arrives as one wall of paragraphs has lost the thing it
-was — the outline is how anybody finds the part they came to change — and a
-table flattened into lines cannot be edited back into a table.
-
-## What OWPML actually gives us
-
-`.hwpx` is a zip of XML. `Contents/section*.xml` holds the body as `<hp:p>`
-paragraphs; `Contents/header.xml` holds the styles and character properties
-they point at by id. Namespaces vary by producer version, so everything here
-matches on local names.
-
-Headings are the hard part and there is no single flag for one. Three signals,
-in order of how much they can be trusted:
-
-1. **The style name.** `개요 1`..`개요 10` are Hangul Word Processor's own
-   outline styles and mean exactly what they say. `제목`/`Heading`/`Title` are
-   near enough.
-2. **Numbering in the text.** `2-3.`, `가.`, `1)` at the head of a short
-   paragraph is how Korean official documents mark their levels, and it is
-   often the only mark a document has.
-3. **Type size.** A paragraph set larger than the body's commonest size is a
-   heading, and the sizes rank into levels.
-
-The real 2027년 AI중심대학 계획서 this was built against uses none of the
-outline styles — its headings are `+제목` and `*□-볼드`, names its author
-invented — which is why one signal was never going to be enough.
+Heading signals, in order of trust: `hh:heading` OUTLINE marks and `개요 N` /
+제목 / Heading style names; type size above the body's commonest size; and
+official-document numbering (`2-3.`, `가.`, `1)`) to break ties between
+headings of one size.
 """
 
 from __future__ import annotations
@@ -48,16 +25,13 @@ from app.services import richtext
 
 log = logging.getLogger(__name__)
 
-#: HWPUNIT is 1/100 pt, which is what `hh:charPr height` is in.
+#: `hh:charPr height` is in HWPUNIT, 1/100 pt.
 _PT = 100.0
 
-#: Style names that say what they are without being read.
 _OUTLINE = re.compile(r"^(?:개요|Outline)\s*(\d+)", re.I)
 _HEADING_NAME = re.compile(r"제목|개요|heading|title", re.I)
 
-#: How Korean official documents number their levels, outermost first. A
-#: paragraph opening with one of these is a heading at that depth — 2-3. above
-#: 가. above 1) — which is the only marking most of them carry.
+#: Official-document level numbering, outermost first.
 _NUMBERING = (
     re.compile(r"^\s*(?:제\s*)?\d+\s*장\b"),
     re.compile(r"^\s*\d+(?:[-.]\d+)+\.?\s"),
@@ -66,11 +40,10 @@ _NUMBERING = (
     re.compile(r"^\s*[가나다라마바사아자차카타파하]\s*\)\s"),
 )
 
-#: A line that opens with one of these is an item in a list, not a paragraph.
+#: Leading bullet marks that make a paragraph a list item.
 _BULLET = re.compile(r"^\s*[□■○●▪▫◦·•\-–]\s*")
 
-#: Long enough that it is prose whatever it is set in. Guards the size and
-#: numbering signals, which would otherwise promote a long numbered sentence.
+#: Longer text is prose whatever its size or numbering.
 _HEADING_MAX = 60
 
 
@@ -82,17 +55,13 @@ class Block:
     text: str = ""
     size: float = 0.0
     style: str = ""
-    #: `hh:heading` on this paragraph's properties — OWPML's own answer to
-    #: what kind of paragraph this is. `OUTLINE` with a level is a heading and
-    #: outranks every guess below; `BULLET` and `NUMBER` are list items, which
-    #: is the one thing no amount of reading the text can tell you: the mark in
-    #: front of them is drawn by the word processor and is not in the text.
+    #: `hh:heading type`: OUTLINE (heading, outranks every guess), BULLET or
+    #: NUMBER (list item; the mark is drawn by the word processor, not in the text).
     mark: str = ""
     mark_level: int = 0
-    #: `hh:align horizontal` is CENTER. A centred heading at the very top of a
-    #: file is the document's title, not its first section — see `read`.
+    #: `hh:align horizontal` is CENTER; see `_title_index`.
     centred: bool = False
-    #: Rows of cells, each cell already HTML-escaped. Tables only.
+    #: Tables only.
     grid: richtext.Grid | None = None
 
 
@@ -116,11 +85,7 @@ def _local(tag: str) -> str:
 
 
 def _text_of(node: ET.Element) -> str:
-    """Every `<hp:t>` run under this node, in order.
-
-    `itertext` would also pick up the contents of a nested table, which belongs
-    to the table and not to the paragraph carrying it.
-    """
+    """Every `<hp:t>` run under this node, in order."""
     out: list[str] = []
     for element in node.iter():
         if _local(element.tag) == "t":
@@ -142,12 +107,7 @@ def _centred_shapes(header: ET.Element) -> set[str]:
 
 
 def _paragraph_kinds(header: ET.Element) -> dict[str, tuple[str, int]]:
-    """`paraPrIDRef` → (heading type, level).
-
-    The authoritative signal, where a document uses it. This one does for its
-    lists and not for its headings, which is exactly why both this and the type
-    ranking have to be here.
-    """
+    """`paraPrIDRef` → (`hh:heading` type, level)."""
     out: dict[str, tuple[str, int]] = {}
     for element in header.iter():
         if _local(element.tag) != "paraPr":
@@ -186,30 +146,10 @@ def _styles(header: ET.Element) -> tuple[dict[str, str], dict[str, float]]:
 
 
 def _cells(table: ET.Element) -> richtext.Grid:
-    """A table as a grid, with every cell where the document says it is.
+    """A table as a grid of anchor cells with spans.
 
-    OWPML puts the answer on the cell: `hp:cellAddr` carries `colAddr`/`rowAddr`
-    and `hp:cellSpan` carries how far it reaches. Reading the cells in document
-    order and appending them in turn — which is what this did — is right only
-    for a table with no merges in it, and wrong in a way that is hard to see: a
-    계열 cell merged down four rows means the four rows under it hold one cell
-    fewer, so 법과대학 landed in the 계열 column and every value on those rows
-    was one column to the left of where it belonged. The table still looked
-    like a table. It was just not this table.
-
-    Addresses are used where they are given and the running position where they
-    are not — a producer is not obliged to write them, and a reader that drops
-    every cell of a table without them is worse than one that guesses in
-    document order, which is what the guess amounts to.
-
-    What a merge covers is left empty rather than filled with a repeat: the
-    value belongs to the row the document put it on, and copying it down would
-    state four times something stated once.
-
-    The spans come back out with the cells. Flattened away here they could not
-    be put back by anything downstream, and a real 재난 상황 보고서 opened for
-    editing has 123 merged cells in it — every one of which used to become a
-    filled cell followed by empty ones the moment it was exported.
+    Cells are placed by `hp:cellAddr` / `hp:cellSpan` when present, else by
+    running position; squares covered by a merge are left empty.
     """
     grid: dict[tuple[int, int], richtext.Cell] = {}
     taken: set[tuple[int, int]] = set()
@@ -228,15 +168,10 @@ def _cells(table: ET.Element) -> richtext.Grid:
                 down = max(1, int(span.get("rowSpan") or 1)) if span is not None else 1
             except ValueError:
                 at_row, at_col, across, down = row_index, column, 1, 1
-            # Without an address, step over what a merge from above already
-            # holds — otherwise the guess lands on an occupied square.
+            # Step over squares a merge from above already holds.
             while (at_row, at_col) in taken:
                 at_col += 1
-            # Per paragraph, not per cell: a cell holding two lines ran them
-            # together into 실습 중심 교육AI이론, which is a word that does not
-            # exist and a sentence nobody can edit back apart. Kept as two
-            # lines rather than joined with a space — the writer put the break
-            # there, and only the cell can hold it.
+            # One line per paragraph; the cell keeps the writer's line breaks.
             lines = [
                 " ".join(_text_of(para).split()) for para in cell.iter() if _local(para.tag) == "p"
             ]
@@ -252,8 +187,7 @@ def _cells(table: ET.Element) -> richtext.Grid:
     if not grid:
         return richtext.Grid()
     height = max(r for r, _ in grid) + 1
-    #: Anchors only, in reading order — the shape `richtext.Grid` describes and
-    #: every exporter's own table model wants.
+    # Anchors only, in reading order.
     rows = [[grid[(r, c)] for c in range(width) if (r, c) in grid] for r in range(height)]
     return richtext.Grid(rows=[row for row in rows if any(c.text for c in row)])
 
@@ -266,13 +200,7 @@ def _walk(
     centred: set[str],
     out: list[Block],
 ) -> None:
-    """Paragraphs in document order, without descending into tables.
-
-    `iter()` walks everything, and a table's cells are `<hp:p>` like any other
-    paragraph — so a four-by-four grid arrived as sixteen one-word paragraphs
-    between the sentences around it, and 구분 / 기존 / 개선 was read as three
-    headings. A table is a block; what is inside it belongs to that block.
-    """
+    """Blocks in document order; a table is one block and its cell paragraphs are not walked."""
     for child in node:
         tag = _local(child.tag)
         if tag == "tbl":
@@ -281,8 +209,7 @@ def _walk(
                 out.append(Block(kind="table", grid=grid))
             continue
         if tag == "p":
-            # A paragraph that carries a table has no text of its own worth
-            # keeping — the table is what it is for.
+            # A paragraph carrying a table contributes only the table.
             if any(_local(e.tag) == "tbl" for e in child.iter()):
                 _walk(child, names, sizes, kinds, centred, out)
                 continue
@@ -336,12 +263,7 @@ def _blocks(archive: zipfile.ZipFile) -> tuple[list[Block], dict[str, float]]:
 
 
 def _body_size(blocks: list[Block]) -> float:
-    """The size most of the words are set in — the baseline headings stand above.
-
-    By character count rather than by paragraph count: a document with forty
-    one-line table captions and twenty real paragraphs has its body in the
-    paragraphs.
-    """
+    """The point size carrying the most characters; the baseline headings stand above."""
     weight: dict[float, int] = {}
     for block in blocks:
         if block.kind == "text" and block.size:
@@ -352,15 +274,8 @@ def _body_size(blocks: list[Block]) -> float:
 
 
 def _is_heading(block: Block, body: float) -> bool:
-    """Whether this paragraph is a heading at all. Level is decided after.
-
-    Two signals, and deliberately not the numbering: `1) 항목` at body size is
-    an item in a list, and this document's own bullets are numbered that way.
-    Numbering only breaks ties between headings of the same size, below.
-
-    The size bar is a ratio rather than a difference. In a 9pt document the
-    headings are 13 and 14 and the sub-bullets are 11 and 12; `body + 1.5`
-    swept all four in and turned half the prose into an outline.
+    """Whether this paragraph is a heading, by mark, style name, or size ratio; numbering is not a
+    signal here.
     """
     if block.kind != "text":
         return False
@@ -368,8 +283,6 @@ def _is_heading(block: Block, body: float) -> bool:
         return True
     if len(block.text) > _HEADING_MAX:
         return False
-    # A paragraph the document itself calls a list item is not a heading, no
-    # matter how it is set.
     if block.mark in ("BULLET", "NUMBER"):
         return False
     if _OUTLINE.match(block.style) or _HEADING_NAME.search(block.style):
@@ -378,12 +291,8 @@ def _is_heading(block: Block, body: float) -> bool:
 
 
 def _levels(blocks: list[Block], body: float) -> dict[int, int]:
-    """Heading level per block index, by the sizes the document actually used.
-
-    Ranked rather than assigned from a table of point sizes: one author's 제목
-    is 14pt and another's is 20pt, and what makes a heading a *sub*-heading is
-    that it is smaller than the one above it in the same document. `개요 N`
-    says its own level and outranks the ranking.
+    """Heading level (1..3) per block index: OUTLINE marks and `개요 N` say their own
+    level; the rest rank by size.
     """
     marks = [i for i, b in enumerate(blocks) if _is_heading(b, body)]
     ranks = sorted({blocks[i].size for i in marks}, reverse=True)
@@ -396,8 +305,7 @@ def _levels(blocks: list[Block], body: float) -> dict[int, int]:
             out[i] = min(3, int(match.group(1)))
             continue
         depth = ranks.index(blocks[i].size) + 1 if blocks[i].size in ranks else 1
-        # Same size, different depth: 가. under 2-3. is how these documents
-        # mark a sub-heading without changing the type.
+        # Numbering deepens headings of the same size (가. under 2-3.).
         if depth < 3:
             for offset, pattern in enumerate(_NUMBERING):
                 if pattern.match(blocks[i].text):
@@ -448,31 +356,14 @@ def _html(blocks: list[Block]) -> str:
     return "".join(out)
 
 
-#: `<table>` … `</table>`, and one `<tr>` inside it.
 _LIST = re.compile(r"<ul>(.*?)</ul>", re.S)
 _ITEM = re.compile(r"<li>(.*?)</li>", re.S)
 _PARA = re.compile(r"<p>(.*?)</p>", re.S)
 
 
 def shape(parts: list[Section]) -> dict[str, Any]:
-    """What a document is made of, in the terms a round trip has to keep.
-
-    Written for comparing a document with itself after it has been through a
-    file: read the original, write it back out, read that, and the two shapes
-    have to match. Three times today a real defect — a column shifted one place
-    left under a vertical merge — survived being looked at, because a table
-    with everything one column over still looks like a table. Compared as data
-    it is one line of output.
-
-    Cells carry their spans. Without them the comparison was blind to exactly
-    the thing a round trip loses first — a merged header opened out into one
-    filled cell and three empty ones is a different table that reads as the
-    same one — and a check that cannot see a defect is a check that reports the
-    defect fixed.
-
-    Deliberately not a hash. What a reader needs from a failed comparison is
-    which table and which cell, so this is the structure itself and the caller
-    subtracts.
+    """Structural summary (headings, tables with spans, lists, paragraphs) for round-trip
+    comparison.
     """
     tables: list[list[list[tuple[str, int, int]]]] = []
     lists: list[list[str]] = []
@@ -492,11 +383,7 @@ def shape(parts: list[Section]) -> dict[str, Any]:
 
 
 def differences(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """Where two shapes disagree, said in the terms somebody can act on.
-
-    Empty means the document survived the trip. Anything else names the table,
-    the row and the column — not "the shapes differ".
-    """
+    """Human-readable differences between two `shape` results; empty when they match."""
     out: list[str] = []
     if before["headings"] != after["headings"]:
         lost = [h for h in before["headings"] if h not in after["headings"]]
@@ -528,22 +415,11 @@ def differences(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
 
 
 def _title_index(blocks: list[Block], body: float) -> int | None:
-    """Which block, if any, is the document's title rather than a section.
+    """Index of the title block: the first block, when it is a centred heading followed by another
+    heading.
 
-    A file we wrote opens with its title centred and set large, and reading it
-    back turned that into a heading — so a document exported, reopened and
-    exported again grew a second copy of its own title, and a third, one per
-    trip. The user who edits in 한글 and comes back is exactly the person who
-    makes that trip repeatedly.
-
-    Three conditions together, because each alone is wrong. Centred: a section
-    heading in these documents is left-aligned. First: a centred heading in the
-    middle of a file is a heading someone centred. And followed by another
-    heading: a one-heading document has a section, not a title and no body.
-
-    Found before the levels are ranked, not after. Ranking with the title still
-    in the list makes it the largest heading and pushes every real one down a
-    step, which is how a 1급 절 came back a 2급 절 on the first trip.
+    Must run before `_levels`, or the title becomes the largest heading and
+    pushes every real one down a level.
     """
     first = next((i for i, b in enumerate(blocks) if b.text or b.kind != "text"), None)
     if first is None or not _is_heading(blocks[first], body):
@@ -556,12 +432,8 @@ def _title_index(blocks: list[Block], body: float) -> int | None:
 
 
 def read(data: bytes) -> Document:
-    """The document as a title and the headings with editable bodies under it.
-
-    Never raises for a shape it did not expect: a file with no headings at all
-    comes back as one section holding everything, which is still editable and
-    still exports. Raising there would refuse a document over the absence of a
-    convention its author never used.
+    """Parses the file into a `Document`; a file with no headings becomes one section. Raises
+    `RuntimeError` for a bad archive.
     """
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
@@ -595,13 +467,11 @@ def read(data: bytes) -> Document:
     if heading or current:
         out.append(Section(heading=heading, level=level, html=_html(current)))
 
-    # Everything before the first heading is the document's opening, not a
-    # section called nothing.
     if out and not out[0].heading:
         out[0] = Section(heading="개요", level=1, html=out[0].html)
     return Document(title=title, sections=out)
 
 
 def sections(data: bytes) -> list[Section]:
-    """`read`, for the callers that only want the body."""
+    """`read(data).sections`."""
     return read(data).sections

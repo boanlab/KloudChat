@@ -15,15 +15,19 @@ import {
 import { kindMeta } from '@/lib/kinds'
 import { errorMessage } from '@/lib/api'
 import { madeLine, relativeTime } from '@/lib/utils'
+import { useStore } from '@/store/useStore'
+import { PageBody } from '@/components/layout/AppShell'
+import { TopBar } from '@/components/layout/TopBar'
+import { useT } from '@/lib/useT'
 
-/** The local calendar day a timestamp falls on, as `YYYY-MM-DD`. */
+/** Local calendar day of a timestamp, as `YYYY-M-D`. */
 function dayOf(iso: string | null | undefined): string {
   const d = iso ? new Date(iso) : null
   if (!d || Number.isNaN(d.getTime())) return ''
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
 }
 
-/** 오늘 · 어제 · the date itself. What somebody actually remembers. */
+/** 오늘, 어제, or the full date. */
 function dayLabel(iso: string | null | undefined, t: (s: string) => string): string {
   const d = iso ? new Date(iso) : null
   if (!d || Number.isNaN(d.getTime())) return t('날짜 없음')
@@ -35,18 +39,8 @@ function dayLabel(iso: string | null | undefined, t: (s: string) => string): str
   if (same(d, yesterday)) return t('어제')
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
 }
-import { useStore } from '@/store/useStore'
-import { PageBody } from '@/components/layout/AppShell'
-import { TopBar } from '@/components/layout/TopBar'
-import { useT } from '@/lib/useT'
 
-/**
- * The full conversation list, and the place to tidy it. The sidebar deletes one
- * at a time; this clears a pile in one go.
- *
- * Nothing here is reversible, so the scope of an action is visible before the
- * button is pressed.
- */
+/** Full conversation list with bulk delete. */
 export function HistoryPage() {
   const t = useT()
   const { sessions, deleteSessions, sessionsLoading, sessionsFailed, loadSessions } = useStore()
@@ -54,16 +48,11 @@ export function HistoryPage() {
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirmAll, setConfirmAll] = useState(false)
-  // 모든 대화 삭제 has always asked first; 선택 삭제 went straight to the
-  // request. Same finality, same question.
   const [confirmPicked, setConfirmPicked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Off by default. A conversation is a record of asking; an artifact is the
-  // thing that came out of it, and the gallery presents it as one — it may sit
-  // in a project or behind a shared link. Tidying the first should not be a
-  // silent way of destroying the second, so it is a decision made here.
+  // Off by default: deleting conversations must not silently delete artifacts.
   const [alsoArtifacts, setAlsoArtifacts] = useState(false)
 
   const shown = useMemo(() => {
@@ -105,8 +94,6 @@ export function HistoryPage() {
       setConfirmAll(false)
       setDone(count)
     } catch (err) {
-      // Said, not swallowed. A dialog that closes on failure and a dialog that
-      // does nothing on failure are equally unreadable from the outside.
       setError(errorMessage(err, t('삭제하지 못했습니다.')))
     } finally {
       setBusy(false)
@@ -142,8 +129,7 @@ export function HistoryPage() {
           onClick={() =>
             setPicked((prev) => {
               const next = new Set(prev)
-              // Scoped to what is on screen: a "select all" reaching past an
-              // applied filter deletes things nobody saw.
+              // Scoped to the filtered list.
               if (allShownPicked) shown.forEach((s) => next.delete(s.id))
               else shown.forEach((s) => next.add(s.id))
               return next
@@ -186,13 +172,7 @@ export function HistoryPage() {
           shown.map((s, i) => {
             const meta = kindMeta[s.kind]
             const made = madeLine(s.made, t)
-            // A heading wherever the day changes.
-            //
-            // Thirty-one rows all reading "14시간 전" is a list nobody can
-            // search by memory: somebody looking for what they wrote yesterday
-            // has a relative age on every row and a date on none. The rows are
-            // already newest-first, so the day only has to be announced when it
-            // turns over.
+            // Rows are newest-first; a day heading appears where the day changes.
             const day = dayOf(s.updatedAt)
             const first = i === 0 || dayOf(shown[i - 1].updatedAt) !== day
             return (
@@ -203,9 +183,6 @@ export function HistoryPage() {
                   </p>
                 )}
               <Card className="flex items-center gap-3 px-3 py-2.5">
-                {/* 16px 사각형 하나가 전부이던 자리. 지울 대화를 여러 개 고르는
-                    화면이라 정확히 누르는 일이 계속 반복되고, 그때마다 옆의
-                    카드가 열렸다. 상자는 그대로 두고 누르는 영역만 넓힌다. */}
                 <label className="-m-1.5 grid size-9 shrink-0 cursor-pointer place-items-center">
                   <input
                     type="checkbox"
@@ -222,9 +199,6 @@ export function HistoryPage() {
                   <span className="block truncate text-base font-medium">
                     {s.title || t('제목 없는 대화')}
                   </span>
-                  {/* 여기서 고르는 것은 지울 대화다. 언제였는지만으로는 같은
-                      문장으로 만든 영상 일곱 개를 구별할 수 없어서, 무엇이
-                      나왔는지를 같은 줄에 붙인다. 줄 수는 그대로 둔다. */}
                   <span className="block truncate text-xs text-faint">
                     {relativeTime(s.updatedAt)}
                     {made ? ` · ${made}` : ''}
@@ -258,8 +232,6 @@ export function HistoryPage() {
       >
         <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-          {/* Says what survives as well as what goes. "삭제" that also silently
-              took the reports would be the wrong kind of surprise. */}
           <span>
             {t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')}
           </span>

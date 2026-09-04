@@ -1,14 +1,4 @@
-"""녹음도 읽을 수 있는 자료다.
-
-A meeting does not arrive as somebody re-speaking it into the composer. It
-arrives as a recording — the room's file, an hour of it, made by whoever was
-there. Refusing that and offering a microphone instead asks the one person who
-already sat through the meeting to sit through it again.
-
-The backend that turns speech into text was wired to one button and to nothing
-else, so the capability was in the deployment and out of reach of the job it
-exists for.
-"""
+"""Uploaded recordings are transcribed through the same backend as the microphone."""
 
 from __future__ import annotations
 
@@ -41,8 +31,7 @@ async def test_a_recording_goes_through_the_same_backend_the_microphone_uses(mon
 
     text = await file_service.text_of("주간회의.m4a", "audio/mp4", b"\x00" * 2048)
     assert text == "회의를 시작하겠습니다."
-    # The file's own name travels: the backend uses the extension to decide how
-    # to read the bytes.
+    # The backend picks the decoder from the filename extension.
     assert seen == {"bytes": 2048, "name": "주간회의.m4a"}
 
 
@@ -76,7 +65,7 @@ async def test_a_recording_too_long_says_so_before_the_call(monkeypatch) -> None
 
 @pytest.mark.anyio
 async def test_with_no_backend_the_message_says_what_to_do(monkeypatch) -> None:
-    """The old message named a limitation. This one names a way out."""
+    """With no transcription backend the error points at the administrator."""
 
     async def available() -> bool:
         return False
@@ -94,7 +83,7 @@ class _Tools:
 
 @pytest.fixture
 def local_and_remote(monkeypatch):
-    """A deployment configured for both, which is the ARM case."""
+    """A deployment with both a local Whisper address and a remote STT model."""
     from app.services import transcribe as t
 
     async def tools_config():
@@ -107,14 +96,7 @@ def local_and_remote(monkeypatch):
 
 @pytest.mark.anyio
 async def test_a_local_whisper_that_cannot_answer_falls_through(local_and_remote, monkeypatch):
-    """vLLM serves Whisper on amd64 and not on aarch64.
-
-    An ARM deployment carrying the same configuration as an x86 one has an
-    `stt` address pointing at something that cannot answer. Treating a
-    configured address as a working one made that a hard failure: the address
-    was set, so the address was used, and every recording came back
-    받아쓰지 못했습니다.
-    """
+    """A configured local Whisper that fails falls through to the remote model."""
     t = local_and_remote
 
     async def local(*_args, **_kwargs) -> str:
@@ -131,7 +113,7 @@ async def test_a_local_whisper_that_cannot_answer_falls_through(local_and_remote
 
 @pytest.mark.anyio
 async def test_a_local_whisper_that_answers_is_the_one_used(local_and_remote, monkeypatch):
-    """Local first, always. The audio stays inside the cluster when it can."""
+    """A local Whisper that answers is used; the audio never leaves the cluster."""
     t = local_and_remote
 
     async def local(*_args, **_kwargs) -> str:
@@ -148,11 +130,7 @@ async def test_a_local_whisper_that_answers_is_the_one_used(local_and_remote, mo
 
 @pytest.mark.anyio
 async def test_without_the_operator_s_leave_the_audio_stays_put(monkeypatch):
-    """An empty `stt_or_model` is the operator saying no, and it still means no.
-
-    Falling through is not a privacy decision made in the code. Setting the
-    model is that decision; leaving it empty is the other one.
-    """
+    """An empty `stt_or_model` means no fall-through: audio never leaves without leave."""
     from app.services import transcribe as t
 
     async def tools_config():
@@ -175,15 +153,7 @@ async def test_without_the_operator_s_leave_the_audio_stays_put(monkeypatch):
 
 @pytest.mark.anyio
 async def test_the_remote_path_resolves_its_address_like_everything_else(monkeypatch):
-    """전사만 환경변수를 직접 읽고 있었다.
-
-    Every other model call takes its address from `settings_store.litellm_config`
-    — the operator's setting first, then one derived from the backend address,
-    then the environment. This one read the raw environment variable, which
-    nothing sets. So a deployment talking to LiteLLM perfectly well had this one
-    path building `/v1/chat/completions` with nothing in front of it and
-    reporting the backend unreachable.
-    """
+    """The remote path takes its address and key from `settings_store.litellm_config`."""
     from app.services import transcribe as t
 
     seen: dict[str, object] = {}
@@ -234,13 +204,7 @@ async def test_with_no_address_at_all_it_says_which_setting_is_missing(monkeypat
 
 @pytest.mark.anyio
 async def test_whisper_hears_which_language_and_is_retried_only_off_the_pair(monkeypatch):
-    """English to the 영어회화 튜터 comes back in English; a wild guess is redone in Korean.
-
-    The language used to be pinned to Korean, so an English sentence was
-    written as Korean-sounding nonsense. Now Whisper hears which one it is,
-    and only a guess outside the pair — the short-clip failure the pin was
-    for — is retried pinned to Korean.
-    """
+    """Whisper detects the language; only a guess outside ko/en is retried pinned to Korean."""
     from app.services import transcribe as t
 
     calls: list[str | None] = []

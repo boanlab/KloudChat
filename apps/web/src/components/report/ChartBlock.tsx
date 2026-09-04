@@ -5,35 +5,20 @@ import { diagramKey } from '@/lib/diagramKey'
 import { rasterise } from '@/lib/mermaid'
 
 /**
- * A `chart` fence in a report, drawn.
- *
- * The same component the deck draws its charts with, because the two surfaces
- * have to agree about what a chart looks like — one accent, one zero floor,
- * one set of gridlines — and the fastest way for them to disagree is to have
- * two of them.
+ * A `chart` fence in a report, drawn with the deck's chart component.
  *
  *     ```chart
  *     bar | 건
  *     분기 | 처리 건수 | 반려 건수
  *     1분기 | 120 | 8
  *     ```
- *
- * Parsed here rather than on the server for the same reason the strip of
- * figures is: this is what a section body carries, and the browser is one of
- * the four readers of it.
  */
 export function ChartBlock({
   source,
   owner,
 }: {
   source: string
-  /**
-   * Which document this chart belongs to, so the picture drawn here can be
-   * kept. `.hwpx` cannot draw a chart — OWPML has an element for one and
-   * writing it blind is how a file stops opening — so it embeds what a reader
-   * has already seen, exactly the way it embeds a mermaid diagram. Absent in
-   * the transcript, where there is nothing to store onto.
-   */
+  /** Document to store the rendered picture on (the `.hwpx` export embeds it); absent in the transcript. */
   owner?: { artifactId: string; sectionId: string; stored?: Record<string, string> }
 }) {
   const chart = parse(source)
@@ -76,14 +61,7 @@ export function ChartBlock({
   )
 }
 
-/**
- * The fence as numbers, or `null`.
- *
- * Kept in step with `report_export._chart_block`, which reads the same text on
- * the way into a file — including the rule that matters: a row with fewer
- * values than there are series is dropped rather than padded. Padding puts a
- * zero on the chart that nobody wrote, and a zero on a chart is a claim.
- */
+/** Parses the fence; mirrors `report_export._chart_block`. Short rows are dropped, never padded. */
 export function parse(source: string): Parameters<typeof SlideChart>[0]['chart'] | null {
   const lines = source
     .split('\n')

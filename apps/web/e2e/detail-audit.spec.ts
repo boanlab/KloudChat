@@ -3,34 +3,14 @@ import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 import { personas } from './personas'
 
-/**
- * A sweep for missing detail, not for missing features.
- *
- * `personas.spec.ts` asks whether a persona *can* do the job. This asks what
- * doing it feels like: whether the control that does it has a name, whether a
- * panel that opened can be closed, whether the thing revealed by hovering
- * exists at all for the persona holding a tablet.
- *
- * Observations are counted per screen; **defects are counted per control**. The
- * sidebar's row menu appears on all twenty-three screens at all three widths,
- * and reporting it seventy times would say the product has seventy problems
- * when it has one. Each defect therefore carries the list of screens it was
- * seen on instead of a copy per screen, and the same holds down a list: one
- * delete button rendered once per row is one defect, not one per row. What
- * counts as the same control is `identity`.
- *
- * It is a discovery tool and never fails the run — a red suite would only make
- * the notes harder to read. Everything goes to `audit/detail-audit.json`.
- */
+/** Detail sweep over every route and viewport: names, tooltips, tap targets, empty states, panels.
+ *  Defects are deduplicated per control (`identity`) and written to `audit/detail-audit.json`; never fails. */
 
 interface Observation {
   rule: string
   /** The control, named the way the persona would point at it. */
   subject: string
-  /**
-   * Which control this is, as opposed to which copy of it — see `identity`.
-   * Absent where the subject already names one thing, as it does for a panel.
-   */
+  /** Which control this is, as opposed to which copy of it (`identity`). */
   key?: string
   where: string
   viewport: string
@@ -73,16 +53,11 @@ const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
   laptop: { width: 1280, height: 800 },
   tablet: { width: 820, height: 1180 },
-  /**
-   * A phone. No persona in `personas.ts` works at this width — but the layout
-   * plainly expects it (`useNarrowLayout`, `sm:` throughout), and a workspace
-   * people sign into with a university account is one they will open on a
-   * phone to check something between classes. Measured rather than assumed.
-   */
+  /** No persona works at this width, but the layout supports it. */
   phone: { width: 390, height: 844 },
 } as const
 
-/** Who works at each width, so a finding can say whose day it spoils. */
+/** Personas per viewport, for the report. */
 const WHO: Record<string, string> = Object.fromEntries(
   (Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]).map((v) => [
     v,
@@ -90,12 +65,7 @@ const WHO: Record<string, string> = Object.fromEntries(
   ]),
 )
 
-/**
- * Every rule that can be decided by looking at one rendered screen.
- *
- * Run inside the page so a screen is one round trip; a per-element Playwright
- * query would turn a 69-screen sweep into an hour.
- */
+/** Every rule decidable from one rendered screen, run in-page so a screen is one round trip. */
 async function auditScreen(page: Page, where: string, viewport: string) {
   return page.evaluate(
     ({ touch, where, viewport }) => {
@@ -118,7 +88,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         return s.visibility !== 'hidden' && s.display !== 'none'
       }
 
-      /** A stable way to say which control this was, across screens. */
+      /** A stable name for a control across screens. */
       const label = (el: Element) => {
         const n = (
           el.getAttribute('aria-label') ||
@@ -130,25 +100,13 @@ async function auditScreen(page: Page, where: string, viewport: string) {
           .replace(/\s+/g, ' ')
           .trim()
         if (n) return n.slice(0, 40)
-        // Nameless: fall back to where it sits, which is the only handle left.
+        // Nameless: fall back to where it sits.
         const region = el.closest('[aria-label]')?.getAttribute('aria-label')
         return `<${el.tagName.toLowerCase()}${region ? ` in ${region}` : ''}>`
       }
 
-      /**
-       * Which control this is, as opposed to which copy of it.
-       *
-       * The label of a control inside a list row is the row's own name, so the
-       * one delete button in a list of thirty designs arrives under thirty
-       * different labels and is filed as thirty defects — the same miscount the
-       * per-screen dedupe already exists to prevent, one level down, and one
-       * that makes the headline number a function of how much seed data the
-       * database happens to hold. What the row shares is what the JSX wrote:
-       * the tag and the class list, plus the icon, which is the only thing
-       * telling the three identically styled ghost buttons of a reorder row
-       * apart. Two genuinely different controls that match on all three would
-       * be merged, and they would also take the same one-line fix.
-       */
+      /** Which control this is, as opposed to which copy: tag, class list and icon class.
+       *  A per-row control carries its row's name as label, so the label cannot be the key. */
       const identity = (el: Element) =>
         [
           el.tagName.toLowerCase(),
@@ -170,22 +128,18 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         const who = identity(el)
         const isInput = /^(input|textarea|select)$/i.test(el.tagName)
 
-        // R1 — a control with no name is one a screen reader cannot announce.
-        // For inputs the bar is a real label, not the placeholder: placeholders
-        // vanish the moment you type into the field they were explaining.
+        // R1: every control has a name; for inputs a real label, not the placeholder.
         const named = isInput
           ? !!(aria || el.getAttribute('id') && document.querySelector(`label[for="${el.getAttribute('id')}"]`) || el.closest('label'))
           : !!(text || aria)
         add('name', named, id, '읽어 주지 못하고, 무엇을 넣는 칸인지 알 수 없다', who)
 
-        // R2 — icon-only controls need a tooltip. An icon is a guess until
-        // something spells it out, and hovering is where people look first.
+        // R2: icon-only controls need a tooltip.
         if (!text && !!el.querySelector('svg')) {
           add('tooltip', !!title, id, '아이콘만 보고 뜻을 짐작해야 한다', who)
         }
 
-        // R3 — revealed on hover. There is no hover on a tablet, so for the
-        // persona holding one the control does not exist at all.
+        // R3: hover-revealed controls do not exist on touch.
         if (touch) {
           let hidden = false
           for (let cur: Element | null = el, i = 0; cur && i < 4; cur = cur.parentElement, i++) {
@@ -194,9 +148,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
           }
           add('touch-reach', !hidden, id, '터치 기기에서는 존재하지 않는 버튼이다', who)
 
-          // R4 — a target smaller than a fingertip.
-          // An input wrapped in a label is as big as the label — that is what
-          // the finger lands on, and it is the honest measurement.
+          // R4: tap target under 32px. An input wrapped in a label is as big as the label.
           const target = (el.closest('label') as Element | null) ?? el
           const r = target.getBoundingClientRect()
           const tiny = Math.min(r.width, r.height) < 32 && el.tagName !== 'A'
@@ -204,29 +156,24 @@ async function auditScreen(page: Page, where: string, viewport: string) {
             '손가락으로 정확히 누르기 어렵다', who)
         }
 
-        // R5 — disabled with no reason on screen. "Why can't I click this"
-        // has no answer anywhere.
+        // R5: disabled with no reason on screen.
         if ((el as HTMLButtonElement).disabled) {
           add('disabled-reason', !!title, id, '왜 못 누르는지 알 수 없다', who)
         }
       }
 
-      // R6 — the page must not scroll sideways.
+      // R6: no horizontal scroll.
       const de = document.documentElement
       add('no-h-scroll', de.scrollWidth <= de.clientWidth + 1,
         `${where} ${de.scrollWidth}>${de.clientWidth}`, '가로로 밀어야 내용이 보인다')
 
-      // R7 — an empty screen has to offer the thing that fills it.
+      // R7: an empty state offers an action.
       for (const el of Array.from(document.querySelectorAll('p')).filter(
         (e) =>
           visible(e) &&
           /없습니다|비어 있습니다/.test(e.textContent || '') &&
-          // A document thumbnail can contain an ordinary sentence such as
-          // 「이 장애물은 없습니다」.  It is content inside the button that
-          // opens the artifact, not the product announcing an empty state.
+          // Content inside a thumbnail button or a clickable card is not an empty state.
           !e.closest('button') &&
-          // A row that says "no messages yet" inside a card you can click into
-          // is a subtitle, not an empty screen. The card is the action.
           !e.closest('[class*="cursor-pointer"]'),
       )) {
         const box = el.closest('div')?.parentElement
@@ -235,7 +182,7 @@ async function auditScreen(page: Page, where: string, viewport: string) {
           '비어 있다고만 하고 다음 할 일을 주지 않는다')
       }
 
-      // R8 — every screen names itself.
+      // R8: every screen has an h1.
       add('page-heading', !!document.querySelector('h1'), where, '어느 화면인지 제목이 없다')
 
       return out
@@ -265,10 +212,7 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
     }
   }
 
-  /* ── artifact panels ────────────────────────────────────────────────
-     The surface the request named. Opened from the gallery, which loads
-     asynchronously — querying the tab before the list lands reads every kind
-     as "none of these exist" and skips the whole section. */
+  // Artifact panels, opened from the gallery once its list has landed.
   await page.setViewportSize(VIEWPORTS.desktop)
   for (const tab of ['보고서', '슬라이드', '차트', '코드', 'HTML', '이미지']) {
     await page.goto('/artifacts')
@@ -288,17 +232,13 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
     const dialog = page.getByRole('dialog')
     await dialog.waitFor({ timeout: 15_000 }).catch(() => {})
     const where = `아티팩트 · ${tab}`
-    // The gallery's own dialog chrome carries a close button, so panel rules
-    // look *inside* it — at the artifact's own header — or every kind would
-    // report a close button it does not have.
+    // Panel rules look at the artifact's own header, inside the dialog chrome.
     const body = dialog.locator('header').last()
     const hasIn = async (scope: typeof dialog, n: RegExp) =>
       (await scope.getByRole('button', { name: n }).count()) > 0
 
     checks++
-    // A panel that already opens wide offers the next step as "문서만 보기".
-    // That is an expansion control too; checking only the narrow-state label
-    // reports a working three-position control as absent.
+    // A panel that opens wide offers "문서만 보기" as its expansion control.
     if (!(await hasIn(body, /넓게 보기|문서만 보기|전체 화면|크게 보기/))) {
       seen.push({ rule: 'panel-expand', subject: `${tab} 패널`, where, viewport: 'desktop',
         hurts: '좁은 패널에서만 읽어야 하고 넓힐 방법이 없다' })
@@ -310,8 +250,7 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
     }
     checks++
     await page.keyboard.press('Escape')
-    // Waited for, not sampled: closing is a transition, and reading the DOM
-    // once at 300ms reports a dialog on its way out as one that would not go.
+    // Closing is a transition; wait for it.
     const closed = await page
       .getByRole('dialog')
       .waitFor({ state: 'detached', timeout: 3_000 })
@@ -323,18 +262,7 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
     }
   }
 
-  /* ── the panel in a live session ────────────────────────────────────
-     Closing it there is only safe if it can be opened again. */
-  const session = await page.evaluate(async () => {
-    const r = await fetch('/api/sessions', { headers: {} })
-    return r.ok ? await r.json() : null
-  }).catch(() => null)
-  void session
-
-  /* ── dedupe ─────────────────────────────────────────────────────────
-     One defect per (rule, control), carrying every screen it showed up on and
-     how many copies of it were counted, so collapsing a thirty-row list does
-     not quietly turn a wide problem into a narrow-looking one. */
+  // One defect per (rule, control), with every screen it showed up on and how many copies.
   const defects = new Map<string, {
     rule: string; subject: string; hurts: string; seen: number
     screens: Set<string>; viewports: Set<string>

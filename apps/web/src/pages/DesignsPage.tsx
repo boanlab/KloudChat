@@ -16,23 +16,7 @@ import { useT } from '@/lib/useT'
 
 type Tab = 'system' | 'template'
 
-/**
- * The whole catalogue, grouped by the surface each shape is offered on.
- *
- * It existed only behind a per-surface button inside a session, so 회의록 was
- * discoverable by opening a report and 제안 덱 by opening a deck — the shapes
- * were reachable but the catalogue was not. Grouped rather than listed because
- * the surface is what is being chosen between first: a deck and a one-pager
- * are not two versions of the same thing.
- *
- * Drawn in the default look. A card here starts a session with no project, so
- * the defaults are what its document will actually come out in — the same
- * reason the home rail asks the preview route for no tokens either.
- *
- * A disabled surface is left out. Its shapes still ship, but a card whose
- * button opens a screen this workspace turned off is an offer the product
- * cannot keep.
- */
+/** Every design template grouped by surface; disabled surfaces are omitted. */
 function TemplateCatalogue() {
   const t = useT()
   const navigate = useNavigate()
@@ -52,10 +36,7 @@ function TemplateCatalogue() {
     return groups
   }, [rows, enabledKinds])
 
-  // The card's button means "start this" here rather than "fill the composer
-  // in front of me": there is no session yet, so the surface has to open
-  // first. The chip is waiting on it when it does — and on a media surface,
-  // where the sentence is the prompt rather than a preamble to it, so is that.
+  // No session yet: store the pick, then open the surface that consumes it.
   const start = (row: DesignTemplateRow, prompt: string) => {
     startTemplate(row, prompt)
     navigate(`/new/${row.surface}`)
@@ -98,23 +79,7 @@ function TemplateCatalogue() {
   )
 }
 
-/**
- * What a result will look like: the look you make, and the shape it is poured
- * into.
- *
- * Design systems were filed under 설정 → 환경설정, below the model pickers,
- * which is where a preference lives — and a design system is not a preference.
- * It is a thing you make, keep and attach, like a project or an agent, so it
- * belongs beside them.
- *
- * 서식 shares the screen because the two answer one question between them:
- * 디자인 decides the colour, the type and the voice, 서식 decides the shape
- * they are poured into. One is what you make and the other is what the product
- * provides, which is a tab apart rather than a page apart.
- *
- * Which tab is in the query string, so the home rail can point at the half it
- * is a taste of and so a link to either half survives being sent to somebody.
- */
+/** Design systems and templates; the active tab lives in `?tab=`. */
 export function DesignsPage() {
   const t = useT()
   const [params, setParams] = useSearchParams()

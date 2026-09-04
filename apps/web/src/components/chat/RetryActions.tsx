@@ -4,20 +4,7 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 
-/**
- * What to do about a turn that failed.
- *
- * Two offers, because a failure has two shapes. Sometimes the model was fine
- * and something transient was not, and asking again is the whole fix. Sometimes
- * the model is the problem — it does not serve this surface, it is out of
- * capacity, it accepted the request and never answered — and asking the same
- * model again is guaranteed to fail the same way.
- *
- * The second case had no path at all. Somebody had to open the picker, change
- * the conversation's model, retype or re-find the question, ask it, and then
- * remember to change the model back. Choosing one here runs this turn on that
- * model and leaves the rest of the conversation alone.
- */
+/** Retry a failed turn on the same model, or on another one for this turn only. */
 export function RetryActions({
   sessionId,
   messageId,
@@ -25,7 +12,7 @@ export function RetryActions({
   kind,
 }: {
   sessionId: string
-  /** The question's row, so the retry runs it again in place rather than asking twice. */
+  /** The failed question's row; the retry replaces it in place. */
   messageId: string
   prompt: string
   kind: SessionKind
@@ -37,9 +24,6 @@ export function RetryActions({
   const sessions = useStore((s) => s.sessions)
   const currentId = sessions.find((s) => s.id === sessionId)?.model
 
-  // The one that just failed is left in the list rather than hidden: 다시 시도
-  // beside it already means "this model again", and a name disappearing from a
-  // menu is how a list stops being trustworthy.
   const usable = models.filter((m) => m.kinds.includes(kind))
 
   return (

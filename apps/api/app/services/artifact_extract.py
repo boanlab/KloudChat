@@ -1,8 +1,4 @@
-"""Promoting substantial code out of a transcript into an artifact.
-
-What earns a row is deliberately narrow: a three-line snippet illustrating a
-point is part of the answer, and hoisting it out would fill the artifacts
-screen with fragments.
+"""Stores substantial code blocks and model-requested artifacts from a transcript as Artifact rows.
 """
 
 from __future__ import annotations
@@ -20,12 +16,11 @@ from app.models.workspace import Artifact, ArtifactKind
 #: ```lang\n … \n```
 _FENCE = re.compile(r"```([A-Za-z0-9_+#.-]*)\n(.*?)```", re.S)
 
-#: Below this a block is illustration, not a deliverable. Either bound qualifies:
-#: a dense one-liner config can be short, a sparse script can be under 300 chars.
+#: A block qualifies by meeting either bound.
 _MIN_LINES = 8
 _MIN_CHARS = 300
 
-#: Fences that are output or prose, not something anyone will run again.
+#: Fences that hold output or prose, not code.
 _NOT_CODE = {"", "text", "txt", "output", "console", "log", "md", "markdown", "plain"}
 
 _LANGUAGE_LABEL = {
@@ -38,8 +33,7 @@ _LANGUAGE_LABEL = {
 }
 
 
-#: `def name(`, `function name(`, `class Name`, `const name =` — enough to name
-#: a file after, across the languages a chat actually produces.
+#: `def name(`, `function name(`, `class Name`, `const name =`.
 _DEFINITION = re.compile(
     r"^\s*(?:async\s+)?(?:def|function|class|interface|type)\s+([A-Za-z_][\w]*)"
     r"|^\s*(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=",
@@ -48,11 +42,7 @@ _DEFINITION = re.compile(
 
 
 def _title_for(content: str, block_start: int, body: str, language: str, index: int) -> str:
-    """The nearest heading above the block, else what the code defines.
-
-    Models usually announce a block, and that sentence beats "python 1".
-    Failing that, the first thing the code defines is still scannable in a list.
-    """
+    """Nearest heading above the block, else the first definition, else `"<lang> <n>"`."""
     before = content[:block_start].rstrip().splitlines()
     for line in reversed(before[-4:]):
         line = line.strip()
@@ -95,15 +85,12 @@ async def extract(
     project_id: str | None,
     content: str,
 ) -> str | None:
-    """Stores any new blocks and returns the last artifact's id, or None.
-
-    The id is what the caller shows the panel. Caller commits.
-    """
+    """Stores any new blocks and returns the last artifact's id, or None. Caller commits."""
     blocks = find_blocks(content)
     if not blocks:
         return None
 
-    # Regenerating an answer produces the same code again.
+    # Skip content already stored for this session (regenerated answers).
     existing = (await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))).all()
     seen = {(a.data or {}).get("content") for a in existing}
 
@@ -126,12 +113,7 @@ async def extract(
 
 
 def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:
-    """What makes two requested artifacts the same one.
-
-    Keyed on content where there is any, since that is what a regenerated answer
-    repeats verbatim. A chart has none — it is series plus a table — so keying
-    on `data["content"]` alone would collide every chart on `None`.
-    """
+    """De-duplication key: content when present, else title plus the full data payload."""
     content = data.get("content")
     if isinstance(content, str):
         return (kind, "", content)
@@ -139,13 +121,7 @@ def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:
 
 
 def _mask_text_values(value: Any, masker: Callable[[str], tuple[str, int]]) -> Any:
-    """Returns a detached copy with every persisted string masked.
-
-    Artifact payloads contain more than a top-level title and body: chart
-    series, table labels and future tool metadata are nested dictionaries and
-    lists. Rebuilding the full tree avoids both a shallow-mask escape and
-    mutating ``ToolContext.pending_artifacts`` after the agent loop.
-    """
+    """Detached copy of `value` with every nested string masked."""
     if isinstance(value, str):
         return masker(value)[0]
     if isinstance(value, dict):
@@ -166,19 +142,13 @@ async def store_requested(
     requests: list[dict],
     masker: Callable[[str], tuple[str, int]] | None = None,
 ) -> str | None:
-    """Stores artifacts the model asked for with `create_artifact`.
-
-    Separate from `extract`: extraction guesses at what looks worth keeping,
-    this is the model stating it. A request is stored even when short.
-
-    Same de-duplication — regenerating an answer calls the tool again.
+    """Stores artifacts requested via `create_artifact`, de-duplicated per session. Caller commits.
     """
     if not requests:
         return None
 
-    # Mask at the persistence boundary, not in the tool. The same tool request
-    # must stay raw while a strict-local model is using it inside the current
-    # turn, but no protected textual field may survive into an Artifact row.
+    # Masked at the persistence boundary: the in-turn tool request stays raw,
+    # but no protected text may reach an Artifact row.
     safe_requests = (
         [_mask_text_values(request, masker) for request in requests]
         if masker is not None

@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import type { FactCheck } from '@/types'
 import { useT } from '@/lib/useT'
 
-export const verdictMeta = {
+const verdictMeta = {
   supported: { icon: BadgeCheck, tone: 'success' as const, label: '근거 있음', color: 'text-success' },
   unsupported: {
     icon: TriangleAlert,
@@ -22,35 +22,13 @@ export const verdictMeta = {
   uncertain: { icon: CircleHelp, tone: 'warn' as const, label: '확인 필요', color: 'text-warn' },
 }
 
-/**
- * Per-claim verdicts with the source behind each one.
- *
- * Shared by the deck and the report because it is one call behind both — the
- * server checks a title and a body, and a claim does not care what shape it was
- * printed in. Lifted out of `DeckPanel` when the report got the same check: two
- * copies of this would be two answers to "what does 확인 필요 look like", and
- * the whole value of a verdict is that it reads the same everywhere.
- *
- * The server refuses to issue a confident verdict without a source; this is
- * where that source is shown, and why `근거 열기` is not optional decoration.
- */
+/** Per-claim fact-check verdicts with their sources; shared by deck and report. */
 export function FactCheckResults({
   check,
   onFix,
 }: {
   check: FactCheck
-  /**
-   * Hands one weak claim back as an instruction to fix it.
-   *
-   * A verdict that only says 확인 필요 puts the work back on the reader: they
-   * have to find the sentence, decide what it should say, and type it. The
-   * check already knows which claim and why — passing that to the revision
-   * path is the difference between a report that flags problems and one that
-   * fixes them.
-   *
-   * Absent on surfaces with no revision path of their own, where the verdicts
-   * are still worth reading.
-   */
+  /** Sends one weak claim to the surface's revision path; omitted where there is none. */
   onFix?: (claim: FactCheck['claims'][number]) => void
 }) {
   const t = useT()
@@ -95,8 +73,6 @@ export function FactCheckResults({
                       {t('근거 열기')}
                     </a>
                   )}
-                  {/* 근거가 있는 주장은 고칠 것이 없다. 버튼을 늘 두면 무엇이
-                      문제인지가 아니라 버튼이 눈에 남는다. */}
                   {onFix && c.verdict !== 'supported' && (
                     <button
                       onClick={() => onFix(c)}

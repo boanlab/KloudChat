@@ -1,9 +1,4 @@
-/**
- * Create, edit and delete on every screen.
- *
- * Walks each screen checking that the actions are reachable from the card
- * itself rather than buried inside a modal.
- */
+/** Create, edit and delete on every screen, reachable from the card itself. */
 import { expect, test } from '@playwright/test'
 import { openSidebar, signIn } from './helpers'
 
@@ -24,8 +19,7 @@ test('스킬은 카드에서 지우되, 지우기 전에 물어본다', async ({
   await dialog(page).getByLabel('이름').fill(`스킬${tag}`)
   await dialog(page).getByRole('button', { name: '만들기' }).click()
 
-  // Confirmation before deleting: nothing on the server restores a skill, and
-  // this button sits beside the toggle.
+  // Asks first: nothing restores a skill.
   await page.getByRole('button', { name: `스킬${tag} 삭제` }).click()
   await expect(dialog(page).getByRole('heading', { name: `스킬${tag} 삭제` })).toBeVisible()
   await dialog(page).getByRole('button', { name: '취소' }).click()
@@ -68,8 +62,7 @@ test('디자인을 지우기 전에, 기본 모양으로 돌아갈 프로젝트 
   await expect(page).toHaveURL(/\/projects\/[0-9a-f]{32}/, { timeout: 15_000 })
   const projectUrl = page.url()
 
-  // The picker writes optimistically, so waiting on the PATCH is what makes the
-  // count below a question about the server's rows rather than about a race.
+  // The picker writes optimistically; wait for the PATCH.
   const picker = page.getByLabel('디자인', { exact: true })
   await expect(picker).toBeVisible({ timeout: 15_000 })
   await Promise.all([
@@ -92,7 +85,7 @@ test('디자인을 지우기 전에, 기본 모양으로 돌아갈 프로젝트 
   await page.goto('/designs')
   await expect(page.getByText(`디자인${tag}`)).toHaveCount(0, { timeout: 15_000 })
 
-  // …and the project it was on is wearing the default look again.
+  // The project falls back to the default look.
   await page.goto(projectUrl)
   await expect(page.getByLabel('디자인', { exact: true })).toHaveValue('', { timeout: 15_000 })
 })
@@ -106,13 +99,10 @@ test('대화 이름을 사이드바에서 바꾼다', async ({ page }) => {
     page.getByLabel('프롬프트 입력').press('Enter'),
   ])
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 15_000 })
-  // Titles are generated from the first turn, so wait for the one being renamed
-  // to settle — otherwise the generated title lands on top of the new name.
+  // Let the generated title settle, or it lands on top of the new name.
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 120_000 })
 
-  // Below 1024px the sidebar is a closed overlay, so there is no row to rename
-  // until it is opened. No `hover()` either: the row menu has to answer to a
-  // finger, and a test that hovers first would never notice if it stopped.
+  // No `hover()`: the row menu has to answer to a finger.
   await openSidebar(page)
   const row = page.locator('aside').locator('div.group').first()
   await row.getByRole('button', { name: '메뉴' }).click()
@@ -143,32 +133,24 @@ test('프로젝트의 이름과 아이콘을 바꾼다', async ({ page }) => {
   await page.waitForURL(/\/projects\/[0-9a-f]{32}/, { timeout: 15_000 })
   const url = page.url()
 
-  // Both of these live under 더 보기 now. Renaming and deleting are the two
-  // things a project owner does rarely and irreversibly, and they were taking
-  // a permanent slot each in the header; the dialog still asks before either.
+  // Rename and delete live under 더 보기.
   await page.getByRole('button', { name: '더 보기', exact: true }).click()
   await page.getByRole('menuitem', { name: '이름 · 설명' }).click()
   await dialog(page).last().getByLabel('이름').fill(`검수${tag}v2`)
   await dialog(page).last().getByRole('button', { name: '저장' }).click()
 
-  // The icon has its own control, on the icon itself. It used to be a row of
-  // emoji inside this dialog and inside the create dialog before that; it is
-  // picked where it is shown now, when somebody wants a different one rather
-  // than at the moment they are naming the thing.
+  // The icon is picked on the icon itself.
   await page.getByRole('button', { name: '아이콘 바꾸기' }).click()
   await page.getByRole('menu').getByRole('button', { name: '📚', exact: true }).click()
 
   await page.goto(url)
-  // Two elements, not one string. The icon is its own control beside the title
-  // now — it used to be a character in front of the name and this asserted the
-  // two as one text node.
+  // Icon and title are separate elements.
   await expect(page.getByRole('heading', { name: `검수${tag}v2` })).toBeVisible({
     timeout: 15_000,
   })
   await expect(page.getByRole('button', { name: '아이콘 바꾸기' })).toHaveText('📚')
 
-  // Deletion moved out of the header into its own area, and asks first: the
-  // instructions and knowledge files do not come back.
+  // Deletion asks first: instructions and knowledge files do not come back.
   await page.getByRole('button', { name: '더 보기', exact: true }).click()
   await page.getByRole('menuitem', { name: '프로젝트 삭제' }).click()
   await expect(dialog(page).getByRole('heading', { name: `검수${tag}v2 삭제` })).toBeVisible()
@@ -183,7 +165,7 @@ test('프로젝트의 이름과 아이콘을 바꾼다', async ({ page }) => {
 })
 
 test('아티팩트를 카드에서 지운다', async ({ page }) => {
-  // Chat is the only producer, so the artifact this test deletes is one it made.
+  // Made here, so there is one to delete.
   await page.goto('/new/chat')
   await page
     .getByLabel('프롬프트 입력')
@@ -193,10 +175,7 @@ test('아티팩트를 카드에서 지운다', async ({ page }) => {
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 180_000 })
 
   await page.goto('/artifacts')
-  // Counted off the filter row rather than off the cards. The grid holds one
-  // page of the workspace, so deleting a row is followed by the next one
-  // moving up into it and the number of cards on screen does not move — the
-  // tab counts everything, which is what "one fewer" means here.
+  // Counted off the tab, which counts everything; the grid is one page.
   const all = page.getByRole('tab', { name: /전체/ })
   await expect(all).toHaveText(/전체\s*\d+/, { timeout: 20_000 })
   const before = Number((await all.textContent())?.match(/\d+/)?.[0] ?? '0')
@@ -211,17 +190,9 @@ test('아티팩트를 카드에서 지운다', async ({ page }) => {
 })
 
 test('직접 등록한 커넥터의 자격증명을 다시 넣는다', async ({ page }) => {
-  // Credentials were supplied once at install and never again, so a rotated key
-  // meant removing the connector and rebuilding its tool settings from scratch.
-  //
-  // Tested against a self-registered server rather than a catalogue one: the
-  // catalogue holds only servers that need no credential. The button reads the
-  // connector's own key names, so a custom connector — the one kind that must
-  // carry your credentials — can have them changed.
+  // A self-registered server: catalogue servers need no credential.
   const name = `커스텀 ${Date.now().toString(36)}`
-  // Wait for the workspace fetch, not for a rendered count — the counts come
-  // from the store, and clicking through before it lands leaves the page
-  // showing only what the optimistic insert knew.
+  // Wait for the workspace fetch before clicking through.
   await Promise.all([
     page.waitForResponse((r) => r.url().includes('/api/connectors') && r.ok()),
     page.goto('/connectors'),
@@ -238,11 +209,10 @@ test('직접 등록한 커넥터의 자격증명을 다시 넣는다', async ({ 
 
   const card = page.locator('[data-connector]').filter({ hasText: name })
   await expect(card).toBeVisible({ timeout: 20_000 })
-  // The button exists because the connector carries credential *names* of its
-  // own — a custom server has no catalogue entry to read them from.
+  // The button reads the connector's own credential names.
   await card.getByRole('button', { name: '자격증명' }).click()
 
-  // The stored value is never read back, so the field asks for the new one.
+  // The stored value is never read back.
   await expect(dialog(page).getByText('저장한 값은 보안을 위해 표시하지 않습니다')).toBeVisible()
   await dialog(page).getByRole('textbox').first().fill('rotated-value')
   await dialog(page).getByRole('button', { name: /저장하고 다시 연결/ }).click()

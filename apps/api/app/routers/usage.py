@@ -1,18 +1,8 @@
-"""Organisation usage, computed from what actually happened.
+"""Usage, storage, audit and governance routes.
 
-Two records exist of a thing that happened, and neither holds both halves. A
-stored turn knows that somebody asked and which model answered; the credit
-ledger knows what it cost. A self-hosted model answers without spending, and a
-picture spends without answering — so either record read alone is missing whole
-columns of the truth, and the screen built on it said so out loud: for an
-account whose spend was all pictures and clips, the total came from the ledger
-and every bar beside it came from turns, which left the entire figure filed
-under "기타".
-
-So both are read as one stream of billable events: turns carry the request and
-the model, ledger rows carry the money, and every breakdown below is that same
-stream grouped a different way. The bars and the number above them cannot
-disagree, because they are the same rows. Nothing is estimated or seeded.
+Usage is one stream of billable events: assistant turns carry the request and
+the model, credit-ledger rows carry the cost. Every breakdown is that stream
+grouped a different way, so totals and bars always agree.
 """
 
 from __future__ import annotations
@@ -39,28 +29,17 @@ from app.services import models as model_service
 from app.services import storage as storage_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-#: The same numbers scoped to the caller. Its own router, so a forgotten admin
-#: dependency cannot leak the whole instance.
+#: Caller-scoped usage. Separate router so no admin-only route can land here by mistake.
 me_router = APIRouter(prefix="/me", tags=["usage"])
 
-#: The reasons that bill for work no turn records — a picture, a line of
-#: speech, a clip. They count as requests in their own right because nothing
-#: else counts them; every other reason rides along with an assistant message
-#: that is already in the stream, and counting those twice would inflate the
-#: request figure the moment a model stopped being free.
+#: Ledger reasons with no assistant turn behind them; each row counts as one request.
 MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
 
-#: Work that costs no credits and is counted by amount instead — seconds of
-#: speech Whisper transcribed, chunks the embedding model indexed. A row of
-#: theirs carries `units`, and counts as a request the way a picture does:
-#: no assistant turn records it. See `credits.record_units`.
+#: Free work measured in `units` (seconds, chunks); each row counts as one request.
 UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search")
 
 
-#: When allowances refill. Taken from the credit service rather than computed
-#: here as a UTC month boundary: the reset happens at 00:00 KST, and the two
-#: definitions disagree for the nine hours after it, which is exactly when a
-#: reader is most likely to check what is left.
+#: Cycle boundary is local midnight, not a UTC month boundary.
 _cycle_start = credits_service.cycle_start
 
 
@@ -71,14 +50,7 @@ def _since(days: int) -> datetime:
 
 
 def _every_day(since: datetime, days: int, rows) -> list[dict]:
-    """One entry per day of the window, in order, zeros where nothing happened.
-
-    `GROUP BY day` returns only the days with events, so a thirty-day window
-    with three busy days came back as three rows — and the chart drew three
-    wide bars with nothing to say which days they were or that twenty-seven
-    were empty. A day with no requests is a fact about the period, not a gap
-    in the data.
-    """
+    """One entry per day of the window, in order, zeros where nothing happened."""
     by_date = {day.date().isoformat(): (int(c), int(n)) for day, c, n in rows}
     return [
         {
@@ -90,10 +62,8 @@ def _every_day(since: datetime, days: int, rows) -> list[dict]:
     ]
 
 
-#: Which model a ledger row paid. Every route writes it now; the fallback is
-#: for rows older than 0027 that migration 0032 could not recover, and it
-#: stops at the media reasons — a media session is one generator with one price
-#: sheet, while a conversation's stored model is only the one selected today.
+#: Model a ledger row paid. Rows without one fall back to the session model
+#: for media reasons only; a conversation's stored model is just the current one.
 _SPEND_MODEL = func.nullif(
     func.coalesce(
         col(CreditLedger.model),
@@ -106,20 +76,14 @@ _SPEND_MODEL = func.nullif(
     "",
 )
 
-#: Which surface a ledger row came from. The row says so from 0032 on, which is
-#: what keeps a charge attributed after its conversation is deleted; the join is
-#: the fallback for older rows whose session is still there.
-#: `sessions.kind` is a Postgres enum and the column is text, so the join half
-#: is cast — COALESCE refuses to match the two otherwise.
+#: Surface a ledger row came from; rows without one fall back to the session.
+#: `sessions.kind` is a Postgres enum, so it is cast to match the text column.
 _SPEND_SURFACE = func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String))
 
 
 def _events(since: datetime, user_id: str | None = None):
-    """Every billable event in the window, from both records of one.
-
-    Both halves are shaped the same — when, which model, which surface, whose,
-    how much, how many — so that one grouping answers the total, the daily
-    chart, the per-model list and the per-surface list at once.
+    """Union of assistant turns and ledger spend, both shaped as
+    (day, model, kind, user_id, credits, requests, units).
     """
     turns = (
         select(
@@ -127,20 +91,16 @@ def _events(since: datetime, user_id: str | None = None):
                 "day"
             ),
             col(Message.model).label("model"),
-            # Cast for the same reason `_SPEND_SURFACE` casts: the two halves
-            # of the union have to agree, and one of them is now plain text.
+            # Enum cast to text so both halves of the union agree.
             cast(col(ChatSession.kind), String).label("kind"),
             col(ChatSession.user_id).label("user_id"),
-            # A turn carries no money on purpose: the ledger is what the
-            # balance is computed from, and letting the message's own copy of
-            # the figure into the sum would count a priced turn twice.
+            # Credits come only from the ledger; counting the turn's copy would double it.
             literal(0).label("credits"),
             literal(1).label("requests"),
             literal(0).label("units"),
         )
         .select_from(Message)
         .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
-        # Assistant turns only: a user message is not a request to a model.
         .where(Message.role == Role.assistant, Message.created_at >= since)
     )
     spend = (
@@ -158,10 +118,9 @@ def _events(since: datetime, user_id: str | None = None):
             func.coalesce(col(CreditLedger.units), 0).label("units"),
         )
         .select_from(CreditLedger)
-        # Outer, because a design extraction is charged against no conversation
-        # at all, and dropping it would stop the parts adding up to the total.
+        # Outer join: some charges belong to no conversation.
         .join(ChatSession, col(CreditLedger.session_id) == col(ChatSession.id), isouter=True)
-        # A spend, or a measured amount of free work — never a refill.
+        # Spend or measured free work; never a refill.
         .where(
             or_(CreditLedger.delta < 0, col(CreditLedger.units).is_not(None)),
             CreditLedger.created_at >= since,
@@ -173,9 +132,8 @@ def _events(since: datetime, user_id: str | None = None):
     return union_all(turns, spend).subquery()
 
 
-#: What a model's `units` count. Whisper's row counts seconds, the index's
-#: rows count chunks; anything else measured here is tokens.
 def _unit_of(model: str | None) -> str:
+    """Unit name for a model's `units` column: seconds for STT, chunks for embeddings."""
     name = (model or "").lower()
     if "whisper" in name or "stt" in name:
         return "seconds"
@@ -185,7 +143,7 @@ def _unit_of(model: str | None) -> str:
 
 
 def _kind(kind) -> str:
-    """The surface's name. A union hands the enum back raw on some drivers."""
+    """Surface name; some drivers hand the enum back raw from a union."""
     return getattr(kind, "value", kind)
 
 
@@ -224,9 +182,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).all()
 
-    # The two residues, kept apart because they are different admissions: a
-    # charge no single model can be named for, and a charge that was never
-    # made against a conversation.
+    # Residues: spend with no single model, and spend outside any conversation.
     other_credits, loose_credits, loose_requests = (
         await db.exec(
             select(
@@ -260,8 +216,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         )
     ).all()
 
-    # Denominator for "against allocation": what the *active* roster may spend
-    # this cycle. Rejected and pending accounts are excluded.
+    # Active accounts only.
     allocated = (
         await db.exec(
             select(func.coalesce(func.sum(User.monthly_credits), 0)).where(
@@ -284,9 +239,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             "requests": int(request_count),
             "activeUsers": int(active_users),
             "allocatedCredits": int(allocated),
-            # Spend no single model can be named for: a comparison that ran
-            # several on one charge, or a row written before the ledger
-            # recorded a model at all.
+            # Spend no single model can be named for.
             "otherCredits": int(other_credits),
         },
         "daily": _every_day(since, days, daily),
@@ -302,9 +255,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
             for m, c, n, u, x in by_model
         ],
         "bySurface": surfaces,
-        # Every account with activity in the window, most spent first. The
-        # screen used to show ten and call it 상위; an administrator asking
-        # who used what wants the whole list.
+        # Every account with activity in the window, most spent first.
         "topUsers": [
             {
                 "id": uid,
@@ -321,14 +272,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
 
 @router.get("/storage")
 async def storage(admin: AdminUser, db: DbSession):
-    """What the uploads and the generated media take on disk, and what is left.
-
-    Everything a person adds or makes — attachments, project knowledge,
-    pictures, clips — lands under `file_storage_dir/<user id>/`, so a walk of
-    that tree per directory is the per-person figure, and the volume it sits
-    on says how much room remains. Walked on request rather than kept in a
-    column: the directories are small and the answer is always current.
-    """
+    """Disk use per user under `file_storage_dir/<user id>/`, walked on request."""
     root = file_service.storage_root()
     per_user: dict[str, tuple[int, int]] = {}
     for directory in root.iterdir():
@@ -347,7 +291,6 @@ async def storage(admin: AdminUser, db: DbSession):
         ).all()
     }
     disk = shutil.disk_usage(root)
-    # What a sweep would take, measured without taking it.
     orphans = await storage_service.reclaim(db, dry_run=True)
     return {
         "path": str(root),
@@ -376,12 +319,7 @@ async def storage(admin: AdminUser, db: DbSession):
 
 @router.post("/storage/reclaim")
 async def reclaim_storage(admin: AdminUser, db: DbSession, request: Request):
-    """Removes the files of deleted accounts now, oldest first, all of them.
-
-    The boot-time sweep waits for the volume to pass the fill mark; the
-    button does not — an administrator pressing it has already decided the
-    space is worth more than files nobody can reach.
-    """
+    """Removes the files of deleted accounts now, regardless of the fill mark."""
     result = await storage_service.reclaim(db, threshold=1e-9)
     db.add(
         AuditEvent(
@@ -414,8 +352,6 @@ async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
     if not rows:
         return []
 
-    # One request per key, issued concurrently. Ten keys is the ceiling, so
-    # keeps the screen from waiting on a serial round trip.
     spends = await asyncio.gather(
         *(litellm_service.key_spend(settings_store.decrypt_secret(r.secret)) for r in rows),
         return_exceptions=True,
@@ -439,14 +375,7 @@ async def _api_key_spend(db: DbSession, user: User) -> list[dict]:
 
 @me_router.get("/usage")
 async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1, le=90)):
-    """The caller's own spending, from the same event stream as the admin view.
-
-    Separate from `/admin/usage` rather than that endpoint with a filter: the
-    figures an administrator needs — who spent it, how the roster compares — are
-    exactly the ones a person must not be handed about everyone else. The shape
-    here is what somebody can act on: what is left this month, where it went,
-    and whether the trend will run out before the cycle does.
-    """
+    """The caller's own spending, from the same event stream as the admin view."""
     since = _since(days)
     events = _events(since, user_id=user.id)
     credits = func.coalesce(func.sum(events.c.credits), 0)
@@ -495,9 +424,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         )
     ).one()
 
-    # The one figure here that is not about the window: it answers how much of
-    # this month's allowance is gone, so it is read from the first of the month
-    # regardless of which range button is pressed.
+    # Cycle figure is independent of the window.
     cycle_used = (
         await db.exec(
             select(-func.coalesce(func.sum(CreditLedger.delta), 0))
@@ -506,8 +433,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
             .where(CreditLedger.created_at >= _cycle_start())
         )
     ).one()
-    # SQLModel hands back a scalar for some drivers and a one-element row for
-    # others; both mean the same number here.
+    # Scalar on some drivers, one-element row on others.
     cycle_used = int(cycle_used if not hasattr(cycle_used, "__len__") else cycle_used[0])
 
     surfaces = [{"kind": _kind(k), "credits": int(c), "requests": int(n)} for k, c, n in by_surface]
@@ -519,18 +445,12 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     return {
         "days": days,
         "since": since,
-        # What external tools spent through issued keys. Shown beside
-        # conversation usage rather than added to it: the first number comes
-        # from KloudChat's ledger and this one from the proxy, and they are
-        # aggregated at different moments and in different units — adding them
-        # produces a figure that matches neither.
+        # Proxy-side spend through issued keys; shown beside, never added to, the ledger figures.
         "apiKeys": await _api_key_spend(db, user),
         "totals": {
             "credits": int(spent),
             "requests": int(request_count),
-            # Spend no single model can be named for. A residue now, rather
-            # than the whole figure: pictures, clips and speech are broken out
-            # above like everything else.
+            # Spend no single model can be named for.
             "otherCredits": int(other_credits),
         },
         "cycle": {
@@ -560,9 +480,7 @@ async def audit_log(
     limit: int = Query(100, ge=1, le=500),
     severity: str | None = None,
 ):
-    """The real trail: what the auth and admin routes wrote as they ran."""
-    from app.models.user import AuditEvent
-
+    """Audit events, newest first."""
     query = select(AuditEvent).order_by(col(AuditEvent.at).desc()).limit(limit)
     if severity:
         query = query.where(AuditEvent.severity == severity)
@@ -586,8 +504,7 @@ async def audit_log(
             "detail": r.detail,
             "metadata": r.event_metadata,
             "ip": r.ip,
-            # Empty unless a GeoLite2 file is configured and covers the
-            # address. An audit row is the last place to put a guess.
+            # Empty unless a GeoLite2 database is configured.
             "region": geoip.lookup(r.ip),
             "userAgent": r.user_agent,
             "severity": r.severity,
@@ -630,17 +547,11 @@ async def get_governance(admin: AdminUser, db: DbSession):
 
 @router.put("/governance")
 async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUser, db: DbSession):
-    """Writes the policy and applies the part that acts on what is already stored.
-
-    Retention is the one rule that is retroactive: shortening the window has to
-    reach back, or the setting would only govern messages sent after it changed.
-    """
+    """Writes the policy and applies retention retroactively."""
     policy = await db.get(Governance, "default") or Governance(id="default")
     patch = payload.model_dump(exclude_unset=True)
     if "outline_model_id" in patch:
-        # Empty clears it, exactly like the classifier. A name that is not in
-        # the catalogue is refused here rather than at document time, where it
-        # would surface as a failed turn somebody already paid for.
+        # Empty clears it; a model that cannot write documents is refused here.
         wanted = (patch["outline_model_id"] or "").strip()
         patch["outline_model_id"] = wanted or None
         if wanted:
@@ -743,9 +654,7 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="adaptive_economy_models_invalid",
             )
-        # Each lane answers for itself. Turning one on without giving it
-        # anything to route to would leave a switch that reads as on and does
-        # nothing, which is the state this split exists to make impossible.
+        # The quality lane is validated on its own.
         if quality_on and not classifier_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -779,9 +688,8 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 detail="adaptive_quality_models_invalid",
             )
     if patch.get("pii_masking", policy.pii_masking):
-        # The legacy policy has no raw-delivery exception. Persist the effective
-        # upper bound so turning legacy masking off later cannot resurrect a
-        # stale allowance without another explicit administrator action.
+        # Masking admits no raw-delivery exception; persist that so turning
+        # masking off later cannot resurrect a stale allowance.
         patch["allow_user_raw_external"] = False
     for field, value in patch.items():
         setattr(policy, field, value)

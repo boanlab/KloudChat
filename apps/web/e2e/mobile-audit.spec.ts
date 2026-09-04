@@ -2,19 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Round eight: the same product, on a phone, doing whole jobs.
- *
- * Round six put the round-one rules at 390px and found the layout mostly
- * intact. Those rules read a screen that is sitting still. This one *works* at
- * that width — opens the sidebar and navigates, opens a deck and reads it,
- * fills a form and scrolls to its save button — because the things that fail
- * on a phone fail between steps: a drawer that covers the way back, a panel
- * with no room left for its own contents, a dialog whose footer is below the
- * fold.
- *
- * Discovery: writes `audit/mobile-audit.json`, never fails the run.
- */
+/** Mobile sweep at 390px, portrait and landscape: drawer, dialogs, artifact panel, composer.
+ *  Writes `audit/mobile-audit.json`; never fails. */
 
 interface Defect {
   rule: string
@@ -24,12 +13,7 @@ interface Defect {
 }
 
 const PHONE = { width: 390, height: 844 }
-/**
- * The same phone, turned. Worth its own pass because height is the scarce
- * dimension there: a dialog is 390px tall, a panel header and a composer eat
- * most of it, and `8vh` of padding top and bottom is a tenth of the screen
- * spent on margin.
- */
+/** Landscape: height is the scarce dimension. */
 const LANDSCAPE = { width: 844, height: 390 }
 
 const AS_USER = `async (path, init) => {
@@ -47,7 +31,7 @@ const AS_USER = `async (path, init) => {
   return await r.json()
 }`
 
-/** How much of the viewport an element actually occupies. */
+/** An element's box. */
 async function boxOf(page: Page, selector: string) {
   return page.evaluate((sel) => {
     const el = document.querySelector(sel)
@@ -67,10 +51,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
   await page.setViewportSize(PHONE)
   await signIn(page)
 
-  /* ── R28: the drawer, and the way back out ───────────────────────────
-     The sidebar covers the screen at this width. Opening it is easy to get
-     right; what people get stuck in is a drawer with no dismiss they can find
-     without hitting a link by accident. */
+  // R28: the drawer, and the way back out.
   await page.goto('/')
   await page.waitForTimeout(700)
   const toggle = page.getByRole('button', { name: '사이드바 토글' })
@@ -82,15 +63,12 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     await page.waitForTimeout(500)
 
     checks++
-    // A dismiss that is not a link. Tapping "메모리" to close the drawer takes
-    // you somewhere you did not ask to go.
+    // A dismiss that is not a link.
     const scrim = page.getByRole('button', { name: '사이드바 닫기' })
     if ((await scrim.count()) === 0) {
       note('drawer-dismiss', '사이드바', '/', '링크를 누르지 않고는 서랍을 닫을 수 없다')
     } else {
-      // The scrim spans the whole screen, so its *centre* is underneath the
-      // drawer. Tapped where a person would tap — to the right of the panel —
-      // and measured for how much of that strip is left to aim at.
+      // Tap the strip beside the drawer, and measure how much of it there is.
       checks++
       const drawer = await boxOf(page, '.absolute.inset-y-0.left-0.z-40')
       const strip = PHONE.width - (drawer?.w ?? 0)
@@ -106,8 +84,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
       }
     }
 
-    // And navigating from it must dismiss it, or the tap lands on the same
-    // panel again.
+    // Navigating from it must dismiss it.
     if ((await page.getByRole('button', { name: '사이드바 닫기' }).count()) === 0) {
       await toggle.click()
       await page.waitForTimeout(400)
@@ -120,10 +97,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     }
   }
 
-  /* ── R28b: every screen has a way out of itself ──────────────────────
-     The sidebar toggle lives in the top bar. A signed-in screen without one
-     is, at this width, a room with no door: the drawer is the only navigation
-     there is, and nothing on the page opens it. */
+  // R28b: every screen has the sidebar toggle.
   await page.setViewportSize(PHONE)
   for (const [route, where] of [
     ['/', '홈'],
@@ -145,10 +119,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     }
   }
 
-  /* ── R29: a dialog taller than the phone ─────────────────────────────
-     Every create form is a column of fields with the save button underneath.
-     At 844px tall that button can sit below the fold, and a dialog that
-     scrolls its body but pins nothing is one where the answer is off screen. */
+  // R29: a dialog taller than the phone still reaches its save button.
   for (const [route, open, where] of [
     ['/agents', '새 에이전트', '에이전트'],
     ['/memory', '새 메모리', '메모리'],
@@ -162,8 +133,6 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     await page.waitForTimeout(400)
 
     checks++
-    // The save button has to be reachable — on screen now, or after scrolling
-    // something that actually scrolls.
     const save = page.getByRole('dialog').getByRole('button', { name: /^저장$|^만들기$/ }).last()
     const reachable = await save
       .scrollIntoViewIfNeeded({ timeout: 3_000 })
@@ -174,7 +143,6 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     }
 
     checks++
-    // And the dialog must not push the page sideways.
     const over = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
@@ -185,10 +153,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     await page.waitForTimeout(400)
   }
 
-  /* ── R30: the artifact panel, where there is no room beside anything ──
-     Below 1024px the panel takes the whole screen. That is the right call —
-     but it means the transcript is gone while it is open, so the way back has
-     to be obvious, and whatever the panel is showing has to still fit. */
+  // R30: the artifact panel takes the whole screen; its contents must fit and it must be closable.
   const deck = await page.evaluate(
     async ([fn, body]) =>
       await eval(fn as string)('/api/artifacts', {
@@ -225,10 +190,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
       await page.waitForTimeout(700)
 
       checks++
-      // The stage is what somebody came to look at. Measured as the widest
-      // visible slide rectangle: the rail's thumbnails carry the same class,
-      // and once the rail became a drawer the first match was a hidden one
-      // reporting zero — a fix that looked like a worse defect.
+      // The stage: the widest visible slide rectangle (thumbnails share the class).
       const stage = await page.evaluate(() => {
         const boxes = Array.from(document.querySelectorAll('[role="dialog"] .aspect-video'))
           .map((el) => el.getBoundingClientRect())
@@ -251,14 +213,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
       }
 
       checks++
-      /**
-       * Overflow *inside* a row, which the document-level check cannot see.
-       *
-       * A toolbar wider than the phone does not make the page scroll — flex
-       * squeezes its children instead, and the label that loses gets set one
-       * character per line. The screenshot showed "내보내기" as a four-storey
-       * column half off the edge while every rule reported the screen clean.
-       */
+      // Overflow inside a header row: flex squeezes children instead of scrolling the page.
       const crushed = await page.evaluate(() => {
         const rows = Array.from(document.querySelectorAll('[role="dialog"] header'))
         return rows
@@ -287,9 +242,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     )
   }
 
-  /* ── R31: typing, which is the whole point ───────────────────────────
-     The composer is the one control every persona touches. On a phone it
-     shares 390px with its own option row. */
+  // R31: the composer.
   await page.goto('/new/chat')
   await page.waitForTimeout(700)
   checks++
@@ -303,7 +256,6 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     note('composer-send', '전송', '/new/chat', '보내기 버튼이 화면 밖에 있다')
   }
   checks++
-  // Typing must not push the screen sideways, and the composer must stay put.
   await page.getByLabel('프롬프트 입력').fill('모바일에서 긴 문장을 입력해 봅니다. '.repeat(6))
   await page.waitForTimeout(400)
   const overTyping = await page.evaluate(
@@ -313,8 +265,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     note('composer-overflow', `${overTyping}px`, '/new/chat', '길게 쓰면 화면이 옆으로 밀린다')
   }
 
-  /* ── R32: the phone, turned sideways ─────────────────────────────────
-     390px of height, and the dialog reserves 8vh above and below itself. */
+  // R32: landscape.
   await page.setViewportSize(LANDSCAPE)
   for (const [route, open, where] of [
     ['/agents', '새 에이전트', '에이전트'],
@@ -329,8 +280,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     await page.waitForTimeout(400)
 
     checks++
-    // The dialog must fit the screen it is on, or scroll — not extend past the
-    // bottom with no way to reach what is down there.
+    // Fits, or scrolls.
     const fits = await page.evaluate(() => {
       const d = document.querySelector('[role="dialog"]')
       if (!d) return true
@@ -359,7 +309,6 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
   await page.goto('/new/chat')
   await page.waitForTimeout(700)
   checks++
-  // The composer is what a phone in landscape is usually held for — typing.
   const land = await boxOf(page, 'textarea[aria-label="프롬프트 입력"]')
   if (!land || land.h < 24) {
     note('landscape-composer', `${land?.h ?? 0}px`, '/new/chat', '가로에서 입력 칸이 한 줄도 안 남는다')

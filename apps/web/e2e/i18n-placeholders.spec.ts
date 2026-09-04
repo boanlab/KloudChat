@@ -1,13 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-/**
- * Looks for placeholders that reached the screen unsubstituted.
- *
- * `t('배정 {n}')` is translated first and then filled in with
- * `.replace('{n}', …)`. Misspell the placeholder in the English entry and the
- * substitution misses, leaving a literal `{n}` on screen — which the type
- * checker cannot catch.
- */
+/** Reports `{n}`-style placeholders that reached the screen unsubstituted, in both languages. */
 
 const ADMIN = { email: 'admin@example.com', password: 'KloudChat-Admin-1234' }
 const PLACEHOLDER = /\{(n|name|email|date|when|title|kind|style|list|low|high|in|out|shown|total|done|words|limit|pct|preview|days|reqs|credits)\}/
@@ -63,9 +56,7 @@ for (const lang of ['ko', 'en'] as const) {
     for (const path of ROUTES) {
       await page.goto(path)
       found.push(...(await scan(page, path)))
-      // A path that lands somewhere else is a screen that no longer exists,
-      // and the scan just read a neighbour a second time under its name — which
-      // is how `/settings/system` stayed on this list, green, after it was gone.
+      // A path that lands elsewhere is a screen that no longer exists.
       if (new URL(page.url()).pathname !== path) gone.push(path)
     }
     console.log(`\n=== ${lang}: ${found.length}건 ===`)

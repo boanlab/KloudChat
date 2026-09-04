@@ -1,14 +1,5 @@
-"""Runtime configuration an administrator can change without a redeploy.
-
-Environment variables stay the bootstrap: they are what a fresh container starts
-with, and they keep working if this table is empty. A row here overrides one — so
-an operator can point the instance at a different LiteLLM, or rotate the master
-key, from the admin screen instead of editing compose and restarting.
-
-Secret values are stored encrypted (see `services/settings.py`). That protects a
-database dump, which is the realistic exposure; it does not protect someone who
-already has the application's environment, and it is not meant to.
-"""
+"""Admin-editable runtime settings. A row overrides the environment variable of
+the same key; secrets are stored encrypted (`services/settings.py`)."""
 
 from __future__ import annotations
 

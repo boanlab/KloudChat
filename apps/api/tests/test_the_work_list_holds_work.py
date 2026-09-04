@@ -1,16 +1,4 @@
-"""작업 목록에 실제로 한 일만 남는가.
-
-The failure: opening 새 보고서 and changing your mind wrote a session row, and
-the row stayed. It said 새 작업 — the label a title-less session gets — and it
-led to a blank screen. Four hundred of them accumulated on one instance, which
-is what somebody's sidebar looks like after two weeks of trying things: a
-column of identical labels, none of which is the thing they came back for.
-
-What must not happen is the opposite. A session is written before its first
-message, so a turn in flight is an empty session for as long as the model takes
-to answer, and hiding that one would take the conversation somebody is watching
-out of their own sidebar.
-"""
+"""Which empty sessions the work list hides and which it keeps."""
 
 from __future__ import annotations
 
@@ -39,22 +27,21 @@ def test_a_conversation_nobody_spoke_in_is_not_listed() -> None:
 
 
 def test_a_turn_in_flight_stays_in_the_list() -> None:
-    """The row exists before the first message does. Hiding it would take the
-    conversation somebody is watching out of their own sidebar."""
+    """A freshly created empty session is listed while its first turn runs."""
     row = _session(id="running", created_at=utcnow())
 
     assert sessions_router._worth_listing([row], {"running"}) == [row]
 
 
 def test_an_empty_conversation_holding_a_document_stays() -> None:
-    """On the surfaces where the answer is a file, the file is the record."""
+    """An empty session with an artifact is listed."""
     row = _session(id="made", artifact_id="a1")
 
     assert sessions_router._worth_listing([row], {"made"}) == [row]
 
 
 def test_a_pinned_conversation_stays_however_empty() -> None:
-    """Pinning is somebody saying keep this. That outranks a tidy list."""
+    """A pinned session is listed however empty."""
     row = _session(id="kept", pinned=True)
 
     assert sessions_router._worth_listing([row], {"kept"}) == [row]

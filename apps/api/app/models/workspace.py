@@ -1,8 +1,6 @@
 """Workspace: projects, files, artifacts, skills, memories, agents, connectors.
 
-Everything here is owned by exactly one user. The only sharing is an agent's
-`visibility` flag; ownership is a plain column, so a real sharing model would
-be an ACL table rather than a rework of these rows.
+Every row is owned by exactly one user; `visibility`/`shared` flags are the only sharing.
 """
 
 from __future__ import annotations
@@ -35,16 +33,7 @@ def _json(**kwargs) -> Column:
 
 
 class Project(SQLModel, table=True):
-    """The work, and the defaults everything started inside it begins with.
-
-    `render_templates` maps surface → template id rather than a column per
-    surface: only two of five surfaces have a rendering track, and the only reader
-    holds the kind of the session being created, which a map answers with a lookup.
-
-    The values are ids in the shipped catalogue and deliberately not foreign keys,
-    as `sessions.render_template_id` is not — the catalogue lives in the image, so
-    an id an upgrade removes degrades to "no format".
-    """
+    """A project: instructions and defaults every session started inside it inherits."""
 
     __tablename__ = "projects"
 
@@ -53,38 +42,24 @@ class Project(SQLModel, table=True):
     name: str
     description: str = Field(default="")
     emoji: str = Field(default="📁")
-    #: Prepended to every turn in this project. The whole point of a project.
+    #: Prepended to every turn in this project.
     instructions: str = Field(default="")
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: The look everything this project produces wears. Null means the surface
-    #: defaults stand — the model picks the deck accent and the exporters use
-    #: their own fonts, exactly as before design systems existed.
+    #: Null: surface defaults (model-picked accent, exporter fonts).
     design_system_id: str | None = Field(default=None, foreign_key="design_systems.id")
-    #: Surface → rendering template: the format a new session on that surface
-    #: starts in. Null and `{}` both mean the built-in track, which is what a
-    #: project that never chose a format has always produced.
+    #: Surface → rendering template id. Not foreign keys: the catalogue ships in
+    #: the image, and an unknown id degrades to the built-in track. Null and
+    #: `{}` are equivalent.
     render_templates: dict | None = Field(default=None, sa_column=_json(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
 class DesignSystem(SQLModel, table=True):
-    """One look, shared by every surface a project produces.
+    """One look shared by every surface a project produces.
 
-    Split in two on purpose.
-
-    `tokens` is what the **renderers** read — four values that all three
-    exporters (`.pptx`, `.pdf`, `.hwpx`) and the browser preview can each
-    express. Anything a renderer cannot draw does not belong here: a token that
-    only survives to PowerPoint is a preview that lies.
-
-    `body` is what the **model** reads, and it is capped short. A design system
-    is the rule several projects share; anything longer than a few lines is that
-    one project's instructions, which already have a field of their own.
-
-    `image_style` is separate from `body` because it leaves in a different
-    language — image prompts are composed in English phrases alongside
-    `imagegen._STYLE_PHRASE`, and Korean prose dropped into one is noise.
+    `tokens` is read by the renderers (every exporter and the preview must be
+    able to express each token); `body` is read by the model and kept short.
     """
 
     __tablename__ = "design_systems"
@@ -95,11 +70,11 @@ class DesignSystem(SQLModel, table=True):
     description: str = Field(default="")
     #: `{accent, ink, muted, font}`. Normalised on write by `services.design`.
     tokens: dict | None = Field(default=None, sa_column=_json(nullable=True))
-    #: Voice, vocabulary, things not to write. Reaches the model as one block.
+    #: Voice, vocabulary, things not to write; reaches the model as one block.
     body: str = Field(default="")
-    #: English phrase appended to every image prompt in this project.
+    #: English phrase appended to every image prompt (image prompts are English).
     image_style: str = Field(default="")
-    #: Which brand-agnostic craft rules to carry — keys of `design.CRAFT`.
+    #: Keys of `design.CRAFT`.
     craft: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: Offered to every account. Administrator-only, like `Template.shared`.
     shared: bool = Field(default=False)
@@ -111,12 +86,8 @@ class DesignSystem(SQLModel, table=True):
 
 
 class StoredFile(SQLModel, table=True):
-    """An upload plus its extracted text.
-
-    Text lives in the row: prompt assembly reads it by id, and a round trip to
-    disk per file would be latency on the critical path. Blobs stay on disk
-    under `storage_key` for download and re-extraction.
-    """
+    """An upload plus its extracted text. Text lives in the row; the blob is on
+    disk under `storage_key`."""
 
     __tablename__ = "files"
     __table_args__ = (Index("ix_files_user_project", "user_id", "project_id"),)
@@ -128,21 +99,18 @@ class StoredFile(SQLModel, table=True):
     session_id: str | None = Field(default=None)
     #: Set when the file is an agent's own knowledge, searchable by that agent.
     agent_id: str | None = Field(default=None)
-    #: Where the text came from, when it was ingested from a page rather than
-    #: uploaded. A snapshot: the page may have changed since.
+    #: Source page when ingested from the web rather than uploaded.
     source_url: str | None = Field(default=None)
     name: str
     size: int = Field(default=0)
     mime: str = Field(default="")
     storage_key: str = Field(default="")
     text: str = Field(default="")
-    #: Rough — length/3.5. Enough to warn before a prompt blows the window.
+    #: Estimate: len(text) / 3.5.
     tokens: int = Field(default=0)
     #: Set when extraction failed, so the UI can say why instead of showing 0 chars.
     error: str | None = Field(default=None)
-    #: When this document last reached the retrieval index. `None` means the
-    #: vector half does not cover it — attached before the index existed, or
-    #: indexed and failed. Lexical search covers it either way.
+    #: Last successful write to the retrieval index; null means lexical search only.
     indexed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -172,7 +140,7 @@ class Artifact(SQLModel, table=True):
     kind: ArtifactKind
     title: str = Field(default="")
     version: int = Field(default=1)
-    #: Shape depends on `kind` and mirrors the discriminated union in types.ts.
+    #: Shape depends on `kind`; mirrors the discriminated union in the web client's types.
     data: dict | None = Field(default=None, sa_column=_json(nullable=True))
     storage_key: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -188,14 +156,10 @@ class JobStatus(StrEnum):
 
 
 class Job(SQLModel, table=True):
-    """Long-running generation that outlives its request.
+    """Long-running generation (video) that outlives its request.
 
-    Video only: pictures and speech return inside the call that asked for them,
-    while a clip takes minutes and the upstream hands back a ticket. This row is
-    that ticket, so closing the tab loses nothing.
-
-    `provider_job_id` is the upstream handle and the only way to recover a clip
-    after a restart — which is why the row is written before polling starts.
+    `provider_job_id` is the upstream handle; the row is written before polling
+    starts so a clip survives a restart.
     """
 
     __tablename__ = "jobs"
@@ -204,12 +168,11 @@ class Job(SQLModel, table=True):
     user_id: str = Field(foreign_key="users.id", index=True)
     session_id: str = Field(foreign_key="sessions.id", index=True)
     kind: str = Field(default="av")
-    #: Text, not a database enum: `JobStatus` names the values, and a native
-    #: enum would need a migration for every value added.
+    #: Text column holding a `JobStatus` value.
     status: str = Field(default=JobStatus.queued)
     prompt: str = Field(default="")
     model: str = Field(default="")
-    #: Resolution, duration, audio — what the price was quoted from.
+    #: Resolution, duration, audio: what the price was quoted from.
     params: dict | None = Field(default=None, sa_column=_json(nullable=True))
     provider_job_id: str | None = Field(default=None, index=True)
     artifact_id: str | None = Field(default=None)
@@ -246,9 +209,7 @@ class Visibility(StrEnum):
     org = "org"
 
 
-#: Agents named this enum first and own its Postgres type. Skills share both:
-#: a second type with the same two labels would be one more migration to keep
-#: in step for nothing.
+#: Skills and agents share the Postgres type `agentvisibility`.
 AgentVisibility = Visibility
 
 
@@ -261,9 +222,8 @@ class SkillSource(StrEnum):
 class Skill(SQLModel, table=True):
     """An installed procedure that may be activated for one turn.
 
-    `when_to_use` is its own column because it is what the model reads to decide
-    whether the skill applies. `enabled` means installed/available; it never
-    means "inject this into every prompt".
+    `when_to_use` is what the model reads to decide whether the skill applies.
+    `enabled` means available, not "inject into every prompt".
     """
 
     __tablename__ = "skills"
@@ -274,14 +234,12 @@ class Skill(SQLModel, table=True):
     slug: str = Field(default="")
     description: str = Field(default="")
     when_to_use: str = Field(default="")
-    #: The procedure itself — the body of SKILL.md.
+    #: The body of SKILL.md.
     body: str = Field(default="")
     #: Stable identity for a shipped skill. Null for user-authored skills.
     catalog_key: str | None = Field(default=None)
     source: SkillSource = Field(default=SkillSource.personal)
-    #: Shared to the workspace store, exactly as an agent is. A skill is only
-    #: ever *run* out of its owner's account, so sharing means "copyable",
-    #: never "usable in place" — see `visibility` on Agent below.
+    #: Sharing means "copyable" from the store; a skill only runs from its owner's account.
     visibility: Visibility = Field(
         default=Visibility.private,
         sa_column=Column(
@@ -290,16 +248,14 @@ class Skill(SQLModel, table=True):
             server_default=Visibility.private.value,
         ),
     )
-    #: How many accounts took a copy. Written by the install route only.
+    #: Copies taken; written by the install route only.
     installs: int = Field(default=0)
-    #: The shared row this one was copied from. Kept so the store can say
-    #: "이미 가져옴" without comparing bodies, and so a second install is a
-    #: no-op rather than a duplicate.
+    #: Shared row this one was copied from; a second install is a no-op.
     origin_id: str | None = Field(default=None, index=True)
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: Tool names that must survive the agent's hard allowlist for this skill.
     required_tools: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: Approximate prompt cost displayed before a user activates the skill.
+    #: Approximate prompt cost, shown before activation.
     estimated_tokens: int = Field(default=0)
     version: str = Field(default="1.0.0")
     enabled: bool = Field(default=True)
@@ -339,8 +295,7 @@ class Memory(SQLModel, table=True):
 
 class Agent(SQLModel, table=True):
     __tablename__ = "agents"
-    #: One @handle per owner. See `_claim_slug` in routers/workspace.py for the
-    #: sentence a duplicate gets; this is the backstop behind it.
+    #: One @handle per owner; backstop behind `_claim_slug` in routers/workspace.py.
     __table_args__ = (UniqueConstraint("owner_id", "slug", name="ux_agents_owner_slug"),)
 
     id: str = Field(default_factory=_uuid, primary_key=True)
@@ -357,24 +312,19 @@ class Agent(SQLModel, table=True):
     #: denies skills, and values form a hard allowlist.
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: How a shared agent may be taken. `open`: the copy carries the prompt
-    #: and is the taker's to edit. `sealed`: the copy runs on the original's
-    #: prompt without ever holding it — usable, not readable.
+    #: `open`: a copy carries the prompt. `sealed`: a copy runs on the
+    #: original's prompt without holding it.
     share_mode: str = Field(default="open")
-    #: A copy taken from a sealed original. Its prompt is read from `origin_id`
-    #: at run time and never written here.
+    #: Copy of a sealed original; its prompt is read from `origin_id` at run time.
     sealed: bool = Field(default=False)
-    #: How to use it — what to bring, what happens each turn. Shown on the
-    #: empty screen a conversation with this agent opens on.
+    #: Usage notes shown on the empty conversation screen.
     guide: str = Field(default="")
-    #: Conversation starters: first messages the empty screen offers as
-    #: buttons, sent as they stand.
+    #: First messages offered as buttons on the empty screen, sent verbatim.
     starters: list | None = Field(default=None, sa_column=_json(nullable=True))
     temperature: float = Field(default=0.7)
     color: str = Field(default="#5b53e8")
     enabled: bool = Field(default=True)
-    #: Named explicitly now that skills share the type: the enum class was
-    #: renamed and an inferred name would have drifted off `agentvisibility`.
+    #: Postgres type name is explicit because `Skill.visibility` shares it.
     visibility: Visibility = Field(
         default=Visibility.private,
         sa_column=Column(
@@ -383,15 +333,13 @@ class Agent(SQLModel, table=True):
             server_default=Visibility.private.value,
         ),
     )
-    #: Names this agent's collection in the retrieval index. Minted on first
-    #: use, never derived from `id` — see migration 0015: the collection name is
-    #: the whole authorisation over there, and `id` travels too widely to be one.
+    #: Collection name in the retrieval index; minted on first use, never derived
+    #: from `id` (the name is the index's only authorisation).
     index_key: str | None = Field(default=None)
     installs: int = Field(default=0)
-    #: Stable identity for an agent shipped in the starter catalogue, matching
-    #: `Skill.catalog_key`. Null for anything a person wrote.
+    #: Stable identity for a catalogue agent; null for user-authored ones.
     catalog_key: str | None = Field(default=None)
-    #: The shared agent this one was copied from. Same contract as on Skill.
+    #: Shared agent this one was copied from; same contract as `Skill.origin_id`.
     origin_id: str | None = Field(default=None, index=True)
     runs: int = Field(default=0)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -408,10 +356,8 @@ class ShareScope(StrEnum):
 class Share(SQLModel, table=True):
     """A capability URL for one artifact or one conversation.
 
-    The token *is* the permission. Nothing else is checked on the public route,
-    which is why it has to be long, random, and revocable — and why the response
-    carries only the shared thing: no owner name, no project, no neighbouring
-    artifacts, nothing to walk from.
+    The token is the whole permission on the public route, so the response
+    carries only the shared thing: no owner, project or neighbouring artifacts.
     """
 
     __tablename__ = "shares"
@@ -428,18 +374,10 @@ class Share(SQLModel, table=True):
 
 
 class ShareView(SQLModel, table=True):
-    """Who opened a shared link, and when.
+    """Who opened a shared link, and when. One row per reader per hour.
 
-    What can honestly be said about a reader depends on how they arrived. A
-    signed-in one has an account, so the row names it. A `link`-scope reader has
-    none by design, and their address is the only thing this server ever learns.
-
-    Name and email are copies rather than a join: an account can be renamed or
-    deleted, and a log that rewrites itself is not a log. `viewer_id` stays for
-    the cases where the live account is what the reader wants.
-
-    One row per reader per hour — twenty refreshes are one visit, and twenty rows
-    would bury the other readers.
+    Name and email are copied, not joined, so the log does not rewrite itself
+    when an account is renamed or deleted.
     """
 
     __tablename__ = "share_views"
@@ -454,12 +392,9 @@ class ShareView(SQLModel, table=True):
     viewer_id: str | None = Field(default=None, foreign_key="users.id", index=True)
     viewer_name: str = Field(default="")
     viewer_email: str = Field(default="")
-    #: First hop of `X-Forwarded-For`. Empty when the server sits behind a
-    #: proxy that strips it — said as empty rather than as a proxy's own IP.
+    #: First hop of `X-Forwarded-For`; empty rather than a proxy's own address.
     ip: str = Field(default="")
-    #: Raw `User-Agent`. Stored whole and shortened for display: the readable
-    #: form drops everything that would matter if the question ever became a
-    #: serious one.
+    #: Raw `User-Agent`, stored whole and shortened only for display.
     user_agent: str = Field(default="")
 
 
@@ -480,11 +415,7 @@ class ConnectorStatus(StrEnum):
 
 
 class Connector(SQLModel, table=True):
-    """An MCP server this user has installed.
-
-    Credentials never live here — see `ConnectorCredential`. The browser reads
-    this table's shape and never the other one.
-    """
+    """An MCP server this user has installed. Credentials live in `ConnectorCredential`."""
 
     __tablename__ = "connectors"
 
@@ -497,8 +428,8 @@ class Connector(SQLModel, table=True):
     transport: Transport = Field(default=Transport.stdio)
     #: A command line for stdio, a URL for http/sse.
     endpoint: str = Field(default="")
-    #: Extra process env for stdio servers. `{{USER_ID}}` etc. are substituted
-    #: per caller at spawn time — see services/mcp.py.
+    #: Extra process env for stdio servers; `{{USER_ID}}` etc. substituted per
+    #: caller at spawn (services/mcp.py).
     env: dict | None = Field(default=None, sa_column=_json(nullable=True))
     auth_type: str = Field(default="none")
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
@@ -513,11 +444,7 @@ class Connector(SQLModel, table=True):
 
 
 class ConnectorTool(SQLModel, table=True):
-    """One tool a connector exposes, with its own on/off.
-
-    Per-tool rather than per-server because a server usually mixes reads and
-    writes, and "let it read my repos" is a different decision from "let it push".
-    """
+    """One tool a connector exposes, with its own on/off."""
 
     __tablename__ = "connector_tools"
     __table_args__ = (Index("ix_connector_tools_connector", "connector_id", "name"),)
@@ -533,7 +460,7 @@ class ConnectorTool(SQLModel, table=True):
 
 
 class ConnectorCredential(SQLModel, table=True):
-    """Secrets for a connector. Never serialised to the browser, ever."""
+    """Secrets for a connector. Never serialised to the browser."""
 
     __tablename__ = "connector_credentials"
 
@@ -544,47 +471,33 @@ class ConnectorCredential(SQLModel, table=True):
 
 
 class Template(SQLModel, table=True):
-    """A starting point somebody wrote down, so the next person can reuse it.
-
-    The built-in gallery ships as a static array in the frontend and cannot be
-    added to — which is fine until an organisation has a form of its own, and
-    then the one document everyone actually produces is the one the product has
-    no starting point for. This is that gap: same shape as a built-in, owned by
-    a user, and optionally carrying a file that *is* the form.
-    """
+    """A user-authored prompt template, same shape as the frontend's built-ins,
+    optionally carrying a file that is the form to write into."""
 
     __tablename__ = "templates"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     owner_id: str = Field(foreign_key="users.id", index=True)
-    #: Which surface it starts — report, slides, chat, image, av.
+    #: Surface it starts: report, slides, chat, image, av.
     kind: str = Field(default="report")
-    #: The gallery's filter chip. Free text; the built-ins use 학업/업무/연구.
+    #: Gallery filter chip. Free text; the built-ins use 학업/업무/연구.
     group: str = Field(default="내 템플릿")
     title: str
     description: str = Field(default="")
-    #: What the person has to bring, shown as chips before they commit.
+    #: Blanks the person has to fill, shown as chips.
     fills: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: One worked example per blank, in `fills` order — the same thing the
-    #: built-ins carry, so a starting point somebody wrote does not ask worse
-    #: questions than one that shipped. Absent means no examples.
+    #: One worked example per blank, in `fills` order.
     examples: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: `web` · `file`. What the job cannot run without; see the built-ins.
+    #: Requirements the job cannot run without: `web`, `file`.
     needs: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: Ends mid-sentence, where the person takes over. Same rule as built-ins.
+    #: Ends mid-sentence, where the person takes over.
     prompt: str = Field(default="")
-    #: An uploaded form this template writes *into*. The file's extracted text
-    #: is what reaches the model, so the shape of a 공문 survives into the draft.
+    #: Uploaded form this template writes into; its extracted text reaches the model.
     file_id: str | None = Field(default=None, foreign_key="files.id", index=True)
-    #: The 서식 the result comes out wearing. Plain text and not a foreign key
-    #: for the same reason `sessions.render_template_id` is not: the rendering
-    #: catalogue lives in the image, not in a table, so a release that retires
-    #: a 서식 must leave the row readable rather than break the load.
-    #:
-    #: Empty means the job has no fixed shape, and then the writing surfaces
-    #: choose the colour and the impression from the subject instead.
+    #: Rendering template id. Not a foreign key: the catalogue ships in the
+    #: image, and a retired id must leave the row readable. Empty: no fixed shape.
     render_template_id: str = Field(default="", max_length=60)
-    #: Offered to every account. Administrator-only; see migration 0017.
+    #: Offered to every account. Administrator-only.
     shared: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))

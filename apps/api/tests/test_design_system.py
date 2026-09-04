@@ -1,13 +1,4 @@
-"""The design-system layer: what it normalises, what it says, and what it draws.
-
-Three properties are worth more than the rest, and each has a test that fails
-without the change it guards:
-
-1. A project with no design system produces exactly what it produced before.
-2. A design system's accent replaces the model's colour choice rather than
-   competing with it — and the model is not asked for a colour it cannot pick.
-3. The rules that reach the model are the ones that can act on the surface.
-"""
+"""The design-system layer: token normalisation, what reaches the model, what the exporters draw."""
 
 from __future__ import annotations
 
@@ -32,8 +23,7 @@ from app.services.workspace_context import _load_design_system
 
 def test_absent_tokens_are_the_previous_defaults():
     assert design.normalise_tokens(None) == design.DEFAULT_TOKENS
-    # The same constant the deck exporter draws with, so a project with no
-    # design system comes out identically either way.
+    # The deck exporter's own default accent.
     assert design.DEFAULT_TOKENS["accent"] == deck_service._ACCENT
 
 
@@ -70,7 +60,7 @@ def _system(**kwargs) -> DesignSystem:
 
 
 def test_a_tokens_only_design_says_nothing_to_the_model():
-    """Colour is for the renderer. A header with no rules under it is a bill."""
+    """A design with tokens and no rules adds nothing to the prompt."""
     assert design.prompt_block(_system(tokens={"accent": "#0f766e"}), SessionKind.report) == ""
 
 
@@ -81,11 +71,10 @@ def test_craft_reaches_only_the_surfaces_it_can_act_on():
 
     assert "제목 단계는" in report  # typography
     assert "이모지를 쓰지 않는다" in report  # restraint
-    # Typography is about headings in a document; a chat turn has none.
+    # A chat turn has no headings.
     assert "제목 단계는" not in chat
     assert "이모지를 쓰지 않는다" in chat
-    # Image prompts are composed in English by `image_clause`; Korean prose
-    # about heading depth would be noise in one.
+    # `image_clause` composes in English; no Korean typography prose.
     assert design.prompt_block(row, SessionKind.image) == ""
 
 
@@ -111,11 +100,9 @@ def test_the_image_prompt_carries_the_colour_and_the_house_style():
     assert composed.startswith("표지 그림")
     assert "#7a1f3d" in composed
     assert "bold graphic" in composed
-    # The chip the person picked for this picture still leads the design's
-    # standing instruction, and the aspect stays last.
+    # Order: the picked chip, the design's instruction, the aspect last.
     assert composed.index("photorealistic") < composed.index("bold graphic")
-    # 비율만이 아니라 방향까지 — 그림 모델이 흘려듣는 쪽이 비율이라,
-    # 보고서·슬라이드에 넣을 그림이 세로로 길게 돌아오곤 했다.
+    # 비율만이 아니라 방향까지 말한다.
     assert composed.endswith(
         "aspect ratio 16:9, landscape orientation, wider than it is tall"
     )
@@ -197,8 +184,7 @@ async def _run_deck(monkeypatch, tokens):
 
 @pytest.mark.asyncio
 async def test_the_design_systems_accent_replaces_the_models_choice(monkeypatch):
-    # Deliberately not one of `deck._THEMES`: with a palette colour here the
-    # assertion would also pass if the model's answer were still being read.
+    # Not one of `deck._THEMES`, so a palette colour cannot pass by accident.
     events, posts = await _run_deck(monkeypatch, {"accent": "#7a1f3d", "font": "gothic"})
 
     deck = next(event for event in events if event["type"] == "deck")
@@ -238,14 +224,12 @@ def _pptx_xml(blob: bytes) -> str:
 
 
 def _pptx_parts(blob: bytes) -> dict[str, bytes]:
-    """Compare package contents, not the ZIP member timestamps."""
+    """Package contents without ZIP member timestamps."""
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         return {name: archive.read(name) for name in archive.namelist()}
 
 
-#: reportlab stamps a creation date and a document id into every file, so two
-#: runs of the same export differ in those bytes and nowhere else. Stripped so
-#: the comparison is about what was drawn.
+#: reportlab stamps a creation date and document id into every file; stripped for comparison.
 _PDF_STAMPS = re.compile(rb"/(?:CreationDate|ModDate)\s*\([^)]*\)|/ID\s*\[[^]]*\]")
 
 
@@ -254,7 +238,7 @@ def _drawn(blob: bytes) -> bytes:
 
 
 def test_a_deck_without_a_design_system_exports_exactly_what_it_did_before():
-    """The regression this whole change had to avoid."""
+    """A deck with no design system exports byte-identically to the default."""
     assert _pptx_parts(deck_export.to_pptx("제목", _SLIDES)) == _pptx_parts(
         deck_export.to_pptx("제목", _SLIDES, tokens=None)
     )
@@ -357,7 +341,7 @@ def test_every_report_format_still_produces_a_file_with_a_design_system():
 
 
 class _Rows:
-    """`db.get` and nothing else — these two functions ask for nothing else."""
+    """`db.get` and nothing else."""
 
     def __init__(self, rows: dict):
         self.rows = rows
@@ -376,7 +360,7 @@ def _user(user_id: str) -> User:
     [("u1", False, None), ("u1", True, None), ("u2", True, None), ("u2", False, 404)],
 )
 async def test_a_design_system_must_be_one_the_caller_can_see(owner, shared, expected):
-    """An id from another account would attach that account's look to this project."""
+    """A design system id from another account is refused."""
     row = DesignSystem(id="d1", owner_id=owner, name="x", shared=shared)
     db = _Rows({"d1": row})
 
@@ -395,7 +379,7 @@ async def test_no_design_system_asked_for_is_not_a_lookup():
 
 @pytest.mark.asyncio
 async def test_a_look_that_stopped_being_shared_drops_out_rather_than_failing_the_turn():
-    """Somebody else's edit must not break this person's work."""
+    """A design system no longer visible drops out without failing the turn."""
     project = Project(id="p1", user_id="u1", name="p", design_system_id="d1")
     unshared = DesignSystem(id="d1", owner_id="u2", name="x", shared=False)
 
@@ -408,20 +392,12 @@ async def test_a_look_that_stopped_being_shared_drops_out_rather_than_failing_th
 
 
 def test_a_project_wears_nothing_by_default():
-    """The migration's whole safety argument in one line."""
+    """A project has no design system by default."""
     assert Project(user_id="u1", name="p").design_system_id is None
 
 
 def test_the_outline_picks_a_look_when_nobody_described_one() -> None:
-    """주제가 인상을 고른다.
-
-    `visual_style_for` only answers when the request says so — 「포스터처럼」,
-    「담백하게」 — and returns `editorial` for everything else. That default
-    reached every deck nobody had described, so a 학술 심사 발표 and a 홍보
-    설명회 came out wearing the same face, and the only way to change it was a
-    menu after the fact. The outline call already picks the accent colour from
-    the subject; this is the same question about the rest of the look.
-    """
+    """The outline call picks `visual_style` from the subject when the request names none."""
     from app.services import deck
 
     # 아웃라인이 고른 인상은 그대로 쓰인다.
@@ -445,12 +421,7 @@ def test_a_request_that_names_a_look_still_wins() -> None:
 
 
 def test_a_document_also_picks_its_look_from_the_subject() -> None:
-    """보고서도 덱과 같은 규칙을 쓴다.
-
-    Two document surfaces reading the same field the same way is the point:
-    a 논문 초안 and a 사내 안내문 are not the same document, and neither is a
-    thing anybody wants to restyle from a menu after it is written.
-    """
+    """보고서도 덱과 같은 규칙으로 인상을 고른다."""
     from app.services import report
 
     assert report._outline_style('{"title": "…", "style": "미니멀"}') == "minimal"
@@ -461,15 +432,13 @@ def test_a_document_also_picks_its_look_from_the_subject() -> None:
 
 
 def test_both_surfaces_name_the_looks_the_renderers_know() -> None:
-    """이름표가 어긋나면 고른 인상이 조용히 버려진다."""
+    """Both surfaces name only looks `normalise_tokens` recognises."""
     from app.services import deck, design, report
 
-    # A deck wears seven faces; a report the three that have no cover to
-    # compose. What the report names, the deck names the same way.
+    # A deck has seven looks; a report the three without a cover.
     assert set(deck._STYLES.values()) == set(design.VISUAL_STYLES)
     assert set(report._STYLES.values()) == {"editorial", "poster", "minimal"}
     assert all(deck._STYLES[name] == value for name, value in report._STYLES.items())
-    # `normalise_tokens` is the gate everything passes through; a value it does
-    # not recognise falls back to the default and the choice is lost.
+    # A value `normalise_tokens` does not recognise falls back to the default.
     for stored in deck._STYLES.values():
         assert design.normalise_tokens({"visualStyle": stored})["visualStyle"] == stored

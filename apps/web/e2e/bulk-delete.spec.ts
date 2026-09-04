@@ -1,14 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Selecting several rows and removing them together, on every list that has one.
- *
- * Stubbed rather than seeded: what is under test is the client's half — that a
- * checkbox reaches the bulk endpoint with the right ids, and that the rows
- * leave the screen. Creating six kinds of real row to delete would make this a
- * test of the fixtures.
- */
+/** Bulk selection and deletion on every list that has it. */
 const AS_USER = `async (path, init) => {
   const login = await fetch('/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -23,7 +16,7 @@ test('프로젝트를 여러 개 골라 한 번에 지운다', async ({ page }) 
   test.setTimeout(120_000)
   await signIn(page)
 
-  // Two of our own, so the selection has something to hold.
+  // Two rows to select.
   const names = [`묶음삭제 A ${Date.now()}`, `묶음삭제 B ${Date.now()}`]
   for (const name of names) {
     await page.evaluate(
@@ -37,8 +30,7 @@ test('프로젝트를 여러 개 골라 한 번에 지운다', async ({ page }) 
     )
   }
 
-  // Not stubbed: this one goes all the way to the database, so the route and
-  // the screen are held to the same claim.
+  // Goes all the way to the database.
   const sent: string[][] = []
   page.on('request', (r) => {
     if (r.url().endsWith('/api/projects/delete') && r.method() === 'POST') {
@@ -61,7 +53,7 @@ test('프로젝트를 여러 개 골라 한 번에 지운다', async ({ page }) 
     await expect(page.getByText(name, { exact: true })).toHaveCount(0)
   }
 
-  // And gone from the server, not just from this tab.
+  // Gone from the server.
   const left = await page.evaluate(
     async ([fn, a, b]) => {
       const rows = (await eval(fn as string)('/api/projects')) as { name: string }[]
@@ -77,8 +69,7 @@ test('결과물·스킬·에이전트·커넥터 화면에도 같은 선택 막�
   test.setTimeout(120_000)
   await signIn(page)
 
-  // The gallery may be empty on a freshly cleared account, and this spec is
-  // about the bar rather than about fixtures — so it brings its own row.
+  // Brings its own row.
   await page.evaluate(
     async (fn) =>
       await eval(fn as string)('/api/artifacts', {
@@ -101,8 +92,7 @@ test('결과물·스킬·에이전트·커넥터 화면에도 같은 선택 막�
   ] as const) {
     await page.goto(path)
     const boxes = page.getByRole('checkbox', { name: /선택$/ })
-    // Said rather than skipped silently: a screen with nothing on it is a
-    // screen this spec did not check, and the log has to admit that.
+    // A screen with no rows is logged as skipped.
     if ((await boxes.count()) === 0) {
       await page.waitForTimeout(2_000)
     }

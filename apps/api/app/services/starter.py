@@ -1,15 +1,7 @@
-"""The shared catalogue of agents and skills the workspace ships with.
+"""The shipped catalogue of agents, skills and design systems.
 
-One account holds them — the oldest administrator's — shared to everyone, and
-each person takes copies of the ones they want from the store. Nobody is given
-eight procedures at approval any more, and a copy is theirs: editable,
-deletable, and unaffected by later edits to the original.
-
-**What earns a row.** A prompt you would type twice is a skill; a stance you
-would hold for a whole conversation is an agent. Both are drawn from the
-persona list the E2E suite is built on (`e2e/personas.ts`).
-
-Deliberately small: a list you can read rather than a catalogue you scroll past.
+The oldest administrator's account holds the agents and skills, shared to
+everyone; people take copies from the store. Designs are seeded per account.
 """
 
 from __future__ import annotations
@@ -29,8 +21,7 @@ from app.models.workspace import (
     Visibility,
 )
 
-#: Agents reference skills by this key, rewritten to real ids once the rows
-#: exist — a seeder slug would point at nothing on the first edit.
+#: Agents reference skills by `key`; the seeder swaps keys for row ids.
 _SKILLS: list[dict] = [
     {
         "key": "citation",
@@ -527,6 +518,7 @@ _SKILLS: list[dict] = [
     },
 ]
 
+#: Earlier shipped bodies by (key, version); an untouched one is upgraded in place.
 _LEGACY_CATALOG_BODIES = {
     ("citation", "1.0.0"): """어떤 형식인지 먼저 확인한다. 지정이 없으면 묻고, 추측하지 않는다.
 
@@ -544,7 +536,6 @@ _LEGACY_CATALOG_BODIES = {
 - 단위와 기준 시점을 반드시 밝힌다. "40% 증가" 는 무엇 대비인지 없으면 뜻이 없다.""",
 }
 
-#: `skills` holds `_SKILLS` keys; the seeder swaps them for row ids.
 _AGENTS: list[dict] = [
     {
         "key": "study-tutor",
@@ -1008,25 +999,13 @@ def estimate_tokens(when_to_use: str, body: str, description: str = "") -> int:
     return _estimated_tokens({"when_to_use": when_to_use, "body": body or description})
 
 
-# Before `catalog_key` existed, shipped rows still had deterministic slugs.
-# This one-time map upgrades those rows without claiming a personal skill that
-# merely happens to share a display name.
+#: Slug → key, to adopt rows seeded before `catalog_key` existed.
 _LEGACY_CATALOG_KEYS = {_slug(spec["name"]): spec["key"] for spec in _SKILLS}
-
-#: The same for agents, which never had a catalogue key at all. Rows seeded
-#: into the administrator's own account before this are adopted as the
-#: originals rather than duplicated beside them.
 _LEGACY_AGENT_KEYS = {_slug(spec["name"]): spec["key"] for spec in _AGENTS}
 
 
 async def seed_designs(db: AsyncSession, user_id: str) -> int:
-    """The three looks a new account starts with.
-
-    Personal, unlike the agents and skills next door: a look is a colour and a
-    typeface somebody edits until it is theirs, not a procedure worth one copy
-    for the whole workspace. Seeded once and never re-synced, so one deleted on
-    purpose stays deleted. The caller commits.
-    """
+    """Seeds the starting designs into an account that has none. The caller commits."""
     existing = (
         await db.exec(
             select(func.count()).select_from(DesignSystem).where(DesignSystem.owner_id == user_id)
@@ -1040,13 +1019,7 @@ async def seed_designs(db: AsyncSession, user_id: str) -> int:
 
 
 async def catalog_owner_id(db: AsyncSession) -> str | None:
-    """Which account holds the shared catalogue: the oldest administrator.
-
-    Derived rather than stored. A column would need a migration to move and an
-    answer for the account that gets deleted; the oldest admin is the one
-    account an instance is guaranteed to have, and the answer survives a second
-    administrator being appointed later.
-    """
+    """The account holding the shared catalogue: the oldest administrator."""
     return (
         await db.exec(
             select(User.id)
@@ -1058,23 +1031,13 @@ async def catalog_owner_id(db: AsyncSession) -> str | None:
 
 
 async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
-    """Puts the shipped agents and skills in one account, shared to everyone.
+    """Syncs the shipped agents and skills into one account, shared to everyone.
 
-    They used to be copied into every account at approval. That made the same
-    procedure N rows: improving one reached nobody, and every account carried
-    eight skills it had not asked for. Now one account holds the originals and
-    everyone else takes copies of the ones they want, through the store.
-
-    Idempotent by catalogue key, and it never overwrites an edit: a procedure
-    this account has rewritten keeps its body and its version. Sharing is set
-    on the first run and left alone afterwards, so an entry retired by
-    switching it back to 개인 stays retired — deleting one, on the other hand,
-    means the next sync ships it again, which is what a catalogue entry is.
-    The caller commits.
+    Idempotent by catalogue key. An edited skill body is never overwritten.
+    Sharing is set on the first run only, so an entry switched back to 개인
+    stays private; a deleted entry is shipped again. The caller commits.
     """
-    # Serialise syncs for one account. Two browser logins can arrive together;
-    # without the row lock both see a missing key and one loses to the unique
-    # index, turning an otherwise valid login into a 500.
+    # Row lock: concurrent logins would otherwise race on the unique key index.
     await db.exec(select(User.id).where(User.id == owner_id).with_for_update())
     existing_agents = list(
         (await db.exec(select(Agent).where(col(Agent.owner_id) == owner_id))).all()
@@ -1082,18 +1045,8 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     existing_skills = list(
         (await db.exec(select(Skill).where(col(Skill.owner_id) == owner_id))).all()
     )
-    # Whether this account has been set up as the catalogue before.
-    #
-    # Agents carry a catalogue key only when this function put one there, which
-    # makes their absence the one honest signal of a first run. Skills cannot
-    # answer it: on an instance upgrading from the days when every account was
-    # handed its own copy, they already carry keys an older sync wrote for an
-    # unrelated purpose — and reading those as "already set up" left the skill
-    # half of the catalogue unpublished, which is the whole of the store.
-    #
-    # First run publishes everything this account holds that belongs to the
-    # catalogue. Afterwards only new entries are published, so one retired by
-    # switching it back to 개인 stays retired.
+    # First run ⇔ no agent carries a catalogue key. Skills may carry keys
+    # written for another purpose, so they cannot answer this.
     established = any(agent.catalog_key for agent in existing_agents)
     by_catalog = {s.catalog_key: s for s in existing_skills if s.catalog_key}
     legacy_builtins = {
@@ -1108,16 +1061,13 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         key = spec["key"]
         skill = by_catalog.get(key)
         if skill is None and (adopted := legacy_builtins.get(key)) is not None:
-            # Seeded into this account before catalogue keys existed at all.
             skill = adopted
             skill.catalog_key = key
         if skill is not None:
             if not established:
                 skill.visibility = Visibility.org
-            # Metadata can be filled safely without touching a procedure the
-            # account may have edited. An exact untouched v1 body can receive a
-            # strengthened catalogue procedure; custom bodies retain their
-            # original version instead of pretending they were upgraded.
+            # Only an untouched earlier shipped body is upgraded; an edited
+            # body keeps its text and version.
             if skill.required_tools is None:
                 skill.required_tools = list(spec.get("required_tools", []))
             previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
@@ -1144,8 +1094,6 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             required_tools=spec.get("required_tools", []),
             estimated_tokens=_estimated_tokens(spec),
             version=spec.get("version", "1.0.0"),
-            # Marked built-in, so the screen can tell a starting point from
-            # something the user wrote.
             source=SkillSource.built_in,
             visibility=Visibility.org,
         )
@@ -1164,28 +1112,15 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         key = spec["key"]
         agent = agents_by_catalog.get(key)
         if agent is None and not established and (adopted := legacy_agents.get(key)):
-            # Same adoption as the skills above: this account was seeded before
-            # there was a catalogue, and those rows are the catalogue. Only on
-            # the first run — afterwards an agent that merely shares a name with
-            # a new entry is somebody's own work, not a catalogue row. Adopted
-            # as it stands: a prompt this account rewrote is kept.
+            # First run only; later, a same-named agent is the owner's own work.
             agent = adopted
             agent.catalog_key = key
             agent.visibility = Visibility.org
             db.add(agent)
             continue
         if agent is not None:
-            # The shipped stance, kept current. An agent is a catalogue row
-            # the product versions, not a procedure the owner wrote; a rebuilt
-            # catalogue that left the old prompts under the new names would be
-            # the old catalogue with new labels.
-            #
-            # 손대지 않은 복사본도 따라간다. Somebody who took this agent into
-            # their account and never opened its prompt has the old wording
-            # frozen in a row of their own, and was reading yesterday's tutor
-            # while the catalogue moved on. A copy whose prompt still equals
-            # the one it was taken from is refreshed with it; one that was
-            # edited is theirs, and is left as they wrote it.
+            # Agents always follow the shipped prompt. Copies whose prompt still
+            # equals the original are refreshed too; edited copies are left alone.
             if agent.system_prompt != spec["system_prompt"]:
                 untouched = await db.exec(
                     select(Agent).where(
@@ -1219,8 +1154,6 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 kinds=spec["kinds"],
                 guide=spec.get("guide", ""),
                 starters=list(spec.get("starters", [])),
-                # Real ids, not seeder keys: a slug that is not a row applies no
-                # skills at all, silently.
                 skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],
                 tools=spec.get("tools", []),
                 temperature=spec.get("temperature", 0.5),
@@ -1231,12 +1164,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         )
         made += 1
 
-    # 물러난 항목은 거둔다. The catalogue was rebuilt around the 대학생·대학원생·
-    # 직장인 scenario set, and a shared row whose key no longer ships is a
-    # procedure the product stopped standing behind — left in the store it
-    # would sit beside the new ones as if it were one. Only the catalogue
-    # owner's own shared rows with a retired key go; a copy somebody took
-    # into their account carries no catalogue key and is theirs to keep.
+    # Retired keys are removed from the owner's rows; copies carry no key.
     shipped_skills = {spec["key"] for spec in _SKILLS}
     shipped_agents = {spec["key"] for spec in _AGENTS}
     for skill in existing_skills:
@@ -1249,13 +1177,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
 
 
 async def sync_catalog(db: AsyncSession, user: User) -> int:
-    """Keeps the shared catalogue current, for the one account that holds it.
-
-    Called on every sign-in and every token rotation, which is why it costs an
-    ordinary account nothing: the catalogue is one account's rows now, so
-    everybody else returns before touching the database. New entries in a
-    release reach the workspace the next time an administrator signs in.
-    """
+    """Syncs the catalogue on sign-in, only for the account that holds it."""
     if user.role is not UserRole.admin:
         return 0
     if await catalog_owner_id(db) != user.id:
@@ -1264,7 +1186,7 @@ async def sync_catalog(db: AsyncSession, user: User) -> int:
 
 
 def runtime_metadata(skill: Skill) -> dict:
-    """Persisted runtime contract with a safe estimate for legacy rows."""
+    """Catalog key, required tools and token estimate for a skill row."""
     return {
         "catalog_key": skill.catalog_key,
         "required_tools": list(skill.required_tools or []),

@@ -1,15 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { artifactReady, signIn } from './helpers'
 
-/**
- * What the linter found, shown on the artifact that carries it.
- *
- * The rules themselves are pinned in `tests/test_lint.py`, where a bad
- * sentence can be written on purpose. A model cannot be asked to produce one
- * reliably, so what this covers is the other half: that findings stored on an
- * artifact reach the panel, and that a document generated for real comes back
- * carrying the field at all.
- */
+/** Lint findings stored on an artifact reach the panel; the review adds a score. Rules are in `tests/test_lint.py`. */
 
 const AS_USER = `async (path, init) => {
   const login = await fetch('/api/auth/login', {
@@ -66,16 +58,12 @@ test('검사에서 걸린 곳은 결과물 패널에서 셀 수 있고 읽을 �
   expect(artifact, '아티팩트를 만들지 못했습니다').not.toBeNull()
 
   await page.goto('/artifacts')
-  // Opened by its own name, and waited for first: the grid arrives from its
-  // own request, and the sidebar carries session titles that read the same.
+  // By its own name; the sidebar carries session titles that read the same.
   const card = page.getByRole('button', { name: `${title} 열기` })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
 
-  // The count is the P0 one: "one thing is wrong" and "two could read better"
-  // are different sentences, and only the first should look urgent.
-  // 검사 결과는 리본의 검토 칸에 있다. A panel opens on 홈, so a test that
-  // reaches for it without saying which tab is looking at the wrong row.
+  // The count is the P0 one.
   await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
@@ -85,9 +73,7 @@ test('검사에서 걸린 곳은 결과물 패널에서 셀 수 있고 읽을 �
   await expect(page.getByText(/채우지 않은 자리가 남았습니다/)).toBeVisible()
   await page.screenshot({ path: 'test-results/shots/10-lint-findings.png' })
   await expect(page.getByText(/채움말이 있습니다/)).toBeVisible()
-  // Each finding says where it is, or the reader has to hunt for it. Scoped
-  // to the list: the same heading is also in the document, its table of
-  // contents, and the section it names.
+  // Each finding says where it is. Scoped to the list: the heading is also in the document.
   await expect(page.getByRole('list').getByText('배경', { exact: true })).toBeVisible()
 })
 
@@ -136,10 +122,7 @@ test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', a
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
 
-  // Offered even with nothing found automatically: the review is the thing
-  // that costs a call, so it is asked for rather than run.
-  // 검사 결과는 리본의 검토 칸에 있다. A panel opens on 홈, so a test that
-  // reaches for it without saying which tab is looking at the wrong row.
+  // The review costs a call, so it is offered rather than run.
   await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
@@ -147,7 +130,7 @@ test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', a
   await expect(page.getByText(/모델을 한 번 호출합니다/)).toBeVisible()
   await page.getByRole('button', { name: '검토 받기' }).click()
 
-  // The score lands beside the findings, in the one list of things to look at.
+  // The score lands beside the findings.
   await expect(page.getByText(/검토 \d+(\.\d)?\/10/)).toBeVisible({ timeout: 240_000 })
   await page.screenshot({ path: 'test-results/shots/12-critique.png' })
 
@@ -161,7 +144,7 @@ test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', a
   )
   expect(stored.data.critique.score).toBeGreaterThanOrEqual(0)
   expect(stored.data.critique.score).toBeLessThanOrEqual(10)
-  // A review annotates rather than edits: the document and its version stand.
+  // A review annotates: the version stands.
   expect(stored.version).toBe(1)
   expect(stored.data.sections).toHaveLength(2)
 })
@@ -197,10 +180,7 @@ test('걸린 것이 없으면 개수 대신 검토를 권한다', async ({ page 
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
   await artifactReady(page, 20_000)
-  // Nothing was found, so the badge says what it *can* offer — a review —
-  // rather than a count of problems that do not exist.
-  // 검사 결과는 리본의 검토 칸에 있다. A panel opens on 홈, so a test that
-  // reaches for it without saying which tab is looking at the wrong row.
+  // Nothing found: the badge offers a review instead of a count.
   await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toContainText('검토')

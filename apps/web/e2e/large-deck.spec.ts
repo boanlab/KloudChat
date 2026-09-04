@@ -48,9 +48,7 @@ test('60장 덱을 열고 끝까지 탐색해 PPTX와 PDF로 내보낸다', asyn
     await thumbnails.nth(59).click()
     await expect(panel.getByText('60번 장').first()).toBeVisible()
     await panel.getByRole('tab', { name: '보기', exact: true }).click()
-    // 「60장」 배지가 여기 있었다. 누를 수 없는 숫자였고, 바로 옆 목록이
-    // 예순 장을 그려 놓고 다시 「60장」이라고 적는 자리였다 — 그래서 없앴다.
-    // 남은 것은 목록을 여닫는 버튼이고, 세는 일은 그 버튼이 한다.
+    // The 장 목록 button carries the count.
     await expect(panel.getByRole('button', { name: '장 목록' })).toHaveText(/60\/60|60장/)
 
     const exports = await page.evaluate(async ([account, artifactId]) => {

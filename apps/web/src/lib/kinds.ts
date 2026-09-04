@@ -1,22 +1,14 @@
 import { Clapperboard, FileText, Image, MessageSquare, Presentation } from 'lucide-react'
 import type { SessionKind } from '@/types'
 
-/**
- * Single source of truth for the five surfaces. Nav, empty states, badges, and
- * routing all read from here so adding a sixth kind is one entry, not a sweep.
- */
+/** Single source of truth for the five surfaces: nav, empty states, badges and routing read from here. */
 export const kindMeta: Record<
   SessionKind,
   {
     label: string
     icon: typeof MessageSquare
     color: string
-    /**
-     * One parallel line: what this surface makes. Used on the home cards, the
-     * empty session screen and the sign-in list, so all five have to read the
-     * same shape — a greeting for one and two sentences for another is what
-     * makes those lists look ragged.
-     */
+    /** One line saying what this surface makes; all five must read the same shape. */
     tagline: string
     panelLabel: string
   }
