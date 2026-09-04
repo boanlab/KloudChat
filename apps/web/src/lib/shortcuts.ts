@@ -1,13 +1,9 @@
 /**
- * The keyboard shortcuts, in one place — the list the dialog prints *is* the
- * list the handler matches, so the two cannot drift.
- *
- * The chords follow ChatGPT's (⌘⇧O, ⇧Esc, ⌘⇧C, ⌘⇧;, ⌘⇧S, ⌘⇧⌫, ⌘/), because
- * that is the set people arrive already knowing. `mod` is ⌘ on a Mac and Ctrl
- * everywhere else.
+ * Keyboard shortcuts: the list the dialog prints is the list the handler
+ * matches. Chords follow ChatGPT's; `mod` is ⌘ on a Mac and Ctrl elsewhere.
  */
 
-export type ShortcutId =
+type ShortcutId =
   | 'new-chat'
   | 'focus-composer'
   | 'copy-last-answer'
@@ -19,7 +15,7 @@ export type ShortcutId =
   | 'search'
   | 'show-shortcuts'
 
-export interface Shortcut {
+interface Shortcut {
   id: ShortcutId
   label: string
   /** `mod` renders as ⌘ or Ctrl; the last entry is the key itself. */
@@ -43,10 +39,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'show-shortcuts', label: '단축키 표시', keys: ['mod', '/'], key: '/', mod: true },
 ]
 
-/**
- * What the composer itself does. Not chords the shell handles — listed so the
- * dialog tells the whole story, hold-to-talk included.
- */
+/** Keys the composer itself handles; listed so the dialog is complete. */
 export const COMPOSER_KEYS: { label: string; note?: string; keys: string[] }[] = [
   { label: '보내기', keys: ['Enter'] },
   { label: '줄 바꿈', keys: ['Shift', 'Enter'] },

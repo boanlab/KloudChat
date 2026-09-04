@@ -2,15 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { approveOnce, signIn } from './helpers'
 
-/**
- * The report and deck panels as working surfaces.
- *
- * Everything here runs against artifacts posted straight to the API, so no
- * model is called: what is under test is the panel — the rail, the stage, the
- * selection handle, presenter view — not the writing that fills it. A spec that
- * had to generate a deck first would cost minutes and credits to assert that a
- * thumbnail is clickable.
- */
+/** The report and deck panels as working surfaces, on artifacts posted straight to the API. */
 
 const AS_USER = `async (path, init) => {
   const login = await fetch('/api/auth/login', {
@@ -50,8 +42,7 @@ function remove(page: Page, id: string) {
 /** Opens an artifact by title from the gallery and returns its dialog. */
 async function openPreview(page: Page, title: string) {
   await page.goto('/artifacts')
-  // The card's own thumbnail is what opens it; the title beside it is not a
-  // control. `.last()` is the innermost div that holds both — the card.
+  // The thumbnail opens the card; `.last()` is the innermost div holding both.
   const card = page
     .locator('div')
     .filter({ has: page.getByText(title, { exact: true }) })
@@ -101,9 +92,7 @@ test.describe('슬라이드 패널', () => {
       expect((await heading.boundingBox())?.height).toBeLessThanOrEqual(24)
       await expect(heading).toHaveCSS('white-space', 'nowrap')
     }
-    // The rail must be the same slide at a smaller scale, not a large canvas
-    // cropped into a thumbnail. Compare the title size relative to each
-    // surface's width; the ratio stays constant when both use one renderer.
+    // Rail and stage share one renderer: title size / width is the same ratio on both.
     const thumb = panel.locator('nav button.aspect-video').first()
     const stage = panel.locator('div.aspect-video').filter({ hasText: SLIDES[0].title }).last()
     const [thumbMetric, stageMetric] = await Promise.all([
@@ -111,22 +100,16 @@ test.describe('슬라이드 패널', () => {
       stage.evaluate((node) => ({ width: node.getBoundingClientRect().width, font: Number.parseFloat(getComputedStyle(node.querySelector('h3')!).fontSize) })),
     ])
     expect(Math.abs(thumbMetric.font / thumbMetric.width - stageMetric.font / stageMetric.width)).toBeLessThan(0.015)
-    // One thumbnail per slide, and where you are in them.
     await expect(panel.locator('button.aspect-video')).toHaveCount(SLIDES.length)
-    // 보기 held a count badge — a number nobody could press, next to a list
-    // already showing every slide. The tab holds the list toggle now, and that
-    // says the same count as part of saying where you are.
     await panel.getByRole('tab', { name: '보기' }).click()
     await expect(
       panel.getByRole('button', { name: '장 목록' }),
     ).toContainText(`/${SLIDES.length}`)
 
-    // The stage follows the rail. Slide 3's bullet is the proof it is the one
-    // being drawn large, not just highlighted in the list.
+    // The stage follows the rail.
     await panel.getByRole('button', { name: '3번 장' }).click()
     await expect(panel.getByText('python -m venv .venv').first()).toBeVisible()
 
-    // Outline view answers the other question — the order of the argument.
     await panel.getByRole('button', { name: '차례로' }).click()
     await expect(panel.getByText('왜 격리하는가').first()).toBeVisible()
     await expect(panel.getByText('요약').first()).toBeVisible()
@@ -138,11 +121,9 @@ test.describe('슬라이드 패널', () => {
     await signIn(page)
     const panel = await openPreview(page, title)
 
-    // On the first slide there is nothing before it.
     await expect(panel.getByRole('button', { name: '이전 장' })).toBeDisabled()
     await panel.getByRole('button', { name: '다음 장' }).click()
     await expect(panel.getByText('의존성 충돌').first()).toBeVisible()
-    // The notes travel with the slide.
     await expect(panel.getByText('여기서 사례를 든다')).toBeVisible()
     await panel.getByRole('button', { name: '이전 장' }).click()
     await expect(panel.getByText('연구실 신입생 대상').first()).toBeVisible()
@@ -188,8 +169,7 @@ test.describe('슬라이드 패널', () => {
       expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(39.5)
     }
     await expect(panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '이 장 다시 만들기' })).toHaveCount(0)
-    // 도구는 리본의 편집 칸 안에 있고, 넘치면 리본 줄이 스크롤한다 — 도구
-    // 자체가 아니라. 화면을 넘지 않아야 하는 것은 그 줄이다.
+    // The ribbon row scrolls on overflow; the row itself must fit the viewport.
     const ribbonRow = panel.getByRole('tabpanel', { name: '편집' })
     expect(await ribbonRow.evaluate((node) => node.clientWidth)).toBeLessThanOrEqual(320)
     await expect(ribbonRow.getByLabel('슬라이드 편집 도구')).toBeVisible()
@@ -210,16 +190,13 @@ test.describe('슬라이드 패널', () => {
 
     await page.keyboard.press('ArrowRight')
     await expect(stage.getByText(`2 / ${SLIDES.length}`)).toBeVisible()
-    // What the presenter reads, on the screen only they see.
     await expect(stage.getByText('여기서 사례를 든다')).toBeVisible()
 
-    // The rehearsal clock can be restarted without leaving the current slide.
     await stage.getByRole('button', { name: '발표 시간 다시 시작' }).click()
     await expect(stage.getByRole('button', { name: '발표 시간 다시 시작' })).toHaveText('00:00')
 
     await page.keyboard.press('Escape')
     await expect(stage).toBeHidden()
-    // Escape ends the presentation, not the panel behind it.
     await expect(panel.getByRole('toolbar', { name: '슬라이드 쇼' }).getByRole('button', { name: '발표' })).toBeVisible()
   })
 
@@ -248,7 +225,7 @@ test.describe('슬라이드 패널', () => {
     await page.getByRole('menuitem', { name: '미해결 검토 메모 1개' }).click()
     await expect(review).toBeVisible()
 
-    // It is artifact data, not drawer-local state.
+    // Notes are artifact data.
     await page.reload()
     panel = await openPreview(page, title)
     await panel.getByRole('tab', { name: '검토' }).click()
@@ -263,10 +240,8 @@ test.describe('슬라이드 패널', () => {
     await resolved
     await expect(restored.getByRole('button', { name: '다시 열기' })).toBeVisible()
 
-    // A later slide edit must not replace the whole deck payload and erase
-    // review metadata that is not part of the visible slide canvas.
+    // A later slide edit must not erase review metadata.
     await restored.getByRole('button', { name: '검토 메모 닫기' }).click()
-    // 메모는 검토 탭에서 열었으므로 리본은 아직 거기에 있다. 편집 도구는 홈에.
     await panel.getByRole('tab', { name: '홈' }).click()
     await panel.getByRole('button', { name: '편집 도구' }).click()
     await panel.getByLabel('슬라이드 텍스트').fill('가상환경 관리\n연구실 신입생 대상\n검토 뒤에도 남는 본문')
@@ -428,8 +403,6 @@ test.describe('슬라이드 패널', () => {
     const panel = await openPreview(page, title)
 
     const captures: Buffer[] = []
-    // 셋뿐인 선택은 리본에 그대로 서 있다 — 드롭다운을 열면 고른 것 하나만
-    // 보이고 나머지는 눌러 봐야 알았다.
     for (const [buttonName, storedStyle] of [
       ['포스터형', 'poster'],
       ['미니멀', 'minimal'],
@@ -462,16 +435,8 @@ test.describe('슬라이드 패널', () => {
   })
 })
 
-/**
- * A deck that came out of a 서식, on the same panel as the JSON one.
- *
- * Picking a shape turns a slides session into one HTML document, and for as
- * long as that document could only be previewed and read as source, choosing
- * the better-looking deck cost the ability to show it to anybody. The markup
- * here is what `design_templates.assemble` writes — one `<section class=
- * "slide">` per slide inside a seed that carries its own stylesheet — so what
- * this walks is the panel, not the writing.
- */
+/** A 서식 deck: one HTML document with one `<section class="slide">` per slide, as
+ *  `design_templates.assemble` writes it. */
 const PAGE_DECK = `<!doctype html>
 <html lang="ko">
 <head>
@@ -541,10 +506,8 @@ test.describe('서식으로 만든 덱', () => {
     await expect(stage).toBeVisible()
     await expect(stage.getByText('1 / 3')).toBeVisible()
 
-    // What is on the wall is the file, not a redrawing of it: the seed's own
-    // stylesheet travels with the slide, and only that slide is in the page.
-    // Read off `srcdoc` rather than through the frame — it is `sandbox=""`,
-    // which is what makes model-written markup safe to show at all.
+    // Each shown page carries the seed's stylesheet and only that slide. Read via
+    // `srcdoc`: the frame is `sandbox=""`.
     const shown = async () => (await stage.locator('iframe').getAttribute('srcdoc')) ?? ''
     let doc = await shown()
     expect(doc).toContain('scroll-snap-align')
@@ -559,7 +522,6 @@ test.describe('서식으로 만든 덱', () => {
 
     await page.keyboard.press('Escape')
     await expect(stage).toBeHidden()
-    // Escape ends the presentation, not the panel behind it.
     await expect(panel.getByRole('button', { name: '발표' })).toBeVisible()
   })
 
@@ -569,8 +531,6 @@ test.describe('서식으로 만든 덱', () => {
     await panel.getByRole('button', { name: '발표' }).click()
     const stage = page.getByRole('dialog', { name: '발표 모드' })
 
-    // Twenty slides are not walked one at a time with a room waiting, so the
-    // deck's own order is on the presenter's screen.
     await stage.getByRole('button', { name: '장 목록' }).click()
     const list = stage.getByRole('navigation', { name: '장 목록' })
     await expect(list.getByText('지금의 문제')).toBeVisible()
@@ -584,27 +544,16 @@ test.describe('서식으로 만든 덱', () => {
   test('문서 서식에는 발표 버튼이 없다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, docTitle)
-    // The listing carries no markup for an HTML artifact, so wait until the
-    // document itself is on screen — otherwise "no 발표 button" is only a
-    // statement about an artifact that had not arrived yet.
+    // The listing carries no markup; wait for the document itself.
     await expect(panel.locator('iframe')).toHaveAttribute('srcdoc', /한 장 요약/, {
       timeout: 15_000,
     })
-    // The same panel, and the same reading the exporter makes: a one-pager has
-    // no slides, so offering to present it would be a button with no room.
     await expect(panel.getByRole('button', { name: '내보내기', exact: true })).toBeVisible()
     await expect(panel.getByRole('button', { name: '발표' })).toHaveCount(0)
   })
 })
 
-/**
- * The work log, live and then settled.
- *
- * Steps are not stored on the message, so the only place this card exists is
- * during a run — which is also the only moment its "how much is left" figure
- * means anything. That figure comes from the plan the outline pass already
- * has, so it has to be read off a real generation rather than a fixture.
- */
+/** The work log card during a run and after it settles. Needs a real generation: steps are not stored. */
 test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page }) => {
   test.setTimeout(420_000)
   await signIn(page)
@@ -614,45 +563,32 @@ test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page 
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
 
-  // The first pass plans and stops; approving it is what starts the run this
-  // test watches. Pressed and left running — waiting for it to finish would
-  // hand this test a screen with nothing left on it to count.
+  // Approve the plan and leave the run going.
   await approveOnce(page, 360_000)
 
-  // Open while it runs, and counting down against the outline's own total —
-  // not against the steps that happen to have arrived.
+  // Open while it runs, counting down against the outline's total.
   const running = page.getByRole('button', { name: /작업 중/ })
   await expect(running).toBeVisible({ timeout: 180_000 })
   await expect(running).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByText(/\d+개 남음/)).toBeVisible({ timeout: 180_000 })
 
-  // Finished work stays on screen, struck through.
   await expect(page.locator('.line-through').first()).toBeVisible({ timeout: 180_000 })
 
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 360_000 })
 
-  // The finished deck opens its panel, and below 1024px that panel covers the
-  // conversation rather than sitting beside it — so the work log is behind it.
-  // Put it away first, the way somebody looking back at what ran would.
+  // Below 1024px the finished deck's panel covers the conversation.
   const closePanel = page.locator('[data-panel="artifact"]').getByRole('button', { name: '닫기' })
   if (await closePanel.first().isVisible().catch(() => false)) await closePanel.first().click()
 
   const done = page.getByRole('button', { name: /작업 완료|중단됨/ }).first()
   await expect(done).toBeVisible()
-  // Settled, so it is a one-line summary until asked otherwise.
   await expect(done).toHaveAttribute('aria-expanded', 'false')
   await done.click()
   await expect(done).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByText(/\d+단계/).first()).toBeVisible()
 })
 
-/**
- * Opening and closing the artifact, from the conversation that made it.
- *
- * The loop has to be closed in both directions: a panel that cannot be put
- * away crowds the transcript out of a laptop screen, and one that cannot be
- * brought back makes closing it a decision nobody wants to make.
- */
+/** Closing and reopening the artifact panel from its conversation. */
 test('아티팩트는 대화에서 열고, 닫고, 다시 열 수 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -665,9 +601,7 @@ test('아티팩트는 대화에서 열고, 닫고, 다시 열 수 있다', async
   test.skip(!session, '결과물이 붙은 대화가 아직 없습니다.')
 
   await page.goto(`/s/${session.id}`)
-  // The result is the point of the conversation, so the panel arrives open.
-  // `aside` is also the sidebar; the artifact panel is the one carrying the
-  // close button.
+  // The panel arrives open. `aside` is also the sidebar; the artifact panel has the close button.
   const open = page.getByRole('button', { name: /열기$/ })
   const panel = page
     .locator('aside')
@@ -676,9 +610,7 @@ test('아티팩트는 대화에서 열고, 닫고, 다시 열 수 있다', async
   const viewTab = panel.getByRole('tab', { name: '보기' })
   if (await viewTab.isVisible().catch(() => false)) await viewTab.click()
 
-  // Three positions, walked by one button, and the button is named for what
-  // pressing it does. A document opens at a reading width, folds the
-  // conversation away, comes back to the narrow column, and round again.
+  // Three widths, one button named for what pressing it does.
   const only = panel.getByRole('button', { name: '문서만 보기' })
   await expect(only).toBeVisible()
   await only.click()
@@ -690,13 +622,9 @@ test('아티팩트는 대화에서 열고, 닫고, 다시 열 수 있다', async
   await wider.click()
   await expect(only).toBeVisible()
 
-  // Put it away — the transcript gets the whole window back.
   await panel.getByRole('button', { name: '닫기' }).click()
   await expect(panel).toHaveCount(0)
 
-  // …and closing is only safe because this brings it back. Before the session
-  // loaded its own artifacts, arriving by URL left this button off the header
-  // entirely and the result was unreachable from the conversation that made it.
   await expect(open).toBeVisible()
   await open.click()
   await expect(panel).toBeVisible()
@@ -822,12 +750,8 @@ test.describe('보고서 패널', () => {
     await signIn(page)
     const panel = await openPreview(page, title)
     await panel.getByRole('tab', { name: '검토' }).click()
-    // Version history is reachable by the same name the restore flow uses.
     await expect(panel.getByRole('button', { name: '버전 기록' })).toBeVisible()
     await expect(panel.getByText('저장 시점 v1')).toBeVisible()
-    // The count moved onto the button that opens the contents. It used to sit
-    // in a column standing beside the document at every width, and that column
-    // was 208px of the document's own room.
     await panel.getByRole('tab', { name: '보기' }).click()
     await expect(panel.getByRole('button', { name: /목차 \d+\/2/ })).toBeVisible()
   })
@@ -851,7 +775,6 @@ test.describe('보고서 패널', () => {
   test('리본 드롭다운은 버튼 상태를 알리고 메뉴 안에서 초점을 돌려준다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    // 인상은 버튼 셋이 되었고(덱과 같게), 남은 드롭다운은 색 고르기다.
     const trigger = panel.getByRole('button', { name: '보고서 색 고르기' })
     await trigger.focus()
     await trigger.press('Enter')
@@ -914,8 +837,7 @@ test.describe('보고서 패널', () => {
     await panel.getByRole('button', { name: '내용 편집' }).click()
     const editPage = panel.getByLabel('보고서 편집 페이지')
     await expect(editPage).toBeVisible()
-    // The artifact dialog itself has 8px gutters and borders; the document
-    // keeps all remaining width instead of losing 224px to the outline.
+    // 8px dialog gutters; the document keeps the remaining width.
     expect(await editPage.evaluate((node) => node.clientWidth)).toBeGreaterThanOrEqual(270)
     const toolbar = panel.getByLabel('서체').locator('..')
     expect(await toolbar.evaluate((node) => node.scrollWidth)).toBeGreaterThanOrEqual(await toolbar.evaluate((node) => node.clientWidth))
@@ -924,9 +846,6 @@ test.describe('보고서 패널', () => {
   test('내용을 유지한 채 보고서 디자인 세 계열을 바꾼다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    // The design control is discoverable from the normal reading view. The
-    // first choice opens the page view so the consequence is visible at once.
-    // 인상은 리본에 버튼 셋으로 바로 있다 — 덱과 같은 모양이다.
     await expect(panel.getByRole('button', { name: '편집형', exact: true })).toBeVisible()
 
     const captures: Buffer[] = []
@@ -970,13 +889,9 @@ test.describe('보고서 패널', () => {
     await signIn(page)
     const panel = await openPreview(page, title)
 
-    // Select the sentence the way a reader would — by dragging across it.
     const sentence = panel.getByText('도메인이 멀어질수록', { exact: false }).first()
     await expect(sentence).toBeVisible()
-    // Measured in a retry loop, and the box that answered is the one used. The
-    // panel refetches its artifact just after opening, so the node this
-    // resolves to can be replaced between "is it visible" and "where is it" —
-    // and `boundingBox()` returns null for a node no longer in the document.
+    // Polled: the panel refetches its artifact just after opening and may replace the node.
     let box: { x: number; y: number; width: number; height: number } | null = null
     await expect
       .poll(async () => {
@@ -994,14 +909,11 @@ test.describe('보고서 패널', () => {
     await expect(handle).toBeVisible({ timeout: 10_000 })
     await handle.click()
 
-    // The instruction box opens on that section, carrying the passage it is
-    // about — the reader never has to describe the sentence again.
     const note = panel.getByLabel('다시 쓰기 지시')
     await expect(note).toBeVisible()
     await expect(panel.getByLabel('고칠 대목')).toContainText('도메인이')
     await expect(panel.getByRole('button', { name: '선택 해제' })).toBeVisible()
 
-    // Dropping the quotation leaves the instruction box open, not the reverse.
     await panel.getByRole('button', { name: '선택 해제' }).click()
     await expect(panel.getByRole('button', { name: '선택 해제' })).toHaveCount(0)
     await expect(note).toBeVisible()
@@ -1014,7 +926,6 @@ test.describe('보고서 패널', () => {
     await panel.getByRole('button', { name: '문서만 보기' }).click()
     await panel.getByRole('button', { name: '패널 좁히기' }).click()
     await panel.getByRole('button', { name: '넓게 보기' }).click()
-    // Back where it opened, which is the position a document should be in.
     await expect(panel.getByRole('button', { name: '문서만 보기' })).toBeVisible()
   })
 
@@ -1030,8 +941,6 @@ test.describe('보고서 패널', () => {
     await expect(panel.getByRole('button', { name: '페이지 설정' })).toHaveCount(1)
     await panel.getByRole('tab', { name: '보기' }).click()
     await expect(panel.getByRole('button', { name: /목차 \d+\/\d+/ })).toHaveCount(1)
-    // 내보내기는 파일을 만드는 일이라 파일에, 저장 시점은 되돌아보는 일이라
-    // 검토에 있다.
     await panel.getByRole('tab', { name: '파일' }).click()
     await expect(panel.getByRole('button', { name: '내보내기' })).toHaveCount(1)
     await panel.getByRole('tab', { name: '검토' }).click()
@@ -1096,8 +1005,7 @@ test.describe('보고서 패널', () => {
   test('원문 편집 중 다른 저장을 덮어쓰지 않고 최신본으로 복구한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
-    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    // 원문 편집 is a 웹뷰 button; a styled report may open in 페이지뷰.
     if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
       await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
     }
@@ -1130,8 +1038,7 @@ test.describe('보고서 패널', () => {
   test('Ctrl+S로 보고서 원문 편집을 저장한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
-    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    // 원문 편집 is a 웹뷰 button; a styled report may open in 페이지뷰.
     if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
       await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
     }
@@ -1155,11 +1062,7 @@ test.describe('보고서 패널', () => {
     await page.keyboard.type(' 페이지 키보드 저장')
     const saveButton = panel.getByLabel('빠른 도구').getByRole('button', { name: '저장' })
     await expect(saveButton).toBeVisible()
-    // 저장하지 않은 편집은 길을 막지 않는다. These used to be disabled while
-    // anything was unsaved, so one keystroke greyed out the way back to the
-    // web view and the design menu with nothing saying why — the 저장 that
-    // would free them sitting in a different row. They stay usable and commit
-    // the text on the way through; the guard that matters is beforeunload.
+    // Unsaved edits do not disable the view and design buttons; beforeunload is the guard.
     const webViewButton = panel.getByRole('button').filter({ hasText: /^웹뷰$/ })
     await expect(webViewButton).toBeEnabled()
     await expect(panel.getByRole('button', { name: '편집형', exact: true })).toBeEnabled()
@@ -1199,8 +1102,7 @@ test.describe('보고서 패널', () => {
     }), [AS_USER, reportId, changed, before.version] as const)
 
     const panel = await openPreview(page, title)
-    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
-    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    // 원문 편집 is a 웹뷰 button; a styled report may open in 페이지뷰.
     if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
       await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
     }
@@ -1221,8 +1123,7 @@ test.describe('보고서 패널', () => {
     await expect(panel.getByText('복원하면 사라질 보고서 문장')).toHaveCount(0)
 
     await panel.getByRole('tab', { name: '홈' }).click()
-    // 앞 사례가 서식을 입혀 두면 문서는 페이지뷰로 열리고, 원문 편집은 웹뷰의
-    // 버튼이다. 어느 쪽으로 열렸든 웹뷰로 맞추고 연다.
+    // 원문 편집 is a 웹뷰 button; a styled report may open in 페이지뷰.
     if (await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).isVisible().catch(() => false)) {
       await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
     }
@@ -1278,7 +1179,7 @@ test.describe('보고서 패널', () => {
 
     await panel.getByRole('button', { name: '직접 확인한 기관 자료 자료 삭제' }).click()
     await expect(panel.getByText('직접 확인한 기관 자료')).toHaveCount(0)
-    // [1]이 붙은 첫 자료에는 삭제 버튼 자체가 없다.
+    // A cited source has no delete button.
     await expect(panel.getByRole('button', { name: '전이학습 검토 자료 자료 삭제' })).toHaveCount(0)
   })
 

@@ -6,14 +6,7 @@ import { useT } from '@/lib/useT'
 
 const LIMIT = 1500
 
-/**
- * 개인 맞춤 설정 — the two paragraphs every conversation starts with.
- *
- * What the person wants the model to know about them, and how they want
- * answers written. Stored on the account with the other preferences and put
- * first in the context of every chat; a document takes only the second half,
- * so a line about oneself never becomes a report's subject.
- */
+/** About-me and response-style text prepended to every chat; documents take only the style. */
 export function PersonalizationTab() {
   const t = useT()
   const { user, updateProfile } = useStore()

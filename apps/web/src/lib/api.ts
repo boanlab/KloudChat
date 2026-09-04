@@ -25,7 +25,7 @@ import type {
   User,
 } from '@/types'
 
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 /**
  * In memory only; the refresh token is an httpOnly cookie. A reload starts with
@@ -48,44 +48,10 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * What to put on the screen when a call fails.
- *
- * A 4xx `detail` is written for the person who made the request; a 5xx one is
- * written for whoever reads the logs, and so is a network error's message.
- */
-/** A bare status code, which is what `readDetail` falls back to. */
-/**
- * A machine code rather than a sentence: `not_found`, `upstream_failed`,
- * `http_502`. This API answers 4xx with them by design, and `readDetail`
- * invents one when the body is not JSON at all.
- *
- * Recognised by shape rather than by a list, because the list grows: a code is
- * lowercase ASCII with underscores and no spaces, and a sentence written for a
- * reader has neither property — it has spaces, or it is Korean.
- */
+/** Shape of a machine code (`not_found`, `http_502`): a sentence for a reader has spaces or is Korean. */
 const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
 
-/**
- * What to put on screen for a failed request.
- *
- * A 5xx `detail` is shown when the API wrote it: an image route answers 502
- * carrying the reason a picture was refused, and a generic fallback would
- * throw away the only sentence that said why.
- *
- * What never reaches a reader is a machine code — `upstream_failed`,
- * `not_found`, or the `http_502` `readDetail` invents when a gateway between
- * here and the API answers with something that is not JSON. Not messages; the
- * absence of one.
- */
-/**
- * The machine code behind a failure, for the callers that have to branch on it.
- *
- * Separate from `errorMessage` on purpose: one answers "what do I put on the
- * screen", the other "which failure was this". A caller that reads the screen
- * string and compares it to a code gets whichever the humanising rule happened
- * to let through.
- */
+/** The machine code behind a failure, or `''`. */
 export function errorCode(err: unknown): string {
   if (err instanceof ApiError && err.detail && MACHINE_CODE.test(err.detail)) {
     return err.detail
@@ -93,10 +59,11 @@ export function errorCode(err: unknown): string {
   return ''
 }
 
+/**
+ * Text for the screen: a 4xx `detail` that is a sentence, else `fallback`.
+ * 5xx bodies may carry proxy or exception text and never reach a reader.
+ */
 export function errorMessage(err: unknown, fallback: string): string {
-  // Server failures may contain proxy, provider or exception text. Besides
-  // being useless to the person retrying, that can disclose internal names.
-  // Client errors are deliberate validation copy and are safe to preserve.
   if (
     err instanceof ApiError &&
     err.status < 500 &&
@@ -115,16 +82,7 @@ export class UnauthorizedError extends ApiError {
   }
 }
 
-/**
- * The turn stopped arriving.
- *
- * Not an error the server sent — it is the absence of one. A model backend
- * that accepts the request and then never answers leaves the connection open
- * with nothing on it, and `reader.read()` waits for as long as that lasts,
- * which is why a conversation could sit on 생각하는 중… until the tab was
- * closed. A stall is now a failure like any other: it ends the turn, says what
- * happened, and leaves a retry.
- */
+/** The stream produced nothing for `STALL_MS`; ends the turn like any other failure. */
 export class StreamStalledError extends ApiError {
   constructor(detail = 'stream_stalled') {
     super(504, detail)
@@ -200,7 +158,7 @@ export interface AuthSession {
 }
 
 /** Signup returns no session while the account waits for approval. */
-export interface SignupResult {
+interface SignupResult {
   user: User
   session: AuthSession | null
 }
@@ -233,14 +191,7 @@ export interface ModelCatalogue {
   /** Model used when the user has not chosen one. Empty when it is not in
    *  the catalogue. */
   defaultChatModel?: string
-  /**
-   * The instance default per surface, when one of them wants a different
-   * model. Absent keys fall back to `defaultChatModel`.
-   *
-   * A conversation and a 보고서 are not the same job: chat is a turn every few
-   * seconds and read as it arrives, so decode speed is most of what the person
-   * feels; a document is one long run they wait for once.
-   */
+  /** Per-surface instance default; absent keys fall back to `defaultChatModel`. */
   defaultModelByKind?: Partial<Record<SessionKind, string>>
   /** 오디오/동영상 is one surface with two kinds of model, so one default each. */
   defaultAvModelByMode?: Partial<Record<'audio' | 'video', string>>
@@ -250,10 +201,7 @@ export interface ModelCatalogue {
     reason: 'disabled' | 'classifier_unavailable' | 'no_economy_models' | null
     classifierModelId: string | null
     economyModelIds: string[]
-    /** The upgrade lane shares the switch and the classifier; only the
-     *  candidate list is its own. Coarse: whether a candidate is usable also
-     *  depends on the model the turn is already on, which the catalogue cannot
-     *  know — the server decides that per turn. */
+    /** Coarse: whether a candidate is usable also depends on the turn's current model, decided server-side. */
     qualityAvailable: boolean
     qualityReason: 'disabled' | 'classifier_unavailable' | 'no_quality_models' | null
     qualityModelIds: string[]
@@ -347,8 +295,7 @@ export const transcriptionsApi = {
     // multipart: the browser sets the boundary, so this bypasses call()'s JSON headers.
     const form = new FormData()
     form.append('file', blob, filename)
-    // What the conversation was about, and which language it is in: Whisper
-    // reads the first as a vocabulary hint and the second as a pin.
+    // Whisper reads `prompt` as a vocabulary hint and `language` as a pin.
     if (hints.language) form.append('language', hints.language)
     if (hints.prompt) form.append('prompt', hints.prompt.slice(0, 500))
     const res = await fetch(`${BASE_URL}/transcriptions`, {
@@ -452,8 +399,6 @@ export const adminApi = {
     }),
   /** Logo image. multipart, so it does not go through call()'s JSON path. */
   uploadLogo: async (file: File) => {
-    // With multipart the browser has to set Content-Type itself, boundary
-    // included, so this bypasses call()'s JSON headers.
     const form = new FormData()
     form.append('file', file)
     const res = await fetch(`${BASE_URL}/admin/branding/logo`, {
@@ -484,8 +429,7 @@ export const adminApi = {
   reject: (id: string) => call<User>(`/admin/users/${id}/reject`, { method: 'POST' }),
   suspend: (id: string) => call<User>(`/admin/users/${id}/suspend`, { method: 'POST' }),
   reinstate: (id: string) => call<User>(`/admin/users/${id}/reinstate`, { method: 'POST' }),
-  /** Removes the account and everything it owns. Not reversible — suspend is. */
-  /** `purgeFiles` takes the account's uploads and generated media with it (default on). */
+  /** Removes the account and everything it owns; not reversible. `purgeFiles` takes its uploads and media too. */
   removeUser: (id: string, purgeFiles = true) =>
     call<void>(`/admin/users/${id}?purgeFiles=${purgeFiles ? 'true' : 'false'}`, {
       method: 'DELETE',
@@ -677,19 +621,14 @@ export interface ShareRow {
   createdAt: string
 }
 
-/** What the public page gets. Deliberately narrow — see routers/shares.py. */
-/**
- * What shaped a shared conversation: three names and nothing else.
- *
- * Never bodies — an agent's system prompt and a project's instructions are the
- * owner's workspace, not part of what a share token buys.
- */
+/** What shaped a shared conversation: names only, never prompt or instruction bodies. */
 export interface SharedContext {
   agent: string | null
   project: string | null
   format: { name: string; nameEn: string } | null
 }
 
+/** What the public page gets. Deliberately narrow — see routers/shares.py. */
 export type SharedPayload =
   | { kind: 'artifact'; title: string; artifactKind: string; data: unknown; updatedAt: string }
   | {
@@ -697,7 +636,7 @@ export type SharedPayload =
       title: string
       sessionKind: string
       messages: MessageRow[]
-      /** Absent on a share minted before this travelled. */
+      /** Absent on older shares. */
       startedWith?: SharedContext | null
       /** What the conversation produced, when it produced something. */
       artifact: {
@@ -798,18 +737,11 @@ export interface MessageRow {
   usage: Message['usage'] | null
   model: string | null
   routing: PrivacyRouting | null
-  /**
-   * The 시작점 this turn was begun from, if there was one. Carries the title
-   * as it read that day, so a transcript opened a year later still names the
-   * template even after somebody deleted it.
-   */
+  /** The 시작점 this turn began from, with its title as it read then; the template may since be deleted. */
   startedFrom: { templateId: string; title: string } | null
   /** What the reader thought of this answer. Null until somebody says. */
   rating: 'up' | 'down' | null
-  /**
-   * What this turn made, where what it made is the answer — a picture, a clip,
-   * a piece of speech. Null on every turn that answered in words.
-   */
+  /** Artifacts that are the answer (a picture, a clip); null when the turn answered in words. */
   artifactIds: string[] | null
   /** How the turn ended when it did not end in an answer. */
   failure: 'no_answer' | 'interrupted' | null
@@ -842,13 +774,7 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
-    /**
-     * Asks the turn on this session to stop where it is.
-     *
-     * Sent before the fetch is aborted, not instead of it: a closed socket is
-     * also what a changed tab looks like, and the server keeps generating for
-     * that one.
-     */
+  /** Asks the running turn to stop. Sent before the fetch is aborted: a closed socket alone looks like a changed tab. */
   stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
   /** Which of a comparison's answers the conversation continues from. */
   chooseVariant: (sessionId: string, messageId: string, model: string) =>
@@ -862,14 +788,7 @@ export const sessionsApi = {
    *  another tab is not silently spared. */
   deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean }) =>
     call<{ deleted: number; artifactsDeleted: number }>('/sessions/delete', body(payload)),
-  /** Pictures. Synchronous: the upstream is a completion whose answer is a
-   *  PNG, so there is nothing to poll. */
-  /**
-   * What picture to put here, proposed rather than asked for.
-   *
-   * Draws nothing and costs nothing: two lines of text the person then edits,
-   * replaces or ignores. The credit is spent by `images` below.
-   */
+  /** Proposes a caption and prompt for a figure; draws nothing and costs nothing. */
   suggestFigure: (
     sessionId: string,
     payload: { title?: string; about?: string; context?: string; visualStyle?: string },
@@ -889,6 +808,7 @@ export const sessionsApi = {
       `/sessions/${sessionId}/figure-suggestion`,
       body(payload),
     ),
+  /** Pictures. Synchronous: the upstream answers with a PNG, so there is nothing to poll. */
   images: (
     sessionId: string,
     payload: {
@@ -903,18 +823,11 @@ export const sessionsApi = {
       templateId?: string
       /** Send the prompt as typed, skipping the planner. */
       raw?: boolean
-      /**
-       * Asked for from inside a document rather than from the image surface.
-       * Tells the server the picture goes *into* a slide or a section, so it
-       * comes back as a figure and not as a picture of a whole slide.
-       */
+      /** Asked for from inside a document: comes back as a figure, not a picture of a whole slide. */
       figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
-  /**
-   * 이름표가 있는 도식. The method described in words comes back as mermaid
-   * source in the house style; the client draws it. See `diagram.py`.
-   */
+  /** A labelled figure as mermaid source in the house style; the client draws it. See `diagram.py`. */
   diagram: (
     sessionId: string,
     payload: {
@@ -976,9 +889,7 @@ export const sessionsApi = {
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/sessions/${id}`, { method: 'DELETE' }),
-  /** 좋아요 / 싫어요, or `null` to take the verdict back. Addressed by message
-   *  rather than by session: the id is unique and the server checks the
-   *  transcript it belongs to anyway. */
+  /** 좋아요 / 싫어요, or `null` to take it back. Addressed by message id. */
   rate: (messageId: string, rating: 'up' | 'down' | null) =>
     call<MessageRow>(`/messages/${messageId}/rating`, {
       method: 'PATCH',
@@ -1039,26 +950,13 @@ export const filesApi = {
   addProjectUrl: (projectId: string, url: string) =>
     call<FileRow>(`/projects/${projectId}/knowledge/url`, body({ url })),
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
-  /**
-   * Opens an uploaded `.hwpx` as an editable document.
-   *
-   * Reads the file — headings, tables and lists — into an ordinary report, so
-   * it lands in the same editor everything else does and exports back to
-   * `.hwpx` through the exporter that was already there. Nothing is generated
-   * and nothing is charged. Returns the new session's id.
-   */
+  /** Reads an uploaded `.hwpx` into a new report session; nothing generated or charged. Returns the session id. */
   openAsDocument: (id: string) =>
     call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
   remove: (id: string) => call<void>(`/files/${id}`, { method: 'DELETE' }),
 }
 
-/**
- * Hands a stored file back to whoever uploaded it, under its own name.
- *
- * A fetch and a blob rather than a link on `downloadUrl`: a click can carry
- * the Authorization header an `<img>` cannot, so the token stays out of the
- * URL and out of the proxy's access log.
- */
+/** Downloads a stored file under its own name. Fetch + blob so the token travels in a header, not the URL. */
 export async function downloadFile(id: string, name: string) {
   const res = await fetch(filesApi.downloadUrl(id), {
     credentials: 'include',
@@ -1156,14 +1054,7 @@ export const artifactsApi = {
   /** The same check on one report section. Same cost, same verdict shape. */
   factcheckSection: (id: string, sectionId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/factcheck`, body({ sectionId })),
-  /**
-   * The picture this browser made of one mermaid diagram.
-   *
-   * Mermaid renders in JavaScript and the API has no headless browser, so the
-   * reader's own render is the only one there will ever be. Stored so the
-   * exports carry a figure where the source stands. Free, and takes no version
-   * — opening a document is not editing it.
-   */
+  /** Stores this browser's render of a mermaid diagram for the exporters (the API has no headless browser). Free, adds no version. */
   storeDiagram: (id: string, sectionId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/diagram`, body({ sectionId, key, src })),
   /** Rewrites one section. Costs a model call and snapshots the old text. */
@@ -1175,23 +1066,13 @@ export const artifactsApi = {
   /** One block of an HTML artifact, addressed by position and re-rendered. */
   rewriteBlock: (id: string, index: number, note: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/rewrite`, body({ index, note })),
-  /**
-   * Puts a picture made on the image surface into one block of a page.
-   *
-   * The bytes are inlined by the server, so the document stays one file that
-   * prints and downloads with the picture in it. Costs no model call.
-   */
+  /** Puts a workspace picture into one block of a page; bytes are inlined server-side. Costs no model call. */
   addBlockImage: (id: string, index: number, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/blocks/image`, body({ index, artifactId, caption })),
-  /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
-  /**
-   * Puts a picture made in this workspace into one section of a report.
-   *
-   * A report is Markdown and a Markdown picture is a shape every exporter
-   * already reads, so the server appends a line rather than adding a field.
-   */
+  /** Appends a Markdown image line to one report section. */
   addSectionImage: (id: string, sectionId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/sections/image`, body({ sectionId, artifactId, caption })),
+  /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
@@ -1207,7 +1088,7 @@ export interface ArtifactVersionRow {
   createdAt: string
 }
 
-export interface ArtifactVersionDetailRow extends ArtifactVersionRow {
+interface ArtifactVersionDetailRow extends ArtifactVersionRow {
   data: Record<string, unknown> | null
 }
 
@@ -1226,7 +1107,7 @@ export interface ArtifactRow {
 }
 
 /** One page of the gallery. The cursor is simply the last row it returned. */
-export interface ArtifactQuery {
+interface ArtifactQuery {
   kind?: string
   projectId?: string
   q?: string
@@ -1235,12 +1116,7 @@ export interface ArtifactQuery {
   beforeId?: string
 }
 
-/**
- * A 시작점 the instance ships with.
- *
- * Server-side rather than bundled: a template the turn carries by id has to be
- * one the server can resolve.
- */
+/** A 시작점 the instance ships with. Server-side, so a template carried by id resolves. */
 export interface PromptTemplateRow {
   id: string
   kind: SessionKind
@@ -1250,21 +1126,9 @@ export interface PromptTemplateRow {
   description: string
   /** What you have to bring. The composer asks for these by name. */
   fills: string[]
-  /**
-   * The framing the turn carries. Read by the gallery only on the two media
-   * surfaces, where the sentence is the prompt rather than a preamble to it;
-   * everywhere else the server adds it and the composer never sees it.
-   */
+  /** The framing the turn carries. Shown only on the two media surfaces, where the sentence is the prompt. */
   prompt: string
-  /**
-   * The 서식 this job comes out wearing, or `''` when the job has no fixed
-   * shape and the surface should choose one from the subject.
-   *
-   * 결과 서식 was the other half of a two-tab dialogue: pick what you are
-   * doing, then pick what it looks like. The second is a question about
-   * typography asked of somebody who came to write an incident report — which
-   * has a shape, and that shape is `doc-incident`.
-   */
+  /** The 서식 this job comes out wearing, or `''` when the surface chooses one from the subject. */
   renderTemplateId: string
   /** One worked example per blank, in `fills` order. Missing ones are ''. */
   examples?: string[]
@@ -1304,8 +1168,7 @@ export const templatesApi = {
   remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
-//: Defined in `@/types` — the artifact types need it and this file already
-//: imports from there, so the definition lives on the side with no cycle.
+// Re-exported for callers that only import from this module.
 export type { DesignTokens }
 
 export interface DesignRow {
@@ -1327,7 +1190,7 @@ export interface DesignRow {
 }
 
 /** A design system read out of a document — a proposal, not a row. */
-export interface DesignDraftRow {
+interface DesignDraftRow {
   name: string
   description: string
   tokens: DesignTokens
@@ -1344,10 +1207,7 @@ export const designsApi = {
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/designs/delete', body({ ids })),
   list: () => call<DesignRow[]>('/designs'),
-  /**
-   * Reads one out of an uploaded file or a page. Costs a model call and stores
-   * nothing — what comes back opens the editor, where a person decides.
-   */
+  /** Reads a design out of a file or page. Costs a model call; stores nothing. */
   extract: (payload: { fileId?: string; url?: string }) =>
     call<DesignDraftRow>('/designs/extract', body(payload)),
   create: (payload: Partial<DesignRow> & { name: string }) =>
@@ -1357,14 +1217,8 @@ export const designsApi = {
   remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
 
-/**
- * A shape the answer comes out in, rather than a sentence it starts from.
- *
- * Read-only: the catalogue ships inside the API image. What a person writes
- * for themselves is a prompt template, which has a table.
- */
 /** One blank in a media template's prompt, written `{name}` in the sentence. */
-export interface DesignArgumentRow {
+interface DesignArgumentRow {
   name: string
   label: string
   labelEn: string
@@ -1377,6 +1231,7 @@ export interface DesignArgumentRow {
   long?: boolean
 }
 
+/** A rendering 서식. Read-only: the catalogue ships inside the API image. */
 export interface DesignTemplateRow {
   id: string
   /** `deck` · `document` · `image` */
@@ -1396,18 +1251,9 @@ export interface DesignTemplateRow {
   categoryEn: string
   fillsEn: string[]
   examplePromptEn: string
-  /**
-   * `method` · `flow` · `concept` when this image 서식 is a labelled figure
-   * drawn by the diagram path rather than a picture from the image model.
-   */
+  /** `method` · `flow` · `concept` when this image 서식 is drawn by the diagram path. */
   figure?: string
-  /**
-   * What a review will read the finished thing against, one line each.
-   *
-   * Korean in both languages: these are the rubric a Korean critique scores
-   * against, so there is no English half to fall back to and none is faked.
-   * Media templates send an empty list — a picture has nothing to review.
-   */
+  /** Rubric lines a critique scores against. Korean only; media templates send an empty list. */
   checks: string[]
   /** Blanks to fill before the sentence reaches the composer. */
   arguments: DesignArgumentRow[]
@@ -1432,13 +1278,6 @@ export function argumentText(argument: DesignArgumentRow, english: boolean) {
   }
 }
 
-/** The sentence with its blanks filled. A blank left empty drops out. */
-export function fillPrompt(prompt: string, values: Record<string, string>) {
-  return prompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in values ? values[name] : whole,
-  )
-}
-
 /** One card's text in the language on screen, falling back rather than blanking. */
 export function templateText(row: DesignTemplateRow, english: boolean) {
   return {
@@ -1458,26 +1297,10 @@ export interface TemplateStyle {
   wrapGroup: string
 }
 
-/** How often each rendering template has been started. Ids to counts. */
-export interface DesignTemplateUsage {
-  /** By this person. Empty on their first day, which is what `popular` is for. */
-  mine: Record<string, number>
-  /** Across the installation. An aggregate over a catalogue that ships in the image. */
-  popular: Record<string, number>
-}
-
 export const designTemplatesApi = {
   list: (surface?: SessionKind) =>
     call<DesignTemplateRow[]>(`/design-templates${surface ? `?surface=${surface}` : ''}`),
-  usage: () => call<DesignTemplateUsage>('/design-templates/usage'),
-  /**
-   * The stylesheet the editor draws the document in.
-   *
-   * The gallery card gets a finished document at `/preview` and shows it in a
-   * sandboxed iframe, which is right for something nobody clicks. An editor is
-   * clicked, so the document lives in the page inside a shadow root — and a
-   * shadow root takes a stylesheet, not a URL.
-   */
+  /** The stylesheet the editor's shadow root draws the document in; a shadow root takes CSS, not a URL. */
   style: (id: string, tokens?: DesignTokens | null) => {
     const query = tokens
       ? `?${new URLSearchParams({
@@ -1490,11 +1313,6 @@ export const designTemplatesApi = {
     return call<TemplateStyle>(`/design-templates/${encodeURIComponent(id)}/style${query}`)
   },
 }
-
-export const designTokensOf = (
-  designs: DesignRow[],
-  designSystemId: string | null | undefined,
-): DesignTokens | null => designs.find((d) => d.id === designSystemId)?.tokens ?? null
 
 export const skillsApi = {
   /** Several at once. Ids this account does not own are skipped. */
@@ -1540,7 +1358,7 @@ export interface StoreSkillRow extends SkillRow {
   installed: boolean
 }
 
-export interface ToolCatalogRow {
+interface ToolCatalogRow {
   name: string
   label: string
   available: boolean
@@ -1582,19 +1400,10 @@ export const agentsApi = {
   update: (id: string, patch: Partial<AgentRow>) =>
     call<AgentRow>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => call<void>(`/agents/${id}`, { method: 'DELETE' }),
-  /**
-   * Takes a copy of a shared agent, with the shared skills it runs on.
-   *
-   * Server-side because the copy is more than the prompt: the skill allow-list
-   * is a list of rows in the author's account, and the copy needs its own.
-   */
+  /** Server-side copy of a shared agent, including its own copies of the shared skills. */
   install: (id: string) => call<AgentRow>(`/agents/${id}/install`, { method: 'POST' }),
 
-  /**
-   * An agent's own documents, which it searches through the `search_knowledge`
-   * tool rather than having them pushed into every turn. Project files are the
-   * other shape: always present, capped by a character budget.
-   */
+  /** An agent's own documents, searched via `search_knowledge` rather than pushed into every turn. */
   knowledge: {
     list: (agentId: string) => call<FileRow[]>(`/agents/${agentId}/knowledge`),
     upload: async (agentId: string, file: File) => {
@@ -1662,7 +1471,7 @@ export interface AgentRow {
  * Credentials live server-side only; nothing here ever carries one.
  */
 
-export interface ConnectorToolRow {
+interface ConnectorToolRow {
   name: string
   description: string
   readOnly: boolean
@@ -1690,7 +1499,7 @@ export interface ConnectorRow {
   error: string | null
 }
 
-export interface RequiredEnvField {
+interface RequiredEnvField {
   key: string
   label: string
   hint: string
@@ -1788,17 +1597,9 @@ export type StreamEvent =
       estimatedTokens: number
     }
   | { type: 'section'; sectionId: string; heading: string; content: string; done: boolean }
-  /**
-   * A deck's slides, announced empty by the outline pass and filled in one at a
-   * time. Resent whole rather than patched: the layout can change mid-flight
-   * when a quote slide comes back without a usable line.
-   */
+  /** A slide, announced empty by the outline pass; resent whole rather than patched, since the layout can change. */
   | { type: 'slide'; slide: Slide; done: boolean }
-  /**
-   * One block of an HTML artifact — a slide of a design-template deck, a
-   * section of a design-template document. Announced empty by the outline
-   * pass, then resent whole once written, the same way slides are.
-   */
+  /** One block of an HTML artifact; announced empty by the outline pass, then resent whole once written. */
   | { type: 'block'; block: { title: string; layout: string; html: string }; done: boolean }
   /** The finished single file. Arrives once, after the last block. */
   | { type: 'page'; html: string; blocks: { title: string; layout: string }[]; templateId: string }
@@ -1814,11 +1615,7 @@ export type StreamEvent =
   | {
       type: 'artifact'
       artifactId: string
-      /**
-       * Whether the model set out to make this rather than the server keeping
-       * a long fence out of the answer. Only the first opens the panel: a
-       * nine-line example is not worth two thirds of the screen.
-       */
+      /** True when the model set out to make this rather than the server extracting a long fence; only then does the panel open. */
       deliberate?: boolean
     }
   | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
@@ -1842,11 +1639,7 @@ export type StreamEvent =
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
 
-/**
- * Chat, report, and slides all stream from the same endpoint. Reports emit
- * `section` events so the panel can render each section the moment it completes
- * instead of waiting for the whole document.
- */
+/** Chat, report and slides stream from one endpoint; reports emit a `section` event per section. */
 export async function* streamSession(
   sessionId: string,
   payload: {
@@ -1858,11 +1651,7 @@ export async function* streamSession(
     activatedSkillIds?: string[]
     /** A rendering template. Sticky on the session; `''` clears it. */
     renderTemplateId?: string
-    /**
-     * A 시작점, carried by this turn the way an activated skill is. Never
-     * sticky — unlike `renderTemplateId` it is not stored on the session,
-     * because a starting point starts one turn and then it is over.
-     */
+    /** A 시작점 carried by this turn only; never stored on the session. */
     startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
@@ -1877,11 +1666,7 @@ export async function* streamSession(
     includeFigures?: boolean
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
-    /**
-     * The failed question to run again in place, by message id. The server
-     * reuses that row and replaces what failed under it, so the transcript
-     * keeps one copy of the question.
-     */
+    /** The failed question to run again in place, by message id; the server reuses that row. */
     retryOf?: string
   },
   signal?: AbortSignal,
@@ -1910,15 +1695,8 @@ export async function* streamComparison(
 }
 
 /**
- * How long a turn may produce nothing at all before it is called stalled.
- *
- * Generous on purpose. A large local model can take a while to reach its first
- * token, and a tool call is a round trip to something else — so this is not a
- * response-time budget, it is the point past which silence stops being slow
- * and starts being broken. The server emits deltas and step events throughout
- * a healthy turn, and a comment line every fifteen seconds while the model is
- * still thinking (`_heartbeat`, for the proxies that close an idle response at
- * sixty), so silence this long really is a connection that has gone.
+ * Silence budget before a turn is called stalled. Generous on purpose: the
+ * server heartbeats every 15 s during a healthy turn, so this long is a gone connection.
  */
 const STALL_MS = 120_000
 
@@ -1929,8 +1707,7 @@ function withStallGuard<T>(work: Promise<T>, onStall: () => void): Promise<T> {
     work,
     new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        // Closing the reader is what actually frees the connection; rejecting
-        // alone would leave the request running behind an abandoned generator.
+        // Aborting is what frees the connection; rejecting alone leaves the request running.
         onStall()
         reject(new StreamStalledError())
       }, STALL_MS)
@@ -1943,9 +1720,8 @@ async function* postStream(
   payload: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  // The stop button's signal, plus one of our own so the stall guard has
-  // something to pull. Forwarded rather than replaced: 중단 must still reach the
-  // request, and the server tells 중단 from a dropped tab by it.
+  // Own controller so the stall guard can abort; the caller's signal is
+  // forwarded, since the server tells 중단 from a dropped tab by it.
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -1964,8 +1740,7 @@ async function* postStream(
     }),
     abort,
   )
-  // A refused turn (no credits, unbuilt surface) answers with JSON, not a
-  // stream. Surfacing it as an ApiError keeps the caller's error path uniform.
+  // A refused turn answers with JSON, not a stream; surfaced as an ApiError.
   if (!res.ok) {
     let detail: string | null = null
     if (res.status === 409) {
@@ -1980,42 +1755,24 @@ async function* postStream(
         if (error instanceof PrivacyDecisionError) throw error
       }
     }
-    // A 409 body was consumed above; reading it twice loses the useful code
-    // and turns `auto_quality_model_required` into the generic `http_409`.
+    // The 409 body was consumed above; reading it twice loses the code.
     const resolved = detail ?? (res.status === 409 ? `http_${res.status}` : await readDetail(res))
     if (res.status === 401) throw new UnauthorizedError(resolved)
     throw new ApiError(res.status, resolved)
   }
-  /*
-   * A turn that stopped to ask answers in JSON, not as a stream.
-   *
-   * The server takes that route on purpose — see `_ask_before_writing`: a
-   * one-event SSE would leave the browser holding a socket open to be told
-   * that nothing is coming. But the caller here is a stream reader, and a JSON
-   * body has no `data:` lines in it, so the loop below fell out having seen no
-   * `usage` event and the runner marked the turn cut off. Every clarifying
-   * question therefore arrived under 연결이 끊겨 답변이 중간에 멈췄습니다 and a
-   * 다시 시도 button — an error message on the one screen that is working
-   * exactly as designed.
-   *
-   * Translated here rather than in each of the four runners, which all read
-   * this generator and all handle these events already.
-   */
+  // A turn that stopped to ask (`_ask_before_writing`) answers in JSON, not a
+  // stream; translated into events here so the runners need not know.
   if (res.headers.get('content-type')?.includes('application/json')) {
     const answered = (await res.json()) as { pending?: PendingPlan | null; message?: string }
     const pending = answered.pending
-    // What the turn said, before what it is asking. Without it the answer
-    // bubble stays empty and the panel draws 생각하는 중 into it — a spinner
-    // over a turn that has already stopped and is waiting for a person.
+    // What the turn said, before what it asks; otherwise the bubble stays empty with a spinner.
     if (answered.message) yield { type: 'delta', text: answered.message }
     if (pending?.stage === 'clarify' && pending.questions) {
       yield { type: 'needs', questions: pending.questions }
     } else if (pending?.stage === 'outline' && pending.plan) {
       yield { type: 'proposal', plan: pending.plan }
     } else {
-      // Any other shape: the turn is over and produced nothing to stream.
-      // Said so, because falling out of this generator silently is what the
-      // runners read as a dropped connection.
+      // Said explicitly: falling out of the generator silently reads as a dropped connection.
       yield { type: 'done' }
     }
     return
@@ -2043,8 +1800,3 @@ async function* postStream(
     signal?.removeEventListener('abort', abort)
   }
 }
-
-/**
- * Job progress for image and audio/video. A single connection multiplexes every
- * job the user owns, so the sidebar and home page stay live without polling.
- */

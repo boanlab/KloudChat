@@ -18,7 +18,7 @@ test('공유 링크를 누가 열었는지 남는다', async ({ page, context })
   expect(url).toContain('/share/')
   await expect(dialog.getByText('아직 아무도 열지 않았습니다.')).toBeVisible({ timeout: 20_000 })
 
-  // A reader with no account here — the case `link` scope exists for.
+  // A reader with no account.
   const anon = await context.browser()!.newContext()
   const guest = await anon.newPage()
   await guest.goto(url)

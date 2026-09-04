@@ -8,14 +8,9 @@ import { BarChart3 } from 'lucide-react'
 import { TopBar } from '@/components/layout/TopBar'
 import { useT } from '@/lib/useT'
 
-/**
- * What this account has spent.
- *
- * All of it belongs to the caller. Unlike the admin screen, which answers for
- * the whole instance, this never shows a colleague's usage.
- */
 const RANGES = [7, 30, 90]
 
+/** The caller's own usage; never another account's. */
 export function MyUsagePage() {
   const t = useT()
   const [days, setDays] = useState(30)
@@ -31,14 +26,12 @@ export function MyUsagePage() {
 
   const cycle = data?.cycle
   const pct = cycle && cycle.allowance > 0 ? Math.min(100, (cycle.used / cycle.allowance) * 100) : 0
-  // A month spent entirely on self-hosted models bills nothing, and a chart of
-  // zeroes says nothing happened when 260 turns a day did. Plot the turns.
+  // Free models bill nothing, so with zero credits the chart plots requests instead.
   const byCredits = (data?.totals.credits ?? 0) > 0
   const daily = (data?.daily ?? []).map((d) => ({ ...d, value: byCredits ? d.credits : d.requests }))
   const peak = Math.max(1, ...daily.map((d) => d.value))
   const other = data?.totals.otherCredits ?? 0
-  // The ledger can charge against no conversation at all, which is a surface
-  // the five-kind table has no entry for.
+  // Charges outside any conversation have no kind entry.
   const surface = (kind: string) =>
     kind in kindMeta ? t(kindMeta[kind as keyof typeof kindMeta].label) : t('기타')
 
@@ -85,8 +78,6 @@ export function MyUsagePage() {
               style={{ width: `${pct}%` }}
             />
           </div>
-          {/* Free models bill nothing, so a busy month can read as zero spend.
-              Saying both numbers stops that looking like a broken counter. */}
           <p className="mt-2 text-xs text-faint">
             {t('최근 {days}일 동안 {reqs}회 요청 · {credits} 크레딧. 자체 GPU 모델은 크레딧을 쓰지 않습니다.')
               .replace('{days}', String(days))
@@ -116,15 +107,8 @@ export function MyUsagePage() {
                 </span>
               )}
             </p>
-            {/* `items-stretch`, not `items-end`: a percentage height needs a
-                parent with a height, and an end-aligned flex item is only as
-                tall as its content. The column is the full 7rem and the bar
-                grows from its floor. */}
-            {/* Every day of the range is a column now — the server fills the
-                empty ones — so the width of a bar means one day. Values sit on
-                the bars, dates run under them (each week and the last day, so
-                thirty of them do not overprint), and an empty day is an empty
-                column rather than a two-pixel stub pretending to be small. */}
+            {/* `items-stretch`: bar heights are percentages, so each column needs the full height.
+                One column per day; the server fills empty days. */}
             <div className="mt-3 flex h-32 items-stretch gap-px sm:gap-1">
               {daily.map((d, i) => {
                 const dated = i === daily.length - 1 || (daily.length - 1 - i) % 7 === 0
@@ -146,12 +130,7 @@ export function MyUsagePage() {
                         style={{ height: d.value > 0 ? `${Math.max(3, (d.value / peak) * 100)}%` : 0 }}
                       />
                     </div>
-                    {/* Not truncated. A `MM-DD` label does not fit the ~30px a
-                        column gets over a month, so every date on the axis came
-                        out as `08-…` and the chart said which shape but not
-                        which day. Labels are seven columns apart and their
-                        neighbours are empty, so one is free to overflow into
-                        the space beside it. */}
+                    {/* Overflows rather than truncates: `MM-DD` is wider than a column, and neighbours are empty. */}
                     <span className="h-4 shrink-0 overflow-visible text-center text-2xs whitespace-nowrap tabular-nums text-faint">
                       {dated ? d.date.slice(5) : ''}
                     </span>
@@ -240,10 +219,7 @@ export function MyUsagePage() {
   )
 }
 
-/**
- * 공짜 모델이 한 일의 양. Whisper counts seconds, the embedding model counts
- * chunks; a model that costs credits says nothing here — the credits already do.
- */
+/** Work done by free models: seconds transcribed or chunks embedded. */
 function unitsLabel(units: number | undefined, unit: string | undefined, t: (s: string) => string): string {
   if (!units) return ''
   if (unit === 'seconds') return t('{n}초 받아씀').replace('{n}', units.toLocaleString())

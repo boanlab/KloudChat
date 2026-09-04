@@ -24,8 +24,7 @@ test('행위자가 바뀌면 사실이 바뀐다 — 전자세금계산서 역�
   expect(main).toMatch(/법적[^.\n]{0,80}(공급자|매도자)|(공급자|매도자)[^.\n]{0,80}법적/)
   expect(main).not.toMatch(/법적 발급자[^.\n]{0,30}국세청|국세청[^.\n]{0,30}법적 발급자/)
   expect(main).not.toMatch(/(구매자|수요자|매입자|공급받는 자)[^.\n]{0,30}(세금계산서|계산서)(를|가)?\s*발급/)
-  // A named source without a link or a visible search result is fabricated
-  // authority, even when the underlying sentence happens to be right.
+  // A named source without a link is fabricated authority.
   if (/출처\s*:/.test(main)) expect(main).toMatch(/https?:\/\//)
   if (/법\s*제\s*\d+\s*조|법\s*제[0-9]+조/.test(main)) expect(main).toMatch(/https?:\/\//)
 })

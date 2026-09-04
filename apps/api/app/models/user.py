@@ -1,12 +1,8 @@
 """Identity, refresh tokens, and the credit ledger.
 
-`User` is a KloudChat row, not a mirror of a LiteLLM user. `litellm_user_id` is a
-one-way provisioning pointer, written when an account is activated. With
-LiteLLM absent it stays null and everything except model calls still works.
-
-`litellm_key` is that user's virtual key on the proxy, and the credential every
-model call for them is made with — so spend, rate limits and audit trails land
-on the person. Encrypted at rest, and never sent to a browser.
+`litellm_user_id` is a one-way provisioning pointer set at activation; null
+without LiteLLM. `litellm_key` is the user's own proxy key, used for every model
+call on their behalf; encrypted at rest and never sent to a browser.
 """
 
 from __future__ import annotations
@@ -29,7 +25,7 @@ def utcnow() -> datetime:
 
 
 def _ts_column(**kwargs) -> Column:
-    """Timestamps are stored with tz so cycle math survives a server in another zone."""
+    """Timezone-aware column; cycle math must not depend on the server's zone."""
     return Column(DateTime(timezone=True), **kwargs)
 
 
@@ -64,20 +60,18 @@ class User(SQLModel, table=True):
     litellm_user_id: str | None = Field(default=None)
     #: Fernet ciphertext. Read it through `services.litellm.user_key`, never raw.
     litellm_key: str | None = Field(default=None)
-    #: Last four characters, for the admin screen: enough to match a row in
-    #: LiteLLM's own UI, useless to replay.
+    #: Last four characters, for the admin screen.
     litellm_key_preview: str | None = Field(default=None)
     litellm_key_issued_at: datetime | None = Field(
         default=None, sa_column=_ts_column(nullable=True)
     )
     avatar_color: str = Field(default="#5b53e8")
-    #: Behaviour switches owned by the settings screen. Defaults live in
-    #: `schemas.auth.Preferences`: a missing key means "not chosen", and the
-    #: schema decides what unchosen means.
     allowed_models: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
+    #: Settings-screen switches. Defaults live in `schemas.auth.Preferences`;
+    #: a missing key means "not chosen".
     preferences: dict = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
@@ -85,8 +79,8 @@ class User(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     last_active_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
-    #: When the address was confirmed by a mailed link — or, for accounts that
-    #: were never asked, when they were made. Null means the link is still out.
+    #: Confirmation time of the mailed link (creation time for accounts never
+    #: asked). Null: link still outstanding.
     email_verified_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     @property
@@ -95,11 +89,9 @@ class User(SQLModel, table=True):
 
 
 class ApiKey(SQLModel, table=True):
-    """A proxy key the user holds themselves.
+    """A proxy key the user holds themselves (unlike `User.litellm_key`).
 
-    Distinct from `User.litellm_key`, which KloudChat uses on their behalf. Handed
-    over once at creation and shown only as a preview afterwards — no route
-    returns it again.
+    Returned in full once, at creation; only `preview` afterwards.
     """
 
     __tablename__ = "api_keys"
@@ -116,12 +108,7 @@ class ApiKey(SQLModel, table=True):
 
 
 class RevokeReason(StrEnum):
-    """Why a refresh token stopped being valid.
-
-    Only a returning `rotated` token implies replay; the rest are ordinary
-    session endings. Without the distinction, every logout and suspension would
-    raise a "token reuse" alert.
-    """
+    """Why a refresh token stopped being valid. Only a returning `rotated` token implies replay."""
 
     rotated = "rotated"
     logout = "logout"
@@ -147,13 +134,10 @@ class RefreshToken(SQLModel, table=True):
     revoked_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     revoked_reason: RevokeReason | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
-    #: Where the family was signed in from, carried on every token in it so the
-    #: session list can name a device without joining the audit trail. Empty on
-    #: rows written before this was recorded — never guessed.
+    #: Sign-in origin, copied onto every token of the family for the session list.
     ip: str = Field(default="")
     user_agent: str = Field(default="", max_length=400)
-    #: Last rotation. The browser refreshes on a timer, so this is "still
-    #: open", not "still being used" — which is what a session list means.
+    #: Last rotation; means "still open", not "in use" (the browser refreshes on a timer).
     last_used_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     def is_usable(self, now: datetime | None = None) -> bool:
@@ -173,24 +157,14 @@ class CreditLedger(SQLModel, table=True):
     reason: str
     session_id: str | None = Field(default=None)
     job_id: str | None = Field(default=None)
-    #: Which model the money was paid to. Recorded here rather than read back
-    #: from the session, because the two disagree wherever it matters: a deck's
-    #: fact-check bills the cheapest model the account may use and not the one
-    #: the deck was written with, a picture bills whatever the request asked
-    #: for, and a conversation can change model between one turn and the next.
-    #:
-    #: Null where nothing single answers the question — a comparison that ran
-    #: several models on one charge, a design extraction that belongs to no
-    #: session — and on rows written before this column existed.
+    #: Model billed, recorded on the row because it can differ from the session's
+    #: model. Null when several models shared one charge.
     model: str | None = Field(default=None)
-    #: The surface the charge came from — `chat`, `image`, `av` and so on.
-    #: On the row rather than read through `session_id`, so deleting a
-    #: conversation does not move its spend into 기타. Null where nothing
-    #: single answers: a design extraction belongs to no surface.
+    #: Surface the charge came from (`chat`, `image`, `av`, ...), kept on the row
+    #: so deleting the session does not move its spend.
     surface: str | None = Field(default=None)
-    #: How much work the row stands for, in `unit` — seconds of speech
-    #: transcribed, chunks embedded. Set on rows for models that cost no
-    #: credits, which is the only way those models reach the usage screens.
+    #: Work done, in `unit` (seconds transcribed, chunks embedded). Set for
+    #: zero-credit models so they still reach the usage screens.
     units: int | None = Field(default=None)
     unit: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
@@ -213,23 +187,14 @@ class AuditEvent(SQLModel, table=True):
         default=None, sa_column=Column("metadata", JSONB, nullable=True)
     )
     ip: str = Field(default="")
-    #: Raw `User-Agent` of the request that caused the event. The other half of
-    #: "was that me": an address travels with a phone, a browser nobody in the
-    #: account has ever used does not. Empty for rows written before 0031, and
-    #: for events with no request behind them.
+    #: Raw `User-Agent` of the causing request; empty when there is no request.
     user_agent: str = Field(default="")
     severity: str = Field(default="info")
 
 
 class PasswordReset(SQLModel, table=True):
-    """A single-use ticket to set a new password without knowing the old one.
-
-    Only the hash is stored: a table of live reset tokens is a table of working
-    passwords, and a database dump is the realistic exposure.
-
-    Rows are kept after use — `used_at` is what tells a second click on the same
-    link apart from a link that never existed.
-    """
+    """Single-use password reset ticket. Only the hash is stored; rows are kept
+    after use so `used_at` tells a second click apart from a bad link."""
 
     __tablename__ = "password_resets"
 
@@ -243,11 +208,7 @@ class PasswordReset(SQLModel, table=True):
 
 
 class EmailVerification(SQLModel, table=True):
-    """A single-use ticket proving the person can read the address they gave.
-
-    The same shape as `PasswordReset`, and for the same reasons: the hash only,
-    rows kept after use so a second click is told apart from a bad link.
-    """
+    """Single-use email verification ticket; same shape and rules as `PasswordReset`."""
 
     __tablename__ = "email_verifications"
 

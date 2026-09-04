@@ -17,7 +17,7 @@ async function createOrdinaryAccount(page: Page) {
     name: '일반 사용자',
   }
 
-  // Ensure the shared administrator exists before using its API authority.
+  // The shared admin must exist before its token is used.
   await signIn(page)
   const login = await page.request.post('/api/auth/login', {
     data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password },
@@ -42,8 +42,7 @@ async function createOrdinaryAccount(page: Page) {
   })
   expect(approval.ok(), '일반 사용자 승인').toBeTruthy()
 
-  // This login both gives the API assertions an access token and puts the
-  // ordinary account's refresh cookie into the browser context.
+  // Also puts the ordinary account's refresh cookie into the browser context.
   const ordinaryLogin = await page.request.post('/api/auth/login', {
     data: { email: account.email, password: account.password },
   })
@@ -53,35 +52,21 @@ async function createOrdinaryAccount(page: Page) {
   return { account, accessToken: ordinarySession.accessToken }
 }
 
-/**
- * The 관리 section belongs to administrators.
- *
- * Checked with a real account rather than a stubbed role: the menu reads
- * `user.role`, and what has to hold is that the server sends `user` for an
- * ordinary account and that nothing else on the way in promotes it.
- */
+/** 관리 is admin-only, checked with a real ordinary account rather than a stubbed role. */
 test('일반 사용자는 관리 메뉴와 모든 관리자 deep link에서 거부된다', async ({ page }) => {
   const { account, accessToken } = await createOrdinaryAccount(page)
   await page.goto('/')
   await expect(page.getByRole('button', { name: '사이드바 토글' })).toBeVisible({ timeout: 20_000 })
-  // The menu lives in the sidebar, and below 1024px that sidebar is a drawer
-  // this account has never opened. Off-screen it is still visible to a locator
-  // and still refuses the click — "element is outside of the viewport" is the
-  // whole of what a reader would have had to work out from a timeout.
   await openSidebar(page)
 
-  // The account menu is the whole subject: it is where 관리 lives. Its trigger
-  // carries an `aria-label` of 계정 메뉴 · <email>, which replaces the name
-  // rendered inside it as the accessible name — so the email is what identifies
-  // whose menu this is, and matching on the display name finds nothing.
+  // The account menu trigger's accessible name is `계정 메뉴 · <email>`.
   await page.getByRole('button', { name: `계정 메뉴 · ${account.email}` }).click()
   await expect(page.getByText('AI 에이전트 연동')).toBeVisible()
   await expect(page.getByText('관리', { exact: true })).toHaveCount(0)
   await expect(page.getByText('사용자 · 크레딧')).toHaveCount(0)
   await expect(page.getByText('보안 · 감사')).toHaveCount(0)
 
-  // The server remains authoritative even though the route guard prevents the
-  // page components from making these calls.
+  // The server refuses regardless of the route guard.
   const headers = { Authorization: `Bearer ${accessToken}` }
   for (const screen of ADMIN_SCREENS) {
     const response = await page.request.get(screen.api, { headers })
@@ -93,8 +78,7 @@ test('일반 사용자는 관리 메뉴와 모든 관리자 deep link에서 거�
     if (new URL(request.url()).pathname.startsWith('/api/admin/')) adminRequests += 1
   })
 
-  // Refusal is rendered at the requested URL. It is neither a login redirect
-  // nor a briefly mounted administrator page whose API later returns 403.
+  // Refusal renders at the requested URL, with no admin page mounted and no admin API call.
   for (const screen of ADMIN_SCREENS) {
     await page.goto(screen.path)
     await expect(page.getByRole('heading', { name: '이 페이지에 접근할 수 없습니다.' })).toBeVisible()

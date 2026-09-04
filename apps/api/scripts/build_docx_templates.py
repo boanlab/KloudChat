@@ -1,30 +1,12 @@
-"""Generates one real Word template per document 서식.
+"""Generates `template.docx` (styles and page only) and `form.docx` per document 서식.
 
 Run from the API image:
 
     docker compose run --rm --no-deps api python scripts/build_docx_templates.py
 
-The problem this solves: `to_docx` wrote the same generic Word document
-whichever 서식 the person picked. The 서식 shaped the page view and the printed
-HTML, and then the file — the thing that actually gets submitted — came out in
-`python-docx`'s defaults. Somebody who chose 회의록 and downloaded a `.docx`
-got a document with none of 회의록 about it.
-
-A template fixes that at the root rather than in the writer. `python-docx`
-opens a `.docx` and inherits its styles, its page setup and its theme, so
-`Document(<서식>/template.docx)` *is* the 서식 — the writer goes on calling
-`add_heading` and `add_paragraph`, and what those mean is now the template's.
-
-Generated rather than authored because a `.docx` is a zip of XML: there is no
-way to hand-write one and no reason to check a binary into the tree without a
-recipe beside it. The recipe is `_SPECS` below, and it is deliberately close to
-what the matching `seed.html` declares — the two are the same design, one for
-screen and one for Word, and where they disagree the document changes shape
-depending on which one somebody opened.
-
-Fonts name Korean faces every Hangul Windows and Hancom install carries. A
-template that names a face the reader does not have is a template Word
-silently substitutes, which is worse than not setting one.
+`_SPECS` mirrors each 서식's `seed.html` type scale; keep the two in step.
+Fonts must be faces every Hangul Windows and Hancom install carries, or Word
+substitutes silently.
 """
 
 from __future__ import annotations
@@ -44,7 +26,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent / "app" / "design_template
 
 
 class Spec:
-    """One 서식's Word half, in the terms the seed states its own design in."""
+    """Word-side design of one 서식."""
 
     def __init__(
         self,
@@ -74,17 +56,9 @@ class Spec:
         self.note = note
 
 
-# ── the shape of the blank form ───────────────────────────────────────────
-#
-# `template.docx` is styles and page only, because the writer appends to it and
-# anything left inside would arrive at the top of every document written from
-# it. So the form somebody downloads is a second file built from the same
-# styles: `form.docx`, with the headings and the tables in place and a line of
-# guidance under each.
-#
-# Written as data rather than as code per 서식 so the two halves cannot drift:
-# one spec makes the style base the writer uses and the form the reader fills
-# in by hand, and a heading that exists in one exists in the other.
+# ── blank form blocks ─────────────────────────────────────────────────────
+# `template.docx` must stay empty: the export writer appends to it. The
+# downloadable `form.docx` is built from the same styles plus these blocks.
 
 
 def H(level: int, text: str) -> tuple:
@@ -93,7 +67,7 @@ def H(level: int, text: str) -> tuple:
 
 
 def P(text: str) -> tuple:
-    """A line of guidance, greyed: what belongs here, not an example of it."""
+    """A greyed guidance line."""
     return ("p", text)
 
 
@@ -103,13 +77,10 @@ def T(columns: tuple[str, ...], rows: int = 3) -> tuple:
 
 
 def B(items: tuple[str, ...]) -> tuple:
-    """A bulleted list of prompts, one per line the reader is expected to add."""
+    """A bulleted list of guidance prompts."""
     return ("b", items)
 
 
-#: Kept beside the seeds on purpose. When a seed's type scale changes, this is
-#: the other half of that change — a document that reads one way on screen and
-#: another in Word is two documents wearing one name.
 _SPECS = (
     Spec(
         "doc-report",
@@ -440,12 +411,7 @@ _SPECS = (
 )
 
 def _east_asian(style, font: str) -> None:
-    """The Korean face.
-
-    `font.name` sets the Latin face only; a Hangul run reads `w:eastAsia` and
-    falls back to Word's default without it — which is how a template that
-    looks right in the styles pane comes out in the wrong face on the page.
-    """
+    """Sets the face for Latin and East Asian runs; `font.name` alone covers Latin only."""
     style.font.name = font
     element = style.element.rPr.rFonts
     element.set(qn("w:eastAsia"), font)
@@ -485,8 +451,7 @@ def build(spec: Spec) -> pathlib.Path:
     _east_asian(normal, spec.body_font)
     normal.font.size = Pt(spec.body_pt)
     normal.paragraph_format.space_after = Pt(6)
-    # 160% — Korean needs more leading than Word's default gives it, and a
-    # report set at 100% reads as a wall.
+    # 160%: Korean needs more leading than Word's default.
     normal.paragraph_format.line_spacing = 1.6
 
     for name, size, colour in (
@@ -504,10 +469,7 @@ def build(spec: Spec) -> pathlib.Path:
         style.paragraph_format.space_after = Pt(6)
         style.paragraph_format.keep_with_next = True
 
-    # 본문. Word calls it 본문 in Korean and it is where the writing goes —
-    # `Normal` is the base everything inherits from, so changing it changes
-    # headings and captions too. A document whose body cannot be restyled
-    # without moving its headings is a document nobody restyles.
+    # Body Text (본문) carries the writing; Normal is the base headings inherit from.
     body = document.styles["Body Text"]
     _east_asian(body, spec.body_font)
     body.font.size = Pt(spec.body_pt)
@@ -525,17 +487,8 @@ def build(spec: Spec) -> pathlib.Path:
             _east_asian(document.styles[name], spec.body_font)
             document.styles[name].font.size = Pt(spec.body_pt)
 
-    # ── the form's own two styles ──────────────────────────────────────────
-    #
-    # A blank form is mostly guidance — a line under each heading saying what
-    # belongs there — and guidance has to be one thing the reader can select,
-    # restyle or delete in a single move. Written as direct formatting it is
-    # none of those: it is grey italic text that looks like guidance and
-    # behaves like body, and typing over it leaves the new sentence grey.
-    #
-    # `next_paragraph_style` is the other half. Pressing Enter at the end of a
-    # guidance line lands in 본문, so the form stops being grey the moment
-    # somebody starts writing in it.
+    # Guidance styles for the form. Named styles, never direct formatting, so
+    # the reader can restyle or delete guidance in one move; Enter lands in 본문.
     guide = document.styles.add_style("안내", WD_STYLE_TYPE.PARAGRAPH)
     guide.base_style = document.styles["Body Text"]
     _east_asian(guide, spec.body_font)
@@ -554,9 +507,6 @@ def build(spec: Spec) -> pathlib.Path:
     guide_list.paragraph_format.space_after = Pt(2)
     guide_list.next_paragraph_style = document.styles["Body Text"]
 
-    # Table headers, for the same reason: a column name is a role, and a role
-    # written as `bold=True` on every cell is twelve places to change one
-    # decision.
     head = document.styles.add_style("표 머리", WD_STYLE_TYPE.PARAGRAPH)
     head.base_style = document.styles["Body Text"]
     _east_asian(head, spec.heading_font)
@@ -572,9 +522,7 @@ def build(spec: Spec) -> pathlib.Path:
     cell.paragraph_format.space_after = Pt(0)
     cell.paragraph_format.line_spacing = 1.2
 
-    # The template ships empty. Its value is the styles and the page, and a
-    # paragraph of sample text left in one would arrive at the top of every
-    # document written from it.
+    # The template ships empty; any paragraph left here would head every export.
     for paragraph in list(document.paragraphs):
         paragraph._element.getparent().remove(paragraph._element)
 
@@ -584,33 +532,20 @@ def build(spec: Spec) -> pathlib.Path:
 
 
 def build_form(spec: Spec) -> pathlib.Path | None:
-    """The blank form somebody downloads and fills in by hand.
-
-    Built on the same document `build` just produced, so the styles, the page
-    and the theme are the 서식's own — a form that looked like the export was
-    the point. Kept as a second file because the export writer *appends* to
-    `template.docx`, and a heading left in that one arrives at the top of every
-    report written from it.
-    """
+    """Builds the downloadable blank form from the `template.docx` `build` just wrote."""
     if not spec.form:
         return None
     document = Document(str(ROOT / spec.folder / "template.docx"))
 
-    # Every line here names a style and sets nothing itself. A form built out
-    # of direct formatting is a form that cannot be restyled: the reader who
-    # wants their organisation's face has to walk every paragraph, and the one
-    # who wants the guidance gone has to find each grey line by eye.
+    # Named styles only, no direct formatting.
     for block in spec.form:
         if block[0] == "h":
             _, level, text = block
-            # 제목 / 제목 1 / 제목 2 — built-ins, so Word shows them under
-            # those names and the navigation pane and 목차 both work.
+            # Built-in heading styles, so the navigation pane and 목차 work.
             document.add_heading(text, level=level)
         elif block[0] == "p":
             document.add_paragraph(block[1], style="안내")
-            # Somewhere to write that is not the guidance. Typing over a
-            # guidance line leaves the sentence in the guidance style, so the
-            # form gives 본문 its own empty paragraph underneath.
+            # Empty 본문 paragraph to write in, so typing does not inherit the guidance style.
             document.add_paragraph("", style="Body Text")
         elif block[0] == "b":
             for item in block[1]:
@@ -618,9 +553,7 @@ def build_form(spec: Spec) -> pathlib.Path | None:
             document.add_paragraph("", style="Body Text")
         elif block[0] == "t":
             _, columns, rows = block
-            # `Table Grid` so the empty cells are visible. A form whose ruling
-            # only appears once there is text in it is a form nobody can see
-            # the shape of, which is the one thing a blank form is for.
+            # `Table Grid` keeps empty cells visible.
             table = document.add_table(rows=rows + 1, cols=len(columns))
             table.style = "Table Grid"
             for index, name in enumerate(columns):

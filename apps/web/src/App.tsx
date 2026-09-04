@@ -10,15 +10,7 @@ import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
 import { SessionPage } from '@/pages/SessionPage'
 import { useStore } from '@/store/useStore'
 
-
-/**
- * Screens fetched when somebody goes there.
- *
- * Chat, the session view and the login form are what a visit starts with;
- * everything below is a place you navigate *to*, and bundling it all into the
- * first request made signing in pay for the admin console. Kept as one list so
- * it is obvious what is deferred and what is not.
- */
+// Lazy screens: only home, session and login ship in the first bundle.
 const AdminGovernancePage = lazy(() => import('@/pages/AdminGovernancePage').then((m) => ({ default: m.AdminGovernancePage })))
 const AdminSystemPage = lazy(() => import('@/pages/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })))
 const AdminUsagePage = lazy(() => import('@/pages/AdminUsagePage').then((m) => ({ default: m.AdminUsagePage })))
@@ -38,14 +30,6 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ de
 const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
 const SkillsPage = lazy(() => import('@/pages/SkillsPage').then((m) => ({ default: m.SkillsPage })))
 
-/**
- * Every screen that requires an account.
- *
- * The session check sits here rather than above the router because exactly one
- * route has to pass through it: a share link. That URL *is* the permission,
- * and whoever holds it may well have no account on this instance.
- */
-/** The one waiting state: session check, and any screen still arriving. */
 function Spinner() {
   return (
     <div className="grid h-full place-items-center bg-bg text-faint">
@@ -54,20 +38,7 @@ function Spinner() {
   )
 }
 
-/**
- * Re-reads the account when its allowance refills.
- *
- * The client keeps a running total — every turn adds its cost to `creditsUsed`
- * locally — and only re-reads the account at sign-in. That is right for
- * spending, which the client witnesses, and wrong for the refill, which
- * happens on the server at a moment no turn marks: the balance in the sidebar
- * went on counting down a month that had ended until somebody reloaded.
- *
- * The moment is not a guess. `cycleResetsAt` says when, so this waits for it
- * and asks once — and asking is itself what performs the refill, because every
- * authenticated request resolves the account through `refill_if_due`. The
- * answer carries the new cycle, which re-arms this for the month after.
- */
+/** Re-reads the account at `cycleResetsAt`; the request itself performs the server-side refill. */
 function useAllowanceRefresh() {
   const resetsAt = useStore((s) => s.user?.cycleResetsAt)
   const refreshMe = useStore((s) => s.refreshMe)
@@ -76,7 +47,6 @@ function useAllowanceRefresh() {
     const at = resetsAt ? Date.parse(resetsAt) : Number.NaN
     if (!Number.isFinite(at)) return
     const wait = at - Date.now()
-    // Already past: the cycle rolled over while nothing was open.
     if (wait <= 0) {
       void refreshMe()
       return
@@ -88,13 +58,7 @@ function useAllowanceRefresh() {
   }, [resetsAt, refreshMe])
 }
 
-/**
- * Approval arrives while the waiting screen is up, and the waiting screen
- * covers whatever URL the tab was on — the administrator's own
- * `/admin/system/mail` from an earlier session in the same browser, say. The
- * first thing the new account saw was 이 페이지에 접근할 수 없습니다. Leaving
- * the pending state starts at home.
- */
+/** Pending → active lands at home rather than on whatever URL the tab was covering. */
 function useHomeAfterApproval(status: string | undefined) {
   const navigate = useNavigate()
   const was = useRef(status)
@@ -123,8 +87,7 @@ function Authenticated() {
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
 
-          {/* /new/:kind 는 홈을 그 화면이 골라진 상태로 엽니다. 링크와 북마크가
-              살아 있도록 경로는 남기고, 시작 화면은 하나로 둡니다. */}
+          {/* /new/:kind opens home with that kind preselected. */}
           {kindOrder.map((kind) => (
             <Route key={kind} path={`new/${kind}`} element={<HomePage initialKind={kind} />} />
           ))}
@@ -144,8 +107,7 @@ function Authenticated() {
           <Route path="api-setup" element={<ApiSetupPage />} />
           {/* Tabs live inside these pages, so the parent needs the splat. */}
           <Route path="settings/*" element={<SettingsPage />} />
-          {/* One parent owns the role check so a new /admin route cannot be
-              added beside an existing page and accidentally skip it. */}
+          {/* One parent owns the role check for every /admin route. */}
           <Route path="admin" element={<RoleRoute roles={['admin']} />}>
             <Route index element={<Navigate to="/admin/users" replace />} />
             <Route path="users" element={<AdminUsersPage />} />
@@ -165,9 +127,7 @@ function Authenticated() {
 export default function App() {
   const bootstrap = useStore((s) => s.bootstrap)
 
-  // The access token is memory-only, so a reload has to ask the refresh cookie
-  // whether a session survived. Runs for the share route too and simply finds
-  // nothing — that page never reads the result.
+  // Access token is memory-only; a reload asks the refresh cookie.
   useEffect(() => {
     void bootstrap()
   }, [bootstrap])
@@ -176,7 +136,7 @@ export default function App() {
     <Router>
       <Suspense fallback={<Spinner />}>
         <Routes>
-          {/* Before the gate on purpose. See `Authenticated`. */}
+          {/* Share links need no account, so this sits outside the auth gate. */}
           <Route path="/share/:token" element={<SharedPage />} />
           <Route path="*" element={<Authenticated />} />
         </Routes>

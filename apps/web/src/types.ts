@@ -1,12 +1,6 @@
 /**
- * KloudChat domain types.
- *
- * A user creates a `Session` of some `SessionKind`; a session produces an
- * `Artifact`. Kinds that take a while carry a `Job`, which is what shows
- * progress and failure.
- *
- * No proxy credential appears in this file: virtual keys are issued and used
- * server-side only.
+ * KloudChat domain types: a `Session` of some `SessionKind` produces an `Artifact`; slow kinds carry a `Job`.
+ * No proxy credential appears here: virtual keys are issued and used server-side only.
  */
 
 /* ── identity ───────────────────────────────────────────────────────── */
@@ -20,24 +14,16 @@ export interface User {
   name: string
   role: UserRole
   status: UserStatus
-  /**
-   * The credit allowance. An internal unit kept apart from provider prices, so
-   * a price change does not move anyone's limit. `creditsUsed` returns to 0 at
-   * `cycleResetsAt`; nothing rolls over.
-   */
+  /** Credits are an internal unit, not provider prices. `creditsUsed` resets to 0 at `cycleResetsAt`; nothing rolls over. */
   monthlyCredits: number
   creditsUsed: number
   /** Null until an admin approves and opens the first cycle. */
   cycleResetsAt: string | null
   avatarColor: string
-  /**
-   * Last four characters of this user's LiteLLM key, or null. The key itself
-   * never reaches the browser and no route returns it.
-   */
+  /** Last four characters of the LiteLLM key, or null. The key itself never reaches the browser. */
   litellmKeyPreview: string | null
   litellmKeyIssuedAt: string | null
-  /** Behaviour switches owned by the settings screen. Always present: the
-   *  server fills in defaults for anything unchosen. */
+  /** Always present: the server fills in defaults. */
   preferences: Preferences
   /** Empty means the whole catalogue. */
   allowedModels: string[]
@@ -48,15 +34,13 @@ export interface User {
   emailVerifiedAt?: string | null
 }
 
-
 /* ── models ─────────────────────────────────────────────────────────── */
 
-export type Modality = 'chat' | 'image' | 'audio' | 'video'
+type Modality = 'chat' | 'image' | 'audio' | 'video'
 
 export interface ModelInfo {
   id: string
-  /** "Vendor · Model" — what every surface shows. A bare name does not say who
-   *  is being billed. */
+  /** "Vendor · Model". */
   label: string
   /** Model name without the vendor, for layouts that place the two separately. */
   name: string
@@ -64,16 +48,14 @@ export interface ModelInfo {
   vendor: string
   /** LiteLLM routing provider (`hosted_vllm`, `openrouter`, …). */
   provider: string
-  /** Explicit proxy declaration. Missing metadata is unknown, never inferred
-   * from a model id or provider name. */
+  /** From proxy metadata only; missing means `unknown`, never inferred from the id. */
   dataBoundary: 'self_hosted' | 'hybrid' | 'external' | 'unknown'
   strictLocal: boolean
   privacyOnly: boolean
   modality: Modality
   /** Video only: credits per second, keyed `<resolution>:<sound|silent>`. */
   creditPerSecond?: Record<string, number>
-  /** Credits per generated picture; zero for anything that is not an image
-   *  model. The ledger's own unit is per 1k output tokens. */
+  /** Credits per generated picture; zero for non-image models. */
   creditPerImage?: number
   /** Image only: the ratios a picture from it can have. The composer offers no other. */
   aspects?: string[]
@@ -83,11 +65,7 @@ export interface ModelInfo {
   kinds: SessionKind[]
   /** Credits per unit — per 1k output tokens for chat, per asset for image/audio/video. */
   creditCost: number
-  /**
-   * Credits per 1k input tokens; 0 for non-conversational or self-hosted
-   * models. Long context is where the money goes, so output alone understates
-   * the price.
-   */
+  /** Credits per 1k input tokens; 0 for non-conversational or self-hosted models. */
   inputCreditCost: number
   contextWindow?: number
   supportsVision?: boolean
@@ -99,29 +77,16 @@ export interface ModelInfo {
 
 /* ── sessions ───────────────────────────────────────────────────────── */
 
-/**
- * `av` covers audio and video together: both are timeline media on the same job
- * card, and the surface produces an `audio` or `video` artifact by mode.
- */
+/** `av` covers audio and video: one surface, producing an `audio` or `video` artifact by mode. */
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
-//: `auto` spends less, `auto_quality` spends more. One classifier decides
-//: both — the cost lane acts on its `low`, the quality lane on its `high`.
+/** `auto` routes low-complexity turns cheaper; `auto_quality` routes high-complexity turns up. */
 export type RoutingMode = 'manual' | 'auto' | 'auto_quality'
 
-/**
- * What a session produced, when that is all it has to show for itself.
- *
- * A picture or clip session whose turn predates message recording holds none,
- * so `preview` is null. Measurements rather than a sentence, so the sentence
- * can be written in the reader's language.
- */
+/** What a session produced, as measurements so the row can be phrased in the reader's language. */
 export interface SessionMade {
-  /** The noun the row prints. Speech and music are separate although both are
-   *  `audio` artifacts: "내레이션 3개" and "음악 3곡" are not the same row. */
   kind: 'image' | 'video' | 'narration' | 'music'
   count: number
-  /** Zero where unknown, and where the artifacts disagree — an unmeasured MP3,
-   *  or two batches shot at two ratios. Nothing is printed for a zero. */
+  /** Zero where unknown or where the artifacts disagree; zero is not printed. */
   seconds: number
   aspect: string
 }
@@ -130,27 +95,21 @@ export interface SessionMade {
 export interface PendingQuestion {
   id: string
   question: string
-  /** Suggested answers. Never a closed set — every question takes prose too. */
+  /** Suggested answers; free text is always accepted too. */
   options: string[]
-  /** The fact behind the question: which file, how much of it arrived. */
   detail: string
 }
 
 /** A generation waiting on the person who asked for it. */
 export interface PendingPlan {
-  /**
-   * `clarify` is holding a question; `outline` is holding what it will write;
-   * `figures` is holding the second question — whether to draw the pictures
-   * the planner found a place for, and what that costs.
-   */
+  /** `clarify` holds a question, `outline` the plan, `figures` the offer to draw the planned pictures. */
   stage: 'clarify' | 'outline' | 'figures'
-  /** Proposed pictures, by the index of the section each belongs to. */
+  /** Proposed pictures, by section index. */
   figures?: { section: number; caption: string; prompt: string }[]
-  /** What saying yes costs, as shown on the card. Approximate on purpose. */
+  /** Approximate cost of drawing them. */
   figureCredits?: number
-  /** The image model that would draw them, named so the card can say. */
   figureModel?: string
-  /** The request it began from, with any answers already folded in. */
+  /** The request with any answers already folded in. */
   request: string
   attachments: string[]
   answers: Record<string, string>
@@ -174,43 +133,22 @@ export interface Session {
   projectId: string | null
   agentId: string | null
   model: string
-  /** `auto` keeps `model` as the quality ceiling and may choose a cheaper
-   *  model for eligible, low-complexity chat turns. */
+  /** Under `auto`, `model` is the quality ceiling. */
   routingMode: RoutingMode
   createdAt: string
   updatedAt: string
   pinned: boolean
   messages: Message[]
-  /**
-   * Latest message, one line. List views carry this instead of `messages`: a
-   * sidebar cannot fetch eighty transcripts to render subtitles.
-   */
+  /** Latest message, one line; list views carry this instead of `messages`. */
   preview: string | null
   messageCount: number
-  /** What this conversation made, for the rows `preview` cannot serve. Null
-   *  wherever there is a transcript: the last thing said beats a count of it. */
+  /** Null wherever there is a transcript. */
   made: SessionMade | null
   /** Artifact this session is currently producing, if any. */
   artifactId: string | null
-  /**
-   * A generation that has stopped and is waiting on the person.
-   *
-   * The document surfaces plan before they write and ask before they plan when
-   * the material cannot carry the request. Neither of those turns produces an
-   * artifact, which is what keeps whatever the session already holds from
-   * being replaced by a run nobody looked at.
-   *
-   * While this is set, typing is a note on what is waiting rather than a new
-   * request — the back-and-forth these surfaces never had.
-   */
+  /** A generation stopped and waiting on the person; while set, typing answers it rather than starting a new turn. */
   pending: PendingPlan | null
-  /**
-   * The rendering template this session writes into.
-   *
-   * Sticky: picked once, it shapes every turn until it is cleared, the way the
-   * model choice does. Null means the surface's built-in track — markdown
-   * sections for a report, JSON slides for a deck.
-   */
+  /** Sticky rendering template; null is the surface's built-in track. */
   renderTemplateId: string | null
 }
 
@@ -222,8 +160,7 @@ export interface Preferences {
   /** The model · token · credit line under each answer. */
   showUsage: boolean
   privacyDefaultAction: PrivacyAction | 'ask'
-  /** 개인 맞춤 설정: what every conversation knows about the person, and how
-   *  answers should be written. Empty strings when unset. */
+  /** 개인 맞춤 설정; empty strings when unset. */
   aboutMe?: string
   responseStyle?: string
 }
@@ -271,19 +208,14 @@ export interface PrivacyRouting {
 
 export type Role = 'user' | 'assistant' | 'system'
 
-/**
- * A unit of visible work inside an assistant turn. Inline while streaming, then
- * collapsed once the turn ends.
- */
+/** A unit of visible work inside an assistant turn. */
 export interface Step {
   id: string
   type: 'thinking' | 'tool' | 'artifact'
   label: string
   status: 'running' | 'done' | 'error'
   detail?: string
-  /** e.g. 3 of 5 sources read. Drives the inline counter. */
   progress?: { current: number; total: number }
-  /** Structured metadata for the per-turn skill timeline entry. */
   skills?: {
     id: string
     name: string
@@ -292,18 +224,16 @@ export interface Step {
   }[]
   /** Names of the memories this turn was given. Never their bodies. */
   memories?: string[]
-  /** How much of each file reached the model. */
   files?: {
     name: string
     state: 'included' | 'truncated' | 'omitted' | 'unreadable'
     keptChars: number
     totalChars: number
   }[]
-  /** Memories the extractor wrote out of this turn. */
   memoriesWritten?: number
-  /** How many memories exist, when only the most recent were loaded. */
+  /** Total memories, when only the most recent were loaded. */
   totalMemories?: number
-  /** Which halves of 개인 맞춤 설정 shaped the turn: 나에 대해, 답변 방식. */
+  /** Which halves of 개인 맞춤 설정 shaped the turn. */
   personal?: string[]
   estimatedTokens?: number
 }
@@ -321,39 +251,22 @@ export interface Variant {
   chosen?: boolean
 }
 
-/**
- * A 시작점 waiting on the next turn: what the chip says, what the composer
- * asks the person to bring, and the id the turn carries.
- *
- * Not the prompt — the framing is the server's to add.
- */
+/** A 시작점 selected for the next turn; the prompt framing is the server's. */
 export interface StartingPoint {
   id: string
   title: string
   fills: string[]
-  /**
-   * The request as the card's form assembled it, when the card had one. Put
-   * into the composer so the person reads the whole thing before sending
-   * rather than trusting five blanks they filled behind a dialogue.
-   */
+  /** The request as the card's form assembled it, placed in the composer. */
   text?: string
-  /** One worked example per blank, in `fills` order — the placeholder. */
+  /** One example per blank, in `fills` order. */
   examples?: string[]
-  /** What the job cannot run without: 'web' | 'file'. */
+  /** 'web' | 'file'. */
   needs?: string[]
-  /** Workspace skills to switch on for the turn, by name. */
+  /** Workspace skills to switch on, by name. */
   skills?: string[]
-  /**
-   * How each blank is asked, in `fills` order. A closed list is a picker, a
-   * paragraph is a textarea, anything else a line. Media 서식 carry these
-   * from their arguments; a written starting point has plain lines.
-   */
+  /** Per blank, in `fills` order: options → picker, long → textarea, else a line. */
   blanks?: { name: string; options?: string[]; long?: boolean }[]
-  /**
-   * Media 서식 only: the sentence the blanks fill, `{name}` per blank. The
-   * composer writes the request out of it; a blank left empty keeps its
-   * example, so the sentence is always whole.
-   */
+  /** Media 서식 only: the sentence the blanks fill, `{name}` per blank; an empty blank keeps its example. */
   examplePrompt?: string
 }
 
@@ -368,43 +281,22 @@ export interface Message {
   routing?: PrivacyRouting
   steps?: Step[]
   artifactIds?: string[]
-  /**
-   * What was uploaded with this turn. `id` names the stored blob, so a reader
-   * can take the file back out of the conversation months later; it is absent
-   * only for the optimistic row drawn while the upload is still in flight.
-   */
+  /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
-  /**
-   * `estimated` is set on a stopped turn: the proxy reports usage on its final
-   * chunk, which a stopped stream never reaches, so the server counts what it
-   * sent and what came back instead of writing 0 in · 0 out.
-   */
+  /** `estimated` on a stopped turn: the server counts tokens itself since the proxy's final chunk never arrives. */
   usage?: { inputTokens: number; outputTokens: number; credits: number; estimated?: boolean }
   liked?: 'up' | 'down' | null
-    /**
-     * The 시작점 this turn began from, by title rather than prompt: the
-     * transcript keeps the person's own words, not the product's framing.
-     */
+  /** The 시작점 this turn began from. */
   startedFrom?: { templateId: string; title: string }
-  /**
-   * Why the turn ended badly. Separate from `content`: a turn can fail after
-   * writing something, and that half an answer is worth keeping.
-   */
+  /** Separate from `content`: a turn can fail after writing something. */
   error?: string
-    /**
-     * How the turn ended, as the server recorded it. `error` is this tab's live
-     * account and wins while it is on screen; this is what a reload leaves.
-     *
-     * `no_answer` sits on the question — nothing spoke. `interrupted` sits on
-     * the reply — some of it arrived. `stopped` is either, when 중단 was
-     * pressed: the same shape as the other two, but the reader's own doing.
-     */
+  /** Server-recorded end state; `error` wins while this tab is live. `no_answer` sits on the question, `interrupted` on the partial reply. */
   failure?: 'no_answer' | 'interrupted' | 'stopped'
 }
 
 /* ── jobs ───────────────────────────────────────────────────────────── */
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
 
 export interface Job {
   id: string
@@ -414,17 +306,12 @@ export interface Job {
   /** 0–100. Providers that report no progress get a coarse stage-based estimate. */
   progress: number
   stage: string
-  /**
-   * Charged on success only, so there is no refund path — a failed job never
-   * deducted anything.
-   */
+  /** Charged on success only; a failed job never deducted anything. */
   creditsUsed: number
-  /** Shown before the run so the user knows what it will cost. */
   creditsEstimated: number
   error?: string
   createdAt: string
   finishedAt: string | null
-  /** What was asked for, so a failed job's card can offer to run it again. */
   prompt: string
   model: string
   params: Record<string, unknown> | null
@@ -450,46 +337,17 @@ interface ArtifactBase {
   updatedAt: string
   sessionId: string | null
   projectId: string | null
-  /**
-   * True while this is the listing's copy, whose body was cut down to what a
-   * card needs. Anything that renders or edits the whole document fetches it
-   * by id first — `refreshArtifact` is what clears this.
-   */
+  /** Listing copy with a trimmed body; `refreshArtifact` fetches the whole document and clears this. */
   partial?: boolean
-  /**
-   * True while this is the local draft a run is streaming into, before the
-   * `artifact` event swaps in the saved document. It is the honest answer to
-   * "is this still being written", which is what the controls need to know:
-   * export would 404 on a document the server does not have yet, and an edit
-   * would be overwritten by the next event of the run that is still going.
-   *
-   * A report answers that question from its sections' own `status`. A deck had
-   * no equivalent and asked whether every slide had content instead — which is
-   * the same answer almost always, and the wrong one exactly when a slide came
-   * back empty: the whole deck stayed locked, including 텍스트 수정, which is
-   * the one control that could have fixed it.
-   */
+  /** Local draft a run is still streaming into; the server does not hold it yet. */
   draft?: boolean
-  /**
-   * What the linter found when this was written. Stored on the artifact, so a
-   * document that was fine when it was made does not start reporting problems
-   * because the rules were tightened afterwards.
-   */
+  /** Linter findings as of when this was written. */
   lint?: LintFinding[]
-  /**
-   * One reading by somebody who did not write it. Absent until asked for — it
-   * costs a model call, unlike the linter beside it.
-   */
+  /** Absent until requested; costs a model call. */
   critique?: Critique
 }
 
-/**
- * A review, not a gate.
- *
- * The score is an opinion with a number on it; nothing is blocked by it, and
- * the findings are the part worth acting on. They carry the linter's shape so
- * the panel shows one list of things to look at rather than two.
- */
+/** A model review; nothing is gated on the score. */
 export interface Critique {
   score: number
   findings: LintFinding[]
@@ -497,13 +355,7 @@ export interface Critique {
   at: string
 }
 
-/**
- * One thing worth looking at before this goes anywhere.
- *
- * `P0` means the document is wrong — a placeholder nobody replaced, a figure
- * nobody could have sourced. `P1` means it reads badly. Nothing is corrected
- * automatically: the check is free, and the rewrite is a decision.
- */
+/** `P0`: the document is wrong. `P1`: it reads badly. Nothing is corrected automatically. */
 export interface LintFinding {
   severity: 'P0' | 'P1'
   /** `placeholder` · `invented-metric` · `filler` · `empty` · … */
@@ -523,7 +375,6 @@ export interface Source {
   publisher?: string
   year?: string
   url?: string
-  /** Where it came from: web search, a connector, or an uploaded file. */
   origin: 'web' | 'connector' | 'file'
   originLabel: string
   quote?: string
@@ -536,53 +387,23 @@ export interface ReportSection {
   level: 1 | 2
   status: 'pending' | 'streaming' | 'done'
   content: string
-  /**
-   * How `content` is stored.
-   *
-   * Absent or `markdown` is what the model writes and what every report held
-   * before the document editor shipped. `html` is a section somebody has
-   * formatted by hand — size, face, alignment and tables have no Markdown, so
-   * storing those as Markdown means throwing them away on save. The server
-   * sanitises an `html` body on the way in and converts it back for the
-   * exporters; see `services/richtext.py`.
-   */
+  /** Absent means `markdown`. `html` is a hand-formatted section; the server sanitises it (`services/richtext.py`). */
   format?: 'markdown' | 'html'
-  /**
-   * Pictures of this section's mermaid diagrams, by the key their source
-   * hashes to. Mermaid renders in JavaScript and the API has no headless
-   * browser, so whoever opens the document draws them and posts them back —
-   * which is how the `.docx` gets a figure where the source stands.
-   */
+  /** Rendered mermaid diagrams keyed by source hash; the browser renders and posts them, the exporters read them. */
   diagrams?: Record<string, string>
-  /** Report-level fact-check result. */
   factCheck?: FactCheck
 }
 
-/**
- * The four values every renderer and exporter reads. Always complete on the
- * wire.
- *
- * Defined here rather than in `lib/api` because the artifact types need it and
- * `lib/api` already imports from this file — the other direction would be a
- * cycle. `lib/api` re-exports it, so its existing importers are unchanged.
- */
+/** Design values every renderer and exporter reads. Always complete on the wire. */
 export interface DesignTokens {
   accent: string
   ink: string
   muted: string
   font: 'gothic' | 'serif'
-  /** Composition, independent from colour: the same deck can wear a different visual rhythm. */
   visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
-  /**
-   * The line at the foot of every slide and page saying whose this is, and the
-   * mark beside it as a `data:` URI.
-   *
-   * Bytes rather than a link: a deck is downloaded, mailed and opened on a
-   * machine that has never heard of this server, so a URL would be a broken
-   * image on exactly the day it matters. Empty is what the product drew before
-   * these existed.
-   */
+  /** Footer line on every slide and page. */
   footer?: string
+  /** `data:` URI, so exported files carry the mark with them. */
   logo?: string
 }
 
@@ -590,7 +411,7 @@ export interface ReportArtifact extends ArtifactBase {
   kind: 'report'
   sections: ReportSection[]
   sources: Source[]
-  /** The reproducible search trail used to assemble this report's source shelf. */
+  /** Search trail behind the source shelf. */
   research?: {
     enabled: boolean
     searched: boolean
@@ -619,20 +440,11 @@ export interface ReportArtifact extends ArtifactBase {
     status: 'open' | 'resolved'
     createdAt: string
   }[]
-  /**
-   * The 서식 the page view wears. A view, not a fork — the sections above are
-   * the document either way, and this only decides what it is drawn in.
-   * Absent falls back to the plain report seed.
-   */
+  /** 서식 the page view is drawn in; absent is the plain report seed. */
   templateId?: string
-  /** The project's design system, when it has one. Colours and the body face. */
   design?: DesignTokens | null
 }
 
-/**
- * Tabular analysis output. A first-class artifact rather than an image the
- * model happens to draw, so the numbers stay checkable.
- */
 export interface ChartArtifact extends ArtifactBase {
   kind: 'chart'
   chartType: 'bar' | 'line' | 'stacked'
@@ -640,16 +452,12 @@ export interface ChartArtifact extends ArtifactBase {
   xLabel: string
   yLabel: string
   series: { name: string; color: string; points: { x: string; y: number }[] }[]
-  /** The rows the chart was computed from, so numbers stay checkable. */
+  /** The rows the chart was computed from. */
   table: { columns: string[]; rows: (string | number)[][] }
   sourceFile: string
 }
 
-/**
- * The outline the model emits, rendered to .pptx by the backend. The browser
- * only previews it.
- */
-/** Per-claim verification result, shown on the slide it belongs to. */
+/** Per-claim verification result. */
 export interface FactCheck {
   status: 'unchecked' | 'checking' | 'done'
   claims: {
@@ -657,11 +465,7 @@ export interface FactCheck {
     text: string
     verdict: 'supported' | 'unsupported' | 'uncertain'
     note: string
-    /**
-     * The evidence behind the verdict. Mandatory for `supported` and
-     * `unsupported`; with nothing to point at, the server downgrades the
-     * verdict to `uncertain`.
-     */
+    /** Required for `supported`/`unsupported`; without it the server downgrades to `uncertain`. */
     sourceUrl?: string
   }[]
 }
@@ -688,53 +492,24 @@ export interface Slide {
     | 'cards'
     | 'closing'
   title: string
-  /**
-   * A section divider's own number — `01.`, `02.` — over its title.
-   *
-   * Only `section` uses it. A divider that names the part and nothing else
-   * leaves the reader counting backwards through the deck to place it, which
-   * is the one question a divider exists to answer.
-   */
+  /** `section` only: `01.`, `02.` over the title. */
   number?: string
   bullets?: string[]
-  /**
-   * A table, first row the head. The commonest slide in a working deck and the
-   * last one this type could describe: the `.pptx` and `.pdf` writers had both
-   * drawn `rows` for a long time, the model was never asked for one, and this
-   * type had nowhere to put it — so a comparison came out as six bullets the
-   * reader had to rebuild the table from.
-   */
+  /** A table, first row the head. */
   rows?: string[][]
-  /**
-   * Figures worth setting large, as `[값, 이름]` — the slide whose point is a
-   * number rather than a sentence. Held apart from `rows` because a table is
-   * for reading values against each other and this is for remembering one:
-   * drawn as a table they would be read at the same weight as anything else,
-   * which is the thing this layout exists to avoid.
-   */
+  /** `[값, 이름]`. */
   metrics?: [string, string][]
-  /**
-   * The three shapes that are a left thing and a right thing.
-   *
-   * One data shape, three designs, because that is what they are: `bands` is a
-   * name beside a sentence — 미션 · 배경 · 추진전략, the row-label opening every
-   * Korean 사업 발표 has and the one thing a bullet cannot say, having nowhere
-   * to put the name of what it is. `tiles` is a letter or a number over a
-   * caption. `timeline` is a date beside what happened.
-   */
+  /** `[이름, 문장]` label-beside-text shapes. */
   bands?: [string, string][]
+  /** `[글자/숫자, 캡션]`. */
   tiles?: [string, string][]
+  /** `[날짜, 사건]`. */
   timeline?: [string, string][]
-  /** `[단계, 한 줄]` — a procedure across the slide, numbered by position. */
+  /** `[단계, 한 줄]`, numbered by position. */
   steps?: [string, string][]
-  /** `[이름, 한두 줄]` — peers side by side as titled boxes. */
+  /** `[이름, 한두 줄]`, titled boxes side by side. */
   cards?: [string, string][]
-  /**
-   * A bar or line chart drawn from real numbers. Every series carries as many
-   * values as there are categories — a short one is not a chart with a gap in
-   * it but a chart whose bars stand under the wrong labels, so the writer
-   * trims both to the length they agree on before this is stored.
-   */
+  /** Every series carries exactly as many values as there are categories. */
   chart?: {
     kind: 'bar' | 'line'
     unit?: string
@@ -745,38 +520,16 @@ export interface Slide {
   notes?: string
   accent?: string
   factCheck?: FactCheck
-  /**
-   * How big this slide's words are, as a multiple of the 서식's own size.
-   *
-   * One slide, not the deck: the reason to reach for it is a slide with three
-   * words on it or one with a paragraph that will not fit, and both are local
-   * problems. Absent means the 서식 decides, which is the usual case and the
-   * one the checker's limits are written against.
-   *
-   * `deck_export` multiplies by the same number, so the file matches the
-   * screen.
-   */
+  /** Text size as a multiple of the 서식's own; `deck_export` applies the same factor. */
   textScale?: number
-  /**
-   * Inline formatting authored in the slide editor. Keys identify the visible
-   * text slot (`title`, `body`, `bullets.0`, `rows.1.2`, `metrics.0.1`). Values
-   * are sanitised inline HTML; the plain-text fields above remain canonical so
-   * search, rewriting and older clients continue to work.
-   */
+  /** Sanitised inline HTML keyed by text slot (`title`, `bullets.0`, `rows.1.2`, …); the plain fields stay canonical. */
   richText?: Record<string, string>
-  /**
-   * A picture made on the image surface, embedded rather than linked — the
-   * `src` is a `data:` URI, which is what makes the deck one file that prints
-   * and exports with the picture in it.
-   */
+  /** `src` is a `data:` URI so the deck stays one self-contained file. */
   image?: {
     src: string
     caption?: string
-    /** `cover` fills the picture box by cropping its edges; absent keeps all of it. */
     fit?: 'contain' | 'cover'
-    /** Which side of the content column holds the picture. */
     position?: 'left' | 'right'
-    /** Width of a picture that shares the slide with text. */
     size?: 'small' | 'medium' | 'large'
   }
 }
@@ -785,16 +538,10 @@ export interface DeckArtifact extends ArtifactBase {
   kind: 'deck'
   theme: string
   slides: Slide[]
-  /**
-   * The deck 서식 this was written under, when one was. The stage draws the
-   * slides in the face the 서식 chose (`design.visualStyle`), which can be
-   * switched like any other; the id stays so the export builds on the 서식's
-   * PowerPoint half.
-   */
+  /** Deck 서식 this was written under; the export builds on its PowerPoint half. */
   templateId?: string
-  /** The design system this deck wears, copied on when it was made. */
+  /** Copied on when the deck was made. */
   design?: DesignTokens | null
-  /** Review notes belong to a slide, but not to its visible canvas or PPTX. */
   reviewComments?: {
     id: string
     slideId: string
@@ -806,48 +553,37 @@ export interface DeckArtifact extends ArtifactBase {
 
 export interface ImageArtifact extends ArtifactBase {
   kind: 'image'
-  /** The job that produced it — one job can emit several images. */
   jobId: string | null
   prompt: string
-  /** The ratio that was asked for. A phrase in the prompt, not a parameter. */
+  /** Ratio asked for. */
   aspect: string
-  /** The ratio that came back, measured off the bytes. Absent on older rows. */
+  /** Ratio measured off the bytes; absent on older rows. */
   actualAspect?: string
   width?: number
   height?: number
   style: string
   labels?: string
-  /** What the model was actually sent — the planned prompt, readable and
-   *  editable, sent again as it stands with `raw`. */
+  /** What the model was actually sent; re-sent as-is with `raw`. */
   composedPrompt?: string
-  /** `matplotlib` when the picture was drawn from code in the sandbox; the
-   *  code is then what `composedPrompt` holds. */
+  /** `matplotlib`: drawn from sandbox code, which `composedPrompt` then holds. */
   engine?: 'matplotlib'
   seed: number
   model: string
-  /** Object-store URL, once an image producer exists. */
   src: string
-  /**
-   * 도식일 때. The mermaid the picture was drawn from — the artifact proper;
-   * the PNG is one rendering of it — and the caption the writer gave it.
-   */
+  /** 도식일 때: the mermaid source the picture was rendered from. */
   figure?: string
   source?: string
   caption?: string
 }
 
-/**
- * Narration or music from the `av` surface. `waveform` is a coarse amplitude
- * envelope (0–1, ~64 buckets) the player draws without decoding the file.
- */
+/** `waveform` is a coarse amplitude envelope (0–1, ~64 buckets). */
 export interface AudioArtifact extends ArtifactBase {
   kind: 'audio'
   jobId: string | null
   prompt: string
   durationSec: number
-  /** narration | music. Sound effects were offered and never served. */
   audioKind: 'narration' | 'music'
-  /** What the model read, when it says. Empty for music. */
+  /** Empty for music. */
   transcript?: string
   model: string
   waveform: number[]
@@ -869,9 +605,8 @@ export interface CodeArtifact extends ArtifactBase {
   kind: 'code' | 'html'
   language?: string
   content: string
-  /** Set when this was written into a rendering template. */
   templateId?: string
-  /** The plan behind the file — what is in it, without parsing the markup. */
+  /** Outline of the file, without parsing the markup. */
   blocks?: { title: string; layout: string }[]
 }
 
@@ -897,10 +632,7 @@ export interface Project {
   skillIds: string[]
   /** The design system this project's output wears. Null is the default look. */
   designSystemId: string | null
-  /**
-   * Surface → rendering template: the shape work started here comes out in.
-   * A surface with no entry uses the built-in track.
-   */
+  /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
   updatedAt: string
 }
@@ -923,36 +655,28 @@ export interface Skill {
   slug: string
   description: string
   whenToUse: string
-  /** The exact procedure sent when this skill is selected for a turn. */
   body: string
-  /** Stable key for shipped skills; absent for user-authored procedures. */
+  /** Stable key for shipped skills; null for user-authored ones. */
   catalogKey: string | null
-  /** Registry names that must be available after the agent allowlist. */
   requiredTools: string[]
-  /** Approximate prompt cost shown before activation. */
+  /** Approximate prompt cost. */
   estimatedTokens: number
   source: 'built-in' | 'workspace' | 'personal'
-  /** Which surfaces this skill applies to. */
   kinds: SessionKind[]
   enabled: boolean
-  /** `org` puts it in the store for everyone in the workspace to copy. */
+  /** `org` lists it in the store for the workspace to copy. */
   visibility: 'private' | 'org'
   installs: number
-  /** The shared skill this one was copied from, if it was copied. */
   originId: string | null
   version: string
   updatedAt: string
 }
 
-/* ── MCP connectors ─────────────────────────────────────────────────────
- * External systems over the Model Context Protocol. Servers are registered and
- * credentialed server-side; the browser sees which tools exist and whether they
- * are enabled.
- */
+/* ── MCP connectors ─────────────────────────────────────────────────── */
 
 export type ConnectorStatus = 'connected' | 'disconnected' | 'needs_auth' | 'error'
 
-export interface McpTool {
+interface McpTool {
   name: string
   description: string
   /** Read-only tools can run unattended; write tools ask for confirmation. */
@@ -973,13 +697,9 @@ export interface Connector {
   status: ConnectorStatus
   installed: boolean
   enabled: boolean
-  /** Surfaces where this connector's tools are offered. */
   kinds: SessionKind[]
   tools: McpTool[]
-  /**
-   * Credential names this connector holds — never their values. Set for
-   * self-registered servers too, which have no catalogue entry to read from.
-   */
+  /** Credential names only, never values. */
   envKeys?: string[]
   official: boolean
   icon: string
@@ -988,12 +708,7 @@ export interface Connector {
   error?: string
 }
 
-/* ── governance ─────────────────────────────────────────────────────────
- * Audit and data-handling policy, backing the admin screens.
- */
-
-
-
+/* ── memory & agents ─────────────────────────────────────────────────── */
 
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
 
@@ -1010,33 +725,29 @@ export interface MemoryEntry {
 }
 
 export interface Agent {
-  /** Who made it. Shared agents are read-only to everyone else. */
+  /** Shared agents are read-only to everyone but the owner. */
   ownerId: string
   ownerName: string
   id: string
-  /** `org` agents appear in the shared store for everyone in the workspace. */
   visibility: 'private' | 'org'
   installs: number
-  /** Stable identity for an agent the workspace ships with. */
+  /** Stable key for shipped agents; null for user-authored ones. */
   catalogKey: string | null
-  /** The shared agent this one was copied from, if it was copied. */
   originId: string | null
-  /** Published by an administrator. Meaningful on store rows. */
+  /** Published by an administrator; meaningful on store rows. */
   official: boolean
-  /** You already hold a copy of this shared agent. */
+  /** The caller already holds a copy; store rows only. */
   installed: boolean
   name: string
   slug: string
   description: string
   model: string
   systemPrompt: string
-  /** How to use it — shown on the empty screen. */
   guide: string
-  /** Conversation starters offered there as buttons. */
   starters: string[]
-  /** `sealed`: others may take it, but the prompt stays with its author. */
+  /** `sealed`: copies run the author's prompt without being able to read it. */
   shareMode: 'open' | 'sealed'
-  /** No prompt here to read or edit — it is read from the original at run time. */
+  /** Prompt is absent here and read from the original at run time. */
   sealed: boolean
   /** null inherits; [] denies all; values form a hard allowlist. */
   tools: string[] | null
@@ -1047,25 +758,15 @@ export interface Agent {
   color: string
   enabled: boolean
   runs: number
-  /** Whether this caller can build the agent-only `search_knowledge` tool. */
   hasKnowledge: boolean
   updatedAt: string
 }
 
-/**
- * A skill in the store: somebody else's, and not yet yours.
- *
- * Separate from the skills list because that one is what the composer offers
- * for a turn, and a skill only ever runs out of its owner's account. A shared
- * row mixed into it would be a picker entry that fails at the moment it is
- * used.
- */
+/** A store row: somebody else's skill, kept out of the composer's own list. */
 export interface StoreSkill extends Skill {
   ownerId: string
   ownerName: string
-  /** Published by an administrator — what the workspace ships with. */
   official: boolean
-  /** This account already holds a copy, so 가져오기 has nothing to do. */
   installed: boolean
 }
 

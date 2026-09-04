@@ -1,12 +1,4 @@
-"""The store: one shared catalogue, and copies taken from it.
-
-The agents and skills a workspace ships with used to be written into every
-account at approval — the same procedure as N rows, where improving one reached
-nobody. They live in the administrator's account now, shared, and everybody
-else takes a copy of the ones they want. These tests are about the copy: that
-it is a copy and not a reference, that taking it twice is not two rows, and
-that an agent arrives able to run the skills its card advertised.
-"""
+"""The store: one shared catalogue in the administrator's account, and copies taken from it."""
 
 from __future__ import annotations
 
@@ -20,9 +12,7 @@ from app.routers import workspace as ws
 
 # ── an in-memory database that reads the query it is given ──────────────
 #
-# Tables here are lists, and the router's `where` clauses are walked rather
-# than recognised. A fake that answers by call order passes for exactly as long
-# as the routes ask their questions in the order they were written in.
+# Tables are lists; `where` clauses are evaluated rather than answered by call order.
 
 
 def _bound(element):
@@ -80,8 +70,7 @@ class _Db:
     async def exec(self, query):
         table = query.get_final_froms()[0].name
         rows = [r for r in self.tables[table] if _matches(r, query.whereclause)]
-        # `select(User.id)` and `select(StoredFile.agent_id)` want the column,
-        # not the row; `select(Skill)` selects every column and wants the row.
+        # Single-column selects want the column, not the row.
         selected = list(query.selected_columns.keys())
         if len(selected) == 1:
             return _Result([getattr(r, selected[0]) for r in rows])
@@ -178,7 +167,7 @@ async def test_the_store_lists_other_peoples_shared_skills_and_says_who_publishe
 
     rows = await ws.list_skill_store(_user(), db)
 
-    # Your own rows are not in the store, shared or not.
+    # Own rows are not in the store, shared or not.
     assert {r.id for r in rows} == {"skill-1", "skill-2"}
     official = next(r for r in rows if r.id == "skill-1")
     assert official.official and official.owner_name == "admin-1"
@@ -201,12 +190,7 @@ async def test_a_skill_already_copied_is_marked_installed_rather_than_offered_ag
 
 @pytest.mark.asyncio
 async def test_an_account_seeded_before_the_catalog_existed_is_not_offered_its_own_rows():
-    """Every account used to hold its own copy of all of this.
-
-    Those rows carry no origin — nothing was copied — so without matching the
-    catalogue key the store would tell an existing account it holds none of the
-    procedures it has been using for months.
-    """
+    """Rows without an origin still match the catalogue by key."""
     shared = _skill()
     seeded = _skill(id="skill-9", owner_id="user-1", visibility=Visibility.private)
     db = _Db(skills=[shared, seeded], users=[_user("admin-1", UserRole.admin)])
@@ -231,8 +215,7 @@ async def test_installing_a_skill_copies_it_privately_and_counts_the_install():
     assert copy.owner_id == "user-1"
     assert copy.body == shared.body
     assert copy.origin_id == "skill-1"
-    # The store lists originals. A copy that published itself would fill the
-    # store with copies of its own entries.
+    # The store lists originals only.
     assert copy.visibility is Visibility.private
     assert shared.installs == 1
     assert db.commits == 1
@@ -277,12 +260,7 @@ async def test_a_private_skill_cannot_be_installed_and_your_own_is_refused():
 
 @pytest.mark.asyncio
 async def test_installing_an_agent_brings_the_skills_it_runs_on():
-    """The prompt used to travel alone.
-
-    An allow-list of skill ids is a list of rows in the author's account. Copied
-    verbatim it resolves to nothing here, and the imported agent answers
-    differently from the one on the card without saying why.
-    """
+    """Installing an agent copies the skills its allow-list names."""
     shared_skill = _skill()
     db = _Db(skills=[shared_skill], agents=[_agent()])
 
@@ -301,11 +279,7 @@ async def test_installing_an_agent_brings_the_skills_it_runs_on():
 
 @pytest.mark.asyncio
 async def test_an_allow_list_emptied_by_the_copy_inherits_rather_than_denies():
-    """`[]` is not "none survived" — it is a hard deny.
-
-    An agent copied with an emptied allow-list would refuse every skill its new
-    owner ever switched on, silently.
-    """
+    """An allow-list that resolves to nothing becomes null, not `[]`."""
     unshared = _skill(visibility=Visibility.private)
     db = _Db(skills=[unshared], agents=[_agent()])
 
@@ -335,12 +309,7 @@ async def test_installing_an_agent_twice_is_the_same_row():
 
 @pytest.mark.asyncio
 async def test_a_knowledge_shelf_does_not_travel_and_the_copy_says_so():
-    """Copying an agent is not a grant over the author's documents.
-
-    Said on the copy, because the copy is where the question gets asked: an
-    agent that searched its author's papers and now searches nothing looks
-    identical to one that never had any.
-    """
+    """A copied agent loses the author's knowledge shelf and says so."""
     shelf = StoredFile(
         id="file-1", user_id="admin-1", agent_id="agent-1", name="x.pdf", text="내용"
     )
@@ -373,30 +342,16 @@ async def test_the_agent_list_marks_official_entries_and_the_ones_already_taken(
 
     original = next(r for r in rows if r.id == "agent-1")
     assert original.official and original.installed
-    # Your own row never claims you hold a copy of yourself.
+    # An own row never counts as a copy of itself.
     assert not next(r for r in rows if r.id == "agent-9").installed
 
 
 @pytest.mark.asyncio
 async def test_the_copy_every_account_was_handed_before_the_store_hides_the_catalogue_row():
-    """옛 사본 때문에 기본 에이전트가 두 번 보이던 것.
-
-    Before the shipped agents became one shared catalogue, every account was
-    handed its own copy of each. The move made the originals org-owned and left
-    the copies where they were, so an account that existed before it saw every
-    built-in twice — 리포트 도우미 above 리포트 도우미, one of them with a
-    different sentence under it. A person opening KloudChat on such an account
-    reads that as two different agents and cannot tell which to press.
-
-    The catalogue row is the one that goes, because which of the two is
-    untouched cannot be known: the migration rewrote both, so their timestamps
-    say a day passed and mean nothing. Between a row somebody may have edited
-    and a row they can take from the store again whenever they like, the safe
-    one to hide is the one that comes back.
-    """
+    """An account holding a pre-store copy of a built-in does not see the catalogue row too."""
     admin = _user("admin-1", UserRole.admin)
     shared = _agent()
-    #: No `origin_id` — nobody installed this, it was seeded.
+    #: No `origin_id`: seeded, not installed.
     seeded = _agent(id="agent-9", owner_id="user-1", visibility=Visibility.private)
     db = _Db(agents=[shared, seeded], users=[admin, _user()])
 
@@ -407,7 +362,7 @@ async def test_the_copy_every_account_was_handed_before_the_store_hides_the_cata
 
 @pytest.mark.asyncio
 async def test_an_account_with_no_copy_of_its_own_still_sees_the_catalogue():
-    """Which is every account made since. Nothing about the fix reaches them."""
+    """An account with no copy sees the catalogue row."""
     admin = _user("admin-1", UserRole.admin)
     db = _Db(agents=[_agent()], users=[admin, _user()])
 

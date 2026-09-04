@@ -1,42 +1,14 @@
-/**
- * The report surface from the point of view of someone with a document to
- * submit.
- *
- * `persona-journeys.spec.ts` stops at getting an answer; this picks up after
- * it — naming the document, editing it by hand, and exporting it in whatever
- * format the submission asks for.
- *
- * Assertions are on the file or the stored artifact, never on a toast.
- */
+/** The report surface after generation: title, hand edits, exports, version restore. Asserted on files and stored artifacts. */
 
 import { readFileSync } from 'node:fs'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
 import { approvePlan, ribbonTab, signIn } from './helpers'
 
-/**
- * Retried, and only here.
- *
- * What this file asserts is what a model wrote — that an instruction was
- * obeyed, that a figure came back out of an uploaded file. A small model does
- * both most of the time and not every time: run back to back, this suite has
- * failed on retrieval and passed four seconds later with nothing changed. A
- * single attempt therefore reports the model's mood as if it were the
- * product's behaviour.
- *
- * Deliberately not applied to the UI and infrastructure suites. A control that
- * is missing is missing on the second attempt too, and a retry there would only
- * buy a slower red — or, worse, hide a real intermittent fault.
- */
+// Retried: the content is model-written.
 test.describe.configure({ retries: 2 })
 
-
-/**
- * The text a reader sees when they open the .hwpx, pulled straight out of the
- * container. Asserting on the Markdown source instead would prove nothing about
- * the submitted file: the source is what the *writer* typed, and the whole job
- * of the exporter is to turn it into something else.
- */
+/** The text of `Contents/section0.xml` inside an .hwpx. */
 function hwpxText(bytes: Buffer): string {
   let at = 0
   while (at + 30 <= bytes.length && bytes.readUInt32LE(at) === 0x04034b50) {
@@ -62,7 +34,7 @@ test.describe.configure({ mode: 'serial' })
 
 const stamp = () => Math.random().toString(36).slice(2, 7)
 
-/** The stored report, straight from the API, with the session's own cookie. */
+/** The stored report, from the API. */
 async function artifact(page: import('@playwright/test').Page, id: string) {
   return page.evaluate(async (artifactId) => {
     const login = await fetch('/api/auth/login', {
@@ -84,8 +56,6 @@ async function artifact(page: import('@playwright/test').Page, id: string) {
 /** Opens the newest report on its own surface and returns its artifact id. */
 async function openNewestReport(page: import('@playwright/test').Page) {
   await page.goto('/artifacts')
-  // Filtered to reports: decks sort ahead of them on this screen, and the
-  // unfiltered "first card" opened a slides session with no document editor.
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
@@ -110,13 +80,11 @@ async function openNewestReport(page: import('@playwright/test').Page) {
 
 /** Replaces the whole document through the editor and saves. */
 async function rewrite(page: import('@playwright/test').Page, markdown: string) {
-  // 생성 직후의 패널은 아직 그리는 중일 수 있다 — 기본 15초는 접수 확인이지
-  // 무거운 문서의 첫 그림이 아니다.
+  // A freshly generated panel may still be drawing.
   await expect(page.getByRole('button', { name: '원문 편집' })).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: '원문 편집' }).click()
   await page.getByLabel('문서 원본').fill(markdown)
-  // 이름이 '저장'인 버튼이 화면에 둘이라 클릭은 어느 쪽을 눌렀는지
-  // 말해 주지 않는다. 편집기 자신의 단축키가 유일하게 모호하지 않다.
+  // Two buttons are named 저장; the editor's shortcut is unambiguous.
   await page.getByLabel('문서 원본').press('Control+Enter')
   await expect(page.getByLabel('문서 원본')).toBeHidden({ timeout: 20_000 })
 }
@@ -124,8 +92,6 @@ async function rewrite(page: import('@playwright/test').Page, markdown: string) 
 test.beforeEach(async ({ page }) => {
   await signIn(page)
 })
-
-/* ── graduate student: the cover page gets a name worth putting on it ── */
 
 test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문장이 아니다', async ({ page }) => {
   test.setTimeout(600_000)
@@ -135,17 +101,9 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
   await page.getByLabel('프롬프트 입력').fill(request)
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
-  // Planned first and written only once approved, so neither the panel nor its
-  // denominator exists before this.
+  // Nothing is written until the plan is approved.
   await approvePlan(page, 480_000)
-  // The count is on the button that opens the contents.
-  //
-  // It used to be a line inside a column that stood beside the document at
-  // every width, and that column was 208px of the document's own room — so the
-  // contents became a drawer and the count moved onto its handle. The line is
-  // still there, inside the closed drawer, which is why looking for it by text
-  // finds an element and calls it hidden.
-  // 목차 손잡이는 리본의 보기 칸에 있다.
+  // The section count is on the 목차 button in the 보기 tab.
   await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 180_000 })
   await ribbonTab(page, '보기')
   await expect(page.getByRole('button', { name: /목차 \d+\/[3-8]/ })).toBeVisible({
@@ -171,14 +129,12 @@ test('대학원생 — 만들어진 보고서의 제목이 내가 친 요청 문
   })
   const stored = await artifact(page, id)
 
-  // The whole point: a cover line, not the sentence that was typed.
+  // A cover line, not the sentence that was typed.
   expect(stored.title, '요청 문장이 그대로 제목이 되었다').not.toBe(request)
   expect(stored.title, '요청 문장의 앞부분을 잘라 쓴 제목').not.toBe(request.slice(0, 60))
   expect(stored.title.endsWith('.'), '제목에 마침표가 남았다').toBe(false)
   expect(stored.title.length).toBeGreaterThan(3)
 })
-
-/* ── office worker: the submission format is a Hancom document ───────── */
 
 test('사무직 — 보고서를 한글 문서로 받으면 한글이 여는 파일이다', async ({ page }) => {
   test.setTimeout(180_000)
@@ -192,8 +148,7 @@ test('사무직 — 보고서를 한글 문서로 받으면 한글이 여는 파
   expect(file.suggestedFilename()).toMatch(/\.hwpx$/)
 
   const bytes = readFileSync((await file.path())!)
-  // A zip whose first entry is an uncompressed `mimetype` — the OWPML container
-  // rule Hancom checks by byte offset before it parses anything.
+  // OWPML: the first zip entry is an uncompressed `mimetype`, checked by byte offset.
   expect(bytes.subarray(0, 4).toString('binary')).toBe('PK')
   expect(bytes.readUInt16LE(8), 'mimetype 이 압축되어 있다').toBe(0)
   expect(bytes.subarray(30, 38).toString()).toBe('mimetype')
@@ -203,8 +158,6 @@ test('사무직 — 보고서를 한글 문서로 받으면 한글이 여는 파
     expect(text, `${part} 누락`).toContain(part)
   }
 })
-
-/* ── researcher: numbered steps stay numbered in the exported copy ───── */
 
 test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 유지한다', async ({ page }) => {
   test.setTimeout(180_000)
@@ -222,19 +175,15 @@ test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 
   await page.getByRole('menuitem', { name: '한글 문서' }).click()
   const submitted = hwpxText(readFileSync((await (await hwpxDownload).path())!))
 
-  // Markdown counts from the first item, so a source of `1. 1. 1.` is 1, 2, 3.
-  // The submitted document has to say so in ink — nothing renumbers it later.
+  // `1. 1. 1.` renders as 1, 2, 3; the exported document says so in ink.
   expect(submitted).toContain('1. 시료를 준비한다')
   expect(submitted).toContain('2. 온도를 25℃ 로 맞춘다')
   expect(submitted).toContain('3. 3회 반복 측정한다')
-  // A list that starts at 8 keeps starting at 8, into double digits.
   expect(submitted).toContain('8. 여덟 번째 단계')
   expect(submitted).toContain('10. 열 번째 단계')
   expect(submitted).toContain(title)
 
-  // The Markdown export is the source, and is expected to stay the source: it
-  // carries `1. 1. 1.`, which every Markdown reader renders as 1, 2, 3. Pinning
-  // it here so nobody "fixes" the two to match.
+  // The Markdown export is the source, `1. 1. 1.` included.
   await ribbonTab(page, '파일')
   await page.getByRole('button', { name: '내보내기', exact: true }).click()
   const mdDownload = page.waitForEvent('download', { timeout: 60_000 })
@@ -243,8 +192,6 @@ test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 
   expect(md).toContain('1. 온도를 25℃ 로 맞춘다')
   expect(md).toContain(`# ${title}`)
 })
-
-/* ── developer: sample code does not break the document structure ────── */
 
 test('개발직 — 코드 블록 안의 ## 이 절을 쪼개지 않는다', async ({ page }) => {
   test.setTimeout(180_000)
@@ -261,8 +208,6 @@ test('개발직 — 코드 블록 안의 ## 이 절을 쪼개지 않는다', asy
   expect(stored.data.sections[0].content).toContain('## 이건 예시일 뿐이다')
 })
 
-/* ── undergraduate: a bad save can be undone ─────────────────────────── */
-
 test('학부생 — 잘못 저장한 보고서를 버전 기록으로 되돌린다', async ({ page }) => {
   test.setTimeout(180_000)
   const id = await openNewestReport(page)
@@ -272,10 +217,8 @@ test('학부생 — 잘못 저장한 보고서를 버전 기록으로 되돌린�
   const wrecked = await artifact(page, id)
   expect(wrecked.data.sections).toHaveLength(1)
 
-  // 버전 기록은 리본의 검토 칸에 있다.
   await ribbonTab(page, '검토')
   await page.getByRole('button', { name: '버전 기록' }).click()
-  // The list is real history now, not one row per version number.
   const restoreButton = page.getByRole('button', { name: `v${before.version} 로 되돌리기` })
   await expect(restoreButton).toBeVisible({ timeout: 20_000 })
   await restoreButton.click()
@@ -288,6 +231,6 @@ test('학부생 — 잘못 저장한 보고서를 버전 기록으로 되돌린�
   expect(restored.data.sections.map((s: { heading: string }) => s.heading)).toEqual(
     before.data.sections.map((s: { heading: string }) => s.heading),
   )
-  // Restoring is an edit of its own, so history only ever grows.
+  // Restoring is an edit of its own.
   expect(restored.version).toBeGreaterThan(wrecked.version)
 })

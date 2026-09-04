@@ -30,15 +30,12 @@ class Governance(SQLModel, table=True):
     allow_user_raw_external: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
-    #: Strict-local model ids. Every use is revalidated and prioritized in the
-    #: live catalogue's visible order, so stale ids cannot become an external
-    #: route and hidden click order cannot change routing.
+    #: Strict-local model ids, revalidated against the live catalogue on every use.
     privacy_safe_model_ids: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Optional, explicit cost optimisation. Existing and new installations
-    #: remain manual until an administrator finishes and enables the policy.
+    #: Cost-saving auto routing. Off until an administrator enables it.
     adaptive_routing_enabled: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
@@ -46,41 +43,23 @@ class Governance(SQLModel, table=True):
     adaptive_classifier_model_id: str | None = Field(
         default=None, sa_column=Column(String, nullable=True)
     )
-    #: Ordered economy candidates. Runtime validation is repeated for every
-    #: turn because catalogue price, boundary and account permissions can move.
+    #: Ordered economy candidates, revalidated every turn.
     adaptive_economy_model_ids: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: The upgrade lane's own switch.
-    #:
-    #: Separate from `adaptive_routing_enabled`, which governs the lane that
-    #: saves. The two are opposite decisions about money and an instance may
-    #: want either without the other; one flag for both meant the upgrade path
-    #: could only be had by turning cost routing on beside it.
+    #: Quality-upgrade auto routing; independent of `adaptive_routing_enabled`.
     adaptive_quality_enabled: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
-    #: Ordered upgrade candidates, revalidated every turn for the same reasons
-    #: as the economy list above.
-    #:
-    #: Curated rather than derived. "Bigger is better" does not hold — measured
-    #: on this instance a 122b failed the outline call a 35b completed — so the
-    #: order here is an administrator's finding, not a price sort.
+    #: Ordered upgrade candidates, revalidated every turn. Administrator-curated,
+    #: not a price sort.
     adaptive_quality_model_ids: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: The model that plans a document, when it should not be the one that
-    #: writes it.
-    #:
-    #: A deck is one outline call and N block calls. The outline is where the
-    #: shape is decided — how many slides, and which layout each one is — and
-    #: it is the call a small model gets visibly wrong: measured on this
-    #: instance, `bullets` was 77% of every body slide it planned. Naming a
-    #: stronger model here buys that one call per document and leaves the
-    #: per-block cost where it is. Empty keeps the surface's own model, which
-    #: is what every installation starts with.
+    #: Model for a document's outline call only; the blocks use the surface's
+    #: own model. Empty keeps the surface's model for the outline too.
     outline_model_id: str | None = Field(default=None, sa_column=Column(String, nullable=True))
     #: Refuse prompts whose intent falls in `blocked_categories`.
     intent_filter: bool = Field(
@@ -90,12 +69,8 @@ class Governance(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Sign an idle browser out after this many minutes. 0 keeps a session
-    #: alive until its refresh cookie expires, which is what every install
-    #: started with. Enforced in the browser — it stops renewing and ends the
-    #: session — because idleness is a fact only the browser has: the silent
-    #: refresh runs on a timer whether or not anybody is at the keyboard, so
-    #: the server cannot tell a working tab from an abandoned one.
+    #: Sign an idle browser out after this many minutes; 0 disables. Enforced
+    #: by the browser, which alone knows idleness (the silent refresh is a timer).
     idle_timeout_minutes: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")
     )

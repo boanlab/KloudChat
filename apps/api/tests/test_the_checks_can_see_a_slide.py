@@ -1,13 +1,4 @@
-"""검사가 슬라이드의 새 자리들을 보는가.
-
-`from_slides` read `bullets` and `body`, which was the whole of what a slide
-could hold when it was written. A slide can now be a table, a row of figures or
-a chart — and those are precisely the shapes that carry numbers worth checking.
-
-So a chart slide with eight invented quarters on it reached the checks as an
-empty slide and every rule passed. The three layouts most likely to state a
-fact were the three the checks could not see.
-"""
+"""`from_slides` feeds table, figure and chart slides to the checks as sentences."""
 
 from __future__ import annotations
 
@@ -36,9 +27,7 @@ def test_a_figure_reaches_the_checks_with_what_it_counts() -> None:
 
 
 def test_a_chart_reaches_the_checks_as_sentences() -> None:
-    """A bare column of numbers is not a claim, so a rule looking for one finds
-    nothing. Paired with its label and unit it is the assertion a writer would
-    have had to make in prose."""
+    """A chart reaches the checks as label-unit-value sentences."""
     parts = lint.from_slides(
         [
             {
@@ -58,8 +47,7 @@ def test_a_chart_reaches_the_checks_as_sentences() -> None:
 
 
 def test_a_chart_written_as_pairs_is_read_too() -> None:
-    # `deck_export._chart_of` normalises series to tuples; an artifact read
-    # back from the database carries dicts. Both arrive here.
+    # Series arrive as tuples (`_chart_of`) or dicts (from the database).
     parts = lint.from_slides(
         [
             {
@@ -72,19 +60,14 @@ def test_a_chart_written_as_pairs_is_read_too() -> None:
 
 
 def test_a_rule_fires_on_a_cell_it_could_not_see_before() -> None:
-    """The point of the plumbing above, checked by running a rule through it.
-
-    The same deck came back clean before, because the slide the checks were
-    handed had nothing in it — an unfilled cell in the middle of a comparison
-    table went to the projector.
-    """
+    """A rule fires on an unfilled table cell."""
     unfilled = [
         {"title": "대안 비교", "layout": "table", "rows": [["기준", "값"], ["비용", "TBD"]]}
     ]
     findings = lint.check(lint.from_slides(unfilled), slides=True)
     assert [f for f in findings if f.rule == "placeholder"], findings
 
-    # And a slide with nothing wrong with it is still clean.
+    # A clean slide stays clean.
     filled = [
         {"title": "대안 비교", "layout": "table", "rows": [["기준", "값"], ["비용", "3억"]]}
     ]

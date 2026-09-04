@@ -1,20 +1,8 @@
 """Read-only share links.
 
-Two routes that need a session, and one that must not have one.
-
-The public route is deliberately narrow: a token in, exactly the shared thing
-out, and no way to reach anything else — no owner name, no sibling artifacts,
-no walkable ids.
-
-The one thing it sends beyond the transcript is the account the conversation
-gives of itself: which agent answered, which project it was held in, which
-서식 the result was written into. A reader who cannot see that cannot tell why
-the document came out as it did, and has nobody to ask. Names only — an
-agent's system prompt and a project's instructions are the work itself, and
-this token bought one conversation rather than the workspace behind it.
-
-`workspace` scope requires a session, from any member of the instance. `link`
-scope does not, which is the case where the recipient has no account here.
+The public route returns exactly the shared thing: no owner, sibling artifacts
+or walkable ids. Agent/project/format are sent as names only, never their
+bodies. `workspace` scope needs a signed-in member; `link` scope needs nothing.
 """
 
 from __future__ import annotations
@@ -35,28 +23,18 @@ from app.services import design_templates
 
 router = APIRouter(tags=["shares"])
 
-#: 32 bytes of urlsafe randomness. The token is the entire authorisation.
+#: The token is the entire authorisation.
 _TOKEN_BYTES = 32
 
-#: Repeat opens inside this window are the same visit. A reader refreshing a
-#: long report is one person reading it, and a row per refresh would bury the
-#: other readers under them.
+#: Repeat opens inside this window count as one visit.
 _VISIT_WINDOW = timedelta(hours=1)
 
 
 async def _record_view(db: DbSession, share: Share, request: Request, viewer) -> None:
-    """Writes down who this was, or the little that can be known about them.
-
-    A signed-in reader is named — the name and email are copied rather than
-    joined, so the record still reads a year from now whether or not the
-    account does. An anonymous one is a `link`-scope recipient, who has no
-    account here by design; their address is all this server ever learns.
-    """
+    """Records the view: a signed-in reader by copied name/email, an anonymous one by address."""
     ip = client_ip(request)
     since = utcnow() - _VISIT_WINDOW
-    # Same person, still here: one visit. Identity is the account when there is
-    # one and the address when there is not — an anonymous reader is only ever
-    # their address, so that is what "same reader" can mean for them.
+    # "Same reader" is the account when signed in, else the address.
     same = (
         (ShareView.viewer_id == viewer.id)
         if viewer is not None
@@ -104,11 +82,7 @@ async def _owned_target(db: DbSession, user, payload: ShareIn):
 
 @router.post("/shares", response_model=ShareOut, status_code=status.HTTP_201_CREATED)
 async def create_share(payload: ShareIn, user: CurrentUser, db: DbSession):
-    """Makes a link, or returns the one that already exists.
-
-    Idempotent per (thing, scope): a second Share returns the same URL rather
-    than minting one that outlives the first revocation.
-    """
+    """Makes a link, or returns the live one for the same (thing, scope)."""
     await _owned_target(db, user, payload)
 
     existing = (
@@ -152,11 +126,7 @@ async def list_shares(user: CurrentUser, db: DbSession):
 
 @router.get("/shares/{share_id}/views", response_model=list[ShareViewOut])
 async def list_share_views(share_id: str, user: CurrentUser, db: DbSession):
-    """Who has opened this link. Owner only, newest visit first.
-
-    A revoked link keeps its visits: revoking answers "can anyone still read
-    this", and the question that prompted it is usually "who already did".
-    """
+    """Who has opened this link; owner only, newest first. A revoked link keeps its visits."""
     share = await db.get(Share, share_id)
     if share is None or share.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -173,7 +143,7 @@ async def list_share_views(share_id: str, user: CurrentUser, db: DbSession):
 
 @router.delete("/shares/{share_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_share(share_id: str, user: CurrentUser, db: DbSession):
-    """Kills the link. The row stays so the owner can still see it existed."""
+    """Revokes the link; the row stays."""
     share = await db.get(Share, share_id)
     if share is None or share.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -184,19 +154,12 @@ async def revoke_share(share_id: str, user: CurrentUser, db: DbSession):
 
 @router.get("/shared/{token}")
 async def read_shared(token: str, request: Request, db: DbSession):
-    """The public read. No session for `link` scope; a session for `workspace`.
-
-    Returns the shared thing and nothing around it. Revoked and unknown tokens
-    give the same 404: distinguishing them discloses somebody else's account.
-    """
+    """The public read. Revoked and unknown tokens give the same 404."""
     share = (await db.exec(select(Share).where(Share.token == token))).first()
     if share is None or share.revoked_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
-    # Resolved by hand and never required: the route has to stay open for
-    # `link` scope, which a dependency would 401. Attempted for every scope
-    # though, because a `link` reader who happens to have an account can be
-    # named, and a name is worth more in the log than an address.
+    # Resolved by hand, never required: a dependency would 401 `link` readers.
     try:
         viewer = await current_user(await _identity(request, db))
     except HTTPException:
@@ -232,20 +195,11 @@ async def read_shared(token: str, request: Request, db: DbSession):
             .order_by(col(Message.created_at), col(Message.id))
         )
     ).all()
-    # The artifact the conversation produced, which is the reason to open the
-    # link at all. Read through the session's own `artifact_id`, never by
-    # listing: nothing else in the owner's workspace is reachable from a token.
+    # Read through the session's own `artifact_id`, never by listing.
     artifact = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if artifact is not None and artifact.user_id != session.user_id:
         artifact = None
-    # What this conversation started with, which the empty screen in the app
-    # has told its owner ever since a 시작점 stopped being typed into the
-    # composer. The recipient of the link is the one reader who was told none
-    # of it, and the one who cannot ask.
-    #
-    # Each of these is a name and nothing else. `agent.system_prompt` and
-    # `project.instructions` are the bodies behind two of them, and neither
-    # goes near this route.
+    # Names only: `agent.system_prompt` and `project.instructions` never leave here.
     agent = await db.get(Agent, session.agent_id) if session.agent_id else None
     project = await db.get(Project, session.project_id) if session.project_id else None
     if project is not None and project.user_id != session.user_id:
@@ -259,8 +213,7 @@ async def read_shared(token: str, request: Request, db: DbSession):
         "startedWith": {
             "agent": agent.name if agent is not None else None,
             "project": f"{project.emoji} {project.name}".strip() if project is not None else None,
-            # Both halves of the name, because the page that renders it picks
-            # by the language on screen exactly as every other 서식 name does.
+            # Both languages; the page picks by the UI language.
             "format": (
                 {"name": shape.name, "nameEn": shape.name_en} if shape is not None else None
             ),

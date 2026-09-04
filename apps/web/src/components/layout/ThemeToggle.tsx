@@ -11,11 +11,7 @@ const labels = {
   dark: '테마: 어둡게',
 }
 
-/**
- * Shows the state it is in, not the one it would switch to. With two states an
- * icon can stand for either reading; with three, only the current one is
- * unambiguous, and `system` has no opposite to point at.
- */
+/** Cycles system, light, dark; the icon shows the current state. */
 export function ThemeToggle({ className }: { className?: string }) {
   const t = useT()
   const { theme, toggleTheme } = useStore()

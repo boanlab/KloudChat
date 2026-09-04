@@ -40,9 +40,10 @@ Alongside the prompt gallery there is a **rendering catalogue**: shapes the
 answer comes out in. Picking one replaces the surface's built-in track — a
 slides session writes a single-file HTML deck, a report session writes a laid
 out document — and the model fills a fixed vocabulary of blocks rather than
-writing layout. Those files carry no script and do carry print rules, and they
-convert back out to `.pptx`, `.docx`, `.pdf` and `.hwpx` without a rendering
-engine, because the markup came out of a closed vocabulary in the first place.
+writing layout. Those files carry no script and do carry print rules. The
+`.pdf` is that file printed by a headless browser, so it matches the screen;
+`.pptx`, `.docx` and `.hwpx` are read back out of the markup, which is possible
+because it came out of a closed vocabulary.
 
 On the media surfaces the same catalogue holds prompt templates: a sentence
 with blanks, a small form to fill them, and the settings that shape implies —
@@ -163,13 +164,17 @@ endpoints need no key.
 
 ## What an administrator controls
 
-Three things, all under **Settings → System**:
+Under **Settings → System**:
 
 | | |
 |---|---|
+| **Integrations** | Backend gateway address, LiteLLM master key, per-feature tool endpoints with connection tests. |
+| **Model routing** | Auto cost routing — the strict-local classifier and the ordered economy models — and the outline model that plans documents. |
 | **Enabled surfaces** | Turn reports, slides, images and audio/video on or off. Chat is always on. Images and audio/video cost credits per generation, so they default to off. A disabled surface disappears from the UI *and* the server refuses to create sessions of that kind — hiding it alone leaves it enabled for anyone who types the URL. |
+| **Shared templates** | Starting points every account sees. |
 | **Branding** | Name and logo for the sidebar and the sign-in screen. PNG, JPG or WebP up to 2 MB. |
-| **Integrations** | Backend gateway address, LiteLLM master key, SMTP. |
+| **Mail** | SMTP for password reset and email verification. |
+| **Signup** | Mode, allowed mail domains, email verification. |
 
 ## Connecting coding agents
 
@@ -214,7 +219,7 @@ without a translation fall back to Korean.
 | `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
 | `/settings` · `/settings/preferences` · `/settings/personalization` · `/settings/keys` · `/settings/access` | Profile and password / defaults / personalization / API keys / sign-ins and security changes |
 | `/agent-setup` · `/api-setup` | Coding-agent and API connection guides (account menu) |
-| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` | LiteLLM / automatic model routing / enabled surfaces and integrations / shared templates / branding / SMTP (admin) |
+| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` · `/signup` | Proxy and integrations / automatic model routing / enabled surfaces / shared templates / branding / SMTP / signup policy (admin) |
 
 ### What each surface does differently
 

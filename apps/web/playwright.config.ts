@@ -3,22 +3,17 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   // Every suite signs in as the same seeded account and mutates the same
-  // workspace — one file creating an agent while another picks one from the
-  // menu produces failures that have nothing to do with the app. Isolation
-  // would mean an account per file, and an account needs admin approval; one
-  // worker is the cheaper honest answer.
+  // workspace, so files must not run concurrently.
   fullyParallel: false,
   workers: 1,
-  // A persona test walks every need it has; one missing affordance must not
-  // starve the rest of the list of time.
+  // Persona tests walk many steps in one test.
   timeout: 180_000,
   expect: { timeout: 3_000 },
   reporter: process.env.CI ? 'github' : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:5173',
-    // Unset, this is unbounded: a click blocked by a stray modal backdrop waits
-    // out the whole test and reports "timed out" instead of naming what
-    // intercepted it. Bounded, the same failure names the element in seconds.
+    // Bounded so a blocked click names the intercepting element instead of
+    // timing out the whole test.
     actionTimeout: 15_000,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
@@ -27,8 +22,7 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
     { name: 'laptop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
-    // iPad geometry on Chromium — one engine keeps `npx playwright install
-    // chromium` sufficient to run the whole suite.
+    // iPad geometry on Chromium: one engine runs the whole suite.
     {
       name: 'tablet',
       use: {

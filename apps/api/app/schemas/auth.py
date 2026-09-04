@@ -1,8 +1,5 @@
-"""Wire shapes. camelCase out, snake_case in.
-
-The React app reads these straight into `src/types.ts`, so the alias generator
-is what keeps the two in sync.
-"""
+"""Auth wire shapes: camelCase on the wire (alias generator), snake_case in Python.
+Mirrored by the web client's types."""
 
 from __future__ import annotations
 
@@ -26,7 +23,7 @@ class Wire(BaseModel):
 
 class SignupRequest(Wire):
     email: EmailStr
-    # Long enough to matter, short enough that argon2 does not become a DoS vector.
+    # Upper bound keeps argon2 from becoming a DoS vector.
     password: str = Field(min_length=10, max_length=200)
     name: str = Field(min_length=1, max_length=80)
 
@@ -37,35 +34,27 @@ class LoginRequest(Wire):
 
 
 class Preferences(Wire):
-    """What the settings screen can turn on and off.
+    """Settings-screen switches. Every field has a default for accounts with nothing stored."""
 
-    Every field has a default, so an account with nothing stored behaves the way
-    the switch says.
-    """
-
-    #: Off means the answer appears in one piece when the turn ends.
+    #: Off: the answer appears in one piece when the turn ends.
     stream_responses: bool = True
     #: Extract durable facts from finished turns into memory.
     auto_memory: bool = False
-    #: The model · token · credit line under each answer.
+    #: The model / token / credit line under each answer.
     show_usage: bool = True
-    #: Default action when protected data would leave for an external model.
-    #: The administrator remains the upper bound for raw delivery.
+    #: Default action when protected data would leave for an external model;
+    #: the administrator's policy is the upper bound for raw delivery.
     privacy_default_action: Literal[
         "ask", "route_strict_local", "mask_external", "send_raw_external"
     ] = "ask"
-    #: 개인 맞춤 설정 — what every conversation should know about the person,
-    #: and how answers should be written. Free text, the person's own words.
+    #: Personalisation: what every conversation should know about the person,
+    #: and how answers should be written. Free text.
     about_me: str = Field(default="", max_length=1500)
     response_style: str = Field(default="", max_length=1500)
 
     @classmethod
     def of(cls, user: User) -> Preferences:
-        """Stored values over defaults, tolerant of both spellings.
-
-        The column is written with field names and read by code that thinks in
-        wire names; going through the schema is what keeps the two in step.
-        """
+        """Stored values over defaults; accepts both field and alias spellings."""
         stored = user.preferences or {}
         known = set(cls.model_fields) | {f.alias for f in cls.model_fields.values() if f.alias}
         return cls(**{k: v for k, v in stored.items() if k in known})
@@ -109,30 +98,24 @@ class UserOut(Wire):
     last_active_at: datetime | None
     #: Null while a mailed verification link is still out.
     email_verified_at: datetime | None = None
-    #: Whether the account has its own LiteLLM key, and its last four
-    #: characters. The key itself has no route that returns it.
+    #: Last four characters of the account's LiteLLM key; no route returns the key.
     litellm_key_preview: str | None = None
     litellm_key_issued_at: datetime | None = None
     preferences: Preferences = Preferences()
-    #: Empty means the whole catalogue — the default for every account.
+    #: Empty means the whole catalogue.
     allowed_models: list[str] = []
 
     @classmethod
     def of(cls, user: User) -> UserOut:
         out = cls.model_validate(user, from_attributes=True)
-        # Stored keys win; unknown keys are ignored, so removing a switch does
-        # not break an old row.
         out.preferences = Preferences.of(user)
         out.allowed_models = list(user.allowed_models or [])
         return out
 
 
 class SessionOut(Wire):
-    """What a successful login or refresh returns.
-
-    The refresh token is not here: it goes out as an httpOnly cookie, unreadable
-    to script. `expiresIn` is what the SPA schedules a silent refresh against.
-    """
+    """Login/refresh result. The refresh token travels as an httpOnly cookie, not here;
+    `expiresIn` schedules the SPA's silent refresh."""
 
     access_token: str
     expires_in: int
@@ -140,9 +123,7 @@ class SessionOut(Wire):
 
 
 class SignupResponse(Wire):
-    """No session when approval is required; the SPA routes to the pending
-    screen on `status == "pending"`.
-    """
+    """`session` is null when approval is required (`status == "pending"`)."""
 
     user: UserOut
     session: SessionOut | None = None
@@ -157,16 +138,10 @@ class EmailVerifyResponse(Wire):
 
 
 class AccessEventOut(Wire):
-    """One line of somebody's own 접속기록.
+    """One line of the user's own access log.
 
-    `action` travels as the stored verb rather than as a sentence: the screen
-    that renders it is the one that knows the reader's language, and a Korean
-    string baked in here would come back in English nowhere.
-
-    `region` is empty unless the server has a GeoLite2 database, and empty for
-    an address it does not cover. Never a guess — on this screen a wrong city
-    is worse than no city, because the reason to look is to spot the one entry
-    that was not you.
+    `action` is the stored verb; the client localises it. `region` is empty
+    without a GeoLite2 database or for an uncovered address, never guessed.
     """
 
     id: str
@@ -193,20 +168,9 @@ class AccessEventOut(Wire):
 
 
 class ActiveSessionOut(Wire):
-    """One live sign-in: a refresh-token family, described.
-
-    Keyed on the family rather than the token, because a token is replaced
-    every quarter of an hour and nobody thinks of that as a new session. The
-    identity a person recognises is "the browser on the lab PC", which is what
-    a family is.
-
-    `current` marks the one asking. It is the session the screen is being read
-    from, and the only one whose 종료 also signs the reader out — so it says so
-    rather than looking like the others.
-
-    `ip`, `region` and `userAgent` are empty for families that predate the
-    columns. Empty, never guessed: the reason to read this list is to find the
-    one entry that was not you.
+    """One live sign-in, keyed on the refresh-token family (tokens rotate; the
+    family is the session). `current` marks the caller's own; ending it signs
+    the caller out. `ip`/`region`/`userAgent` may be empty, never guessed.
     """
 
     family_id: str

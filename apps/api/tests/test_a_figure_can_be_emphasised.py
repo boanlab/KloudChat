@@ -1,10 +1,4 @@
-"""A row of figures written in a section reaches all three files as a table.
-
-The point of a KPI strip is that it is *text* on the way out. A diagram has to
-become a picture because nothing outside a browser draws one; a strip does not,
-and drawing it as one would hand the reader a number they cannot correct,
-cannot copy and cannot search for. These check the strip stays a table.
-"""
+"""KPI strips and procedures reach all three export files as text, not pictures."""
 
 from __future__ import annotations
 
@@ -37,17 +31,17 @@ def test_the_fence_is_read_as_a_strip_and_not_as_prose() -> None:
     kpi = [line for line in lines if line[0] == "kpi"]
     assert len(kpi) == 1
     assert kpi[0][1] == [("32%", "오탐 감소"), ("1.4초", "평균 응답"), ("99.2%", "가용성")]
-    # And the backticks are nowhere in the prose that survives.
+    # No backticks survive in the prose.
     assert not any("```" in str(line[1]) for line in lines)
 
 
 def test_a_line_without_a_label_is_dropped() -> None:
-    # A number with nothing saying what it counts is worse than no number.
+    # A figure needs a label.
     assert report_export._kpi_rows("32%\n1.4초 | 평균 응답") == [("1.4초", "평균 응답")]
 
 
 def test_five_figures_are_cut_to_four() -> None:
-    # Past four they are too narrow to read and the strip stops being a glance.
+    # At most four figures per strip.
     rows = report_export._kpi_rows("\n".join(f"{n} | 이름{n}" for n in range(5)))
     assert len(rows) == 4
 
@@ -61,10 +55,9 @@ def test_word_gets_a_real_table_not_a_picture() -> None:
     table = document.tables[0]
     assert [c.text for c in table.rows[0].cells] == ["32%", "1.4초", "99.2%"]
     assert [c.text for c in table.rows[1].cells] == ["오탐 감소", "평균 응답", "가용성"]
-    # The value row is what makes it read as a strip rather than as a table.
     run = table.rows[0].cells[0].paragraphs[0].runs[0]
     assert run.bold and run.font.size.pt > 14
-    # No picture: the figures stay editable in the file somebody submits.
+    # No picture: the figures stay editable text.
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         assert not [n for n in archive.namelist() if "/media/" in n]
 
@@ -86,8 +79,7 @@ def test_hangul_gets_a_real_table() -> None:
 
 @pytest.mark.parametrize("source", ["", "   ", "|", " | ", "값만있음"])
 def test_an_empty_fence_writes_nothing(source: str) -> None:
-    # A fence the model opened and did not fill must not leave an empty box on
-    # the page.
+    # An empty fence leaves no empty box.
     lines = report_export._markdown_to_lines(f"앞\n\n```kpi\n{source}\n```\n\n뒤\n")
     assert not [line for line in lines if line[0] == "kpi"]
 
@@ -117,8 +109,7 @@ def test_a_procedure_is_read_as_steps() -> None:
 
 
 def test_a_procedure_may_run_to_eight_steps() -> None:
-    # Longer than a strip of figures — eight is as many as anyone follows
-    # without reading it twice, and a nine-step procedure is two procedures.
+    # At most eight steps.
     rows = report_export._kpi_rows("\n".join(f"단계{n} | 설명" for n in range(12)), limit=8)
     assert len(rows) == 8
 
@@ -132,7 +123,7 @@ def test_word_numbers_the_steps_itself() -> None:
     assert len(table.rows) == 3
     assert [r.cells[0].text for r in table.rows] == ["1", "2", "3"]
     assert "자료 수집" in table.rows[0].cells[1].text
-    # Text, not a picture: the reader can correct a step in the file they get.
+    # Text, not a picture.
     with zipfile.ZipFile(io.BytesIO(report_export.to_docx("방법", [STEPS]))) as archive:
         assert not [n for n in archive.namelist() if "/media/" in n]
 
@@ -166,14 +157,7 @@ _EDITED = (
 
 
 def test_an_edited_section_keeps_both_blocks() -> None:
-    """The round trip a person actually makes.
-
-    Touching a section in the document editor stores it as HTML, and the
-    exporters read Markdown — so everything goes back through `richtext`. A
-    procedure matched as a plain `<ol>` comes back as `1. 자료 수집`, with the
-    numbering that the editor was drawing now literal text in the source, and
-    the next save makes that permanent.
-    """
+    """An edited (HTML) section round-trips strips and procedures through `richtext` as fences."""
     from app.services import richtext
 
     markdown = richtext.to_markdown(_EDITED)
@@ -184,7 +168,7 @@ def test_an_edited_section_keeps_both_blocks() -> None:
     # Not renumbered into the text, and not flattened into a plain list.
     assert "1. 자료 수집" not in markdown
 
-    # And straight back out again as the blocks, not as prose.
+    # Back out as the blocks, not as prose.
     kinds = [line[0] for line in report_export._markdown_to_lines(markdown)]
     assert "kpi" in kinds and "steps" in kinds
 
@@ -198,14 +182,7 @@ def test_the_blocks_survive_the_sanitiser() -> None:
 
 
 def test_an_edit_does_not_delete_the_diagrams() -> None:
-    """The failure this was found by: one keystroke, every chart gone.
-
-    A section is stored as HTML the moment somebody touches it in the page
-    view, and a mermaid fence had no node in that editor — so it was dropped on
-    the way in and absent from what came back out. Every diagram and chart in
-    that section disappeared from the document, from the web view and from the
-    exported file, and nothing said so.
-    """
+    """Editing a section keeps its mermaid and chart fences."""
     from app.services import richtext
 
     edited = (
@@ -218,11 +195,9 @@ def test_an_edit_does_not_delete_the_diagrams() -> None:
     markdown = richtext.to_markdown(edited)
     assert "```mermaid" in markdown
     assert 'pie showData' in markdown
-    # The quotes and the newline come back as themselves, or the chart the
-    # source describes is not the chart that was there.
+    # Quotes and newlines come back as themselves.
     assert '"장비" : 28' in markdown
-    # The picture is not written into the prose as well — the exporters look it
-    # up under the digest of this source, and twice is twice in the file.
+    # The picture is not also written into the prose; exporters look it up by digest.
     assert "data:image/png" not in markdown
 
     kinds = [line[0] for line in report_export._markdown_to_lines(markdown)]
@@ -230,7 +205,7 @@ def test_an_edit_does_not_delete_the_diagrams() -> None:
 
 
 def test_a_plain_pasted_picture_is_still_a_picture() -> None:
-    # A `<figure>` with no source never was a diagram; somebody pasted it.
+    # A `<figure>` with no source is not a diagram.
     from app.services import richtext
 
     markdown = richtext.to_markdown(
@@ -240,14 +215,7 @@ def test_a_plain_pasted_picture_is_still_a_picture() -> None:
 
 
 def test_hangul_columns_are_weighted_and_reach_the_margin() -> None:
-    """The step number took half the page.
-
-    `_hwpx_table` split the text width evenly, so a column holding `1` was as
-    wide as one holding a sentence. Hancom lays a table out from the cell
-    sizes, so the weights also have to *sum* to the text width — a rounding
-    error left over from the division is a column that stops short of the right
-    margin, which is visible on the page and looks like a broken table.
-    """
+    """`_hwpx_table` column widths are weighted by content and sum to the text width."""
     import re
 
     from app.services.report_export import _HWPX_TEXT_WIDTH
@@ -260,21 +228,20 @@ def test_hangul_columns_are_weighted_and_reach_the_margin() -> None:
     first_row = widths[:3]
     assert sum(first_row) == _HWPX_TEXT_WIDTH
     assert first_row[0] < first_row[1] < first_row[2]
-    # Every row is laid out the same, or the columns do not line up.
+    # Every row uses the same widths.
     assert widths[3:6] == first_row
 
 
 def test_the_figures_are_centred_in_hangul() -> None:
     markup = report_export._hwpx_table([["32%"], ["오탐 감소"]], cell_para_pr=6)
     assert 'paraPrIDRef="6"' in markup
-    # And shape 6 exists in the header, or the reference points at nothing.
+    # Shape 6 is declared in the header.
     assert any(shape[0] == 6 for shape in report_export._HWPX_PARA_SHAPES)
     assert report_export._HWPX_PARA_SHAPES[6][1] == "CENTER"
 
 
 def test_the_step_name_and_its_detail_stay_apart() -> None:
-    # "자료 수집 공개 데이터와 내부 로그를 모은다" — one long sentence with a
-    # number in front of it, which is not a procedure.
+    # Not one sentence with a number in front.
     section = {
         "id": "s",
         "heading": "방법",
@@ -287,24 +254,14 @@ def test_the_step_name_and_its_detail_stay_apart() -> None:
 
 
 def test_a_step_number_is_centred_and_its_sentence_is_not() -> None:
-    """One alignment for the whole table is wrong in both directions.
-
-    Left, and a number sits hard against the wall of a cell a twelfth of the
-    page wide. Centred, and every sentence in the table runs down the middle of
-    its column. The other two formats already draw it the first way for the
-    number and the second for the prose, and a report should not look like a
-    different report depending on which file somebody opened.
-    """
+    """In the HWPX table the step number is centred and the sentence is not."""
     markup = report_export._hwpx_table(
         [["", "단계", "내용"], ["1", "자료 수집", "공개 데이터를 모은다"]],
         widths=[1, 5, 12],
         cell_para_pr=[6, 3, 3],
     )
     shapes = re.findall(r'<hp:p paraPrIDRef="(\d)"', markup)
-    # Head row then body row, three cells each; the table's own wrapping
-    # paragraph comes last.
-    # `shapes[0]` is the paragraph the table is wrapped in, which comes first
-    # in the string because it encloses everything else.
+    # `shapes[0]` is the enclosing paragraph; then head row and body row, three cells each.
     assert shapes[1:7] == ["6", "3", "3", "6", "3", "3"]
 
 

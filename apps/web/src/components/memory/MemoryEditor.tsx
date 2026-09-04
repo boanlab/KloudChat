@@ -26,7 +26,7 @@ export const emptyMemory = (scope = 'global'): MemoryEntry => ({
   id: uid('m'),
   name: '',
   description: '',
-  type: scope === 'global' ? 'project' : 'project',
+  type: 'project',
   body: '',
   scope,
   links: [],
@@ -51,7 +51,6 @@ export function MemoryEditor({
   const memories = useStore((s) => s.memories)
   const projects = useStore((s) => s.projects)
   const upsertMemory = useStore((s) => s.upsertMemory)
-  //: 저장이 실패해도 대화상자가 닫혀서, 방금 쓴 내용이 아무 말 없이 사라졌다.
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -81,8 +80,7 @@ export function MemoryEditor({
                 await upsertMemory({ ...draft, updatedAt: new Date().toISOString() })
                 close()
               } catch (err) {
-                // The form stays open holding what was typed. Closing it and
-                // saying nothing is how the text got lost.
+                // The form stays open with what was typed.
                 setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
               } finally {
                 setSaving(false)

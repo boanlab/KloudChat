@@ -11,18 +11,12 @@ const AS_USER = `async (path, init) => {
   return r.ok ? await r.json() : null
 }`
 
-/**
- * The numbers beside a list have to move when the list does.
- *
- * The gallery's tab counts come from a second query over the whole workspace,
- * not from the length of what is on screen — so filtering rows out in place
- * leaves every number beside them describing the workspace as it was.
- */
+/** Tab counts come from a workspace-wide query, so deleting rows must refresh them. */
 test('결과물을 지우면 탭의 숫자도 같이 줄어든다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
-  // Two charts of our own, so the 차트 tab has a number that must move.
+  // Two charts, so the 차트 tab has a number that must move.
   for (const n of [1, 2]) {
     await page.evaluate(
       async ([fn, i]) =>
@@ -50,7 +44,7 @@ test('결과물을 지우면 탭의 숫자도 같이 줄어든다', async ({ pag
   await page.goto('/artifacts')
   const chartTab = page.getByRole('tab', { name: /차트/ })
   await expect(chartTab).toBeVisible({ timeout: 30_000 })
-  // The counts are a second request; the tab renders before it lands.
+  // The counts are a second request.
   await expect
     .poll(async () => Number((await chartTab.textContent())?.replace(/\D/g, '') || 0), {
       timeout: 20_000,

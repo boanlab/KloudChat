@@ -1,33 +1,18 @@
 import { test, expect, type Page } from '@playwright/test'
 
-/**
- * Switches to English and hunts for Korean still on the screen.
- *
- * A string added to the dictionary but never wrapped in `t()` at the call site
- * is caught by neither the type checker nor the linter. Reading what was
- * actually rendered is the only reliable way to find it.
- */
+/** Switches to English and reports Korean still rendered on any screen. */
 
 const ADMIN = { email: 'admin@example.com', password: 'KloudChat-Admin-1234' }
 
-/**
- * Things that are correct to leave in Korean.
- *
- * What a user typed is not translatable content. Neither are slugs: `@공문-작성`
- * is the name something is invoked by rather than text to read, and
- * translating it would make that name stop working.
- */
+/** Korean that is correct to leave: user content and slugs. */
 const ALLOWED = [
   /^[가-힣]$/, // 이름 첫 글자로 만든 마크, 언어 토글의 '한'
   /^[가-힣A-Za-z0-9]+(-[가-힣A-Za-z0-9]+)+$/, // 슬러그
-  // Interface strings are translated whole, sentence by sentence, so English
-  // and Korean mixed on one line means user content has been interpolated into
-  // it — `Delete 회의 메모`, for instance.
+  // Mixed English and Korean on one line means interpolated user content.
   /[A-Za-z]{3}.*[가-힣]|[가-힣].*[A-Za-z]{3}/,
 ]
 
-/** Conversations, memories and skills this account and these tests created.
- *  User data, so not translated. */
+/** User data seeded by tests; not translated. */
 const SEEDED_BY_TESTS = [
   '서울 날씨',
   '예시대학교',
@@ -52,7 +37,6 @@ async function scan(page: Page, where: string): Promise<Finding[]> {
       const found: { where: string; text: string; selector: string }[] = []
       const seen = new Set<string>()
       const ignore = patterns.map((p) => new RegExp(p))
-      // User data also appears interpolated into a sentence (`{name} 삭제`).
       const skip = (text: string) =>
         ignore.some((re) => re.test(text)) || literals.some((l) => text.includes(l))
 
@@ -75,8 +59,7 @@ async function scan(page: Page, where: string): Promise<Finding[]> {
         return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0'
       }
 
-      // Read per text node. Reading per element makes each parent repeat its
-      // children's text, so one string is reported once per ancestor.
+      // Per text node, so a string is reported once.
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         const text = (n.textContent || '').trim()
@@ -90,7 +73,7 @@ async function scan(page: Page, where: string): Promise<Finding[]> {
         found.push({ where, text, selector: label(el) })
       }
 
-      // Not visible as text, but read out by a screen reader.
+      // Attributes a screen reader reads.
       for (const attr of ['aria-label', 'placeholder', 'title', 'alt']) {
         for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
           const text = (el.getAttribute(attr) || '').trim()
@@ -143,14 +126,12 @@ const ROUTES: [string, string][] = [
 test('영어 모드에 남은 한글', async ({ page }) => {
   const findings: Finding[] = []
 
-  // Start at the sign-in screen. The store is empty there, so the language is
-  // planted directly.
+  // Sign-in screen first; the language is planted in localStorage.
   await page.addInitScript(() => localStorage.setItem('kchat-lang', 'en'))
   await page.goto('/')
   await page.waitForTimeout(1500)
   findings.push(...(await scan(page, '로그인')))
 
-  // The password reset screen is part of the sign-in surface too.
   await page.getByText(/Forgot|비밀번호/).first().click().catch(() => {})
   await page.waitForTimeout(500)
   findings.push(...(await scan(page, '로그인 › 비밀번호 재설정')))
@@ -169,7 +150,6 @@ test('영어 모드에 남은 한글', async ({ page }) => {
     await page.goto(path)
     findings.push(...(await scan(page, name)))
 
-    // Screens with tabs render different content per tab.
     const tabs = page.getByRole('tab')
     const count = await tabs.count().catch(() => 0)
     for (let i = 0; i < count; i++) {
@@ -179,7 +159,7 @@ test('영어 모드에 남은 한글', async ({ page }) => {
     }
   }
 
-  // The account menu is a popover rather than a route, so it is opened here.
+  // The account menu is a popover, not a route.
   await page.goto('/')
   const avatar = page.locator('aside button').last()
   await avatar.click().catch(() => {})

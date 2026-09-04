@@ -1,17 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * A turn that fails says so in the interface, not by prefixing its own text with
- * a warning emoji — and it says so *next to* whatever it managed to write. The
- * old shape lost both halves: with any content already streamed the failure was
- * silent, and with none it replaced the answer with "⚠️ …".
- */
+/** A failed turn shows its error in the interface, beside whatever it managed to write, with the reason. */
 test('실패한 답변은 쓰다 만 내용과 오류를 함께 보여 준다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
-  // The stream is faked so the failure is exact and costs no model call.
+  // Faked stream.
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
     await route.fulfill({
@@ -29,11 +24,9 @@ test('실패한 답변은 쓰다 만 내용과 오류를 함께 보여 준다', 
 
   const failure = page.getByText('모델이 응답을 끝내지 못했습니다.')
   await expect(failure).toBeVisible({ timeout: 30_000 })
-  // The partial answer is kept, not replaced.
+  // The partial answer is kept.
   await expect(page.getByText('여기까지는 썼습니다.')).toBeVisible()
-  // No emoji standing in for the interface.
   await expect(page.getByText('⚠️')).toHaveCount(0)
-  // And it does not look like it is still running.
   await expect(page.getByText('생각하는 중…')).toHaveCount(0)
 })
 
@@ -62,8 +55,7 @@ test('실패는 사유를 말한다 — 모델 서버에 닿지 못한 경우', 
   test.setTimeout(120_000)
   await signIn(page)
 
-  // What the server now sends: the sentence it always did, plus the machine
-  // code and the upstream's own reason. The screen has to use them.
+  // The server sends a code and the upstream's reason alongside the message.
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
     await route.fulfill({
@@ -92,8 +84,7 @@ test('실패는 사유를 말한다 — 꺼진 에이전트에 보낸 경우', a
   test.setTimeout(120_000)
   await signIn(page)
 
-  // A refusal before the turn is written: the API answers 422 with a machine
-  // code, which used to be blanked into "요청을 처리하지 못했습니다".
+  // A 422 before the turn is written carries a machine code.
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
     await route.fulfill({

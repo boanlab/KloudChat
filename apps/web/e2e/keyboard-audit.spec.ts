@@ -2,12 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Keyboard sweep: where focus goes, whether it gets back out, and whether the
- * same action is named the same on every screen offering it.
- *
- * Discovery only — writes `audit/keyboard-audit.json` and never fails the run.
- */
+/** Keyboard sweep: focus rings, modal focus handling, term consistency, destructive confirms.
+ *  Writes `audit/keyboard-audit.json`; never fails. */
 
 interface Defect {
   rule: string
@@ -47,14 +43,8 @@ const SYNONYMS: [name: string, words: string[]][] = [
   ['공유', ['공유', '내보내기 링크']],
 ]
 
-/**
- * Focus ring measured as a *difference*: each control is sampled at rest and
- * focused. "Has an outline" is the wrong question — a resting `shadow-sm`
- * answers yes and shows the keyboard user nothing.
- *
- * A real Tab comes first: Chrome withholds `:focus-visible` from programmatic
- * focus, so without it every control reads as unstyled.
- */
+/** Focus ring measured as a difference between rest and focused. A real Tab first:
+ *  Chrome withholds `:focus-visible` from programmatic focus until then. */
 async function focusRingReport(page: Page) {
   await page.keyboard.press('Tab')
   return page.evaluate(() => {
@@ -71,8 +61,7 @@ async function focusRingReport(page: Page) {
       ),
     ).filter((el) => {
       const r = el.getBoundingClientRect()
-      // A disabled control cannot take focus, and is not supposed to. Asking
-      // it to show a focus ring is asking the wrong question.
+      // A disabled control cannot take focus.
       if ((el as HTMLButtonElement).disabled) return false
       return r.width > 0 && r.height > 0
     })
@@ -82,9 +71,7 @@ async function focusRingReport(page: Page) {
       ).replace(/\s+/g, ' ').trim().slice(0, 40)
       if (seen.has(name)) continue
       seen.add(name)
-      // The Tab that switched the browser into keyboard modality also focused
-      // something. Measuring that element's "resting" look while it is still
-      // focused compares it against itself, and it reads as having no ring.
+      // Blur first: the Tab above focused something, and its rest look must not be sampled focused.
       ;(document.activeElement as HTMLElement | null)?.blur()
       const before = skin(el)
       el.focus()
@@ -116,13 +103,13 @@ test('키보드·일관성 감사', async ({ page }) => {
     await page.goto(path)
     await page.waitForTimeout(500)
 
-    // ── R9: focus has to be visible ──────────────────────────────────
+    // R9: focus is visible.
     for (const c of await focusRingReport(page)) {
       checks++
       if (!c.ring) note('focus-ring', c.name, where, '키보드로 어디에 있는지 보이지 않는다')
     }
 
-    // ── R13: one action, one word ────────────────────────────────────
+    // R13: one action, one word.
     for (const text of await page.evaluate(() =>
       Array.from(document.querySelectorAll('button'))
         .filter((b) => {
@@ -151,10 +138,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     }
   }
 
-  /* ── R10–R12: modals and the keyboard ───────────────────────────────
-     A dialog that does not take focus is a dialog a keyboard user has to Tab
-     *into* from wherever they were, past everything behind it — and Tab will
-     walk them straight back out again. */
+  // R10–R12: modals take focus, trap Tab, and restore focus on close.
   const MODALS: [route: string, open: string, where: string][] = [
     ['/agents', '새 에이전트', '에이전트 · 새로 만들기'],
     ['/skills', '새 스킬', '스킬 · 새로 만들기'],
@@ -171,7 +155,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     if ((await dialog.count()) === 0) continue
     await page.waitForTimeout(300)
 
-    // R10 — focus moves into the dialog.
+    // R10
     checks++
     const inside = await page.evaluate(() => {
       const d = document.querySelector('[role="dialog"]')
@@ -179,8 +163,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     })
     if (!inside) note('modal-focus', open, where, '열려도 초점이 뒤 화면에 남는다')
 
-    // R11 — and stays there. Twenty-five stops is more than any of these
-    // dialogs holds, so a loop that never leaves is a loop that is trapped.
+    // R11: twenty-five stops is more than any of these dialogs holds.
     checks++
     let escaped = false
     for (let i = 0; i < 25; i++) {
@@ -196,7 +179,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     }
     if (escaped) note('modal-trap', open, where, 'Tab 이 뒤 화면으로 새어 나간다')
 
-    // R12 — closing gives focus back to what opened it.
+    // R12
     await page.keyboard.press('Escape')
     await page.waitForTimeout(300)
     checks++
@@ -207,10 +190,7 @@ test('키보드·일관성 감사', async ({ page }) => {
     if (!restored) note('modal-restore', open, where, '닫으면 초점이 문서 맨 앞으로 튄다')
   }
 
-  /* ── R14: destroying something asks first ───────────────────────────
-     Run against rows created here and thrown away, so a real click on a real
-     delete is safe. Nothing on the server restores a skill, an agent or a
-     memory — so if the click goes straight through, the only copy is gone. */
+  // R14: destroying something asks first. Run against throwaway rows.
   const THROWAWAY: [route: string, open: string, nameField: string, where: string][] = [
     ['/skills', '새 스킬', '이름', '스킬'],
     ['/memory', '새 메모리', '이름', '메모리'],
@@ -234,13 +214,10 @@ test('키보드·일관성 감사', async ({ page }) => {
     if (!asked) {
       note('destructive-confirm', `${where} 삭제`, where, '한 번의 오클릭으로 되돌릴 수 없이 사라진다')
     } else {
-      // Confirmed here so the throwaway does not pile up in the workspace.
       await page.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
       await page.waitForTimeout(600)
     }
-    // Whatever happened, do not leave it behind. Retried and then asserted:
-    // one unchecked attempt left rows on the instance, and a memory left behind
-    // is `global` scope — it joins every later turn's prompt.
+    // Never leave the row behind: a leftover memory is `global` and joins every later turn.
     for (let attempt = 0; attempt < 3; attempt++) {
       if ((await page.getByText(name).count()) === 0) break
       await del.first().click().catch(() => {})

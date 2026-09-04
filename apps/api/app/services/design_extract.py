@@ -1,22 +1,8 @@
-"""Reading a design system out of something somebody already has.
+"""Proposes a design system draft from an existing document with one model call.
 
-A design system is four colours, a face, and a short block of prose about how
-this organisation writes. Typing that from scratch is the part nobody does, so
-the ones that exist are the three seeded examples.
-
-The material is usually already on hand: the 공문 template everything is filed
-on, last year's report, a page on the department site. This reads one of those
-and proposes a design system from it.
-
-**It proposes.** The result is a draft handed to the editor, not a row. What
-comes back is one model's reading of a document, and the person who owns the
-document is the one who can say whether it read it right.
-
-The upstream shape is `factcheck`'s: one non-streaming call, the caller owns
-billing. What is different is what happens to the answer — every field is put
-through `design.normalise_tokens` and `design.craft_keys` before it is
-returned, so a hallucinated colour or an invented craft rule becomes a default
-rather than a stored value.
+The draft is returned to the editor, never stored. Every field passes through
+`design.normalise_tokens` / `design.craft_keys`, so invented values become
+defaults. Caller owns billing.
 """
 
 from __future__ import annotations
@@ -32,8 +18,7 @@ from app.services import design, settings_store, thinking
 
 log = logging.getLogger(__name__)
 
-#: Enough of a document to read its voice and its palette. Beyond this the
-#: extra pages repeat what the first ones already said.
+#: Characters of the source sent to the model.
 _MAX_SOURCE = 12_000
 
 _PROMPT = """다음 문서를 읽고, 이 조직이 쓰는 글과 서식의 규칙을 디자인 시스템으로 정리하라.
@@ -76,10 +61,8 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 700,
-                # This call asks for one small JSON object. Letting a reasoning
-                # model spend the whole ceiling thinking produces HTTP 200
-                # with an empty content field, which used to leave the user
-                # waiting four minutes before saying extraction failed.
+                # A reasoning model may spend the whole budget thinking and
+                # return empty content.
                 "reasoning": thinking.NO_REASONING,
             },
         )
@@ -106,15 +89,11 @@ def _object(text: str) -> dict:
 
 
 class ExtractError(RuntimeError):
-    """Nothing usable came back. The message is written for the person who asked."""
+    """Nothing usable came back; the message is user-facing."""
 
 
 async def extract(*, source: str, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
-    """`(draft, usage)` — a design system proposal, normalised, never stored.
-
-    Raises `ExtractError` when the answer cannot be read as one. A draft with
-    an invented palette would be worse than none: the person would save it
-    without knowing which parts were observed and which were filled in.
+    """`(draft, usage)`: a normalised design system proposal. Raises `ExtractError` when unreadable.
     """
     text = re.sub(r"\n{3,}", "\n\n", source).strip()
     if len(text) < 40:
@@ -133,8 +112,6 @@ async def extract(*, source: str, model: str, api_key: str) -> tuple[dict, dict[
     draft = {
         "name": str(data.get("name") or "").strip()[:60],
         "description": str(data.get("description") or "").strip()[:200],
-        # Normalised rather than trusted: a colour the model invented in the
-        # wrong shape becomes the default, not a value somebody has to notice.
         "tokens": design.normalise_tokens(data.get("tokens")),
         "body": str(data.get("body") or "").strip()[: design.MAX_BODY],
         "image_style": str(data.get("image_style") or "").strip()[: design.MAX_IMAGE_STYLE],

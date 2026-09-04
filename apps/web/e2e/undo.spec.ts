@@ -1,14 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * A delete that has not happened yet.
- *
- * The confirmation added in round two stops the wrong press; this is for the
- * right press on the wrong row. There is no soft delete on the server, so the
- * undo is the request not having been sent — which means the test has to check
- * the *server*, not the screen, to know whether anything survived.
- */
+/** Undo after delete: the request is held for the undo window, so the server still has the row. */
 test('지운 직후에는 되돌릴 수 있고, 되돌리면 서버에도 남는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -23,9 +16,7 @@ test('지운 직후에는 되돌릴 수 있고, 되돌리면 서버에도 남는
   await page.getByRole('button', { name: `${name} 삭제` }).click()
   await page.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
 
-  // Gone from the *list* at once — waiting for the server would make the
-  // interface feel slower than the decision. Checked by the row's own delete
-  // button rather than by the name, because the undo banner says the name too.
+  // Gone from the list at once. By the delete button: the undo banner says the name too.
   await expect(page.getByRole('button', { name: `${name} 삭제` })).toHaveCount(0, {
     timeout: 10_000,
   })
@@ -37,15 +28,13 @@ test('지운 직후에는 되돌릴 수 있고, 되돌리면 서버에도 남는
     timeout: 10_000,
   })
 
-  // The row is back on screen because it never left the server. A reload is
-  // the only way to tell that apart from a local restore of something already
-  // destroyed.
+  // A reload tells a server row from a local restore.
   await page.reload()
   await expect(page.getByRole('button', { name: `${name} 삭제` })).toHaveCount(1, {
     timeout: 20_000,
   })
 
-  // Now let it go, and let the window pass.
+  // Let the window pass.
   await page.getByRole('button', { name: `${name} 삭제` }).click()
   await page.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
   await page.waitForTimeout(8_000)

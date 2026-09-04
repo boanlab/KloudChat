@@ -42,10 +42,7 @@ const statusLabel: Record<UserStatus, string> = {
   suspended: '정지',
 }
 
-/**
- * Preset allowances so an admin rarely has to type a number.
- * 1 credit = $0.00001, so the default is about $10/month of model usage.
- */
+/** Preset allowances; 1 credit = $0.00001. */
 const PLANS = [
   { label: '기본', credits: 1_000_000 },
   { label: '연구', credits: 5_000_000 },
@@ -89,41 +86,29 @@ export function AdminUsersPage() {
   const [filter, setFilter] = useState<UserStatus | 'all'>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
-  /** Confirmed in a dialog, never on the button: this one does not come back. */
   const [deleting, setDeleting] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
-  /** Which account's model access is being edited. */
   const [restricting, setRestricting] = useState<User | null>(null)
   const [draftCredits, setDraftCredits] = useState('')
-  /** Ids with an in-flight mutation, so a row's buttons cannot be double-fired. */
+  // Ids with an in-flight mutation.
   const [busy, setBusy] = useState<string[]>([])
-  /** Why the last action did not happen. Cleared when the next one starts. */
   const [error, setError] = useState<string | null>(null)
-  /** Served by the API. The fallback only shows before the fetch lands — if it
-   *  ever became the real answer the dialog would quote a rate nothing applies. */
+  // Placeholder until the API answers.
   const [economics, setEconomics] = useState({ perUsd: 100_000, budgetHeadroom: 0.2 })
 
   useEffect(() => {
     void loadUsers()
-    // A failure here costs a hint line, not the screen.
     adminApi
       .settings()
       .then((s) => s.credits && setEconomics(s.credits))
       .catch(() => {})
   }, [loadUsers])
 
-  /** What lands on the proxy for a given allowance — mirrors `budget_usd` on the API. */
+  /** Proxy budget for an allowance; mirrors `budget_usd` on the API. */
   const proxyBudget = (credits: number) =>
     `$${(Math.ceil((credits / economics.perUsd) * (1 + economics.budgetHeadroom) * 100) / 100).toFixed(2)}`
 
-  /**
-   * One row action, with its failure said out loud.
-   *
-   * Every button on this table goes through here — approve, suspend, rotate a
-   * key, delete. Without the catch a refusal from the server (the proxy is
-   * down, the account is gone) cleared the spinner and changed nothing, so the
-   * administrator read a rotation that never happened as one that had.
-   */
+  /** Runs one row action, guarding against double-fire and surfacing failure. */
   const run = async (id: string, action: () => Promise<void>) => {
     if (busy.includes(id)) return
     setBusy((b) => [...b, id])
@@ -148,9 +133,7 @@ export function AdminUsersPage() {
   const pendingCount = users.filter((u) => u.status === 'pending').length
   const totalGranted = users.reduce((s, u) => s + u.monthlyCredits, 0)
   const totalUsed = users.reduce((s, u) => s + u.creditsUsed, 0)
-  // The first account that *has* a cycle, not the first account. A pending
-  // signup has no reset date and sorts to the top of this list, so the card
-  // read "—" on a workspace where every active user refills on the 1st.
+  // Pending accounts have no cycle.
   const resetDate = users.find((u) => u.cycleResetsAt)?.cycleResetsAt
 
   return (
@@ -257,9 +240,7 @@ export function AdminUsersPage() {
                           )}
                         </p>
                         <p className="truncate text-xs text-faint">{u.email}</p>
-                        {/* Whether the proxy can tell this person's calls apart
-                            from everyone else's. No key means their turns fall
-                            back to the shared master key and land unattributed. */}
+                        {/* No key: turns fall back to the master key, unattributed. */}
                         <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
                           <KeyRound size={9} />
                           {u.litellmKeyPreview ? (
@@ -335,12 +316,6 @@ export function AdminUsersPage() {
                       >
                         <SlidersHorizontal size={14} />
                       </Button>
-                      {/* The one irreversible button in a row of four, and it
-                          looked exactly like the other three. Named and
-                          explained on hover either way — but a person scanning
-                          seventy rows is not hovering, and the only thing that
-                          separated 지우기 from 제한하기 was which icon they
-                          remembered. */}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -545,9 +520,7 @@ export function AdminUsersPage() {
               {t('현재 주기 사용량 {n} 크레딧').replace('{n}', editing.creditsUsed.toLocaleString())} ·{' '}
               {t('{date} 리필').replace('{date}', formatDate(editing.cycleResetsAt))}
             </p>
-            {/* The limit people hit is this one — KloudChat checks it before every
-                turn. The proxy gets a copy so a bug here cannot spend without
-                bound, and it sits above the real limit so it never fires first. */}
+            {/* The proxy copy sits above the real limit as a backstop. */}
             <p className="text-xs text-faint">
               {t('LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
                 .replace('{limit}', proxyBudget(Number(draftCredits) || 0))

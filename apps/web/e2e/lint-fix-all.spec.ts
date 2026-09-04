@@ -1,16 +1,4 @@
-/**
- * 모두 고치기 — every finding in one press.
- *
- * The button exists because the list is long. A document that says 99.9% in
- * three sections gets one finding per section, and fixing them one at a time
- * means three presses and three rewrites — with the reader waiting through
- * each. What it must NOT do is rewrite the same part once per finding: a
- * rewrite works on the text the last one produced, so the second is asked to
- * fix a sentence that is no longer there and writes the first fix back out.
- *
- * So the claim under test is not "the button works" but "one part is rewritten
- * once, and told everything found in it".
- */
+/** 모두 고치기 rewrites each section once, with every finding in it grouped into one note. */
 import { expect, test } from '@playwright/test'
 import { openAndSeedReport } from './helpers'
 
@@ -27,22 +15,18 @@ const BODY = [
 
 test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page }) => {
   const rewrites: { sectionId: string; note: string }[] = []
-  // 절 id 는 경로가 아니라 본문에 있다: `/sections/rewrite` + `{ sectionId }`.
+  // The section id is in the body: `/sections/rewrite` + `{ sectionId }`.
   await page.route('**/api/artifacts/*/sections/rewrite', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
     const body = route.request().postDataJSON() as { sectionId: string; note: string }
     rewrites.push({ sectionId: body.sectionId, note: body.note })
-    // Answered with an unchanged document: this is about what is asked for,
-    // not about what a model writes back.
+    // Answered with an unchanged document.
     await route.fulfill({ json: { id: 'x', version: 99, data: {} } })
   })
 
-  // The findings are whatever the linter makes of this body — the button is
-  // the subject, not the rules — so the case skips rather than lies if this
-  // document happens to draw fewer than two.
+  // Skips if the linter finds fewer than two problems in this body.
   await openAndSeedReport(page, BODY)
 
-  // 검사 결과는 리본의 검토 칸에 있다.
   await page.getByRole('tab', { name: '검토', exact: true }).click()
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
@@ -57,26 +41,20 @@ test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page 
   expect(count, '버튼이 지적 개수를 말하지 않는다').toBeGreaterThan(1)
 
   await all.click()
-  // A successful rewrite refreshes the artifact and can legitimately remove
-  // the findings menu before its transient confirmation is painted. The
-  // durable proof is the set of rewrite requests below.
+  // The rewrite requests are the proof; the findings menu may close before any confirmation.
   await expect.poll(() => rewrites.length, { timeout: 60_000 }).toBeGreaterThan(0)
 
-  // The point of the whole thing: no section asked to rewrite twice.
+  // No section rewritten twice.
   const seen = rewrites.map((r) => r.sectionId)
   expect(new Set(seen).size, `같은 절을 두 번 다시 썼다: ${seen.join(', ')}`).toBe(seen.length)
   expect(rewrites.length, '한 절도 다시 쓰지 않았다').toBeGreaterThan(0)
-  // And every note is well formed: one problem stated plainly, several as a
-  // numbered list. A list of one is the shape that means somebody grouped and
-  // then sent the group one item at a time.
+  // One problem stated plainly, several as a numbered list; never a list of one.
   for (const rewrite of rewrites) {
     const numbered = rewrite.note.match(/^\d+\. /gm)?.length ?? 0
     expect(numbered === 0 || numbered > 1, `번호가 하나뿐인 목록: ${rewrite.note}`).toBe(true)
   }
 
-  // Nothing is invented. The notes cannot name more problems than the checker
-  // found — and they may name fewer, because a finding no section owns is not
-  // dropped but sent to the conversation as one message instead.
+  // Notes name no more problems than the checker found (fewer is fine: unowned findings go to the conversation).
   const named = rewrites.reduce(
     (total, rewrite) => total + Math.max(1, rewrite.note.match(/^\d+\. /gm)?.length ?? 0),
     0,

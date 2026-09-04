@@ -1,12 +1,10 @@
 """The only module that talks to LiteLLM.
 
-Best-effort throughout: a proxy outage must still leave sign-in, history and
-the workspace working, so provisioning failures are logged and swallowed and
-the caller decides whether the missing capability matters.
+Best-effort throughout: provisioning failures are logged and swallowed so a
+proxy outage leaves sign-in, history and the workspace working.
 
-The master key is used here and nowhere else, for provisioning only. Model
-calls go out on the caller's virtual key, which is what makes proxy-side spend,
-budgets and rate limits per person. Neither key reaches a browser.
+The master key is used here only, for provisioning. Model calls go out on the
+caller's virtual key. Neither key reaches a browser.
 """
 
 from __future__ import annotations
@@ -23,8 +21,8 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: KloudChat's cycle turns over on the 1st (KST); LiteLLM's reset is not on the same
-#: instant, which is part of why the budget carries headroom.
+#: KloudChat's cycle turns over on the 1st (KST); LiteLLM's reset is not on the
+#: same instant, which is part of why the budget carries headroom.
 _BUDGET_DURATION = "1mo"
 
 
@@ -48,11 +46,7 @@ async def _client() -> httpx.AsyncClient:
 
 
 async def ensure_user(user: User) -> str | None:
-    """Creates the matching LiteLLM user record. No key — see `issue_key`.
-
-    Separate from key issuance: a key whose `user_id` points at a record that
-    was never created leaves proxy-side spend belonging to nobody.
-    """
+    """Creates the matching LiteLLM user record; no key (see `issue_key`)."""
     if not await _configured():
         return None
     try:
@@ -64,14 +58,11 @@ async def ensure_user(user: User) -> str | None:
                     "user_email": user.email,
                     "user_alias": user.name,
                     "user_role": "internal_user",
-                    # Key minted separately, so a re-run cannot leave a second
-                    # unreferenced key on the proxy.
                     "auto_create_key": False,
                 },
             )
             # Already provisioned counts as success. The proxy rejects on email
-            # and its existing record may carry a different id, so adopt that id
-            # rather than ours — otherwise one person becomes two proxy users.
+            # and may hold a different id; adopt it so one person is one proxy user.
             if response.status_code in (400, 409) and _is_duplicate(response.text):
                 user.litellm_user_id = await _find_user_id(client, user.email) or user.id
                 return user.litellm_user_id
@@ -90,15 +81,13 @@ async def provision_user(user: User) -> str | None:
     """Creates the LiteLLM user and mints their virtual key.
 
     Mutates `user` on success; the caller adds it to the session. None when
-    LiteLLM is unconfigured or unreachable — the account stays usable and falls
-    back to the master key until `ensure_key` succeeds on a later turn.
+    LiteLLM is unconfigured or unreachable.
     """
     litellm_id = await ensure_user(user)
     if litellm_id is None:
         return None
     if user_key(user):
-        # Re-provisioning must not mint a second key: the first would stay live
-        # on the proxy, referenced by nothing.
+        # Re-provisioning must not mint a second key.
         await sync_budget(user)
     else:
         await issue_key(user)
@@ -113,11 +102,7 @@ def user_key(user: User) -> str | None:
 
 
 async def credentials_for(user: User) -> tuple[str, str]:
-    """`(base_url, key)` to make this user's model calls with.
-
-    Falls back to the master key when they have none, and logs it: availability
-    beats attribution while somebody is waiting for an answer.
-    """
+    """`(base_url, key)` for this user's model calls; master key when they have none."""
     base, master = await settings_store.litellm_config()
     key = user_key(user)
     if key:
@@ -127,14 +112,11 @@ async def credentials_for(user: User) -> tuple[str, str]:
 
 
 async def issue_named_key(user: User, name: str) -> tuple[str, str] | None:
-    """Mints a second key the user holds. Returns `(plaintext, alias)`.
+    """Mints an extra key the user holds. Returns `(plaintext, alias)`.
 
-    Same account, budget and attribution; it inherits `allowed_models`, so a
-    key someone takes away reaches no further than they do in the app.
-
-    The budget is cleared straight after minting: the proxy stamps its default
-    on every new key and ignores a null at generate time, and a per-key budget
-    would bind before the account's limit.
+    Same account, budget and `allowed_models`. The per-key budget is cleared
+    after minting: the proxy stamps its default on every new key and ignores a
+    null at generate time.
     """
     if not await _configured():
         return None
@@ -162,7 +144,7 @@ async def issue_named_key(user: User, name: str) -> tuple[str, str] | None:
 
 
 async def delete_key(secret: str) -> bool:
-    """Retires one key by value. Used for the keys a user manages themselves."""
+    """Retires one key by value."""
     if not secret or not await _configured():
         return False
     try:
@@ -176,11 +158,7 @@ async def delete_key(secret: str) -> bool:
 
 
 async def sync_allowed_models(user: User, secrets: list[str]) -> bool:
-    """Pushes the account's model allowlist onto every key it holds.
-
-    Enforced app-side only, the allowlist is a suggestion — a user's own API key
-    would still reach everything.
-    """
+    """Pushes the account's model allowlist onto every key it holds."""
     if not await _configured():
         return False
     models = list(user.allowed_models or [])
@@ -200,8 +178,7 @@ async def sync_allowed_models(user: User, secrets: list[str]) -> bool:
 async def issue_key(user: User) -> str | None:
     """Mints a virtual key for `user` and records it, encrypted, on the row.
 
-    Plaintext on success, None on any failure — a proxy outage must not block a
-    signup.
+    Plaintext on success, None on any failure.
     """
     if not await _configured():
         return None
@@ -213,18 +190,15 @@ async def issue_key(user: User) -> str | None:
                 response = await client.post(
                     "/key/generate",
                     json={
-                        # The proxy's id for them, which is not always ours.
                         "user_id": user.litellm_user_id or user.id,
                         "key_alias": alias,
                         # Empty list means "everything the proxy serves".
                         "models": list(user.allowed_models or []),
-                        # On every spend row, so a log line traces back to a
-                        # KloudChat account without a join.
                         "metadata": {"kchat_user_id": user.id, "email": user.email},
                     },
                 )
                 # Aliases are unique on the proxy; a leftover from a failed
-                # rotation delete would block the account permanently.
+                # rotation would block the account.
                 if response.status_code >= 400 and _is_duplicate(response.text):
                     if attempt == 0:
                         alias = f"KloudChat:{user.email}#{uuid.uuid4().hex[:6]}"
@@ -246,18 +220,13 @@ async def issue_key(user: User) -> str | None:
     user.litellm_key = settings_store.encrypt_secret(key)
     user.litellm_key_preview = settings_store.preview(key)
     user.litellm_key_issued_at = utcnow()
-    # A new key otherwise inherits the proxy's default budget, unrelated to the
-    # allowance KloudChat just granted.
+    # A new key otherwise inherits the proxy's default budget.
     await sync_budget(user)
     return key
 
 
 def budget_usd(monthly_credits: int) -> float:
-    """The proxy-side ceiling for a KloudChat allowance.
-
-    Deliberately above it (`litellm_budget_headroom`). Rounded up to the cent: a
-    budget of zero reads as "no calls at all", not "no limit".
-    """
+    """Proxy-side ceiling for an allowance: headroom applied, rounded up to the cent."""
     usd = monthly_credits / settings.credits_per_usd * (1 + settings.litellm_budget_headroom)
     return math.ceil(usd * 100) / 100
 
@@ -265,12 +234,8 @@ def budget_usd(monthly_credits: int) -> float:
 async def sync_budget(user: User) -> bool:
     """Mirrors the KloudChat allowance onto the proxy as one user-level ceiling.
 
-    User-level only. LiteLLM enforces key and user budgets independently and
-    stops at whichever binds first, so every key is cleared of its own budget
-    and draws on the one pool.
-
-    A failure leaves the backstop stale, not anyone blocked: KloudChat's own check
-    runs before every turn.
+    LiteLLM enforces key and user budgets independently, so every key is
+    cleared of its own budget and draws on the user pool.
     """
     if not await _configured():
         return False
@@ -280,8 +245,7 @@ async def sync_budget(user: User) -> bool:
     try:
         async with await _client() as client:
             if user.litellm_user_id:
-                # Ceiling first: clearing keys before it is in place leaves a
-                # window with no limit anywhere.
+                # Ceiling first, so no window exists with no limit anywhere.
                 response = await client.post(
                     "/user/update",
                     json={
@@ -291,8 +255,7 @@ async def sync_budget(user: User) -> bool:
                     },
                 )
                 response.raise_for_status()
-            # Read from the proxy, not KloudChat's rows: a key KloudChat lost track of
-            # still spends and still carries its own budget.
+            # Read from the proxy: a key KloudChat lost track of still spends.
             for token in await _user_key_tokens(client, user):
                 response = await client.post("/key/update", json={"key": token, "max_budget": None})
                 response.raise_for_status()
@@ -303,11 +266,7 @@ async def sync_budget(user: User) -> bool:
 
 
 async def revoke_key(user: User) -> bool:
-    """Deletes the user's key on the proxy and clears it locally.
-
-    Local columns are cleared even when the remote delete fails — `ensure_key`
-    mints a fresh one.
-    """
+    """Deletes the user's key on the proxy and clears it locally, even if the delete fails."""
     key = user_key(user)
     user.litellm_key = None
     user.litellm_key_preview = None
@@ -325,11 +284,7 @@ async def revoke_key(user: User) -> bool:
 
 
 async def set_key_blocked(user: User, blocked: bool) -> bool:
-    """Suspends or restores the key without destroying it.
-
-    Defence in depth: the key never leaves this process, so this matters only if
-    one leaks. It also keeps the proxy's view of who is active in step.
-    """
+    """Suspends or restores the key without destroying it."""
     key = user_key(user)
     if not key or not await _configured():
         return False
@@ -349,11 +304,8 @@ async def set_key_blocked(user: User, blocked: bool) -> bool:
 async def ensure_key(user: User) -> str | None:
     """Key for `user`, provisioning them first if that never happened.
 
-    Signup succeeds whether or not the proxy is reachable, so this is where a
-    missing user record and key appear.
-
-    The user record has to come first: `/key/generate` accepts a `user_id` that
-    does not exist and links the key anyway, leaving spend attributed to nobody.
+    The user record must exist first: `/key/generate` links a key to a
+    nonexistent `user_id`, leaving spend attributed to nobody.
     """
     if not user.litellm_user_id:
         await ensure_user(user)
@@ -373,11 +325,7 @@ async def _find_user_id(client: httpx.AsyncClient, email: str) -> str | None:
 
 
 async def _user_key_tokens(client: httpx.AsyncClient, user: User) -> list[str]:
-    """Hashed tokens of every key the proxy holds for this account.
-
-    The proxy never returns a secret twice. `/key/update` accepts a hash, which
-    is enough to edit a key KloudChat cannot read.
-    """
+    """Hashed tokens of every key the proxy holds for this account; `/key/update` accepts a hash."""
     if not user.litellm_user_id:
         return []
     try:
@@ -396,11 +344,7 @@ def _is_duplicate(body: str) -> bool:
 
 
 async def key_spend(secret: str) -> dict[str, float] | None:
-    """Spend to date and budget for one virtual key, or None if the proxy is silent.
-
-    KloudChat's ledger covers only turns taken inside the app; calls made through
-    `/llm` are recorded on the proxy alone.
-    """
+    """Spend to date and budget for one virtual key, or None if the proxy is silent."""
     if not await _configured():
         return None
     try:
@@ -418,11 +362,7 @@ async def key_spend(secret: str) -> dict[str, float] | None:
 
 
 async def health(quick: bool = False) -> bool:
-    """Liveness probe.
-
-    `quick` shortens the timeout for the admin screen, where a bad host would
-    otherwise hold the settings request open for the full client timeout.
-    """
+    """Liveness probe. `quick` uses the shorter probe timeout for the admin screen."""
     if not await _configured():
         return False
     base, key = await settings_store.litellm_config()
@@ -440,9 +380,7 @@ async def health(quick: bool = False) -> bool:
 
 
 async def model_info() -> list[dict]:
-    """Raw `/model/info` payload. Shaping into KloudChat's `ModelInfo` happens in
-    `services/models.py` so this stays a thin transport wrapper.
-    """
+    """Raw `/model/info` rows; shaping into `ModelInfo` happens in `services/models.py`."""
     if not await _configured():
         raise LiteLLMError("litellm_not_configured")
     try:

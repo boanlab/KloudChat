@@ -37,7 +37,7 @@ import { useT } from '@/lib/useT'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
-/** The grid inside the icon button's dropdown. Closes itself on a pick. */
+/** Emoji picker grid; closes the menu on pick. */
 function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
   const close = useMenuClose()
   return (
@@ -58,11 +58,7 @@ function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
   )
 }
 
-/**
- * What a delete takes, in the same words in the card and in the question.
- * Mirrors `_remove_project` on the server: knowledge files and the row go,
- * sessions are detached, artifacts and memories are not touched.
- */
+/** Mirrors the server's project delete: knowledge files go, sessions are detached, artifacts and memories stay. */
 const DELETE_SCOPE =
   '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.'
 
@@ -107,27 +103,18 @@ export function ProjectDetailPage() {
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  /**
-   * The drop target for 지식.
-   *
-   * Declared up here because the page returns early when the project has not
-   * arrived yet, and the uploader it calls is defined past that return — it
-   * needs the project's id. The ref is what lets the hook sit above the branch
-   * without moving a function that cannot move.
-   */
+  // Hook must sit above the early return; the uploader is defined after it.
   const addKnowledgeRef = useRef<(files: File[]) => void>(() => {})
   const knowledgeDrop = useFileDrop(
     (files) => addKnowledgeRef.current(files),
     tab === 'knowledge',
   )
 
-  // Reached directly by URL as often as by click, so it loads its own data.
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
 
-  // The instructions box is uncontrolled until the project arrives; without this
-  // a page opened by URL shows an empty textarea over saved instructions.
+  // Fill the instructions box once the project arrives, unless already edited.
   useEffect(() => {
     if (project && !dirty) setInstructions(project.instructions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,8 +132,6 @@ export function ProjectDetailPage() {
   }
 
   const projectSessions = sessions.filter((c) => c.projectId === project.id)
-  // What can still be brought in. Newest first, because the conversation
-  // somebody wants to file is almost always the one they just had.
   const outsideSessions = [...sessions.filter((c) => c.projectId !== project.id)].sort(
     (a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt),
   )
@@ -155,18 +140,13 @@ export function ProjectDetailPage() {
     skills.some((skill) => skill.id === id && skill.enabled),
   )
   const projectMemories = memories.filter((m) => m.scope === project.id)
-  // A design system the account lost access to leaves the select on its first
-  // entry; the project keeps the id until somebody changes it.
   const selectedDesign = designs.find((d) => d.id === project.designSystemId)
-  // A format is a document shape, so only the two catalogue kinds that
-  // produce one are offered here — an image template shapes a prompt, and a
-  // picker over an empty list is a promise the catalogue cannot keep.
+  // Only document-shaped templates are offered as formats.
   const english = currentLang() === 'en'
   const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
   const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
 
-  /** The picker and a drop take the same path; only the source differs. */
   const addKnowledgeFiles = async (picked: File[]) => {
     if (!picked.length) return
     setUploading(true)
@@ -236,14 +216,10 @@ export function ProjectDetailPage() {
           <Input value={urlDraft} onChange={(event) => setUrlDraft(event.target.value)} placeholder="https://example.com/report" autoFocus />
         </Field>
       </Modal>
-      {/* 클로드의 프로젝트 화면처럼: 왼쪽은 하는 일(대화·지식·스킬·메모리),
-          오른쪽은 그 일에 매번 걸리는 설정(지침·디자인·서식). 셋이었던 카드가
-          제목보다 먼저 눈에 들어오던 것을 여기서 나눕니다. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
-            {/* 아이콘은 이제 여기서, 만드는 시점이 아니라 필요할 때 고릅니다. */}
             <Dropdown
               trigger={() => (
                 <button
@@ -265,8 +241,6 @@ export function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
-            {/* 최상단 바에 있던 것을 제목 옆으로 — 이 프로젝트를 보고 있을 때
-                쓰는 버튼이 이 프로젝트가 안 보이는 자리에 떠 있을 이유가 없다. */}
             <Dropdown
               align="right"
               trigger={() => (
@@ -277,14 +251,6 @@ export function ProjectDetailPage() {
               )}
             >
               <MenuLabel>{t('무엇을 만들까요?')}</MenuLabel>
-              {/* 관리자가 끈 표면은 아예 내놓지 않는다. 여기 나열해 놓고 눌러야
-                  거절하는 것은 없는 것보다 나쁘다 — 홈 화면이 세운 규칙이고,
-                  이 메뉴만 지키지 않고 있었다.
-
-                  누르고 나서 알려 주는 것과 애초에 내놓지 않는 것은 다른 일이고
-                  둘 다 필요하다. 아래의 `startFailure` 는 고를 수 있는 것이
-                  실패했을 때를 말하고, 이 걸러내기는 고를 수 없는 것을 처음부터
-                  내놓지 않는다. */}
               {kindOrder
                 .filter((k) => enabledKinds.includes(k))
                 .map((k) => {
@@ -326,9 +292,6 @@ export function ProjectDetailPage() {
                 {t('이름 · 설명')}
               </MenuItem>
               <MenuSeparator />
-              {/* 되돌릴 수 없는 것 하나를 위해 카드 한 칸을 늘 띄워 두는 대신,
-                  누르지 않으면 보이지 않는 자리에 둡니다. 확인 대화상자는 그대로라
-                  실수로 지워지는 경로는 아닙니다. */}
               <MenuItem danger icon={<Trash2 size={14} />} onClick={() => setConfirmDelete(true)}>
                 {t('프로젝트 삭제')}
               </MenuItem>
@@ -410,13 +373,6 @@ export function ProjectDetailPage() {
         <Card className="space-y-3 p-4">
           <div>
             <p className="text-base font-medium">{t('디자인')}</p>
-            {/* Named, because the alternative is a picker whose effect nobody
-                can predict: this changes four surfaces and leaves two alone.
-                The voice is listed first and 대화 with it, because the voice
-                is the half that reaches the chat — a model writing a sentence
-                cannot act on a hex code, but it can be told how to sound, and
-                a person who reads only "슬라이드 색과 서체" is surprised when
-                this afternoon's design edit changes how the chat answers. */}
             <p className="text-sm text-muted">
               {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
             </p>
@@ -454,9 +410,6 @@ export function ProjectDetailPage() {
           <Card className="space-y-3 p-4">
             <div>
               <p className="text-base font-medium">{t('기본 서식')}</p>
-              {/* The pair to the design above, and the distinction is the whole
-                  reason there are two cards: that one is the look, this one is
-                  the shape the look is poured into. */}
               <p className="text-sm text-muted">
                 {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
               </p>
@@ -471,8 +424,7 @@ export function ProjectDetailPage() {
                   value={project.renderTemplates[kind] ?? ''}
                   onChange={(e) =>
                     void updateProject(project.id, {
-                      // Sent whole, because the server stores it whole: an
-                      // empty value is this surface leaving the map.
+                      // Sent whole; an empty value removes the surface from the map.
                       renderTemplates: {
                         ...project.renderTemplates,
                         [kind]: e.target.value,
@@ -511,10 +463,6 @@ export function ProjectDetailPage() {
         <div className="pt-4">
           {tab === 'sessions' && (
             <div className="space-y-3">
-              {/* Filing work that already exists. Until now a project could
-                  only be filled by starting inside it, so anything begun the
-                  ordinary way was stranded outside — and using a project meant
-                  redoing the work, which is why nobody did. */}
               <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
                 <div>
                   <p className="text-base font-medium">{t('기존 대화 편입')}</p>
@@ -550,8 +498,6 @@ export function ProjectDetailPage() {
                 </Dropdown>
               </div>
               {projectSessions.length === 0 ? (
-                // 아이콘과 "아직 작업이 없습니다" 는 버튼 하나를 설명하는 데
-                // 두 줄을 더 썼을 뿐이었다 — 버튼 자체가 이미 그 말이다.
                 <div className="flex justify-center py-12">
                   <Button
                     variant="primary"
@@ -587,9 +533,6 @@ export function ProjectDetailPage() {
                         <span className="shrink-0 text-xs text-faint">
                           {relativeTime(c.updatedAt)}
                         </span>
-                        {/* Out again, from the row it is on. A conversation
-                            filed into the wrong project was otherwise stuck
-                            there. */}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -661,9 +604,6 @@ export function ProjectDetailPage() {
                     <div className="flex items-center gap-3">
                     {f.sourceUrl ? <Link2 size={15} className="shrink-0 text-accent" /> : <FileText size={15} className="shrink-0 text-faint" />}
                     <span className="min-w-0 flex-1">
-                      {/* The name is the button that opens it. Until it was,
-                          the only way to see what a file held was to delete it
-                          and upload it again. */}
                       <button
                         onClick={() => f.sourceUrl ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer') : void openFile(f.id, f.name)}
                         title={t('원본 파일을 내려받습니다')}
@@ -764,11 +704,7 @@ export function ProjectDetailPage() {
 
           {tab === 'memory' && (
             <div className="space-y-3">
-              {/* The tab used to be a read-only list, which made a project a
-                  place facts landed in and could not be corrected. It is also
-                  where an agent's `share_note` writes, so this is the screen
-                  where one agent's finding becomes something a person can
-                  check, fix, or hand on deliberately. */}
+              {/* Agents' `share_note` writes here too. */}
               <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
                 <div>
                   <p className="text-base font-medium">{t('공유 메모리')}</p>
@@ -848,7 +784,6 @@ export function ProjectDetailPage() {
         draft={memoryDraft}
         onDraft={setMemoryDraft}
         onClose={() => setMemoryDraft(null)}
-        // The project is on the page; asking which one is a way to get it wrong.
         lockScope
       />
     </>

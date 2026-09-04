@@ -1,18 +1,6 @@
 /**
- * A slide's chart, drawn as SVG.
- *
- * The third renderer. The rule for this deck is that a layout is offered to
- * the model only when the preview, the `.pptx` and the `.pdf` can all draw it,
- * and a chart is the one where the three are most likely to drift: PowerPoint
- * has a native chart with its own defaults, reportlab has a chart package with
- * different ones, and neither of those defaults is this. So all three are
- * drawn to the same arithmetic — bars in the same order over a floor of zero,
- * four gridlines, the deck's accent — and none of them is left to a library's
- * idea of what a chart looks like.
- *
- * Zero floor, in all three. A bar chart with its bottom cut off exaggerates
- * every difference on it, and it is the easiest way there is to mislead an
- * audience by accident.
+ * Slide chart as SVG. Same arithmetic as the `.pptx` and `.pdf` renderers:
+ * zero floor, four gridlines, the deck's accent.
  */
 export function SlideChart({
   chart,
@@ -21,7 +9,7 @@ export function SlideChart({
 }: {
   chart: NonNullable<import('@/types').Slide['chart']>
   accent: string
-  /** Points per rendered pixel, so the chart shrinks with the slide preview. */
+  /** Preview scale factor. */
   scale: number
 }) {
   const width = 400
@@ -33,7 +21,6 @@ export function SlideChart({
   }
 
   const values = chart.series.flatMap((s) => s.values)
-  // A little air over the tallest bar, so it does not touch the top rule.
   const ceiling = Math.max(...values, 0) * 1.15
   if (!(ceiling > 0) || chart.categories.length === 0) return null
 
@@ -72,8 +59,7 @@ export function SlideChart({
             />
           ))
         : chart.series.map((series, s) => {
-            // Bars share the slot between two ticks, so two series stand side
-            // by side rather than one behind the other.
+            // Series share the slot side by side.
             const span = (step * 0.6) / chart.series.length
             return series.values.map((v, i) => (
               <rect
@@ -108,14 +94,13 @@ export function SlideChart({
   )
 }
 
-/** A gridline's number, without a decimal point nobody asked for. */
 function tickLabel(value: number): string {
   return Math.abs(value) >= 10
     ? Math.round(value).toLocaleString()
     : String(Math.round(value * 10) / 10)
 }
 
-/** One colour moved toward another — a second series, from one accent. */
+/** Mixes `from` toward `toward` by `amount`. */
 function mix(from: string, toward: string, amount: number): string {
   const parse = (hex: string) => {
     const clean = hex.replace('#', '')

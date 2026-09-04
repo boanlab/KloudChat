@@ -1,11 +1,7 @@
 """Service name and logo.
 
-The logo is kept as a file and only its name is stored in settings. Putting the
-image itself in the settings table would mix a value needed once with the values
-read on every request, in the same cache.
-
-Reading the logo requires no authentication — the sign-in screen has to render
-it before anyone is authenticated.
+The logo is a file on disk; settings hold only its name. Reading it needs no
+authentication: the sign-in screen renders it.
 """
 
 from __future__ import annotations
@@ -25,9 +21,7 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["branding"])
 
-#: Only formats a browser renders inline and cannot execute script from.
-#: SVG is excluded because it can carry script — even uploaded by an
-#: administrator, that file loads on every visitor's sign-in screen.
+#: No SVG: it can carry script, and the logo loads on every visitor's sign-in screen.
 ALLOWED = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -47,7 +41,7 @@ def _logo_path(filename: str) -> Path:
 
 @router.get("/branding/logo")
 async def get_logo():
-    """The current logo, or 404 — on which the UI draws the default mark."""
+    """The current logo, or 404 (the UI then draws the default mark)."""
     values = await settings_store.all_values()
     filename = values.get(settings_store.BRAND_LOGO, "")
     mime = values.get(settings_store.BRAND_LOGO_MIME, "")
@@ -57,8 +51,7 @@ async def get_logo():
         data = _logo_path(filename).read_bytes()
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_logo") from None
-    # Changing the file changes the filename and so the URL, which is what
-    # makes a long cache lifetime safe here.
+    # The filename carries a content hash, so a long cache lifetime is safe.
     return Response(
         content=data, media_type=mime, headers={"Cache-Control": "public, max-age=86400"}
     )
@@ -83,8 +76,7 @@ async def upload_logo(
             detail=f"{MAX_BYTES // (1024 * 1024)}MB 이하만 올릴 수 있습니다.",
         )
 
-    # The filename carries a hash of the contents, so replacing the logo
-    # changes the URL and no browser cache holds on to the old one.
+    # Content-hashed filename: replacing the logo changes the URL.
     previous = (await settings_store.all_values()).get(settings_store.BRAND_LOGO, "")
     digest = hashlib.sha256(data).hexdigest()[:12]
     filename = f"logo-{digest}{ALLOWED[mime]}"

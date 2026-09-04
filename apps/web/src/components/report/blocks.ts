@@ -1,26 +1,7 @@
 import { Node } from '@tiptap/core'
 
-/**
- * The two structured blocks, as nodes Tiptap knows.
- *
- * Without these they do not exist in the page view at all. Tiptap parses the
- * HTML it is handed into its own schema and drops everything the schema has no
- * node for, so a `<div class="kpi">` went in and nothing came out — the 서식
- * styled a selector that was never in the document. That is the same failure
- * the table had before `extension-table`, and it is invisible from the web
- * view, which renders Markdown and never asks Tiptap anything.
- *
- * Both are atoms. A strip of figures and a numbered procedure are written in
- * the web view's Markdown editor, where the fence is the source of truth, and
- * making their insides editable here would give one block two authors with no
- * way to reconcile them. As atoms they round-trip exactly: parsed from the
- * markup, rendered back as the same markup, and carried through a save
- * untouched by an edit made elsewhere in the section.
- *
- * `priority` is above the default 50 on the procedure. Its tag is `ol`, which
- * StarterKit's own ordered list also claims — without it the list wins, the
- * class is dropped, and the block silently degrades into an ordinary list.
- */
+// Tiptap atoms for the structured report blocks; without a node Tiptap drops
+// the markup on edit. `priority: 60` beats StarterKit's claim on `ol`/`figure`.
 function pairsFrom(element: HTMLElement, selector: string): [string, string][] {
   return Array.from(element.querySelectorAll(selector)).map((row) => [
     row.querySelector('strong')?.textContent?.trim() ?? '',
@@ -79,26 +60,9 @@ export const StepsBlock = Node.create({
   ],
 })
 
-
 /**
- * A mermaid diagram or chart, as a node that survives being saved.
- *
- * This one is not cosmetic. Without it, a mermaid fence had no Tiptap node, so
- * opening the page view and typing one character anywhere in the section
- * deleted every diagram and chart in it — the section is stored as HTML the
- * moment it is edited, and what Tiptap could not parse was already gone.
- *
- * The node carries its own **source**, not just the picture. A picture alone
- * would survive the save and the export and still lose the diagram: nobody
- * could change a figure in it afterwards, here or in the web view, because the
- * text it was drawn from would no longer exist anywhere. `richtext` reads the
- * source back out and writes the fence again, so the round trip is lossless.
- *
- * The picture is whatever a reader has already had drawn for this diagram —
- * mermaid does not run in here, because rendering into a subtree ProseMirror
- * believes it owns is how an editor and a renderer end up fighting over the
- * same nodes. Undrawn, the figure is empty and the picture arrives the next
- * time somebody opens the web view.
+ * Mermaid diagram: carries its source (so `richtext` can write the fence back)
+ * and the stored picture. Mermaid does not run inside the editor.
  */
 export const DiagramBlock = Node.create({
   name: 'diagramBlock',
@@ -130,19 +94,7 @@ export const DiagramBlock = Node.create({
   ],
 })
 
-
-/**
- * A chart, as a node that survives being saved.
- *
- * It carries its **source** — the fence text — and not the drawing. The
- * drawing is arithmetic anybody can redo; the numbers are the document. A node
- * holding a rendered chart would survive a save and still lose the chart,
- * because nothing left could be changed or re-exported.
- *
- * The same shape the diagram node takes, and for the same reason: without a
- * node here, one keystroke anywhere in the section deletes every chart in it,
- * silently, on the way into Tiptap.
- */
+/** Chart: carries the fence source, not the drawing. */
 export const ChartNode = Node.create({
   name: 'chartBlock',
   group: 'block',
@@ -163,19 +115,8 @@ export const ChartNode = Node.create({
   ],
 })
 
-
-/**
- * A card grid and a callout, as nodes Tiptap knows.
- *
- * Atoms, like the strip and the procedure above, and for the same reason:
- * without a node here Tiptap drops the markup on the way in, so one keystroke
- * anywhere in the section deletes the grid — from the document, from the web
- * view and from every export — and nothing says so.
- *
- * `section.cards` rather than `div.cards`: `richtext` reads the block back
- * with a lazy close, and a wrapper sharing its children's tag ends at the
- * first card.
- */
+// `section.cards`, not `div.cards`: `richtext` reads the block back with a
+// lazy close, and a wrapper sharing its children's tag would end at the first card.
 function cardsFrom(element: HTMLElement): { title: string; items: string[] }[] {
   return Array.from(element.querySelectorAll(':scope > div')).map((card) => ({
     title: card.querySelector('h3, h4')?.textContent?.trim() ?? '',

@@ -1,16 +1,10 @@
-# Build overlay — builds every image from this checkout instead of pulling the
-# published ones.
-#
-# Use it when you are changing the source, or on an architecture the release
-# workflow does not publish for.
+# Build overlay — every image from this checkout instead of the registry.
 #
 #   docker compose -f docker-compose.yml \
 #                  -f docker-compose.build.yml up -d --build
 #
-# The tag becomes `:local` so that a build never sits in the image cache under
-# the name of a published version, where a later `docker compose up -d` would
-# take it for the real thing. `pull_policy: build` says the same to compose:
-# these services come from source here, never from a registry.
+# Tagged `:local` so a build never sits in the cache under a published
+# version's name; `pull_policy: build` keeps compose from pulling.
 services:
   api:
     image: boanlab/kloudchat-api:local

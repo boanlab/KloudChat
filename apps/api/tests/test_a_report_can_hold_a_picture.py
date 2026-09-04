@@ -1,17 +1,4 @@
-"""A picture put into a report section leaves in the file somebody submits.
-
-The page track has had a way to put a picture in a document since it shipped
-and the report track — the surface most of this product's writing happens on —
-had none at all. `POST /artifacts/{id}/sections/image` is that way, and it adds
-no field and no exporter code: a report is Markdown, a Markdown picture line is
-what `report_export._IMAGE` already reads, and what it hands to the renderers is
-the same shape a figure the writer proposed arrives in.
-
-So what has to hold is the contract the route leans on. If a picture line in a
-section body ever stopped reaching the file, the route would keep answering 200
-and the picture would be on the screen and missing from the download — the exact
-failure `richtext._picture` was written against once already.
-"""
+"""`POST /artifacts/{id}/sections/image` puts a picture into a report section and every export."""
 
 from __future__ import annotations
 
@@ -20,11 +7,8 @@ import zipfile
 
 import pytest
 
-# A sibling module, imported the way pytest makes siblings importable: it puts
-# the test file's own directory on the path. `tests.test_export_pictures` needs
-# `apps/api` on the path instead, which `python -m pytest` provides by inserting
-# the working directory and the `pytest` console script does not — so this
-# passed every local run and failed in CI, which runs the script.
+# Sibling import: pytest puts the test directory on the path; `tests.` does not
+# resolve under the `pytest` console script.
 from test_export_pictures import png
 
 from app.routers import workspace as router
@@ -59,12 +43,7 @@ def _with_picture(fmt: str = "markdown") -> list[dict]:
 
 @pytest.mark.parametrize("fmt", ["markdown", "html"])
 def test_the_docx_carries_a_picture_put_into_a_section(fmt) -> None:
-    """Both body shapes, because a section somebody formatted by hand is HTML.
-
-    A Markdown line dropped into an HTML body prints as literal text — the
-    reason the route builds a `<figure>` there instead — and this is what says
-    the HTML half actually converts back rather than being dropped.
-    """
+    """A picture in a Markdown or HTML section body reaches the docx."""
     archive = zipfile.ZipFile(
         io.BytesIO(report_export.to_docx("보고서", _with_picture(fmt), tokens=TOKENS))
     )
@@ -81,22 +60,13 @@ def test_the_pdf_carries_it_too(fmt) -> None:
 
 
 def test_the_caption_is_what_the_reader_sees_under_it() -> None:
-    """The alt text carries the caption because that is what the exporters print.
-
-    Not a description of the picture and not the prompt: a prompt is a request,
-    and a request printed under a figure reads as a mistake.
-    """
+    """The alt text carries the caption, not the prompt."""
     sections = _with_picture()
     assert "![추이](data:image/png;base64," in sections[0]["content"]
 
 
 def test_the_route_is_mounted_and_only_takes_a_report() -> None:
-    """A deck and a page have their own doors; this one is the report's.
-
-    Checked on the source rather than through the app because the body of the
-    route is three lines of markup around `_picture_bytes`, and what could
-    regress is which artifacts it accepts.
-    """
+    """The route is mounted, accepts only reports, snapshots, and sanitises."""
     routes = {
         route.path: set(route.methods)
         for route in router.router.routes
@@ -108,32 +78,20 @@ def test_the_route_is_mounted_and_only_takes_a_report() -> None:
 
     source = inspect.getsource(router.add_section_image)
     assert "ArtifactKind.report" in source and "not_a_report" in source
-    # Snapshotted like a rewrite, or a picture in the wrong section is
-    # unrecoverable.
+    # Snapshotted like a rewrite.
     assert "ArtifactVersion(" in source
     assert "artifact.version += 1" in source
-    # And a hand-formatted body goes through the same sanitiser a PATCH uses.
+    # A hand-formatted body goes through the PATCH sanitiser.
     assert "editable_styles=True" in source
 
 
 def test_a_picture_for_a_document_is_told_not_to_be_one() -> None:
-    """The first picture anybody made came back as a whole slide.
-
-    Asked only for "a picture for 시장 전망", an image model draws the page: a
-    title across the top, a chart, three labelled cards down the side. Put into
-    a slide that already had a title and bullets, that is a slide inside a
-    slide — which is what it looked like.
-
-    The clause goes in for the two pickers inside a document and stays out of
-    the image surface, where a picture *is* the whole output and a poster with
-    a title on it is a reasonable thing to ask for.
-    """
+    """`figure=True` adds the no-text figure clause; the image surface does not."""
     from app.services import imagegen
 
     inside = imagegen.compose_prompt("시장 전망", aspect="16:9", style="", figure=True)
     assert imagegen._FIGURE_CLAUSE in inside
-    # The load-bearing half: whatever an image model writes it writes badly, and
-    # in Korean it writes glyphs that are not words.
+    # Image models cannot write Korean text.
     assert "no text" in inside
 
     alone = imagegen.compose_prompt("시장 전망", aspect="16:9", style="")
@@ -141,12 +99,7 @@ def test_a_picture_for_a_document_is_told_not_to_be_one() -> None:
 
 
 def test_what_the_person_typed_stays_first() -> None:
-    """Ordered from the particular to the standing, as the docstring says.
-
-    A model honours the later phrase where two disagree, so the clause must not
-    displace the request — and the request must still be the thing being asked
-    for rather than a footnote to a list of constraints.
-    """
+    """The request precedes the figure clause in the prompt."""
     from app.services import imagegen
 
     made = imagegen.compose_prompt(

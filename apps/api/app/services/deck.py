@@ -1,10 +1,7 @@
-"""Building a deck, slide by slide.
+"""Deck generation: an outline call proposes the slides, an approved plan is drafted in one call,
+and gaps are written per slide.
 
-Two-pass, like `report`: an outline call names the slides so the panel can show
-the whole deck before any of it exists, then each slide is filled in on its own
-call carrying what the previous ones said.
-
-The layouts, and what each is for:
+Layouts:
 
 * `title`      — the cover, always first
 * `agenda`     — the 목차, read back from the outline; no model call
@@ -12,9 +9,9 @@ The layouts, and what each is for:
 * `bullets`    — the body of the deck
 * `quote`      — one line, for a claim worth pausing on
 * `statement`  — the presenter's own conclusion, set large, at most once
-* `two-column` — a long list split in two, so the deck is not one shape
-* `table`      — values read against each other, as a real table
-* `metrics`    — two or three figures, set large, for the numbers to remember
+* `two-column` — a long list split in two
+* `table`      — values read against each other
+* `metrics`    — two to four figures, set large
 * `big-number` — one figure, very large, with a line saying what it means
 * `chart`      — a bar or line chart, drawn from real numbers
 * `bands`      — a name beside a band of text, down the slide
@@ -24,13 +21,7 @@ The layouts, and what each is for:
 * `cards`      — peers side by side as titled boxes
 * `closing`    — the last slide: what to remember, and a line to end on
 
-The rule is that a layout is offered only if all three renderers — the
-preview, the .pptx and the .pdf — can draw it. `table` was drawable in two of
-them for a long time and offered in none: the exporters had `rows` and the
-model was never asked for one, so the commonest slide in a working deck came
-out as six bullets the reader had to rebuild a table from in their head.
-
-`image` is the one the frontend type still allows and nothing produces.
+A layout is offered only if the preview, the .pptx and the .pdf can all draw it.
 """
 
 from __future__ import annotations
@@ -63,16 +54,14 @@ from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
 
-#: Slide-count bounds for an explicit request. One model call per slide, so the
-#: ceiling is a runtime ceiling.
+#: Slide-count bounds for an explicit request.
 _MIN_SLIDES = 5
 _MAX_SLIDES = 50
 
-#: Upper bound when no number was asked for. Separate from the cap: an
-#: unrequested outline running to 50 would charge 50 calls for a bare topic.
+#: Upper bound when no count was asked for.
 _DEFAULT_MAX = 12
 
-#: The only layouts with a renderer behind them. See the module docstring.
+#: Layouts every renderer can draw.
 _LAYOUTS = (
     "title",
     "section",
@@ -93,33 +82,20 @@ _LAYOUTS = (
     "closing",
 )
 
-#: The slides that say where the deck is rather than what it says: the cover,
-#: the dividers, and the 목차. None of them is written by a model call — the
-#: cover comes from the outline, a divider is its own name, and the agenda is
-#: the outline read back.
+#: Slides filled from the outline without a model call.
 _STRUCTURAL = ("title", "section", "agenda")
 
-#: The layouts that carry the argument. Named rather than sliced off the front
-#: of `_LAYOUTS`: `_LAYOUTS[1:]` meant "everything but the cover" only for as
-#: long as the cover was the only layout with no content in it, and adding the
-#: section divider made the variety check demand that a deck use dividers.
-#: A divider says where you are; it is not one of the shapes an argument takes.
+#: Layouts that carry the argument; the variety check is judged on these.
 _BODY_LAYOUTS = tuple(layout for layout in _LAYOUTS if layout not in (*_STRUCTURAL, "closing"))
 
-#: What a slide says when it did not get written.
-#:
-#: Shared with `deck_export`, which leaves such a slide out of the file. Two
-#: copies of the sentence would be two chances for the file to carry it.
+#: Body marker for a slide that did not get written; `deck_export` leaves such
+#: a slide out of the file.
 UNWRITTEN = "이 장을 쓰지 못했습니다."
 
-#: One accent for the whole deck, applied to every slide. The preview, the
-#: .pptx and the .pdf read from the same field, so they cannot drift apart.
+#: Default accent, stored on every slide.
 _ACCENT = "#5b5bd6"
 
-#: The palette rule, asked only when nothing has already decided the colour.
-#: With a design system attached the accent arrives from the project, and
-#: leaving the rule in would spend tokens on an answer that is then discarded —
-#: worse, it would show the model a choice it does not have.
+#: Asked only when no design system fixes the accent.
 _THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중에서만 골라라:
   {themes}
 - style 은 이 발표가 어떤 자리에서 읽히는지에 맞는 인상이다. 일곱 중 하나만 골라라:
@@ -134,7 +110,7 @@ _THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중�
   자리가 다르면 다른 인상이다 — 늘 편집형으로 도망가지 마라.
 """
 
-#: 이름표와 렌더러가 아는 값. 프롬프트는 한국어로 묻고, 저장은 영어로 한다.
+#: Prompt label → stored `visualStyle` value.
 _STYLES = {
     "편집형": "editorial",
     "포스터형": "poster",
@@ -145,8 +121,7 @@ _STYLES = {
     "흑백": "mono",
 }
 
-#: Accent palette the outline picks from by name. Curated rather than free hex:
-#: each is dark enough to carry white text and to print.
+#: Accent palette the outline picks from by name; each carries white text.
 _THEMES = {
     "보라": "#5b5bd6",
     "파랑": "#1f6feb",
@@ -317,8 +292,8 @@ JSON 객체로만 답하라: {{"slides": [{{"title": "...", "layout": "...", ...
 원래 요청: {request}{tail}"""
 
 
-#: Told to the writer when the person said 있는 자료로 진행 to 「어떤 연구입니까?」.
-#: A form, and it has to look like one — see `report._FRAME_RULE`.
+#: Writer rule when the person chose 있는 자료로 진행 with no subject: write a
+#: form with blanks. See `report._FRAME_RULE`.
 _FRAME_RULE = (
     "**이 발표는 자료 없이 틀만 쓴다.** 요청에 없는 연구·프로젝트·결과·수치·이름을 어떤 "
     "것도 지어내지 마라. 장마다 그 장에 무엇을 넣어야 하는지 항목 이름과 「(여기에: 연구 "
@@ -326,10 +301,7 @@ _FRAME_RULE = (
     "문장으로 안내한다. metrics·chart·table 은 머리글과 빈 칸만."
 )
 
-#: The same rule again at the end of the draft prompt, with the shape shown.
-#: Put once at the top, under thirty lines of layout rules, it lost to
-#: 「그 장에서 실제로 말할 사실을 적는다」 and the deck came back as eight
-#: slides of 기존 연구의 한계를 극복 about a thesis nobody described.
+#: `_FRAME_RULE` repeated at the end of the draft prompt with an example.
 _FRAME_TAIL = (
     "\n\n" + _FRAME_RULE + '\n예: {"title": "연구 질문", "layout": "bullets", '
     '"bullets": ["(여기에: 연구 질문 1)", "(여기에: 연구 질문 2)", '
@@ -339,12 +311,7 @@ _FRAME_TAIL = (
 
 
 def _facts_line(request: str) -> str:
-    """The numbers a deck may put on a slide, read off the request.
-
-    A summary slide came back as `metrics` with 「2억 원 | 재현 실패 연간
-    비용」 and 「3초 | 초기 설정 평균 시간」 — numbers nobody had said, on the
-    layout that makes a number look most like a fact. See `report._facts_line`.
-    """
+    """Prompt line listing the numbers found in the request. See `report._facts_line`."""
     found: list[str] = []
     for match in re.finditer(
         r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
@@ -364,18 +331,15 @@ _CLAIM = re.compile(
     r"\d[\d,.]*\s*(?:억|만|천)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장|석)?"
 )
 
-#: Layouts that hold the same facts better, highest first. When a slide is a
-#: retelling of an earlier one, the better shape survives.
+#: Preference between layouts carrying the same facts; the higher survives.
 _SHAPE_RANK = {"table": 3, "bands": 2, "two-column": 1, "bullets": 1, "metrics": 0}
 
 
 def _claims(row: dict[str, Any]) -> set[str]:
-    """The figures a slide asserts, as text — what makes two slides the same."""
+    """The figures a slide asserts, as text; a bare year is not a claim."""
     text = json.dumps(
         {k: v for k, v in row.items() if k not in ("notes", "layout", "title")}, ensure_ascii=False
     )
-    # A year is context, not a claim: 「2026년 | 2027년」 as table headers must
-    # not make the table a different slide from the bands above it.
     return {
         re.sub(r"\s+", "", m.group(0))
         for m in _CLAIM.finditer(text)
@@ -403,24 +367,17 @@ def _words(row: dict[str, Any]) -> set[str]:
     }
 
 
-#: Share of a slide's words an earlier slide already used before it is the
-#: same slide again. Measured on a live deck: the pairs that said the same
-#: thing twice (논의 bullets, then 방안 bands) sat at 0.56–0.67, and the pairs
-#: that did not at 0.36–0.46.
+#: Share of a slide's words an earlier slide already used before it counts as
+#: a retelling. Genuine retellings measure 0.56–0.67, distinct slides 0.36–0.46.
 _RETOLD_SHARE = 0.55
 _RETOLD_WORDS = 15
 
 
 def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) -> set[int]:
-    """Indices of drafted slides that only repeat figures earlier slides carry.
+    """Indices of drafted slides that repeat an earlier slide's figures or words.
 
-    A 복지제도 개편 deck put the same four changes — 500만→700만, 격년→매년,
-    주 1일→2일, 100만→150만 — on a two-column, then metrics, then bands, then
-    a table: four slides, one fact set, and 「한 장에는 그 장에서만 하는 말」
-    in the prompt the whole time. A slide with three or more figures all of
-    which earlier kept slides already state is dropped; when the newcomer is a
-    table and the earlier one is not, the earlier one goes instead, because
-    the table is where those figures read best.
+    When the newcomer has the better `_SHAPE_RANK`, the earlier slide is
+    dropped instead.
     """
     kept: list[tuple[int, set[str], set[str], str]] = []
     dropped: set[int] = set()
@@ -462,11 +419,7 @@ def _facts_set(request: str) -> set[str]:
 
 
 def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
-    """Whether every number in `values` appears in the request.
-
-    A value with no digits at all (「높음」) passes; a value with digits the
-    request never had (「2억」, 「100%」, 「30MB」) fails the slide.
-    """
+    """Whether every digit run in `values` appears in `facts`; values without digits pass."""
     for value in values:
         digits = re.sub(r"[^\d.]", "", value)
         if digits and digits not in facts:
@@ -481,12 +434,7 @@ _QUANTITY = re.compile(
 
 
 def _unrequested_quantity(text: str, request: str) -> bool:
-    """A number with a unit the request never gave — 「강의실 11개소」 for a
-    request that said 11월, 「10분 간격」 for one that said 10분 발표.
-
-    Bare digits were the check, and 11 was in the request, so 11개소 passed.
-    The unit is what makes a number a fact, so it is checked with the unit.
-    """
+    """Whether `text` carries a number-with-unit the request does not (「11개소」 vs 「11월」)."""
     compact = re.sub(r"\s+", "", request)
     for m in _QUANTITY.finditer(text):
         token = re.sub(r"\s+", "", m.group(0))
@@ -500,7 +448,7 @@ def _unrequested_quantity(text: str, request: str) -> bool:
 
 
 def _moment_in_request(moment: str, request: str) -> bool:
-    """Whether a timeline's 'when' was given — a date the request has, or its words."""
+    """Whether a timeline moment appears in the request, verbatim or by its digits."""
     compact = re.sub(r"\s+", "", request)
     cell = re.sub(r"\s+", "", moment)
     if not cell:
@@ -514,11 +462,10 @@ def _moment_in_request(moment: str, request: str) -> bool:
 def _split_deck_draft(
     text: str, slides: list[dict[str, Any]], facts: set[str], request_text: str = ""
 ) -> dict[int, dict[str, Any]]:
-    """The draft's slides matched to the outline's, by position then by title.
+    """`{index: data}` for draft slides matched to the outline by position, then by title.
 
-    Returns `{index: data}`. A slide the draft skipped is simply absent and is
-    written on its own below. A slide whose content is empty is absent too —
-    the per-slide pass has a better chance than an empty object does.
+    Absent indices (skipped, duplicated, or emptied by validation) are written
+    per slide afterwards.
     """
     data = _json_object(text)
     rows = data.get("slides") if isinstance(data, dict) else None
@@ -537,24 +484,18 @@ def _split_deck_draft(
             row = by_title.get(key(slide["title"]), row)
         if not isinstance(row, dict):
             continue
-        # 앞 장을 그대로 베낀 장은 초안에서 빼고 따로 쓴다 — 그쪽은 앞 장을
-        # 「이미 말한 내용」으로 받으므로 되풀이할 수 없다.
+        # A slide copying an earlier one's bullets is left to the per-slide pass.
         bullets = [str(b).strip() for b in (row.get("bullets") or []) if str(b).strip()]
         if bullets and any(bullets == earlier for earlier in seen_bullets):
             continue
         if bullets:
             seen_bullets.append(bullets)
-        # 요청에 없는 숫자로 채운 metrics·chart 는 버린다. 그 layout 은 숫자를
-        # 가장 사실처럼 보이게 하는 자리라, 지어낸 숫자가 가장 해로운 자리다.
+        # metrics/chart with numbers not in the request fall back to bullets.
         metric_rows = [m for m in (row.get("metrics") or []) if isinstance(m, list) and m]
         if row.get("metrics") and not _numbers_come_from([str(v) for v, *_ in metric_rows], facts):
             row = {k: v for k, v in row.items() if k != "metrics"}
             row["layout"] = "bullets"
         elif row.get("metrics") and len(metric_rows) == 1:
-            # One figure is not a metrics slide — 「75 | 강의 총 소요 시간」 was
-            # the only number in a lecture request, set large as its own slide.
-            # A real one is a big-number slide: the figure, and one line saying
-            # what it means.
             row = {**row, "layout": "big-number"}
         if isinstance(row.get("chart"), dict) and not _numbers_come_from(
             [
@@ -567,18 +508,14 @@ def _split_deck_draft(
         ):
             row = {k: v for k, v in row.items() if k != "chart"}
             row["layout"] = "bullets"
-        # 요청에 없는 수량으로 채운 항목은 뺀다 — 둘 이상 남을 때만. 캡스톤 발표가
-        # 「강의실 11개소를 선정」「10분 간격으로 수집」을 계획으로 내놓았다; 11은
-        # 11월에서, 10은 10분 발표에서 온 숫자다.
+        # Bullets with unrequested quantities are dropped when two or more remain.
         if request_text and isinstance(row.get("bullets"), list):
             sure_bullets = [
                 b for b in row["bullets"] if not _unrequested_quantity(str(b), request_text)
             ]
             if 2 <= len(sure_bullets) < len(row["bullets"]):
                 row = {**row, "bullets": sure_bullets}
-        # 요청에 없는 시점으로 채운 timeline 은 bullets 로 내린다. 「2027년 1월
-        # 1일 발효」 하나가 요청에 있었고, 「매주 월요일 제출」「분기별 점검」 넷이
-        # 그 뒤에 따라왔다 — 절차를 지어내 칸을 채운 것이다.
+        # A timeline with fewer than two requested moments becomes bullets.
         if isinstance(row.get("timeline"), list):
             steps = [t for t in row["timeline"] if isinstance(t, list) and t]
             sure = [t for t in steps if _moment_in_request(str(t[0]), request_text)]
@@ -588,8 +525,7 @@ def _split_deck_draft(
                 row["layout"] = "bullets"
             elif len(sure) < len(steps):
                 row = {**row, "timeline": sure}
-        # 초안이 layout 을 바꿨으면 따른다 — 내용에 맞지 않는 layout 을 고집한 장이
-        # 빈 사각형이 되는 것보다 낫다. 표지와 간지는 그대로.
+        # The draft may change a non-structural layout.
         wanted = str(row.get("layout") or "")
         if (
             wanted
@@ -599,11 +535,7 @@ def _split_deck_draft(
         ):
             slide["layout"] = wanted
         if slide["layout"] not in _STRUCTURAL and not any(row.get(k) for k in _DRAFT_CONTENT):
-            # 내용이 다 떨어져 나간 장은 초안에서 빼서 따로 쓴다. A 「프로세스
-            # 상태 전이」 slide drafted as a chart of invented numbers lost its
-            # chart here and reached the screen with notes and nothing else.
-            # Written again as bullets: the same layout would invent the
-            # same numbers.
+            # Emptied by validation: written again per slide, as bullets.
             if slide["layout"] in ("chart", "metrics"):
                 slide["layout"] = "bullets"
             continue
@@ -612,9 +544,7 @@ def _split_deck_draft(
     return out
 
 
-#: Which prompt each layout is written with. `title` never reaches here — the
-#: cover is filled from the outline — and anything unknown falls back to
-#: bullets, which is the shape that works for any content.
+#: Per-slide prompt by layout; unknown layouts use `_BULLETS_PROMPT`.
 _PROMPTS: dict[str, str] = {}
 
 _BULLETS_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
@@ -735,10 +665,6 @@ JSON 객체로만 답하라.
 원래 요청: {request}"""
 
 
-class DeckError(RuntimeError):
-    """The message is written for the person who asked."""
-
-
 #: Waits between retries of a rate-limited call, in seconds.
 _BACKOFF = (2.0, 6.0)
 
@@ -749,11 +675,7 @@ async def _complete(
     api_key: str,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """One non-streaming call. Returns `(text, usage)`. Retries a 429.
-
-    A deck is dozens of calls in a row, the request most likely to meet a shared
-    rate limit.
-    """
+    """One non-streaming call. Returns `(text, usage)`. Retries a 429."""
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -767,10 +689,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # No thinking on a call whose whole answer is one JSON
-                    # object — see `thinking.NO_REASONING` for the measurements.
-                    # Safe to send everywhere: the proxy runs `drop_params`, so
-                    # a provider that has never heard of it never sees it.
+                    # The proxy runs `drop_params`, so unsupported providers ignore this.
                     "reasoning": thinking.NO_REASONING,
                 },
             )
@@ -781,10 +700,7 @@ async def _complete(
         response.raise_for_status()
         payload = response.json()
 
-    # A reasoning model can spend the whole ceiling thinking and return an
-    # empty answer with `finish_reason: "length"`. See `services/thinking.py` —
-    # this is the one place that can tell that apart from a model with nothing
-    # to say, because it is the only place holding the raw payload.
+    # A reasoning model may spend the whole budget thinking; see `services/thinking.py`.
     if bigger := thinking.starved(payload, max_tokens):
         log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
         async with httpx.AsyncClient(
@@ -802,9 +718,7 @@ async def _complete(
                 },
             )
             if again.status_code >= 400:
-                # A gateway that does not know `reasoning` refuses the whole
-                # call. The ceiling alone still helps every model that does not
-                # scale its thinking to it.
+                # A gateway that rejects `reasoning`: retry with the ceiling alone.
                 again = await client.post(
                     "/v1/chat/completions",
                     json={"model": model, "messages": messages, "max_tokens": bigger},
@@ -813,8 +727,7 @@ async def _complete(
             retried = again.json()
             spent = retried.get("usage") or {}
             first = payload.get("usage") or {}
-            # Both calls are charged, so both are counted. A budget that hid
-            # the first attempt would under-report what the turn cost.
+            # Both calls are charged, so both are counted.
             payload = retried
             payload["usage"] = {
                 "prompt_tokens": int(first.get("prompt_tokens") or 0)
@@ -832,21 +745,10 @@ async def _complete(
 
 
 def _json_object(text: str) -> dict[str, Any]:
-    """The first JSON object in whatever the model wrapped it in.
+    """The first JSON object in the reply, or `{}`, with every string value read back into Hangul.
 
-    Models fence their JSON, prefix it with a sentence, or both. Returning `{}`
-    rather than raising lets each caller decide what a miss costs — for one
-    slide it is a gap, for the outline it is the whole deck.
-
-    Stray ideographs are read back into Hangul here rather than field by field
-    downstream: a slide is a title, a body, bullets, metric labels and table
-    cells, and every one of them is a place `動的 엔드포인트` has turned up.
-
-    Over the parsed values, not over the JSON text. Reading it back from the
-    text looked simpler and was wrong: a gloss is ideographs inside brackets —
-    `분산(分散)` — and a JSON array is ideographs inside brackets too, so
-    `[{"title": "대학生的 역량 격차"}]` was protected as if somebody had written
-    it as an aside. It reached the proposal card and then the slide.
+    Hangul read-back runs on parsed values, not the JSON text: a JSON array is
+    ideographs inside brackets and would be protected as a gloss.
     """
     match = re.search(r"\{.*\}", text, re.S)
     if not match:
@@ -865,16 +767,12 @@ def _read_back_values(value: Any) -> Any:
     if isinstance(value, list):
         return [_read_back_values(item) for item in value]
     if isinstance(value, dict):
-        # Keys are the schema's and are ASCII; only the values are shown.
         return {key: _read_back_values(item) for key, item in value.items()}
     return value
 
 
 def requested_slides(request: str) -> int | None:
-    """Slide count stated in the request, clamped to bounds. `None` if unstated.
-
-    Parsed here rather than left to the model, which rounds it down quietly.
-    """
+    """Slide count stated in the request, clamped to bounds. `None` if unstated."""
     match = re.search(r"(\d{1,3})\s*(?:장|페이지|슬라이드|쪽)", request)
     if not match:
         return None
@@ -883,21 +781,13 @@ def requested_slides(request: str) -> int | None:
 
 
 def _theme_style(text: str) -> str:
-    """The visual impression the outline chose, or `""` when it named none.
-
-    Read with its own regex for the same reason `_theme_accent` is: a salvaged
-    outline — one whose JSON did not parse whole — should still keep the look
-    the model picked for it.
-    """
+    """The `style` the outline chose, or `""`. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
 def _theme_accent(text: str) -> str:
-    """Accent named by the outline, or the default.
-
-    Own regex rather than the parsed object, so a salvaged outline keeps colour.
-    """
+    """Accent named by the outline, or the default. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"theme"\s*:\s*"([^"]+)"', text)
     return _THEMES.get((match.group(1).strip() if match else ""), _ACCENT)
 
@@ -905,9 +795,8 @@ def _theme_accent(text: str) -> str:
 def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
     """`(title, subtitle, plan)` where each plan entry is `{title, layout}`.
 
-    A layout the renderer does not have is coerced to `bullets` rather than
-    dropped: the model occasionally answers `chart` for a slide that is really
-    a list, and losing the slide is worse than losing the layout.
+    Unknown layouts become `bullets`; truncated JSON and plain lists are
+    salvaged.
     """
     data = _json_object(text)
     title = str(data.get("title") or "").strip()
@@ -927,8 +816,7 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
             plan.append({"title": heading, "layout": layout if layout in _LAYOUTS else "bullets"})
 
     if not plan:
-        # Truncated JSON: a model that stops mid-array leaves text `json.loads`
-        # rejects, though every object before the cut is intact.
+        # Truncated JSON: every object before the cut is intact.
         for match in re.finditer(r"\{[^{}]*?\}", text):
             item = re.search(r'"title"\s*:\s*"([^"]+)"', match.group(0))
             if not item:
@@ -942,12 +830,11 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
                 }
             )
         if plan and not title:
-            # Document title precedes the slide array, so it is the first match.
+            # The document title precedes the slide array.
             title = plan[0]["title"]
 
     if not plan:
-        # A model that ignored the format still usually produced a list. Take the
-        # bullet or numbered lines rather than failing the whole deck.
+        # Plain bullet or numbered lines.
         for line in text.splitlines():
             if re.match(r"^\s*(?:[-*+]|\d+[.)])\s+\S", line):
                 heading = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", line).strip(" #").strip()
@@ -956,8 +843,7 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
 
     plan = plan[:_MAX_SLIDES]
     if plan:
-        # The cover is structural, not the model's choice: the export and the
-        # preview both key off slide one being the title card.
+        # Export and preview both key off slide one being the cover.
         plan[0]["layout"] = "title"
         if not title:
             title = plan[0]["title"]
@@ -985,9 +871,7 @@ JSON 객체로만 답하라.
 
 원래 요청: {request}"""
 
-#: What each paired layout is for, and what its two halves hold. Written out
-#: rather than generated: a model told "왼쪽과 오른쪽을 채워라" fills both with
-#: sentences, and the whole point of the shape is that the left half is a name.
+#: Per paired layout: what it is for, its rules, and an example answer.
 _PAIRED_RULES = {
     "bands": (
         "이 장은 왼쪽에 이름표, 오른쪽에 그 내용을 띠로 놓는 장이다.",
@@ -1139,16 +1023,15 @@ _PROMPTS.update(
 
 
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """What the 목차 lists: the dividers when the deck has them, otherwise the
-    body slides — never itself, the cover, or the closing. Eight at most."""
+    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight.
+    """
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
         names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
     return [str(n).strip() for n in names if str(n).strip()][:8]
 
 
-#: Keys that describe the slide rather than fill it. What is left is the answer,
-#: whatever the model decided to call it.
+#: Keys that describe a slide rather than fill it.
 _NOT_CONTENT = frozenset({"notes", "layout", "title", "heading", "id", "index", "n"})
 
 #: The fields a drafted slide can carry its content in.
@@ -1167,25 +1050,13 @@ _DRAFT_CONTENT = (
 
 
 def _salvaged_bullets(data: dict) -> list[str]:
-    """Bullets out of an answer that put them somewhere else.
-
-    Read structurally rather than by key name, because there is no key to know:
-    the prompt names `bullets` and a small model answers with `points`, `items`,
-    `content`, or one paragraph of prose. The same trade `design_templates`
-    makes one level up — salvage what came back rather than refuse it, because
-    the alternative here is a blank slide.
-
-    Strings and lists of strings only. A number or an object is structure the
-    model invented, and putting it on a slide would show the reader a shape
-    nobody designed.
-    """
+    """Bullets from any non-metadata string or list-of-strings field, whatever it was named."""
     found: list[str] = []
     for key, value in data.items():
         if key.lower() in _NOT_CONTENT:
             continue
         if isinstance(value, str):
-            # A paragraph is not a bullet. Split on sentence ends so what
-            # reaches the slide is lines rather than a wall.
+            # A paragraph is split on sentence ends.
             found.extend(part for part in re.split(r"(?<=[.!?。])\s+|\n+", value) if part.strip())
         elif isinstance(value, list):
             found.extend(item for item in value if isinstance(item, str))
@@ -1197,88 +1068,49 @@ def _clean_bullets(value: Any) -> list[str]:
     items = value if isinstance(value, list) else []
     out: list[str] = []
     for item in items:
-        # 객체로 온 항목(`{"left": "명령", "right": "설명"}`, `{"text": …}`)은 그
-        # 값들을 한 줄로 잇는다. `str(dict)` 를 항목으로 쓰면 화면에 중괄호가
-        # 찍히고, 버리면 그 장이 「쓰지 못했습니다」가 된다.
+        # An object or list item is joined into one line.
         if isinstance(item, dict):
             item = " – ".join(str(v).strip() for v in item.values() if str(v).strip())
         elif isinstance(item, list):
             item = " – ".join(str(v).strip() for v in item if str(v).strip())
         text = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", str(item)).strip()
         text = re.sub(r"\*\*(.+?)\*\*", r"\1", text).replace("`", "").strip()
-        # A model that answered with a paragraph gets its first line used; the
-        # rest would overflow the slide and be invisible in the .pptx anyway.
+        # First line only.
         text = text.splitlines()[0].strip() if text else ""
         if text:
             out.append(text[:80])
     return out[:6]
 
 
-#: A slide table's shape, and the reason for every bound. Four columns is what
-#: fits a 16:9 slide at a size the back row can read; six rows is what fits
-#: under a title without the cells closing up. A cell longer than this is a
-#: sentence, and a sentence in a table cell is a paragraph nobody can read from
-#: eight metres away.
+#: Slide table bounds: what a 16:9 slide fits at a readable size.
 _MAX_COLUMNS = 4
 _MAX_ROWS = 6
 _MAX_CELL = 24
 
 
-#: Eight categories is what fits across a slide with labels the back row can
-#: read; two series is what a legend can hold before it needs explaining.
 _MAX_CATEGORIES = 8
 _MAX_SERIES = 2
 
 
-#: Layouts whose whole content is figures. A slide of prose can be written
-#: from a topic; a slide of numbers cannot be written from anything.
+#: Layouts whose whole content is figures.
 _NUMERIC_LAYOUTS = ("chart", "metrics", "big-number")
 
 
 def _offered_layouts(request: str, context: list[str]) -> list[str]:
-    """The body layouts this request can actually reach.
-
-    What the variety check is judged against. Handed the whole list, it names
-    `metrics` and `chart` as missing from a deck about a topic with no figures
-    anywhere near it — and asking for those is asking for invented numbers,
-    which is the one thing the plan is then rewritten to strip.
-    """
+    """Body layouts the variety check may ask for; numeric ones only when figures exist."""
     body = [layout for layout in _BODY_LAYOUTS if layout not in _NUMERIC_LAYOUTS]
     return list(_BODY_LAYOUTS) if has_numbers(request, context) else body
 
 
-#: A figure somebody could cite, as opposed to a digit.
-#:
-#: `re.search(r"\d", request)` was the test, and `4대 신기술 분야` passed it —
-#: so a deck about a topic with no measurements anywhere near it was allowed a
-#: chart, and the writer produced one: AI 채용 증가율 15 · 30 · 55 · 82 · 110 ·
-#: 135%, six invented numbers on a line, drawn large in front of a room. The 4
-#: in 4대 counts categories. It is not evidence of anything.
-#:
-#: So: a decimal, a run of three or more digits, or a number carrying a unit
-#: that measures. A bare year is deliberately not one — a date can ground a
-#: timeline and cannot ground a chart.
-#: A deck about the person's own work — nothing to say without it. 「학위논문
-#: 연구계획 발표자료」 came back as 새로운 알고리즘으로 정확도를 높임 over eight
-#: slides, for a thesis nobody described; the planner's `subject` was the
-#: request's own words, so the subject check let it through.
+#: A request about the person's own work, which cannot be written without material.
 _OWN_WORK = re.compile(
     r"학위논문|연구계획|과제 신청|사업 신청|신청 발표|녹취|캡스톤|산학|과제 제안|제안 발표"
 )
 
+#: A citable figure: a decimal, three or more digits (not a year), or a number
+#: with a measuring unit. `(?<!\d)` pins each match to the start of a digit
+#: run; every quantifier is bounded because user text reaches this.
 _FIGURE = re.compile(
-    # A year is not a measurement. `2026년 계획` matched the three-digit rule
-    # and let a deck about next year's plan draw a chart of nothing.
-    #
-    # `(?<!\d)` pins every match to the start of a digit run — 2026년 cannot
-    # be salvaged by backtracking into 202, because a regex that can retreat
-    # inside the number it is judging is judging a different number.
-    #
-    # Every quantifier is bounded. Static analysis flags an unbounded `\d+`
-    # beside an overlapping alternative as polynomial on adversarial digit
-    # strings, and user-typed text reaches this — a twelve-digit cap loses
-    # nothing anybody has ever put on a slide and closes the question by
-    # construction rather than by argument.
     r"(?<!\d)(?:"
     r"\d{1,12}[.,]\d"
     r"|\d{3,12}(?!\d)(?!\s{0,4}년)"
@@ -1288,39 +1120,14 @@ _FIGURE = re.compile(
 
 
 def has_numbers(request: str, context: list[str]) -> bool:
-    """Is there anywhere a figure could honestly have come from?
-
-    The context is searched rather than counted. `bool(context)` was the test,
-    and the context is every block of project knowledge in play — a saved
-    memory saying who the user is, the project's own instructions. Two memories
-    about a person's role were enough to tell the writer that figures were
-    available, and it drew six years of invented AI 채용 증가율 on a chart.
-
-    Having material and having numbers in it are different questions. This asks
-    the second one.
-    """
+    """Whether the request or any context block contains a citable figure."""
     return bool(_FIGURE.search(request)) or any(_FIGURE.search(block) for block in context)
 
 
 def _grounded_layouts(
     plan: list[dict[str, str]], request: str, context: list[str]
 ) -> list[dict[str, str]]:
-    """Numbers only where a number could have come from.
-
-    A `chart` or `metrics` slide is nothing but figures. Asked for one with no
-    material attached, no search results and no numbers in the request itself,
-    the model has exactly one place to get them, and it takes it: a live run
-    asked for a quarterly trend and got eight quarters of tidy invented data,
-    on a chart, at the front of a room.
-
-    The prompts say not to and one of the two obeyed — which is the reason this
-    is here rather than in a prompt. A rule the writer keeps most of the time
-    is not a rule for something that reads as fact the moment it is projected.
-
-    The request counts as material. Somebody who writes "저장 비용이 32%
-    줄었다" has given the figure, and refusing to chart it would be refusing
-    the thing they asked for.
-    """
+    """Numeric layouts demoted to `bullets` unless the request or context carries figures."""
     if has_numbers(request, context):
         return plan
     return [
@@ -1329,19 +1136,11 @@ def _grounded_layouts(
     ]
 
 
-#: How many one-sentence slides a deck may hold. The prompt has said 최대 2장
-#: for a long time and a live run came back with three, all of them selling:
-#: 기회 손실 리스크, 마감 임박 경고, and a closing line. A rule the writer keeps
-#: most of the time is not a rule — it is a suggestion with a number in it.
 _MAX_QUOTES = 2
 
 
 def _rationed_quotes(plan: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Extra one-sentence slides demoted to bullets, keeping the first ones.
-
-    The first is the one the writer meant. What follows a full quota is a deck
-    that has run out of things to say and is saying them louder.
-    """
+    """Quote slides beyond `_MAX_QUOTES` demoted to bullets."""
     out: list[dict[str, str]] = []
     spent = 0
     for item in plan:
@@ -1353,31 +1152,13 @@ def _rationed_quotes(plan: list[dict[str, str]]) -> list[dict[str, str]]:
     return out
 
 
-#: A divider title that says nothing: `01`, `2.`, `Part 3`, `섹션 1`.
-#: Digits and *multi-letter* Roman numerals. A lone I/V/X is as likely a word
-#: or a product name as a number — and with `re.I`, a lone x too — so a divider
-#: somebody typed into the proposal card could be silently deleted for it.
+#: A divider title that is only a number: `01`, `2.`, `Part 3`, `섹션 1`.
+#: Multi-letter Roman numerals only; a lone I/V/X may be a word.
 _NUMBER_ONLY = re.compile(r"^\s*(?:part|섹션|section|장)?\s*(?:[0-9]+|[IVX]{2,})\s*[.)]?\s*$", re.I)
 
 
 def _named_dividers(plan: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Dividers that name their part, and no others.
-
-    The number is drawn by the renderer from where the divider falls, so a
-    writer that puts it in the title spends the one line a divider has on
-    something already on the slide: the reader is told they have reached part
-    two without being told what part two is.
-
-    Dropped rather than renamed. The obvious repair is to borrow the title of
-    the slide after it — and that draws the same words twice in a row, once
-    large and once as a heading, which is worse than the number was. What a
-    part is called is the one thing only the writer knows, so a divider that
-    did not bring a name is not a divider.
-
-    Inserting them is left to the prompt for the same reason. Asked for, the
-    writer produced four; invented here, every one of them would have been
-    named after whatever happened to follow it.
-    """
+    """Dividers whose title is only a number are dropped; the renderer draws the number."""
     return [
         item
         for item in plan
@@ -1386,15 +1167,7 @@ def _named_dividers(plan: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def _clean_chart(value: Any) -> dict[str, Any] | None:
-    """A chart, or `None` when what came back cannot be drawn.
-
-    The length check is the one that matters. A series with fewer values than
-    there are categories is not a chart with a gap in it — it is a chart whose
-    bars line up under the wrong labels, and every reader of the slide takes
-    away a fact that was never in the data. Short series are padded onto the
-    front of the categories they do match and the rest of the categories are
-    dropped, so what is drawn is the part that is actually paired.
-    """
+    """A drawable chart, or `None`. Categories and series are cut to the shortest paired length."""
     if not isinstance(value, dict):
         return None
     kind = str(value.get("kind") or "bar").strip().lower()
@@ -1429,23 +1202,13 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
     }
 
 
-#: Four figures is what fits across a 16:9 slide at a size worth setting large;
-#: past that they are narrow columns of text. A value longer than this is not a
-#: figure, and a label longer than that is a bullet.
 _MAX_METRICS = 4
 _MAX_VALUE = 12
 _MAX_LABEL = 16
 
 
-#: A label that says its value is a date rather than a measurement.
-#:
-#: `2026 마감년도 · 8월 신청월 · 31일 마감일` came out of a metrics slide — one
-#: deadline taken apart into three numbers and each set 44pt. Nothing there is
-#: a quantity, and the slide that exists to make one figure memorable made three
-#: unmemorable ones out of a date. A date has a layout of its own now.
-#: Whole labels, not substrings: `일자` is inside 일자리 — the commonest metric
-#: label in a Korean 사업 발표 — and the unanchored version deleted 신규 일자리,
-#: 마감률 and 연도별 추이 from metrics slides while it was catching deadlines.
+#: A metric label naming a date part rather than a measurement. Anchored on
+#: the whole word: `일자` is inside 일자리.
 _CALENDAR = re.compile(
     r"^(년도|연도|마감|기한|일자|신청월|개강|종강|년|월|일|요일"
     r"|마감일|마감월|마감년도|신청일|시작일|종료일|개강일|종강일|접수일|발표일)$"
@@ -1453,13 +1216,7 @@ _CALENDAR = re.compile(
 
 
 def _clean_metrics(value: Any) -> list[list[str]]:
-    """`[[값, 이름]]`, however the model formatted it.
-
-    A pair with only one half is dropped. A number with nothing saying what it
-    counts is a number nobody can use, and a label with no number is a bullet
-    that has wandered into the wrong slide. A label that names a part of a date
-    goes too — see `_CALENDAR`.
-    """
+    """`[[값, 이름]]` pairs; half-empty pairs and date-part labels are dropped."""
     items = value if isinstance(value, list) else []
     out: list[list[str]] = []
     for item in items[:_MAX_METRICS]:
@@ -1474,36 +1231,18 @@ def _clean_metrics(value: Any) -> list[list[str]]:
     return out
 
 
-#: The three that are a left thing and a right thing, and their bounds.
-#:
-#: One cleaner for all of them, because they are the same data wearing three
-#: designs: a label beside a band of text, a letter over a caption, a date
-#: beside what happened. Three cleaners would be three places to disagree about
-#: what an empty half means.
+#: Paired layouts → (max pairs, left max chars, right max chars).
 _PAIRED = {
-    #: `[[라벨, 내용]]` — 미션 · 배경 · 추진전략, the row-label shape every
-    #: Korean 사업 발표 opens with.
     "bands": (4, 10, 90),
-    #: `[[글자, 설명]]` — P · H · A · S · E, a letter or a number set large.
     "tiles": (6, 4, 24),
-    #: `[[시점, 일어난 일]]` — 연혁, a date beside what happened.
     "timeline": (7, 12, 60),
-    #: `[[단계, 한 줄]]` — 절차, set across the slide as numbered steps. No
-    #: dates: the order is the content.
     "steps": (5, 12, 60),
-    #: `[[이름, 한두 줄]]` — 분야 · 전략 · 역할, peers set side by side as
-    #: titled cards.
     "cards": (4, 14, 80),
 }
 
 
 def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
-    """`[[왼쪽, 오른쪽]]` for the three paired layouts, however it was formatted.
-
-    A pair with only one half is dropped. A label with nothing beside it is a
-    heading for a band that is not there, and a band with no label is a
-    paragraph that has wandered onto the wrong slide.
-    """
+    """`[[왼쪽, 오른쪽]]` pairs within `_PAIRED` bounds; half-empty pairs are dropped."""
     count, left_max, right_max = _PAIRED[layout]
     items = value if isinstance(value, list) else []
     out: list[list[str]] = []
@@ -1519,15 +1258,7 @@ def _clean_pairs(value: Any, layout: str) -> list[list[str]]:
 
 
 def _clean_rows(value: Any) -> list[list[str]]:
-    """A slide table, however the model formatted it.
-
-    Ragged rows are padded rather than dropped. A model that gives four
-    headings and then a row of three has made a mistake in one cell, and
-    throwing the whole table away over it costs the reader the other eleven.
-
-    A table of one row is not a table — it is a heading with nothing under it —
-    and comes back empty so the caller can fall back to a list.
-    """
+    """Table rows within bounds, ragged rows padded; empty when fewer than two rows."""
     rows = value if isinstance(value, list) else []
     out: list[list[str]] = []
     for row in rows[:_MAX_ROWS]:
@@ -1546,14 +1277,7 @@ def _clean_rows(value: Any) -> list[list[str]]:
 
 
 async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | None:
-    """One picture for a slide, or `None` when it could not be drawn.
-
-    Embedded as a `data:` URI, which is the shape `deck_export` already reads
-    off a JSON deck — its slides live in a JSONB column and bytes do not.
-
-    Never raises: a slide without its diagram is a slide; a turn that dies takes
-    the deck.
-    """
+    """One slide picture as a `data:` URI (slides live in JSONB), or `None`. Never raises."""
     if not image_model:
         return None
     base, _ = await settings_store.litellm_config()
@@ -1562,8 +1286,6 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
             base_url=base,
             api_key=api_key,
             model=str(image_model.get("id") or ""),
-            # 16:9, because a slide is. A square diagram on a widescreen slide
-            # leaves two columns of empty deck.
             prompt=imagegen.compose_prompt(
                 str(figure.get("prompt") or ""), aspect="16:9", style=""
             ),
@@ -1573,9 +1295,7 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
         log.warning("slide figure could not be drawn: %s", exc)
         return None
     return {
-        # `encode` already returns the whole `data:` address; wrapping it
-        # in `data_uri` again produced `data:image/png;base64,data:…`,
-        # which every reader of it silently refused.
+        # `encode` returns the whole `data:` address.
         "src": pictures.encode(made.mime, made.data),
         "caption": str(figure.get("caption") or ""),
         "_in": made.input_tokens,
@@ -1601,13 +1321,9 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes the bodies for an outline that has already been agreed to.
-
-    Lifted out of `write` so the approved-plan path and the plan-it-now path
-    reach exactly the same code. Two copies of this loop would be two decks
-    that differ in ways nobody chose.
+    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps.
     """
-    #: Approved pictures by the index of the slide they belong to.
+    #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
         "type": "step",
@@ -1628,25 +1344,17 @@ async def _write_slides(
         }
         for i, item in enumerate(plan)
     ]
-    # Announced up front: the panel greys out what is not written yet.
+    # Announced up front so the panel can show the unwritten slides.
     for slide in slides:
         yield {"type": "slide", "slide": slide, "done": False}
 
     outline_text = "\n".join(f"{i + 1}. {s['title']}" for i, s in enumerate(slides))
     written: list[str] = []
-    #: How many dividers have gone by. A divider's number counts dividers, not
-    #: slides — `01.` over the first one whether it is slide 2 or slide 6, which
-    #: is what a reader asking "which part are we in" wants to know.
+    #: Dividers seen so far; a divider's number counts dividers, not slides.
     divider = 0
 
-    # 한 번에 쓴다 — `report.write` 와 같은 이유로.
-    #
-    # Slide by slide, each call saw the outline and a 3,000-character tail of
-    # what came before, and wrote a one-bullet slide with garbled notes, a
-    # bullets slide whose bullets were the titles of other slides, and a
-    # metrics slide with 「2억 원」 nobody had said. The whole deck in one call
-    # keeps the thread; the per-slide pass below writes whatever the draft
-    # skipped, and stays for rewrites.
+    # The whole deck in one call keeps the thread; the per-slide pass below
+    # writes whatever the draft skipped.
     drafted: dict[int, dict[str, Any]] = {}
     yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
     try:
@@ -1675,11 +1383,9 @@ async def _write_slides(
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        # The request and what was attached to it: a number the 녹취 gave is
-        # a number the deck may use.
+        # Numbers in the request and its attachments are the ones a slide may use.
         given = "\n".join([request, *(untrusted_context or [])])
         drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
-        # 같은 사실을 다른 모양으로 되풀이한 장은 뺀다.
         retold = _retold(slides, drafted)
         if retold:
             log.info("deck retold slides dropped: %s", ",".join(str(i) for i in sorted(retold)))
@@ -1695,24 +1401,12 @@ async def _write_slides(
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
 
     for index, slide in enumerate(slides):
-        # The position lives in `progress`, not in the text: spelled into both,
-        # the surface renders "3/9 도입 (3/9)".
+        # Position goes in `progress`, not in the label.
         label = str(slide["title"])
-        # The deck is planned before any of it is written, so every step can
-        # say where it sits in that plan. Without it the reader watching a
-        # ten-slide run has only the step in front of them and no idea how
-        # many are behind it.
         progress = {"current": index + 1, "total": len(slides)}
 
         if slide["layout"] in _STRUCTURAL:
-            # None needs a model call. The cover's two lines arrive with the
-            # outline — the subtitle trimmed rather than copied verbatim, since
-            # pasting the request in puts its question mark on the opening
-            # slide of a presentation. A divider has only its own name, which
-            # the outline already chose, and a number, which is where it falls
-            # among the dividers rather than among the slides. The agenda is
-            # the outline read back: the dividers when there are any, else the
-            # body slides, at most eight.
+            # Filled from the outline; no model call.
             if slide["layout"] == "section":
                 divider += 1
                 slide["number"] = f"{divider:02d}."
@@ -1763,10 +1457,8 @@ async def _write_slides(
                         template.format(
                             heading=slide["title"],
                             outline=outline_text,
-                            # Tail only: the whole deck would crowd out the rules.
                             written="\n".join(written)[-3000:] or "(아직 없음)",
-                            # Fuller list for two columns; four bullets would leave
-                            # one empty. `_QUOTE_PROMPT` ignores the extra field.
+                            # Prompts without `{count}` ignore the extra field.
                             count=(
                                 ("6~8" if slide["layout"] == "two-column" else "4~6")
                                 if density == "reading"
@@ -1792,9 +1484,7 @@ async def _write_slides(
                 "status": "error",
                 "progress": progress,
             }
-            # 마커와 함께 layout 도 평문으로 되돌린다. timeline 인 채로 남으면
-            # 화면과 파일이 "항목 없는 연혁" 을 그리려 들고, 검사는 빈 장으로
-            # 읽는다 — 표·차트가 빈 답에서 bullets 로 내려가는 것과 같은 규칙.
+            # Reset to bullets so renderers do not draw an empty layout.
             if slide.get("layout") not in _STRUCTURAL:
                 slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
@@ -1804,9 +1494,7 @@ async def _write_slides(
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
 
-        # The picture, when this slide is one somebody paid for. Drawn after
-        # the bullets so a failed drawing leaves a slide with words on it
-        # rather than a slide that promised a diagram.
+        # Drawn after the text, so a failed drawing still leaves a written slide.
         if (drawing := wanted_figures.get(index)) is not None:
             yield {
                 "type": "step",
@@ -1836,8 +1524,7 @@ async def _write_slides(
                     "progress": progress,
                 }
         data = _json_object(body)
-        # 장별 경로에도 같은 검증. 초안이 빠뜨린 장을 이쪽이 쓰는데, 여기서
-        # 지어낸 「0.8초 | 파일 파싱 속도」가 그대로 화면에 올라갔다.
+        # Same number check as the draft path.
         if index not in drafted:
             facts = _facts_set("\n".join([request, *(untrusted_context or [])]))
             if data.get("metrics") and not _numbers_come_from(
@@ -1857,7 +1544,6 @@ async def _write_slides(
                 data.pop("chart", None)
                 slide["layout"] = "bullets"
         raw_notes = data.get("notes")
-        # 배열로 온 노트는 문장으로 잇는다 — 화면에 `['…', '…']` 가 그대로 찍혔다.
         if isinstance(raw_notes, list):
             raw_notes = " ".join(str(n).strip() for n in raw_notes if str(n).strip())
         notes = str(raw_notes or "").strip()
@@ -1867,8 +1553,6 @@ async def _write_slides(
             if slide["layout"] == "statement" and (word := str(data.get("title") or "").strip()):
                 slide["title"] = word[:24]
             if not line:
-                # No usable quote — a slide with an empty headline is a blank
-                # screen in the middle of a talk, so it becomes a bullets slide.
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
             else:
@@ -1896,46 +1580,22 @@ async def _write_slides(
             if pairs := _clean_pairs(data.get(slide["layout"]), slide["layout"]):
                 slide[slide["layout"]] = pairs
             else:
-                # An empty band is a coloured rectangle with nothing in it.
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
         elif slide["layout"] == "table":
             if rows := _clean_rows(data.get("rows")):
                 slide["rows"] = rows
             else:
-                # An empty table is a blank rectangle in the middle of a talk.
-                # Whatever the model did give back is shown as a list, which is
-                # the shape this slide would have had anyway.
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
         else:
             slide["bullets"] = _clean_bullets(data.get("bullets"))
 
-        # Every branch above falls back to bullets, and until now that fallback
-        # had none of its own: a model that answered a bullets slide with prose,
-        # or with its list under a key nobody specified, left the slide empty —
-        # and one empty slide locked 내보내기, 발표 and 텍스트 수정 for the whole
-        # deck. A blank rectangle in the middle of a talk is the visible half of
-        # that; the deck nobody can export is the worse half.
         if not has_content(slide):
             slide["bullets"] = _salvaged_bullets(data)
         if not has_content(slide):
-            # Nothing to salvage either. Said the same way a call that threw is
-            # said, because to the reader it is the same event: this slide did
-            # not get written. Marked rather than left blank so the deck stays
-            # a deck — every control on this panel waits for the run to end and
-            # not for the result to be good, and 텍스트 수정 is then right there
-            # to write the slide by hand.
-            #
-            # It says so on the screen and nowhere else. `deck_export` leaves
-            # the slide out of the file: a panel is a workbench and a file is
-            # what goes into a room, and a live run put "이 장을 쓰지
-            # 못했습니다." on slide three of a deck somebody was about to
-            # present. The lint already files this P0, so nobody is exporting
-            # it without having been told.
-            # 마커와 함께 layout 도 평문으로 되돌린다. timeline 인 채로 남으면
-            # 화면과 파일이 "항목 없는 연혁" 을 그리려 들고, 검사는 빈 장으로
-            # 읽는다 — 표·차트가 빈 답에서 bullets 로 내려가는 것과 같은 규칙.
+            # Marked as unwritten (shown on screen, left out of exports) and
+            # reset to bullets so renderers do not draw an empty layout.
             if slide.get("layout") not in _STRUCTURAL:
                 slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
@@ -1973,66 +1633,28 @@ async def write(
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
     tokens: dict[str, str] | None = None,
-    #: The model that plans, when an administrator has named one. The outline
-    #: is one call and decides the shape of every call after it, so it is the
-    #: one place where a stronger model changes the result out of proportion
-    #: to what it costs. Empty means the same model writes and plans.
+    #: Model for the outline call; empty means the writing model.
     outline_model: str = "",
-    #: The outline somebody has already seen and approved.
-    #:
-    #: Absent, this plans and stops: it emits `proposal` — or `needs`, when the
-    #: material cannot carry the request — and writes nothing. Present, it
-    #: skips planning entirely and writes exactly what was approved, because a
-    #: second planning call would produce a different deck from the one that
-    #: was agreed to and quietly replace it.
+    #: An approved outline. Absent: plan and emit `proposal` (or `needs`),
+    #: writing nothing. Present: write exactly this, with no planning call.
     approved_plan: dict[str, Any] | None = None,
-    #: Whether this pass may stop to ask.
-    #:
-    #: False on the pass that follows "있는 자료로 진행" — the button whose whole
-    #: promise is that it will not be asked again. Without it the answer folds
-    #: back into a request identical to the one that raised the question, the
-    #: planner asks it again, and the button loops for as long as somebody
-    #: keeps pressing it. Only this one pass is silenced; a later request that
-    #: genuinely cannot be grounded is still allowed to say so.
+    #: False on the pass after "있는 자료로 진행", so the planner cannot re-ask.
     may_ask: bool = True,
-    #: Pictures somebody agreed to on the second card, ready to draw.
-    #:
-    #: `None` on the planning pass, where they are proposed. `[]` means the
-    #: card was answered 그림 없이. A slide's picture goes on the slide rather
-    #: than under it — `deck_export` already reads `slide["image"]` and puts it
-    #: in the .pptx — so this is the same two-step the report uses landing in a
-    #: different place.
+    #: Approved pictures to draw; `None` on the planning pass, `[]` for 그림 없이.
     figures_plan: list[dict] | None = None,
-    #: The model that draws them — the image default, not the writer's.
+    #: The image model that draws them.
     image_model: dict | None = None,
-    #: Whether to research this deck before writing it.
-    #:
-    #: A deck is the surface where an unchecked fact travels furthest: it gets
-    #: presented, and nobody in the room can see where a bullet came from. The
-    #: pass is the same one reports run — queries planned off the request, top
-    #: pages read in full — and it lands before the outline, so the slide list
-    #: is chosen from what is true rather than from what was remembered.
+    #: Research before the outline, as reports do.
     web_search: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `title`, `slide`, a final `deck` and one `usage` event.
 
-    Two passes over two requests. The first plans and offers; the second writes
-    what came back approved. Nothing is written on the first, which is what
-    keeps a deck already on screen safe from a run nobody confirmed.
-
-    The caller owns persistence, billing and the artifact — this only writes.
-    A slide that fails is marked and the rest continues, because eight slides
-    and a gap is worth more than nothing.
-
-    `tokens` is the project's design system, when it wears one. Its accent
-    replaces the model's colour choice outright rather than being offered as a
-    default: a deck that is nearly the project's colour is worse than one that
-    is plainly not.
+    Two passes: the planning pass emits a `proposal` and writes nothing; the
+    approved pass writes. The caller owns persistence, billing and the
+    artifact. `tokens` is the project's design system; its accent overrides
+    the model's colour choice.
     """
-    # Planning is counted apart from writing, because it can run on another
-    # model — and a call billed at the wrong model's price is a ledger that
-    # says the wrong thing about where the money went. Empty when the same
-    # model does both, which is the shape every caller already handles.
+    # Outline usage is counted apart because it may run on another model.
     usage = {
         "inputTokens": 0,
         "outputTokens": 0,
@@ -2042,14 +1664,8 @@ async def write(
     wanted = requested_slides(request)
     fixed_accent = (tokens or {}).get("accent") or ""
 
-    # Ahead of both paths. The approved-plan pass researches too: the outline
-    # it was handed named the slides, not what goes on them, and the bullets
-    # are where the facts actually are.
+    # Both passes research: the approved outline names the slides, not their facts.
     findings = research.Findings()
-    # Checked before the step is drawn, not inside `run`. A deployment with no
-    # search backend would otherwise open every document with 자료 찾는 중 and
-    # close it with 참고할 자료 없음 — a step that reports the deployment's
-    # configuration as though it were this document's result.
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
         findings = await research.run(request, model=outline_model or model, api_key=api_key)
@@ -2068,10 +1684,7 @@ async def write(
         }
         if findings.sources:
             yield {"type": "sources", "sources": findings.sources}
-    # Three states, and the writer is told which one it is in. A toggle
-    # somebody switched off is a choice and needs no disclaimer; a search that
-    # could not run and a search that found nothing are both worth saying, and
-    # they do not mean the same thing to a reader.
+    # Search off needs no rule; unavailable and empty are told apart.
     research_rule = ""
     if web_search and not findings.searched:
         research_rule = research.UNRESEARCHED_RULE
@@ -2094,9 +1707,7 @@ async def write(
             yield {"type": "error", "message": "승인된 구성이 비어 있습니다."}
             yield {"type": "usage", **usage}
             return
-        # Again on the way back in. A plan can be approved days after it was
-        # proposed, and it can be edited before it is — neither path went past
-        # the check above.
+        # Re-checked: an approved plan may have been edited.
         plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
         async for event in _write_slides(
             plan=plan,
@@ -2142,8 +1753,7 @@ async def write(
                 research_rule=research_rule,
             ),
             api_key,
-            # Scaled with the slide count: a fixed ceiling truncates the JSON
-            # on a long deck and the parse fails.
+            # Scaled with the slide count so the JSON is not truncated.
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
         )
 
@@ -2158,9 +1768,7 @@ async def write(
         return
 
     plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-    # The model may answer the outline call with a question instead. Only when
-    # the request names material it cannot find — see `grounding.ASK_RULE`; a
-    # bare topic is still planned without being asked about.
+    # The outline call may answer with questions; see `grounding.ASK_RULE`.
     if may_ask and (asked := grounding.parse_needs(text)):
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {"type": "needs", "questions": [q.wire() for q in asked]}
@@ -2173,11 +1781,7 @@ async def write(
         and not any(block.strip() for block in (untrusted_context or []))
     )
     if may_ask and unmaterial:
-        # 주제가 없는 요청은 묻는다. 「캡스톤 중간발표 10분」 was planned as an
-        # AI 맞춤 학습 플랫폼 nobody is building, and 「학회 구두 발표 15분,
-        # 수치를 크게」 as seven slides of 500회 and 20% about nothing — the
-        # rule against invented 소재 was in the prompt both times. Same check
-        # as the report's, on the same field.
+        # No subject to write about: ask, as the report does.
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {
             "type": "needs",
@@ -2199,16 +1803,12 @@ async def write(
         return
     title, subtitle, plan = _parse_outline(text)
     accent = fixed_accent or _theme_accent(text)
-    # Before the variety check, not after it. A plan judged against layouts it
-    # is not allowed to use asks for them by name, pays a model call for the
-    # answer, and then has them stripped out again — the deck comes back as
-    # flat as it started and one call poorer.
+    # Grounded before the variety check, so it does not ask for layouts that
+    # would then be stripped.
     plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
     offered = _offered_layouts(request, document_context)
 
-    # Four layouts on offer, and the answer is usually `bullets` all the way
-    # down. One more call, naming the ones it skipped, is the cheapest place
-    # to fix that — the slides themselves have not been written yet.
+    # A flat outline gets one retry naming the layouts it skipped.
     missing = plan_rules.flat_layouts(plan, offered) if plan else []
     if missing:
         log.info("deck outline flat, unused: %s", ",".join(missing))
@@ -2231,11 +1831,7 @@ async def write(
                 accent = fixed_accent or _theme_accent(retry_text) or accent
             else:
                 log.info("deck outline still flat, keeping the first")
-    # One more call before calling it a failure. What the parse trips over is a
-    # shape, not the request — a fenced block, a sentence of preamble, a list
-    # where an object belongs — and the same prompt usually lands it the second
-    # time. The machinery is already here for the flat-layout retry above, and
-    # the alternative is charging for a call and showing nothing for it.
+    # An unreadable outline gets one retry.
     if not plan:
         log.info("deck outline unreadable, asking once more")
         try:
@@ -2254,7 +1850,6 @@ async def write(
                 plan = retry_plan
                 accent = fixed_accent or _theme_accent(retry_text) or accent
 
-    # Only an empty outline is a failure; a short one is a narrow topic.
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
         yield {
@@ -2271,18 +1866,14 @@ async def write(
         "status": "done",
         "detail": " · ".join(item["title"] for item in plan),
     }
-    # Planned, and that is where this stops. The deck is offered rather than
-    # written: the caller stores it, shows it, and calls back with it approved.
+    # The planning pass stops here; the caller stores the proposal and calls
+    # back with it approved.
     plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
     proposal: dict[str, Any] = {
         "title": title[:200],
         "subtitle": subtitle[:200],
         "accent": accent,
-        # 말한 사람이 먼저다. `visual_style_for` only answers when the request
-        # actually says so — 「포스터처럼」, 「담백하게」 — and returns the
-        # editorial default otherwise. That default used to reach every deck,
-        # so a 학술 심사 발표 and a 홍보 설명회 came out wearing the same face.
-        # The outline picks for the ones nobody described.
+        # A style the request names wins; otherwise the outline's choice.
         "visualStyle": (
             design.visual_style_for(request)
             if design.visual_style_for(request) != "editorial"
@@ -2305,11 +1896,7 @@ async def write(
         ),
         "slides": [{"title": item["title"], "layout": item["layout"]} for item in plan],
     }
-    # The pictures are proposed here and asked about on a second card, once the
-    # outline is agreed — the report's two-step, landing on slides. Proposed now
-    # because the planner has the outline in front of it; asked separately
-    # because a picture costs multiples of the prose and should not be bought
-    # by a button somebody pressed for the shape.
+    # Pictures are proposed with the outline and approved on a second card.
     if image_model:
         drawn = await figures.propose(
             request=request,
@@ -2328,7 +1915,7 @@ async def write(
         if drawn.figures:
             proposal["figures"] = drawn.wire()
     if unmaterial:
-        # 있는 자료로 진행 — the writing pass writes a form. See `_FRAME_RULE`.
+        # The writing pass writes a form; see `_FRAME_RULE`.
         proposal["frame"] = True
     yield {"type": "proposal", "plan": proposal}
     yield {"type": "usage", **usage}
@@ -2343,16 +1930,8 @@ async def rewrite_slide(
     api_key: str,
     note: str = "",
 ) -> tuple[dict, dict]:
-    """Rewrites one slide, with the rest of the deck as context.
-
-    The report surface has had this since it shipped and the deck has not,
-    which is why "5번 장에 근거를 붙여" planned an entire new presentation. The
-    shape is the report's on purpose: same arguments, same `(result, usage)`,
-    so the caller that drives a revision does not need to know which surface it
-    is on.
-
-    Everything but the target is passed as written, so the new slide does not
-    repeat what slide two already said — the same guard the first pass uses.
+    """Rewrites one slide with the rest of the deck as context. Returns `(slide, usage)`; same shape
+    as the report's.
     """
     target = next((s for s in slides if s.get("id") == target_id), None)
     if target is None:
@@ -2374,9 +1953,8 @@ async def rewrite_slide(
         request=request[:1500],
     )
     if note.strip():
-        # Last and labelled: an unlabelled sentence appended to a prompt reads
-        # as part of the original request.
-        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
+        # Labelled, or it reads as part of the request.
+        prompt +=f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
         model, build_document_messages(SessionKind.slides, prompt, request=request), api_key, 600
@@ -2387,16 +1965,11 @@ async def rewrite_slide(
     if not bullets and not body:
         raise ValueError("빈 슬라이드")
 
-    #: Merged rather than replaced. A picture somebody put on this slide, its
-    #: accent, its id — none of that is the model's to drop, and a rewrite that
-    #: silently removed a chart would be indistinguishable from one that failed.
+    # Merged, so the slide's id, accent and picture survive.
     result = {**target}
     if bullets:
         result["bullets"] = bullets
-        # Content from the old attempt must not survive beside the rewrite.
-        # In particular, a failed slide carries UNWRITTEN as its old body or
-        # bullet; keeping the opposite field makes a successful retry still
-        # look failed in previews and exports.
+        # The old body (possibly UNWRITTEN) must not survive beside the rewrite.
         result.pop("body", None)
     if body:
         result["body"] = body
@@ -2408,35 +1981,14 @@ async def rewrite_slide(
     return result, usage
 
 
-#: Every field a slide can carry its content in. `bullets` and `body` were the
-#: whole list once, and the two that were added after — a table's `rows`, a
-#: strip's `metrics`, a chart's numbers — live nowhere near them.
-#: Every field a slide's content can arrive in.
-#:
-#: Derived from `_PAIRED` rather than typed out again beside it. The three
-#: paired layouts were added and this list was not, so a finished 참여 혜택
-#: slide — four filled bands on it — was read as a slide the writer failed to
-#: write, and the words "이 장을 쓰지 못했습니다." were set on top of it. The
-#: same list is why a table slide was once dropped from finished decks. A
-#: layout that stores its content under its own name has to be in here, and the
-#: only way to guarantee that is to not maintain two lists.
+#: Every field a slide's content can arrive in. A layout that stores content
+#: under its own name must be here; the paired ones come from `_PAIRED`.
 _CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart", *_PAIRED)
 
 
 def has_content(slide: dict) -> bool:
-    """Is there anything on this slide?
-
-    The cover counts on its title alone. Everything else needs one of the
-    fields above — and reading only `bullets` and `body`, as this did, meant a
-    finished table slide was indistinguishable from a slide the model failed to
-    write. `filled` then dropped it from the deck, and the panel's own copy of
-    the same test left 내보내기, 발표 and 텍스트 수정 disabled forever on a deck
-    that was complete.
-    """
+    """Whether the slide carries content; structural slides count on their title alone."""
     if slide.get("layout") in _STRUCTURAL:
-        # A divider says the name of its part and nothing else — that is the
-        # whole of what a divider is, so its title is its content. Read as
-        # empty, `filled` dropped approved dividers from finished decks.
         return True
     for field in _CONTENT_FIELDS:
         value = slide.get(field)
@@ -2454,7 +2006,7 @@ def filled(slides: list[dict]) -> list[dict]:
 
 
 def to_markdown(title: str, slides: list[dict]) -> str:
-    """The deck as text, for the person who wants to paste it somewhere else."""
+    """The deck as Markdown."""
     parts = [f"# {title}", ""]
     for index, slide in enumerate(slides):
         if slide.get("layout") == "title" and index == 0:
@@ -2464,8 +2016,6 @@ def to_markdown(title: str, slides: list[dict]) -> str:
             parts.append(f"\n> {slide['body']}")
         for bullet in slide.get("bullets") or []:
             parts.append(f"- {bullet}")
-        # Everything else a slide can hold, or "텍스트로 복사" hands over six
-        # bare headings out of eleven layouts and calls it the deck.
         for row in slide.get("rows") or []:
             parts.append("| " + " | ".join(str(cell) for cell in row) + " |")
         for pair in slide.get("metrics") or []:
@@ -2485,4 +2035,4 @@ def to_markdown(title: str, slides: list[dict]) -> str:
     return "\n".join(parts).strip() + "\n"
 
 
-__all__ = ["DeckError", "filled", "has_content", "to_markdown", "write"]
+__all__ = ["filled", "has_content", "to_markdown", "write"]

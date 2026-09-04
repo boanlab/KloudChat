@@ -6,16 +6,12 @@ name: Release
 #   tag v1.2.3     → :1.2.3 :1.2 :latest
 #   tag v1.2.3-rc1 → :1.2.3-rc1        (a prerelease never moves :latest)
 #
-# Only the images whose sources changed are rebuilt — see the `changes` job.
+# On a push, only the images whose sources changed are rebuilt (`changes`).
 #
-# Requires two repository secrets, both under Settings → Secrets and variables
-# → Actions:
+# Repository secrets (Settings → Secrets and variables → Actions):
 #
-#   DOCKERHUB_USERNAME  the Docker Hub account that owns the repositories
-#   DOCKERHUB_TOKEN     an access token with Read & Write scope
-#
-# The account name doubles as the image namespace, so a fork publishes to its
-# own namespace without editing this file.
+#   DOCKERHUB_USERNAME  Docker Hub account; doubles as the image namespace
+#   DOCKERHUB_TOKEN     access token with Read & Write scope
 on:
   push:
     branches: [main]
@@ -37,8 +33,7 @@ jobs:
       matrix: ${{ steps.pick.outputs.matrix }}
       any: ${{ steps.pick.outputs.any }}
     steps:
-      # Full history: the diff base is the previous tip of the branch, which a
-      # shallow clone does not contain.
+      # Full history: the diff base is not in a shallow clone.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -61,16 +56,14 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           }
 
-          # A tag or a manual run publishes everything. A release has to leave a
-          # complete set of tags behind: skipping the image that happened not to
-          # change would mean no kloudchat-web:1.2.3 exists at all.
+          # A tag or a manual run publishes everything: a release leaves a
+          # complete set of tags.
           case "$REF" in refs/tags/*) build_all "tag build — publishing all"; exit 0 ;; esac
           if [ "$EVENT" != "push" ]; then
             build_all "$EVENT — publishing all"; exit 0
           fi
 
-          # No usable base: a new branch, the first commit, or a force push that
-          # removed the previous tip. Publish both rather than guess.
+          # No usable base: new branch, first commit, or force push.
           if [ -z "${BEFORE:-}" ] \
              || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
@@ -80,8 +73,7 @@ jobs:
           changed=$(git diff --name-only "$BEFORE" "$AFTER")
           echo "Changed files:"; echo "$changed" | sed 's/^/  /'
 
-          # A change to this workflow rebuilds everything, so the change is
-          # exercised on the path it affects.
+          # A change to this workflow rebuilds everything.
           if echo "$changed" | grep -qx '.github/workflows/release.yml'; then
             build_all "release.yml changed — publishing all"; exit 0
           fi
@@ -116,9 +108,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
-      # A fork inherits this workflow but not the secrets. Checking first turns
-      # an opaque "unauthorized: incorrect username or password" from the
-      # registry into a message that says what to configure.
+      # A fork inherits the workflow but not the secrets; say what to configure.
       - name: Check registry credentials
         env:
           USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -132,10 +122,8 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      # arm64 is emulated. Neither image compiles anything from source — the
-      # Python dependencies resolve to manylinux aarch64 wheels and the web
-      # image only runs a bundler — so the emulated leg costs minutes, not the
-      # tens of minutes a source build would.
+      # arm64 is emulated. No image compiles from source (manylinux wheels;
+      # the web bundle is built on the build host), so the leg costs minutes.
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
         with:
           platforms: arm64
@@ -153,10 +141,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
-          # `latest=auto` is what puts `latest` on a version tag, and it skips
-          # prereleases: `v1.2.3` moves `latest`, `v1.2.3-rc1` does not. The raw
-          # rule below adds it for pushes to main, so `latest` always points at
-          # whichever of the two ran most recently.
+          # `latest=auto`: a version tag moves `latest`, a prerelease does not.
+          # The raw rule adds it for pushes to main.
           flavor: |
             latest=auto
           tags: |
@@ -178,9 +164,7 @@ jobs:
           cache-from: type=gha,scope=release-${{ matrix.name }}
           cache-to: type=gha,scope=release-${{ matrix.name }},mode=max
 
-      # Docker Hub shows the repository README from the registry, not from git.
-      # Without this step the listing page stays empty however good the README
-      # in the repository is.
+      # Docker Hub shows the README from the registry, not from git.
       - name: Sync Docker Hub description
         if: startsWith(github.ref, 'refs/tags/v')
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5

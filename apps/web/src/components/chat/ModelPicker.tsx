@@ -16,19 +16,11 @@ import { effectiveModelId, useStore } from '@/store/useStore'
 import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * Both directions are billed, so both are quoted. Showing only the output rate
- * reads as the whole price and is wrong by a wide margin on long conversations.
- */
+/** Price label in the modality's own unit; text models quote both directions. */
 function rateLabel(m: ModelInfo, t: (s: string) => string): string {
-  // Each modality sells in a different unit, and the unit is what makes the
-  // number mean anything. Label everything "per image" and a video model's
-  // per-second rate reads as the price of one picture.
   if (m.modality === 'image') return t('{n} 크레딧 / 장').replace('{n}', (m.creditPerImage ?? m.creditCost).toLocaleString())
   if (m.modality === 'video') {
-    // Resolution and audio spread the rate by up to 2.7×. Showing only the
-    // minimum would set that expectation for somebody about to render 1080p
-    // with sound, so the range is printed as it is.
+    // Rate varies by resolution and sound, so the range is shown.
     const rates = Object.values(m.creditPerSecond ?? {})
     if (!rates.length) return t('가격 미상')
     const low = Math.min(...rates)
@@ -47,36 +39,21 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
     return t('무료')
   }
-  // The unit, every time: a bare "7 · 28" beside a name is a price in
-  // nothing. Credits per thousand tokens, both directions.
   return t('1k 토큰당 입력 {in} · 출력 {out} 크레딧')
     .replace('{in}', m.inputCreditCost.toLocaleString())
     .replace('{out}', m.creditCost.toLocaleString())
 }
 
-/** Rows before a search box earns its place. */
+/** Row count from which the search box is shown. */
 const SEARCHABLE_FROM = 8
 
-/**
- * Where this model's text goes, as a sentence rather than a chip.
- *
- * The one fact that decides whether a prompt may leave the building must not
- * read as one more coloured pill beside the vendor and the price tier. Under
- * the name it is read rather than scanned, in the line that already carries
- * what a turn costs.
- *
- * Still coloured — an external model must not read the same as a local one —
- * but colour on words, not a card.
- */
+/** Data-boundary label and tone for a model. */
 function boundary(m: ModelInfo, t: (s: string) => string): { text: string; tone: string } | null {
   if (m.strictLocal) return { text: 'strict-local', tone: 'text-success' }
   if (m.dataBoundary === 'self_hosted') {
     return { text: t('self-hosted · strict 미확인'), tone: 'text-warn' }
   }
-  // Amber, the same as `external` and `unknown`, because the server ranks the
-  // three together — `_BOUNDARY_RANK` in routers/sessions.py gives all of them
-  // 1. A colour that separated hybrid from external would be the screen
-  // inventing a distinction nothing else in the product makes.
+  // hybrid, external and unknown share a tone: the server ranks them together.
   if (m.dataBoundary === 'hybrid') return { text: t('외부 전환 가능'), tone: 'text-warn' }
   if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn' }
   if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn' }
@@ -94,30 +71,18 @@ export function ModelPicker({
   onBusyChange,
 }: {
   kind: SessionKind
-  /** When set, the picker reads and writes *this conversation's* model. */
+  /** When set, the picker reads and writes this session's model. */
   sessionId?: string | null
   compact?: boolean
-  /**
-   * `field` dresses the trigger as a form control so settings can pick the
-   * default for a surface out of this same menu. What a model costs and where
-   * its text goes decide the choice, and they were only ever on screen for the
-   * one-turn pick.
-   */
+  /** `field` styles the trigger as a form control (settings). */
   variant?: 'toolbar' | 'field'
-  /**
-   * The surface this picker sets the default for. A `<select>` carries its own
-   * label; a button names only the model, so the field variant has to say what
-   * it is a default for out loud.
-   */
+  /** Accessible name prefix for the field variant. */
   label?: string
-    /**
-     * Narrows the list once more. Audio and video share the `av` surface, so
-     * `kinds` alone would offer speech models where a video is being made.
-     */
+  /** Narrows `av` models to audio or video. */
   modality?: ModelInfo['modality']
-  /** On a fresh `/new/chat`, the composer creates a real session first. */
+  /** Enables Auto routing; on `/new/chat` the composer creates the session first. */
   onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
-  /** Prevents a turn from racing the session PATCH/creation behind a choice. */
+  /** Reports an in-flight selection so a turn does not race it. */
   onBusyChange?: (busy: boolean) => void
 }) {
   const t = useT()
@@ -141,12 +106,8 @@ export function ModelPicker({
     (m) => m.kinds.includes(kind) && (!modality || m.modality === modality),
   )
 
-    // Inside a conversation, whatever that conversation will actually run on —
-    // the surface default would name the wrong one on an old thread, and the
-    // wrong one again on a thread that is deferring to its agent.
-  //: Outside a conversation, an av picker asked for one modality shows the
-  //: model remembered for that mode — the settings screen has one picker for
-  //: sound and one for clips, and `modelByKind.av` can only be one of them.
+  // Inside a session, what it will run on; outside one, an av picker with a
+  // modality shows the model remembered for that mode.
   const currentId =
     !session && kind === 'av' && (modality === 'audio' || modality === 'video')
       ? avModelByMode[modality] || effectiveModelId(session, kind, agents, modelByKind)
@@ -156,16 +117,8 @@ export function ModelPicker({
     ? session?.routingMode
     : undefined
   const autoActive = autoLane === 'auto' || autoLane === 'auto_quality'
-  // Auto belongs to a conversation, so it is offered only where there is one to
-  // write it to — or a caller standing by to make one. Settings has neither,
-  // and an Auto row there would be a button that quietly does nothing.
+  // Auto belongs to a session, so it needs one or a caller that can create one.
   const canRouteAuto = kind === 'chat' && (Boolean(sessionId) || Boolean(onEnableAuto))
-    /**
-     * Before the first turn there is no conversation to write a model to, so a
-     * pick lands on the surface default and every later conversation inherits
-     * it. Correct, but not what a picker in the composer looks like it does, so
-     * the menu says which of the two is happening.
-     */
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -179,7 +132,6 @@ export function ModelPicker({
   }
 
   if (!active) {
-    // An empty picker and a broken proxy look identical otherwise.
     return (
       <span
         className={cn(
@@ -247,9 +199,7 @@ export function ModelPicker({
           })
         }}
         onPick={(id) => {
-          // Keyed off the id given, not off finding its row: the sidebar list
-          // can lag behind the URL, and a change would land on the surface
-          // default instead of the conversation.
+          // Keyed off `sessionId`, not the session row: the list can lag behind the URL.
           return persistSelection(() => {
             if (sessionId) return setSessionModel(sessionId, id)
             setModel(kind, id)
@@ -260,10 +210,7 @@ export function ModelPicker({
   )
 }
 
-/**
- * Menu body, split out so it can call `useMenuClose`: the hook reads the
- * Dropdown's context, which is only in scope inside the panel.
- */
+/** Menu body; split out so it can call `useMenuClose` inside the Dropdown context. */
 function ModelMenu({
   usable,
   active,
@@ -287,17 +234,13 @@ function ModelMenu({
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
-  /**
-   * A list past a screenful is read by searching, not scanning. Matched on
-   * the label and the id, so "gemma", "strict" and "openrouter" all find rows.
-   */
+  // Search matches label and id.
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
   const shown = needle
     ? usable.filter((m) => `${m.label} ${m.id}`.toLowerCase().includes(needle))
     : usable
-  // Insertion order, so the catalogue's own ordering still decides which vendor
-  // comes first rather than the alphabet.
+  // Vendor groups in catalogue order.
   const groups = [...shown.reduce((map, m) => {
     const vendor = m.vendor || m.provider
     map.set(vendor, [...(map.get(vendor) ?? []), m])
@@ -315,9 +258,6 @@ function ModelMenu({
       : autoRouting.qualityReason === 'no_quality_models'
         ? t('관리자가 상향할 모델을 지정하지 않았습니다.')
         : t('관리자가 Auto 품질 우선을 켜지 않았습니다.')
-  /* One row per direction, drawn the same way: what separates them is only
-     which way the same judgement may move the turn, and two rows that looked
-     unlike each other would read as two unrelated features. */
   const lanes: { mode: RoutingMode; title: string; available: boolean; blurb: string }[] = [
     {
       mode: 'auto',
@@ -403,9 +343,6 @@ function ModelMenu({
       )}
       {groups.map(([vendor, rows]) => (
         <div key={vendor}>
-          {/* Grouped by who built the model, not by routing slug. A flat list of
-              thirty names is read by scanning for a vendor anyway — "the Claude
-              one" is how the choice is actually made. */}
           {groups.length > 1 && (
             <div className="px-2.5 pt-2 pb-0.5 text-2xs font-semibold tracking-wide text-faint uppercase">
               {vendor}
@@ -420,8 +357,6 @@ function ModelMenu({
           type="button"
           onClick={() => {
             void onPick(m.id)
-            // Choosing ends the interaction: left open, the panel covers the
-            // composer and the next trigger click reads as "close".
             closeMenu()
           }}
           disabled={selectionPending}
@@ -432,11 +367,7 @@ function ModelMenu({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
-              {/* The vendor is the heading this row sits under, so the row
-                  says the model. `label` carries both for the places that
-                  have no heading to lean on — a single-vendor catalogue draws
-                  no groups, and there the name alone would not say whose it
-                  is. */}
+              {/* Under a vendor heading the row shows the bare name; `label` includes the vendor. */}
               <span className="truncate text-base font-medium">
                 {groups.length > 1 ? m.name : m.label}
               </span>
@@ -449,13 +380,6 @@ function ModelMenu({
             </span>
             <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
             <span className="mt-1 flex items-center gap-2 text-xs text-faint">
-              {/* Where the text goes and what it costs, joined rather than
-                  merely adjacent. They are the pair the choice is actually
-                  made on, and spaced apart on one line they read as two
-                  unrelated notes; the rate already spends `·` on its own two
-                  halves, so the join is a slash. The price keeps its own
-                  colour — free and not free is the difference being scanned
-                  for, and at this size a shade of grey does not carry it. */}
               <span className="flex items-center gap-1">
                 {boundaryOf && (
                   <span className={cn('flex items-center gap-1', boundaryOf.tone)}>

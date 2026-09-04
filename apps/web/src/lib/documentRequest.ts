@@ -1,15 +1,8 @@
 /**
- * Whether a sentence typed into a chat is really an order for a document.
- *
- * "협조 공문 작성해줘" answered in a chat bubble is the wrong shape: it comes
- * back as prose with no sections, no file, no 서식, and the person then
- * copies it out by hand. The report surface exists for exactly this, so the
- * chat hands the sentence over instead of answering it.
- *
- * Deliberately narrow. A document *noun* alone is not enough — "보고서 요약
- * 해줘" and "기획서 쓰는 요령 알려줘" are chat questions about a document —
- * so the sentence must also carry a writing verb, and must not be asking how,
- * why, or for a fix to something already written.
+ * Detects chat sentences that are really orders for a document or a deck, so
+ * the chat hands them to the report or slides surface. Deliberately narrow: a
+ * document noun plus a writing verb, and not a question about documents or an
+ * edit to an existing one.
  */
 
 const NOUN =
@@ -22,11 +15,7 @@ const VERB =
 const ASKING =
   /(방법|요령|팁|어떻게|왜\s|무엇|뭐야|뭔가|뭐가|차이|예시|어떤\s?(식|것|게)|how to|what is|explain)/i
 
-/**
- * Edits to a document that already exists: judged on the end of the
- * sentence, where Korean puts its verb. "녹취록 요약해서 회의록 작성해줘" is an
- * order for a document even though 요약 is in it; "이 보고서 요약해 줘" is not.
- */
+/** Edits to an existing document, judged on the sentence end where Korean puts its verb. */
 const EDITING =
   /(검토|첨삭|고쳐|고치|수정|다듬|요약|번역|평가|피드백|분석|비교|읽어|봐\s?줘|보고\s?판단|review|summari[sz]e|translate|proofread)[^가-힣A-Za-z]{0,2}(해\s?줘|해\s?주|해줄|해\s?봐|해\s?주세요|해줄래|하자|해|줘|주세요|줄래)?\s*[.?!~]*$/i
 
@@ -47,8 +36,4 @@ export function handoffSurface(text: string): 'report' | 'slides' | null {
   if (isOrder(s, DECK)) return 'slides'
   if (isOrder(s, NOUN)) return 'report'
   return null
-}
-
-export function wantsDocument(text: string): boolean {
-  return handoffSurface(text) === 'report'
 }

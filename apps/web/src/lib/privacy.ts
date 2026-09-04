@@ -1,10 +1,4 @@
-/**
- * The names the interface gives the detector's categories.
- *
- * Shared by the composer's decision dialog and the transcript: a category
- * somebody accepted under one name must not come back under another one turn
- * later.
- */
+/** Interface labels for the privacy detector's categories, shared by the composer dialog and the transcript. */
 export const FINDING_LABEL: Record<string, string> = {
   email: '이메일',
   phone: '전화번호',

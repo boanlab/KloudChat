@@ -4,14 +4,6 @@ import { Badge, Button, Field, Input } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/**
- * Who may sign up.
- *
- * Three things, each with its own consequence written next to it: the mode
- * (straight in, wait for approval, or nobody), the mail domains that are
- * welcome, and whether the address has to prove itself with a mailed link —
- * which only means something once the mail tab has a server to send from.
- */
 const MODES: { value: 'open' | 'approval' | 'closed'; label: string; note: string }[] = [
   {
     value: 'approval',
@@ -43,7 +35,7 @@ export function SignupSection({
   const [verify, setVerify] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Typing wins over a fetch that lands late. See `ProxySection`. */
+  // Typing wins over a fetch that lands late.
   const dirty = useRef(false)
 
   useEffect(() => {

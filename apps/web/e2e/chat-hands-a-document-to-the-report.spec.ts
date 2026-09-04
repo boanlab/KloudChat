@@ -1,18 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { E2E_ADMIN, signIn } from './helpers'
 
-/**
- * 챗에 「협조 공문 작성해줘」라고 쓰면 챗이 아니라 보고서가 받는다.
- *
- * 「챗에서 공문 같은 문서를 작성해줘 라고 하면 챗이 아니라 보고서 쪽으로
- * 넘겨줘」 — 챗 말풍선은 문서의 모양이 아니다. 절도, 서식도, 파일도 없다.
- * 문장은 보고서 화면의 새 대화로 넘어가고, 문서에 *대해* 묻는 문장은 챗에
- * 남는다.
- *
- * The turn itself is not awaited: what is asserted is which surface the
- * session was created on, read back through the API, not what the model
- * wrote there.
- */
+/** A document request typed in chat opens a report session; a question about documents stays in chat.
+ *  Asserted on the session kind, not the model's answer. */
 
 const KIND_OF = `async ([id, email, password]) => {
   const login = await fetch('/api/auth/login', {
@@ -40,7 +30,7 @@ test('챗에 쓴 문서 요청은 보고서 대화가 되고, 문서에 대한 �
     [KIND_OF, handed, E2E_ADMIN.email, E2E_ADMIN.password],
   )
   expect(kind, '문서 요청이 보고서로 넘어가야 합니다').toBe('report')
-  // 넘어간 문장은 그대로 그 대화의 첫 요청이다.
+  // The sentence is the new conversation's first request.
   await expect(page.getByText('총장님께 보내는 협조 공문 작성해줘').first()).toBeVisible()
 
   await page.goto('/new/chat')

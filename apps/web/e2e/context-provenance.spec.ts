@@ -1,18 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/**
- * What the turn was given, on screen where the turn happened.
- *
- * Memories, attached files and project knowledge never appear in the
- * conversation, so an answer built on half of an uploaded document looked
- * exactly like an answer built on all of it. The server now sends one quiet
- * timeline line per source, and this suite is about whether a person can read
- * them: the names of the memories without their bodies, the file that was cut
- * by name, and the memory the turn saved on its way out.
- *
- * Fully mocked — the subject is the timeline, and a paid completion must not
- * decide whether it passes.
- */
+/** Context provenance: the timeline names each memory, attachment and knowledge file a turn was given. Fully mocked. */
 
 const now = '2026-08-18T00:00:00.000Z'
 const sessionId = 'cccccccccccccccccccccccccccccccc'
@@ -46,7 +34,7 @@ const events = [
   },
   { type: 'delta', text: '요약했습니다.' },
   { type: 'step', id: 'tool-1', label: '웹 검색', status: 'done' },
-  // Last, as the server sends it: auto-memory runs after the answer is stored.
+  // Last: auto-memory runs after the answer is stored.
   {
     type: 'step',
     category: 'thinking',
@@ -181,12 +169,11 @@ test('턴이 받은 메모리·첨부·프로젝트 지식이 타임라인 한 �
   await expect(timeline).toBeVisible({ timeout: 15_000 })
   await timeline.click()
 
-  // Named, not counted: which document was cut is the whole point of the line.
+  // Named, not counted.
   await expect(page.getByText('부록.pdf 8,000자만 반영')).toBeVisible()
   await expect(page.getByText('연혁.md 분량을 넘겨 제외')).toBeVisible()
   await expect(page.getByText('메모리 2건 참고')).toBeVisible()
-  // The memories arrive as names. A body on screen would make every turn a
-  // disclosure, which is exactly what the memory drawer exists to avoid.
+  // Memory names only, never bodies.
   await expect(page.getByText('말투 · 소속')).toBeVisible()
 })
 
@@ -196,8 +183,7 @@ test('접힌 타임라인은 받은 것만 나열하다 끝나지 않는다', as
 
   const timeline = page.getByRole('button').filter({ hasText: '메모리 1건 저장' })
   await expect(timeline).toBeVisible({ timeout: 15_000 })
-  // Five steps, three named and the rest counted — otherwise the folded line
-  // spends itself on provenance and never reaches the work.
+  // Five steps: three named, the rest counted.
   await expect(timeline).toContainText('외 1개')
   await expect(timeline).toContainText('5단계')
 })

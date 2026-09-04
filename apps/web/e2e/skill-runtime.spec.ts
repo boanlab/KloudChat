@@ -1,10 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/**
- * Skill-runtime regressions use a fixed catalogue and a fake stream. The
- * affordances are the subject here; a changing starter catalogue or a paid
- * completion must not decide whether these tests pass.
- */
+/** Skill-runtime affordances, on a fixed catalogue and a fake stream. */
 
 type SkillRow = {
   id: string
@@ -175,16 +171,7 @@ async function mockSkillWorkspace(page: Page, initial = catalogue) {
   }
 }
 
-/**
- * The skill menu, open — whether or not it already was.
- *
- * Its rows carry `keepOpen`, because the point of a `menuitemcheckbox` list is
- * picking several without the menu shutting between them. This used to press
- * the trigger unconditionally, so the second `selectSkill` in a row *closed*
- * the menu that was already open and the third could not find it. The failure
- * read as "the skill menu does not open", which is the opposite of what was
- * happening.
- */
+/** The skill menu, opened only if it is not already open (its rows carry `keepOpen`). */
 async function openSkillMenu(page: Page) {
   const menu = page.getByRole('menu')
   if ((await menu.count()) === 0) {
@@ -212,9 +199,7 @@ test('입력창은 스킬을 세 개까지만 고르고 네 번째 이유를 설
   const menu = await openSkillMenu(page)
   const fourth = menu.getByRole('menuitemcheckbox').filter({ hasText: '독자별 리스크 검토' })
   await expect(fourth).toBeDisabled()
-  // On hover, not in the row. A sentence in the hint slot pushed the skill's
-  // own name out of the width it had; `MenuItem` moved every disabled reason
-  // to `title` and this assertion stayed where it was.
+  // Disabled reasons live in `title`.
   await expect(fourth).toHaveAttribute('title', '최대 3개까지 선택할 수 있습니다.')
   await expect(page.getByRole('button', { name: / 제거$/ })).toHaveCount(3)
 })
@@ -520,9 +505,7 @@ test('422로 거절된 턴은 입력 상태를 복원하고 재시도해도 한 
     sessions.splice(0, sessions.length, session)
     await route.fulfill({ status: 201, json: session })
   })
-  // SessionPage tries to hydrate a newly-created empty session. This test owns
-  // the transcript through the list response, so fail that extra read locally
-  // instead of letting it escape to a backend.
+  // SessionPage hydrates the new session; fail that read locally rather than hit a backend.
   await page.route(new RegExp(`/api/sessions/${fakeId}$`), (route) =>
     route.fulfill({ status: 404, json: { detail: 'not_found' } }),
   )
@@ -611,8 +594,7 @@ test('422로 거절된 턴은 입력 상태를 복원하고 재시도해도 한 
     composer.press('Enter'),
   ])
 
-  // A 422 is pre-write: the exact draft is available to fix or retry, while
-  // neither half of the optimistic turn remains in the transcript.
+  // A 422 is pre-write: the draft stays in the composer and the optimistic turn is gone.
   await expect(composer).toHaveValue(prompt)
   await expect(page.getByRole('button', { name: '의사결정 메모 제거' })).toBeVisible()
   await expect(page.getByRole('button', { name: `${fileName} 제거` })).toBeVisible()

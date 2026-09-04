@@ -1,21 +1,6 @@
-"""Speech to text, for the composer's microphone.
+"""Speech to text: local Whisper first, chat-model fallback via LiteLLM when `stt_or_model` is set.
 
-**Not `webkitSpeechRecognition`**, which needs no backend but streams the
-microphone to a third party. Audio goes to the same Whisper backend the YouTube
-connector uses.
-
-**Two paths, not equivalent.** Local Whisper keeps the audio inside the
-cluster. Where vLLM cannot serve Whisper — the aarch64 build cannot — STT is
-delegated to OpenRouter and the audio leaves the deployment. That is a separate
-setting (`stt_or_model`) an operator can empty out, so transcription disappears
-on those architectures rather than silently going off-premises.
-
-Local is tried first and, when it fails, the other path is taken *if the
-operator has opened it*. An ARM deployment carrying the same configuration as
-an x86 one has an `stt` address pointing at something that cannot answer, and
-treating a configured address as a working one turned that into a hard failure
-for every recording. An empty `stt_or_model` still means no, and then the local
-failure stands where it is.
+Audio leaves the deployment only on the fallback path; an empty `stt_or_model` disables it.
 """
 
 from __future__ import annotations
@@ -30,16 +15,14 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: A dictated note, not a lecture recording — a few minutes of speech on a slow
-#: GPU queue.
 _TIMEOUT = 180.0
 
-#: Refused before upload. A phone-quality minute is well under it.
+#: Checked before upload.
 MAX_BYTES = 25 * 1024 * 1024
 
 
 class TranscribeError(RuntimeError):
-    """The message is written for the person who pressed the button."""
+    """Transcription failure with a user-facing message."""
 
 
 async def available() -> bool:
@@ -49,17 +32,12 @@ async def available() -> bool:
 async def transcribe_with_duration(
     data: bytes, filename: str = "speech.webm", language: str | None = None, prompt: str = ""
 ) -> tuple[str, int]:
-    """`(text, seconds)` — the transcript and how much audio the shim reported.
-
-    The seconds are what the usage ledger records for a model that costs no
-    credits. Zero when the backend did not say.
-    """
+    """Transcript plus the audio seconds the backend reported (0 when unknown)."""
     text = await transcribe(data, filename, language, prompt)
     return text, int(_last_seconds)
 
 
-#: Seconds the shim reported for the last local transcription. Whisper's
-#: `usage: {"type": "duration", "seconds": n}` is the only measure of its work.
+#: Seconds reported by the last local transcription.
 _last_seconds = 0
 
 
@@ -69,12 +47,10 @@ async def transcribe(
     language: str | None = None,
     prompt: str = "",
 ) -> str:
-    """Audio bytes → text. Raises `TranscribeError` with something readable.
+    """Audio bytes to text; raises `TranscribeError`.
 
-    `language` is an ISO code to pin (`ko`, `en`) or `None` to let the model
-    hear which of `SPOKEN` it is. `prompt` is what the conversation was about
-    — the last thing said back — which Whisper reads as a hint for vocabulary
-    and spelling: 「some tennis」 heard in a chat about tennis stays tennis.
+    `language`: ISO code to pin, or None to auto-detect within `SPOKEN`.
+    `prompt`: recent conversation text, passed to Whisper as a vocabulary hint.
     """
     if not await available():
         raise TranscribeError("음성 인식 백엔드가 설정되지 않았습니다.")
@@ -90,43 +66,23 @@ async def transcribe(
     try:
         return await _transcribe_locally(stt_url, data, filename, language, prompt)
     except TranscribeError:
-        # Local first, and local failing is not the end of it.
-        #
-        # vLLM serves Whisper on amd64 and does not on aarch64, so an ARM
-        # deployment that carries the same configuration as an x86 one has an
-        # `stt` URL pointing at something that cannot answer. Before this, that
-        # was a hard failure: the address was set, so the address was used, and
-        # every recording came back 받아쓰지 못했습니다.
-        #
-        # Falling through is not a privacy decision made here. Setting
-        # `stt_or_model` *is* that decision — an operator who does not want
-        # audio leaving the cluster leaves it empty, and then there is nothing
-        # to fall through to and the local failure stands.
+        # A configured `stt` URL may not be able to answer (no Whisper on aarch64).
         if not settings.stt_or_model:
             raise
         log.warning("local whisper failed; falling through to %s", settings.stt_or_model)
         return await _transcribe_via_openrouter(data, filename, language)
 
 
-#: The languages people here dictate in. Whisper is left to hear which one it
-#: is; a guess outside this pair is the failure mode the old pin guarded
-#: against — a short Korean clip coming back as confident nonsense in another
-#: language — and is retried pinned to Korean.
+#: Expected languages; a detection outside this pair is retried pinned to `_HOME`.
 SPOKEN = ("ko", "en")
 
-#: What the retry is pinned to when the guess is neither.
 _HOME = "ko"
 
 
 async def _transcribe_locally(
     stt_url: str, data: bytes, filename: str, language: str | None = None, prompt: str = ""
 ) -> str:
-    """Whisper inside the cluster, through vLLM's OpenAI-shaped endpoint.
-
-    `language` pins the pass; `None` lets Whisper detect it, so that an
-    English sentence spoken to the 영어회화 튜터 is written in English and a
-    Korean one in Korean, and only a guess outside `SPOKEN` is redone pinned.
-    """
+    """Whisper via vLLM's OpenAI-shaped endpoint; `None` language auto-detects."""
     body = await _whisper(stt_url, data, filename, language, prompt)
     heard = str(body.get("language") or "").lower()[:2]
     if language is None and heard and heard not in SPOKEN:
@@ -149,7 +105,7 @@ async def _transcribe_locally(
 async def _whisper(
     stt_url: str, data: bytes, filename: str, language: str | None, prompt: str = ""
 ) -> dict:
-    """One pass; `verbose_json` so the answer says which language it heard."""
+    """One Whisper pass; `verbose_json` so the response names the detected language."""
     url = f"{stt_url.rstrip('/')}/v1/audio/transcriptions"
     form: dict[str, str] = {"response_format": "verbose_json"}
     if language:
@@ -174,13 +130,10 @@ async def _whisper(
     return body if isinstance(body, dict) else {}
 
 
-#: What the model must emit for silence. A sentinel rather than "" because an
-#: empty completion is indistinguishable from a dropped response.
+#: Sentinel the chat-model fallback must emit for silence.
 _NO_SPEECH = "NO_SPEECH"
 
-#: Audio MIME by extension, for the data: URI the chat/completions path needs.
-#: Anything unrecognised is declared webm rather than refused — the model sniffs
-#: the container anyway.
+#: Audio MIME by extension; unknown extensions are sent as webm.
 _AUDIO_MIME = {
     "wav": "audio/wav",
     "mp3": "audio/mpeg",
@@ -191,7 +144,6 @@ _AUDIO_MIME = {
 }
 
 
-#: How the chat-model fallback is told what it is listening to.
 _TONGUE = {"ko": "한국어입니다.", "en": "영어입니다."}
 _EITHER = "한국어 또는 영어이며, 들린 언어 그대로 적으세요."
 
@@ -199,13 +151,9 @@ _EITHER = "한국어 또는 영어이며, 들린 언어 그대로 적으세요."
 async def _transcribe_via_openrouter(
     data: bytes, filename: str, language: str | None = None
 ) -> str:
-    """Transcribe through LiteLLM when no local Whisper exists.
+    """Transcribe via LiteLLM `chat/completions` with an `input_audio` part.
 
-    OpenRouter serves neither `/v1/audio/transcriptions` nor a Whisper model, so
-    this goes through `chat/completions` with an `input_audio` part. The prompt
-    pins the job down: an audio-capable chat model will otherwise summarise or
-    answer the clip, and a summary returned as a transcript is indistinguishable
-    from one downstream.
+    The prompt forbids summarising: an audio-capable chat model otherwise answers the clip.
     """
     ext = (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
     b64 = base64.b64encode(data).decode()
@@ -235,20 +183,9 @@ async def _transcribe_via_openrouter(
             }
         ],
         "temperature": 0,
-        # Mistral rejects temperature=0 unless top_p is 1 (code 3054). Greedy
-        # is what a transcript wants, so both are pinned.
+        # Mistral rejects temperature=0 unless top_p is 1.
         "top_p": 1,
     }
-    # Resolved the way every other model call resolves it.
-    #
-    # This read `settings.litellm_base_url` — the raw environment variable —
-    # and nothing sets that. Everywhere else the address comes from
-    # `settings_store.litellm_config`, which takes the operator's setting
-    # first, derives one from the backend address when there is none, and only
-    # then falls back to the environment. So the whole deployment could be
-    # talking to LiteLLM perfectly well while this one path built
-    # `/v1/chat/completions` with nothing in front of it and reported the
-    # backend unreachable.
     base, key = await settings_store.litellm_config()
     if not base:
         raise TranscribeError("음성 인식에 쓸 모델 주소가 설정되지 않았습니다.")
@@ -268,9 +205,6 @@ async def _transcribe_via_openrouter(
         text = ((choices[0].get("message") or {}).get("content") or "").strip()
     except (ValueError, AttributeError, IndexError):
         text = ""
-    # A chat model asked to transcribe silence describes it instead, and the
-    # description would land in the composer as words nobody said. The sentinel
-    # makes that case detectable.
     if not text or text.strip(" .\"'") == _NO_SPEECH:
         raise TranscribeError("들린 말이 없습니다.")
     return text

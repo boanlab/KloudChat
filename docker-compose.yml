@@ -1,25 +1,14 @@
-# KloudChat — web, API, and database.
-#
-# Models and tools are not here. They live in KloudChat-LLM, reached
-# through one gateway URL that an administrator sets under Settings → System →
-# Integrations. When that backend is down, sign-in, history, workspace and
-# settings keep working; only model calls and tools fail, and they say so.
+# KloudChat — web, API, printer and database, from the published images.
 #
 #   docker compose up -d
 #
-# This file runs the published images. Nothing here builds: a deployment pulls
-# `kloudchat-api` and `kloudchat-web` from Docker Hub, which is what the release
-# workflow puts there. To build from this checkout instead — because you are
-# changing the source, or on an architecture with no published tag — overlay
-# docker-compose.build.yml.
+# Models and tools live in KloudChat-LLM, reached through one gateway URL
+# (BACKEND_BASE_URL in .env, or the address saved under Settings → System →
+# Integrations). With that backend down, sign-in, history, workspace and
+# settings keep working; model calls and tools report "not connected".
 #
-# `latest` moves with every push to main, so it points at whatever was merged
-# most recently. In production, replace it with a version tag here — the tags
-# are immutable, and an upgrade is then a one-line edit with a record in git.
-#
-# Service names are short because the project name is already the prefix.
-# Containers are named explicitly so they read the same way beside the
-# KloudChat-LLM stack on the same host.
+# `latest` moves with every push to main. Pin a version tag in production.
+# To build from this checkout, overlay docker-compose.build.yml.
 name: kloudchat
 
 services:
@@ -32,8 +21,7 @@ services:
       POSTGRES_PASSWORD: ${KCHAT_DB_PASSWORD:-kchat}
       POSTGRES_DB: kchat
     ports:
-      # Published on 5433: 5432 is commonly already taken by a vector database
-      # on the same host.
+      # 5433: 5432 is commonly taken by a vector database on the same host.
       - "5433:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
@@ -43,9 +31,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Docker creates bind-mount directories owned by root, and the API runs as
-  # uid 1000. Without this, uploads fail with "permission denied" — and only on
-  # a first boot, which is the hardest time to recognise the cause.
+  # Bind mounts are created root-owned; the API runs as uid 1000.
   init:
     container_name: kloudchat-init
     image: alpine:3.20
@@ -73,83 +59,65 @@ services:
       JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
       SIGNUP_MODE: ${KCHAT_SIGNUP_MODE:-approval}
       DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.6-35b}
-      # Per surface. Empty falls back to DEFAULT_CHAT_MODEL, which is what
-      # every install had before these existed.
+      # Per-surface defaults. Empty falls back to DEFAULT_CHAT_MODEL.
       DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-}
       DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-}
       DEFAULT_IMAGE_MODEL: ${KCHAT_DEFAULT_IMAGE_MODEL:-google/gemini-2.5-flash-image}
       DEFAULT_AUDIO_MODEL: ${KCHAT_DEFAULT_AUDIO_MODEL:-openai/gpt-audio-mini}
       DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
-      # Names conversations and extracts memories. Both are best effort, so a
-      # name the gateway does not serve falls back to the session's own model
-      # rather than failing the turn.
+      # Conversation titles and memory extraction. A name the gateway does not
+      # serve falls back to the session's own model.
       TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.6-35b}
-      # Applied only when the database holds no accounts. Blank means the first
-      # account to sign up becomes the administrator instead.
+      # Applied only when the database holds no accounts. Blank: the first
+      # signup becomes the administrator.
       BOOTSTRAP_ADMIN_EMAIL: ${KCHAT_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${KCHAT_ADMIN_PASSWORD:-}
-      # 1 credit = $0.00001, so 1,000,000 ≈ $10/month. See app/core/config.py.
+      # 1 credit = $0.00001; 1,000,000 ≈ $10/month.
       DEFAULT_MONTHLY_CREDITS: ${KCHAT_DEFAULT_MONTHLY_CREDITS:-1000000}
       COOKIE_SECURE: ${KCHAT_COOKIE_SECURE:-false}
       CORS_ORIGINS: ${KCHAT_CORS_ORIGINS:-["http://localhost:5173"]}
-      # The master key stays in this container; nothing routes it to a browser.
-      # A value saved in the admin screen is stored in the database and wins
-      # over this default, without a restart.
+      # The master key never leaves this container. A value saved in the admin
+      # screen is stored in the database and wins over this without a restart.
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
-      # Tool endpoints are administrator settings. This is a bootstrap value
-      # for unattended deployments; a tool with no URL is simply absent from
-      # the tool list rather than broken.
+      # Bootstrap value; the admin screen overrides it. A tool with no URL is
+      # absent from the tool list rather than broken.
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-}
-      # The printer below. Blank turns it off, and every PDF then falls back to
-      # the structural renderer — a real file, without the 서식's own layout.
+      # Blank disables the printer; PDFs then come from the structural renderer.
       PRINT_BASE_URL: ${KCHAT_PRINT_BASE_URL:-http://kloudchat-print:8200}
       FILE_STORAGE_DIR: /srv/data/files
-      # The date the model is told on every turn. Timestamps stay UTC.
+      # Only the date the model is told each turn. Timestamps stay UTC.
       TIMEZONE: ${KCHAT_TIMEZONE:-Asia/Seoul}
-      # Path to a mounted GeoLite2 City .mmdb. Empty means no region lookup —
-      # never a network service. See docs/configuration.md.
+      # Path to a mounted GeoLite2 City .mmdb. Empty: no region lookup.
       GEOIP_DATABASE: ${KCHAT_GEOIP_DATABASE:-}
-    # `default` for everything it already talks to — the database, the model
-    # gateway, the internet. `printer` as well, because that network has no way
-    # out and the printer lives on it alone.
+    # `default` reaches the database, the gateway and the internet; `printer`
+    # is the only way to the print service.
+    #
+    # KloudChat-LLM's docker network is not joined, even on a shared host: the
+    # backend is reached by address through its gateway port (BACKEND_BASE_URL)
+    # so this stack deploys the same way on any machine. On a shared host use
+    # host.docker.internal rather than a public domain — a TLS proxy in front
+    # of one commonly times out long document sections at 60 seconds.
     networks:
       - default
       - printer
-      # The LLM cluster's own network, when it runs on this host. One hop to
-      # LiteLLM instead of a round trip through the public gateway — whose
-      # 60-second proxy timeout was returning 504 on long document sections,
-      # and the section then arrived empty with nothing saying so.
-      - llm
     volumes:
-      # Uploaded originals. Extracted text lives in the database; only blobs
-      # are here.
+      # Uploaded originals. Extracted text lives in the database.
       - ./data/files:/srv/data/files
       # MCP stdio server scripts, spawned by the connector runtime.
       - ./mcp:/srv/mcp:ro
-      # uv's cache for PEP 723 script dependencies, so a connector does not
-      # reinstall its tree on every spawn.
+      # uv's cache for PEP 723 script dependencies.
       - ./data/uv-cache:/srv/data/uv-cache
-    # Migrations on boot. This assumes a single instance — with multiple
-    # replicas, move `alembic upgrade head` into its own job so that two
-    # containers do not race the same migration.
+    # Migrations on boot assume a single instance; with replicas, run
+    # `alembic upgrade head` as its own job.
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8100"
 
-  # Turns a finished HTML document into a PDF that looks like the screen.
-  #
-  # A document written into a 서식 is one self-contained HTML file carrying that
-  # 서식's own stylesheet, `@page` rule and print rules. Until this service
-  # existed nothing in the stack could read CSS, so the exported PDF was drawn a
-  # second time by reportlab and agreed with the screen only where somebody had
-  # made it agree. Now the file and the screen are the same document.
-  #
-  # It opens markup a model wrote. Sanitised and script-free, and still the
-  # least trusted input here, so it is kept away from everything: no published
-  # port, no database, no secrets in its environment, and a network with no way
-  # out — `internal: true` below. Inside the browser every request is aborted
-  # as well (see apps/print/main.py); this is the second wall, not the first.
+  # Headless Chromium: finished HTML in, PDF out. It opens model-authored
+  # markup, so it gets no published port, no database, no secrets, and a
+  # network with no route out; apps/print/main.py also aborts every request
+  # inside the browser.
   print:
     container_name: kloudchat-print
     image: boanlab/kloudchat-print:latest
@@ -167,22 +135,14 @@ services:
       - api
     environment:
       KCHAT_API_URL: ${KCHAT_API_URL:-http://kloudchat-api:8100}
-      # Which hops may name the client in X-Forwarded-For. Narrow this to the
-      # edge proxy's own address wherever the web port is reachable by anyone
-      # else — see docs/configuration.md.
+      # Hops allowed to name the client in X-Forwarded-For. Narrow to the edge
+      # proxy's address wherever the web port is reachable by anyone else.
       KCHAT_TRUSTED_PROXIES: ${KCHAT_TRUSTED_PROXIES:-set_real_ip_from 10.0.0.0/8; set_real_ip_from 172.16.0.0/12; set_real_ip_from 192.168.0.0/16; set_real_ip_from 127.0.0.0/8; set_real_ip_from ::1/128; set_real_ip_from fc00::/7;}
     ports:
       - "${KCHAT_WEB_PORT:-5173}:80"
 
 networks:
-  # Everything that has a reason to reach the world.
   default:
-  # The printer and the one caller it has. `internal` means compose attaches no
-  # gateway, so a process on this network cannot open a connection outside it
-  # even if it wants to — which is the point of putting a browser here.
+  # `internal`: no gateway, so nothing on this network can reach outside it.
   printer:
     internal: true
-  # Owned by the kloudchat-llm compose project; joined, not created, here.
-  llm:
-    external: true
-    name: kloudchat-llm_kloudchat

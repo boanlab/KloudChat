@@ -12,13 +12,7 @@ import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * The craft rules the API knows, and what to call them on screen.
- *
- * Mirrors `CRAFT` in `apps/api/app/services/design.py`; a key that is not there
- * is dropped on save rather than stored, so this list going stale costs a
- * checkbox that does nothing, not a broken document.
- */
+/** Craft rules; keys must match `CRAFT` in the API's design service, unknown keys are dropped on save. */
 const CRAFT: { key: string; label: string; hint: string }[] = [
   {
     key: 'restraint',
@@ -39,7 +33,7 @@ const FONTS: { key: DesignTokens['font']; label: string }[] = [
 
 const BODY_MAX = 400
 
-/** A blank look, using the same defaults the API falls back to. */
+/** Blank design with the API's default tokens. */
 const blank = (): Partial<DesignRow> => ({
   name: '',
   description: '',
@@ -70,9 +64,7 @@ function Swatch({
           onChange={(e) => onChange(e.target.value)}
           className="h-9 w-12 shrink-0 cursor-pointer rounded-control border border-line bg-panel p-1"
         />
-        {/* The picker and the code are two views of one value. The code field
-            carries its own name because a `<label>` binds to the first control
-            inside it, which is the picker — leaving this one unaddressable. */}
+        {/* Own label: the enclosing `<label>` binds to the picker. */}
         <Input
           aria-label={t('{label} 색상 코드').replace('{label}', t(label))}
           value={value}
@@ -83,24 +75,7 @@ function Swatch({
   )
 }
 
-/**
- * Reading a design system out of something that already exists.
- *
- * The four colours and the paragraph of style rules are the part nobody types.
- * The material is usually on hand — the 공문 template everything is filed on,
- * last year's report, a page on the department site.
- *
- * What comes back opens the editor rather than becoming a row: it is one
- * model's reading of a document, and only its owner can say whether it read it
- * right.
- */
-/**
- * Refusals this form knows how to say out loud.
- *
- * The API answers 4xx with a stable code, which `errorMessage` shows as-is —
- * fine for a log, useless on a screen. The service's own failures already come
- * back as sentences and fall through untouched.
- */
+/** User-facing text for the extract endpoint's 4xx codes; other errors fall through as-is. */
 const REFUSAL: Record<string, string> = {
   file_unreadable: '이 파일에서는 글자를 읽지 못했습니다.',
   url_unreadable: '그 주소에서 내용을 읽지 못했습니다.',
@@ -201,14 +176,7 @@ function ExtractForm({
   )
 }
 
-/**
- * The looks this account can put on a project.
- *
- * One screen for both halves of a design system: the four tokens the exporters
- * draw with, and the short block of prose the model is given. They are edited
- * together because they are one decision — and kept apart in storage because
- * only one of them costs anything per turn.
- */
+/** Design systems this account can attach to a project: tokens plus style prose. */
 export function DesignsSection() {
   const t = useT()
   const isAdmin = useStore((s) => s.user?.role === 'admin')
@@ -219,20 +187,16 @@ export function DesignsSection() {
   const pick = useBulkSelect(rows.filter((r) => r.mine))
   const [draft, setDraft] = useState<Partial<DesignRow> | null>(null)
   const [extracting, setExtracting] = useState(false)
-  //: What the draft was read out of, shown above the form so a person editing
-  //: it knows which fields somebody else's document is responsible for.
+  // Source the draft was extracted from.
   const [readFrom, setReadFrom] = useState('')
   const [saving, setSaving] = useState(false)
-  //: Deleting a look also strips it off every project wearing it. Nothing on
-  //: the row says so and nothing puts it back, so it is asked first.
   const [confirming, setConfirming] = useState<DesignRow | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = async () => setRows(await designsApi.list().catch(() => []))
   useEffect(() => {
     void load()
-    // The projects are what deleting a look actually costs, and this screen is
-    // reachable without ever having opened the one that fetches them.
+    // Projects are needed for the delete confirmation count.
     void loadWorkspace()
   }, [loadWorkspace])
 
@@ -252,8 +216,7 @@ export function DesignsSection() {
       setRows((r) => (draft.id ? r.map((x) => (x.id === row.id ? row : x)) : [...r, row]))
       setDraft(null)
       setReadFrom('')
-      // Projects read this list from the store, and an edit made here should
-      // show up on the project screen without a reload.
+      // Projects read designs from the store.
       void loadWorkspace()
     } catch (e) {
       setError(errorMessage(e, t('저장하지 못했습니다.')))
@@ -262,11 +225,7 @@ export function DesignsSection() {
     }
   }
 
-  /**
-   * The line under the question. A look is easy to say yes to losing; the
-   * projects that were wearing it are the part you cannot see from this list,
-   * so they are counted before the answer is given.
-   */
+  /** Delete confirmation text, counting projects that use the design. */
   const wearing = (row: DesignRow | null) => {
     const n = row ? projects.filter((p) => p.designSystemId === row.id).length : 0
     return n === 0
@@ -446,7 +405,6 @@ export function DesignsSection() {
             key={row.id}
             className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
           >
-            {/* Mine only: a shared design belongs to whoever made it. */}
             {row.mine ? (
               <PickBox
                 checked={pick.picked.has(row.id)}

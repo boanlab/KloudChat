@@ -57,16 +57,6 @@ import type { ReportArtifact, ReportSection, Source } from '@/types'
 import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
 
-/**
- * The bar, in the order a word processor puts things.
- *
- * The first cut was a row of ghost buttons with a `서체` dropdown that hid the
- * sizes inside it, and it read as a row of chips rather than as a toolbar —
- * there was no way to see what the text under the caret already was, which is
- * half of what a formatting bar is for. This one shows state: the face and the
- * size are fields carrying the current value, the toggles light up, and the
- * groups are separated the way every editor separates them.
- */
 const FONTS = [
   { label: '문서 기본', value: '' },
   { label: '바탕', value: "'Nanum Myeongjo', 'Batang', serif" },
@@ -75,16 +65,13 @@ const FONTS = [
   { label: '고정폭', value: "'D2Coding', 'Consolas', monospace" },
 ]
 const SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36']
-//: 절 제목은 감싸개가 그리므로 본문 안에서 쓸 수 있는 단계는 그 아래 둘이다.
-//: `StarterKit` 이 h3·h4 만 여는 것과 같은 이유이고, 서버의 허용 태그도 그
-//: 둘까지다 — 셋이 어긋나면 눌러서 만든 제목이 저장할 때 사라진다.
+// h3/h4 only: matches StarterKit's levels and the server's allowed tags.
 const HEADINGS = [
   { label: '본문', value: 0 },
   { label: '소제목', value: 3 },
   { label: '작은 제목', value: 4 },
 ] as const
-//: 줄간격. 배수로만 둔다 — `pt` 로 주면 글자 크기를 바꿀 때마다 다시 잡아야
-//: 하고, 서식이 정한 본문 줄간격과도 어긋난다.
+// Multipliers, not pt, so they track font size.
 const LINE_HEIGHTS = ['1.3', '1.5', '1.7', '2.0']
 const ALIGNMENTS = [
   { value: 'left', icon: AlignLeft, label: '왼쪽 맞춤' },
@@ -93,15 +80,11 @@ const ALIGNMENTS = [
   { value: 'justify', icon: AlignJustify, label: '양쪽 맞춤' },
 ] as const
 
-/** A group boundary. Every editor draws one; without them this is a row of chips. */
 function Sep() {
   return <span className="mx-1.5 h-5 w-px shrink-0 bg-line" />
 }
 
-/**
- * One toggle. Pressed state is the whole point — a bar that cannot tell you
- * the caret is already inside bold text is a bar you have to guess with.
- */
+/** Toolbar toggle with pressed state. */
 function Tool({
   on,
   label,
@@ -118,9 +101,7 @@ function Tool({
   return (
     <button
       type="button"
-      // `onMouseDown` rather than `onClick`: a click steals focus from the
-      // document first, and a formatting command with no selection under it
-      // does nothing. Preventing the default keeps the caret where it was.
+      // `onMouseDown` with preventDefault keeps the caret in the document.
       onMouseDown={(e) => {
         e.preventDefault()
         if (!disabled) onClick()
@@ -140,15 +121,7 @@ function Tool({
   )
 }
 
-/**
- * Re-renders the bar whenever the caret moves or the document changes.
- *
- * Tiptap 3 stopped re-rendering React on every transaction — a document with
- * six editors in it cannot afford that — so a component that reads
- * `isActive()` has to ask to be told. Without this the bold button lights up
- * once and then lies for the rest of the session, which is worse than not
- * showing state at all.
- */
+/** Re-renders on every selection change and transaction; Tiptap 3 does not re-render React by itself. */
 function useEditorTick(editor: Editor | null) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -167,7 +140,6 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   const t = useT()
   useEditorTick(editor)
   const off = !editor
-  //: What the caret is sitting in, so the fields show it rather than a blank.
   const face = (editor?.getAttributes('textStyle').fontFamily as string) ?? ''
   const size = String(
     (editor?.getAttributes('textStyle').fontSize as string) ?? '',
@@ -183,9 +155,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      // Read to a data URI rather than uploaded. A report is exported and
-      // mailed; a picture that lives at a URL is a picture that is missing by
-      // the time somebody opens the attachment.
+      // Embedded as a data URI so the exported file carries it.
       const reader = new FileReader()
       reader.onload = () => editor.chain().focus().setImage({ src: String(reader.result) }).run()
       reader.readAsDataURL(file)
@@ -200,8 +170,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   return (
     <div className={cn(
       'flex flex-nowrap items-center gap-0.5 overflow-x-auto',
-      // 리본 안에 들어가면 리본이 이미 그 칸을 그리고 있다. 자기 테두리와
-      // 배경을 한 번 더 그리면 한 줄짜리 도구가 두 줄처럼 보인다.
+      // Inside the ribbon the ribbon draws the chrome.
       bare ? 'px-0 py-0' : 'border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5',
     )}>
       <select
@@ -321,9 +290,6 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
 
       <Sep />
 
-      {/* 색은 고르는 것이라 토글이 아니다. `<input type=color>` 은 브라우저가
-          쓰는 사람의 것을 띄워 주고, 지우는 길은 그 옆에 따로 둔다 — 색을
-          한번 칠하면 되돌릴 방법이 없는 편집기가 되지 않도록. */}
       <label
         title={t('글자색')}
         className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
@@ -422,8 +388,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
       >
         <ListOrdered size={15} />
       </Tool>
-      {/* 들여쓰기는 목록의 수준이다. 문단을 밀어 넣는 것과 달리 이쪽은
-          스키마가 아는 구조라, 저장하고 내보내도 중첩 목록으로 살아남는다. */}
+      {/* Indent is list nesting, which survives save and export. */}
       <Tool
         label={t('한 단계 들여쓰기')}
         disabled={off || !editor?.can().sinkListItem('listItem')}
@@ -458,8 +423,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
       >
         <TableIcon size={15} />
       </Tool>
-      {/* 표 편집 명령은 표 안에 커서가 있을 때만 뜬다. 늘 떠 있으면 열 지우기
-          같은 것이 문서 전체에 대한 명령처럼 보인다. */}
+      {/* Table commands appear only with the caret inside a table. */}
       {editor?.isActive('table') && (
         <>
           <Tool
@@ -573,19 +537,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
   )
 }
 
-/**
- * The paper, and a line where each page is about to end.
- *
- * One continuous sheet rather than a stack of them. Separate sheets were the
- * earlier answer and they were a claim the screen could not back — see
- * `usePagination`. What survives is the part that was always true: the width is
- * A4, the margins are the template's, and the text will break somewhere near
- * each of these lines.
- *
- * Dashed and labelled `n쪽 즈음` for the same reason. A solid rule with "2"
- * beside it reads as a fact; this reads as an estimate, which is what it is
- * until a real layout engine lays the document out.
- */
+/** Dashed estimated page-break guides over the continuous sheet. */
 function PageGuides({ breaks }: { breaks: number[] }) {
   const t = useT()
   if (!breaks.length) return null
@@ -621,14 +573,10 @@ const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
   margins: { top: 18, right: 16, bottom: 20, left: 16 },
 }
 
-// DocumentShell is a shadow root, so application-global CSS cannot style the
-// editor inside it. Keep the page-break guide beside the template stylesheet
-// that is actually installed into that root.
-/** The one element every paginated page is inside — and so the scope every
- *  rule Paged.js publishes gets confined to. Shared with `index.css`, which
- *  styles the stack, and with the pagination effect, which does the confining. */
+/** Class on the element every paginated page is inside; the scope for Paged.js rules. Shared with `index.css`. */
 const PAGED_SCOPE = 'paged-report-preview'
 
+// Installed into the DocumentShell shadow root, where global CSS cannot reach.
 const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
   .ProseMirror .page-break::after { content: '쪽 나누기'; position: absolute; top: -9px; right: 8px; padding: 0 6px; background: white; color: #777; font-size: 11px; line-height: 18px; }
@@ -653,8 +601,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     setBusy(true)
     setFailure(null)
     target.replaceChildren()
-    // Paged.js authors an actual A4 canvas. It must keep that geometry while
-    // being measured; the viewport scales the finished stack as one object.
+    // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
     const sheet = URL.createObjectURL(new Blob([`
       @page {
@@ -677,9 +624,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       figure, img, pre, blockquote { break-inside: avoid; }
       [data-page-break="true"] { break-before: page; height: 0; }
     `], { type: 'text/css' }))
-    // Armed before Paged.js runs, because Paged.js publishes the 서식's
-    // stylesheet to `document.head` and a 서식 styles `body`. See
-    // `scopePagedStyles` for what that did to the app around this panel.
+    // Armed before Paged.js runs, which appends the template stylesheet to `document.head`.
     const unscope = scopePagedStyles(`.${PAGED_SCOPE}`)
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeoutMs = (window as Window & { __KLOUDCHAT_PAGINATION_TIMEOUT_MS__?: number })
@@ -714,8 +659,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
         URL.revokeObjectURL(sheet)
       })
     return () => { live = false; if (timer) clearTimeout(timer); URL.revokeObjectURL(sheet); unscope(); target.replaceChildren() }
-  // `useT` returns a new function per render; depending on it would restart
-  // pagination after `setBusy`, forever. HTML and CSS are the actual inputs.
+  // `t` is a new function per render; depending on it would loop.
   }, [html, css, settings, attempt])
 
   useEffect(() => {
@@ -788,19 +732,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
   )
 }
 
-/**
- * A report as a document somebody can type in.
- *
- * The alternative this replaces was a choice made once, at generation: pick a
- * 서식 and the result is an HTML artifact nothing can edit; pick none and the
- * result is prose with no shape. Neither could become the other, and a
- * document you cannot revise is not a document, it is a printout.
- *
- * Sections stay the stored unit. A section is already what the rewriter
- * rewrites, what the fact-checker checks and what the wrapper draws a heading
- * for; making the page one editable blob would have thrown all three away for
- * a cosmetic gain.
- */
+/** Page-view editor for a report; sections stay the stored unit. */
 export function DocumentEditor({
   report,
   templateId,
@@ -814,7 +746,7 @@ export function DocumentEditor({
   toolbarSlot,
 }: {
   report: ReportArtifact
-  /** Which 서식 the document wears. Empty renders the plain document seed. */
+  /** Design template; empty renders the plain document seed. */
   templateId: string
   tokens?: DesignTokens | null
   editable: boolean
@@ -822,26 +754,14 @@ export function DocumentEditor({
   settingsOpen: boolean
   onLayoutMode?: (mode: 'pages' | 'edit') => void
   onWebView?: () => void
-  /**
-   * Called with the edited sections whenever anything changes, and with the
-   * document's title when that is what changed.
-   */
+  /** Called with the edited sections on every change; title, page settings and comments when those changed. */
   onDirty?: (
     sections: ReportSection[],
     title?: string,
     pageSettings?: ReportArtifact['pageSettings'],
     reviewComments?: ReportArtifact['reviewComments'],
   ) => void
-  /**
-   * Where the formatting bar should live.
-   *
-   * 서식 줄은 리본의 홈 칸에 있어야 한다. Left here it became a fourth bar
-   * stacked under the panel header, the ribbon tabs and a ribbon row holding
-   * two buttons — four rows of chrome over the document, and the one row that
-   * was actually the toolbar was the one that did not look like part of the
-   * ribbon. Portalled into a slot the panel provides, it is the 홈 tab's
-   * contents, which is where a word processor keeps it.
-   */
+  /** Ribbon slot the formatting bar is portalled into; rendered in place when absent. */
   toolbarSlot?: HTMLElement | null
 }) {
   const t = useT()
@@ -849,14 +769,6 @@ export function DocumentEditor({
   const [error, setError] = useState<string | null>(null)
   const [focused, setFocused] = useState<Editor | null>(null)
   const [focusedSection, setFocusedSection] = useState<string | null>(null)
-  /**
-   * 개요는 접힌 채로 연다.
-   *
-   * Opened, it takes 224px off the left of a panel that is often barely wider
-   * than the 794px page it has to show — so the document arrived already
-   * clipped at the right edge, and the first thing to do on opening the
-   * editor was to close a panel nobody asked for.
-   */
   const [outlineOpen, setOutlineOpen] = useState(false)
   const sectionNodes = useRef<Record<string, HTMLElement | null>>({})
   const sectionEditors = useRef<Record<string, Editor | null>>({})
@@ -868,36 +780,23 @@ export function DocumentEditor({
   const [comments, setComments] = useState<NonNullable<ReportArtifact['reviewComments']>>(report.reviewComments ?? [])
   const [commentQuote, setCommentQuote] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
-  //: Held in state, not a ref: it is portalled into a shadow root that
-  //: `DocumentShell` creates in its own effect, so it appears a render after
-  //: everything around it. State is what tells the pagination to look again.
+  // State, not a ref: the page appears a render late, inside the shadow root.
   const [page, setPage] = useState<HTMLDivElement | null>(null)
-  //: Edited bodies, keyed by section id. Absent means untouched, which is what
-  //: keeps a document nobody typed in byte-identical to what was generated.
+  // Edited bodies by section id; absent means untouched.
   const [edits, setEdits] = useState<Record<string, string>>({})
   const editsRef = useRef<Record<string, string>>({})
-  //: Re-measure when the stylesheet lands or the document is edited. The
-  //: observer catches a block growing; neither of these changes its own size.
+  // Re-measure when the stylesheet lands or the document is edited.
   const { usable, height, breaks } = usePagination(
     page,
     `${style?.css.length ?? 0}:${Object.keys(edits).length}`,
   )
   const viewport = useRef<HTMLDivElement>(null)
-  /**
-   * How much of an A4 page fits across the panel.
-   *
-   * Capped at 1: a document is never blown up past its own size, because the
-   * point of the page view is to show what the paper will look like. It goes
-   * below 1 as far as it has to — a panel narrow enough to make the text
-   * unreadable is a panel somebody widens, and the 넓게 보기 control beside
-   * this one is how.
-   */
+  // Zoom to fit the A4 page across the panel, capped at 1.
   const [scale, setScale] = useState(1)
   useEffect(() => {
     const node = viewport.current
     if (!node) return
     const fit = () => {
-      // The padding the scroll box draws, so the page is not flush to the edge.
       const room = node.clientWidth - (node.clientWidth < 640 ? 16 : 48)
       setScale(room > 0 ? Math.min(1, room / A4_WIDTH_PX) : 1)
     }
@@ -916,10 +815,7 @@ export function DocumentEditor({
     designTemplatesApi
       .style(templateId, tokens)
       .then((row) => live && setStyle(row))
-      // Stored untranslated and translated where it is drawn. `useT` returns a
-      // new function on every render, so naming `t` in the dependency list
-      // below would re-run this effect on every render — fetching the
-      // stylesheet again, setting state again, and rendering again.
+      // Stored untranslated; `t` is a new function per render.
       .catch((err) => live && setError(errorMessage(err, '서식을 불러오지 못했습니다.')))
     return () => {
       live = false
@@ -932,9 +828,7 @@ export function DocumentEditor({
     [edits, pictures],
   )
 
-  //: Headings somebody retyped, and the document's own title. Held apart from
-  //: `edits` because they are text rather than markup and go back to the
-  //: artifact as a heading and a title, not as a section body.
+  // Retyped headings and title; text, not markup, so kept apart from `edits`.
   const [renamed, setRenamed] = useState<Record<string, string>>({})
   const renamedRef = useRef<Record<string, string>>({})
   const [editedTitle, setTitle] = useState<string | null>(null)
@@ -958,10 +852,7 @@ export function DocumentEditor({
     }))
 
   const change = (section: ReportSection, html: string) => {
-    // Several editors can update in the same event (Replace all). React state
-    // still contains the previous render during the second callback, so using
-    // it here discarded the first section's change. The ref is the synchronous
-    // document accumulator; state remains what causes the render.
+    // Several editors can update in one event (Replace all); the ref accumulates synchronously.
     const next = { ...editsRef.current, [section.id]: html }
     editsRef.current = next
     setEdits(next)
@@ -1106,7 +997,6 @@ export function DocumentEditor({
     )
   }
 
-  //: 한 줄로 묶어 두고, 자리를 주면 그 자리에, 아니면 제자리에 그린다.
   const bar = (
     <>
       <div className="min-w-0 flex-1">{editable && <Toolbar editor={focused} sources={report.sources} onFind={() => setFindOpen((value) => !value)} onComment={beginComment} bare={Boolean(toolbarSlot)} />}</div>
@@ -1168,21 +1058,8 @@ export function DocumentEditor({
           </nav>
         )}
         <div ref={viewport} aria-label={t('보고서 편집 페이지')} className="min-h-0 min-w-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
-        {/*
-          The sheet is A4 and the panel is whatever the panel is.
-
-          Left to `max-width: 100%` the page simply narrowed — measured in a
-          352px panel it was a 352px "A4", which is not a page of paper at any
-          scale: the line length, the margins and the page breaks were all
-          wrong, and the document looked like prose squeezed into a column
-          rather than like the thing that comes out of the printer. Scaled
-          instead, an A4 page is an A4 page at whatever size there is room for,
-          which is what every word processor does with its zoom.
-
-          The outer box carries the scaled height so the scrollbar matches what
-          is drawn; the transform alone would leave it measuring the unscaled
-          document.
-        */}
+        {/* The A4 sheet is scaled, never narrowed. The outer box carries the
+            scaled size so the scrollbar matches. */}
         <div
           className="mx-auto"
           style={{ width: A4_WIDTH_PX * scale, height: Math.max(height, A4_HEIGHT_PX) * scale }}
@@ -1198,19 +1075,13 @@ export function DocumentEditor({
           >
           <div className="relative">
             <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}`} className="report-page-shell">
-              {/* `paginated` 는 서식에게 "낱장은 내가 뒤에 그린다" 고 알린다.
-                  완성된 파일에는 이 클래스가 없으므로 종이색은 그대로다. */}
+              {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
               <div
                 ref={setPage}
                 className="page paginated"
-                /* 한 장에 들어가는 높이를 서식에게 알려준다. 시트는 A4 이지
-                   창이 아니므로, 서식이 `vh` 로 재던 자리는 이 값을 읽는다. */
                 style={{ ['--sheet-h' as string]: `${usable}px` } as React.CSSProperties}
               >
                 <div className="cover">
-                  {/* 제목과 절 제목도 고칠 수 있어야 한다. 종이처럼 보이고
-                      문단에는 타이핑이 되는 화면에서, 커서를 거부하는 제목은
-                      의도가 아니라 고장으로 읽힌다. */}
                   <EditableLine
                     as="h1"
                     value={report.title}
@@ -1238,14 +1109,7 @@ export function DocumentEditor({
                       }}
                       onMount={(editor) => {
                         sectionEditors.current[section.id] = editor
-                        // 도구가 살아 있는 채로 열린다.
-                        //
-                        // `focused` was set only by `onReady`, which fires when
-                        // a paragraph takes focus — so the editor opened with
-                        // every one of its twenty formatting buttons greyed
-                        // out, and the only way to discover that they work was
-                        // to click into the text and look again. A bar that
-                        // starts dead reads as a bar that is broken.
+                        // The first editor becomes the toolbar target so it opens live.
                         setFocused((current) => current ?? editor)
                         setFocusedSection((current) => current ?? section.id)
                       }}
@@ -1297,22 +1161,10 @@ export function DocumentEditor({
   )
 }
 
-/**
- * A section's body as HTML, whichever way it was stored.
- *
- * Markdown → HTML happens here rather than on the server because the browser
- * already renders exactly this Markdown, and a second implementation in Python
- * would be a second answer to what a list looks like. Deliberately small: the
- * model writes prose, sub-headings and lists, and anything richer than that
- * arrived as HTML in the first place.
- */
+/** A section's body as HTML; a small Markdown subset (headings, lists, tables, quotes, images, fences). */
 function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
   if (section.format === 'html') return section.content
-  // `"` as well as the three that matter in text. Every use of this in here
-  // is an attribute value or goes next to one, and a mermaid source is full of
-  // quoted labels — `"인건비" : 52` cut `data-source` off at its own first
-  // quote, so the fence written back on the next save was a chart with no
-  // slices in it. An escaped quote is still a quote in text.
+  // Escapes `"` too: the output goes into attribute values (`data-source`).
   const escape = (s: string) =>
     s
       .replace(/&/g, '&amp;')
@@ -1326,24 +1178,10 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       .replace(/`(.+?)`/g, '<code>$1</code>')
 
   const out: string[] = []
-  //: The run of list items being collected, and which kind it is. Held apart
-  //: from `out` because a list is only known to be finished when something
-  //: that is not a list item turns up.
+  // Pending list items, table rows and fence lines; flushed when something else turns up.
   let items: string[] = []
   let ordered = false
-  //: The GFM table being collected, for the same reason.
-  //:
-  //: Without this a table reached the page view as `<p>| 기준 | 값 |</p>` —
-  //: visible in the web view, which renders Markdown properly, and gone as a
-  //: table the moment somebody switched to pages. The two views have to show
-  //: the same document or neither can be trusted, and the exporters have drawn
-  //: real tables since `report_export` learned to.
   let rows: string[][] = []
-  //: The fence being collected, and what it was opened with. Fences were not
-  //: handled here at all, so a `kpi` or `mermaid` block reached the page view
-  //: as its own source set in paragraphs — visible as a figure in the web
-  //: view, and as three lines of backticks the moment somebody switched to
-  //: pages. The two views have to show the same document.
   let fence: string[] | null = null
   let fenceLang = ''
   const flush = () => {
@@ -1376,7 +1214,7 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
         out.push(fenceHtml(fenceLang, fence.join('\n'), escape, pictures))
         fence = null
       } else {
-        // Inside a fence, so the raw line — indentation in a fence is content.
+        // Raw line: indentation inside a fence is content.
         fence.push(raw)
       }
       continue
@@ -1388,14 +1226,11 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       continue
     }
     if (!line) {
-      // A blank line does not end a table — models put one between every row.
-      // The stored text is tidied on the way in; this covers what was written
-      // before that and anything edited by hand since.
+      // A blank line does not end a table; models put one between rows.
       if (!rows.length) flush()
       continue
     }
-    // A table row, and the `| --- | --- |` rule under its head, which carries
-    // no cells of its own.
+    // A table row; the `| --- |` rule carries no cells.
     const row = /^\|(.+)\|$/.exec(line)
     if (row) {
       if (!/^[\s:|-]+$/.test(row[1])) {
@@ -1403,8 +1238,6 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       }
       continue
     }
-    // A picture on its own line. The writer emits one for every figure
-    // somebody approved, and the exporters read the same form back.
     const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(line)
     if (image) {
       flush()
@@ -1422,8 +1255,7 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
     const quote = /^>\s*(.*)$/.exec(line)
     if (heading) {
       flush()
-      // The wrapper draws the section's own heading, so everything in the body
-      // sits below it — h3 at shallowest, which is what the seeds style.
+      // The wrapper draws the section heading, so body headings start at h3.
       const level = Math.min(heading[1].length + 1, 6)
       out.push(`<h${level}>${inline(heading[2])}</h${level}>`)
     } else if (bullet) {
@@ -1442,29 +1274,13 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       out.push(`<p>${inline(line)}</p>`)
     }
   }
-  // An unterminated fence — a document caught mid-stream. Drawn with what
-  // arrived rather than dropped, so a strip appears as its numbers land.
+  // An unterminated fence (mid-stream) is drawn with what arrived.
   if (fence !== null) out.push(fenceHtml(fenceLang, fence.join('\n'), escape, pictures))
   flush()
   return out.join('')
 }
 
-/**
- * One fenced block as the markup the 서식 styles.
- *
- * A strip becomes `<div class="kpi">` — the seed owns every size and colour in
- * it, which is why the model is not allowed a `style=` and does not need one.
- *
- * A mermaid diagram becomes a `<figure class="diagram">` carrying its own
- * source, and the picture of it if a reader has already had one drawn. The
- * source is the part that matters: a figure that arrived here as a picture
- * alone would survive the save and still lose the diagram, because the text it
- * was drawn from would no longer exist anywhere to change.
- *
- * Every other fence comes out empty. A fence nothing renders is a mistake in
- * the text, and this view exists to look like the printed page — three lines
- * of backticks on it say nothing the web view does not say better.
- */
+/** One fenced block as the markup the template styles; unknown fences render nothing. */
 function fenceHtml(
   lang: string,
   source: string,
@@ -1481,9 +1297,6 @@ function fenceHtml(
     return cells ? `<div class="kpi">${cells}</div>` : ''
   }
   if (lang === 'steps') {
-    // An `<ol>` rather than a `<div>`: it *is* an ordered list, and written as
-    // one the numbering is the browser's and Word's rather than something the
-    // model typed and could get wrong. The seed hangs the rail off it.
     const items = parsePairs(source, 8)
       .map(
         ([name, detail]) =>
@@ -1495,10 +1308,8 @@ function fenceHtml(
     return items ? `<ol class="steps">${items}</ol>` : ''
   }
   if (lang === 'cards') {
-    // `<section>` rather than `<div>`: the cards inside are divs, and
-    // `richtext` reads this back with a lazy close — so the wrapper has to be
-    // a tag its own children never use, or the first card's close ends the
-    // grid and the rest of it comes back as loose headings.
+    // `<section>`, not `<div>`: `richtext` reads this back with a lazy close,
+    // so the wrapper tag must differ from its children's.
     const grid = parseCards(source)
       .map(
         (card) =>
@@ -1523,8 +1334,7 @@ function fenceHtml(
     )
   }
   if (lang === 'chart') {
-    // The numbers, not a drawing of them. The 서식 styles the figure and the
-    // exporters read the same source back to build a chart Word can edit.
+    // Source only; the exporters build the chart from it.
     return `<figure class="chart" data-source="${escape(source)}"></figure>`
   }
   if (lang === 'mermaid') {
@@ -1539,27 +1349,8 @@ function fenceHtml(
 }
 
 /**
- * The picture for each mermaid source in these sections — drawing the ones
- * that do not have one yet.
- *
- * Looking them up was not enough. A picture only existed if somebody had
- * already opened the web view, so a reader who went straight to the page view
- * got a dashed placeholder where a figure belonged, and so did one who watched
- * the document being written and then switched — the picture had been stored
- * on the server by then, but this screen is holding the copy of the artifact
- * it was handed, and nothing had told it.
- *
- * So the missing ones are drawn here. Off-screen, into a detached element:
- * this view's document belongs to ProseMirror, which re-renders its own nodes
- * whenever the document changes and would wipe anything injected into them. It
- * only needs the raster anyway.
- *
- * What is drawn is stored, exactly as the web view stores it — the server
- * compares before writing, so whichever screen gets there first is the one
- * that pays, and the file has its figure either way.
- *
- * Keyed by source text rather than by digest, so the caller needs to know
- * nothing about how a diagram is kept.
+ * Picture per mermaid source in these sections, keyed by source text. Missing
+ * ones are drawn off-screen (outside ProseMirror's subtree) and stored.
  */
 function useDiagramPictures(
   sections: ReportSection[],
@@ -1567,9 +1358,7 @@ function useDiagramPictures(
   look: HTMLElement | null,
 ): Map<string, string> {
   const [pictures, setPictures] = useState<Map<string, string>>(() => new Map())
-  //: What the last resolve was for. Sections re-render constantly — a keystroke
-  //: in any of them — and without this the digests would be recomputed on each
-  //: one and set new state each time, which is a render loop.
+  // Signature of the last resolve; without it every keystroke would loop.
   const resolved = useRef('')
 
   useEffect(() => {
@@ -1599,9 +1388,7 @@ function useDiagramPictures(
       setPictures(found)
       if (!missing.length || !look) return
 
-      // Drawn into a detached element so ProseMirror never sees it. The
-      // element is still styled by the 서식 — `look` is inside its shadow root
-      // — so the figure comes out in the document's own colours and face.
+      // Drawn off-screen inside the template's shadow root, so it takes the document's theme.
       const easel = document.createElement('div')
       easel.style.cssText = 'position:absolute;left:-99999px;top:0;width:700px'
       look.appendChild(easel)

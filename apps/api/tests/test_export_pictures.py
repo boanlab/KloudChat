@@ -1,9 +1,4 @@
-"""A picture put into a document has to leave in the file somebody downloads.
-
-`sanitise` allows exactly one kind of picture — a `data:` URI already inside
-the artifact — so this is a closed problem: read it back out of the markup and
-hand the bytes to each renderer. Three of the four formats can carry it.
-"""
+"""Pictures in a document reach the exported .pptx, .pdf, .docx and .hwpx."""
 
 from __future__ import annotations
 
@@ -22,12 +17,7 @@ from app.services import design_templates as dt
 TOKENS = {"accent": "#5b5bd6", "ink": "#111111", "muted": "#666666", "font": "gothic"}
 
 def png(width: int = 8, height: int = 12) -> str:
-    """A real PNG, base64, built here rather than pasted.
-
-    Pasted base64 is unreadable in a diff and easy to truncate — the first
-    version of this file carried a broken one, `python-docx` refused it, and
-    the test failed for a reason that had nothing to do with the exporters.
-    """
+    """A valid PNG of the given size, base64-encoded."""
     raw = b"".join(b"\x00" + bytes([200, 40, 90] * width) for _ in range(height))
 
     def chunk(kind: bytes, data: bytes) -> bytes:
@@ -73,12 +63,11 @@ def test_the_reader_finds_the_picture_and_its_caption():
     assert picture["mime"] == "image/png"
     assert picture["data"][:8] == b"\x89PNG\r\n\x1a\n"
     assert picture["caption"] == "그림 1. 시험"
-    # The words are still there: a picture is added to the slide, not instead.
     assert slides[1]["bullets"] == ["보유 42대"]
 
 
 def test_a_remote_address_is_never_read_back():
-    """It cannot be stored, and if it somehow is, nothing fetches it."""
+    """Only a base64 `data:` raster URI decodes; remote and SVG sources are refused."""
     assert pictures.decode("https://example.test/p.png") is None
     assert pictures.decode("data:image/svg+xml;base64,PHN2Zz4=") is None
     assert pictures.decode("data:image/png;base64,!!!not base64!!!") is None
@@ -94,8 +83,7 @@ def test_the_pptx_carries_the_picture():
 
 
 def test_the_deck_pdf_carries_the_picture():
-    """Counted rather than searched for: an embedded font's own streams put
-    `/Image` in a PDF that has no pictures in it at all."""
+    """The deck PDF with a picture has more `/Image` streams than without (fonts add some too)."""
     slides = page_export.to_slides(document("deck-editorial", "bullets"))
     with_picture = deck_export.to_pdf("t", slides, tokens=TOKENS)
     for slide in slides:
@@ -124,20 +112,16 @@ def test_the_report_pdf_carries_the_picture():
 
 
 def test_hwpx_carries_the_picture_too():
-    """The last format to learn it, and the one that could not be checked here.
+    """An OWPML picture is `BinData/` bytes, an `opf:item` in content.hpf and a `binaryItemIDRef`.
 
-    A picture in OWPML is three things that must agree: the bytes in
-    `BinData/`, an `<opf:item id="imageN" … isEmbeded="1">` in `content.hpf`,
-    and `<hc:img binaryItemIDRef="imageN">` in the section. Nothing is declared
-    in `header.xml` — `<hh:binDataList>` is the older HML format, and no HWPX
-    carries one.
+    `<hh:binDataList>` belongs to the older HML format and must not appear in header.xml.
     """
     sections = page_export.to_sections(document("doc-report", "section"))
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
 
     assert "BinData/image1.png" in archive.namelist()
     assert archive.read("BinData/image1.png")[:8] == b"\x89PNG\r\n\x1a\n"
-    # Stored, like every picture in a file Hancom wrote itself.
+    # Hancom stores pictures uncompressed.
     assert archive.getinfo("BinData/image1.png").compress_type == zipfile.ZIP_STORED
 
     hpf = archive.read("Contents/content.hpf").decode()
@@ -153,27 +137,16 @@ def test_hwpx_carries_the_picture_too():
 
 
 def test_hwpx_gives_the_page_a_size():
-    """Without `<hp:secPr>` the text still laid out and the picture did not.
-
-    Hancom falls back to its own defaults for text; an object sized in
-    absolute units has no page box to sit in, is read, and is never drawn.
-    Confirmed in Hancom Office: the same document with this element shows the
-    picture, and without it shows nothing.
-    """
+    """The first paragraph carries `<hp:secPr>`; without it Hancom draws no pictures."""
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", [], tokens=TOKENS)))
     section_xml = archive.read("Contents/section0.xml").decode()
     assert "<hp:secPr" in section_xml
     assert 'width="59528" height="84188"' in section_xml  # A4
-    # It rides in the first paragraph's run, the only place it is read from.
     assert section_xml.index("<hp:secPr") < section_xml.index("</hp:p>")
 
 
 def test_a_picture_too_big_for_the_page_is_scaled_to_it():
-    """Native size is `pixels * 75`; a 1024-wide picture is 10.7 inches.
-
-    `imgDim` and `imgClip` stay in the picture's own pixels — they are the
-    source rectangle — while the placed size shrinks to the text column.
-    """
+    """Placed size shrinks to the column while `imgDim` stays at native `pixels * 75`."""
     markup = report_export._hwpx_picture(1, base64.b64decode(png(width=1024, height=683)))
     placed = int(re.search(r'<hp:sz width="(\d+)"', markup).group(1))
     assert placed <= report_export._HWPX_MAX_WIDTH
@@ -184,7 +157,7 @@ def test_a_picture_too_big_for_the_page_is_scaled_to_it():
 
 @pytest.mark.parametrize("template_id", ["deck-editorial", "deck-signal"])
 def test_a_slide_that_is_only_a_picture_still_exports(template_id):
-    """No bullets, no body: the slide is the picture, and it still exports."""
+    """A slide holding only a picture still exports."""
     template = dt.get(template_id)
     html = dt.render(
         template,
@@ -214,9 +187,7 @@ def test_a_slide_that_is_only_a_picture_still_exports(template_id):
     ids=["empty", "text", "truncated"],
 )
 def test_a_picture_that_is_not_one_does_not_take_the_export_down(broken):
-    """Bytes can stop being a picture — truncated on the way in, or a format a
-    library refuses. Losing the illustration is a document; losing the export
-    is somebody's afternoon."""
+    """Undecodable picture bytes are dropped without failing the export."""
     slides = page_export.to_slides(document("deck-editorial", "bullets"))
     slides[1]["image"] = {"mime": "image/png", "data": broken, "caption": "깨진 그림"}
     assert deck_export.to_pptx("t", slides, tokens=TOKENS)[:2] == b"PK"
@@ -229,10 +200,7 @@ def test_a_picture_that_is_not_one_does_not_take_the_export_down(broken):
     assert report_export.to_hwpx("t", sections, tokens=TOKENS)[:2] == b"PK"
 
 
-# ── the JSON deck track ────────────────────────────────────────────────
-#
-# A deck that was never HTML keeps its slides as JSON, so a picture on one is
-# the `data:` URI itself. Both renderers read either shape.
+# ── the JSON deck track: a slide picture is the `data:` URI itself ──────
 
 
 def test_a_json_deck_slide_carries_a_picture_as_its_own_address():
@@ -314,7 +282,7 @@ def test_a_left_picture_moves_the_text_column_right_in_powerpoint():
 
 
 def test_a_slide_picture_that_is_not_an_address_is_ignored():
-    """A remote one cannot be stored, and nothing fetches it if it appears."""
+    """A slide image without a `data:` src is ignored."""
     slides = [
         {"id": "s0", "layout": "bullets", "title": "가", "bullets": ["나"], "image": {}},
         {
@@ -331,34 +299,26 @@ def test_a_slide_picture_that_is_not_an_address_is_ignored():
 
 
 def test_a_portrait_picture_does_not_take_a_whole_page():
-    """120 mm wide made a 600×1200 screenshot 240 mm tall — a sheet of paper
-    with one figure on it. Height is capped, and both dimensions are passed to
-    every renderer rather than left to be inferred from the width."""
+    """Picture height is capped at 170 mm and the aspect ratio kept."""
     tall = png(width=600, height=1200)
     width, height = report_export._picture_size(base64.b64decode(tall))
-    # 297 mm is the page; 170 mm is the ceiling the figure may take.
     assert height <= 170 * 72 / 25.4 + 1
     assert width < height  # portrait stays portrait
     assert width == pytest.approx(height * 600 / 1200, rel=0.02)
 
 
 def test_two_pictures_of_different_sizes_stay_different_sizes():
-    """Native size, shrunk only when it overflows the column.
-
-    One fixed width would draw a 360×240 diagram at the size of a 1024×683
-    chart, and larger than it was made."""
+    """A picture keeps its native size and is shrunk only when it overflows the column."""
     small = report_export._picture_size(base64.b64decode(png(width=360, height=240)))
     large = report_export._picture_size(base64.b64decode(png(width=1024, height=683)))
     assert small[0] < large[0]
-    # The small one is exactly its own size: 360 px at 96 DPI is 270 pt.
+    # 360 px at 96 DPI is 270 pt.
     assert small[0] == pytest.approx(270, rel=0.001)
-    # The large one is the column, not its native 768 pt.
     assert large[0] == pytest.approx(150 * 72 / 25.4, rel=0.01)
 
 
 def test_every_format_sizes_a_picture_the_same_way():
-    """The `.hwpx` rule and the `.docx`/PDF rule are the same rule, stated in
-    two unit systems — 150 mm of column, 170 mm of height, never enlarged."""
+    """.hwpx and .docx/PDF size a picture by the same rule in their own units."""
     data = base64.b64decode(png(width=1024, height=683))
     width_pt, _ = report_export._picture_size(data)
     markup = report_export._hwpx_picture(1, data)
@@ -367,12 +327,7 @@ def test_every_format_sizes_a_picture_the_same_way():
 
 
 def test_a_figure_is_centred_in_every_format():
-    """PDF centred the picture and left-aligned its own caption, while `.docx`
-    and `.hwpx` left-aligned both — the same document read three ways.
-
-    A caption hanging off the left margin under a centred picture belongs to
-    the paragraph above it, not to the figure.
-    """
+    """Picture and caption are centred in .docx and .hwpx."""
     sections = page_export.to_sections(document("doc-report", "section"))
 
     docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("t", sections, tokens=TOKENS)))
@@ -383,7 +338,7 @@ def test_a_figure_is_centred_in_every_format():
 
     hwpx = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
     section_xml = hwpx.read("Contents/section0.xml").decode()
-    # Paragraph shape 5 is the centred one, used by the picture and its caption.
+    # Paragraph shape 5 is the centred one.
     assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="0"><hp:pic' in section_xml
     assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="4">' in section_xml
     header = hwpx.read("Contents/header.xml").decode()

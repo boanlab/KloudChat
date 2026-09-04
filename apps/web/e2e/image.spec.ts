@@ -1,12 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn, surfaceOn } from './helpers'
 
-/**
- * The image surface produces a picture.
- *
- * This costs real money — roughly 4,400 credits per image on the default
- * model — so exactly one is generated.
- */
+/** The image surface produces a stored, billed picture. Exactly one is generated (about 4,400 credits). */
 
 /** The API uses a bearer token held in memory, so a cookie fetch is anonymous. */
 const AS_USER = `async (path) => {
@@ -29,23 +24,18 @@ test('이미지를 만들면 아티팩트로 남고 크레딧이 걷힌다', asy
     AS_USER,
   )
 
-  // Skipped where the workspace has this surface off. `image` and `av` spend
-  // credits per generation and default to off, and the screen for a surface
-  // that is off carries no composer to drive.
   test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
-  // The picker offers image models, and quotes the price of a picture rather
-  // than of a thousand tokens.
+  // The quote is per picture, not per thousand tokens.
   await expect(page.getByText(/예상 [1-9][0-9,]* 크레딧/)).toBeVisible({ timeout: 20_000 })
 
   await page.getByLabel('프롬프트 입력').fill('흰 배경에 놓인 파란 자물쇠, 아주 단순한 평면 일러스트')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
-  // The picture itself, in the conversation, served inline from the file store.
+  // Served inline from the file store.
   const image = page.locator('img[src*="/api/files/"]').first()
   await expect(image).toBeVisible({ timeout: 240_000 })
-    // Visible and loaded are different things: an `<img>` has layout size even
-    // behind a 401. `naturalWidth` stays 0 until the image actually decodes.
+  // `naturalWidth` stays 0 until the image decodes; visible is not loaded.
   await expect
     .poll(async () => await image.evaluate((el: HTMLImageElement) => el.naturalWidth), {
       timeout: 30_000,
@@ -61,9 +51,7 @@ test('이미지를 만들면 아티팩트로 남고 크레딧이 걷힌다', asy
   expect(stored, '이미지 아티팩트가 없습니다').not.toBeNull()
   expect(stored.data.src).toContain('/api/files/')
 
-  // Billed. The turn records what it was charged, but this reads the ledger:
-  // the figure on the message is a copy for the reader, and the account is the
-  // account.
+  // Billed, read from the ledger.
   const spentAfter = await page.evaluate(
     async (fn) => (await eval(fn)('/api/me/usage?days=1')).cycle.used,
     AS_USER,

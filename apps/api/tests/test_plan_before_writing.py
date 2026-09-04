@@ -1,27 +1,4 @@
-"""A document is offered before it is written, and asked about before that.
-
-The failure this closes: a paper was attached, a third of it reached the model,
-and the outline prompt told the model in so many words not to say the material
-was thin — `자료가 부족하다는 답은 하지 마라`. So it invented a presentation
-about presentations, and that presentation replaced the deck somebody had spent
-the afternoon on. One rule caused the invention; the same request caused the
-loss, because generating wrote straight over whatever the session held.
-
-Two gates, and neither of them writes anything:
-
-1. **Ask**, when the material cannot carry the request. The server knows what
-   became of every attachment exactly, so where a file came up short it asks
-   from the real numbers rather than spending a planning call to find out — and
-   the model is never left to guess at the cause, which is how it came to
-   announce that a file it had been given had never arrived.
-2. **Offer**, always. Planning stops at the outline and waits. Approval is the
-   only thing that writes, so nothing nobody looked at can replace a document
-   that already exists.
-
-The third piece is that answering has to mean something: told which part of a
-long paper matters, the excerpt has to move to that part, or asking was
-theatre.
-"""
+"""Document surfaces ask when material is short, offer an outline, and write only on approval."""
 
 from __future__ import annotations
 
@@ -46,9 +23,7 @@ class _Client:
     """Answers with canned replies and records what was asked."""
 
     def __init__(self, replies, posts, **_):
-        #: Taken by reference. A new client is opened per call, so a copy would
-        #: restart the script on every one of them and a retry would be handed
-        #: the answer that made it retry.
+        #: By reference: a new client is opened per call and the script must advance.
         self._replies = replies
         self._posts = posts
 
@@ -108,12 +83,10 @@ async def test_a_deck_stops_at_its_outline_and_writes_nothing(gateway):
 
     kinds = [e["type"] for e in events]
     assert "proposal" in kinds
-    # The two events that mean a document exists. Neither may appear on a pass
-    # nobody has approved — this is the whole of the overwrite protection.
+    # Nothing is written on an unapproved pass.
     assert "deck" not in kinds
     assert "slide" not in kinds
-    # One call, and it was the planning one. Nothing was written, so nothing
-    # was paid for beyond the plan.
+    # Only the planning call was made.
     assert len(posts) == 1
 
 
@@ -131,9 +104,7 @@ async def test_the_approved_outline_is_what_gets_written(gateway):
 
     slides = next(e["slides"] for e in written if e["type"] == "deck")
     assert [s["title"] for s in slides] == [item["title"] for item in plan["slides"]]
-    # Planned once, not twice. Asking the model to plan again on the second
-    # pass would produce a different deck from the one that was agreed to and
-    # put it on screen as though it had been.
+    # Planned once; the approved plan is not re-planned.
     assert sum(1 for p in posts if "발표 슬라이드의 제목과 구성" in str(p)) == 1
 
 
@@ -177,14 +148,13 @@ def test_a_file_that_arrived_short_is_worth_stopping_over():
 
     assert [f.name for f in short] == ["논문.pdf"]
     question = grounding.questions_for(short)[0]
-    # The numbers are in the question, because they are the reason to ask and
-    # the thing the person needs in order to answer.
+    # The numbers are in the question.
     assert "74,200" in question.detail
     assert "24,000" in question.detail
 
 
 def test_a_page_and_a_half_off_the_end_is_not_worth_stopping_over():
-    """A form that lost its last paragraph should not become an interview."""
+    """A small truncation does not trigger a question."""
     assert grounding.file_shortfalls((ContextFile("서식.docx", "truncated", 9_500, 10_000),)) == []
 
 
@@ -196,14 +166,14 @@ def test_an_unreadable_file_asks_a_different_question():
 
 
 def test_the_outline_call_may_ask_instead_of_planning(gateway):
-    """The half a character count cannot see: material that is there and wrong."""
+    """The outline call may return a question instead of a plan."""
     asked = '{"needs": [{"question": "어느 실험을 다룰까요?", "options": ["전체", "3장만"]}]}'
 
     parsed = grounding.parse_needs(asked)
 
     assert [q.question for q in parsed] == ["어느 실험을 다룰까요?"]
     assert parsed[0].options == ["전체", "3장만"]
-    # An ordinary outline is not a question, and must not be read as one.
+    # An ordinary outline is not a question.
     assert grounding.parse_needs(_PLAN) is None
 
 
@@ -221,12 +191,7 @@ async def test_a_deck_that_asks_writes_nothing_either(gateway):
 
 
 async def test_going_with_what_was_read_is_not_asked_again(gateway):
-    """The button's whole promise, and it was a loop without this.
-
-    "있는 자료로 진행" folds no answer into the request, so the planner meets the
-    same sentence it asked about and asks again — and again, for as long as
-    anybody keeps pressing. The pass that follows it is not allowed to stop.
-    """
+    """After 있는 자료로 진행 the planner does not ask again."""
     posts: list[dict] = []
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client([_PLAN], posts, **kw))
 
@@ -240,26 +205,17 @@ async def test_going_with_what_was_read_is_not_asked_again(gateway):
     kinds = [e["type"] for e in events]
     assert "needs" not in kinds, "물음이 다시 나왔습니다"
     assert "proposal" in kinds
-    # Told where it is listening, not filtered after the fact: a question
-    # suppressed at this end comes back as a question where a plan belongs, and
-    # the parse fails instead of the loop.
+    # The answer is folded into the prompt, not filtered on the way back.
     sent = "\n".join(str(m) for post in posts for m in post.get("messages", []))
     assert "있는 자료로 진행" in sent
     assert "되물어라" not in sent
 
 
 async def test_an_unreadable_outline_is_asked_for_once_more(gateway):
-    """A shape the parser cannot read is not a request it cannot plan.
-
-    What trips it is a fenced block or a line of preamble, and the same prompt
-    usually lands the second time — so the alternative to one more call is
-    charging for the first and showing nothing for it.
-    """
+    """An unparsable outline is retried once."""
     posts: list[dict] = []
     unreadable = "구성은 다음과 같습니다:\n```\n(설명만 있고 JSON 이 없음)\n```"
-    # Shared across clients on purpose: a new one is opened per call, so a list
-    # built inside the factory would hand the retry the same first answer and
-    # the test would pass whether or not the retry happened.
+    # Shared across clients so the retry sees the second reply.
     replies = [unreadable, _PLAN]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
 
@@ -272,7 +228,7 @@ async def test_an_unreadable_outline_is_asked_for_once_more(gateway):
 
 
 async def test_an_outline_unreadable_twice_still_gives_up(gateway):
-    """Bounded. One more call is a retry; asking forever is a bill."""
+    """An outline unparsable twice gives up."""
     posts: list[dict] = []
     replies = ["설명뿐, JSON 없음", "여전히 설명뿐"]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, posts, **kw))
@@ -287,11 +243,7 @@ async def test_an_outline_unreadable_twice_still_gives_up(gateway):
 
 
 def test_the_answer_moves_the_excerpt_to_the_part_that_was_asked_for():
-    """Otherwise the question was theatre.
-
-    The cut has always been the first N characters, which is fine for a memo
-    and useless for a paper whose results are on page nine.
-    """
+    """A focus answer moves the excerpt to the named part."""
     text = "머리말 " * 500 + "평가 결과 는 다음과 같다 " * 200 + "맺음말 " * 500
 
     head = _excerpt(text, 1_000, focus="")
@@ -299,8 +251,7 @@ def test_the_answer_moves_the_excerpt_to_the_part_that_was_asked_for():
 
     assert "평가 결과" not in head
     assert "평가 결과" in aimed
-    # And it says the beginning is missing, rather than letting the model read
-    # an excerpt from the middle as though it were the opening.
+    # The excerpt says its beginning is missing.
     assert "앞" in aimed and "생략" in aimed
 
 
@@ -311,7 +262,7 @@ def test_a_focus_nothing_matches_falls_back_to_the_beginning():
 
 
 def test_going_with_what_was_read_is_not_a_focus():
-    """The one answer that must not move the excerpt anywhere."""
+    """있는 자료로 진행 does not move the excerpt."""
     assert grounding.focus_terms({"focus": "읽은 앞부분만으로 진행"}) == ""
     assert grounding.focus_terms({"focus": "평가 결과"}) == "평가 결과"
 
@@ -324,8 +275,7 @@ def test_answers_are_added_to_the_request_and_never_replace_it():
 
 
 def test_the_budget_is_what_it_always_was():
-    """A guard, not a preference: the excerpt work above is about *which*
-    24,000 characters, not about sending more of them."""
+    """The excerpt budget stays 24,000 characters."""
     assert settings.file_context_chars == 24_000
 
 
@@ -333,12 +283,7 @@ def test_the_budget_is_what_it_always_was():
 
 
 def test_the_model_is_told_what_became_of_every_file():
-    """Q-08: it used to be left to guess, and guessed the worst way.
-
-    Handed a paper truncated to a third, the model announced that no file had
-    arrived and asked for the text to be pasted in. The system knew exactly
-    what had happened and never said so.
-    """
+    """The prompt reports what became of every attachment."""
     report = _file_report(
         (
             ContextFile("논문.pdf", "truncated", 24_000, 74_200),
@@ -350,10 +295,8 @@ def test_the_model_is_told_what_became_of_every_file():
 
     assert "74,200" in report and "24,000" in report
     assert "OCR" in report
-    # The complete file is listed too. Saying nothing about it is what leaves
-    # room for "I don't seem to have received it".
+    # The complete file is listed too.
     assert "표.csv" in report
-    # And the instruction that makes it usable: stop inferring, use this.
     assert "추측하지 말고" in report
     assert "받지 못했다고 말해서는 안 된다" in report
 
@@ -365,17 +308,12 @@ def test_a_truncated_file_is_told_not_to_fill_in_the_rest():
 
 
 def test_no_files_means_no_report():
-    """A block saying nothing arrived, when nothing was attached, is noise."""
+    """No attachments, no attachment report."""
     assert _file_report((), ()) == ""
 
 
 def test_the_report_is_trusted_context_not_reference_data():
-    """It is the server's own statement about what it did.
-
-    Reference material is explicitly untrusted — the model is told not to
-    follow instructions inside it — so a fact placed there carries no more
-    weight than a sentence the paper's author wrote.
-    """
+    """The attachment report is placed as trusted context, not reference data."""
     from app.services.workspace_context import ContextBlock
 
     block = ContextBlock(
@@ -386,11 +324,7 @@ def test_the_report_is_trusted_context_not_reference_data():
 
 
 def test_approving_is_not_folded_into_the_request_as_a_condition():
-    """이대로 생성 is an answer to the screen, not a note on the document.
-
-    Merged in, it reached the writing prompts as something the person had
-    asked for, and named the version it replaced in the history.
-    """
+    """이대로 생성 does not reach the writing prompts or the history."""
     from app.routers.sessions import _regeneration_summary
 
     merged = grounding.merge_answers("전이학습 발표자료", {"focus": "의료 영상 사례"})
@@ -399,35 +333,23 @@ def test_approving_is_not_folded_into_the_request_as_a_condition():
 
 
 def test_a_request_built_on_an_attachment_that_never_arrived_asks_instead_of_writing():
-    """The gap nothing downstream can see.
-
-    Twice in production this wrote a whole document about nothing anybody had
-    asked for: the file never reached the request, the writer was left holding
-    첨부한 내용을 바탕으로 보고서 작성해줘 and nothing else, and researching that
-    sentence returns 보고서 작성법 blog posts. The document that came back was
-    about how to write reports, and no step, error or empty state said why.
-    """
+    """A request citing an attachment that never arrived asks instead of writing."""
     gap = grounding.missing_attachment("첨부한 내용을 바탕으로 보고서 작성해줘", ())
 
     assert gap is not None
     assert gap.id == "no_attachment"
-    # The one answer that can be honoured without the file has to be offered,
-    # or the question is a dead end.
+    # Proceeding without the file must be one of the options.
     assert any("진행" in option for option in gap.options)
 
 
 def test_the_attachment_gap_is_the_act_of_attaching_not_the_word():
-    """A report *about* attachments is a subject, not a missing source.
-
-    The interview this module exists to avoid is the one that stops a
-    legitimate request to ask about a file nobody ever mentioned handing over.
-    """
+    """A request about attachments as a subject is not a missing attachment."""
     assert grounding.missing_attachment("이메일 첨부 파일 관리 정책 보고서를 써 줘", ()) is None
     assert grounding.missing_attachment("전이학습 발표자료 만들어 줘", ()) is None
 
 
 def test_a_request_naming_an_attachment_that_did_arrive_is_not_asked_about():
-    """The file is here. Asking would be a form."""
+    """A request naming an attachment that arrived is not asked about."""
     assert (
         grounding.missing_attachment(
             "첨부한 계획서로 보고서 써 줘",

@@ -1,15 +1,4 @@
-"""Writing a report, section by section.
-
-Two passes:
-
-* **Outline.** One cheap call returning headings only. This is what makes the
-  progress readout honest — six pending sections means six are coming.
-* **Sections.** One call each, carrying the outline and everything written so
-  far, so section four does not repeat section two.
-
-A failed section is marked and the rest continues: five sections and a gap beat
-nothing.
-"""
+"""Report writing: outline, one-shot draft split by heading, per-section fallback and rewrite."""
 
 from __future__ import annotations
 
@@ -43,10 +32,8 @@ from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
 
-#: Each section is its own model call, so this is the multiplier on the bill.
+#: Section-count bounds for the outline.
 _MIN_SECTIONS = 3
-#: Twelve rather than eight: a 백서 asked for with nine named parts came back
-#: with eight, the 부록 silently gone.
 _MAX_SECTIONS = 12
 
 _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
@@ -223,14 +210,7 @@ _RESULTS_HEADING = re.compile(r"결과|측정|데이터|분석")
 
 
 def _carry_table(request: str, headings: list[str], drafted: dict[str, str]) -> dict[str, str]:
-    """The request's data table, put into the results section if the draft left it out.
-
-    An RC-filter report was asked for with nine rows of f, Vin, Vout and phase,
-    and told — in bold — to print that table again in 결과 with the derived
-    columns. Twice it narrated the rows in prose instead. The table the person
-    typed is the one thing in the report nobody can dispute, so it goes in
-    whether or not the writer chose to.
-    """
+    """Puts the request's own data table into the results section when the draft left it out."""
     found = _TABLE.search(request)
     if not found or not drafted:
         return drafted
@@ -245,12 +225,7 @@ def _carry_table(request: str, headings: list[str], drafted: dict[str, str]) -> 
 
 
 def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
-    """The draft, cut into its sections by the `## ` lines it was asked to write.
-
-    Matched loosely — a heading the model wrote with a stray number, a trailing
-    colon or different spacing still lands in its section. A heading it did not
-    write at all is simply absent, and the caller writes that one on its own.
-    """
+    """The draft cut into sections by its `## ` lines, matched loosely; unwritten headings are absent."""
 
     def key(text: str) -> str:
         text = re.sub(r"^[\d.\s]+", "", text.strip())
@@ -267,8 +242,7 @@ def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
                 current = wanted[k]
                 found[current] = []
                 continue
-            # A heading that is not one of ours: a stray sub-heading inside a
-            # section. Kept as bold text so the structure stays the outline's.
+            # A stray sub-heading is kept as bold text.
             if current is not None:
                 found[current].append(f"**{m.group(1).strip()}**")
                 continue
@@ -277,11 +251,7 @@ def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
     return {h: "\n".join(lines).strip() for h, lines in found.items() if "\n".join(lines).strip()}
 
 
-#: 절의 역할과 그 절에서 쓸 수 있는 블록. 제목의 낱말로 고른다.
-#:
-#: 블록 여섯 종을 보기와 함께 한꺼번에 주자 모델은 절마다 여섯을 다 썼다 —
-#: 요약 절에 표·절차·강조 수치·카드·강조 상자가 전부 들어가고, 다음 절이 그것을
-#: 되풀이했다. 보기는 틀이 된다. 그래서 절마다 그 절이 쓸 수 있는 것만 말한다.
+#: Block syntax per kind; a section is shown only the blocks it may use.
 _BLOCK_SYNTAX = {
     "table": (
         "- 비교·항목별 값은 표로 쓴다. 행 사이에 빈 줄을 넣지 마라. 3~5행이 알맞고,\n"
@@ -326,10 +296,8 @@ _NUMBER = re.compile(
 )
 
 
-#: Told to the writer when the person said 있는 자료로 진행 to a question the
-#: document could not be written without. What comes out is a form, and it
-#: has to look like one: a 회의록 for a 녹취 nobody attached once described a
-#: 차기 연구 주제 discussion that never happened, with a cost table under it.
+#: Writer rule for a bare form: 있는 자료로 진행 was answered to a question the
+#: document could not be written without.
 _FRAME_RULE = (
     "**이 문서는 자료 없이 틀만 쓴다.** 요청에 없는 사실·논의·결정·이름·수치를 어떤 것도 "
     "지어내지 마라. 절마다 그 절에 무엇을 적어야 하는지 한두 문장으로 안내하고, 채울 "
@@ -347,12 +315,7 @@ _UNVERIFIED_NOTE = (
 #: A request that weighs options — the only kind the cost-table advice fits.
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
 
-#: 장르마다 모양이 있다. The decision report's skeleton — 요약 up front, 권고 at
-#: the end, two paragraphs a section — was reaching every document, and a 주간
-#: 보고 came back at 2,800 characters with a comparison table and a recommendation
-#: nobody asked for. A weekly report is a page somebody skims; minutes are a
-#: table; an incident report keeps its timeline as a table. Matched on the
-#: request, the rule goes to the outline and the draft.
+#: Genre shape rules, matched on the request and given to the outline and the draft.
 _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척"),
@@ -393,8 +356,7 @@ _OWN_GENRES = re.compile(
 
 
 def _own_material(request: str) -> bool:
-    """A document about the person's own week, meeting, incident or experiment,
-    with the material in the request — nothing on the web belongs in it."""
+    """Whether the request is about the person's own material and carries it; no web search then."""
     return bool(_OWN_GENRES.search(request)) and _carries_material(request)
 
 
@@ -412,26 +374,12 @@ _MONEY = re.compile(
 
 
 def _without_invented_money(text: str) -> str:
-    """Every sum of money replaced by (미정), in a document with no figures to draw on.
-
-    A PEFT 동향 report — no numbers in the request, none from a search that
-    came back empty — carried a cost table of 380만 원, 3,800만 원 and 1,140만
-    원: the sums out of the prompt's own example about a server, copied as
-    fact. The rule said to write nothing the material did not carry; with
-    nothing carried, a sum is an invention by construction.
-    """
+    """Every sum of money replaced by (미정), for a document with no figures to draw on."""
     return _MONEY.sub("(미정)", text)
 
 
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
-    """The numbers the document may use, read off the request and the shelf.
-
-    A decision report the person seeded with 「연 380만 원」 came back saying
-    3,800만 원 in one section and 380만 원 in the next, with a network
-    migration cost of 2,400만 원 that nobody had mentioned. The rule 「자료에
-    없는 값을 지어내지 마라」 was in the prompt the whole time. A closed list is
-    something a model can be held to; a principle is not.
-    """
+    """The closed list of numbers the document may use, read off the request and the sources."""
     found: list[str] = []
     for text in [request, *[str(s.get("quote") or "") for s in sources]]:
         for match in _NUMBER.finditer(text):
@@ -477,13 +425,7 @@ _TREND_WORDS = ("추이", "추세", "변화", "월별", "연도별", "분기별"
 
 
 def _section_role(heading: str, index: int, total: int, written: str) -> tuple[str, str]:
-    """What this section is for, and the blocks it may use.
-
-    Returns `(role, block_rules)`. The summary gets no blocks and a length
-    cap; a comparison gets the table; a plan gets steps; people get cards.
-    Callout and kpi are document-wide singletons, offered only while the
-    document has not used them yet.
-    """
+    """`(role, block_rules)` for a section; callout and kpi are offered once per document."""
     name = heading.lower()
     has = lambda words: any(w in name for w in words)  # noqa: E731
     allowed: list[str] = []
@@ -522,8 +464,7 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
     return role, "- 이 절에서 쓸 수 있는 블록:\n" + rules
 
 
-#: Placeholder for an empty shelf. An empty block reads as withheld material and
-#: the model invents citations.
+#: Placeholder for an empty source list; an empty block makes the model invent citations.
 _NO_REFS = "(없음. 번호 인용을 쓰지 마라.)"
 
 
@@ -537,11 +478,7 @@ async def _complete(
     api_key: str,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """One non-streaming call. Returns `(text, usage)`. Retries a 429.
-
-    One call per section against a shared limit; a transient refusal would leave
-    a hole in the document.
-    """
+    """One non-streaming call. Returns `(text, usage)`. Retries a 429."""
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -555,10 +492,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # No thinking on a call whose whole answer is one JSON
-                    # object — see `thinking.NO_REASONING` for the measurements.
-                    # Safe to send everywhere: the proxy runs `drop_params`, so
-                    # a provider that has never heard of it never sees it.
+                    # The proxy runs `drop_params`, so unknown providers never see this.
                     "reasoning": thinking.NO_REASONING,
                 },
             )
@@ -569,10 +503,7 @@ async def _complete(
         response.raise_for_status()
         payload = response.json()
 
-    # A reasoning model can spend the whole ceiling thinking and return an
-    # empty answer with `finish_reason: "length"`. See `services/thinking.py` —
-    # this is the one place that can tell that apart from a model with nothing
-    # to say, because it is the only place holding the raw payload.
+    # A reasoning model can spend the whole ceiling thinking; re-ask with a bigger one.
     if bigger := thinking.starved(payload, max_tokens):
         log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
         async with httpx.AsyncClient(
@@ -590,9 +521,7 @@ async def _complete(
                 },
             )
             if again.status_code >= 400:
-                # A gateway that does not know `reasoning` refuses the whole
-                # call. The ceiling alone still helps every model that does not
-                # scale its thinking to it.
+                # A gateway that rejects `reasoning` refuses the whole call.
                 again = await client.post(
                     "/v1/chat/completions",
                     json={"model": model, "messages": messages, "max_tokens": bigger},
@@ -601,8 +530,7 @@ async def _complete(
             retried = again.json()
             spent = retried.get("usage") or {}
             first = payload.get("usage") or {}
-            # Both calls are charged, so both are counted. A budget that hid
-            # the first attempt would under-report what the turn cost.
+            # Both calls are billed, so both are counted.
             payload = retried
             payload["usage"] = {
                 "prompt_tokens": int(first.get("prompt_tokens") or 0)
@@ -624,11 +552,7 @@ _STYLES = {"편집형": "editorial", "포스터형": "poster", "미니멀": "min
 
 
 def _outline_style(text: str) -> str:
-    """The look the outline chose, or `""` when it named none.
-
-    Read with its own regex rather than off the parsed object, so an outline
-    that was salvaged from a partial answer still keeps the look it picked.
-    """
+    """The look the outline chose, or `""`. Read by regex so a partial answer keeps its style."""
     match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
@@ -637,9 +561,7 @@ def _outline_style(text: str) -> str:
 _subject_missing = grounding.subject_missing
 
 
-#: Documents about the person's own work — a proposal, a design change, a
-#: plan — that carry nothing without the work: asked for, like results, only
-#: when the request gives no figure to build on.
+#: Documents about the person's own work that carry nothing without it.
 _RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
 #: Documents whose facts all come from outside — nothing to write without a search.
 _FROM_THE_WEB = re.compile(
@@ -663,23 +585,13 @@ _PAGES = re.compile(r"(?<!\d)(\d{1,4})\s{0,3}(?:장|쪽|페이지|p)\s{0,3}(?:�
 
 
 def _long_form(request: str) -> bool:
-    """Whether the person asked for a document longer than one draft can hold.
-
-    「15장 이상 분량으로」 came back as four pages: a single draft is capped by
-    the model's output window, and 백서 is not a shape it can fill in one
-    breath. Past eight pages every section is written on its own, long.
-    """
+    """Whether eight or more pages were asked for; past that every section is written on its own."""
     m = _PAGES.search(request)
     return bool(m) and int(m.group(1)) >= 8
 
 
 def _without_own_heading(body: str, heading: str) -> str:
-    """The section's text minus a repeat of its own heading on the first line.
-
-    Written on its own, a section opened with 「## 현행 교육과정 진단」 — the
-    heading it was told it was writing — and the page then showed the heading
-    twice, with an empty section between.
-    """
+    """The section's text minus a repeat of its own heading on the first line."""
     lines = body.lstrip().split("\n", 1)
     first = re.sub(r"^#{1,6}\s*|\*+", "", lines[0]).strip()
     if first and first == heading.strip():
@@ -688,28 +600,12 @@ def _without_own_heading(body: str, heading: str) -> str:
 
 
 def _carries_material(request: str) -> bool:
-    """The material is in the request itself — a pasted memo, a table.
-
-    「아래 랩 미팅 메모를 회의록으로」 followed by the memo was asked what
-    research it was about, because the memo mentioned 논문 4장. A request
-    long enough to hold its own material, or with a table in it, has it.
-    """
+    """Whether the request carries its own material: long enough, or with a table in it."""
     return len(request) >= 300 or "|" in request
 
 
 def _results_without_data(request: str, attached: list[str]) -> bool:
-    """A report asked for on material that is not here.
-
-    「신규 소재 적용 타당성 검토 — 시험 방법, 결과, 위험, 권고」 with no
-    material, no numbers, no file came back with 「압축 강도와 피로 수명이
-    12%~15% 향상」: a result nobody measured, in a document whose whole point is
-    the measurement. 「세미나 녹취를 회의록으로」 with no 녹취 came back as a
-    decision brief about adopting a minutes system. A frame with (미정) in it
-    is honest and a made-up result is not, so a request that names its
-    material (녹취, 표, 파일) or asks for results, and carries no figure and no
-    attachment, is asked for the material first — 있는 자료로 진행 still writes
-    the frame.
-    """
+    """Whether the request names or needs material (녹취, 표, 파일, results) that nothing attached carries."""
     if any(block.strip() for block in attached) or _carries_material(request):
         return False
     if _MATERIAL.search(request):
@@ -720,15 +616,7 @@ def _results_without_data(request: str, attached: list[str]) -> bool:
 
 
 def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str]:
-    """One comparison section instead of one section per alternative.
-
-    Told in the outline prompt, in bold, not to make a section per option,
-    the planner made 「기존 서버 1년 연장 사용」「전체 서버 교체」「클라우드
-    마이그레이션」 anyway — three sections that are the columns of one table,
-    each repeating the same facts, and then a fourth section with the table.
-    The planner names the alternatives it saw; this drops any section named
-    after one of them and makes sure a single comparison section remains.
-    """
+    """Drops sections named after one alternative and keeps a single 대안 비교 section."""
     if not alternatives or not headings:
         return headings
     names = [a for a in alternatives if len(a) >= 2]
@@ -741,20 +629,14 @@ def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str
             continue
         keep.append(h)
     if dropped and not any("비교" in h for h in keep):
-        # After the section that works the numbers out, if there is one, so
-        # the table copies computed values rather than computing its own;
-        # otherwise after the situation, before the rest.
+        # After the calculation section if there is one, else after the situation.
         at = next((i + 1 for i, h in enumerate(keep) if "계산" in h or "전제" in h), None)
         keep.insert(min(len(keep), 2) if at is None else at, "대안 비교")
     return keep
 
 
 def _parse_outline(text: str) -> tuple[str, list[str]]:
-    """`(title, headings)` from whatever the model wrapped its JSON in.
-
-    The title is optional throughout: a bare array, or an object missing the
-    key, still yields a usable outline and the caller falls back to the request.
-    """
+    """`(title, headings)` from whatever the model wrapped its JSON in; the title may be empty."""
     title = ""
     obj = re.search(r"\{.*\}", text, re.S)
     if obj:
@@ -793,10 +675,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
 def _refs_block(sources: list[dict[str, Any]]) -> str:
     if not sources:
         return _NO_REFS
-    # `.get` throughout. A source a person typed by hand, or one a test
-    # seeded, carries a title and a url and nothing else — and one missing
-    # `publisher` was a KeyError that failed every rewrite of every section
-    # of that document, reported as 「고치지 못했습니다」.
+    # `.get` throughout: a hand-typed source carries only a title and a url.
     return "\n".join(
         f"[{s.get('ordinal', i + 1)}] {s.get('title') or s.get('url') or ''}"
         f" ({s.get('publisher') or ''})\n{s.get('quote') or ''}"
@@ -807,13 +686,7 @@ def _refs_block(sources: list[dict[str, Any]]) -> str:
 async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | None:
     """One picture as a stored figure, or `None` when it could not be drawn.
 
-    Embedded as a `data:` URI rather than a file reference. A report is
-    exported and mailed, and a picture that lives at a URL is a picture that is
-    missing by the time somebody opens the attachment — the same reason the
-    document editor embeds what a person pastes in.
-
-    Never raises. A drawing that fails leaves the section without a figure,
-    which the reader can see; a turn that dies takes the whole document.
+    Embedded as a `data:` URI so exported and mailed copies keep it. Never raises.
     """
     if not image_model:
         return None
@@ -830,15 +703,12 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
         log.warning("figure could not be drawn: %s", exc)
         return None
     return {
-        # `encode` already returns the whole `data:` address; wrapping it
-        # in `data_uri` again produced `data:image/png;base64,data:…`,
-        # which every reader of it silently refused.
+        # `encode` returns the whole `data:` URI.
         "src": pictures.encode(made.mime, made.data),
         "caption": str(figure.get("caption") or ""),
         "width": made.width,
         "height": made.height,
-        # Popped by the caller into the turn's usage. Carried on the dict
-        # because the drawing is billed to the same turn the prose is.
+        # Popped by the caller into the turn's usage.
         "_in": made.input_tokens,
         "_out": made.output_tokens,
     }
@@ -849,19 +719,7 @@ _FIGURE_FENCE = re.compile(r"^```(?:kpi|chart)\b.*?^```\s*$", re.S | re.M)
 
 
 def _grounded_figures(text: str, grounded: bool) -> str:
-    """Figure blocks removed from a section with nothing to draw them from.
-
-    The same rule the deck applies to its `chart` and `metrics` slides, and for
-    the same reason. Asked for a 검토 보고서 on a topic with no material, the
-    writer filled three sections with `kpi` blocks — 6개월, 80%, 90%, 4명, 30%,
-    100%, 0일, 8주, 40명, 80점 — every one of them invented, every one of them
-    set large on the page where a figure is read as the most factual thing in
-    the section.
-
-    The prose around them survives. A sentence saying the programme runs in a
-    compressed cycle is a claim somebody can weigh; the same claim as `8주`
-    beside a heading is a measurement, and there was no measuring.
-    """
+    """Figure blocks removed from a section with no material to draw them from; the prose stays."""
     if not grounded:
         return _FIGURE_FENCE.sub("", text).strip()
     return re.sub(r"\n{3,}", "\n\n", _KPI_FENCE.sub(_kpi_or_nothing, text)).strip()
@@ -872,13 +730,7 @@ _UNDETERMINED = re.compile(r"미정|확인 필요|해당 없음|N/A|TBD|\?", re.
 
 
 def _kpi_or_nothing(match: re.Match[str]) -> str:
-    """A kpi block whose values are placeholders, removed.
-
-    A 회의록 with every figure it needed in prose closed with 「(미정) | 산학
-    프로젝트 확보 건수」 four times over — a block whose whole purpose is to set
-    a number large, with no number in it. Any line that is not a value is the
-    whole block gone; the prose already says what is undecided.
-    """
+    """A kpi block removed whole when any of its values is a placeholder rather than a number."""
     body = match.group(0).strip("`").split("\n", 1)[1] if "\n" in match.group(0) else ""
     lines = [
         line for line in body.split("\n") if line.strip() and not line.strip().startswith("```")
@@ -898,46 +750,19 @@ async def write(
     api_key: str,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
-    #: The model that plans, when an administrator has named one. A report's
-    #: 목차 is the same kind of decision a deck's layouts are: one call that
-    #: every call after it is written against. Empty plans with `model`.
+    #: Model that plans, when an administrator named one; empty plans with `model`.
     outline_model: str = "",
-    #: The 목차 somebody has already seen and approved.
-    #:
-    #: Absent, this plans and stops: it emits `proposal` — or `needs`, when the
-    #: material cannot carry the request — and writes nothing. Present, it
-    #: skips planning and writes exactly what was approved, because planning
-    #: again would produce a different report from the one agreed to.
+    #: The approved 목차. Absent: plan, emit `proposal` (or `needs`) and stop.
+    #: Present: write exactly it.
     approved_plan: dict[str, Any] | None = None,
-    #: Whether this pass may stop to ask.
-    #:
-    #: False on the pass that follows "있는 자료로 진행" — the button whose whole
-    #: promise is that it will not be asked again. Without it the answer folds
-    #: back into a request identical to the one that raised the question, the
-    #: planner asks it again, and the button loops for as long as somebody
-    #: keeps pressing it. Only this one pass is silenced; a later request that
-    #: genuinely cannot be grounded is still allowed to say so.
+    #: Whether this pass may stop to ask. False on the pass after 있는 자료로
+    #: 진행, or the same question loops.
     may_ask: bool = True,
-    #: The pictures somebody agreed to on the second card, ready to draw.
-    #:
-    #: `None` on the planning pass, which is where they are *proposed*. `[]`
-    #: means the card was answered with 그림 없이, and the difference matters:
-    #: a section told a figure is coming writes 아래 그림과 같이, and one told
-    #: nothing does not. That is why the question is asked before the writing
-    #: rather than after it.
+    #: Approved pictures to draw. `None` on the planning pass; `[]` means 그림 없이.
     figures_plan: list[dict] | None = None,
-    #: Model that draws them, and the key to draw with. Empty disables the
-    #: proposal entirely — no image model configured, no card.
+    #: Model that draws them. Empty disables the figure proposal.
     image_model: dict | None = None,
-    #: Whether to research this report before writing it.
-    #:
-    #: The shelf this used to build was six titles and six 300-character
-    #: snippets, from one search on the request typed verbatim. That is enough
-    #: to print a reference list and not enough to correct a single thing the
-    #: model misremembers — which is how a report cites four real sources
-    #: underneath a paragraph none of them support. With this on, the pass runs
-    #: through `services.research`: the queries are planned off the request,
-    #: and the top pages are read in full before a heading is chosen.
+    #: Whether to research through `services.research` before planning.
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
@@ -945,10 +770,7 @@ async def write(
 
     The caller owns persistence, billing and the artifact — this only writes.
     """
-    # Planning is counted apart from writing, because it can run on another
-    # model — and a call billed at the wrong model's price is a ledger that
-    # says the wrong thing about where the money went. Empty when the same
-    # model does both, which is the shape every caller already handles.
+    # Outline tokens are counted apart: planning may run on another model.
     usage = {
         "inputTokens": 0,
         "outputTokens": 0,
@@ -956,20 +778,9 @@ async def write(
         "outlineOutputTokens": 0,
     }
 
-    # Before the outline, not after it. A 목차 chosen from memory commits the
-    # whole document to that memory's shape — every section after it is written
-    # to fill a heading that was already wrong. Researching first costs one
-    # planning call and buys an outline that knows what it is about.
+    # Research runs before the outline so the 목차 is planned on the sources.
     findings = research.Findings()
-    # Checked before the step is drawn, not inside `run`. A deployment with no
-    # search backend would otherwise open every document with 자료 찾는 중 and
-    # close it with 참고할 자료 없음 — a step that reports the deployment's
-    # configuration as though it were this document's result.
-    # 제 자료로 쓰는 문서는 검색하지 않는다. A 장애 보고서 written from a
-    # timeline went out with 「결제는 상품이나 서비스에 대한 대가를 지불하는
-    # 행위를 의미하므로 [1]」 — a definition of payment, cited from the web, in
-    # a report whose every fact was on the page already. Genres that report
-    # the person's own material take no shelf when the material is there.
+    # 제 자료로 쓰는 문서는 검색하지 않는다.
     if web_search and _own_material(request):
         web_search = False
     if web_search and await research.available():
@@ -988,9 +799,7 @@ async def write(
             "status": "done",
             "detail": findings.detail,
         }
-    # `research.run` normally owns this list, but test doubles and connector
-    # adapters may reuse a Findings object. Project citations belong to this
-    # run only, so never append into the caller's shelf in place.
+    # Copied: project citations must not be appended into the caller's list.
     findings.sources = list(findings.sources)
     web_selected = len(findings.sources)
     if (
@@ -1004,13 +813,6 @@ async def write(
         and not any(block.strip() for block in untrusted_context or [])
     ):
         # 검색이 빈손이면 동향·문헌 문서는 쓰지 않고 묻는다.
-        #
-        # 「최근 2년 전고체 배터리 동향, 주요 기업·스펙·양산 시점 비교표, 출처」
-        # ran four searches on a backend whose engines were all suspended, kept
-        # nothing, and wrote the report anyway: A사·B사·C사 with 500 Wh/kg and
-        # 15분 충전 in a table, no source, and the rule to say so ignored. A
-        # document whose every fact is external and whose search found none
-        # is not a document with a caveat — it is a form filled with guesses.
         yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
         yield {
             "type": "needs",
@@ -1061,10 +863,7 @@ async def write(
         project_reference_lines.append(f"- [{ordinal}] {title}")
         project_selected += 1
 
-    # Keep the investigation legible after the progress row disappears.  A
-    # source shelf proves what was cited; it does not prove what was searched,
-    # whether search actually ran, or how much irrelevant material was
-    # rejected.  The report artifact stores this event as its research log.
+    # Stored by the report artifact as its research log.
     yield {
         "type": "research",
         "research": {
@@ -1078,18 +877,13 @@ async def write(
             "projectExcluded": project_excluded,
         },
     }
-    # Three states, and the writer is told which one it is in. A toggle
-    # somebody switched off is a choice and needs no disclaimer; a search that
-    # could not run and a search that found nothing are both worth saying, and
-    # they do not mean the same thing to a reader.
+    # Switched off needs no disclaimer; could not run and found nothing each get one.
     research_rule = ""
     if web_search and not findings.searched:
         research_rule = research.UNRESEARCHED_RULE
     elif web_search and web_selected == 0:
         research_rule = research.EMPTY_RULE
-    # The pages read, as their own reference block. Appended rather than
-    # substituted: an attached file is still the better source for what it
-    # covers, and the two are labelled so the writer can tell them apart.
+    # Research pages go after the attached files, as their own labelled block.
     document_context = list(untrusted_context or [])
     if project_reference_lines:
         trusted_context = list(trusted_context or []) + [
@@ -1097,9 +891,7 @@ async def write(
             "프로젝트 자료에서 가져온 사실을 사용한 문장 끝에는 아래 번호를 정확히 붙이세요. "
             "목록에 없는 번호를 만들지 마세요.\n" + "\n".join(project_reference_lines)
         ]
-    #: Whether a figure could honestly have come from anywhere. Judged once for
-    #: the run, by the same test the deck uses — a saved memory about who the
-    #: user is is material and is not a measurement.
+    #: Whether the material carries any numbers; judged once, by the deck's test.
     grounded = deck_rules.has_numbers(request, document_context)
     if block := research.context_block(findings):
         document_context.append(block)
@@ -1134,9 +926,7 @@ async def write(
             return
 
         plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-        # A question instead of a 목차 — see `grounding.ASK_RULE`. Only when the
-        # request names material the sources do not carry; a bare topic is still
-        # planned without anybody being asked about it.
+        # A question instead of a 목차 — see `grounding.ASK_RULE`.
         if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
@@ -1165,10 +955,7 @@ async def write(
             yield {"type": "usage", **usage}
             return
         if may_ask and _subject_missing(text, request, "\n".join(untrusted_context or [])):
-            # 주제가 없는 요청은 묻는다. Checked here rather than trusted to the
-            # prompt: the planner planned a made-up subject with the rule in
-            # front of it, and a decision brief about a decision nobody named
-            # is worse than no brief.
+            # 주제가 없는 요청은 묻는다.
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {
                 "type": "needs",
@@ -1182,16 +969,13 @@ async def write(
             }
             yield {"type": "usage", **usage}
             return
-        # 「있는 자료로 진행」 to a question the document needed answered. The
-        # plan carries the fact so the writing pass, a separate request, knows
-        # to write a form and not a story — see `_FRAME_RULE`.
+        # Carried on the plan so the writing pass, a separate request, writes a
+        # form — see `_FRAME_RULE`.
         frame = not may_ask and (
             _results_without_data(request, list(untrusted_context or []))
             or grounding.subject_missing(text, request, "\n".join(untrusted_context or []))
         )
-        # 검색이 빈손인 동향·문헌 문서를 그래도 쓰라고 했다. Not a frame — a
-        # frame of a literature survey is nothing — but written from memory,
-        # and the plan carries that so the document opens by saying so.
+        # Written from memory; carried on the plan so the document opens by saying so.
         unverified = (
             not may_ask
             and web_search
@@ -1216,23 +1000,13 @@ async def write(
             "status": "done",
             "detail": " · ".join(headings),
         }
-        # Planned, and that is where this stops. The 목차 is offered rather
-        # than written against: the caller stores it, shows it, and calls back
-        # with it approved. Nothing has been written, which is what keeps the
-        # report already on screen safe from a run nobody confirmed.
-        #
-        # The pictures are proposed here too and asked about separately, once
-        # the outline is agreed — see `services.figures`. Proposed now because
-        # the planner has the outline in front of it; asked later because two
-        # decisions on one card is how somebody approves an expensive one by
-        # accident.
+        # Planning stops here: the caller stores the plan, shows it, and calls
+        # back with it approved. Figures are proposed now and asked about on a
+        # separate card — see `services.figures`.
         plan: dict[str, Any] = {
             "title": title[:200],
             "sections": headings,
-            # 말한 사람이 먼저다 — `deck` 과 같은 규칙. `visual_style_for`
-            # answers only when the request says so, and its `editorial`
-            # default reached every document nobody had described, so a 논문
-            # 초안 and a 사내 안내문 came out wearing the same face.
+            # The request's own style wins; the outline's choice fills the default.
             "visualStyle": (
                 design.visual_style_for(request)
                 if design.visual_style_for(request) != "editorial"
@@ -1276,9 +1050,7 @@ async def write(
     if title:
         yield {"type": "title", "title": hangul.tidy_spacing(title)[:200]}
 
-    # One shelf for every section, and the same one the outline was chosen
-    # from. Researched above — before this, the search ran here, which meant
-    # the 목차 was planned with nothing under it.
+    # The same sources the outline was planned on.
     sources = findings.sources
     yield {"type": "sources", "sources": sources}
     refs = _refs_block(sources)
@@ -1300,26 +1072,13 @@ async def write(
     outline_text = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headings))
     written: list[str] = []
 
-    # 한 번에 쓴다.
-    #
-    # Section by section, each call saw the outline, a 4,000-character tail of
-    # what came before, and the same list of allowed numbers — and still wrote
-    # 3,800만 원 in one section and 380만 원 in the next, turned a maintenance
-    # cost into a residual value two sections later, and recommended the cloud
-    # in one section and the replacement in another. A writer who cannot see
-    # the whole document cannot keep it consistent, and a model of this size
-    # does not hold a document in its head across calls.
-    #
-    # So the whole document is drafted in one call, with every number and
-    # every section in one context, and then cut into sections along the
-    # headings it was asked to write. A section the draft failed to write is
-    # written on its own below, the old way. The per-section pass stays for
-    # rewrites, where one section is the whole job.
+    # The whole document is drafted in one call so numbers and conclusions stay
+    # consistent across sections, then cut along its headings. Sections the
+    # draft missed are written on their own below; that pass also serves rewrites.
     drafted: dict[str, str] = {}
     long_form = _long_form(request)
     if long_form:
-        # 긴 문서는 절마다 따로 쓴다 — see `_long_form`. The draft is skipped
-        # rather than attempted: it would come back short and be kept.
+        # 긴 문서는 절마다 따로 쓴다 — see `_long_form`.
         yield {"type": "step", "id": "draft", "label": "절마다 길게 쓰는 중", "status": "done"}
     else:
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
@@ -1353,18 +1112,12 @@ async def write(
         if not long_form:
             log.warning("report draft failed, writing section by section: %s", exc)
             yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
-    #: Approved pictures by the index of the section they belong to. Empty when
-    #: the figure card was answered 그림 없이, and then nothing below mentions a
-    #: figure — which is the whole point of asking before the writing.
+    #: Approved pictures by section index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
 
     for index, section in enumerate(sections):
-        # The position lives in `progress`, not in the text: spelled into both,
-        # the surface renders "3/9 도입 (3/9)".
+        # The position lives in `progress` only; the surface renders it.
         label = str(section["heading"])
-        # The outline lands before any section is written, so each step can say
-        # where it sits in it — which is the only figure that answers "how much
-        # of this is left" while the document builds.
         progress = {"current": index + 1, "total": len(sections)}
         yield {
             "type": "step",
@@ -1400,9 +1153,7 @@ async def write(
                             genre=_genre_rule(request),
                         )
                         + (
-                            # Told before the prose is written, so the section can
-                            # refer to its figure. A picture added afterwards is a
-                            # picture nobody mentioned.
+                            # Told before writing so the section can refer to its figure.
                             "\n\n"
                             + figures.note_for(
                                 figures.Figure(
@@ -1450,30 +1201,18 @@ async def write(
 
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
-        # Models write a table with a blank line between every row, which is
-        # not a table to any renderer. Closed here, once, so the panel, the
-        # page view and the three exporters all read the same thing.
-        # Stray ideographs read back into Hangul before anything is stored —
-        # `services/hangul.py`. The deck and the page tracks did this at their
-        # own doors and the report did not, so a 보고서 came out carrying 培育,
-        # 劣势 and 書類 while a deck on the same subject did not. One product,
-        # one answer.
+        # Stray ideographs are read back into Hangul and table gaps closed once,
+        # before storing, so every reader sees the same text.
         clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
         clean = hangul.tidy_spacing(clean)
         if not grounded:
             clean = _without_invented_money(clean)
         if unverified and index == 0:
-            # 첫 절 머리에 밝힌다. The EMPTY_RULE asks the writer to say it;
-            # a PEFT survey written from memory said nothing and quoted
-            # 0.002% as though it had read it somewhere.
+            # 첫 절 머리에 밝힌다.
             clean = _UNVERIFIED_NOTE + "\n\n" + clean
         section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
 
-        # The picture, if this section is one of the ones somebody paid for.
-        # Drawn after the prose rather than before it so a failed drawing
-        # leaves a section with no figure rather than a section that refers to
-        # one — the prompt already told the writer a figure was coming, and
-        # that sentence is the thing a missing picture makes wrong.
+        # Drawn after the prose so a failed drawing leaves no dangling reference.
         if (drawing := wanted_figures.get(index)) is not None:
             yield {
                 "type": "step",
@@ -1494,19 +1233,8 @@ async def write(
             else:
                 usage["inputTokens"] += picture.pop("_in", 0)
                 usage["outputTokens"] += picture.pop("_out", 0)
-                # Into the prose, not onto the section.
-                #
-                # `section["images"]` was the writer's own channel and the
-                # exporters read it — but nothing on screen did, so a figure
-                # somebody paid for sat in the downloaded file and was
-                # invisible in the panel. The body is the one place every
-                # reader looks.
-                #
-                # As Markdown rather than as HTML, because the body *is*
-                # Markdown here: the web view renders it, the page view turns
-                # it into an `<img>` the editor can move, and the exporters
-                # read it through the same `![…](…)` the document editor
-                # produces when somebody pastes a picture in themselves.
+                # Appended to the body as Markdown: the panel, the page view and
+                # the exporters all read the body.
                 caption = str(picture.get("caption") or "").replace("]", " ")
                 section["content"] = (
                     f"{section['content'].rstrip()}\n\n![{caption}]({picture['src']})"
@@ -1549,11 +1277,7 @@ async def rewrite_section(
     note: str = "",
     sources: list[dict] | None = None,
 ) -> tuple[str, dict]:
-    """Rewrites one section, with the rest of the document as context.
-
-    Everything but the target is passed as written, so the new text does not
-    repeat section two — the same guard the first pass uses.
-    """
+    """Rewrites one section with the rest of the document as context."""
     outline = "\n".join(f"{i + 1}. {s.get('heading') or ''}" for i, s in enumerate(sections))
     written = "\n\n".join(
         f"## {s.get('heading')}\n{s.get('content') or ''}"
@@ -1566,24 +1290,20 @@ async def rewrite_section(
         heading=heading,
         outline=outline,
         written=written[-4000:] or "(아직 없음)",
-        # The document already carries numbered citations, so a rewrite without
-        # the shelf would renumber them against nothing.
+        # The shelf keeps the document's citation numbers valid.
         refs=_refs_block(sources or []),
         request=request[:1500],
         role=role,
         blocks=blocks,
         others=_others_line([str(x.get("heading") or "") for x in sections], position),
-        # The numbers the document already carries are the numbers the rewrite
-        # may use. Read off the title alone, the list came up empty and a
-        # 권고안 that said 연간 120만 원 절감 was rewritten to 「(미정)」.
+        # Numbers already in the document are allowed too.
         facts=_facts_line(
             "\n".join([request, *[str(s.get("content") or "") for s in sections]]), sources or []
         ),
         genre=_genre_rule(request),
     )
     if note.strip():
-        # Last and labelled: an unlabelled sentence appended to a prompt reads
-        # as part of the original request.
+        # Last and labelled, or it reads as part of the original request.
         prompt += (
             f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}\n"
             "이유가 형식을 말하면(번호 목록 셋, 표 하나, 세 문장) 그 형식 그대로 쓴다. "
@@ -1595,9 +1315,7 @@ async def rewrite_section(
         api_key,
         1200,
     )
-    # The same door the first pass goes through — see `write`. Two callers
-    # (the panel's 다시 쓰기 and a revision typed in the chat) store what this
-    # returns, and only one of them remembered to close 「2,400 만 원」 up.
+    # The same normalisation `write` applies.
     body = hangul.tidy_spacing(hangul.read_back(body)[0])
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
@@ -1605,15 +1323,7 @@ async def rewrite_section(
 
 
 def _without_borrowed_tables(body: str, before: str, others: list[str], note: str) -> str:
-    """The rewrite's tables, minus any the document already has elsewhere.
-
-    Told to make 「현황」 say why the 1년 더 option was costed the way it was,
-    the writer answered with the comparison table from 「대안 비교」, header for
-    header — and the linter then filed the section for repeating itself. A
-    table that another section already draws is not this section's to draw;
-    a table the section never had, and the note never asked for, is not
-    either.
-    """
+    """The rewrite's tables, minus any another section draws or the section never had and the note did not ask for."""
     if not _TABLE.search(body):
         return body
     elsewhere = {_table_key(m.group(0)) for text in others for m in _TABLE.finditer(text)}

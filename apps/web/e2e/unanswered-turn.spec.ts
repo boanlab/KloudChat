@@ -1,20 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * A quarter of the conversations on this account are a question with nothing
- * under it: the sentence is stored before the model answers, so a turn that
- * breaks, is refused, or has its tab closed leaves only the asking behind.
- *
- * Keeping the question is right — the person did ask. What was wrong is that
- * nothing said the answer never came, and there was no way to ask again. The
- * live tab did put a notice on screen; it lived in that tab's memory and was
- * gone on reload, which is exactly the state these specs open in.
- *
- * The transcripts are served from here rather than earned by breaking a real
- * stream: what is under test is what a reader is shown when they come back to
- * one, and a turn that fails for real still costs a model call to fail.
- */
+/** A stored `failure` mark on a turn is shown with a retry when the conversation is reopened. Transcripts served from here. */
 
 const ID = 's_unanswered_e2e'
 const QUESTION = '전기차 보조금이 어떻게 되나요?'
@@ -85,9 +72,7 @@ async function serve(
     if (method === 'GET' && url.pathname.endsWith(`/api/sessions/${ID}`)) return json(row)
     if (method === 'POST' && url.pathname.endsWith(`/api/sessions/${ID}/messages`)) {
       sent.push(String((route.request().postDataJSON() as { content: string }).content))
-      // Answered slowly rather than instantly when asked to: a turn that is
-      // still running is a state the interface has to be judged in, and a
-      // response that lands before the first assertion never shows it.
+      // Held when asked, so the still-running state can be judged.
       if (holdMs) await new Promise((resolve) => setTimeout(resolve, holdMs))
       return route.fulfill({
         status: 200,
@@ -114,15 +99,9 @@ test('답변이 오지 않은 질문은 다시 열어도 그 사실과 다시 �
   await expect(page.getByText(QUESTION).last()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('답변을 받지 못했습니다.')).toBeVisible()
 
-  // A video job has had a retry all along; a conversation turn had none.
   await page.getByRole('button', { name: '다시 시도' }).click()
   await expect.poll(() => sent, { timeout: 30_000 }).toEqual([QUESTION])
-  // Where it stands, not underneath: 다시 시도 reruns the failed turn in place.
-  // This used to assert the opposite — the question a second time, with a
-  // second error under it — which is the behaviour `retry-in-place.spec.ts`
-  // exists to keep from coming back: both copies went into the context of
-  // every later turn, so a question that failed once was asked twice for the
-  // rest of the conversation.
+  // 다시 시도 reruns the turn in place (see `retry-in-place.spec.ts`).
   await expect(page.getByText(QUESTION)).toHaveCount(1)
 })
 
@@ -147,11 +126,7 @@ test('중간에 끊긴 답변은 쓰다 만 내용과 함께 끊겼다고 말한
 
   await expect(page.getByText('보조금은 지자체마다')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('답변이 중간에 끊겨 여기까지만 남았습니다.')).toBeVisible()
-  // The notice belongs to the half-written answer, so the question above it
-  // must not grow a second one — nor a second way back, which is what asking
-  // twice would take. One is the point: an answer that broke halfway is the
-  // case the retry beside it was put there for, and the sentence that asked it
-  // may be scrolled off the top by then.
+  // The notice and the retry belong to the half-written answer; the question gets neither.
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(1)
 })
@@ -176,8 +151,7 @@ test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', asyn
   test.setTimeout(120_000)
   await signIn(page)
   const sent: string[] = []
-  // The answer is held back, so the question spends the checks below in the one
-  // state it must never be called unanswered in: still being answered.
+  // The answer is held back, so the question is still being answered during the checks.
   await serve(page, [], sent, '지자체마다 다릅니다.', 10_000)
 
   await page.goto(`/s/${ID}`)
@@ -189,7 +163,7 @@ test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', asyn
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(0)
 
-  // And once it does arrive, it is an answer and not a failure either.
+  // Once it arrives it is an answer.
   await expect(page.getByText('지자체마다 다릅니다.')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
 })

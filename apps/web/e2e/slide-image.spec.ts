@@ -3,22 +3,10 @@ import { crc32 as zlibCrc32, deflateSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * The same picture path on the deck track that was never HTML.
- *
- * A JSON deck's slides are rows in a JSONB column, so the picture is stored as
- * the `data:` URI itself and the preview, the `.pptx` and the `.pdf` all read
- * it from there. Seeded through the API — nothing here costs a model call —
- * and joined through the screen.
- */
+/** Inserting an image into a JSON deck slide: stored as a `data:` URI the preview and exporters read.
+ *  Seeded through the API. */
 
-/**
- * A real PNG, built here.
- *
- * Pasted base64 is unreadable in a diff and easy to truncate — the first
- * version of this file carried a broken one, which the server refused only at
- * export time, hours later.
- */
+/** A valid PNG, built rather than pasted. */
 function png(width = 240, height = 160): string {
   const raw = Buffer.concat(
     Array.from({ length: height }, (_, y) =>
@@ -134,7 +122,7 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   await card.click()
 
   const dialog = page.getByRole('dialog')
-  // The second slide: the picture belongs to the one being shown.
+  // The picture goes into the slide being shown.
   await dialog.getByRole('button', { name: '다음 장' }).click()
   await dialog.getByRole('tab', { name: '삽입' }).click()
   await dialog.getByRole('button', { name: '그림 넣기' }).click()
@@ -142,8 +130,7 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   await page.getByLabel('설명').fill('그림 1. 슬라이드')
   await page.getByRole('button', { name: '넣기', exact: true }).click()
 
-  // Drawn in the preview, at the same place the exporters put it. Two of them:
-  // the stage and that slide's thumbnail in the list beside it.
+  // Drawn on the stage and in that slide's thumbnail.
   const drawn = dialog.locator('img[src^="data:image/png;base64,"]')
   await expect(drawn.first()).toBeVisible({ timeout: 30_000 })
   expect(await drawn.count()).toBeGreaterThanOrEqual(1)
@@ -156,7 +143,6 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   expect(slides[1].image?.caption).toBe('그림 1. 슬라이드')
   expect(slides[0].image).toBeUndefined()
 
-  // ── and it leaves in the file ───────────────────────────────────────
   await dialog.getByRole('tab', { name: '파일' }).click()
   const saved = page.waitForEvent('download', { timeout: 60_000 })
   await dialog.getByRole('button', { name: '내보내기' }).click()

@@ -1,12 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Media that was paid for has to play inside the app.
- *
- * Spends no credits: it asserts against clips the audio and video specs have
- * already generated, and skips when there are none.
- */
+/** Generated audio and video play inside the app. Uses existing clips; skips when there are none. */
 
 const AS_USER = `async (path) => {
   const login = await fetch('/api/auth/login', {
@@ -38,13 +33,11 @@ test('만든 오디오를 앱 안에서 재생할 수 있다', async ({ page }) 
   await page.goto('/artifacts')
   await openNewest(page, '오디오', 'audio')
 
-  // A real element with real controls, pointed at the stored file.
   const player = page.locator('audio[controls]')
   await expect(player).toBeVisible({ timeout: 20_000 })
   await expect(player).toHaveAttribute('src', /\/api\/files\/[0-9a-f]+\/content/)
 
-  // And it decodes: the browser reports a duration only once it has read the
-  // container. Raw PCM without the WAV header would give NaN here.
+  // A duration means the container decoded; raw PCM without a WAV header gives NaN.
   await expect
     .poll(
       async () =>

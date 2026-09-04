@@ -21,8 +21,6 @@ import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
-
-
 export function ProjectsPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -137,8 +135,6 @@ export function ProjectsPage() {
               variant="primary"
               disabled={!draft.name.trim()}
               onClick={() => {
-                // The id comes from the server now, so the navigation has to
-                // wait for it — otherwise the route gets a pending Promise.
                 void createProject(draft).then((id) => {
                   setOpen(false)
                   setDraft({ name: '', description: '', instructions: '' })
@@ -151,9 +147,6 @@ export function ProjectsPage() {
           </>
         }
       >
-        {/* 아이콘은 여기서 묻지 않습니다. 이름·설명도 정하지 않은 채로 그림부터
-            고르라는 요구였고, 프로젝트 안에 들어가면 제목 옆 아이콘을 눌러 언제든
-            바꿀 수 있습니다. */}
         <Field label={t('이름')}>
           <Input
             value={draft.name}

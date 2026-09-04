@@ -35,7 +35,7 @@ curl localhost:8100/api/health
 
 `docker compose up -d` on its own pulls the published images, which is what a
 deployment wants. As a contributor you want the build overlay above, so that
-both images come from your checkout.
+every image comes from your checkout.
 
 The first account to sign up becomes the administrator, unless
 `KCHAT_ADMIN_EMAIL` / `KCHAT_ADMIN_PASSWORD` are set, in which case that
@@ -187,7 +187,7 @@ are what upstream calls are made with.
 - Fill in the pull request template — particularly the verification section.
   "Tested locally" is not a verification.
 - CI must be green: lint and build for the web app, `ruff` and `pytest` for the
-  API, `shellcheck` for the scripts, and both images must build.
+  API, `shellcheck` for the scripts, and every image must build.
 
 ## Where things live
 
@@ -195,7 +195,8 @@ are what upstream calls are made with.
 KloudChat/
 ├── apps/
 │   ├── web/          React 19 + Vite + Tailwind v4 single-page app
-│   └── api/          FastAPI — auth, sessions, jobs, artifacts, the master key
+│   ├── api/          FastAPI — auth, sessions, jobs, artifacts, the master key
+│   └── print/        Headless Chromium — HTML in, PDF out
 ├── docs/             Architecture and operator guides
 ├── scripts/          Integration checks against a running stack
 ├── mcp/              MCP stdio server scripts mounted into the API container

@@ -1,19 +1,4 @@
-"""사용량 화면은 원장과 같은 이야기를 해야 한다.
-
-The usage screens took their total from the credit ledger and every bar beside
-it from stored turns. Money that never produced a turn — a picture, a clip, a
-line of speech — was in the total and in none of the bars, so an account that
-spent 397,552 credits on media read as 397,552 credits of "기타", five models
-at zero, and a daily chart of flat nothing.
-
-These tests run the two endpoints against a real database rather than a stand-in
-for one, because what was wrong was the SQL: which table each figure came from.
-A fake session cannot be wrong about that.
-
-SQLite stands in for Postgres. The one thing it does not have is `date_trunc`,
-which is registered below — the alternative is a query written for the test
-instead of for the database it runs against.
-"""
+"""Usage endpoints against a real SQLite database: every credit on the ledger lands in a bar."""
 
 from __future__ import annotations
 
@@ -101,7 +86,7 @@ _DDL = (
 
 
 def _day_floor(_unit: str, value):
-    """`date_trunc('day', …)`, for a driver that has never heard of it."""
+    """`date_trunc('day', …)` for SQLite."""
     return None if value is None else f"{str(value)[:10]} 00:00:00.000000"
 
 
@@ -113,16 +98,14 @@ async def db():
 
     @sa.event.listens_for(engine.sync_engine, "connect")
     def _register(dbapi_connection, _record):
-        # Reaching past aiosqlite to the sqlite3 connection underneath: its own
-        # `create_function` is a coroutine, and this hook is not async.
+        # aiosqlite's own `create_function` is a coroutine; this hook is sync.
         raw = dbapi_connection.driver_connection._conn
         raw.create_function("date_trunc", 2, _day_floor)
 
     async with engine.begin() as connection:
         for statement in _DDL:
             await connection.exec_driver_sql(statement)
-    # As the app builds it: an expired instance would go looking for its row
-    # again from synchronous code, which is not what production does.
+    # As the app builds it.
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
     await engine.dispose()
@@ -190,12 +173,7 @@ async def _spend(
 
 
 async def test_pictures_and_clips_are_where_the_money_went_not_other(db) -> None:
-    """The reported failure, end to end.
-
-    An account whose whole spend was media had every credit filed under "기타"
-    with no image or av row anywhere, because the bars were counting messages
-    and media makes none.
-    """
+    """Media spend shows under image/av, not 기타."""
     user = await _account(db)
     pictures = await _session_row(db, user, kind="image", model="openai/gpt-5-image-mini")
     clips = await _session_row(db, user, kind="av", model="google/veo-3.1-lite")
@@ -223,8 +201,7 @@ async def test_pictures_and_clips_are_where_the_money_went_not_other(db) -> None
 
     assert report["totals"]["credits"] == 96_612
     assert report["totals"]["otherCredits"] == 0
-    # Three generated pictures on one call are one request, because one call is
-    # what was billed.
+    # Three pictures on one call are one request.
     assert report["totals"]["requests"] == 2
 
     assert {row["model"]: row["credits"] for row in report["byModel"]} == {
@@ -239,7 +216,7 @@ async def test_pictures_and_clips_are_where_the_money_went_not_other(db) -> None
 
 
 async def test_the_parts_add_up_to_the_total(db) -> None:
-    """Every credit is somewhere. That is the property the screen exists to have."""
+    """The bars sum to the ledger total."""
     user = await _account(db)
     chat = await _session_row(db, user, kind="chat", model="vendor/quality")
     deck = await _session_row(db, user, kind="slides", model="vendor/quality")
@@ -282,20 +259,12 @@ async def test_the_parts_add_up_to_the_total(db) -> None:
     )
     assert sum(row["credits"] for row in report["bySurface"]) == total
     assert sum(row["credits"] for row in report["daily"]) == total
-    # And the fact-check is billed to the model that ran it, not to the model
-    # the deck was written with — which is the case a session lookup gets wrong.
+    # The fact-check is billed to the model that ran it, not the deck's.
     assert {row["model"]: row["credits"] for row in report["byModel"]}["vendor/cheap"] == 310
 
 
 async def test_other_is_only_what_belongs_to_nothing(db) -> None:
-    """`기타` has to mean the residue, or it means nothing at all.
-
-    Two charges genuinely have no single owner: a comparison that ran several
-    models on one deduction, and a design extraction made against no
-    conversation. Those are what is left over — and the extraction, having no
-    surface either, gets a named row rather than quietly leaving the surface
-    bars short of the total.
-    """
+    """기타 holds only charges with no single owner."""
     user = await _account(db)
     chat = await _session_row(db, user, kind="chat", model="vendor/quality")
 
@@ -323,12 +292,7 @@ async def test_other_is_only_what_belongs_to_nothing(db) -> None:
 
 
 async def test_a_media_row_written_before_the_column_still_finds_its_model(db) -> None:
-    """Rows already in the table are not backfilled, so the read has to cope.
-
-    For a picture or a clip the session is a single generator with a single
-    price sheet, which makes it a fact rather than a guess — and it is the only
-    fallback there is for a row nobody can go back and ask.
-    """
+    """A media row without a model column falls back to the session's generator."""
     user = await _account(db)
     pictures = await _session_row(db, user, kind="image", model="google/gemini-2.5-flash-image")
 
@@ -349,8 +313,7 @@ async def test_a_media_row_written_before_the_column_still_finds_its_model(db) -
 
 
 async def test_a_free_month_still_says_what_ran(db) -> None:
-    """Self-hosted models bill nothing, which is not the same as nothing
-    happening: 260 turns a day at zero credits still has models and a chart."""
+    """Zero-credit turns still produce models and a chart."""
     user = await _account(db)
     chat = await _session_row(db, user, kind="chat", model="local/gemma-4-26b-a4b")
     for day in (1, 1, 2):
@@ -366,11 +329,7 @@ async def test_a_free_month_still_says_what_ran(db) -> None:
 
 
 async def test_a_priced_turn_is_counted_once(db) -> None:
-    """The turn and its deduction are two records of one event.
-
-    Both are read, so the request has to come from the message and the money
-    from the ledger — never both from both.
-    """
+    """Request count comes from the message and money from the ledger, never both from both."""
     user = await _account(db)
     chat = await _session_row(db, user, kind="chat", model="vendor/quality")
     await _turn(db, chat, model="vendor/quality", when=_at(1))
@@ -393,7 +352,7 @@ async def test_a_priced_turn_is_counted_once(db) -> None:
 
 
 async def test_the_admin_view_tells_the_same_story(db) -> None:
-    """One instance, two screens. They read the same rows or they disagree."""
+    """The admin view reads the same rows as the user view."""
     user = await _account(db)
     pictures = await _session_row(db, user, kind="image", model="openai/gpt-5-image-mini")
     await _spend(
@@ -425,7 +384,7 @@ async def test_the_admin_view_tells_the_same_story(db) -> None:
 
 
 async def test_settle_records_which_model_took_the_money(db) -> None:
-    """The write half. Without it the read has nothing to group by."""
+    """`settle` records the model on the deduction."""
     user = await _account(db)
     settle(db, user, 900, reason="chat.completion", session_id="s-1", model="vendor/quality")
     await db.commit()
@@ -435,12 +394,7 @@ async def test_settle_records_which_model_took_the_money(db) -> None:
 
 
 async def test_every_day_of_the_window_is_on_the_chart(db) -> None:
-    """A day with no requests is a fact about the period, not a gap.
-
-    `GROUP BY day` returned only the busy days, so a thirty-day window with
-    two of them came back as two rows and the chart drew two wide bars with
-    nothing to say which days they were.
-    """
+    """Days with no requests appear as zero rows."""
     user = await _account(db)
     chat = await _session_row(db, user, kind="chat", model="local/gemma-4-26b-a4b")
     for day in (0, 3):
@@ -457,14 +411,7 @@ async def test_every_day_of_the_window_is_on_the_chart(db) -> None:
 
 
 async def test_a_cycle_that_came_due_refills_itself(db) -> None:
-    """September must not inherit August's empty balance.
-
-    `refill_due` was written for a daily cron, and this deployment had no cron
-    — so on the first of the month `credits_used` stayed where the last month
-    left it. `has_headroom` reads that field, which made it a refusal and not
-    only a wrong number: an account that spent its allowance could not start a
-    turn until an administrator pressed a button.
-    """
+    """A cycle past its reset refills on read, without a cron."""
     user = await _account(db, allowance=1_000_000)
     user.credits_used = 999_999
     user.cycle_resets_at = _at(0.5)  # came due half a day ago
@@ -476,7 +423,7 @@ async def test_a_cycle_that_came_due_refills_itself(db) -> None:
 
     assert user.credits_used == 0
     assert user.cycle_resets_at > datetime.now(UTC)
-    # The refill is on the ledger, so the month it opened can be accounted for.
+    # The refill is on the ledger.
     grants = (
         await db.exec(sa.select(CreditLedger).where(CreditLedger.reason == "allowance.refill"))
     ).all()
@@ -484,8 +431,7 @@ async def test_a_cycle_that_came_due_refills_itself(db) -> None:
 
 
 async def test_a_cycle_still_running_is_left_alone(db) -> None:
-    """Idempotent, and only at the boundary — a mid-month call must not wipe
-    what has been spent so far."""
+    """A mid-cycle call does not reset `credits_used`."""
     user = await _account(db, allowance=1_000_000)
     user.credits_used = 400
     user.cycle_resets_at = datetime.now(UTC) + timedelta(days=9)
@@ -497,34 +443,19 @@ async def test_a_cycle_still_running_is_left_alone(db) -> None:
 
 
 async def test_this_month_starts_when_the_allowance_actually_refills(db) -> None:
-    """The window the usage screen totals is the cycle, not the UTC month.
-
-    They are nine hours apart: the reset is 00:00 KST on the first, which is
-    15:00 UTC on the last day of the month before. Read as a UTC boundary, the
-    screen spends those nine hours totalling a month that has already ended.
-    """
-    # 00:00 KST on the first of September 2026 — the moment of the refill.
+    """The usage window starts at the KST cycle reset, not the UTC month."""
+    # 00:00 KST on the first: the refill.
     reset = datetime(2026, 8, 31, 15, 0, tzinfo=UTC)
     # An hour after it, the cycle in progress is September's.
     assert cycle_start(reset + timedelta(hours=1)) == reset
     # An hour before it, the cycle in progress is still August's.
     assert cycle_start(reset - timedelta(hours=1)) == datetime(2026, 7, 31, 15, 0, tzinfo=UTC)
-    # And the two definitions agree about where the next one begins.
+    # Both definitions agree on the next boundary.
     assert next_cycle_reset(reset + timedelta(hours=1)) == datetime(2026, 9, 30, 15, 0, tzinfo=UTC)
 
 
 async def test_every_charge_says_which_surface_it_came_from(db) -> None:
-    """「기타 31,741 크레딧 · 0회」 가 나오던 자리.
-
-    `surface` was a keyword every caller could forget, and eleven of them did.
-    Forgetting was silent — the charge still landed, unattributed — so the
-    usage screen showed a third of the month's spend under 기타 with no
-    requests beside it and nothing to say what it had been for.
-
-    The reason already names the surface in all but one case, so `settle` fills
-    it in from there. `document.*` is the exception, because a plan and a
-    revision happen on both document surfaces.
-    """
+    """`settle` derives `surface` from the reason when the caller omits it."""
     from app.services.credits import surface_for
 
     assert surface_for("chat.completion") == "chat"
@@ -537,12 +468,12 @@ async def test_every_charge_says_which_surface_it_came_from(db) -> None:
     assert surface_for("image.generate") == "image"
     assert surface_for("audio.generate") == "av"
     assert surface_for("video.generate") == "av"
-    # 무엇인지 말하지 않는 것은 말하지 않는다고 답한다 — 부르는 쪽이 채운다.
+    # 유도할 수 없으면 비워 둔다.
     assert surface_for("document.plan") is None
     assert surface_for("document.revise") is None
     assert surface_for("design.extract") is None
 
-    # 그리고 실제로 원장에 적힌다.
+    # 원장에 적힌다.
     user = await _account(db)
     settle(db, user, 900, reason="deck.factcheck", session_id="s-1", model="vendor/quality")
     await db.commit()
@@ -551,7 +482,7 @@ async def test_every_charge_says_which_surface_it_came_from(db) -> None:
 
 
 async def test_a_caller_that_knows_better_still_wins(db) -> None:
-    """유도는 기본값이지 규칙이 아니다."""
+    """An explicit `surface` wins over the derived one."""
     user = await _account(db)
     settle(
         db,

@@ -4,13 +4,7 @@ import { Button, Field, Input } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/**
- * The relay, with its own save and its own test.
- *
- * Independent of the proxy on purpose: a mail change should not disturb the
- * model catalogue, and the one thing this block buys — password reset — is
- * either on or off, so the screen leads with that rather than with the fields.
- */
+/** SMTP relay settings with their own save and test. */
 export function MailSection({
   settings,
   reload,
@@ -31,7 +25,7 @@ export function MailSection({
     appBaseUrl: '',
   })
   const [mailProbe, setMailProbe] = useState<{ ok: boolean; detail: string } | null>(null)
-  /** Typing wins over a fetch that lands late. See `ProxySection`. */
+  // Typing wins over a fetch that lands late.
   const dirty = useRef(false)
 
   const save = async () => {
@@ -45,7 +39,6 @@ export function MailSection({
       appBaseUrl: smtp.appBaseUrl,
     })
     dirty.current = false
-    // The password box goes back to "leave it alone" once it is stored.
     setSmtp((v) => ({ ...v, password: '' }))
     await reload()
   }
@@ -57,7 +50,7 @@ export function MailSection({
       port: settings.smtp.port,
       security: settings.smtp.security || 'starttls',
       username: settings.smtp.username,
-      // Same rule as the master key: an empty box means "leave it alone".
+      // Empty password means "keep the stored one".
       password: '',
       from: settings.smtp.from,
       appBaseUrl: settings.smtp.appBaseUrl,
@@ -70,9 +63,6 @@ export function MailSection({
         <Mail size={18} className={settings?.smtp.passwordResetEnabled ? 'text-success' : 'text-muted'} />
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('메일 발송')}</p>
-          {/* The consequence, not the configuration. An operator filling this
-              in is doing it for one reason, and the screen should say whether
-              that reason is satisfied yet. */}
           <p className="text-base text-muted">
             {settings?.smtp.passwordResetEnabled
               ? t('비밀번호 재설정이 켜져 있습니다. 로그인 화면에 재설정 링크가 보입니다.')
@@ -87,9 +77,7 @@ export function MailSection({
             setMailProbe(null)
             setError(null)
             try {
-              // The test sends with what is *stored*. Typed values that were
-              // never saved were the usual reason a filled-in form reported
-              // nothing to send with — so save first, then send.
+              // The test uses stored values, so save first.
               if (dirty.current) {
                 await save()
               }
@@ -149,9 +137,6 @@ export function MailSection({
               className="font-mono text-base"
             />
           </Field>
-          {/* Named modes rather than a checkbox: STARTTLS and SSL use different
-              ports and a different handshake, and picking the wrong one fails
-              as a timeout with no hint which half was wrong. */}
           <Field label={t('보안')}>
             <select
               value={smtp.security}

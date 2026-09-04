@@ -1,28 +1,9 @@
-/**
- * What each persona actually types.
- *
- * The catalogue used to build its prompt by filling a sentence:
- * `인문대 학부생로서 첨부한 PDF를 근거로 보고서를 작성한다.` Every row was
- * well-formed, no row was a request anybody would make, and a run of them
- * exercised one code path 1,152 times. A model given a description of a task
- * writes about the task; a model given the task does the task, and only the
- * second one can be judged.
- *
- * So a prompt here is the sentence the person would type, in their own
- * vocabulary, with the nouns of their field in it — and each carries the thing
- * that makes the answer checkable: a figure to be found, a term to be defined,
- * a comparison to be drawn. `expect` is what a reader of the result would look
- * for, and the runner checks it rather than checking that bytes arrived.
- */
+/** What each work persona types for each job, with what a correct answer must contain. */
 
 export interface WorkPrompt {
   /** The request, as typed. */
   text: string
-  /**
-   * Substrings the finished work must contain, judged case-insensitively.
-   * Kept to things the *request itself* forces — a topic word, a required
-   * section, a unit — never to a fact the model would have to invent.
-   */
+  /** Substrings the finished work must contain (case-insensitive); only what the request itself forces. */
   expect: string[]
 }
 

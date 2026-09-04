@@ -1,9 +1,4 @@
-"""What the linter catches, and — more carefully — what it leaves alone.
-
-A check that fires on ordinary writing is worse than no check: people learn to
-ignore the badge, and then it protects nothing. So every rule here has a
-companion test for the sentence it must stay silent on.
-"""
+"""`lint` rules: what each catches, what it leaves alone, and how each surface is read."""
 
 from __future__ import annotations
 
@@ -25,24 +20,14 @@ def _rules(findings: list[lint.Finding]) -> list[str]:
 
 
 def test_markdown_that_never_rendered_is_a_regression():
-    """`**bold**` in an HTML block prints its own asterisks on the slide.
-
-    The document surfaces ask for markup and a small model sometimes answers in
-    Markdown. `sanitise` cannot help — there is no tag to drop, only characters
-    — so the asterisks travel all the way to the screen behind a speaker. This
-    is the one place left that can see them.
-    """
+    """Markdown bold in a block is a P0 `markup` finding."""
     findings = lint.check(_one("측정 환경", "**발표 노트** 환경 통제에서 노이즈를 제거한다."))
     assert _rules(findings) == ["markup"]
     assert findings[0].severity == "P0"
 
 
 def test_the_envelope_the_model_was_shown_is_not_content():
-    """What survives when the answer was JSON and the JSON was truncated.
-
-    `sanitise` unwraps one that parses; one that does not arrives whole, and a
-    slide then opens with `{"layout":"bullets","body":"…`. This is what says so.
-    """
+    """A truncated JSON envelope left in the text is a P0 `envelope` finding."""
     findings = lint.check(
         _one("승인 규칙", '{"layout": "bullets", "body": "  승인 규칙의 구조 확인')
     )
@@ -69,8 +54,7 @@ def _rules_for(line: str):
     ],
 )
 def test_ordinary_asterisks_are_not_markdown(line):
-    """Paired, with words between them, and not inside code — anything else is
-    somebody's sentence."""
+    """Only paired asterisks with words between them, outside code, count as markup."""
     assert "markup" not in _rules(lint.check(_one("표기", line)))
 
 
@@ -105,7 +89,6 @@ def test_filler_is_an_advisory_rather_than_a_regression():
 def test_a_block_that_never_got_written_is_reported_once():
     findings = lint.check(_one("결론", "…"))
     assert _rules(findings) == ["empty"]
-    # And nothing else: an empty block cannot also be crowded or repetitive.
     assert len(findings) == 1
 
 
@@ -131,7 +114,7 @@ def test_slide_shape_rules_apply_only_to_slides():
 
 
 def test_a_line_too_long_for_a_screen_is_flagged():
-    # 45 is where the check sits; the deck prompt itself asks for 40.
+    # General bound is 45 characters.
     long_line = (
         "이 문장은 화면 한 줄에 담기에는 확실히 너무 길어서 "
         "뒤로 갈수록 두 행이 되고 마는 종류의 문장이다."
@@ -158,7 +141,7 @@ def test_findings_come_worst_first():
     ],
 )
 def test_ordinary_figures_are_not_touched(line):
-    """A report is *for* numbers. A check that fires on them is noise."""
+    """Sourced-looking figures are not `invented-metric`."""
     assert lint.check(_one("결과", line, "이어지는 문장이 하나 더 있다.")) == []
 
 
@@ -167,7 +150,7 @@ def test_a_short_but_finished_line_is_not_empty():
 
 
 def test_a_repeated_short_phrase_is_not_a_repeat():
-    """Headings and stock phrases recur; only substantial lines count."""
+    """Only substantial lines count as repeats."""
     parts = [
         lint.Part("가", ["없음", "이 절은 배경을 설명한다."]),
         lint.Part("나", ["없음", "이 절은 대안을 견준다."]),
@@ -176,7 +159,7 @@ def test_a_repeated_short_phrase_is_not_a_repeat():
 
 
 def test_the_same_line_twice_inside_one_part_is_not_a_repeat():
-    """A list that echoes itself is one part's problem, and a rewrite fixes it."""
+    """`repeat` is across parts only."""
     parts = [lint.Part("배경", ["점검 이력이 남아 있지 않다.", "점검 이력이 남아 있지 않다."])]
     assert "repeat" not in _rules(lint.check(parts))
 
@@ -202,16 +185,11 @@ def test_an_html_block_is_read_as_lines_not_as_markup():
         [{"title": "현황", "html": "<ul><li>보유 42대</li><li>점검 5대</li></ul><p>본문</p>"}]
     )
     assert parts[0].lines == ["보유 42대", "점검 5대", "본문"]
-    # The tags themselves must not become words the rules then read.
     assert not any("<" in line for line in parts[0].lines)
 
 
 def test_a_column_label_is_not_one_of_the_items_under_it():
-    """A `split` slide opens each column with an `<h3>` the seed sets small.
-
-    Counted as lines, two signposts over four items made a slide of six and
-    tripped `crowded` on a slide the template itself calls the right size.
-    """
+    """Column `<h3>` labels go to `part.labels` and are not counted as lines."""
     block = {
         "title": "비교",
         "html": (
@@ -233,7 +211,7 @@ def test_a_column_label_is_not_one_of_the_items_under_it():
 
 
 def test_a_label_is_still_read_for_the_words_in_it():
-    """Not counted is not unread — a placeholder in a column heading is one."""
+    """Labels are still checked for placeholders."""
     part = lint.from_blocks(
         [{"title": "비교", "html": "<h3>여기에 제목을 입력</h3><p>본문이 여기 있다.</p>"}]
     )[0]
@@ -263,11 +241,7 @@ def test_the_wire_shape_is_flat_strings():
 
 
 def test_a_template_can_tighten_the_bounds_the_checker_uses():
-    """The lecture deck asks for 25 characters; the general bound is 45.
-
-    Without the template's own numbers the checker passes a line the template
-    itself calls too long — two rules about the same slide, disagreeing.
-    """
+    """`limits` from a template override the general bounds."""
     line = "가" * 30
     parts = [lint.Part("한 장", [line, "짧은 줄"])]
 
@@ -277,12 +251,11 @@ def test_a_template_can_tighten_the_bounds_the_checker_uses():
 
 
 def test_the_shipped_limits_are_the_ones_the_instructions_state():
-    """`deck-lecture` says 3~4개, 25자 in prose; the manifest has to agree."""
+    """`deck-lecture`'s manifest limits agree with its prose; templates without limits get {}."""
     template = dt.get("deck-lecture")
     assert template is not None
     assert template.limits == {"max_bullets": 4, "max_bullet_chars": 25}
     assert "25자" in template.instructions
-    # A template that says nothing keeps the general bounds.
     assert dt.get("doc-report").limits == {}
 
 
@@ -290,16 +263,7 @@ def test_the_shipped_limits_are_the_ones_the_instructions_state():
 
 
 def test_a_chinese_word_in_korean_prose_is_flagged():
-    """The models leak Chinese into Korean one word at a time.
-
-    `全自動化`, `動的 엔드포인트`, `傳統的인 방화벽` — all real samples from
-    generated reports. To a Korean reader it is a typo; to a Korean reviewer it
-    is the clearest sign the document was written by a machine, and on a
-    submitted report that costs more than a weak argument does.
-
-    The surface prompt asks the model not to, and a prompt is advice. This is
-    the read-back.
-    """
+    """A bare Chinese word inside Korean prose is a `hanja` finding."""
     parts = lint.from_sections(
         [{"heading": "대응", "content": "수준 3의 全自動化 단계는 오경보가 최소화될 때 도입한다."}]
     )
@@ -308,11 +272,7 @@ def test_a_chinese_word_in_korean_prose_is_flagged():
 
 
 def test_a_parenthesised_gloss_is_not_a_leak():
-    """`분산(分散)` in a paper, a legal term, a name in its original script.
-
-    Banning the block outright would be its own kind of wrong in exactly the
-    documents this product is for, so a gloss inside brackets is left alone.
-    """
+    """Hanja inside brackets is a gloss, not a leak."""
     for body in (
         "분산(分散) 시스템의 특성을 아래와 같이 정리하여 문서에 담는다.",
         "서비스 메쉬 우회 [傳統] 방식과의 차이를 아래에 정리하여 담는다.",

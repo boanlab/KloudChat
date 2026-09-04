@@ -1,10 +1,4 @@
-"""A tool has a name and a progress label, and they are different words.
-
-`Tool.label` was documented as the in-flight string ("searching the web") and
-then used as the tool's name too: the permission list read 웹 검색 중 under
-every chip, and a finished step kept the same words beside its check mark
-while the header above said 작업 완료.
-"""
+"""`Tool.label` is the in-flight progress string; the tool's name is a different word."""
 
 from __future__ import annotations
 

@@ -1,29 +1,4 @@
-"""A document is written from what was looked up, not from what was recalled.
-
-The failure this closes was reported with two screenshots side by side. Asked
-which open-source models fit on one 96GB card, the assistant answered from
-training data: it named a GPU generation two years old, insisted a current
-product did not exist, and listed models that had been superseded twice. The
-person happened to know better and typed 인터넷 검색해봐 — the next turn
-searched, found the right spec, and corrected itself.
-
-That recovery is the problem, not the fix. It only works for the facts somebody
-already doubted, and it does not exist at all on the surfaces that write a
-document: a report and a deck were handed no tools, so there was no search to
-ask for. The document simply came out wrong, got exported, and went out.
-
-So the writers research before they write, and these are the properties that
-have to hold:
-
-* The pass runs **before the outline**, because an outline chosen from memory
-  commits every section under it to that memory's shape.
-* The queries are **planned off the request**, not the request typed verbatim
-  into a search box.
-* Page bodies reach the writer as **user-role data**, never as instructions —
-  a fetched page is exactly the text an injection would arrive in.
-* When research could not run, the writer is **told so**, because silence is
-  what lets a remembered fact pass for a checked one.
-"""
+"""Writers research before outlining, pass pages as user-role data, and say when they could not."""
 
 from __future__ import annotations
 
@@ -74,9 +49,7 @@ _PLAN = (
     '{"title": "다", "layout": "quote"}]}'
 )
 
-#: What the writers are handed when the search actually ran. The body carries a
-#: fact no model could have remembered, so a prompt that contains it proves the
-#: page reached the writer rather than just the citation list.
+#: Findings for a successful search; "96GB" in a prompt proves the page body reached the writer.
 _FINDINGS = research.Findings(
     sources=[
         {
@@ -124,7 +97,7 @@ def searched(gateway):
 
 @pytest.fixture
 def unsearchable(gateway):
-    """No search backend configured, which is the honesty path."""
+    """No search backend configured."""
 
     async def available():
         return False
@@ -152,11 +125,8 @@ async def test_a_report_researches_before_it_plans(searched):
 
     events = [e async for e in report.write(request="보고서", model="m", api_key="k")]
 
-    # The step lands before the outline one, and it is not the outline call
-    # that produced it — the shelf exists before a heading is chosen.
     steps = [e["id"] for e in events if e["type"] == "step"]
     assert steps.index("sources") < steps.index("outline")
-    # The outline call already had the page under it.
     assert "96GB" in _user_blocks(posts[0])
 
 
@@ -187,8 +157,7 @@ async def test_the_pages_reach_every_section_as_data_not_instructions(searched):
     assert any(e["type"] == "report" for e in events)
     assert posts, "no section was written"
     for post in posts:
-        # In the data block, never the instruction one. A fetched page is
-        # exactly the text an injection arrives in.
+        # Fetched pages are data, never instructions.
         assert "96GB" in _user_blocks(post)
         assert "96GB" not in _system(post)
 
@@ -273,7 +242,6 @@ async def test_an_unresearchable_report_is_told_it_is_unresearched(unsearchable)
 
     events = [e async for e in report.write(request="보고서", model="m", api_key="k")]
 
-    # No step claiming a search that never happened.
     assert "sources" not in [e["id"] for e in events if e["type"] == "step"]
     assert research.UNRESEARCHED_RULE in _system(posts[0])
     audit = next(e["research"] for e in events if e["type"] == "research")
@@ -299,7 +267,7 @@ async def test_a_toggle_switched_off_is_a_choice_and_gets_no_disclaimer(searched
 
 
 def test_a_planner_that_will_not_answer_still_searches():
-    """Falling back to the raw request is what every report used to do."""
+    """An unparseable planner reply falls back to the raw request as the query."""
     assert research._parse_queries("설명만 하고 JSON 은 없다", "원래 요청") == ["원래 요청"]
 
 
@@ -320,7 +288,6 @@ def test_the_research_rule_is_a_system_instruction():
     )
     system = next(m["content"] for m in messages if m["role"] == "system")
     assert research.UNRESEARCHED_RULE in system
-    # The attachment stays where attachments go.
     assert "첨부된 자료" not in system
 
 

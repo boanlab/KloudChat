@@ -1,13 +1,7 @@
-"""Policy that runs, applied where it can take effect.
+"""Governance policy: PII masking, intent filtering, retention, and privacy decision tokens.
 
-* **PII masking** rewrites the text on its way to the model, and before the
-  write. Redacting afterwards leaves the original in the database.
-* **Intent filtering** refuses the turn before any model is called, so a
-  blocked request costs nothing and produces no partial answer.
-* **Retention** clears message bodies past their age. Rows and metadata stay —
-  the audit trail is what must not be edited.
-
-Read through a short cache, since this is consulted on every turn.
+Masking runs before the model call and before the write. Retention clears
+message bodies only; rows and metadata stay for the audit trail.
 """
 
 from __future__ import annotations
@@ -67,9 +61,8 @@ class Finding:
         return {"category": self.category, "source": self.source, "count": self.count}
 
 
-# Narrow candidates followed by format/checksum validation. False positives on
-# this path make people disable the feature, so semantic name/address detection
-# belongs in a later opt-in classifier rather than this deterministic baseline.
+# Narrow candidates followed by format/checksum validation; deterministic, no
+# semantic name/address detection.
 _EMAIL_LOCAL = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
 _EMAIL_DOMAIN = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
 _EMAIL_TLD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -78,21 +71,18 @@ _KR_LANDLINE = re.compile(
     r"(?<!\d)(?:\(0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4])\)\s*|"
     r"0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4])[- ])\d{3,4}[- ]\d{4}(?!\d)"
 )
-# NANP area and exchange codes cannot start with 0 or 1. Separators or a
-# parenthesized area code are required so arbitrary ten-digit identifiers do
-# not become phone numbers.
+# NANP area and exchange codes cannot start with 0 or 1; separators or a
+# parenthesised area code are required.
 _NANP = re.compile(
     r"(?<!\d)(?:\+?1[ .-])?(?:\([2-9]\d{2}\)\s*|[2-9]\d{2}[ .-])"
     r"[2-9]\d{2}[ .-]\d{4}(?!\d)"
 )
-# Candidate followed by digit-count and parenthesis validation. This covers
-# E.164 as well as the spaced/hyphenated form people actually paste.
+# Candidate only; `_valid_international_phone` checks digit count and parentheses.
 _INTERNATIONAL_PHONE = re.compile(r"(?<![\w+])\+[1-9][0-9 .()-]{5,28}[0-9](?!\w)")
 _RRN = re.compile(r"(?<!\d)\d{6}[- ]?[1-8]\d{6}(?!\d)")
 _CARD = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 _IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
-# Candidate only; ``ipaddress`` below is the validator. Requiring at least two
-# colons avoids treating ordinary prose containing one colon as an address.
+# Candidate only; `ipaddress` validates. At least two colons required.
 _IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
 _LEGACY_RRN = re.compile(r"\b\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-[1-4]\d{6}\b")
 _LEGACY_CARD = re.compile(r"\b(?:\d{4}[- ]){3}\d{4}\b")
@@ -153,8 +143,7 @@ def _valid_rrn(value: str) -> bool:
     digits = _digits(value)
     if len(digits) != 13:
         return False
-    # The seventh digit identifies both sex and century. Calendar validation
-    # rejects impossible dates such as 990231 that pass the checksum by chance.
+    # The seventh digit encodes sex and century.
     century = 1900 if digits[6] in "1256" else 2000
     try:
         date(century + int(digits[:2]), int(digits[2:4]), int(digits[4:6]))
@@ -199,18 +188,13 @@ def _valid_international_phone(value: str) -> bool:
 
 
 def _is_word_character(value: str) -> bool:
-    r"""The part of ``\w`` needed by the old email boundary contract."""
+    r"""Regex ``\w`` membership."""
     return value == "_" or value.isalnum()
 
 
 def _email_spans(text: str) -> Iterator[tuple[int, int]]:
-    """Find high-confidence email spans in linear time.
-
-    Starting a backtracking regex with an unbounded local-part character class
-    makes a string such as ``"%" * n`` retry the same suffix at every offset.
-    Anchoring each candidate on its ``@`` means each adjacent segment is
-    visited a constant number of times, including inputs containing many
-    ``@`` characters.
+    """High-confidence email spans in linear time, anchored on each ``@`` to avoid regex
+    backtracking.
     """
     resume = 0
     at = text.find("@")
@@ -250,10 +234,7 @@ def _email_spans(text: str) -> Iterator[tuple[int, int]]:
             and trailing_boundary
         ):
             yield start, end
-            # ``re.finditer`` resumes after its previous match. Carrying the
-            # same cursor matters when two addresses touch: a later ``@`` may
-            # otherwise choose a local part that overlaps the first match and
-            # disappear in the detector's global overlap sweep.
+            # Resume after the match so touching addresses do not overlap.
             resume = end
 
         at = text.find("@", at + 1)
@@ -268,14 +249,7 @@ def _is_legacy_domain_character(value: str) -> bool:
 
 
 def _legacy_email_spans(text: str) -> Iterator[tuple[int, int]]:
-    r"""Implement ``\b[\w.+-]+@[\w-]+\.[\w.-]+\b`` without backtracking.
-
-    The compatibility policy intentionally accepts Unicode word characters and
-    broad domain suffixes. Candidates are anchored on ``@``; the nearest left
-    word boundary and the first domain dot reproduce that contract while each
-    segment between two ``@`` characters is visited only a constant number of
-    times.
-    """
+    r"""``\b[\w.+-]+@[\w-]+\.[\w.-]+\b`` without backtracking; accepts Unicode word characters."""
     resume = 0
     at = text.find("@")
     while at >= 0:
@@ -302,9 +276,7 @@ def _legacy_email_spans(text: str) -> Iterator[tuple[int, int]]:
             while scan_end < len(text) and _is_legacy_domain_character(text[scan_end]):
                 scan_end += 1
 
-        # A trailing ``\b`` after this character class can only settle after a
-        # word character. Greedy regex backtracking merely trims final dots and
-        # hyphens; do that once from the right instead.
+        # The trailing ``\b`` trims final dots and hyphens.
         end = scan_end
         while end > suffix_start and not _is_word_character(text[end - 1]):
             end -= 1
@@ -355,9 +327,8 @@ def _detections(text: str) -> list[_Detection]:
         for match in pattern.finditer(text):
             add(category, match)
 
-    # Sort once, then sweep once. Same-start longer matches win (a private-key
-    # block can contain token-like fragments); later overlapping candidates are
-    # skipped. This is O(n log n), including finding-heavy adversarial input.
+    # Same-start longer matches win (a private-key block contains token-like
+    # fragments); later overlapping candidates are skipped.
     accepted: list[_Detection] = []
     covered_until = -1
     for item in sorted(candidates, key=lambda d: (d.start, -(d.end - d.start), d.category)):
@@ -369,11 +340,7 @@ def _detections(text: str) -> list[_Detection]:
 
 
 async def current(force: bool = False) -> Governance:
-    """Returns a short-lived policy snapshot for non-authorizing work.
-
-    UI hints and background retention may tolerate this process-local cache.
-    Any decision that can let content leave the service must instead call
-    :func:`current_for_egress` so a different worker's revocation is immediate.
+    """Cached policy snapshot for non-authorizing work; egress decisions use `current_for_egress`.
     """
     now = time.monotonic()
     if not force and _cache["value"] is not None and now - _cache["at"] < _TTL:
@@ -383,9 +350,7 @@ async def current(force: bool = False) -> Governance:
             row = await db.get(Governance, "default")
             policy = row or Governance()
     except Exception as exc:  # noqa: BLE001
-        # Preserve non-authorizing UI/background hints from a stale known
-        # policy, but never display guard-off/raw-delivery after a read failure.
-        # Egress callers do not use this fallback; ``current_for_egress`` raises.
+        # Never report guard-off / raw delivery after a read failure.
         log.warning("governance unreadable, enabling external data guard: %s", exc)
         stale = _cache["value"]
         if stale is not None:
@@ -401,18 +366,10 @@ async def current(force: bool = False) -> Governance:
 
 
 async def current_for_egress() -> Governance:
-    """Returns the policy that may authorize an outbound model request.
+    """Uncached policy read for egress authorization; the cache is process-local and multi-worker
+    revocation must be immediate.
 
-    The ordinary 15-second cache is process-local. In a multi-worker server,
-    invalidating it after an admin update only reaches the worker that handled
-    that update; another worker could otherwise keep allowing raw external
-    delivery. Egress authorization therefore pays for one primary-key read on
-    every turn (and raw-default preference save).
-
-    A read failure is different from a policy that says "guard on": masking,
-    prohibited-intent categories and the legacy upper bound are all unknown.
-    Neither a synthesized default nor a stale cache can authorize even a
-    strict-local turn in that state, so callers must surface a stable 503.
+    Raises `GovernanceUnavailable` on a read failure; callers answer 503.
     """
     now = time.monotonic()
     try:
@@ -434,13 +391,13 @@ def invalidate() -> None:
 
 
 def mask(text: str) -> tuple[str, int]:
-    """`(redacted text, how many)`. Counting is what makes the audit line useful."""
+    """`(masked text, hit count)`."""
     hits = _detections(text)
     return _render_masked(text, hits), len(hits)
 
 
 def _render_masked(text: str, hits: list[_Detection]) -> str:
-    """Renders all replacements with one join rather than repeated copies."""
+    """Replaces each hit's span with its label."""
     if not hits:
         return text
     parts: list[str] = []
@@ -474,7 +431,7 @@ def _legacy_detections(text: str) -> list[_Detection]:
 
 
 def mask_legacy(text: str) -> tuple[str, int]:
-    """Compatibility mask used by the existing organisation-wide policy."""
+    """Mask with the broader legacy patterns; used when `pii_masking` is on."""
     hits = _legacy_detections(text)
     return _render_masked(text, hits), len(hits)
 
@@ -551,11 +508,7 @@ def finding_metadata(rows: list[Finding]) -> dict[str, Any]:
 
 
 def blocked_by(text: str, categories: list[str]) -> str | None:
-    """The first configured category the text matches, or None.
-
-    Substring matching on the category name, not a model call: the words an
-    administrator types are the words they expect to catch.
-    """
+    """The first configured category found as a substring of `text`, or None."""
     lowered = text.lower()
     for category in categories:
         needle = str(category).strip().lower()
@@ -565,12 +518,7 @@ def blocked_by(text: str, categories: list[str]) -> str | None:
 
 
 async def sweep_expired(db: AsyncSession) -> int:
-    """Blanks message bodies past the retention window. Returns how many.
-
-    Bodies only: the model, token counts and credits are what the usage and
-    audit screens are built from. Retention is about content, not about erasing
-    that anything happened.
-    """
+    """Blanks message bodies (not metadata) past the retention window. Returns how many."""
     policy = await current(force=True)
     if policy.retention_days <= 0:
         return 0

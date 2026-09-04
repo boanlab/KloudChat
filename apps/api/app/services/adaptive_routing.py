@@ -20,18 +20,12 @@ from app.services import settings_store
 log = logging.getLogger(__name__)
 
 CLASSIFIER_VERSION = "auto-cost-2026-09-03.v2"
-# 집 프롬프트가 자라면 여기도 자라야 한다. 8,000 was set when the chat system
-# turn was three sentences; the writing rules added to it (`context._WRITING`)
-# pushed an ordinary turn with tool definitions past the bound, and Auto then
-# refused every routing decision without saying why. The classifier reads the
-# same envelope the answer model does, so the bound tracks that envelope.
+# Must hold an ordinary chat envelope including `context._WRITING` and tool
+# definitions; above it Auto refuses to route.
 MAX_CLASSIFIER_CHARS = 12_000
 MIN_LOW_CONFIDENCE = 0.9
-#: The same bar in the other direction. Both lanes fail closed to the model
-#: the person chose, so neither gets to act on a guess the other would not.
 MIN_HIGH_CONFIDENCE = 0.9
-# Space for KloudChat's system wrapper and a useful answer. Candidate selection
-# fails closed rather than discovering the smaller window after classification.
+# Room for the system wrapper and an answer in the candidate's context window.
 _CONTEXT_RESERVE_TOKENS = 2_048
 _OUTPUT_REASONS = frozenset(
     {
@@ -78,16 +72,10 @@ def classifier_context(
     messages: list[dict[str, str]],
     tool_definitions: list[dict[str, Any]] | None = None,
 ) -> str | None:
-    """Serializes the complete answer-model-visible message envelope.
+    """The full answer-model envelope (messages plus tool definitions) as JSON, or None when over
+    `MAX_CLASSIFIER_CHARS`.
 
-    The classifier must not see a recent-history summary while the answer model
-    sees older constraints or global memory. We therefore keep every system,
-    reference, history and current-input message, and refuse Auto instead of
-    truncating when that exact envelope exceeds the conservative 8k bound.
-    Tool definitions are included in the same bound so a complex capability is
-    never hidden from the decision. They are labelled as quality-model-only:
-    routed economy calls intentionally receive no tools, which prevents a later
-    tool result from invalidating the candidate's context-window check.
+    Never truncated: the classifier must see exactly what the answer model sees.
     """
     payload: dict[str, Any] = {"messages": messages}
     if tool_definitions:
@@ -97,13 +85,7 @@ def classifier_context(
 
 
 def estimated_context_tokens(parts: list[str]) -> int:
-    """Tokenizer-independent UTF-8 byte-fallback upper bound.
-
-    Natural-language chars/token averages undercount code, minified JSON and
-    random identifiers. A BPE token represents at least one input byte, so the
-    encoded byte length is deliberately conservative for the hard context-fit
-    gate. Skipping a marginal saving is safer than overflowing a smaller model.
-    """
+    """UTF-8 byte count as a conservative token upper bound (a BPE token is at least one byte)."""
     return max(1, sum(len(part.encode("utf-8")) for part in parts))
 
 
@@ -145,34 +127,26 @@ def economy_is_baseline_usable(
         and (not allowed_model_ids or model_id in allowed_model_ids)
         and "chat" in model.get("kinds", [])
         and model.get("privacyOnly") is not True
-        # `hybrid` — served here, falling back outside only under load — is
-        # admitted: on this instance the cheapest models are exactly those,
-        # and the screen already offers them. Whether one may take a given
-        # turn is decided against the quality model's boundary below, the
-        # same way an external candidate is.
+        # `hybrid` is admitted here; `economy_candidates` checks it against
+        # the quality model's boundary.
         and model.get("dataBoundary") not in {"unknown", None}
     )
 
 
-#: Kept beside the candidate filters that use it. `hybrid` ranks with the
-#: external boundaries because it may fall back to them mid-turn, and `unknown`
-#: with them because a boundary nobody could establish is not a boundary.
+#: `hybrid` may fall back outside mid-turn and `unknown` is no boundary, so
+#: both rank with `external`.
 _BOUNDARY_RANK = {"self_hosted": 0, "hybrid": 1, "external": 1, "unknown": 1}
 
 
 def widens_boundary(candidate: dict[str, Any], chosen: dict[str, Any]) -> bool:
-    """True when `candidate` would send further than `chosen` already does.
-
-    The person picked the model, or privacy picked it for them. Routing is
-    allowed to change what answers the turn; it is never allowed to change how
-    far the turn travels.
+    """True when `candidate` would send data further than `chosen`; routing may never widen the
+    boundary.
     """
     if _BOUNDARY_RANK.get(str(candidate.get("dataBoundary")), 1) > _BOUNDARY_RANK.get(
         str(chosen.get("dataBoundary")), 1
     ):
         return True
-    # Strict-local is a stronger claim than self-hosted: no external fallback
-    # exists for it at all.
+    # Strict-local is stronger than self-hosted: no external fallback at all.
     return bool(chosen.get("strictLocal")) and not candidate.get("strictLocal")
 
 
@@ -185,16 +159,8 @@ def quality_candidates(
     context_tokens: int,
     requires_tools: bool,
 ) -> list[dict[str, Any]]:
-    """Upgrade candidates, in the administrator's explicit order.
-
-    Deliberately not a price sort. A larger model is not reliably a better one
-    — measured on this instance a 122b failed an outline call a 35b completed —
-    so which models are worth paying more for is a finding somebody had to make,
-    and this returns them in the order they made it.
-
-    Unlike the economy lane, an upgraded call keeps its tools: the point of
-    routing up is to answer a turn the small model could not, and taking away
-    its capabilities while charging more for it would do the opposite.
+    """Upgrade candidates in the administrator's order (not a price sort). An upgraded call keeps
+    its tools.
     """
     by_id = {str(model.get("id")): model for model in catalogue}
     valid: list[dict[str, Any]] = []
@@ -210,16 +176,12 @@ def quality_candidates(
             continue
         if "chat" not in model.get("kinds", []):
             continue
-        # The one rule that is not the administrator's to relax.
         if widens_boundary(model, quality_model):
             continue
         if model_id == str(quality_model.get("id")):
             continue
         context_window = _non_negative_int(model.get("contextWindow")) or 0
-        # A model whose window the catalogue does not state is admitted: the
-        # economy lane refuses it because overflowing a *smaller* model loses
-        # the turn, and nothing here is smaller than what the person already
-        # had. Where a window is stated it is still respected.
+        # An unstated window is admitted here (unlike the economy lane).
         if context_window and context_tokens + _CONTEXT_RESERVE_TOKENS > context_window:
             continue
         if requires_tools and model.get("supportsTools") is not True:
@@ -237,7 +199,9 @@ def economy_candidates(
     context_tokens: int,
     requires_tools: bool,
 ) -> list[dict[str, Any]]:
-    """Returns valid candidates in the administrator's explicit order."""
+    """Economy candidates in the administrator's order: cheaper, no wider boundary, window large
+    enough. Routed economy calls get no tools.
+    """
     by_id = {str(model.get("id")): model for model in catalogue}
     quality_in = _non_negative_int(quality_model.get("inputCreditCost"))
     quality_out = _non_negative_int(quality_model.get("creditCost"))
@@ -256,14 +220,10 @@ def economy_candidates(
             continue
         assert model is not None
         boundary = str(model.get("dataBoundary") or "unknown")
-        # An external candidate is proven non-worsening only when the quality
-        # model is already explicitly external. Unknown and hybrid ceilings
-        # therefore admit self-hosted candidates only.
+        # External only under an external quality model; hybrid (may fall
+        # back outside mid-turn) only under hybrid or external.
         if boundary == "external" and quality_boundary != "external":
             continue
-        # A hybrid candidate may fall back outside mid-turn, so it is only
-        # ever a saving where the turn could already leave: a quality model
-        # that is itself hybrid or external.
         if boundary == "hybrid" and quality_boundary not in ("hybrid", "external"):
             continue
         candidate_in = _non_negative_int(model.get("inputCreditCost"))
@@ -290,10 +250,8 @@ async def classify(
     user_id: str,
     api_key: str,
 ) -> Classification | None:
-    """Calls only the configured strict-local model with the caller's key.
-
-    No exception or model-authored free text escapes this module. Failure is a
-    normal outcome and means "keep the quality model".
+    """Classifies with the strict-local model; None on any failure or malformed answer (keep the
+    quality model).
     """
     base_url, _ = await settings_store.litellm_config()
     if not base_url or not api_key:

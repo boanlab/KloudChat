@@ -1,9 +1,7 @@
-"""Authorised, source-aware workspace context for one model turn.
+"""Authorised workspace context for one model turn.
 
-Only agent/project instructions and explicitly activated skills receive system
-priority. Files, memories, and project knowledge are user-owned *data*: keeping
-them in a separate collection prevents an instruction embedded in a document
-from being promoted to a system instruction.
+Only agent/project instructions and activated skills are trusted (system-priority)
+blocks; files, memories and project knowledge are untrusted data.
 """
 
 from __future__ import annotations
@@ -50,7 +48,7 @@ _MEMORY_TYPE_LABEL = {
 
 
 class WorkspaceContextError(ValueError):
-    """A stable refusal code safe to return from a request router."""
+    """Stable refusal code, safe to return from a router."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,49 +59,30 @@ class ContextBlock:
 
 
 def reads_pictures(model: dict | None) -> bool:
-    """Whether this turn's model may be handed one.
+    """Whether this turn's model may be handed a picture: declared vision and strict-local only.
 
-    Two conditions, and both are load-bearing.
-
-    **It has to say so.** Measured against the gateway, two commercial models
-    accepted an image and answered with an empty message rather than an error —
-    so trying and watching produces a blank answer, not a fallback. This is the
-    same rule the data boundary already follows: metadata is the authority, and
-    absence of a claim is a no.
-
-    **It has to be unable to leave.** The privacy guard reads text. An image is
-    egress it cannot inspect, and policy is applied before anything reaches a
-    model — so a picture on an external route would go past that gate with
-    nothing looking at it. The contained route is the one that carries them.
+    The privacy guard inspects text only, so images never go to an external route.
     """
     return bool(model and model.get("supportsVision") and model.get("strictLocal"))
 
 
 @dataclass(frozen=True, slots=True)
 class TurnPicture:
-    """One attached picture, ready to become a content part."""
+    """One attached picture, ready to become an `image_url` content part."""
 
     name: str
     mime: str
-    #: `data:<mime>;base64,…` — the form an upstream `image_url` part takes.
+    #: `data:<mime>;base64,…`
     uri: str
 
 
 @dataclass(frozen=True, slots=True)
 class ContextFile:
-    """How much of one file actually reached the model.
-
-    The budget is spent in order, so a long list ends with documents that
-    arrive as a filename and nothing else. Until this was recorded the only
-    notice went into the prompt for the model to read, and the person kept
-    looking at a chip that said the whole file had been attached.
-    """
+    """How much of one file reached the model."""
 
     name: str
-    #: "included", "truncated", "omitted" — over budget — "unreadable", the
-    #: file whose text extraction failed before any budget, or one of the two
-    #: picture states: "picture" when this turn's model was handed it, and
-    #: "picture_unseen" when the picture is fine and this model cannot look.
+    #: "included", "truncated", "omitted" (over budget), "unreadable" (extraction
+    #: failed), "picture" (handed to the model) or "picture_unseen" (model lacks vision).
     state: str
     kept_chars: int
     total_chars: int
@@ -114,12 +93,7 @@ class ContextFile:
 
 @dataclass(frozen=True, slots=True)
 class StartingPoint:
-    """A resolved 시작점: what it is called, and the sentence it opens with.
-
-    Flattened out of the two things it can be — a built-in that ships in the
-    image, or a `templates` row somebody wrote — because from here on nothing
-    cares which it was.
-    """
+    """A resolved 시작점 (built-in or `templates` row): id, title and opening prompt."""
 
     id: str
     title: str
@@ -138,26 +112,17 @@ class AppliedSkill:
 class WorkspaceContext:
     blocks: tuple[ContextBlock, ...]
     applied_skills: tuple[AppliedSkill, ...]
-    #: What the message row records about the 시작점 this turn was begun from,
-    #: or `None`. Resolved here because this is where the id was checked, and
-    #: the router should not have to look the same template up twice.
+    #: `{"templateId", "title"}` of the 시작점 this turn began from, or None.
     started_from: dict[str, str] | None = None
-    #: The project's design tokens, or `None` when it wears no design system.
-    #: `None` rather than the defaults, because the difference is what the deck
-    #: outline consults: with no design system the model still picks the accent.
+    #: Project design tokens; None (not defaults) when the project has no design system.
     design_tokens: dict[str, str] | None = None
-    #: The memories this turn was answered with, by name. Names only: a body is
-    #: the private half, and the timeline is a surface people screen-share.
-    #: `total_memories` is what exists, so a turn carrying forty of sixty can
-    #: say which forty it was working from.
+    #: Names only: memory bodies are private and the timeline is screen-shared.
     loaded_memories: tuple[str, ...] = ()
     total_memories: int = 0
-    #: What became of this turn's attachments, and of the project's knowledge,
-    #: in the order the character budget was spent on them.
+    #: Attachment and project-knowledge fates, in budget order.
     attachments: tuple[ContextFile, ...] = ()
     knowledge: tuple[ContextFile, ...] = ()
-    #: Pictures this turn's model can look at, in the order they were attached.
-    #: Empty whenever it cannot, so the caller never has to ask twice.
+    #: Pictures the model can see, in attachment order; empty when it cannot.
     pictures: tuple[TurnPicture, ...] = ()
 
     @property
@@ -205,8 +170,7 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
     if agent.kinds and session.kind.value not in agent.kinds:
         raise WorkspaceContextError("agent_kind_mismatch")
     if agent.sealed and agent.origin_id:
-        # A sealed copy holds no prompt. The original's is used as it stands
-        # today — the sharer's, still shared, never written into this row.
+        # A sealed copy holds no prompt; the still-shared original's is used, never stored.
         origin = await db.get(Agent, agent.origin_id)
         if origin is not None and origin.visibility is Visibility.org:
             agent = _with_prompt(agent, origin.system_prompt)
@@ -216,8 +180,7 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
 
 
 def _with_prompt(agent: Agent, prompt: str) -> Agent:
-    """A detached look-alike carrying the original's prompt. Not the row —
-    nothing here is meant to be saved."""
+    """Detached copy of `agent` carrying `prompt`; never persisted."""
     shadow = Agent.model_validate(agent, from_attributes=True)
     shadow.system_prompt = prompt
     return shadow
@@ -226,12 +189,7 @@ def _with_prompt(agent: Agent, prompt: str) -> Agent:
 async def _load_design_system(
     db: AsyncSession, user: User, project: Project | None
 ) -> DesignSystem | None:
-    """The look this project wears, if it still exists and is still visible.
-
-    A shared design system that an administrator later un-shared drops out
-    rather than raising: it is decoration, and refusing the turn over it would
-    make somebody else's edit break this person's work.
-    """
+    """The project's design system if it still exists and is visible; None otherwise."""
     if project is None or not project.design_system_id:
         return None
     row = await db.get(DesignSystem, project.design_system_id)
@@ -250,13 +208,7 @@ async def _load_project(db: AsyncSession, user: User, session: ChatSession) -> P
 
 
 def _personal_block(user: User, kind: SessionKind) -> str:
-    """개인 맞춤 설정, as a block.
-
-    The conversation gets both halves. A document gets only the writing
-    style: what the person said about themselves is context for an answer
-    and, in a 보고서, would become the report — the same reason memories stay
-    off the document surfaces.
-    """
+    """개인 맞춤 설정 block; document surfaces get only the response style."""
     prefs = Preferences.of(user)
     about = prefs.about_me.strip()
     style = prefs.response_style.strip()
@@ -302,10 +254,7 @@ async def _project_blocks(
         )
     ).all()
     readable = [f for f in files if f.text]
-    # Small shelves remain whole: lexical retrieval must not hide a short file
-    # merely because the request used a synonym. Once the shelf exceeds the
-    # context budget, rank passages across files instead of spending the whole
-    # budget on whichever file was uploaded first.
+    # Shelves within budget are sent whole; larger ones are searched by passage.
     total = sum(len(f.text) for f in readable)
     if total <= settings.file_context_chars or not focus.strip():
         knowledge, used = _knowledge_block(readable, header="# 프로젝트 지식", focus=focus)
@@ -357,26 +306,12 @@ async def _project_blocks(
 
 
 def _excerpt(text: str, budget: int, focus: str) -> str:
-    """The `budget` characters of `text` most likely to be about `focus`.
-
-    Long documents are cut to fit, and the cut has always been the first N
-    characters — fine for a memo, useless for a paper whose results are on page
-    nine. When somebody has been asked which part matters and has answered,
-    that answer has to change which part is sent, or asking was theatre.
-
-    Lexical, not semantic, and deliberately so: this runs inside the request
-    that assembles the turn, an embedding round trip does not belong here, and
-    a reader who typed "평가 결과" is naming words that are in the document.
-    Nothing is dropped silently — the caller still reports the file as
-    truncated, because it is.
-    """
+    """The `budget` characters of `text` most relevant to `focus` (lexical; head when no focus)."""
     terms = [t for t in re.split(r"[\s,·]+", focus) if len(t) >= 2][:8]
     if not terms:
         return text[:budget]
 
-    # Score fixed windows and keep the run of them that scores highest. A
-    # window rather than a sentence: a paragraph two lines before the match is
-    # usually what makes the match readable.
+    # Score fixed windows and keep the highest-scoring run.
     window = 1_000
     windows = [text[i : i + window] for i in range(0, len(text), window)]
     scores = [sum(w.lower().count(term.lower()) for term in terms) for w in windows]
@@ -390,7 +325,6 @@ def _excerpt(text: str, budget: int, focus: str) -> str:
         if total > best:
             best_at, best = start, total
     if best <= 0:
-        # Nothing matched. The head is a better guess than an arbitrary middle.
         return text[:budget]
 
     picked = "".join(windows[best_at : best_at + span])
@@ -401,15 +335,9 @@ def _excerpt(text: str, budget: int, focus: str) -> str:
 def _knowledge_block(
     files: list[StoredFile], header: str, focus: str = ""
 ) -> tuple[str, list[ContextFile]]:
-    """The block, and what each file gave up to fit in it.
+    """Knowledge block plus each file's fate under `settings.file_context_chars`.
 
-    The second half is the honest account of the first: the budget runs out
-    mid-list, and whoever attached the last document is entitled to hear that
-    it never went out.
-
-    `focus` is what the person said to concentrate on when they were told the
-    file would not fit whole. Empty means the head of the document, which is
-    what every request that was never asked gets.
+    `focus` steers which part of an over-budget file is excerpted; empty takes the head.
     """
     if not files:
         return "", []
@@ -458,16 +386,9 @@ def _knowledge_block(
 async def _memory_block(
     db: AsyncSession, user: User, project: Project | None, session: ChatSession | None = None
 ) -> tuple[str, tuple[str, ...], int]:
-    """The block, the names that went into it, and how many memories exist.
+    """Memory block, the names in it, and the total count.
 
-    Three scopes, widest first. `global` is what the account knows everywhere.
-    The project's is what the work knows — and it is the one an agent's
-    `share_note` writes into, which is what lets one agent's finding reach the
-    next agent working in the same project.
-
-    The session's own scope is the narrow case: a handoff written outside any
-    project belongs to the conversation that produced it and nowhere else. A
-    note left in an unrelated chat has no business appearing in this one.
+    Scopes: `global`, the project id, and the session id (notes shared outside a project).
     """
     scopes = ["global"]
     if project is not None:
@@ -542,11 +463,7 @@ async def _resolve_skills(
             allowed is not None
             and skill.id not in allowed
             and (
-                # A store install is a copy with its own id and `origin_id` back to
-                # the shared row. An agent whose allowlist names the shared row has
-                # allowed *that procedure*, and the copy is that procedure — a new
-                # account's first natural path (browse store → install → use the
-                # shared agent) answered 422 without this.
+                # A store install is a copy; an allowlist naming the shared origin covers it.
                 not skill.origin_id or skill.origin_id not in allowed
             )
         ):
@@ -579,12 +496,7 @@ def _skill_blocks(resolved: list[tuple[Skill, dict]]) -> list[ContextBlock]:
 async def _resolve_starting_template(
     db: AsyncSession, user: User, starting_template_id: str | None
 ) -> StartingPoint | None:
-    """The 시작점 attached to this turn, if the caller may use it.
-
-    Refused rather than dropped, the way a skill id is: the person picked a
-    card and watched a chip appear, so a turn that quietly went out without it
-    would answer a request nobody made and charge for the answer.
-    """
+    """The 시작점 attached to this turn; raises rather than drops an unusable id."""
     template_id = (starting_template_id or "").strip()
     if not template_id:
         return None
@@ -633,13 +545,7 @@ async def _starting_skill_blocks(
 
 
 def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None:
-    """The starting point as what it is: an instruction the person gave.
-
-    It reads as one because it is one — they chose it for this turn, and the
-    only reason it is not in `content` is that they did not type it. A saved
-    template whose whole substance is an attached form has no sentence to
-    carry, and contributes a heading over nothing rather than a block.
-    """
+    """The starting point as a trusted instruction block; None when it has no prompt."""
     if point is None or not point.prompt.strip():
         return None
     head = (
@@ -655,22 +561,7 @@ def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None
 
 
 def _file_report(attachments: tuple[ContextFile, ...], knowledge: tuple[ContextFile, ...]) -> str:
-    """What became of every file, told to the model as fact.
-
-    The model used to be left to infer this from its own context, and it
-    inferred wrongly in the worst direction: handed a paper truncated to a third,
-    it announced that no file had arrived at all and asked for the text to be
-    pasted in. The system knew exactly what had happened — name, characters
-    kept, characters there — and none of it was ever said.
-
-    A trusted block rather than a line inside the data, because it is the
-    server's own statement and not something the document says about itself. The
-    reference material is explicitly untrusted; a fact buried in it carries no
-    more weight than a sentence the paper's author wrote.
-
-    Every file is listed, including the ones that arrived whole. Silence about a
-    complete file is what leaves room for "I don't seem to have received it".
-    """
+    """Every file's fate, stated to the model as a trusted server fact (whole files included)."""
     rows = [*attachments, *knowledge]
     if not rows:
         return ""
@@ -719,26 +610,22 @@ async def assemble(
     session: ChatSession,
     *,
     attachment_ids: list[str] | None = None,
-    #: Whether this turn's model may be handed a picture. `reads_pictures`
-    #: answers it; the caller passes the answer so this does not have to know
-    #: how a model is described.
     vision: bool = False,
     activated_skill_ids: list[str] | None = None,
     starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
-    #: What to concentrate a long attachment's excerpt on, when the person has
-    #: been asked which part matters and has answered. Empty takes the head.
     focus: str = "",
 ) -> WorkspaceContext:
-    """Build one authorised context without auto-activating installed skills."""
+    """Build one authorised context without auto-activating installed skills.
+
+    `vision`: the answer of `reads_pictures` for this turn's model.
+    `focus`: what to excerpt a long attachment around; empty takes the head.
+    """
     agent = await _load_agent(db, user, session)
     project = await _load_project(db, user, session)
     design = await _load_design_system(db, user, project)
     instructions, knowledge, knowledge_files = await _project_blocks(db, user, project, focus)
-    # Not looked up at all off the chat surface — see the block gate below.
-    # Looking them up and then not including them left the context step saying
-    # "메모리 2건 참고" over a prompt that carried none, which is the screen
-    # asserting an influence that was not there.
+    # Memories are chat-only; not loaded elsewhere so the context step reports none.
     if session.kind is SessionKind.chat:
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     else:
@@ -754,41 +641,24 @@ async def assemble(
     starting_point = await _resolve_starting_template(db, user, starting_template_id)
 
     blocks: list[ContextBlock] = []
-    # First, and least specific: what the person set once for every
-    # conversation. An agent's or a project's instructions come after and win
-    # where they disagree.
+    # Least specific first; later blocks win where they disagree.
     if personal := _personal_block(user, session.kind):
         blocks.append(ContextBlock("user.instructions", personal, True))
     if text := _agent_block(agent):
         blocks.append(ContextBlock("agent.instructions", text, True))
     if instructions:
         blocks.append(ContextBlock("project.instructions", instructions, True))
-    # After the project's own instructions and before the skills: the design is
-    # a property of the project, and a skill the user switched on for this turn
-    # is the more specific instruction, so it comes later and wins.
     if design_block := design_service.prompt_block(design, session.kind):
         blocks.append(ContextBlock("project.design", design_block, True))
     blocks.extend(_skill_blocks(resolved))
-    # After the skills and before the memories. A skill is a procedure the
-    # person keeps around; a starting point is what they said about this one
-    # turn, so it is the more specific instruction and comes later.
     if starting_block := _starting_template_block(starting_point):
         blocks.append(starting_block)
-        # 시작점이 약속한 스킬은 시작점이 켠다 — from the shared catalogue, by
-        # key, so a person who never copied 인용 형식 맞추기 into their own
-        # list still gets what the card said. One the person already switched
-        # on themselves (by name) is not doubled.
+        # Catalogue skills the starting point carries; ones already activated by name are skipped.
         blocks.extend(
             await _starting_skill_blocks(
                 db, starting_template_id, session.kind, {skill.name for skill, _ in resolved}
             )
         )
-    # Memories reach the conversation and stay out of the documents. On the
-    # chat surface a remembered role or interest shapes an answer; on a 보고서
-    # it becomes the report — a live run's 분기 업무 보고 opened with the
-    # *user's own saved memory* ("시스템 프롬프트 구조 인수인계") stated as the
-    # team's main project, in a deck about a different company. A document's
-    # material is the request and its attachments, and a memory is neither.
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 
@@ -807,9 +677,6 @@ async def assemble(
         if len(by_id) != len(set(attachment_ids)):
             raise WorkspaceContextError("attachment_not_found")
         ordered = [by_id[file_id] for file_id in attachment_ids if file_id in by_id]
-        # A picture has no text and never will, so it is neither readable nor
-        # broken — it is a third thing, and which of its two states it lands in
-        # depends on the model rather than on the file.
         looked_at: dict[str, TurnPicture] = {}
         if vision:
             for stored in ordered:
@@ -818,8 +685,6 @@ async def assemble(
                 try:
                     blob = file_service.read_blob(stored.storage_key)
                 except OSError as exc:
-                    # The row outlived its bytes. Reported as a file that could
-                    # not be read, which is what happened.
                     log.warning("attached picture %s unreadable: %s", stored.id, exc)
                     continue
                 looked_at[stored.id] = TurnPicture(
@@ -832,10 +697,7 @@ async def assemble(
         readable = [stored for stored in ordered if stored.text]
         unreadable = [stored for stored in ordered if not stored.text and not is_picture(stored)]
         attached, used = _knowledge_block(readable, header="# 이번 요청에 첨부된 파일", focus=focus)
-        # Reported back in the order the person attached them rather than in
-        # the two groups the block is built from — the list on their screen is
-        # the one they will read this against. `used` follows `readable`, which
-        # follows `ordered`, so stepping through it in place is enough.
+        # Fates are reported in attachment order; `used` follows `readable`, then `ordered`.
         spent = iter(used)
 
         def _fate(stored) -> ContextFile:
@@ -860,8 +722,7 @@ async def assemble(
             blocks.append(ContextBlock("attachment", attached, False))
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))
-    # Last among the trusted blocks, so it sits closest to the material it is
-    # describing without being part of it.
+    # Last trusted block, closest to the material it describes.
     if report := _file_report(attached_files, knowledge_files):
         blocks.append(ContextBlock("files.report", report, True))
 
@@ -892,25 +753,14 @@ async def assemble(
 
 
 async def design_for(db: AsyncSession, user: User, session: ChatSession) -> DesignSystem | None:
-    """The design system behind one session, for surfaces that assemble no context.
-
-    Image generation is a single upstream call with a prompt, not a turn with a
-    system message, so it never goes through `assemble`. Without this the one
-    surface whose whole output is a look was the one surface the look did not
-    reach.
-    """
+    """The session's design system, for surfaces (image generation) that never call `assemble`."""
     return await _load_design_system(db, user, await _load_project(db, user, session))
 
 
 async def agent_settings(
     db: AsyncSession, user: User, session: ChatSession
 ) -> tuple[str | None, list[str] | None, float | None]:
-    """`(model_override, tool_allowlist, temperature)` preserving null versus empty.
-
-    Temperature comes back only when there is an agent to have set it. A turn
-    with no agent sends no temperature at all, which leaves the upstream default
-    where it has always been.
-    """
+    """`(model_override, tool_allowlist, temperature)`, preserving null versus empty."""
     agent = await _load_agent(db, user, session)
     if agent is None:
         return None, None, None

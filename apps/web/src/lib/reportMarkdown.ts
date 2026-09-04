@@ -1,13 +1,7 @@
 /**
- * Report ↔ a single Markdown document.
- *
- * The panel holds `{title, sections[]}`; the document editor needs the whole
- * thing at once, or the title, the section headings and the space between
- * sections are not editable.
- *
- * Parsing is the dangerous direction, since saving overwrites the artifact.
- * Two things must not happen: splitting a section at a `##` belonging to the
- * body, and returning zero sections because the last heading was deleted.
+ * Report `{title, sections[]}` ↔ one Markdown document. Parsing must neither
+ * split a section at a `##` inside a body nor return zero sections when the
+ * last heading was deleted, since saving overwrites the artifact.
  */
 
 import type { ReportSection } from '@/types'
@@ -19,11 +13,7 @@ const SECTION = /^##(?!#)\s+(.*)$/
 /** `#` or `##` written inside a section's prose. */
 const INNER_TOP_HEADING = /^#{1,2}(?!#)\s+/
 
-/**
- * Section headings are `##`, so a `##` inside a body would be read back as a
- * new section. Body headings are demoted to `###`, which is what they mean and
- * how the exporters draw them. Idempotent: `###` is left alone.
- */
+/** Demotes `#`/`##` inside a body to `###` so they are not read back as sections. Idempotent. */
 function pushInnerHeadings(content: string): string {
   let fenced = false
   return content
@@ -46,10 +36,7 @@ export function toMarkdown(report: { title: string; sections: ReportSection[] })
   return `${parts.join('\n\n')}\n`
 }
 
-/**
- * `previous` supplies the section ids, matched by position — so reordering,
- * inserting and deleting all work without the writer keeping an id around.
- */
+/** `previous` supplies section ids, matched by position. */
 export function fromMarkdown(
   markdown: string,
   previous: ReportSection[],
@@ -69,9 +56,7 @@ export function fromMarkdown(
         parsed.push({ heading: heading[1].trim(), body: [] })
         continue
       }
-      // Only the first `#`, and only before any section, is the document title.
-      // A `#` further down is prose, and rewriting the title from it would be a
-      // surprise the writer never asked for.
+      // Only the first `#` before any section is the title; a later `#` is prose.
       const docTitle = TITLE.exec(line)
       if (docTitle && title === null && parsed.length === 0) {
         title = docTitle[1].trim()
@@ -83,14 +68,12 @@ export function fromMarkdown(
     else parsed[parsed.length - 1].body.push(line)
   }
 
-  // Text above the first heading has nowhere of its own to live; it belongs to
-  // whatever follows rather than being dropped on save.
+  // Text above the first heading joins the first section rather than being dropped.
   if (parsed.length > 0 && preamble.join('').trim()) {
     parsed[0].body = [...preamble, '', ...parsed[0].body]
   }
 
-  // Every heading was deleted. Rather than saving an empty report, keep the
-  // body and borrow the title the document already had.
+  // Every heading deleted: keep the body under the previous first heading.
   if (parsed.length === 0) {
     const body = preamble.join('\n').trim()
     if (!body) return { title: title ?? previous[0]?.heading ?? '', sections: [] }

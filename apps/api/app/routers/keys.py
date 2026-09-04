@@ -1,12 +1,7 @@
 """API keys a user holds themselves.
 
-Distinct from the virtual key KloudChat uses on their behalf: this one leaves the
-server, once, at creation. Everything after that is a preview — there is no
-route that returns a secret again, because a key you can re-read is a key that
-leaks from wherever it is shown.
-
-Spend, budget and the account's model allowlist all follow the key, so handing
-one out does not hand out more than the person already has.
+The secret leaves the server once, at creation; no route returns it again.
+Spend, budget and the model allowlist follow the key on the proxy.
 """
 
 from __future__ import annotations
@@ -22,7 +17,6 @@ from app.services import settings_store
 
 router = APIRouter(prefix="/keys", tags=["keys"])
 
-#: Enough rope to organise, not enough to lose track of.
 _MAX_KEYS = 10
 
 
@@ -78,7 +72,7 @@ async def create_key(payload: ApiKeyCreate, request: Request, user: CurrentUser,
     await db.refresh(row)
 
     out = ApiKeyOut.of(row)
-    # The only time it exists outside the database.
+    # The only response that carries the secret.
     out.secret = secret
     return out
 
@@ -90,8 +84,7 @@ async def revoke_key(key_id: str, request: Request, user: CurrentUser, db: DbSes
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key_not_found")
 
     await litellm_service.delete_key(settings_store.decrypt_secret(row.secret))
-    # Kept as a revoked row rather than deleted: "this key existed and was
-    # retired on this date" is the question an audit asks.
+    # Kept as a revoked row for the audit trail.
     row.revoked_at = utcnow()
     db.add(row)
     db.add(

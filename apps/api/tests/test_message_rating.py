@@ -1,18 +1,4 @@
-"""좋아요 / 싫어요: the verdict is kept, and it is the rater's own.
-
-The two buttons under every answer used to write nothing but React state. The
-complaint that produced this file is not "no analytics" — it is that a person
-marks an answer wrong and the product has forgotten by the time they scroll
-back to it. So what these tests hold are the three properties that make the
-thumb worth pressing:
-
-1. The verdict lands on the row, and comes back out with the transcript.
-2. Withdrawing it is expressible. `null` is a value on this endpoint, not a
-   field somebody forgot to send, because pressing a lit thumb again means
-   "I take it back" and that has to survive the round trip too.
-3. It is written where its owner reads it. A message id in the URL must not
-   become a way to rate — or read — somebody else's conversation.
-"""
+"""좋아요 / 싫어요 is stored on the row, withdrawable with `null`, and scoped to its owner."""
 
 from __future__ import annotations
 
@@ -94,12 +80,7 @@ def _client(db: _RatingDb, user: User) -> TestClient:
 
 
 def test_a_verdict_is_written_to_the_row_and_read_back_with_it():
-    """The whole of the fix, in one round trip.
-
-    The response is the message itself rather than an acknowledgement, so the
-    client that drew the thumb optimistically has the server's version of the
-    same turn in hand and never has to guess whether the write took.
-    """
+    """A rating is written to the row and the response is the message itself."""
     message = _answer()
     db = _RatingDb(_session(), message)
 
@@ -113,12 +94,7 @@ def test_a_verdict_is_written_to_the_row_and_read_back_with_it():
 
 
 def test_taking_a_rating_back_is_a_value_and_not_a_missing_field():
-    """Pressing the lit thumb again.
-
-    `null` has to reach the column. A schema that treated an absent rating as
-    "leave it alone" would make the second press a no-op, and the thumb would
-    stay lit over a conversation nobody stands behind any more.
-    """
+    """`null` reaches the column; it is a value, not an omitted field."""
     message = _answer(rating=MessageRating.up)
     db = _RatingDb(_session(), message)
 
@@ -133,8 +109,7 @@ def test_taking_a_rating_back_is_a_value_and_not_a_missing_field():
 @pytest.mark.parametrize(
     ("session", "message_id", "expected"),
     [
-        # Somebody else's transcript. The message exists; the caller is not its
-        # reader, and an id guessed into this URL must not write on it.
+        # Somebody else's message.
         (_session(owner="user-2"), "message-1", 404),
         # A message whose session has been deleted out from under it.
         (None, "message-1", 404),
@@ -155,12 +130,7 @@ def test_a_rating_reaches_only_the_transcript_its_author_owns(session, message_i
 
 
 def test_a_question_cannot_be_rated():
-    """The buttons only exist under an answer, and the server says the same.
-
-    A rating on one's own question is a number with nothing behind it — nobody
-    could act on it, and a column that collects them is worth less than one
-    that does not.
-    """
+    """A user message cannot be rated."""
     question = _answer(role=Role.user, content="질문입니다")
     db = _RatingDb(_session(), question)
 
@@ -173,13 +143,7 @@ def test_a_question_cannot_be_rated():
 
 
 def test_an_unrated_turn_says_nobody_said_rather_than_neither():
-    """Null is the third state, and every message that exists today has it.
-
-    `MessageOut` carries the field either way: a transcript that omitted it
-    when unset would leave the client unable to tell "not rated" from "this
-    build does not send ratings", and the thumb would draw itself from stale
-    local state again.
-    """
+    """`MessageOut` always carries `rating`, null when unset."""
     fresh = MessageOut.of(_answer())
     rated = MessageOut.of(_answer(rating=MessageRating.up))
 

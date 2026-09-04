@@ -1,20 +1,9 @@
-"""HTML in, PDF out.
-
-The documents this prints are already finished files: `design_templates.render`
-puts the model's blocks inside the 서식's seed, and what comes out is one
-self-contained page with its own `@page` rule and its own print stylesheet.
-Those rules had been written and never used — every exported PDF was drawn
-instead by reportlab, a second renderer that shared no code with the screen and
-so agreed with it only by coincidence. This service is what makes the file and
-the screen the same document.
+"""HTML in, PDF out: prints the self-contained documents `design_templates.render` produces.
 
 **Nothing here reaches the network.** Every request is aborted except the
-`about:blank` the page starts on. A seed embeds its pictures as `data:` URIs,
-so nothing legitimate needs fetching, and the guarantee is worth more than the
-flexibility: the markup is model-authored, and an `<img src="http://…">` in it
-would otherwise be a request made from inside the deployment's network by a
-process the model chose the address for. Route interception turns that from a
-thing to remember into a thing that cannot happen.
+`about:blank` the page starts on; seeds embed pictures as `data:` URIs. The
+markup is model-authored, so an `<img src="http://…">` in it must not become
+a request from inside the deployment.
 """
 
 from __future__ import annotations
@@ -26,15 +15,11 @@ from fastapi import FastAPI, HTTPException, Response
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, async_playwright
 from pydantic import BaseModel, Field
 
-#: Beyond this a document is not a document. The largest seed is ~22 KB and a
-#: report with embedded pictures runs to a few megabytes; 32 MB is far past
-#: anything real and still small enough that a runaway artifact cannot exhaust
-#: this container's memory before the limit rejects it.
+#: Well past any real document; bounds this container's memory.
 MAX_HTML = 32 * 1024 * 1024
 
-#: A self-contained page with no network has nothing to wait for. This exists
-#: only so a pathological document — a CSS animation, a million-row table —
-#: fails as a 504 rather than holding the worker forever.
+#: A pathological document (CSS animation, million-row table) fails as 504
+#: rather than holding the worker.
 TIMEOUT_MS = 30_000
 
 
@@ -43,13 +28,7 @@ class Job(BaseModel):
 
 
 class _Chromium:
-    """One browser, started on first use and restarted if it dies.
-
-    Launching costs ~300 ms, which is most of a small document's print time, so
-    it is held open. It is also the one piece of state here, and a browser that
-    has crashed reports itself closed rather than raising, so every print
-    checks before it borrows.
-    """
+    """One browser, started on first use (~300 ms) and relaunched if it dies."""
 
     def __init__(self) -> None:
         self._playwright = None
@@ -65,13 +44,7 @@ class _Chromium:
         return self._browser
 
     async def new_context(self) -> BrowserContext:
-        """Borrow an isolated context, recovering from a dead transport once.
-
-        ``is_connected`` is only a snapshot. Chromium can exit between that
-        check and ``new_context``; without this retry the sidecar stays alive
-        but every later export silently falls back to the unrelated structural
-        renderer until the container itself is restarted.
-        """
+        """Isolated context; relaunches once if Chromium died since `is_connected`."""
         async with self._lock:
             for attempt in range(2):
                 if self._playwright is None:
@@ -113,29 +86,21 @@ app = FastAPI(title="KloudChat printer", lifespan=lifespan)
 
 @app.get("/health")
 async def health() -> dict[str, bool]:
-    """Whether a browser can actually be started, not whether the port is open.
-
-    The API falls back to its structural renderer when this service is absent,
-    and a printer that answers but cannot launch would send it a 500 on every
-    export instead. Launching here is cheap — the browser is the one that stays.
-    """
+    """Whether a browser can be started, not merely whether the port is open."""
     browser = await chromium.page_context()
     return {"ok": browser.is_connected()}
 
 
 @app.post("/pdf")
 async def pdf(job: Job) -> Response:
-    # A context per request, so one document cannot leave anything behind for
-    # the next — storage, a service worker, a dialog left open.
+    # A context per request: no storage, service worker or dialog survives.
     context = await chromium.new_context()
     try:
         page = await context.new_page()
         await page.route("**/*", lambda route: asyncio.ensure_future(route.abort()))
         page.set_default_timeout(TIMEOUT_MS)
         await page.set_content(job.html, wait_until="load")
-        # `prefer_css_page_size` is the whole point: the seed says whether it
-        # is A4 portrait with 20mm margins or A4 landscape for slides, and
-        # without this Chromium would impose Letter on both.
+        # The seed's `@page` rule sets the paper; without this Chromium uses Letter.
         out = await page.pdf(print_background=True, prefer_css_page_size=True)
     except asyncio.TimeoutError as err:  # pragma: no cover - pathological input
         raise HTTPException(status_code=504, detail="print_timeout") from err

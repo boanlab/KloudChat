@@ -1,7 +1,7 @@
 """Runtime configuration.
 
-`litellm_master_key` never leaves this process: read here, used by
-`services/litellm.py`, exposed by no route, including admin routes.
+`litellm_master_key` never leaves this process: used only by `services/litellm.py`,
+exposed by no route, admin routes included.
 """
 
 from functools import lru_cache
@@ -47,9 +47,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_min: int = 15
     refresh_token_ttl_days: int = 30
-    # Window in which a just-rotated refresh token may be presented again
-    # without counting as replay. Two tabs restoring a session send the same
-    # cookie; narrow enough that a leaked token is still caught.
+    # Window in which a just-rotated refresh token is accepted again without
+    # counting as replay (two tabs restoring a session send the same cookie).
     refresh_grace_sec: int = 15
     signup_mode: SignupMode = "approval"
     # Administrator created at startup only when the database has no accounts.
@@ -57,19 +56,13 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str = ""
     bootstrap_admin_password: str = ""
     bootstrap_admin_name: str = "관리자"
-    # Granted at approval unless the admin sets another number in the same call.
+    # Granted at approval unless the admin sets another number.
     default_monthly_credits: int = 1_000_000
-    # Provider price → credits. Used only by `services/models.py`.
-    # 100_000 → 1 credit = $0.00001.
-    #
-    # Resolution over magnitude: provider prices span four orders of magnitude,
-    # and a coarse unit rounds the cheapest models up onto the same floor as
-    # models twenty times their price.
+    # Provider USD → credits (100_000 → 1 credit = $0.00001). Used only by
+    # `services/models.py`; fine-grained so cheap models do not round onto one floor.
     credits_per_usd: int = 100_000
-    # Headroom above the KloudChat allowance for the proxy-side budget. KloudChat is
-    # the limit users see; LiteLLM's is a backstop against accounting error.
-    # The two meters count independently and reset at different instants, so a
-    # backstop sitting exactly on the limit would fire first.
+    # LiteLLM's budget is a backstop above the KloudChat allowance. The two meters
+    # reset at different instants, so a backstop on the exact limit would fire first.
     litellm_budget_headroom: float = 0.2
 
     # argon2id. memory_cost is in KiB. See docs/architecture.md §3.
@@ -87,33 +80,25 @@ class Settings(BaseSettings):
     #: KloudChat-LLM gateway. Model and tool endpoints are derived from it
     #: by appending paths. Overridden by the admin screen.
     backend_base_url: str = ""
-    #: The printer sidecar — HTML in, PDF out, so an exported PDF is the same
-    #: document the screen draws rather than a second renderer's reading of it.
-    #: Empty means no printer, and every PDF falls back to the structural
-    #: exporters. That fallback is the reason this is a URL and not a flag: a
-    #: deployment that has not added the service keeps exporting.
+    #: HTML→PDF printer sidecar. Empty: PDFs fall back to the structural exporters.
     print_base_url: str = ""
     litellm_base_url: str = ""
     litellm_master_key: str = ""
     litellm_timeout_sec: float = 20.0
-    # The admin screen's connection probe. Short: it runs while someone is
-    # looking at the form they need to fix.
+    # Admin-screen connection probe; short because someone is waiting on the form.
     litellm_probe_timeout_sec: float = 4.0
-    # Long: a tool-using turn on a local 122b runs for minutes.
+    # A tool-using turn on a large local model runs for minutes.
     chat_timeout_sec: float = 900.0
     title_timeout_sec: float = 20.0
-    #: Fail-open-to-quality ceiling for the small strict-local complexity call.
+    #: Ceiling for the strict-local complexity classifier call; times out to quality.
     auto_routing_classifier_timeout_sec: float = 8.0
-    # Per-tool ceiling. Deep research and headless rendering take minutes;
-    # `max_tool_hops` is what bounds the turn.
+    # Per-tool ceiling; `max_tool_hops` bounds the turn.
     tool_timeout_sec: float = 300.0
-    # Model↔tool round trips per turn. Five covers search → read → compute →
-    # answer; beyond that a model is usually in a retry loop.
+    # Model↔tool round trips per turn.
     max_tool_hops: int = 8
 
     # ── files ──────────────────────────────────────────────────────────
     file_storage_dir: str = "/srv/data/files"
-    # Upload ceiling, so one file cannot fill the disk.
     max_upload_mb: int = 200
     # Disk fill (used / total) past which the files of deleted accounts are
     # removed, oldest first, until the volume is back under it. 0 disables.
@@ -122,9 +107,8 @@ class Settings(BaseSettings):
     file_context_chars: int = 24_000
 
     # ── tool backends ──────────────────────────────────────────────────
-    # All in KloudChat-LLM, addressed from the admin screen. These are a
-    # bootstrap for unattended deployments; an empty address drops that tool
-    # from the tool list and leaves everything else working.
+    # Bootstrap values; the admin screen overrides. An empty address drops that
+    # tool from the tool list.
     searxng_url: str = ""
     #: Firecrawl-compatible shim in front of Crawl4AI.
     scraper_url: str = ""
@@ -134,81 +118,47 @@ class Settings(BaseSettings):
     code_interpreter_url: str = ""
     #: Root of the deep-research MCP endpoint. Actual calls append `/mcp`.
     deep_research_url: str = ""
-    #: Vector index for agent knowledge. Empty is supported: retrieval then runs
-    #: on the lexical scorer in `services/knowledge.py` alone, which needs no
-    #: backend at all.
+    #: Vector index for agent knowledge. Empty: retrieval uses only the lexical
+    #: scorer in `services/knowledge.py`.
     index_url: str = ""
     #: OpenAI-compatible `/v1/audio/transcriptions`. Empty falls through to
     #: `stt_or_model`; dictation is hidden when neither is set.
     whisper_url: str = ""
-    #: Fallback transcription model where a local Whisper cannot run. Sent as
-    #: chat/completions with an audio part, since OpenRouter has no
-    #: transcription endpoint.
-    #:
-    #: **Microphone audio leaves the network.** Set to "" to keep dictation
-    #: internal, at the cost of having none where Whisper cannot run.
+    #: Fallback transcription model when `whisper_url` is unset, sent as
+    #: chat/completions with an audio part. Microphone audio leaves the network;
+    #: "" keeps dictation internal.
     stt_or_model: str = "mistralai/voxtral-small-24b-2507"
     code_interpreter_api_key: str = ""
-    # Hits scraped in full. Each is a page fetch: answer quality against latency.
+    # Hits scraped in full; each is a page fetch.
     web_search_results: int = 5
     web_search_scrape: int = 3
-    # Names conversations and extracts memories. Empty falls back to the
-    # session's own model, which is correct but wasteful on an expensive one —
-    # as is naming an expensive one here. 3B-active is what this wants.
+    # Names conversations and extracts memories; a small model is intended.
+    # Empty falls back to the session's own model.
     title_model: str = "local/qwen3.6-35b"
-    #: Conversation model when the user has not chosen one. Absent from the
-    #: catalogue, the surface falls back to its cheapest.
-    #:
-    #: The `local/` alias, not `strict-local/`. Both run the same weights on the
-    #: same box; the strict alias is the one that is handed no network tool, and
-    #: as the instance default it made every new conversation, report and deck
-    #: unable to search — the search toggle arrives greyed out, and the answer
-    #: underneath it is written from training data with nothing saying so.
-    #: Strict-local is a route somebody chooses for text that must not leave,
-    #: which is a decision about one turn, not a default posture for all of them.
+    #: Conversation model when the user has not chosen one; absent from the
+    #: catalogue, the surface falls back to its cheapest. `local/`, not
+    #: `strict-local/`: the strict alias is handed no network tool.
     default_chat_model: str = "local/qwen3.6-35b"
 
-    #: The same, per surface, when one of them wants a different model.
-    #:
-    #: A conversation and a 보고서 are not the same job. Chat is a turn every
-    #: few seconds and is read as it arrives, so decode speed is most of what
-    #: the person feels; a document is one long run they wait for once, and
-    #: what they feel is whether it needed rewriting. A model three times the
-    #: decode cost is the wrong trade for the first and the right one for the
-    #: second.
-    #:
-    #: Empty falls back to `default_chat_model`, which is what every install
-    #: had before these existed.
+    #: Per-surface overrides. Empty falls back to `default_chat_model`.
     default_report_model: str = ""
     default_slides_model: str = ""
 
-    #: The picture surface's default. Not the cheapest image model, which is
-    #: how the client chose before: the cheapest one returns a square whatever
-    #: ratio is asked, and clips a 16:9 composition to fit — so the first
-    #: picture anyone made came back cut at both ends. Gemini's Flash image
-    #: model takes the ratio as a parameter and keeps it. An install without
-    #: it falls back to the cheapest image model served.
+    #: Must honour the requested aspect ratio. Not served → cheapest image model.
     default_image_model: str = "google/gemini-2.5-flash-image"
 
-    #: The 오디오/동영상 surface is one surface with two kinds of model in it,
-    #: and one remembered default cannot serve both: the cheapest `av` model
-    #: is a speech model, so 영상 kept opening on a model that makes no clips.
-    #: One default each. As above, a name this install does not serve is
-    #: dropped and the client takes the cheapest model of that modality.
+    #: One default per modality of the av surface. Not served → cheapest model
+    #: of that modality.
     default_audio_model: str = "openai/gpt-audio-mini"
     default_video_model: str = "google/veo-3.1-lite"
 
-    #: The instance's wall clock, as an IANA name. Used for the date given to
-    #: the model and for nothing else — every timestamp in the database stays
-    #: UTC. A model told "today is 2026-08-20" in UTC at 07:00 KST would be a
-    #: day behind for every reader in Seoul, which is the whole reason this is
-    #: configurable rather than hardcoded to UTC.
+    #: IANA zone for the date given to the model, and nothing else: database
+    #: timestamps stay UTC.
     timezone: str = "Asia/Seoul"
 
-    #: Path to a MaxMind GeoLite2 City database. Empty disables region lookup
-    #: entirely — see `services/geoip.py`. Never a network service: resolving
-    #: addresses through a third party would send every visitor's address off
-    #: this instance.
+    #: MaxMind GeoLite2 City database path. Empty disables region lookup
+    #: (`services/geoip.py`). Never a network service: visitor addresses stay
+    #: on this instance.
     geoip_database: str = ""
 
     @property

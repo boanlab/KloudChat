@@ -1,21 +1,6 @@
-"""A picture attached to a turn, and which turns can actually look at one.
+"""Pictures attached to a turn: which rasters travel, and only strict-local vision models look.
 
-Images used to stop at the door: `extract_text` refuses every `image/*`, so the
-file was stored, marked unreadable, and never reached a model. The person was
-told honestly — which is better than silence — and then asked to type out what
-they had just attached.
-
-The models this instance serves can read one. Measured against the gateway, the
-self-hosted `strict-local/qwen3.6-35b` transcribed a screenshot exactly, for no
-credits and without the picture leaving the building; two commercial models
-accepted the request and answered with **nothing at all**, which is why a model
-has to declare this rather than be tried and watched.
-
-Strict-local only, deliberately. The privacy guard reads text; an image is
-egress it cannot inspect, and `architecture.md` §7 is explicit that policy
-applies before anything reaches a model. Sending pictures to an external model
-would put data past that gate with nothing looking at it, so the one route that
-cannot leave is the one route that carries them.
+The privacy guard inspects text only, so an image may reach a strict-local model and no other.
 """
 
 from __future__ import annotations
@@ -33,8 +18,7 @@ from app.services.workspace_context import ContextFile, _file_report, reads_pict
 
 @pytest.mark.parametrize("mime", pictures.EMBEDDABLE)
 def test_every_raster_a_document_may_carry_may_also_be_looked_at(mime):
-    """One rule, not two. `pictures.EMBEDDABLE` already answers this question
-    for documents, and a second list would drift from it."""
+    """`can_be_seen` accepts exactly the rasters in `pictures.EMBEDDABLE`."""
     assert can_be_seen(mime, 1_000)
 
 
@@ -48,8 +32,7 @@ def test_anything_that_is_not_a_raster_is_not_a_picture(mime):
 
 
 def test_a_picture_too_large_to_send_is_not_sent():
-    """Base64 in a prompt is a third larger again, and a context window spent
-    on one screenshot is a conversation that stops answering."""
+    """Pictures over `MAX_PICTURE_BYTES` are not sent."""
     assert can_be_seen("image/png", MAX_PICTURE_BYTES)
     assert not can_be_seen("image/png", MAX_PICTURE_BYTES + 1)
 
@@ -65,11 +48,8 @@ def test_only_a_model_that_says_so_and_cannot_leave_reads_pictures():
     strict = {"supportsVision": True, "strictLocal": True}
     assert reads_pictures(strict)
 
-    # Declared but external: the guard cannot inspect an image, so this route
-    # would put one past it.
+    # External models never see pictures; a model must declare vision, not be tried.
     assert not reads_pictures({"supportsVision": True, "strictLocal": False})
-    # Contained but silent about vision: two models answered a picture with an
-    # empty message rather than an error, so absence of a claim is a no.
     assert not reads_pictures({"supportsVision": False, "strictLocal": True})
     assert not reads_pictures({"strictLocal": True})
     assert not reads_pictures({})
@@ -83,13 +63,11 @@ def test_a_picture_that_was_looked_at_is_reported_as_one():
     report = _file_report((ContextFile("shot.png", "picture", 0, 0),), ())
     assert "shot.png" in report
     assert "그림" in report
-    # It must not read as a file that failed, which is what the old state said.
     assert "꺼내지 못함" not in report
 
 
 def test_a_picture_this_model_cannot_see_says_which_it_is():
-    """The difference the person can act on: the file arrived and is fine, and
-    a different model would read it."""
+    """An unseen picture is reported as unseen, not as a failed file."""
     report = _file_report((ContextFile("shot.png", "picture_unseen", 0, 0),), ())
     assert "shot.png" in report
     assert "지어내지" in report or "지어내" in report
@@ -99,11 +77,7 @@ def test_a_picture_this_model_cannot_see_says_which_it_is():
 
 
 def test_a_picture_is_not_a_document_that_failed_to_parse():
-    """No text is not an error, and an error puts a warning on the chip.
-
-    Before this the composer drew a triangle beside a screenshot the model was
-    about to read out loud.
-    """
+    """A raster extracts to empty text without error; SVG and audio still raise."""
     assert file_service.extract_text("shot.png", "image/png", b"x" * 1_000) == ""
     with pytest.raises(RuntimeError, match="PNG"):
         file_service.extract_text("d.svg", "image/svg+xml", b"<svg/>")
@@ -131,7 +105,7 @@ def test_the_picture_rides_on_the_last_thing_the_person_said():
 
 
 def test_no_picture_leaves_the_transcript_exactly_as_it_was():
-    """Identity, not a copy: every turn without an attachment takes this path."""
+    """With no pictures the same list object is returned."""
     messages = [{"role": "user", "content": "질문"}]
     assert with_pictures(messages, []) is messages
 

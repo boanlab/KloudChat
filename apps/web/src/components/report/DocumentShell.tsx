@@ -3,30 +3,8 @@ import { A4_HEIGHT_PX } from '@/components/report/usePagination'
 import { createPortal } from 'react-dom'
 
 /**
- * A shadow root the template's own stylesheet is loaded into.
- *
- * Everywhere else in this app an authored document is shown in a `sandbox=""`
- * iframe, and for a card or a preview that is exactly right — nothing in there
- * is meant to be clicked, and the sandbox is the cheapest possible guarantee.
- * An editor has to be clicked, focused and typed in, so it has to live in the
- * page. That trades the sandbox for two problems, and this component is both
- * answers.
- *
- * **The seed's CSS must not touch the app.** A template stylesheet is written
- * for a whole document: it styles `body`, bare `h1`, bare `table`. Injected
- * into the page it would restyle the panel around it. A shadow root is the
- * only boundary in the platform that stops a stylesheet by construction rather
- * than by naming discipline.
- *
- * **The app's CSS must not touch the document.** The inverse matters just as
- * much and is easier to forget: Tailwind's reset would flatten the very
- * margins and type scale the template exists to set, so a document edited in
- * the page would not look like the file that comes out of it. The same
- * boundary handles this direction for free.
- *
- * React renders into the shadow root through a portal, so everything inside is
- * ordinary React — state, events and refs all work, which is what makes an
- * editor possible at all.
+ * Shadow root holding the template stylesheet, so the template's CSS and the
+ * app's CSS cannot reach each other. Children render through a portal.
  */
 export function DocumentShell({
   css,
@@ -45,8 +23,7 @@ export function DocumentShell({
   useEffect(() => {
     const node = host.current
     if (!node) return
-    // `shadowRoot` survives a re-render and cannot be attached twice; in
-    // StrictMode this effect runs again on the same node.
+    // A shadow root cannot be attached twice; StrictMode re-runs this effect.
     const shadow = node.shadowRoot ?? node.attachShadow({ mode: 'open' })
     if (!sheet.current) {
       sheet.current = document.createElement('style')
@@ -56,22 +33,8 @@ export function DocumentShell({
   }, [])
 
   useEffect(() => {
-    // Replaced rather than appended: switching 서식 mid-document would
-    // otherwise leave both stylesheets fighting, and the loser is whichever
-    // one happens to be less specific.
     if (!sheet.current) return
-    /**
-     * 한 쪽의 높이를 알려 준다.
-     *
-     * The seeds size their cover and their full-bleed blocks against a page,
-     * and the only unit CSS gives for "as tall as the sheet" is `vh` — which
-     * inside a panel means the browser window. So the cover of a document
-     * shown on a 900px screen was 900px tall and the same document on a tall
-     * monitor had a taller cover, neither of them an A4 page, and the printed
-     * file agreed with neither. Here the sheet is a fixed 1123px, so say so;
-     * the seeds fall back to `100vh` when they are rendered standalone for
-     * print or export, where the viewport *is* the page.
-     */
+    // `--page-h` gives the seeds the sheet height; standalone they fall back to `100vh`.
     sheet.current.textContent = `:host { --page-h: ${A4_HEIGHT_PX}px; }\n${css}`
   }, [css])
 

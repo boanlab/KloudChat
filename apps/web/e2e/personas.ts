@@ -1,14 +1,5 @@
-/**
- * Personas for reviewing feature coverage and layout.
- *
- * Each one is a job somebody actually has to get done, broken into what the UI
- * must offer for that job to be possible. `personas.spec.ts` asserts the
- * `needs`, and a failure there is a gap in the product rather than a selector
- * problem.
- *
- * Each need is phrased as a task, not as a component ("can produce a citation
- * in the right format").
- */
+/** Personas for coverage and layout review: each need is a task the UI must make possible.
+ *  `personas.spec.ts` asserts the `needs`. */
 
 export type Surface = 'chat' | 'report' | 'slides' | 'image' | 'av'
 

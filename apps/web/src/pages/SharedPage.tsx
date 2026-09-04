@@ -9,21 +9,7 @@ import { useT } from '@/lib/useT'
 import { SlideView } from '@/components/slides/DeckPanel'
 import type { DesignTokens, Slide } from '@/types'
 
-/**
- * What shaped the answers below, said in the words the app's own empty screen
- * says them in.
- *
- * `StartingFrom` in `pages/SessionPage.tsx` tells the person who is about to
- * type; this tells the person who was sent the result, and both use the same
- * sentences on purpose. A recipient reading a report has no way to know that
- * an agent wrote it, that a project's material was in play, or that the shape
- * was decided before a word was asked — and no one to ask.
- *
- * No 디자인 row, though the in-app panel carries one: what a recipient sees
- * here is the artifact turned back into Markdown, not the document in its own
- * look, and a line promising a look they are not being shown is exactly the
- * untruth that panel exists to end.
- */
+/** Agent, project and format the shared conversation started with; wording matches `StartingFrom` in SessionPage. */
 function StartedWithPanel({ context }: { context: SharedContext }) {
   const t = useT()
   const english = currentLang() === 'en'
@@ -72,14 +58,7 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
   )
 }
 
-/**
- * A shared artifact or conversation: a read-only screen for someone who may
- * not have an account here.
- *
- * Deliberately outside the app shell — no sidebar, no navigation. The URL is
- * the entire permission, so this shows the one thing that was shared and
- * offers no route anywhere else, not even to who shared it.
- */
+/** Read-only view of a shared artifact or conversation; outside the app shell, the URL is the whole permission. */
 export function SharedPage() {
   const t = useT()
   const { token = '' } = useParams()
@@ -112,8 +91,7 @@ export function SharedPage() {
         <p className="mt-1.5 text-base text-muted">
           {error === 'signin'
             ? t('로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.')
-            : /* 만료·철회·오타를 구분해 말하지 않는다. 모르는 사람에게 그 링크가
-                 유효했다고 알려 주는 것은 남의 계정에 대해 말하는 것이다. */
+            : /* Expired, revoked and mistyped are not distinguished: that would confirm a link existed. */
               t('링크가 철회되었거나 주소가 올바르지 않습니다.')}
         </p>
       </div>
@@ -133,11 +111,6 @@ export function SharedPage() {
       ? ''
       : payload.messages
           .map((m) => {
-            // Named on the turn it began, the way the transcript in the app
-            // names it. Without this a recipient reads 질문 over a sentence
-            // that was only half of what was asked, and has no way to see the
-            // other half. The 서식 is left off, because the panel above says
-            // it once for the whole document rather than on every turn.
             const from =
               m.role === 'user' && m.startedFrom
                 ? `\n\n_${t('시작점 {name}').replace('{name}', m.startedFrom.title)}_`
@@ -146,16 +119,12 @@ export function SharedPage() {
           })
           .join('\n\n---\n\n')
 
-  // Sent with a conversation and never with a bare artifact, which has no
-  // conversation to account for.
   const startedWith =
     payload.kind === 'artifact'
       ? null
       : (payload.startedWith ?? null)
 
-  // The result first, the conversation that produced it after. A shared deck
-  // opened to a one-line prompt and nothing else, which is the wrong way round:
-  // the recipient came for the document, not for how it was asked for.
+  // Result first, then the conversation that produced it.
   const artifact = payload.kind === 'artifact' ? payload : payload.artifact
 
   return (

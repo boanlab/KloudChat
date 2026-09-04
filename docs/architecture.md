@@ -52,9 +52,10 @@ with it. Credits are enforced by KloudChat, with the LiteLLM budget ceiling as a
 backstop.
 
 The backend address is stored through the admin screen (Settings → System →
-Integrations). One address derives all six feature endpoints by appending
-paths; hosting one feature elsewhere means overriding that one field. A feature
-left blank drops out of the tool list and everything else keeps working.
+Integrations). One address derives the LiteLLM address and the six tool
+endpoints by appending paths; hosting one feature elsewhere means overriding
+that one field. A feature left blank drops out of the tool list and everything
+else keeps working.
 
 ---
 
@@ -87,7 +88,7 @@ attached to this one route rather than to the default dependency
 `audit_events` carries a sign-in, a failed sign-in, a password change and a key
 issue, each with the client's address and browser. Two screens read it: an
 account's own **접속기록** (`GET /auth/me/access`, the account's rows only) and
-the administrator's audit trail (`GET /audit`, everything).
+the administrator's audit trail (`GET /admin/audit`, everything).
 
 The address is only as good as the proxy in front. `core/deps.py:client_ip`
 reads the first hop of `X-Forwarded-For`, and the web container resolves that
@@ -129,7 +130,7 @@ reason.
 
 ## 5. Data model
 
-Forty-three migrations under `alembic/versions/`. The principal tables:
+Migrations live under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
@@ -186,9 +187,10 @@ Artifacts outlive conversations: clearing history detaches them
 
 Tools are attached only when the model supports function calling — giving them
 to a model that does not yields either a 400 from upstream or an invented call.
-Built-in tools: `web_search` (SearXNG), `fetch_url` (Crawl4AI), `execute_code`
-(sandboxed), `create_artifact`, `create_chart`. Tools from installed MCP
-connectors are added to these.
+Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
+`fetch_url` (Crawl4AI), `execute_code` (sandboxed), `create_artifact`,
+`create_chart`, `share_note`, and `search_knowledge` over an agent's own
+documents (§8). Tools from installed MCP connectors are added to these.
 
 **Tool count is what sizes the connector catalogue.** Every active tool ships
 its full schema on every turn, and model tool-choice degrades well before
@@ -219,16 +221,13 @@ progress indicator honest.
 
 A failed section is marked and the rest continues.
 
-**The plan is checked before anything is written.** A small model reaches for
-the first layout it is offered and stays there: measured over the decks this
-instance had already produced, `bullets` was 77% of every body slide and 101 of
-128 decks ran three or more identical slides in a row. `services/outline.py`
-holds the rule both tracks use — no run of three, and at least three of the
-offered layouts (or as many as exist) — and a plan that fails it is asked for
-once more, naming exactly the layouts it skipped. The second answer is kept
-only if it is less flat, so the worst case is one extra outline call and the
-plan it started with. Nothing is coerced: a layout assigned to a heading it
-does not suit would be a worse slide than a repeated one.
+**The plan is checked before anything is written.** `services/outline.py`
+holds the rule both tracks use — no run of three identical layouts, and at
+least three of the offered layouts (or as many as exist). A plan that fails it
+is asked for once more, naming the layouts it skipped; the second answer is
+kept only if it is less flat, so the worst case is one extra outline call.
+Nothing is coerced: a layout assigned to a heading it does not suit would be a
+worse slide than a repeated one.
 
 Both receive the workspace blocks the chat surface gets — project
 instructions, memories, skills, and any file attached to the turn — so a
@@ -237,13 +236,13 @@ request naming an uploaded form is written against that form.
 Reports search the web before writing and cite what they found; with no search
 backend the shelf is empty and the citation rule drops out of the prompts.
 
-Slides use four layouts — `title`, `bullets`, `quote`, `two-column` — each
-implemented in all three renderers (preview, `.pptx`, `.pdf`). The frontend type
-permits six; `image` has no producer and `chart` would draw invented numbers.
-The outline also picks the deck's accent from a fixed palette — unless the
-project wears a design system, in which case the palette rule is dropped from
-the prompt entirely and the accent arrives from the project. A slide count
-stated in the request is honoured up to 50.
+Slide layouts are listed in `services/deck.py` (`title`, `agenda`, `section`,
+`bullets`, `quote`, `two-column`, `table`, `metrics`, `chart`, …), each
+implemented in all three renderers (preview, `.pptx`, `.pdf`). The outline
+also picks the deck's accent from a fixed palette — unless the project wears a
+design system, in which case the palette rule is dropped from the prompt
+entirely and the accent arrives from the project. A slide count stated in the
+request is honoured up to 50.
 
 **The outline can run on a different model.** `governance.outline_model_id`
 names one; empty — the default everywhere — plans with the surface's own model.
@@ -251,17 +250,7 @@ It applies to all three writing tracks and only to the planning call, which is
 one call per document however many blocks follow it.
 
 Its tokens are billed at its own price: the turn reports planning and writing
-apart, because a frontier outline charged at a local writer's rate is a ledger
-that says the wrong thing about where the money went.
-
-**Measured, it changed nothing here.** Three decks per arm on the same prompt
-and template, planner `claude-sonnet-5` against the local writer planning for
-itself: both arms produced eight blocks, four distinct layouts and a longest
-run of one or two. The flatness a stronger planner was meant to fix had
-already been fixed by the prompt, and what these numbers cannot see — whether
-the *order* of a deck is better argued — is not something this instance can
-measure. The setting stays, off by default, and the claim under it is now the
-measurement rather than the expectation.
+apart, so the ledger says where the money went.
 
 The outline carries the same request and the same context the body does, so it
 is subject to everything the body is: the id is checked when it is saved, and
@@ -280,14 +269,10 @@ under `app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
 `sample.html` always, plus the `instructions.md` and `checklist.md` a writing
 turn reads — which the media recipes, having no writing turn, do without.
 
-What ships is a small set chosen for the people this product has — decks for a
-seminar, a lecture and a proposal; documents for a report, a one-pager, minutes,
-a lab notebook and a notice; prompt recipes for posters, covers, diagrams, clips
-and narration. **None of it is ported.** OpenDesign's own catalogue runs to a
-hundred entries whose seeds carry keyboard runtimes and parent-relative assets,
-neither of which survives a `sandbox=""` iframe; these were written against the
-constraints this product actually has. The number is meant to stay readable —
-a list somebody reads, not a catalogue they scroll past.
+The catalogue is a few dozen entries — `deck-*`, `doc-*`, `image-*`, `audio-*`
+and `video-*` — written against this product's constraints: no script and no
+parent-relative assets, because artifacts render in a `sandbox=""` iframe. The
+number is meant to stay readable.
 
 Picking one **replaces the surface's built-in track**. A slides session with
 `render_template_id` set produces an `html` artifact through `services/page.py`
@@ -330,30 +315,17 @@ caption kept on the same page as the picture. Sized from the bytes with
 Pillow, because nothing in the artifact says how big a picture is and a figure
 drawn to a guessed box is a squashed one.
 
-**Every format carries it, `.hwpx` included.** That one took a detour worth
-recording. A picture in OWPML is three things that have to agree — the bytes in
-`BinData/imageN.png` (stored, not deflated), an
-`<opf:item id="imageN" … isEmbeded="1"/>` in `Contents/content.hpf`, and
-`<hc:img binaryItemIDRef="imageN">` inside an `<hp:pic>` in the section. That
-`<opf:item>` id is the entire link; `isEmbeded` has one `d`, which is OWPML's
-own spelling, and Hancom drops the picture without it. Nothing is declared in
-`header.xml`: `<hh:binDataList>` belongs to the older HML format and no HWPX
-contains one.
-
-The part that cost the time was not the picture at all. The first attempt
-opened in Hancom with the text correct and no picture anywhere, and the reason
-was a missing `<hp:secPr>` — page geometry, which every `.hwpx` this wrote had
-been leaving out. Text lays out on Hancom's defaults without it; an object
-sized in absolute units has no page box to sit in, and is read and then never
-drawn. Every document now carries A4 and its margins in the first paragraph's
-run, which is also where Hancom itself puts them.
-
-None of this could be checked here — LibreOffice's Hancom filter reads the v5
-binary format and not HWPX, and no independent OWPML implementation is
-installable — so it was settled the only way left: the structure was
-transcribed from genuine Hancom output (hwpxlib's test corpus), three variants
-differing by one element each were generated, and somebody opened them in
-Hancom Office.
+**Every format carries it, `.hwpx` included.** A picture in OWPML is three
+things that have to agree — the bytes in `BinData/imageN.png` (stored, not
+deflated), an `<opf:item id="imageN" … isEmbeded="1"/>` in
+`Contents/content.hpf` (one `d`: OWPML's own spelling, and Hancom drops the
+picture without it), and `<hc:img binaryItemIDRef="imageN">` inside an
+`<hp:pic>` in the section. Nothing is declared in `header.xml`:
+`<hh:binDataList>` belongs to the older HML format. Every document also carries
+an `<hp:secPr>` with A4 and its margins in the first paragraph's run: without
+page geometry, an object sized in absolute units is read and never drawn. The
+structure was transcribed from genuine Hancom output (hwpxlib's test corpus)
+and checked in Hancom Office; no independent OWPML reader is installable.
 
 A picture that has stopped being one — truncated bytes, a format a library
 refuses — costs its own illustration and nothing else: every renderer catches
@@ -378,14 +350,9 @@ document editor's shadow root by the same route. Two of them have no `design.css
 at all: `_document/seed.html` is 보고 문서's own design and `_deck/seed.html` is
 editorial's, which is what makes the shared file somebody's rather than nobody's.
 
-Splitting them was worth doing only once a browser drew the PDF. Before that the
-export was redrawn by reportlab, which reads no CSS, so ten designs made one file
-and merging them lost nothing anybody could see — which is exactly what happened,
-and it took the catalogue's own promises with it. That merge is also the reason
-`test_a_template_has_a_face.py` checks that every `var(--x)` in a seed is
-declared: three properties arrived from another seed without their declarations,
-and an undeclared custom property is not an error anywhere. `background:
-var(--tint)` simply came out white.
+`test_a_template_has_a_face.py` checks that every `var(--x)` a seed uses is
+declared: an undeclared custom property is not an error anywhere, and
+`background: var(--tint)` simply comes out white.
 
 Two constraints shape every seed:
 
@@ -397,23 +364,20 @@ as: open-design's own report and deck templates ship example files with no
 gives up is interaction, not design.
 
 **Print is the export.** Every seed carries `@media print` rules and an
-`@page` rule that put one slide or section on one page. For most of this
-product's life those rules were dead letters — nothing in the stack could read
-CSS, so a PDF was drawn a second time by reportlab, from the same words and
-none of the design, and agreed with the screen only where somebody had made it
-agree. `apps/print` is what reads them: a headless Chromium in a container of
-its own that takes the finished HTML and returns a PDF. So the `.pdf` is now
-the `.html`, printed — the same document, not a second drawing of it. See
-`services/printing.py`; where no printer is configured, the structural renderer
-below still produces a file.
+`@page` rule that put one slide or section on one page. `apps/print` reads
+them: a headless Chromium in a container of its own that takes the finished
+HTML and returns a PDF, so the `.pdf` is the `.html` printed rather than a
+second drawing of it. See `services/printing.py`; where no printer is
+configured (`PRINT_BASE_URL` empty), the structural renderer below still
+produces a file.
 
 That container is deliberately poor. What it opens is markup a model wrote —
 sanitised and script-free, and still the least trusted input here — so it has
 no database, no secrets, no published port, and a compose network with
 `internal: true`, which means no route out at all. Inside the browser every
 request is aborted as well, so an `<img src="http://…">` in model-authored
-markup is not a request made from inside the deployment. Two walls, because the
-first one is a line of code and the second one is a fact about the network.
+markup is not a request made from inside the deployment. Two walls: one a line
+of code, the other a fact about the network.
 
 The `.html` file is still the faithful copy, and is deliberately not opened in
 a tab from the app: a `blob:` URL inherits this origin.
@@ -433,12 +397,11 @@ CSS to draw into. A design that survived the trip as a picture would open as a
 document nobody can edit, which is not what somebody who brought their
 organisation's 양식 came for. The deck opens in PowerPoint as real slides in the
 right order with the design system's accent and face, laid out by this
-product's own deck renderer — not by the template's stylesheet. Two things were added to `deck_export` to
-carry it: a `table` layout, because flattening a table into bullets leaves the
+product's own deck renderer — not by the template's stylesheet. `deck_export`
+carries a `table` layout, because flattening a table into bullets leaves the
 reader to reassemble it, and an explicit `columns` field, because an HTML deck
-knows which column each line was in and halving a merged list would put the
-wrong items on the wrong side. A JSON deck, which has neither, still halves its
-own list exactly as before.
+knows which column each line was in. A JSON deck, which has neither, halves
+its own list.
 
 A template marked `dark` presents on a dark ground, and its `.pptx` follows —
 the design system's ink is a colour chosen for paper and would be unreadable
@@ -456,8 +419,8 @@ is one click from undone.
 
 The part is chosen from a list rather than by clicking into the preview: the
 frame is `sandbox=""` and opaque to the app, which is the same property that
-makes it safe. An artifact written before blocks kept their markup is refused
-rather than rebuilt out of whichever pieces happened to be stored.
+makes it safe. An artifact whose blocks carry no markup is refused rather than
+rebuilt out of whichever pieces happened to be stored.
 
 **Media templates are prompt templates.** Image, video and audio produce no
 document, so what a template gives them is the sentence itself: an
@@ -511,16 +474,13 @@ explicit. Findings are stored on the artifact, so a document that was fine when
 it was made does not start reporting problems because the rules were tightened
 afterwards.
 
-**Half of OpenDesign's `lint-artifact` rules are deliberately absent.** Its P0
-list is mostly visual — default indigo accents, two-stop gradients, rounded
-cards with a coloured left border — because there the model writes CSS. Here it
-cannot: the seed owns every colour and face, and `sanitise` drops `style`,
-every remote address and every tag outside a fixed vocabulary before anything
-is stored. `class` survives — a block needs `lead` and `cols` to reach what its
-own seed styles — so a model that invents `card` or `columns-2` gets markup
-that renders as nothing rather than markup that fights the template. Those
-rules hold by construction, and re-stating them would be a check that can never
-fire. What is left is what the model does choose — the words.
+**Visual rules are not checked**, because the model cannot break them: the
+seed owns every colour and face, and `sanitise` drops `style`, every remote
+address and every tag outside a fixed vocabulary before anything is stored.
+`class` survives — a block needs `lead` and `cols` to reach what its own seed
+styles — so an invented `card` or `columns-2` renders as nothing rather than
+fighting the template. What is checked is what the model does choose — the
+words.
 
 **A template can tighten the shape rules.** The general bounds — seven items a
 slide, forty-five characters a line — are what a screen can carry. A template
@@ -554,9 +514,7 @@ The score is a reading, not a gate. Nothing is blocked by it, and a review
 annotates the artifact rather than editing it: no version snapshot and no
 version bump, the same rule the fact-check follows.
 
-**One reviewer, one pass.** OpenDesign's Critique Theater seats a five-person
-jury and runs up to three rounds, refusing to ship under 8.0 — five to fifteen
-model calls per artifact. Here every call is somebody's credit and the bill is
+**One reviewer, one pass.** Every call is somebody's credit and the bill is
 shown before the turn, so the panel is one reviewer and the pass is asked for
 explicitly.
 
@@ -568,10 +526,9 @@ can be measured by.
 
 ### Reading a design system out of a document
 
-Four colours and a paragraph of house style is the part nobody types from
-scratch, which is why the only design systems most accounts had were the three
-seeded ones. The material is usually already on hand — the 공문 template
-everything is filed on, an earlier report, a page on the department site.
+Four colours and a paragraph of house style are usually already on hand — the
+공문 template everything is filed on, an earlier report, a page on the
+department site — rather than typed from scratch.
 
 `POST /designs/extract` takes a `fileId` (its text is already extracted on
 upload) or a `url` (read through `builtin.scrape`, the same scraper the
@@ -614,9 +571,8 @@ read them from there. A deck presented last month does not repaint itself
 because the project changed its design system since — the same rule the
 per-slide accent already followed.
 
-A project with no design system produces exactly what it produced before this
-existed, down to the greys in the PDF. That is the property the export tests
-pin.
+A project with no design system renders with the default palette, down to the
+greys in the PDF. The export tests pin that output.
 
 ### The artifact gallery
 
@@ -692,22 +648,18 @@ wider `GET /skills`: mixed into the composer's list, a shared skill would be a
 picker entry that fails at the moment it is used.
 
 Installing an agent installs the shared skills it names and rewrites its
-allow-list against the copies. Copying the prompt alone left an agent pointing
-at rows in the author's account, which resolve to nothing here — the copy
-answered differently from the card and said nothing about why. An allow-list
-emptied by the copy becomes `null` (inherit) rather than `[]`, which is a hard
-deny that would refuse every skill the new owner ever switched on. Knowledge
-shelves never travel: those are the author's documents, and copying their agent
-is not a grant over their files.
+allow-list against the copies; rows in the author's account resolve to nothing
+here. An allow-list emptied by the copy becomes `null` (inherit) rather than
+`[]`, which is a hard deny that would refuse every skill the new owner ever
+switched on. Knowledge shelves never travel: those are the author's documents,
+and copying their agent is not a grant over their files.
 
 `official` is computed per request from the publisher's current role rather
 than stamped on the row, so an entry does not go on claiming to be official
 after the administrator who published it was demoted.
 
-Existing accounts keep the copies they were seeded with. `_copy_of` matches
-them by catalogue key — and, for agents, which never carried one, by slug — so
-an account that has held these procedures for months is not told it holds none
-of them.
+`_copy_of` matches an account's existing copies by catalogue key — and, for
+agents, by slug — so seeded copies count as installed.
 
 ### Coding agents
 
@@ -763,9 +715,7 @@ what arrived and marks the reply `interrupted`.
 
 Image generation is a single upstream call with a prompt rather than a turn
 with a system message, so it never goes through `assemble`. It resolves the
-project's design system on its own (`workspace_context.design_for`) — without
-that, the one surface whose entire output is a look was the one surface the
-look did not reach.
+project's design system on its own (`workspace_context.design_for`).
 
 Both call OpenRouter through LiteLLM via `chat/completions`. Audio **requires
 `stream: true`**, and streaming yields only `pcm16`, which a 44-byte RIFF header
@@ -853,10 +803,9 @@ artifact payloads and routing metadata) is deterministically masked even when
 the inbound envelope was clean. Title generation and automatic memory receive
 only the masked turn text.
 
-The selectable guard is intentionally limited to chat and model comparison in
-this release. Reports, slides, media generation and the `/llm` compatibility
-API keep their existing always-mask behaviour where it was already supported;
-they do not present the new decision flow.
+The selectable guard covers chat and model comparison. Reports, slides, media
+generation and the `/llm` compatibility API always mask and present no
+decision flow.
 
 ### Auto cost routing
 
@@ -978,6 +927,3 @@ passes identically before and after a change is guarding nothing.
   [deployment.md](deployment.md#scaling-notes).
 - **A region needs a mounted GeoLite2 file.** There is no network lookup, by
   design, so without one every screen shows an address and no place.
-- **Media conversations created before message recording hold no turn.** They
-  keep their title and their result; nothing backfills a conversation nobody
-  had.

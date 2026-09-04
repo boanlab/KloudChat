@@ -16,20 +16,12 @@ const AS_USER = `async (path, init) => {
   return r.json()
 }`
 
-/**
- * Printing a report prints the report.
- *
- * `window.print()` prints the window, so without a print stylesheet the sheet
- * carries the sidebar, the transcript and every button on screen — while the
- * button's own tooltip says "이 보고서를 인쇄합니다".
- */
+/** Printing a report puts only the report on paper. */
 test('인쇄하면 보고서만 종이에 남는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
-  // Seeded, not found. Printing is asserted on the length of what lands on the
-  // page, and the reports an instance happens to hold may be one line each —
-  // which prints a correct and correctly empty sheet.
+  // Seeded, so the content is known.
   const title = `인쇄 확인 보고서 ${Date.now().toString(36)}`
   const artifact = await page.evaluate(
     async ([fn, body]) =>
@@ -73,7 +65,7 @@ test('인쇄하면 보고서만 종이에 남는다', async ({ page }) => {
     ] as const,
   )
 
-  // Opened from the gallery: the print tree is mounted by the report panel.
+  // The print tree is mounted by the report panel.
   await page.goto('/artifacts')
   const card = page
     .locator('div')
@@ -83,18 +75,14 @@ test('인쇄하면 보고서만 종이에 남는다', async ({ page }) => {
   await card.locator('button.aspect-video').first().click()
   const doc = page.locator('[data-print-doc]')
   await expect(doc).toHaveCount(1, { timeout: 20_000 })
-  // Hidden on screen — it exists only so the printer has something clean.
+  // Hidden on screen.
   await expect(doc).toBeHidden()
 
   await page.emulateMedia({ media: 'print' })
-  // On paper the application steps aside and the document takes over.
   await expect(page.locator('#root')).toBeHidden()
   await expect(doc).toBeVisible()
 
-  // The document is all of it — every heading, and the prose under them.
-  // Asserted on the content that was seeded rather than on a character count:
-  // a threshold only ever says "something was rendered", and picks a fight
-  // with the fixture's own length.
+  // Every heading and the prose under them.
   const printed = (await doc.innerText()).trim()
   expect(printed, '제목이 인쇄본에 없다').toContain(title)
   for (const heading of ['배경', '한계']) {
@@ -102,13 +90,12 @@ test('인쇄하면 보고서만 종이에 남는다', async ({ page }) => {
   }
   expect(printed, '본문이 인쇄본에 없다').toContain('도메인이 멀어질수록')
 
-  // And none of the things you cannot press on a sheet of paper.
+  // No controls.
   await expect(doc.getByRole('button')).toHaveCount(0)
   for (const label of ['이 절만 다시 쓰기', '목차', '내보내기', '수정']) {
     expect(printed, `인쇄본에 "${label}" 가 남아 있다`).not.toContain(label)
   }
 
-  // Removed here, so a gallery of print fixtures does not build up.
   await page.evaluate(
     async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`, { method: 'DELETE' }),
     [AS_USER, artifact.id] as const,

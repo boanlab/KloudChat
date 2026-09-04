@@ -1,14 +1,4 @@
-/**
- * Talking to the document you are looking at.
- *
- * The thing this checks is not a control — it is that a sentence typed in the
- * chat, under a document that already exists, works on that document. Before
- * this, it planned another one and offered to replace the one on screen, which
- * is why working on a report meant the panel's buttons and never the chat.
- *
- * Slow: each case needs a real document first. Kept apart from the faster
- * suites for that reason, and run in order so one generation serves the file.
- */
+/** A sentence typed under an existing document revises that document. Serial: one generation serves the file. */
 
 import { expect, test, type Page } from '@playwright/test'
 import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
@@ -16,15 +6,7 @@ import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
 test.describe.configure({ mode: 'serial', retries: 1 })
 test.setTimeout(600_000)
 
-/**
- * The session the first case makes, so the later ones can open it themselves.
- *
- * These run in order on one page and used to rely on that page still showing
- * what the case before it left — which is true right up until a retry, where
- * the later case starts on a blank page and looks for a panel button that was
- * never drawn. One generation still serves the file; the difference is that
- * each case now says which document it is about.
- */
+/** The session the first case makes; later cases reopen it by id (a retry starts on a blank page). */
 let sessionId = ''
 
 async function openReport(page: Page) {
@@ -45,16 +27,13 @@ async function reopen(page: Page) {
   await signIn(page)
   await page.goto(`/s/${sessionId}`)
   await artifactReady(page, 60_000)
-  // The revision the case before it started may still be streaming, and a
-  // panel mid-run is not the panel these controls belong to.
+  // The previous case's revision may still be streaming.
   await expect(page.getByLabel('중지')).toBeHidden({ timeout: 300_000 })
 }
 
 /** The section headings the panel is showing, in order. */
 async function headings(page: Page): Promise<string[]> {
-  // 패널 안의 절 제목만. The transcript is articles too, and an answer that
-  // quotes a heading — 「3. 보관 정책 개선 방안」 in a revision's summary —
-  // would be counted as a section the document grew.
+  // Panel only: the transcript is articles too, and a summary may quote a heading.
   return page.locator('[data-panel="artifact"] article h2').allInnerTexts()
 }
 
@@ -67,25 +46,18 @@ test('완성된 문서 아래에 쓴 문장은 그 문서를 고친다', async (
   await page.getByLabel('프롬프트 입력').fill(`"${target}" 절을 두 문장으로 짧게 줄여 줘.`)
   await page.getByLabel('프롬프트 입력').press('Enter')
 
-  // The step names the part it landed on — the whole point of the routing, and
-  // the only thing on screen that proves the instruction was read rather than
-  // treated as a new document. The assistant's own sentence is collapsed into
-  // the turn's summary button, so asserting on it tests the transcript's
-  // rendering rather than the revision.
+  // The step names the section it landed on.
   const step = page.getByRole('button', { name: /고치는 중/ })
   await expect(step).toBeVisible({ timeout: 300_000 })
-  // 「3. 」 is the panel's numbering, not the section's name; the step names
-  // the section as it is stored.
+  // 「3. 」 is the panel's numbering; the step names the section as stored.
   await expect(step).toContainText(target.replace(/^\d+\.\s*/, '').slice(0, 8))
 
-  // And the document is the same document: no proposal card, same outline.
+  // Same document: no proposal card, same outline.
   await expect(page.getByRole('button', { name: '이대로 생성' })).toBeHidden()
   expect(await headings(page)).toEqual(before)
 })
 
 test('고치기 전 판은 저장 시점에 남는다', async ({ page }) => {
-  // A revision is destructive in the way a regeneration was; the way back has
-  // to exist before anybody trusts typing into the box.
   await reopen(page)
   await ribbonTab(page, '검토')
   await page.getByRole('button', { name: '버전 기록' }).click()
@@ -95,33 +67,17 @@ test('고치기 전 판은 저장 시점에 남는다', async ({ page }) => {
 test('새로 써 달라고 하면 문서를 고치지 않는다', async ({ page }) => {
   await reopen(page)
   const before = await headings(page)
-  // Names the new subject. "완전히 다른 주제로 새로 써 줘" alone says what to
-  // throw away and nothing about what to write, and the planner answered it
-  // exactly as it should — 요청을 조금 더 구체적으로 적어 주세요 — which is a
-  // fair answer to a fixture that asked for nothing. The claim under test is
-  // about routing, not about how little a request can say.
+  // Names a new subject, so the planner has something to plan.
   await page
     .getByLabel('프롬프트 입력')
     .fill('이건 버리고, 연구실 안전 교육 계획으로 완전히 새로 써 줘.')
   await page.getByLabel('프롬프트 입력').press('Enter')
 
-  // Planning again, which means a proposal to look at — not a document
-  // silently replaced.
-  //
-  // Waited on the proposal alone. This used to accept "N곳을 고쳤습니다" as the
-  // other half of an `.or()`, and that sentence is in the transcript already:
-  // the case above put it there. So the wait passed on an old message, the
-  // moment the screen loaded, and the assertion below then looked for a card
-  // that a turn one second old had not drawn yet. The hedge was hiding the
-  // very thing this checks.
-  //
-  // Nothing here is left to a model: `revise.obviously_new` reads "새로 써 줘"
-  // and refuses to route it as an edit before any call is made.
+  // A proposal, not a silent replacement: `revise.obviously_new` routes "새로 써 줘" before any model call.
   await expect(page.getByRole('button', { name: '이대로 생성' })).toBeVisible({
     timeout: 300_000,
   })
 
-  // And the document on screen is still the one that was there — a plan is an
-  // offer, and nothing is written until somebody takes it.
+  // A plan is an offer; nothing is written until it is taken.
   expect(await headings(page)).toEqual(before)
 })

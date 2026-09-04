@@ -5,18 +5,7 @@ import { useStore } from '@/store/useStore'
 import type { Job } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * A clip being made, in the conversation that asked for it.
- *
- * The card is what stands under the prompt for the minutes a clip takes: a
- * stage, a percentage, what it will cost and a way to stop it — the things a
- * turn cannot say about itself while it is still happening.
- *
- * It says nothing about a finished one. The delivered clip is an answer, and
- * an answer belongs in the turn under the prompt, where a reload also finds
- * it; a card repeating the same video beside that turn would be the same
- * result claiming to be two.
- */
+/** Progress, failure and retry for a running media job; a finished one renders nothing (the turn shows the clip). */
 export function JobCard({ job }: { job: Job }) {
   const t = useT()
   const { cancelJob, retryJob } = useStore()
@@ -77,6 +66,5 @@ export function JobCard({ job }: { job: Job }) {
     )
   }
 
-  // Succeeded. The turn under the prompt carries the clip.
   return null
 }

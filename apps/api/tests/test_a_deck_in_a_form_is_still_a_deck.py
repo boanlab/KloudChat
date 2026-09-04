@@ -1,14 +1,4 @@
-"""A deck written into a 서식 is a deck, not a file.
-
-Choosing a deck 서식 used to send the slides turn down the block writer and
-store what came back as an `html` artifact — a finished file in a sandboxed
-frame. The person had seen the deck surface draw slides in seven faces, edit
-one slide at a time, switch the face and present; what they got under the
-서식 was a grey page with a numbered pill, and none of that. The deck writer
-writes it now. The 서식 names the face the deck opens on, its genre rules
-reach the planner, and its id rides on the artifact so the export builds on
-its PowerPoint half — which the export route already knew how to open.
-"""
+"""A slides turn under a deck 서식 goes to the deck writer, wearing the 서식's face."""
 
 from __future__ import annotations
 
@@ -22,9 +12,7 @@ from app.services import design, design_templates
 
 def test_a_slides_turn_with_a_deck_form_goes_to_the_deck_writer() -> None:
     source = inspect.getsource(sessions.send_message)
-    # The block writer is left only what neither writer knows.
     assert 'render_template.kind not in ("document", "deck")' in source
-    # And the deck writer is handed the 서식 rather than asked to ignore it.
     at = source.find("_run_deck(")
     assert at > 0
     assert "template=render_template" in source[at : at + 200]
@@ -52,9 +40,8 @@ def test_a_form_that_names_a_face_the_stage_cannot_draw_is_refused() -> None:
 
 
 def test_the_deck_writer_wears_the_form() -> None:
-    """The 서식's face outranks the request's words and rides on the artifact."""
+    """The 서식's face, id and instructions all reach the deck writer."""
     source = inspect.getsource(sessions._run_deck)
     assert '"visualStyle": template.look' in source
     assert '"templateId": template.id' in source
-    # Its genre rules reach the planner the way project instructions do.
     assert "template.instructions" in source

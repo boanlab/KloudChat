@@ -1,10 +1,4 @@
-"""An agent's @handle is the one typed, and no other agent of the owner's.
-
-The slug field in the form was not sent: `AgentIn` had no such field, so the
-server always derived the handle from the name, and nothing — column, route,
-or form — checked it against the rows already there. Four agents named
-회의록 정리 사본 were four @회의록-정리-사본.
-"""
+"""Agent slugs: the typed handle is stored and is unique per owner."""
 
 from __future__ import annotations
 
@@ -31,7 +25,7 @@ class _Result:
 
 
 class _Db:
-    """The owner's agents on the table, and nothing else to find."""
+    """In-memory db holding only the owner's agents."""
 
     def __init__(self, agents: list[Agent]) -> None:
         self.agents = agents
@@ -113,7 +107,7 @@ async def test_an_edit_cannot_take_a_handle_another_agent_holds() -> None:
     assert refused.value.status_code == 409
 
 
-# ── the migration's dedupe, without a database ─────────────────────────
+# ── migration 0038 dedupe, without a database ──────────────────────────
 
 
 def _migration():
@@ -134,7 +128,7 @@ def test_existing_duplicates_keep_the_oldest_and_suffix_the_rest() -> None:
         ("a2", "u1", "회의록 정리 사본", "회의록-정리-사본"),
         ("a3", "u1", "회의록 정리 사본", "회의록-정리-사본"),
         ("b1", "u2", "회의록 정리 사본", "회의록-정리-사본"),  # another owner: untouched
-        ("a4", "u1", "이름만 있음", ""),  # never got a slug: derived, not left empty
+        ("a4", "u1", "이름만 있음", ""),  # empty slug: derived from the name
     ]
     assert resolve(rows) == [
         ("a2", "회의록-정리-사본-2"),

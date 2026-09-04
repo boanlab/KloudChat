@@ -43,10 +43,7 @@ const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'wa
   disconnected: { label: '미연결', tone: 'neutral' },
 }
 
-/**
- * A server this user has installed. Catalogue entries are a separate shape with
- * no id: installing is what spawns the server and asks what it exposes.
- */
+/** An installed connector; catalogue entries are a separate shape with no id. */
 function ConnectorCard({
   connector,
   onOpen,
@@ -69,8 +66,7 @@ function ConnectorCard({
   const writeTools = connector.tools.filter((t) => !t.readOnly && t.enabled).length
 
   return (
-    // Same hook the catalogue card carries, so a test can address an installed
-    // connector without matching on its name.
+    // `data-connector` is the e2e hook.
     <Card className="flex flex-col p-4" data-connector={connector.slug}>
       <div className="flex items-start gap-3">
         <PickBox
@@ -114,7 +110,6 @@ function ConnectorCard({
         </p>
       )}
 
-      {/* The floor under the foot's `mt-auto`. */}
       <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
         <Badge>{t(connector.category)}</Badge>
         <Badge>{t('도구 {n}').replace('{n}', String(connector.tools.length))}</Badge>
@@ -129,9 +124,7 @@ function ConnectorCard({
         ))}
       </div>
 
-      {/* Pinned to the bottom for the same reason the agent card's foot is: the
-          grid stretches cards in a row to one height, and a foot left to float
-          lands wherever the badges above it happened to end. */}
+      {/* `mt-auto` keeps the foot aligned across a row of cards. */}
       <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
         <span className="text-xs text-faint">
           {connector.lastSyncAt
@@ -139,9 +132,6 @@ function ConnectorCard({
             : t('동기화 이력 없음')}
         </span>
         <div className="flex gap-1.5">
-          {/* Credentials were supplied once at install and could never be
-              changed. A rotated API key meant uninstalling the connector and
-              adding it again, losing its tool settings on the way. */}
           {needsCredentials && (
             <Button size="sm" onClick={onEditCredentials}>
               <KeyRound size={13} />
@@ -176,7 +166,7 @@ function ConnectorCard({
   )
 }
 
-/** Not yet installed: no id, no tools, nothing to toggle — only an install button. */
+/** A catalogue entry that is not installed yet. */
 function CatalogCard({ entry, onNeedsCredentials }: {
   entry: CatalogEntry
   onNeedsCredentials: (entry: CatalogEntry) => void
@@ -187,7 +177,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
   const [error, setError] = useState<string | null>(null)
 
   return (
-    // Addressable by slug; matching on name gets whichever card sorts first.
+    // `data-connector` is the e2e hook.
     <Card className="flex flex-col p-4" data-connector={entry.slug}>
       <div className="flex items-start gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-card bg-elevated text-lg">
@@ -228,8 +218,6 @@ function CatalogCard({ entry, onNeedsCredentials }: {
           variant="primary"
           disabled={busy || entry.installed}
           onClick={async () => {
-            // A credential is asked for first: without one the connector fails
-            // on every call.
             if (entry.requiredEnv.length > 0) {
               onNeedsCredentials(entry)
               return
@@ -239,8 +227,6 @@ function CatalogCard({ entry, onNeedsCredentials }: {
             try {
               await installConnector(entry.slug)
             } catch (err) {
-              // Installing spawns the server, so a failure here is usually a
-              // missing dependency or an unreachable host.
               setError(errorMessage(err, t('설치에 실패했습니다.')))
             } finally {
               setBusy(false)
@@ -261,10 +247,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
   )
 }
 
-/**
- * Re-supplies credentials for an installed connector. Fields start empty and
- * nothing is read back: stored values never leave the server.
- */
+/** Re-supplies credentials for an installed connector. Stored values never leave the server. */
 function ReCredentialModal({
   connector,
   entry,
@@ -285,8 +268,7 @@ function ReCredentialModal({
     setError(null)
   }, [connector?.id])
 
-    // Catalogue entry when there is one, else the key names the connector
-    // carries — a self-registered server has no catalogue entry.
+  // A self-registered server has no catalogue entry; fall back to its env keys.
   const fields =
     entry?.requiredEnv?.length
       ? entry.requiredEnv
@@ -339,10 +321,7 @@ function ReCredentialModal({
   )
 }
 
-/**
- * Asks only for what the chosen server declared. Values go straight to the
- * install call and are stored server-side; nothing reads them back.
- */
+/** Asks for the credentials a catalogue entry declares. Stored values never leave the server. */
 function CredentialsModal({
   entry,
   onClose,
@@ -414,7 +393,7 @@ function CredentialsModal({
   )
 }
 
-/** `KEY=value` per line → an env map. Blank and malformed lines are dropped. */
+/** `KEY=value` per line to an env map; blank and malformed lines are dropped. */
 function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of text.split('\n')) {
@@ -458,14 +437,10 @@ export function ConnectorsPage() {
 
   const installed = connectors.filter((c) => c.installed)
   const pick = useBulkSelect(installed)
-  // Installed entries stay in the catalog, marked. "Is GitHub supported?" is a
-  // question about the catalog, and hiding the answer once someone adds it means
-  // the list silently shrinks as it gets used.
+  // Installed entries stay in the catalogue, marked.
   const catalog = connectorCatalog
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
 
-  // Two different shapes on the two tabs, so they group separately rather than
-  // pretending a catalog entry is a half-installed connector.
   const groupBy = <T extends { category: string }>(items: T[]) =>
     items.reduce<Record<string, T[]>>((acc, item) => {
       ;(acc[item.category] ??= []).push(item)
@@ -535,10 +510,7 @@ export function ConnectorsPage() {
                       key={c.id}
                       connector={c}
                       onOpen={() => setDetail(c)}
-                      // Decided from what the connector row holds. Consulting
-                      // the catalogue instead finds no entry for a
-                      // self-registered server, which left a custom connector
-                      // created with credentials unable to ever change them.
+                      // From the row first: a self-registered server has no catalogue entry.
                       needsCredentials={
                         (c.envKeys?.length ?? 0) > 0 ||
                         (catalog.find((e) => e.slug === c.slug)?.requiredEnv?.length ?? 0) > 0
@@ -569,7 +541,6 @@ export function ConnectorsPage() {
         </div>
       </PageBody>
 
-      {/* 자격증명 입력 — 카탈로그 서버가 요구하는 값만 묻습니다. */}
       <CredentialsModal entry={credentialsFor} onClose={() => setCredentialsFor(null)} />
       <ReCredentialModal
         connector={reCredential}
@@ -577,7 +548,6 @@ export function ConnectorsPage() {
         onClose={() => setReCredential(null)}
       />
 
-      {/* 도구 단위 권한 */}
       <Modal
         open={!!current}
         onClose={() => setDetail(null)}
@@ -668,7 +638,6 @@ export function ConnectorsPage() {
         )}
       </Modal>
 
-      {/* 커스텀 서버 */}
       <Modal
         open={adding}
         onClose={() => setAdding(false)}
@@ -733,9 +702,6 @@ export function ConnectorsPage() {
             className="font-mono"
           />
         </Field>
-        {/* 자격증명. 사내 MCP 서버는 대개 토큰을 요구하는데, 이 칸이 없어서
-            "사내 시스템을 직접 연결한다" 가 절반만 되고 있었다 — 백엔드는
-            처음부터 받고 있었고 폼에만 없었다. */}
         <Field
           label={t('환경 변수')}
           hint={t('한 줄에 하나씩 KEY=value 형식으로 입력하세요. 저장한 뒤에는 표시하지 않습니다.')}

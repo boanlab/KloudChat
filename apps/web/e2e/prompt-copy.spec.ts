@@ -4,8 +4,7 @@ import { signIn } from './helpers'
 test('보낸 프롬프트도 복사할 수 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  // A fake stream: this is about the button next to the prompt, and waiting on a
-  // model would make it a test of the model.
+  // Fake stream.
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') return route.continue()
     await route.fulfill({

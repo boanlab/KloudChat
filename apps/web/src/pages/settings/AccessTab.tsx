@@ -11,20 +11,6 @@ import { browserName, formatDateTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * Where this account is signed in, and what has happened to it.
- *
- * Two halves, in the order somebody needs them. The sessions are the half that
- * can be acted on: a browser still holding a live cookie on a machine the
- * person has walked away from, and a button that ends it from here. The record
- * below is the half that explains — and the reason to read it is to find the
- * one line that was not you.
- *
- * Which is why failed sign-ins are on it and are marked. A successful login
- * from Seoul is a row nobody studies; four failures from an address nobody
- * recognises is the entire point of the screen, and burying them among the
- * successes would make it a screen that technically contains the answer.
- */
 const ACTION_LABEL: Record<string, string> = {
   login: '로그인',
   signup: '가입',
@@ -35,16 +21,7 @@ const ACTION_LABEL: Record<string, string> = {
   'key.revoke': 'API 키 폐기',
 }
 
-
-/**
- * The live sign-ins, newest activity first.
- *
- * A shared lab PC is the case this exists for: somebody signs in, forgets, and
- * walks out. Until now the only way to end that session was to go back and sit
- * at the machine. The current browser is marked and kept at arm's length — its
- * 종료 signs the reader out on the spot, which is fine as long as it does not
- * happen by accident.
- */
+/** Live sign-ins, newest activity first; ending the current one signs the reader out. */
 function ActiveSessions() {
   const t = useT()
   const idleTimeoutMinutes = useStore((s) => s.idleTimeoutMinutes)
@@ -69,9 +46,7 @@ function ActiveSessions() {
         await accessApi.endOtherSessions()
       } else {
         await accessApi.endSession(target.familyId)
-        // Ending your own session leaves the tab holding a burned cookie. The
-        // local teardown is what turns that into a sign-in screen rather than
-        // a screen that keeps failing.
+        // The cookie is burned; tear down locally.
         if (target.current) return void useStore.getState().logout()
       }
       load()
@@ -206,7 +181,6 @@ export function AccessTab() {
         <ActiveSessions />
       </section>
 
-      {/* Independently loaded access history. */}
       <section className="space-y-3">
         <h3 className="text-base font-medium">{t('접속 기록')}</h3>
         <p className="text-base text-muted">
@@ -224,8 +198,6 @@ export function AccessTab() {
           </Card>
         ) : (
           <Card className="overflow-hidden">
-            {/* Scrolls inside its own box: the browser column is long enough to
-                push the page sideways on a laptop otherwise. */}
             <div className="overflow-x-auto">
               <table className="w-full text-base">
                 <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
@@ -265,9 +237,6 @@ export function AccessTab() {
                             </span>
                           )}
                         </td>
-                        {/* The raw string on hover — the short form drops
-                            exactly what would matter if this became a serious
-                            question. */}
                         <td
                           className="px-4 py-2.5 text-sm whitespace-nowrap text-muted"
                           title={e.userAgent}

@@ -1,25 +1,12 @@
-"""Video generation: submit, poll, fetch.
+"""Video generation through LiteLLM pass-throughs: submit, poll, fetch.
 
-The only modality that does not finish inside its request. OpenRouter takes the
-prompt on `/api/v1/videos`, returns an id, and the clip appears minutes later,
-so each call here is one step of a job.
-
-Three LiteLLM pass-throughs:
-
-    POST /orvideo/submit/<alias>/<res>/<a|na>/<dur>   billed, one fixed price
+    POST /orvideo/submit/<alias>/<res>/<a|na>/<dur>   billed at a fixed price per path
     GET  /orvideo/job/<id>                            free, polled
     GET  /orvideo/job/<id>/content?index=0            free, the clip itself
 
-**Two different credentials.** Submitting uses the caller's virtual key, so the
-charge lands on them. Polling and downloading use the instance master key,
-because LiteLLM classifies job routes as management endpoints and answers a
-virtual key with 401. Attribution is unaffected: only the submit route is
-priced.
-
-**The alias selects a price, not a model** — the model is the one in the body.
-Pass-throughs cannot price dynamically, so the config enumerates every
-(model × resolution × audio × duration) combination with its own
-`cost_per_request`. The wrong path bills the wrong amount for a correct clip.
+Submit uses the caller's virtual key (so the charge is attributed to them); poll and
+fetch use the instance master key, since LiteLLM answers a virtual key with 401 there.
+The alias in the submit path selects the price only; the model is the one in the body.
 """
 
 from __future__ import annotations
@@ -32,13 +19,10 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-#: Submitting returns a ticket; nothing here waits for a clip.
 _TIMEOUT = 60.0
-#: Downloading one does.
 _FETCH_TIMEOUT = 300.0
 
-#: Catalogue id → the alias the billing paths are keyed by. An id with no entry
-#: has no priced path and is refused rather than billed at a guess.
+#: Catalogue id → billing-path alias. Ids without an entry are refused.
 ALIASES = {
     "google/veo-3.1-lite": "veo-lite",
     "google/veo-3.1-fast": "veo-fast",
@@ -46,8 +30,7 @@ ALIASES = {
     "openai/sora-2-pro": "sora-2",
 }
 
-#: $/second, from each model's `pricing_skus`. Quoted before the run, and has
-#: to agree with the pass-through's fixed figure.
+#: $/second per (alias, resolution, audio); must match the pass-through's fixed price.
 _RATES = {
     ("veo-lite", "720p", False): 0.03,
     ("veo-lite", "720p", True): 0.05,
@@ -67,13 +50,13 @@ _RATES = {
 
 
 class VideoError(RuntimeError):
-    """The message is written for the person who asked."""
+    """Video job failure with a user-facing message."""
 
 
 @dataclass(slots=True)
 class Submitted:
     provider_job_id: str
-    #: What the pass-through will bill, in dollars, so the caller can record it.
+    #: Dollars the pass-through bills for this submit.
     cost_usd: float
 
 
@@ -83,13 +66,12 @@ class Progress:
     progress: int
     url: str | None = None
     error: str | None = None
-    #: What the upstream says it charged. Authoritative once the clip is done;
-    #: the pass-through's fixed per-path price is only an estimate.
+    #: Upstream-reported charge in dollars; authoritative once the clip is done.
     cost_usd: float | None = None
 
 
 def price_usd(model: str, *, resolution: str, seconds: int, audio: bool) -> float | None:
-    """`None` when the combination has no priced path — refuse rather than guess."""
+    """Quoted price in dollars, or None when the combination has no priced path."""
     alias = ALIASES.get(model)
     if alias is None:
         return None
@@ -98,11 +80,9 @@ def price_usd(model: str, *, resolution: str, seconds: int, audio: bool) -> floa
 
 
 def submit_path(model: str, *, resolution: str, seconds: int, audio: bool) -> str | None:
-    """The billing path, or None when the combination has no priced route.
+    """Billing path, or None when the combination has no priced route.
 
-    The path is assembled from the matching `_RATES` key rather than from the
-    arguments: this string becomes a URL path, and interpolating a caller's
-    `resolution` would be a traversal into whatever the gateway serves.
+    Built from the matching `_RATES` key, never from caller strings (it becomes a URL path).
     """
     alias = ALIASES.get(model)
     if alias is None:
@@ -133,9 +113,7 @@ async def submit(
     if path is None or cost is None:
         raise VideoError("이 조합은 지원하지 않습니다. 길이나 해상도를 바꿔 보세요.")
 
-    # Accepted field names: `duration`, `resolution`, `generate_audio`,
-    # `aspect_ratio`. `duration_seconds`, `aspectRatio` and `seed` are silently
-    # ignored, producing a default-length clip at twice the quoted price.
+    # OpenRouter silently ignores unknown field names (`duration_seconds`, `aspectRatio`).
     payload: dict[str, Any] = {
         "model": model,
         "prompt": prompt,
@@ -151,8 +129,7 @@ async def submit(
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    # Attributes the pass-through's per-request charge to this
-                    # account rather than the instance.
+                    # Attributes the per-request charge to this account.
                     "x-litellm-end-user-id": user_id,
                 },
             )
@@ -175,7 +152,7 @@ def _read_progress(body: dict[str, Any]) -> Progress:
     data = body.get("data") if isinstance(body.get("data"), dict) else body
     status = str(data.get("status") or "").lower()
     percent = data.get("progress")
-    # OpenRouter returns `unsigned_urls`, a list — not a singular `url`.
+    # OpenRouter reports `unsigned_urls` (a list) rather than a singular `url`.
     url = data.get("url") or data.get("video_url")
     if not url:
         unsigned = data.get("unsigned_urls") or data.get("urls")
@@ -203,11 +180,7 @@ def _read_progress(body: dict[str, Any]) -> Progress:
 
 
 async def poll(*, base_url: str, master_key: str, provider_job_id: str) -> Progress:
-    """Asks the proxy how the clip is coming along.
-
-    Instance key, not the caller's: LiteLLM treats this as a management
-    endpoint and refuses a virtual key.
-    """
+    """Job status from the proxy; needs the master key (LiteLLM rejects virtual keys here)."""
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.get(
@@ -215,13 +188,12 @@ async def poll(*, base_url: str, master_key: str, provider_job_id: str) -> Progr
                 headers={"Authorization": f"Bearer {master_key}"},
             )
     except httpx.HTTPError as exc:
-        # A failed poll is not a failed job; the next tick asks again.
+        # A failed poll is not a failed job.
         log.info("video poll failed: %s", exc)
         return Progress(status="running", progress=0)
 
     if response.status_code in (401, 403):
-        # Wrong credentials, not a network blip. Reported as failure — read as
-        # progress, the job would sit at 1% forever.
+        # Wrong credentials: reported as failure so the job does not poll forever.
         log.error("video poll rejected (%s): %s", response.status_code, response.text[:200])
         return Progress(status="failed", progress=0, error="영상 상태를 확인할 권한이 없습니다.")
     if response.status_code >= 400:
@@ -231,11 +203,7 @@ async def poll(*, base_url: str, master_key: str, provider_job_id: str) -> Progr
 
 
 async def fetch(*, base_url: str, master_key: str, provider_job_id: str, index: int = 0) -> bytes:
-    """Downloads the finished clip through the proxy.
-
-    `unsigned_urls` points at OpenRouter directly and needs the upstream key,
-    which this service does not hold. The same asset is behind the pass-through.
-    """
+    """Downloads the finished clip through the proxy (`unsigned_urls` need the upstream key)."""
     url = f"{base_url.rstrip('/')}/orvideo/job/{provider_job_id}/content?index={index}"
     try:
         async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT, follow_redirects=True) as client:

@@ -7,20 +7,13 @@ import { Badge, Button, Card, Input, PageHeader, Switch, Tabs } from '@/componen
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * The audit trail, as written.
- *
- * Everything shown here is backed by an endpoint. On a security screen a toggle
- * that persists nothing and enforces nothing is worse than an absent feature,
- * so nothing appears until there is something behind it.
- */
 const SEVERITY: Record<string, 'neutral' | 'warn' | 'danger'> = {
   info: 'neutral',
   warn: 'warn',
   alert: 'danger',
 }
 
-/** Written by the auth and admin routes. Unlisted actions show their raw name. */
+/** Labels for audit actions written by the auth and admin routes; unlisted actions show their raw name. */
 const ACTION_LABEL: Record<string, string> = {
   login: '로그인',
   signup: '회원가입',
@@ -51,8 +44,7 @@ export function AdminGovernancePage() {
 
   const apply = async (patch: Partial<NonNullable<typeof governance>>) => {
     const cleared = await setGovernance(patch)
-    // Shortening retention reaches back through what is already stored, so say
-    // how much it took rather than leaving it to be discovered.
+    // Shortening retention deletes stored bodies; report the count.
     if (cleared > 0) setSwept(cleared)
   }
 
@@ -60,8 +52,7 @@ export function AdminGovernancePage() {
     const q = query.trim().toLowerCase()
     if (!q) return audit ?? []
     return (audit ?? []).filter((e) =>
-      // Both spellings of the region: somebody reading the trail in English
-      // searches for what the row shows them, not for its Korean source.
+      // Raw and translated region, so an English reader can search what the row shows.
       [e.actor, e.action, ACTION_LABEL[e.action] ?? '', e.target, e.detail, e.ip, e.region, t(e.region)]
         .join(' ')
         .toLowerCase()
@@ -355,9 +346,6 @@ export function AdminGovernancePage() {
                       {e.detail && <span className="ml-2 text-xs text-faint">{e.detail}</span>}
                     </td>
                     <td className="max-w-[240px] truncate px-4 py-2.5 text-muted">{e.target}</td>
-                    {/* Address, place and browser in one cell: three columns
-                        of mostly-empty would push 행위 off a laptop screen,
-                        and these three are read together or not at all. */}
                     <td className="px-4 py-2.5 text-xs whitespace-nowrap text-faint">
                       <span className="font-mono tabular-nums">{e.ip || '—'}</span>
                       {e.region && <span className="ml-2">{t(e.region)}</span>}

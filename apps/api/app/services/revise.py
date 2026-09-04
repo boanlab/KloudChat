@@ -1,37 +1,7 @@
-"""What a sentence typed under a finished document is asking for.
+"""Routes an instruction typed under a finished document to the parts it targets.
 
-The rule this replaces is one line in `routers/sessions.py`:
-
-    typing while a proposal is up is a revision, and revising means planning
-    again.
-
-Which is right while a proposal is up, and wrong the moment the document
-exists. `session.pending` is cleared when the document is written, so after
-that every plain message met a planner with nothing to plan against — and
-"3절을 좀 더 짧게" produced a brand new report about being shorter, offered as
-a proposal, waiting to replace the one on screen.
-
-The effect is that the conversation and the document are two windows that
-cannot see each other. Everything the person can do to their document, they do
-with a button on the panel and a note in a box; everything they say in the chat
-starts over. That is the whole of the difference between working on a document
-and watching one being generated.
-
-So a message under a finished document is read first: what does it point at?
-Three answers, and the third is why this is a model call rather than a regex —
-somebody who types "이 주제 말고 클라우드 비용으로 다시 써 줘" does want a new
-document, and refusing to notice that would be as wrong as the old rule was.
-
-* **`targets`** — the parts to rewrite, by id. The common case.
-* **`whole`** — every part, in place. "전체적으로 더 간결하게".
-* **`regenerate`** — plan again from scratch. A different document.
-
-Nothing here writes. It reads the instruction and says where it lands; the
-surfaces do the rewriting with the machinery they already have.
-
-The original request and the research shelf travel into every rewrite. A
-section fixed in isolation forgets what the document is about, and the numbered
-citations in the prose would renumber against an empty shelf.
+Scopes: `parts` (named parts), `whole` (every part), `new` (plan again from
+scratch). Nothing here rewrites; the surfaces do that.
 """
 
 from __future__ import annotations
@@ -40,19 +10,14 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 import httpx
 
-from app.core.config import settings
 from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: How many parts one instruction may touch before it is treated as a whole-
-#: document pass. Past this, rewriting them one at a time costs more than
-#: rewriting everything and reads worse — the parts stop agreeing with each
-#: other because each was written without seeing the others' new text.
+#: Parts one instruction may touch before it becomes a whole-document pass.
 MAX_TARGETS = 3
 
 _PROMPT = """사용자가 이미 완성된 문서를 보면서 아래 문장을 입력했다.
@@ -101,12 +66,7 @@ class Plan:
 
 
 def _parse(text: str, count: int, message: str) -> Plan:
-    """The model's JSON, bounded to parts that exist.
-
-    A judgement that names nothing usable falls back to `new`, which is what
-    every message did before this module existed — the old behaviour is the
-    failure mode, not a crash.
-    """
+    """The model's JSON as a `Plan`, bounded to parts that exist; `new` when unusable."""
     block = text[text.find("{") : text.rfind("}") + 1] if "{" in text and "}" in text else ""
     try:
         parsed = json.loads(block)
@@ -125,8 +85,7 @@ def _parse(text: str, count: int, message: str) -> Plan:
     numbers: list[int] = []
     for value in parsed.get("targets") or []:
         try:
-            # One-based in the prompt, because that is how the outline is
-            # numbered on screen and a model counts the way it is shown.
+            # One-based in the prompt, as numbered on screen.
             index = int(value) - 1
         except (TypeError, ValueError):
             continue
@@ -135,8 +94,6 @@ def _parse(text: str, count: int, message: str) -> Plan:
     if not numbers:
         return Plan(note=note)
     if len(numbers) > MAX_TARGETS:
-        # Past the cap the parts stop agreeing with each other, because each is
-        # written without seeing the others' new text.
         return Plan(scope="whole", targets=list(range(count)), note=note)
     return Plan(scope="parts", targets=numbers, note=note)
 
@@ -149,12 +106,7 @@ async def plan(
     model: str,
     api_key: str,
 ) -> Plan:
-    """Read one instruction against one document. Never raises.
-
-    `parts` is the document's outline — section headings, slide titles — in
-    order. What they are called differs per surface; what this needs is only
-    that the list is the thing the person can see.
-    """
+    """Read one instruction against one document's outline (`parts`, in order). Never raises."""
     if not parts or not message.strip():
         return Plan()
 
@@ -201,10 +153,7 @@ async def plan(
     return decided
 
 
-#: Sentences that mean "start over" plainly enough that asking a model would be
-#: spending a call to be told what the words already say. Checked before the
-#: routing call, never after it — a model that says `parts` about "새로 써줘"
-#: is wrong, and this is cheaper than being wrong.
+#: Phrases that plainly mean "start over"; checked before the routing call.
 _START_OVER = re.compile(
     r"(새로\s*(써|작성|만들)|처음부터\s*다시|다른\s*주제로|아예\s*다시|버리고\s*다시)"
 )
@@ -220,10 +169,6 @@ def label(plan: Plan, parts: list[str]) -> str:
         return "문서 전체 고치는 중"
     named = " · ".join(parts[i] for i in plan.targets if i < len(parts))
     return f"고치는 중: {named}"[:120]
-
-
-def settings_summary() -> dict[str, Any]:
-    return {"maxTargets": MAX_TARGETS, "toolTimeout": settings.tool_timeout_sec}
 
 
 __all__ = ["MAX_TARGETS", "Plan", "label", "obviously_new", "plan"]

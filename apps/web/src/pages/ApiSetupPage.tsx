@@ -9,21 +9,6 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { ModelInfo } from '@/types'
 
-/**
- * How to call this instance from code.
- *
- * The sibling of AgentSetupPage: that one wires a coding *agent* in, this one
- * hands a *programmer* the two working snippets they came for. Same house
- * rules — the address is built from the origin being viewed and the model from
- * the live catalogue, because prose that hard-codes either starts lying the
- * day the line-up or the domain changes.
- *
- * Two SDKs and no more. The gateway is LiteLLM speaking the OpenAI protocol,
- * so the official OpenAI SDK is the shortest path; the LiteLLM SDK is here for
- * the reader who already uses it everywhere else. A third way would be a
- * choice with no difference behind it.
- */
-
 function Snippet({ text }: { text: string }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
@@ -57,6 +42,7 @@ function priceLabel(m: ModelInfo, t: (s: string) => string): string {
     .replace('{out}', m.creditCost.toLocaleString())
 }
 
+/** Code snippets for calling this instance; address and model come from the live origin and catalogue. */
 export function ApiSetupPage() {
   const t = useT()
   const { models } = useStore()
