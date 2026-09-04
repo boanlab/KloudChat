@@ -74,7 +74,9 @@ _CORE_ACCURACY = (
     "legal actor.\n"
     "- In a reverse-issued tax invoice workflow, the buyer prepares or requests the "
     "draft; the supplier approves and remains the legal issuer. Never shorten this to "
-    "“the buyer issues the invoice.”\n"
+    "“the buyer issues the invoice.” It changes who prepares the draft, not the legal "
+    "issuer or the time of supply. Do not describe it as a way for the buyer to delay "
+    "receiving an invoice.\n"
     "- For laws, tax, policy, standards, prices, dates, product specifications, and other "
     "changeable facts, do not turn memory into certainty. Verify with an available tool "
     "or clearly state the limit. Never cite a source that was not present in a tool result "
@@ -84,7 +86,9 @@ _CORE_ACCURACY = (
     "examples.\n"
     "- Missing source facts are not blanks to disguise as finished work. Ask one focused "
     "question when the missing facts determine the answer; if the user explicitly chooses "
-    "a template, label it as a template."
+    "a template, label it as a template.\n"
+    "- Before sending, remove repeated paragraphs and repeated conclusions. State each "
+    "claim once."
 )
 
 # 글을 어떻게 쓰는가.
@@ -209,6 +213,15 @@ _WEB_SEARCH_NUDGE = (
     "체계(예: TRL 단계 구분, 근로기준법 제60조, ISO 조항, 평가 등급표)는 단계 수와 각 "
     "단계의 이름·기준이 문서로 정해져 있어 기억으로 쓰면 단계를 빼먹거나 만들어 냅니다. "
     "공식 문서(기관·법령·표준 본문)를 찾아 그 정의를 옮기고, 사례는 그 정의에 맞춰 듭니다.\n"
+    "- 법·정책·공공 통계를 검증할 때는 첫 검색부터 발행 기관 이름과 공식 원문을 함께 "
+    "찾으세요. 정부·공공기관의 보도자료, 원문 보고서, 통계표를 1차 근거로 쓰고 언론·대학 "
+    "소개 글은 원문을 찾지 못했을 때의 보조 근거로만 씁니다. 검색 결과에 공식 원문과 "
+    "2차 보도가 함께 있으면 공식 원문을 인용하세요. 기관 홈페이지 첫 화면은 특정 주장의 "
+    "근거가 아닙니다. 해당 보도자료·보고서·통계표의 직접 URL을 찾으세요.\n"
+    "- 팩트체크는 먼저 사용자가 제시한 주장을 따옴표로 그대로 검색하고, 결과가 지목하는 "
+    "조사명·발행 기관을 두 번째 검색으로 확인하세요. 검색 결과의 제목·본문 발췌에 실제로 "
+    "나오지 않은 비율, 연도, 조사명, 척도 문항은 기억으로 보태지 마세요. 뒷받침하는 대목을 "
+    "찾지 못하면 숫자를 추측하지 말고 확인하지 못했다고 답하세요.\n"
     "- 답변에 사실 축이 여러 개면(예: 하드웨어 사양 + 그 위에서 돌아가는 소프트웨어 목록) "
     "축마다 web_search 를 따로 호출하세요. 한 번 검색하고 나머지를 기억으로 채우지 마세요.\n"
     "- 제품명·모델명·버전·수치·날짜·가격처럼 시간이 지나면 틀리는 항목은 검색으로 확인한 것만 "
@@ -308,10 +321,7 @@ def build_messages(
 
     Truncation belongs to LiteLLM's `truncate_to_ctx` callback.
     """
-    # The language of the question, judged on the last thing the person typed.
-    # The system turn says to answer in the asker's language and the model,
-    # under a page of Korean style rules, answered an English question about
-    # false discovery rates in Korean twice. Said again, in English, last.
+    # Last-user-turn language rule
     asked = next(
         (str(m.get("content") or "") for m in reversed(history) if m.get("role") == "user"), ""
     )
@@ -370,27 +380,7 @@ def with_pictures(messages: list[dict], uris: Sequence[str]) -> list[dict]:
 
 
 def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Merges neighbouring turns that share a role.
-
-    Chat templates are written for a transcript that alternates, and several of
-    the local ones — Qwen's among them — refuse or mangle a payload where two
-    user turns sit next to each other. Two things here produce exactly that.
-
-    The first is a turn that failed. A question is stored before the model
-    answers, so a request that times out or is refused leaves a user message
-    with nothing under it; the next question then follows it directly and the
-    whole conversation starts failing, no matter which model is picked
-    afterwards. That is what made a session unrecoverable rather than merely
-    unlucky: every later turn inherited the same malformed transcript, and only
-    a brand-new conversation escaped it.
-
-    The second is the reference block above, which is a user message by design
-    and lands immediately before a history that usually opens with one.
-
-    Merged rather than dropped, because the unanswered question is still what
-    the person asked, and losing it would make 다시 물어보기 answer a turn the
-    model can no longer see.
-    """
+    """Merge adjacent same-role turns for alternating chat templates."""
     merged: list[dict[str, str]] = []
     for message in messages:
         if merged and merged[-1]["role"] == message["role"]:

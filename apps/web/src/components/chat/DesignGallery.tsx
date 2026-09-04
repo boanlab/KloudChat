@@ -374,19 +374,7 @@ export function DesignGalleryModal({
     [rows, kind, english],
   )
 
-  /**
-   * The sentences somebody keeps, in the same grid as the shapes.
-   *
-   * There used to be two pickers and no way to tell them apart from the
-   * outside: 시작점 고르기 gave you a sentence to start from, 서식 고르기 gave
-   * you a shape — and both read as "pick something before you type". The
-   * distinction is real in the code and invisible in the seat.
-   *
-   * They merge cleanly because a 서식 already carries a starting sentence of
-   * its own (`example_prompt`, `fills`). A saved prompt is the same card minus
-   * the shape, so it belongs in the same grid under a category of its own
-   * rather than behind a second button.
-   */
+  /** Saved prompts shown alongside rendering templates. */
   const saved = useStore((s) => s.promptTemplates)
   /**
    * The person's own, which the merge left behind.
@@ -1037,9 +1025,7 @@ export function DesignGallery({
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
-  // Sentences count too. The gate used to ask only whether this surface had a
-  // 서식, and 챗 has none — so the button vanished, and with it the only way to
-  // reach a starting point somebody had saved for exactly that surface.
+  // Surface-specific templates and saved prompts
   const has = useStore(
     (s) =>
       s.designTemplates.some((row) => row.surface === kind) ||

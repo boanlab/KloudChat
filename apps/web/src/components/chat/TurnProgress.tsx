@@ -19,23 +19,7 @@ function clock(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/**
- * What is happening, while it is happening.
- *
- * The whole of this used to be the word 생각하는 중… blinking on its own. It
- * says that something is running and nothing else — not who is running it, not
- * for how long, and not whether it is still going. Combined with a turn that
- * could hang forever, that left the one question a person actually has
- * unanswerable: is this working, or is it stuck?
- *
- * So the line now carries the three facts that answer it. The model or agent
- * doing the work, because on a workspace with several of them "which one is
- * this" is a real question. The elapsed time, because a number that keeps
- * moving is the difference between slow and frozen — and it is what makes a
- * long answer bearable and a stalled one obvious. And the stop button, on the
- * turn itself rather than only at the far end of the composer, because the
- * moment somebody wants it is the moment they are looking here.
- */
+/** Active model or agent, elapsed time, and cancellation control. */
 export function TurnProgress({
   sessionId,
   startedAt,

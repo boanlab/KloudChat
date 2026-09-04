@@ -21,5 +21,9 @@ test('검증을 명시한 요청은 토글을 모르더라도 출처를 실제�
   const answer = (await main.innerText()).split(request).join(' ')
   console.log(`\n===== 명시적 검증 결과 =====\n${answer.slice(-2200)}`)
   expect(answer).toMatch(/조사|표본/)
-  expect(await main.locator('a[href^="http"]').count(), '실제 출처 링크').toBeGreaterThan(0)
+  expect(answer).not.toMatch(/2023년[^.\n]{0,80}12\.8%|12\.8%[^.\n]{0,80}2023년/)
+  const sourceLinks = await main.locator('a[href^="http"]').evaluateAll((links) =>
+    links.map((link) => (link as HTMLAnchorElement).href),
+  )
+  expect(sourceLinks.some((href) => new URL(href).pathname !== '/'), '직접 출처 링크').toBe(true)
 })

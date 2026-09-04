@@ -1072,19 +1072,7 @@ async def _owned_attachments(
 
 
 def _worth_listing(rows: list[ChatSession], empty: set[str]) -> list[ChatSession]:
-    """Conversations that happened, plus anything still on its way.
-
-    Opening 새 보고서 and changing your mind used to leave a row behind, and
-    the row said 새 작업 and led to a blank screen. Four hundred of them
-    accumulated on this instance, which is what somebody's work list looks like
-    after a fortnight of trying things: a column of identical labels, none of
-    which is the thing they are looking for.
-
-    An empty conversation is only hidden once it is a minute old and holds
-    nothing. The minute is for the turn in flight — a session is written before
-    the first message is — and the artifact check is for the surfaces where the
-    answer is a file rather than a sentence.
-    """
+    """List non-empty sessions and recently created in-flight sessions."""
     fresh = utcnow() - timedelta(minutes=1)
     return [
         row
@@ -2070,12 +2058,7 @@ async def list_messages(session_id: str, user: CurrentUser, db: DbSession):
 
 
 def _regeneration_summary(request: str) -> str:
-    """What the version list says about the copy this run replaced.
-
-    The request rather than a timestamp: a history of "재생성" repeated six times
-    is a list nobody can choose from, and the sentence that produced each
-    version is the only thing that tells them apart.
-    """
+    """Distinct version label derived from the regeneration request."""
     # The first line only: everything after it is the conditions block that
     # `merge_answers` appends, which is already reflected in the version it
     # produced and reads as noise in a list of choices.
@@ -2094,25 +2077,7 @@ async def _store_document(
     data: dict,
     summary: str,
 ) -> str:
-    """Writes a generated document, keeping the one it replaces.
-
-    Regenerating used to create a fresh artifact row and move the session's
-    pointer to it. The old row survived in the gallery, so nothing was deleted
-    — but from inside the conversation the previous document was simply gone,
-    with no way back to it. A deck somebody had built over an afternoon could
-    be displaced by one request and there was no 되돌리기 anywhere on the screen.
-
-    Editing an artifact has always snapshotted the old body into
-    `artifact_versions` first. Generating never did, although it is the more
-    destructive of the two. So it does now: a document produced into a session
-    that already holds one of the same kind becomes the next version of that
-    artifact rather than a new one, and every version before it stays
-    restorable through the history the panel already draws.
-
-    A different kind — a report in a session that last made a deck — is a
-    different thing and gets its own artifact, because a version history that
-    alternates between two documents is not a history of either.
-    """
+    """Store same-kind regeneration as a version; create a row for a new kind."""
     existing = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if (
         existing is not None
@@ -2296,23 +2261,7 @@ async def _ask_before_writing(
     attachments: list[str],
     questions: list[grounding.Question],
 ) -> JSONResponse:
-    """Stops the turn on a question, and writes no document.
-
-    The whole defence is in the last half of that sentence. A request whose
-    material came up short used to produce a deck anyway — the outline prompt
-    told the model in so many words not to say the material was thin — and that
-    deck replaced whatever the session already had. Somebody attached a paper
-    and got a presentation about presentations where their afternoon's work had
-    been.
-
-    Now the turn ends here. The question is stored on the session so a reload
-    finds it, and an assistant message carries it into the transcript so the
-    conversation reads as a conversation rather than as a request that vanished.
-
-    Answered as JSON rather than as a stream: nothing is being generated, and a
-    one-event SSE response would make the browser wait on a socket to be told
-    that nothing is coming.
-    """
+    """Persist a clarification question without generating a document."""
     session.pending = {
         "stage": "clarify",
         "request": request,
@@ -3333,13 +3282,7 @@ async def send_message(
     )
 
 
-#: Turns generating right now, by session. Read only by the stop button:
-#: 중단 and a closed tab are the same event on a socket, opposite intentions.
-#:
-#: A *set* per session, not one event. It used to be one, so a second turn
-#: starting on a session replaced the first turn's signal — and the first turn,
-#: still running detached, could no longer be stopped by anything. That is half
-#: of why a cancelled answer turned up later underneath an unrelated question.
+#: Active cancellation signals grouped by session
 _STOPPING: dict[str, set[asyncio.Event]] = {}
 
 #: A proxy or provider key echoed back in an upstream error body. LiteLLM masks
@@ -3348,17 +3291,7 @@ _SECRET_IN_REASON = re.compile(r"sk-[A-Za-z0-9_\-]+")
 
 
 def _error_event(message: str, exc: BaseException | None = None) -> dict[str, Any]:
-    """The SSE `error` event, carrying the reason the log already had.
-
-    Every failure used to reach the screen as the one sentence in `message`,
-    while `ChatStreamError` — `upstream_502: <detail>`, `upstream_unreachable:
-    <exc>` — went to the log alone. A person could not tell a backend that is
-    down from a model that is missing from an account that is out of quota,
-    and neither could an operator reading over their shoulder. `code` is the
-    machine half, for the client's own vocabulary; `reason` is the upstream's
-    sentence, bounded and with any key blanked out. `message` stays for a
-    client that knows nothing else.
-    """
+    """SSE error with a machine code and bounded, redacted upstream reason."""
     code, reason = "internal_error", ""
     if isinstance(exc, chat_service.ChatStreamError):
         head, _, tail = str(exc).partition(": ")
@@ -3373,26 +3306,7 @@ def _error_event(message: str, exc: BaseException | None = None) -> dict[str, An
 async def _until_stopped(
     events: AsyncIterator[dict[str, Any]], stopping: asyncio.Event
 ) -> AsyncIterator[dict[str, Any]]:
-    """Relays a turn's events, and gives up the moment 중단 is pressed.
-
-    The other half of the same bug. The stop used to be checked between events:
-
-        async for event in run_turn(...):
-            if stopping.is_set():
-                break
-
-    which only runs when the next event arrives. A model that has accepted the
-    request and gone quiet produces no next event, so the check never ran, the
-    turn stayed alive against a 15-minute upstream timeout, and when it finally
-    spoke it wrote its answer into a conversation that had moved on — appearing
-    under whatever had been typed since. Pressing 중단 stopped the screen and
-    nothing else.
-
-    Racing the two means the stop is acted on while the turn is silent, which is
-    exactly when somebody presses it. Closing the generator propagates
-    `GeneratorExit` down through the agent loop to the streaming request, so the
-    upstream call is actually abandoned rather than left running unread.
-    """
+    """Race stream delivery against cancellation and close the upstream generator."""
     iterator = events.__aiter__()
     waiting = asyncio.ensure_future(stopping.wait())
     try:

@@ -264,6 +264,13 @@ def _looks_like_a_source(url: str) -> bool:
     return bool(parsed.netloc) and parsed.path not in ("", "/")
 
 
+def _is_homepage(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return bool(parsed.netloc) and parsed.path in ("", "/")
+
+
 def _source_label(url: str) -> str:
     """A compact, informative label for a URL preserved from a tool result."""
     from urllib.parse import unquote, urlparse
@@ -273,6 +280,41 @@ def _source_label(url: str) -> str:
     leaf = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]).replace("-", " ")
     leaf = re.sub(r"\s+", " ", leaf).strip()
     return f"{host} · {leaf[:48]}" if leaf and leaf.lower() not in {"index.html", "index"} else host
+
+
+def _source_priority(url: str) -> tuple[int, str]:
+    """Official and primary-looking sources lead deterministic appendices."""
+    from urllib.parse import urlparse
+
+    host = urlparse(url).netloc.lower().split(":", 1)[0].removeprefix("www.")
+    if host.endswith((".go.kr", ".gov", ".gov.uk", ".gc.ca", ".europa.eu")):
+        rank = 0
+    elif host.endswith((".ac.kr", ".edu", ".edu.au")):
+        rank = 1
+    elif any(part in host for part in ("reuters.", "apnews.", "yna.co.kr")):
+        rank = 3
+    else:
+        rank = 2
+    return rank, url
+
+
+def _without_duplicate_paragraphs(text: str, *, minimum: int = 80) -> tuple[str, list[str]]:
+    """Remove exact long paragraph repeats that escaped streaming loop detection."""
+    pieces = re.split(r"(\n\s*\n)", text)
+    seen: set[str] = set()
+    removed: list[str] = []
+    for index in range(0, len(pieces), 2):
+        paragraph = pieces[index]
+        key = re.sub(r"\s+", " ", paragraph).strip()
+        if len(key) < minimum or key not in seen:
+            if len(key) >= minimum:
+                seen.add(key)
+            continue
+        removed.append(paragraph)
+        pieces[index] = ""
+        if index and pieces[index - 1]:
+            pieces[index - 1] = ""
+    return "".join(pieces), removed
 
 
 async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
@@ -634,6 +676,9 @@ async def run_turn(
         if _repeats(spoken, final):
             answer = answer.replace(spoken, "", 1)
             yield {"type": "retract", "text": spoken}
+    answer, duplicate_paragraphs = _without_duplicate_paragraphs(answer)
+    for paragraph in duplicate_paragraphs:
+        yield {"type": "retract", "text": paragraph}
     answer_text[:] = [answer]
     if searches and empty_searches * 2 >= searches and answer.strip():
         # 검색이 전부 빈손이었으면 답 밑에 그렇다고 적는다.
@@ -651,7 +696,10 @@ async def run_turn(
         answer_text.append(note)
         yield {"type": "delta", "text": note}
     verified_in_answer = {u for u in _urls_in(answer) if u in seen_urls}
-    source_urls = sorted(u for u in seen_urls if _looks_like_a_source(u))
+    source_urls = sorted(
+        (u for u in seen_urls if _looks_like_a_source(u)),
+        key=_source_priority,
+    )
     if searches and source_urls and not verified_in_answer:
         # Models occasionally use the evidence correctly but omit its links.
         # Keep provenance deterministic: append only URLs that a tool actually
@@ -666,6 +714,16 @@ async def run_turn(
         note = (
             "\n\n_다음 링크는 이 답을 쓰며 검색·열람한 결과에 없던 것입니다. 기억으로 적은 "
             "것이니 열어 보고 확인하세요: " + ", ".join(dict.fromkeys(unverified)) + "_"
+        )
+        answer_text.append(note)
+        yield {"type": "delta", "text": note}
+    homepages = [u for u in _urls_in(answer) if _is_homepage(u)]
+    if searches and homepages:
+        note = (
+            "\n\n_기관 홈페이지 첫 화면은 위 주장을 뒷받침하는 직접 출처가 아닙니다. "
+            "해당 보고서·보도자료의 원문 주소를 확인하세요: "
+            + ", ".join(dict.fromkeys(homepages))
+            + "_"
         )
         answer_text.append(note)
         yield {"type": "delta", "text": note}

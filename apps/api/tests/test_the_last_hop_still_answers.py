@@ -210,6 +210,103 @@ async def test_search_sources_are_kept_when_the_model_omits_links(monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_exact_long_paragraphs_are_kept_once(monkeypatch) -> None:
+    """A model's copied closing paragraph is removed from screen and storage."""
+    paragraph = "역발행의 초안 작성자와 법적 발급자를 구분해 설명합니다. " * 6
+    answer_line = (
+        'data: {"choices":[{"delta":{"content":'
+        + json.dumps(f"{paragraph}\n\n{paragraph}", ensure_ascii=False)
+        + "}}]}"
+    )
+
+    class _Repeated(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            return _Response([answer_line, "data: [DONE]"])
+
+    async def client(*_args, **_kwargs):
+        return _Repeated([])
+
+    monkeypatch.setattr(agent, "_client", client)
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "역발행을 설명해 줘"}],
+            [],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    visible = ""
+    for event in events:
+        if event["type"] == "delta":
+            visible += event["text"]
+        elif event["type"] == "retract":
+            visible = visible.replace(event["text"], "", 1)
+    assert visible.count(paragraph) == 1
+
+
+def test_official_sources_sort_before_secondary_sources():
+    urls = [
+        "https://news.example.com/story/1",
+        "https://www.msit.go.kr/bbs/view.do?id=42",
+        "https://university.ac.kr/research/7",
+    ]
+    assert sorted(urls, key=agent._source_priority)[0].startswith("https://www.msit.go.kr")
+
+
+@pytest.mark.asyncio
+async def test_an_institution_homepage_is_not_presented_as_direct_evidence(monkeypatch) -> None:
+    seen: list[dict] = []
+
+    class _HomepageCitation(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response(
+                    [
+                        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                        '"id":"c1","function":{"name":"web_search",'
+                        '"arguments":"{}"}}]}}]}',
+                        "data: [DONE]",
+                    ]
+                )
+            return _Response(
+                [
+                    'data: {"choices":[{"delta":{"content":'
+                    '"기관 자료입니다: https://www.nia.or.kr"}}]}',
+                    "data: [DONE]",
+                ]
+            )
+
+    async def client(*_args, **_kwargs):
+        return _HomepageCitation(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def search(_args):
+        return ToolResult(content="기관 홈페이지: https://www.nia.or.kr")
+
+    tool = Tool(
+        name="web_search",
+        description="검색한다",
+        parameters={"type": "object"},
+        run=search,
+        label="웹 검색",
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "통계를 검증해 줘"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    text = "".join(event["text"] for event in events if event["type"] == "delta")
+    assert "직접 출처가 아닙니다" in text
+
+
+@pytest.mark.asyncio
 async def test_an_empty_completion_after_tools_is_asked_again(monkeypatch) -> None:
     """도구를 쓰고 빈 답이 오면 한 번 더 물어 답을 받는다."""
     seen: list[dict] = []

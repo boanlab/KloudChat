@@ -129,7 +129,7 @@ reason.
 
 ## 5. Data model
 
-Thirty-seven migrations under `alembic/versions/`. The principal tables:
+Forty-three migrations under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
   `api_keys` · `audit_events`
@@ -620,11 +620,9 @@ pin.
 
 ### The artifact gallery
 
-`GET /artifacts` returns **a page of cards**, not the workspace. It used to
-return everything whole — on the instance this was written against, 385 rows
-and 4.0 MB, of which 2.8 MB was the markup of 69 HTML documents the screen
-draws as thumbnails. Opening the gallery now costs one 30 KB page plus the
-handful of documents actually on screen.
+`GET /artifacts` returns **a page of cards**, not complete artifact bodies.
+The client fetches full documents only when they enter the viewport or open in
+an editor.
 
 Three parts, and each is visible in that sentence:
 
@@ -680,11 +678,7 @@ sign-in screen.
 
 ### The workspace store
 
-Agents and skills used to be written into every account at approval: one
-catalogue, N copies, so improving an entry reached nobody who already had it
-and a twenty-person workspace held twenty copies of the same eight procedures.
-
-They live in one account now — the oldest administrator's, resolved by
+Agents and skills live in one account — the oldest administrator's, resolved by
 `starter.catalog_owner_id`, derived rather than stored — shared to the
 workspace, and taken from `/agents` and `/skills/store` a copy at a time.
 `POST /agents/{id}/install` and `POST /skills/{id}/install` do the copying, and

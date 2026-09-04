@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
 /**
@@ -18,15 +18,6 @@ const AS_USER = `async (path, init) => {
   const r = await fetch(path, { ...init, headers: { ...(init?.headers || {}), Authorization: 'Bearer ' + accessToken } })
   return r.ok ? await r.json() : null
 }`
-
-async function capture(page: Page, path: string) {
-  const sent: string[][] = []
-  await page.route(`**${path}`, async (route) => {
-    sent.push((route.request().postDataJSON() as { ids: string[] }).ids)
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ deleted: 2 }) })
-  })
-  return sent
-}
 
 test('프로젝트를 여러 개 골라 한 번에 지운다', async ({ page }) => {
   test.setTimeout(120_000)

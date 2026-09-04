@@ -114,11 +114,7 @@ export function AgentsPage() {
   const [confirming, setConfirming] = useState<Agent | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  /**
-   * Said under the field, not by a greyed-out button. 저장 used to be
-   * disabled while the name was empty, at 45% opacity and with no word about
-   * why — pressing it did nothing, which read as the save failing silently.
-   */
+  /** Agent-name validation message. */
   const [nameError, setNameError] = useState<{ draftId: string; text: string } | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   // Keyed to the draft it was said on, so a new draft starts clean without an

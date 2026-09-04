@@ -554,14 +554,7 @@ export interface ReportSection {
    * which is how the `.docx` gets a figure where the source stands.
    */
   diagrams?: Record<string, string>
-  /**
-   * What the web said about the figures in this section, when somebody asked.
-   *
-   * The same shape a slide carries, because it is the same call — a claim does
-   * not care what shape it was printed in. It arrived on the report later than
-   * on the deck, which was backwards: a slide gets argued with in the room it
-   * is shown in, and a report gets exported and mailed.
-   */
+  /** Report-level fact-check result. */
   factCheck?: FactCheck
 }
 
@@ -675,14 +668,7 @@ export interface FactCheck {
 
 export interface Slide {
   id: string
-  /**
-   * Which of the shapes `deck._LAYOUTS` offers. `image` used to be here and
-   * was never a layout: a picture arrives on `image` below and the exporters
-   * size it from what else the slide holds, so a picture-only slide already
-   * gets the full width without anyone naming a layout for it. Nothing read
-   * the value, and a member nothing reads is a shape somebody will one day
-   * write into an artifact and then wonder why it renders as bullets.
-   */
+  /** Layout supported by `deck._LAYOUTS`. */
   layout:
     | 'title'
     | 'section'

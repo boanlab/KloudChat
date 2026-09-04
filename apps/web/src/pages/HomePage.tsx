@@ -13,38 +13,12 @@ import { startFailure } from '@/lib/failures'
 import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * The first screen, rebuilt around the thing people came here to do.
- *
- * It used to be five equal cards over a list of recent work, and the box you
- * type into was not on it at all — you picked a card, landed on another screen,
- * and found the input at the bottom of that one. So the main flow began with a
- * decision nobody had made yet ("which of five surfaces is this?") and the
- * primary control of the whole product was two screens and one scroll away.
- *
- * Three changes, and they are one change.
- *
- * **The composer is the centre.** You arrive and you can type. The five
- * surfaces did not disappear — they became a row attached to the input, which
- * is where that choice belongs: it shapes what the sentence you are already
- * writing will produce, and it is a smaller decision than the sentence.
- *
- * **The agents are beside it.** What this product is for is having a named
- * thing with its own instructions, tools and documents do the work, and that
- * was reachable only through a workspace list further down the sidebar. A
- * layout that opens on a chat box and nothing else describes a chat app.
- *
- * **The rest is below the fold it belongs under.** Work in progress and work
- * already done are things you come back for, not things you start with.
- */
+/** Composer-first home screen and `/new/:kind` entry point. */
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
   const { user, sessions, jobs, agents, enabledKinds, newSession, setNotice } = useStore()
-  //: The 서식 already picked for this surface, if any. Read here only to
-  //: decide whether the rail below would be repeating it.
-  //: Which surface the composer is currently writing for. Local, and only for
-  //: as long as this screen is open — a session gets its kind at creation.
+  // Session kind before creation
   const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
 
   /**
@@ -59,19 +33,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
 
-  /**
-   * 시작 화면에는 앞 대화의 문서가 따라오지 않는다.
-   *
-   * `openArtifactId` is global and nothing on the way here cleared it, so
-   * leaving a deck and pressing 새로 만들기 opened an empty composer with the
-   * previous conversation's document still beside it — and it stayed there
-   * through the next turn, so somebody watching their 보고서 being written
-   * was looking at a slide deck from another session while they waited.
-   *
-   * Cleared on arrival rather than on leaving: there is one start screen and
-   * many ways to reach it, and the screen that must not show a document is
-   * this one.
-   */
+  // Empty-session artifact reset
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
     openArtifact(null)
@@ -178,10 +140,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             aspect chips into a report is not a saved draft, it is a bug. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />
 
-        {/* The composer carries these only once a turn has been taken; before
-            that the empty screen is what offers them. `/new/:kind` used to be
-            that screen and now lands here, so this is the only place left
-            that can — without them a starting point cannot be picked at all. */}
+        {/* Empty-session starting points. */}
         <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4">
           <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">

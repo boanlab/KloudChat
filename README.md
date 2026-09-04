@@ -102,6 +102,7 @@ requested, selected and actually executed models remain visible on the answer.
 │  kloudchat-web   :5173        │        │  gateway :8080                      │
 │  kloudchat-api   :8100        │──URL──▶│   /litellm  /tools/{search,fetch,   │
 │  kloudchat-db    :5433        │        │      exec,research,stt,index}       │
+│  kloudchat-print :8200        │        │                                      │
 │                               │        └─────────────────────────────────────┘
 │  /llm  ← coding agents        │
 └───────────────────────────────┘
@@ -211,8 +212,8 @@ without a translation fall back to Korean.
 | `/admin/users` | Signup approval, monthly credit allowance, suspension (admin) |
 | `/admin/usage` | Organisation-wide usage (admin) |
 | `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
-| `/settings` · `/settings/preferences` · `/settings/keys` · `/settings/access` | Profile and password / default model and behaviour / API key issue and revoke / sign-ins and security changes on this account |
-| `/agent-setup` | Coding agent connection — address, key, model (account menu) |
+| `/settings` · `/settings/preferences` · `/settings/personalization` · `/settings/keys` · `/settings/access` | Profile and password / defaults / personalization / API keys / sign-ins and security changes |
+| `/agent-setup` · `/api-setup` | Coding-agent and API connection guides (account menu) |
 | `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` | LiteLLM / automatic model routing / enabled surfaces and integrations / shared templates / branding / SMTP (admin) |
 
 ### What each surface does differently
@@ -258,12 +259,13 @@ connection, and the partial answer is kept and marked as cut off.
 KloudChat/
 ├── apps/
 │   ├── web/                          React 19 + Vite + Tailwind v4
-│   └── api/                          FastAPI — see apps/api/README.md
+│   ├── api/                          FastAPI — see apps/api/README.md
+│   └── print/                        Browser-based HTML-to-PDF renderer
 ├── docs/                             Architecture and operator guides
 ├── scripts/                          Integration checks against a live stack
 ├── mcp/                              MCP stdio server scripts
 ├── docker-compose.yml                Runs the published images
-├── docker-compose.build.yml          Builds both images from this checkout
+├── docker-compose.build.yml          Builds application images from this checkout
 ├── docker-compose.dev.yml            Serves the web app from Vite
 └── .env.example
 ```
