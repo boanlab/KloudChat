@@ -30,9 +30,10 @@ import pytest
 
 from app.services import design_templates
 
-#: The two shapes everything else borrows. Their own design *is* the shared
-#: file, so they are the two that must not have a face of their own.
-BASES = {"doc-report": "_document", "deck-editorial": "_deck"}
+#: The document shape everything else borrows. Its own design *is* the shared
+#: file, so it must not have a face of its own. The editorial deck now adds a
+#: cover treatment while continuing to borrow the shared deck typesetting.
+BASES = {"doc-report": "_document"}
 
 PAPER = [t for t in design_templates.all_templates() if t.kind in ("document", "deck")]
 
@@ -84,13 +85,13 @@ def test_the_face_is_read_after_the_shared_typesetting(template) -> None:
 
 
 @pytest.mark.parametrize("name,base", BASES.items(), ids=list(BASES))
-def test_the_two_shapes_everything_borrows_have_no_face_of_their_own(name, base) -> None:
+def test_the_base_shape_has_no_face_of_its_own(name, base) -> None:
     """Otherwise the base stops being the base.
 
-    `_document/seed.html` says "document seed — report" in its own first line
-    and `_deck/seed.html` says "deck seed — editorial". Giving either of those
-    two a `design.css` would mean the shared file is nobody's design and every
-    서식 including them is layered on a shape that belongs to no one.
+    `_document/seed.html` says "document seed — report" in its own first line.
+    Giving that base a `design.css` would mean the shared file is nobody's
+    design and every document including it is layered on a shape that belongs
+    to no one.
     """
     template = design_templates.get(name)
     assert template is not None
@@ -124,22 +125,20 @@ def test_every_property_a_seed_uses_is_declared(template) -> None:
     assert not missing, f"{template.id}: 선언되지 않은 속성 {missing}"
 
 
-def test_the_dark_deck_is_dark_on_screen_and_light_on_paper() -> None:
-    """신호 declares `dark = true`, and for a while only the `.pptx` knew.
+def test_the_dark_deck_keeps_its_face_on_screen_and_paper() -> None:
+    """신호 declares `dark = true`, and every exported surface must know.
 
     The flag reached `deck_export` and nothing else, so the deck presented light
     in the browser, printed light, and opened dark in PowerPoint — three answers
-    to one question. The darkness lives in the face now, under `@media screen`,
-    because a projector and a printer want opposite things and the shared print
-    rules already say so.
+    to one question. The darkness lives in the face without a media restriction
+    so the browser, PDF, and PowerPoint keep the same visual identity.
     """
     template = design_templates.get("deck-signal")
     assert template is not None and template.dark
-    css = design_templates.stylesheet(template, {})
-    screen = css[css.index("@media screen") :]
-    assert "background: var(--paper)" in screen
-    # And the shared sheet still whitens the ground for print, outside that block.
-    assert "background: #fff" in css[: css.index("@media screen")]
+    face = _face(template)
+    assert "--paper: color-mix" in face
+    assert "body { background: var(--paper)" in face
+    assert "@media screen" not in face
 
 
 @pytest.mark.parametrize(

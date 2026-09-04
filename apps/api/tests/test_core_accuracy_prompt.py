@@ -14,11 +14,21 @@ def test_core_accuracy_contract_is_shared_by_every_surface():
 def test_latest_request_language_rule_remains_last_and_explicit():
     messages = build_messages(
         SessionKind.chat,
-        [{"role": "user", "content": "Explain reverse-issued tax invoices in plain English for a new accountant."}],
+        [
+            {
+                "role": "user",
+                "content": (
+                    "Explain reverse-issued tax invoices in plain English for a new "
+                    "accountant."
+                ),
+            }
+        ],
     )
     prompt = messages[0]["content"]
     assert "write the entire answer in English" in prompt
-    assert prompt.index("Core accuracy contract") < prompt.index("write the entire answer in English")
+    assert prompt.index("Core accuracy contract") < prompt.index(
+        "write the entire answer in English"
+    )
 
 
 def test_only_explicit_research_language_implies_web_search():

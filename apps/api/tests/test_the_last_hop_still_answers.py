@@ -166,7 +166,11 @@ async def test_search_sources_are_kept_when_the_model_omits_links(monkeypatch) -
                     ]
                 )
             return _Response(
-                ['data: {"choices":[{"delta":{"content":"검색 결과를 비교한 답입니다."}}]}', "data: [DONE]"]
+                [
+                    'data: {"choices":[{"delta":{"content":'
+                    '"검색 결과를 비교한 답입니다."}}]}',
+                    "data: [DONE]",
+                ]
             )
 
     async def client(*_args, **_kwargs):

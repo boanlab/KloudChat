@@ -2473,7 +2473,10 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
             )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
 
-    sections = page_export.to_sections(content, cover_page=template.cover_page if template else True)
+    sections = page_export.to_sections(
+        content,
+        cover_page=template.cover_page if template else True,
+    )
     if format == "md":
         body, media, suffix = (
             report_service.to_markdown(title, sections).encode(),

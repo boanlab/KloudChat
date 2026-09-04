@@ -64,13 +64,28 @@ _DOCUMENT_LANGUAGE = (
 # output-language selection are less ambiguous as short invariant statements.
 # Keeping this block small also lets us evaluate the useful hybrid without
 # translating a page of examples and changing several variables at once.
-_CORE_ACCURACY = """Core accuracy contract:
-- Write the answer in the language of the user's latest request. Never let the language of these instructions choose the answer language.
-- Keep actors and actions separate: state who requests, drafts, approves, issues, pays, or receives. Do not swap legal or operational roles. A platform or government agency that transmits, registers, or records an act does not thereby become the legal actor.
-- In a reverse-issued tax invoice workflow, the buyer prepares or requests the draft; the supplier approves and remains the legal issuer. Never shorten this to “the buyer issues the invoice.”
-- For laws, tax, policy, standards, prices, dates, product specifications, and other changeable facts, do not turn memory into certainty. Verify with an available tool or clearly state the limit. Never cite a source that was not present in a tool result or user-provided reference.
-- Do not invent internal approvals, reviewers, or workflow steps. If they are common practice rather than a legal requirement or a supplied company rule, label them as examples.
-- Missing source facts are not blanks to disguise as finished work. Ask one focused question when the missing facts determine the answer; if the user explicitly chooses a template, label it as a template."""
+_CORE_ACCURACY = (
+    "Core accuracy contract:\n"
+    "- Write the answer in the language of the user's latest request. Never let the "
+    "language of these instructions choose the answer language.\n"
+    "- Keep actors and actions separate: state who requests, drafts, approves, issues, "
+    "pays, or receives. Do not swap legal or operational roles. A platform or government "
+    "agency that transmits, registers, or records an act does not thereby become the "
+    "legal actor.\n"
+    "- In a reverse-issued tax invoice workflow, the buyer prepares or requests the "
+    "draft; the supplier approves and remains the legal issuer. Never shorten this to "
+    "“the buyer issues the invoice.”\n"
+    "- For laws, tax, policy, standards, prices, dates, product specifications, and other "
+    "changeable facts, do not turn memory into certainty. Verify with an available tool "
+    "or clearly state the limit. Never cite a source that was not present in a tool result "
+    "or user-provided reference.\n"
+    "- Do not invent internal approvals, reviewers, or workflow steps. If they are common "
+    "practice rather than a legal requirement or a supplied company rule, label them as "
+    "examples.\n"
+    "- Missing source facts are not blanks to disguise as finished work. Ask one focused "
+    "question when the missing facts determine the answer; if the user explicitly chooses "
+    "a template, label it as a template."
+)
 
 # 글을 어떻게 쓰는가.
 #

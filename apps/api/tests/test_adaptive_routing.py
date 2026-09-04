@@ -14,13 +14,13 @@ from app.routers import usage as usage_router
 from app.schemas.admin import GovernanceIn
 from app.schemas.chat import SessionCreate, SessionPatch
 from app.services import adaptive_routing
+from app.services.context import build_messages
 
 
 def test_regulated_or_legal_actor_questions_are_never_classified_as_low_by_policy() -> None:
     prompt = adaptive_routing._SYSTEM_PROMPT
     assert "Questions about law, tax, accounting, regulation" in prompt
     assert "which actor authorises or issues an official record are always high" in prompt
-from app.services.context import build_messages
 
 
 def _model(
