@@ -392,7 +392,7 @@ export function Sidebar() {
             <button
               ref={moreRef}
               onClick={() => setShown((n) => n + PAGE)}
-              className="mt-1 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+              className="mt-1 min-h-8 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
               {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
             </button>

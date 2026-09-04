@@ -267,7 +267,13 @@ export async function approvePlan(page: Page, timeout = 480_000) {
     // Only here. Coming straight back round would find the same card — still up
     // because the run it started has not finished — and press it again, and the
     // turns that produces are a second and third document nobody asked for.
-    await card.waitFor({ state: 'hidden', timeout }).catch(() => undefined)
+    // Clarification buttons can remain in the historical message while the
+    // next outline card is already actionable. Waiting the whole document
+    // timeout on that old node made a healthy two-step approval spend eight
+    // minutes idle and then time out. Give the transition enough time to
+    // settle, then re-run `approveOnce`, which deliberately prefers the new
+    // outline action over the older carry-on action.
+    await card.waitFor({ state: 'hidden', timeout: Math.min(timeout, 20_000) }).catch(() => undefined)
   }
   throw new Error('제안 카드가 네 번을 눌러도 사라지지 않았습니다.')
 }

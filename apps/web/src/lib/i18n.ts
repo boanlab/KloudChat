@@ -773,6 +773,8 @@ const EN: Record<string, string> = {
   '올린 파일과 만든 그림·클립도 디스크에서 지웁니다': 'Also delete uploads and generated pictures and clips from disk',
   '끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 지웁니다.': 'Off keeps the files; the storage sweep removes them, oldest first, once the disk is full.',
   '고아 파일 정리': 'Sweep orphaned files',
+  '정리가 끝날 때까지 기다려 주세요': 'Wait for the sweep to finish',
+  '정리할 고아 파일이 없습니다': 'There are no orphaned files to sweep',
   '삭제된 계정의 파일': 'Files of deleted accounts',
   '디스크가 {pct}% 차면 오래된 것부터 자동으로 지웁니다': 'swept oldest-first once the disk is {pct}% full',
   '정리하는 중…': 'Sweeping…',

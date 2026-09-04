@@ -277,7 +277,12 @@ test('아이디로 여는 화면의 레이아웃 품질', async ({ page }) => {
   if (await open.isVisible().catch(() => false)) {
     await open.click()
     await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-    await page.getByRole('button', { name: '공유' }).first().click()
+    // A conversation title may contain words such as 「경영진 공유용」.  On a
+    // narrow viewport that sidebar button remains in the accessibility tree
+    // while sitting off-screen, so a substring match can pick it instead of
+    // the visible toolbar action.  The action's accessible name is exactly
+    // 「공유」; test the control a person can actually press.
+    await page.getByRole('button', { name: '공유', exact: true }).click()
     await page.waitForTimeout(1_500)
     const link = await page
       .locator('input[readonly], [data-share-url]')

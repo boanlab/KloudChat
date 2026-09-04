@@ -221,6 +221,10 @@ async function auditScreen(page: Page, where: string, viewport: string) {
         (e) =>
           visible(e) &&
           /없습니다|비어 있습니다/.test(e.textContent || '') &&
+          // A document thumbnail can contain an ordinary sentence such as
+          // 「이 장애물은 없습니다」.  It is content inside the button that
+          // opens the artifact, not the product announcing an empty state.
+          !e.closest('button') &&
           // A row that says "no messages yet" inside a card you can click into
           // is a subtitle, not an empty screen. The card is the action.
           !e.closest('[class*="cursor-pointer"]'),
