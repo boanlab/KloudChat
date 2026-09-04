@@ -150,6 +150,62 @@ async def test_a_link_no_tool_returned_is_named_as_unverified(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_search_sources_are_kept_when_the_model_omits_links(monkeypatch) -> None:
+    """검색한 답에는 모델이 잊어도 실제 도구 URL이 남는다."""
+    seen: list[dict] = []
+
+    class _SearchOnce(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response(
+                    [
+                        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1",'
+                        '"function":{"name":"web_search","arguments":"{}"}}]}}]}',
+                        "data: [DONE]",
+                    ]
+                )
+            return _Response(
+                ['data: {"choices":[{"delta":{"content":"검색 결과를 비교한 답입니다."}}]}', "data: [DONE]"]
+            )
+
+    async def client(*_args, **_kwargs):
+        return _SearchOnce(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def search(_args):
+        return ToolResult(
+            content=(
+                "정부 자료: https://example.go.kr/policy/2026\n"
+                "연구 자료: https://journal.example.org/article/42"
+            )
+        )
+
+    tool = Tool(
+        name="web_search",
+        description="검색한다",
+        parameters={"type": "object"},
+        run=search,
+        label="웹 검색",
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "최신 자료를 검색해 줘"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "### 확인한 출처" in text
+    assert "example.go.kr · 2026" in text
+    assert "https://example.go.kr/policy/2026" in text
+    assert "https://journal.example.org/article/42" in text
+
+
+@pytest.mark.asyncio
 async def test_an_empty_completion_after_tools_is_asked_again(monkeypatch) -> None:
     """도구를 쓰고 빈 답이 오면 한 번 더 물어 답을 받는다."""
     seen: list[dict] = []

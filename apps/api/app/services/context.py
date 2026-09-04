@@ -59,6 +59,19 @@ _DOCUMENT_LANGUAGE = (
     "본문은 한 언어로 일관되게 씁니다."
 )
 
+# A small, model-facing contract in English.  The editorial rules below stay
+# in Korean because they describe Korean prose; role separation, evidence and
+# output-language selection are less ambiguous as short invariant statements.
+# Keeping this block small also lets us evaluate the useful hybrid without
+# translating a page of examples and changing several variables at once.
+_CORE_ACCURACY = """Core accuracy contract:
+- Write the answer in the language of the user's latest request. Never let the language of these instructions choose the answer language.
+- Keep actors and actions separate: state who requests, drafts, approves, issues, pays, or receives. Do not swap legal or operational roles. A platform or government agency that transmits, registers, or records an act does not thereby become the legal actor.
+- In a reverse-issued tax invoice workflow, the buyer prepares or requests the draft; the supplier approves and remains the legal issuer. Never shorten this to “the buyer issues the invoice.”
+- For laws, tax, policy, standards, prices, dates, product specifications, and other changeable facts, do not turn memory into certainty. Verify with an available tool or clearly state the limit. Never cite a source that was not present in a tool result or user-provided reference.
+- Do not invent internal approvals, reviewers, or workflow steps. If they are common practice rather than a legal requirement or a supplied company rule, label them as examples.
+- Missing source facts are not blanks to disguise as finished work. Ask one focused question when the missing facts determine the answer; if the user explicitly chooses a template, label it as a template."""
+
 # 글을 어떻게 쓰는가.
 #
 # 같은 질문에 이 제품이 낸 답과 사람이 잘 쓴 답을 나란히 놓고 고른 차이다.
@@ -187,6 +200,9 @@ _WEB_SEARCH_NUDGE = (
     "쓰세요. 확인한 항목에는 출처 URL 을 밝히세요 — 본문 흐름을 끊지 않게 문장 끝이나 "
     "답 끝의 출처 목록으로. 공식 문서·논문·언론·기관 자료를 개인 블로그보다 먼저 씁니다.\n"
     "- 검색 결과가 기억과 다르면 검색 결과를 따르세요.\n"
+    "- 수치 주장은 숫자만 맞추지 말고 분자·분모·대상 연령·조사 연도·공표 연도를 한 묶음으로 "
+    "대조하세요. 서로 다른 조사나 하위 집단의 수치를 한 조사처럼 합치지 마세요. 같은 답 안에서 "
+    "상충하는 수치가 나오면 결론을 쓰기 전에 어느 쪽이 무엇을 뜻하는지 바로잡으세요.\n"
     "- 「표가 있습니다」「파일을 드립니다」처럼 자기 자료를 말했는데 첨부가 없으면, "
     "비슷한 자료를 검색으로 찾지 말고 그 자료를 붙여 달라고 합니다 — 남의 표로 "
     "계산한 답은 그 사람의 질문에 대한 답이 아닙니다.\n"
@@ -240,7 +256,11 @@ def system_prompt(
     extra: list[str] | None = None,
 ) -> str:
     """Assembles the system turn. `extra` is the caller-ordered workspace blocks."""
-    parts = [_SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]), _KOREAN_ONLY]
+    parts = [
+        _SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]),
+        _CORE_ACCURACY,
+        _KOREAN_ONLY,
+    ]
     # 챗에만. The sample paragraph in `_WRITING` is about transfer learning,
     # and a report on server replacement came back with a paragraph on
     # freezing layers and 300 training images — the model, told to write two
@@ -368,6 +388,22 @@ def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
 
 _HANGUL = re.compile(r"[가-힣]")
 _LATIN = re.compile(r"[A-Za-z]")
+
+# A written request for external verification is consent to use the search
+# capability even when the person did not discover the separate UI toggle.
+# Deliberately narrow: plain 「알려 줘」 or 「확인해 줘」 can be answered from
+# supplied material and must not silently send a private prompt outside.
+_EXPLICIT_WEB_REQUEST = re.compile(
+    r"웹\s*검색|검색(?:해|하여|해서)|조사(?:해|하여|해서)|"
+    r"검증(?:해|하여|해서)|출처(?:를|가)?\s*(?:찾|확인)|"
+    r"\b(?:web\s*search|search\s+the\s+web|look\s+up|fact[- ]?check|research)\b",
+    re.I,
+)
+
+
+def requests_web_search(request: str) -> bool:
+    """Whether the user's own words explicitly request external research."""
+    return bool(_EXPLICIT_WEB_REQUEST.search(request or ""))
 
 
 def language_rule(request: str) -> str:

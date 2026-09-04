@@ -19,7 +19,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-CLASSIFIER_VERSION = "auto-cost-2026-08-18.v1"
+CLASSIFIER_VERSION = "auto-cost-2026-09-03.v2"
 # 집 프롬프트가 자라면 여기도 자라야 한다. 8,000 was set when the chat system
 # turn was three sentences; the writing rules added to it (`context._WRITING`)
 # pushed an ordinary turn with tool definitions past the bound, and Auto then
@@ -51,9 +51,13 @@ small economy chat model can answer it without a meaningful quality loss.
 Return exactly one JSON object and no markdown:
 {"complexity":"low|high|uncertain","confidence":0.0,"reasonCode":"..."}
 
-Use low only for short factual answers, basic rewriting/formatting, or elementary
-calculation. Use high for specialised expertise, multi-step reasoning, code design,
-long synthesis, safety-sensitive advice, or when conversation context is essential.
+Use low only for short, stable, non-regulated factual answers, basic
+rewriting/formatting, or elementary calculation. Use high for specialised expertise,
+multi-step reasoning, code design, long synthesis, safety-sensitive advice, or when
+conversation context is essential. Questions about law, tax, accounting, regulation,
+policy, compliance, medical decisions, financial decisions, legal responsibility, or
+which actor authorises or issues an official record are always high; a short answer
+can still cause a meaningful quality loss.
 The payload may include qualityModelTools. Those tools are NOT available after an
 economy-model route. Use low only when the request can be answered without them.
 Use uncertain whenever the intent or required quality is unclear. reasonCode must be
