@@ -1,14 +1,9 @@
-"""도구 호출 한도에 닿아도 답은 나온다.
-
-A model that is still calling tools has written no prose yet, so stopping at
-the cap used to leave the person with one line — 「도구 호출이 5회를 넘어
-중단했습니다」 — and none of what five searches had found. The last hop now
-runs without tools and is told to answer from what it has.
-"""
+"""도구 한도 이후 최종 답변 생성 계약."""
 
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
 
 import pytest
 
@@ -207,6 +202,111 @@ async def test_search_sources_are_kept_when_the_model_omits_links(monkeypatch) -
     assert "example.go.kr · 2026" in text
     assert "https://example.go.kr/policy/2026" in text
     assert "https://journal.example.org/article/42" in text
+
+
+@pytest.mark.asyncio
+async def test_exact_long_paragraphs_are_kept_once(monkeypatch) -> None:
+    """A model's copied closing paragraph is removed from screen and storage."""
+    paragraph = "역발행의 초안 작성자와 법적 발급자를 구분해 설명합니다. " * 6
+    answer_line = (
+        'data: {"choices":[{"delta":{"content":'
+        + json.dumps(f"{paragraph}\n\n{paragraph}", ensure_ascii=False)
+        + "}}]}"
+    )
+
+    class _Repeated(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            return _Response([answer_line, "data: [DONE]"])
+
+    async def client(*_args, **_kwargs):
+        return _Repeated([])
+
+    monkeypatch.setattr(agent, "_client", client)
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "역발행을 설명해 줘"}],
+            [],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    visible = ""
+    for event in events:
+        if event["type"] == "delta":
+            visible += event["text"]
+        elif event["type"] == "retract":
+            visible = visible.replace(event["text"], "", 1)
+    assert visible.count(paragraph) == 1
+
+
+def test_official_sources_sort_before_secondary_sources():
+    urls = [
+        "https://news.example.com/story/1",
+        "https://www.msit.go.kr/bbs/view.do?id=42",
+        "https://university.ac.kr/research/7",
+    ]
+    first = sorted(urls, key=agent._source_priority)[0]
+    assert urlparse(first).hostname == "www.msit.go.kr"
+
+
+def test_official_source_rank_requires_a_domain_boundary():
+    malicious = "https://www.msit.go.kr.attacker.example/report"
+    ordinary = "https://source.example/report"
+    assert agent._source_priority(malicious) == (2, malicious)
+    assert agent._source_priority(ordinary) == (2, ordinary)
+
+
+@pytest.mark.asyncio
+async def test_an_institution_homepage_is_not_presented_as_direct_evidence(monkeypatch) -> None:
+    seen: list[dict] = []
+
+    class _HomepageCitation(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response(
+                    [
+                        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                        '"id":"c1","function":{"name":"web_search",'
+                        '"arguments":"{}"}}]}}]}',
+                        "data: [DONE]",
+                    ]
+                )
+            return _Response(
+                [
+                    'data: {"choices":[{"delta":{"content":'
+                    '"기관 자료입니다: https://www.nia.or.kr"}}]}',
+                    "data: [DONE]",
+                ]
+            )
+
+    async def client(*_args, **_kwargs):
+        return _HomepageCitation(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def search(_args):
+        return ToolResult(content="기관 홈페이지: https://www.nia.or.kr")
+
+    tool = Tool(
+        name="web_search",
+        description="검색한다",
+        parameters={"type": "object"},
+        run=search,
+        label="웹 검색",
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "통계를 검증해 줘"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    text = "".join(event["text"] for event in events if event["type"] == "delta")
+    assert "직접 출처가 아닙니다" in text
 
 
 @pytest.mark.asyncio

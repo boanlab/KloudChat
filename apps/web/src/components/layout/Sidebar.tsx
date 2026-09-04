@@ -270,13 +270,7 @@ export function Sidebar() {
   const total = user?.monthlyCredits ?? 0
   const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0
 
-  /**
-   * The collapsed state used to be no panel at all. What a rail keeps is the
-   * things you navigate *to*; what it gives up is the list, the search over it
-   * and the credit figure — none of which survive 64px, all of which are one
-   * press away. 계정 stays because the way out of an account cannot be behind
-   * a state the account is already in.
-   */
+  /** Collapsed navigation rail with persistent account access. */
   if (rail) {
     return (
       <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">

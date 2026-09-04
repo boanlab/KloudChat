@@ -10,13 +10,7 @@ import {
 } from '@/components/artifacts/PanelControls'
 import { useT } from '@/lib/useT'
 
-/**
- * A series' points, defensively.
- *
- * The data comes out of a model, and one row missing `points` used to throw
- * inside the render — which is not a broken chart on a card, it is a blank
- * screen where the gallery was. A chart with nothing to plot draws as empty.
- */
+/** Model-provided series points with an empty fallback. */
 function pointsOf(one: ChartArtifact['series'][number]) {
   return Array.isArray(one?.points) ? one.points : []
 }

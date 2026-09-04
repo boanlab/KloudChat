@@ -16,9 +16,10 @@ obvious from the code.
 
 ## Getting a stack running
 
-KloudChat is two containers and a database. Models and tools are **not** part of
-this repository — they live in [`KloudChat-LLM`][backend], and KloudChat
-reaches them through a single gateway URL configured at runtime.
+KloudChat runs web, API, print-renderer, initialization, and database services.
+Models and tools are **not** part of this repository — they live in
+[`KloudChat-LLM`][backend], and KloudChat reaches them through a single gateway
+URL configured at runtime.
 
 ```bash
 git clone https://github.com/boanlab/KloudChat.git

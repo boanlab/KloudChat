@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { approveOnce, approvePlan, signIn } from './helpers'
+import { approveOnce, signIn } from './helpers'
 
 /**
  * The report and deck panels as working surfaces.

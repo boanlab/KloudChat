@@ -67,11 +67,9 @@ lints clean can still fail to compile.
 **Stack:** React 19, TypeScript, Vite, Tailwind v4, zustand, react-router,
 lucide-react, react-markdown.
 
-**One store.** `src/store/useStore.ts` is a single zustand store. It carries an
-epoch guard: a late `loadWorkspace()` response overwriting local writes made in
-the meantime was a real bug — uploaded knowledge files disappeared — so every
-action that writes to the workspace calls `touchWorkspace()` to invalidate any
-response still in flight.
+**One store.** `src/store/useStore.ts` is a single zustand store. Workspace
+writes call `touchWorkspace()` so the epoch guard rejects stale
+`loadWorkspace()` responses.
 
 **One backend seam.** Everything that talks to the API goes through
 `src/lib/api.ts`.

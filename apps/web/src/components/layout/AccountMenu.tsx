@@ -22,18 +22,7 @@ import { isMac } from '@/lib/shortcuts'
 import { useStore } from '@/store/useStore'
 import { openShortcuts } from './KeyboardShortcuts'
 
-/**
- * The account menu, and the only way out of the account.
- *
- * It used to live in the sidebar footer and nowhere else. The sidebar returns
- * `null` when it is collapsed, and it starts collapsed under 1024px — so on a
- * phone, and on any desktop where somebody had hidden the panel, a signed-in
- * account had no reachable 로그아웃 at all. In a shared lab or library that is
- * the next person reading the previous person's conversations, so the menu is
- * now rendered in two places from one definition: the sidebar footer, where a
- * hand already goes, and the top bar, which is on every screen and never
- * disappears.
- */
+/** Shared account menu for sidebar and top bar. */
 function AccountItems() {
   const navigate = useNavigate()
   const t = useT()
@@ -103,9 +92,7 @@ function AccountItems() {
           <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
             {t('보안 · 감사')}
           </MenuItem>
-          {/* Instance configuration — the proxy and the mail relay. It used to
-              be a tab inside 설정, behind an admin-only flag, next to the theme
-              switch. */}
+          {/* Instance configuration. */}
           <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
             {t('시스템')}
           </MenuItem>

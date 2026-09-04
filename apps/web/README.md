@@ -53,11 +53,9 @@ src/
 
 ## Conventions
 
-**One store.** `store/useStore.ts` holds application state. It carries an epoch
-guard: a late `loadWorkspace()` response overwriting local writes made in the
-meantime was a real bug — uploaded knowledge files disappeared — so every
-action that writes to the workspace calls `touchWorkspace()` to invalidate any
-response still in flight.
+**One store.** `store/useStore.ts` holds application state. Workspace writes
+call `touchWorkspace()` so the epoch guard rejects stale `loadWorkspace()`
+responses.
 
 **One backend seam.** Every call to the API goes through `lib/api.ts`. Nothing
 else constructs a request.

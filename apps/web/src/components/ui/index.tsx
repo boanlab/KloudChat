@@ -600,12 +600,7 @@ export function MenuItem({
   icon?: ReactNode
   hint?: ReactNode
   disabled?: boolean
-  /**
-   * Turns an ordinary menu command into an accessible toggle item, and draws
-   * the mark itself, on the left. The mark used to be a '✓' passed as `hint`,
-   * which put it in the one right-hand slot — where the token estimate or the
-   * price had been, so the figure disappeared exactly when it was chosen.
-   */
+  /** Accessible toggle state with a leading selection mark. */
   checked?: boolean
   /**
    * Leave the menu up after this row is picked. A command closes its menu; a

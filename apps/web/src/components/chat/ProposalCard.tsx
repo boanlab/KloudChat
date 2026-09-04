@@ -17,24 +17,7 @@ import { useStore } from '@/store/useStore'
 import type { PendingPlan, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * What a document intends to write, before it writes it.
- *
- * These surfaces used to produce a document from every sentence typed at them,
- * including a question, and the document replaced whatever was there. So a
- * request the model could not ground — an attached paper that arrived a third
- * read — still produced a deck, about nothing in particular, in place of the
- * one somebody had spent the afternoon on.
- *
- * Now a generation stops here. In `clarify` it is holding a question it needs
- * answered; in `outline` it is holding the shape it means to write. Neither
- * has produced an artifact, which is the actual protection: there is nothing
- * to undo, because nothing has been replaced.
- *
- * The buttons are the only thing that writes. Typing goes on working — a note
- * in the composer re-plans with that note taken into account — which is the
- * back-and-forth these surfaces never had.
- */
+/** Clarification or outline approval before artifact generation. */
 export function ProposalCard({
   sessionId,
   pending,

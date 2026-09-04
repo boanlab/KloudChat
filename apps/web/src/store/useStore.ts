@@ -4632,7 +4632,7 @@ export async function drawFigure(
     if (!png) throw new Error(tr('도식을 그림으로 저장하지 못했습니다.'))
     // 크기는 viewBox 가 안다. `width`/`height` may be percentages or absent
     // depending on how mermaid was configured; the viewBox is the layout.
-    const box = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) ([\d.]+)"/.exec(svg)
+    const box = /viewBox="[\d.-]+ [\d.-]+ ([\d.]+) ([\d.]+)"/.exec(svg)
     const size = box ?? /width="([\d.]+)[^"]*"[^>]*height="([\d.]+)/.exec(svg)
     return await sessionsApi.storeDiagram(sessionId, {
       source: written.source,

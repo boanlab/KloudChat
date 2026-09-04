@@ -34,19 +34,7 @@ export const emptyMemory = (scope = 'global'): MemoryEntry => ({
   pinned: false,
 })
 
-/**
- * The one form that writes a memory.
- *
- * It used to live inside 메모리 and nowhere else, which is why a project could
- * show the memories scoped to it and offer nothing to do about them — the
- * screen where somebody is actually thinking about a project was the one screen
- * that could not add a fact to it. Lifted out rather than copied: two forms
- * writing the same row drift, and the scope select is exactly the field that
- * would have drifted.
- *
- * `lockScope` is for the project screen, where the answer to "which project"
- * is already on the page and asking again is a way to get it wrong.
- */
+/** Shared memory form; `lockScope` fixes project context. */
 export function MemoryEditor({
   draft,
   onDraft,

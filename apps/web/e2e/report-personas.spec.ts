@@ -208,7 +208,7 @@ test('사무직 — 보고서를 한글 문서로 받으면 한글이 여는 파
 
 test('연구직 — 번호를 매긴 절차가 내보낸 문서에서 번호를 유지한다', async ({ page }) => {
   test.setTimeout(180_000)
-  const id = await openNewestReport(page)
+  await openNewestReport(page)
   const title = `실험 절차 ${stamp()}`
 
   await rewrite(

@@ -393,22 +393,9 @@ export function Composer({
   autoFocus?: boolean
 }) {
   const t = useT()
-  //: The two surfaces that leave the chat pipeline at submit: a picture or a
-  //: clip is made by its own endpoint, which takes a prompt and the option
-  //: chips and has no room for anything else the composer could collect.
+  // Dedicated media endpoints
   const isMedia = kind === 'image' || kind === 'av'
-  //: The surfaces that can be written against the web. Chat runs a tool loop;
-  //: a report, a deck and a rendered page each run a research pass before they
-  //: write, planning queries off the request and reading the pages they find.
-  //:
-  //: This used to be chat alone, and the reasoning was sound for what existed
-  //: then: the document writers were handed no tools, so a lit globe promised
-  //: a search that was never going to happen. Hiding the control was the wrong
-  //: half of that to fix. A chat answer that is out of date gets argued with;
-  //: a report gets exported and mailed. The two media surfaces still hide it —
-  //: an image endpoint takes a prompt and chips and nothing else.
-  //: A rendered page has no `SessionKind` of its own — it is a report or a
-  //: slides session wearing a render template — so these three cover it too.
+  // Web-search-capable generation paths
   const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
   const draftKey = draftKeyFor(sessionId, kind)
   const [value, setValue] = useState(() => drafts.get(draftKey) ?? '')
@@ -537,15 +524,7 @@ export function Composer({
     })
     setPendingAttachment(null)
   }, [isMedia, pendingAttachment, setPendingAttachment])
-  /**
-   * A refused turn, put back into the composer that is on screen now.
-   *
-   * The guards are the same ones the sending composer used to apply to itself,
-   * and they are applied here for the same reason: submit clears the box, so
-   * anything in it now was typed after the refusal left and outranks it. What
-   * changed is only where the question is asked — of the live composer, which
-   * on this path is a different instance from the one that sent the turn.
-   */
+  /** Refused-turn restoration without overwriting newer input. */
   useEffect(() => {
     if (!composerRestore || composerRestore.sessionId !== sessionId) return
     setComposerRestore(null)
@@ -1099,13 +1078,7 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 280)}px`
   }, [value])
 
-  /**
-   * Takes files from wherever they came from — the picker, a drop, a paste.
-   *
-   * One path for all three. It used to live inline in the file input's own
-   * `onChange`, which is why dropping and pasting could not reuse it and, in
-   * practice, why neither existed.
-   */
+  /** Shared picker, drop, and paste upload path. */
   const addFiles = async (picked: File[]) => {
     if (!picked.length || isMedia) return
     setUploading(true)

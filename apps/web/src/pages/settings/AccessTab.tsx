@@ -206,10 +206,7 @@ export function AccessTab() {
         <ActiveSessions />
       </section>
 
-      {/* The record sits below the sessions and fails on its own. It used to
-          be the whole tab, so its loading and error states returned early —
-          which would now take the one actionable half of the screen down with
-          the half that only explains. */}
+      {/* Independently loaded access history. */}
       <section className="space-y-3">
         <h3 className="text-base font-medium">{t('접속 기록')}</h3>
         <p className="text-base text-muted">

@@ -15,13 +15,15 @@ This guide covers running KloudChat for real users. For a laptop trial, the
 
 ## What you are deploying
 
-Three containers and a bind-mounted data directory:
+Four long-running containers, one initialization container, and bind-mounted
+data directories:
 
 | Container | Port | Holds |
 | --- | --- | --- |
 | `kloudchat-web` | 5173 → 80 | Static bundle, nginx proxying `/api` and `/llm` |
 | `kloudchat-api` | 8100 | All application logic; **the only process with the LiteLLM master key** |
 | `kloudchat-db` | 5433 → 5432 | Postgres 16 |
+| `kloudchat-print` | 8200 | Browser-based HTML-to-PDF rendering; internal API access only |
 
 ```
 ./data/postgres     database files
@@ -29,7 +31,7 @@ Three containers and a bind-mounted data directory:
 ./data/uv-cache     MCP connector dependency cache
 ```
 
-A fourth container, `kloudchat-init`, runs once before the API and exits.
+The `kloudchat-init` container runs once before the API and exits.
 Docker creates bind-mount directories as root and the API runs as uid 1000, so
 it creates `files` and `uv-cache` and hands them over — without it, uploads
 fail with "permission denied" on a first boot only. It shows up as `Exited (0)`
