@@ -23,7 +23,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response
-from playwright.async_api import Browser, async_playwright
+from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, async_playwright
 from pydantic import BaseModel, Field
 
 #: Beyond this a document is not a document. The largest seed is ~22 KB and a
@@ -64,6 +64,32 @@ class _Chromium:
                 self._browser = await self._playwright.chromium.launch()
         return self._browser
 
+    async def new_context(self) -> BrowserContext:
+        """Borrow an isolated context, recovering from a dead transport once.
+
+        ``is_connected`` is only a snapshot. Chromium can exit between that
+        check and ``new_context``; without this retry the sidecar stays alive
+        but every later export silently falls back to the unrelated structural
+        renderer until the container itself is restarted.
+        """
+        async with self._lock:
+            for attempt in range(2):
+                if self._playwright is None:
+                    self._playwright = await async_playwright().start()
+                if self._browser is None or not self._browser.is_connected():
+                    self._browser = await self._playwright.chromium.launch()
+                try:
+                    return await self._browser.new_context()
+                except PlaywrightError:
+                    if attempt:
+                        raise
+                    try:
+                        await self._browser.close()
+                    except PlaywrightError:
+                        pass
+                    self._browser = None
+            raise RuntimeError("unreachable")
+
     async def close(self) -> None:
         if self._browser is not None:
             await self._browser.close()
@@ -99,10 +125,9 @@ async def health() -> dict[str, bool]:
 
 @app.post("/pdf")
 async def pdf(job: Job) -> Response:
-    browser = await chromium.page_context()
     # A context per request, so one document cannot leave anything behind for
     # the next — storage, a service worker, a dialog left open.
-    context = await browser.new_context()
+    context = await chromium.new_context()
     try:
         page = await context.new_page()
         await page.route("**/*", lambda route: asyncio.ensure_future(route.abort()))

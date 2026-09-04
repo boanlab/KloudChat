@@ -1,0 +1,7 @@
+/* 편집형 표지는 PowerPoint의 같은 editorial face와 한 구성으로 간다. */
+.slide.cover {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 62%, var(--ink)));
+  color: #fff;
+}
+.slide.cover h2 { border-top-color: #fff; }
+.slide.cover .lead, .slide.cover .num { color: rgba(255, 255, 255, 0.76); }

@@ -193,3 +193,32 @@ async def test_without_a_printer_a_pdf_still_comes_out(monkeypatch, template_id)
     # Drawn here rather than fetched, so it is bigger than the stub above and
     # unmistakably a real file.
     assert len(reply.body) > 1000
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("template_id", "look", "dark"),
+    [
+        ("deck-lecture", "poster", False),
+        ("deck-proposal", "mono", False),
+        ("deck-signal", "dark", True),
+    ],
+)
+async def test_editable_deck_export_keeps_the_template_face(
+    monkeypatch, template_id, look, dark
+):
+    """PPTX receives the face that dressed the HTML, not editorial defaults."""
+    from app.routers import workspace as router
+
+    seen = {}
+
+    def to_pptx(_title, _slides, **kwargs):
+        seen.update(kwargs)
+        return b"pptx"
+
+    monkeypatch.setattr(router.deck_export, "to_pptx", to_pptx)
+    reply = await router._export_page(_artifact(_written(template_id), template_id), "pptx")
+
+    assert reply.body == b"pptx"
+    assert seen["tokens"]["visualStyle"] == look
+    assert seen["dark"] is dark

@@ -2419,7 +2419,6 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     """
     data = artifact.data or {}
     content = str(data.get("content") or "")
-    tokens = data.get("design") or None
     page_settings = data.get("pageSettings") or None
     title = artifact.title or "문서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "page"
@@ -2428,6 +2427,14 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
         return _attachment(content.encode(), "text/html; charset=utf-8", stem, "html")
 
     template = design_templates.get(str(data.get("templateId") or ""))
+    tokens = dict(data.get("design") or {})
+    # HTML templates carry their visual face in the template manifest rather
+    # than in the artifact's optional design-system tokens. Editable Office
+    # export used to miss that bridge and therefore drew every template in the
+    # same default purple look even while PDF faithfully printed its CSS.
+    if template and template.look:
+        tokens.setdefault("visualStyle", template.look)
+    tokens = tokens or None
     # A template can stop existing across an upgrade; the markup still says
     # which kind it is, and the file has to keep exporting either way.
     is_deck = template.kind == "deck" if template else 'class="slide' in content
@@ -2466,7 +2473,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
             )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_format")
 
-    sections = page_export.to_sections(content)
+    sections = page_export.to_sections(content, cover_page=template.cover_page if template else True)
     if format == "md":
         body, media, suffix = (
             report_service.to_markdown(title, sections).encode(),

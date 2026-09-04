@@ -440,7 +440,7 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
     return slides
 
 
-def to_sections(html: str) -> list[dict[str, Any]]:
+def to_sections(html: str, *, cover_page: bool = True) -> list[dict[str, Any]]:
     """An HTML document as the sections `report_export` draws.
 
     Markdown, because that is what the report exporters read: `_markdown_to_
@@ -480,6 +480,12 @@ def to_sections(html: str) -> list[dict[str, Any]]:
                 )
             )
         content = "\n\n".join(lines)
+        if cover_page and block["layout"] == "cover":
+            # A document template's cover occupies its own sheet in HTML/PDF.
+            # Preserve that authored boundary in editable Word/HWPX output;
+            # otherwise the first body section rises into the cover and a
+            # two-page report silently becomes one page when downloaded.
+            content = f"{content}\n\n<!-- pagebreak -->".strip()
         if not content.strip() and not block["title"] and not block["images"]:
             continue
         section: dict[str, Any] = {

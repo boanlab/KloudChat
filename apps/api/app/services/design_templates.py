@@ -286,6 +286,9 @@ class DesignTemplate:
     #: whose master, layouts and theme `deck_export` opens and builds on.
     #: Empty when the folder has none, and then PowerPoint's own defaults.
     pptx_template: str
+    #: Whether the document cover owns a sheet in paged exports. Compact
+    #: operational formats (minutes, incidents, notices) keep it with page 1.
+    cover_page: bool
     #: The blank form somebody downloads — the 서식 as a file to fill in by
     #: hand, in the same styles the export comes out in.
     #:
@@ -525,6 +528,7 @@ def _load() -> dict[str, DesignTemplate]:
             pptx_template=str(folder / "template.pptx")
             if (folder / "template.pptx").is_file()
             else "",
+            cover_page=bool(meta.get("cover_page", True)),
             form_file=next(
                 (
                     str(folder / name)
